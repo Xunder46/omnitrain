@@ -758,6 +758,27 @@ take to build the real watchOS app.
 - [ ] Build succeeds on simulator and device.
 - [ ] Tests pass: `xcodebuild test -scheme Runner Watch -destination 'platform=watchOS Simulator'`.
 
+Added by `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md` (Stats PR 2, O-1) —
+the app shell's part of wrist capture, which PR 2 built as package code with no shell to host it:
+
+- [ ] The shell hosts the End control (`WatchEndSessionView`) and the effort-rating prompt
+  (`WatchEffortRatingView`), both bound to `WatchEffortRatingState` (PR 2 D-119).
+- [ ] An owed prompt is presented at launch, before any other surface (PR 2 D-117; the owed prompt
+  is stored, `WatchRatingPromptRecord`).
+- [ ] `pruneConfirmed` and `pruneSettledSensorSamples` are scheduled only while no session is
+  active. Pruning a running session's confirmed rows changes values the wrist derives from them,
+  such as the next round number (PR 2 F-10).
+- [ ] The protocol schemas are bundled for the Swift validator.
+- [ ] `preferences_down` is carried over the transport to `WatchSyncOrchestrator`, which routes it
+  to `WatchPhonePreferences` (PR 2 D-113).
+- [ ] The engine and its store are written by one actor. This one is a package change, not only a
+  shell change: the recorder's per-stream tasks and its write chain (`WatchSensorWrites`, and
+  `consume(_:onElement:)` above it, in `WatchSensorRecording.swift`) run without actor isolation,
+  so the UI and that chain can still write at once (PR 2 A-35; PR 2 review F-11).
+- [ ] The durable store reloads payload integers as integers (a reload-then-validate test): the wrist
+  validates its own emissions, which refuse whole-number doubles, so a store that widens them breaks every
+  resend after a relaunch (PR 2 re-review N9).
+
 #### Notes for the Developer
 
 - MethodChannel communication: the watch app will send/receive messages via
@@ -782,6 +803,17 @@ Once the watchOS app target exists:
    - Samples are app-internal; no sync to HealthKit back-end.
 
 2. [ ] Wire into `WatchSessionEngine._recordSensorSample`.
+
+Added by `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md` (Stats PR 2, O-2):
+
+3. [ ] Bind `WatchSensorSource`'s steps permission and cumulative steps stream to the live workout
+   builder's step count, and its heart-rate stream to HealthKit (PR 2 D-106, D-125).
+4. [ ] Measure sample delivery latency against log time. PR 2 computes an entry's heart rate and
+   steps when it is logged (D-121); if late samples drop a material slice of the window, add a
+   grace wait before computing.
+5. [ ] Verify the step counter's restart after a workout recovery is read as a new count (D-125).
+6. [ ] On-device verification of the summaries needs a way to inspect the imported
+   `SensorSummary` rows: the phone has no display for them yet (Stats pack O-2).
 
 This phase is documented here for completeness but does not proceed until the
 watchOS app target is built and running.

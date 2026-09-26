@@ -1,0 +1,20 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-bad-end-missing",
+  "sessionId": "s-cap-bad",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-09-25T11:00:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "end-s-cap-bad",
+        "entryId": "end-s-cap-bad",
+        "kind": "session_end",
+        "loggedAt": "2026-09-25T10:55:00Z",
+        "startedAt": "2026-09-25T10:00:00Z",
+        "status": "completed"
+      }
+    ]
+  }
+}

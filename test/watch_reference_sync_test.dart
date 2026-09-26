@@ -6,6 +6,9 @@
 //   S-003 the phone builds routines on request  → `S-003 ...`
 //   S-004 the wrist reflects the declared kind  → `S-004 ...`
 //   S-007 the fallback list covers every exercise → `S-007 ...`
+//   S-253 the preferences the wrist honours        → `S-253 ...`
+//         (Stats PR 2, `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//         D-113; the request/answer half is in `test/watch_transport_test.dart`)
 //
 // The message is judged the way the watch judges it: written into the shared
 // schema validator, then read back through the wrist's own types. A payload
@@ -450,6 +453,67 @@ void main() {
       expect(
         surface.fields.map((field) => field.metricKey),
         contains(WatchMetricKey.weight),
+      );
+    });
+  });
+
+  group('S-253 the preferences the wrist honours', () {
+    test('S-253 preferences_down conforms and carries the setting as given',
+        () {
+      for (final prompt in [true, false]) {
+        final message = WatchReferenceSync.buildPreferencesDown(
+          effortRatingPrompt: prompt,
+          generatedAt: _generatedAt,
+        );
+
+        expect(
+          _rejections(message),
+          isEmpty,
+          reason: 'S-253 the wrist must be able to accept it ($prompt)',
+        );
+        expect(message['type'], 'preferences_down');
+        expect(message['origin'], 'phone');
+        expect(message['sentAt'], '2026-09-21T12:30:00.000Z');
+        expect(
+          message.containsKey('sessionId'),
+          isFalse,
+          reason: 'S-253 the setting describes the user, not a session',
+        );
+        expect(
+          _asObject(message['payload']),
+          {
+            'generatedAt': '2026-09-21T12:30:00.000Z',
+            'effortRatingPrompt': prompt,
+          },
+          reason: 'S-253 the payload is exactly the setting and its stamp',
+        );
+      }
+    });
+
+    test('S-253 a copy with other content is another message', () {
+      final on = WatchReferenceSync.buildPreferencesDown(
+        effortRatingPrompt: true,
+        generatedAt: _generatedAt,
+      );
+      final off = WatchReferenceSync.buildPreferencesDown(
+        effortRatingPrompt: false,
+        generatedAt: _generatedAt,
+      );
+      final rebuilt = WatchReferenceSync.buildPreferencesDown(
+        effortRatingPrompt: true,
+        generatedAt: _generatedAt,
+      );
+
+      expect(
+        on['messageId'],
+        isNot(off['messageId']),
+        reason: 'S-253 a tie on generatedAt goes to the later-received copy, '
+            'so two different settings must not share a delivery key',
+      );
+      expect(
+        rebuilt['messageId'],
+        on['messageId'],
+        reason: 'S-253 a rebuild of the same setting is the same message',
       );
     });
   });

@@ -20,6 +20,7 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/session/effort_rating_sheet.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
@@ -268,18 +269,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     _hasShownFeelingSheet = true;
 
-    await showModalBottomSheet<int>(
-      context: context,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black54,
-      isScrollControlled: true,
-      builder: (context) => _FeelingSheetContent(
-        workoutState: widget.workoutState,
-        modality: session.modality,
-        startedAt: OmniDateUtils.fromMs(session.startedAtMs),
-      ),
+    await EffortRatingSheet.show(
+      context,
+      mustAnswer: true,
+      modality: session.modality,
+      startedAt: OmniDateUtils.fromMs(session.startedAtMs),
+      onRated: _saveEffortRating,
     );
 
     // Rebuild to reflect any rating changes made in the automatic prompt
@@ -296,19 +291,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final session = widget.workoutState.currentSession;
     if (session == null) return;
 
-    final saved = await showModalBottomSheet<int>(
-      context: context,
-      isDismissible: true,
-      enableDrag: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black54,
-      isScrollControlled: true,
-      builder: (context) => _FeelingSheetContent(
-        workoutState: widget.workoutState,
-        modality: session.modality,
-        startedAt: OmniDateUtils.fromMs(session.startedAtMs),
-        initialRating: session.sessionFeeling,
-      ),
+    final saved = await EffortRatingSheet.show(
+      context,
+      mustAnswer: false,
+      modality: session.modality,
+      startedAt: OmniDateUtils.fromMs(session.startedAtMs),
+      initialRating: session.sessionFeeling,
+      onRated: _saveEffortRating,
     );
 
     // A calendar-opened summary returns to a day list / grid that drew
@@ -321,6 +310,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  /// Where either rating sheet's answer goes: the summary's session, through
+  /// [WorkoutState.updateSessionFeeling]. Answers false — and the sheet stays
+  /// open — only when no session is loaded to rate.
+  Future<bool> _saveEffortRating(int rating) async {
+    final session = widget.workoutState.currentSession;
+    if (session == null) return false;
+    await widget.workoutState.updateSessionFeeling(session.id, rating);
+    return true;
   }
 
   /// Reload the calendar this summary was opened from so it reflects a
@@ -1216,8 +1215,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return value.toStringAsFixed(1);
   }
 
-  /// Short "Mon D" date (e.g. "Sep 18"). Static so the rating sheet in this
-  /// file can reuse it.
+  /// Short "Mon D" date (e.g. "Sep 18").
   static String _formatDate(DateTime date) {
     const months = [
       'Jan',
@@ -1259,192 +1257,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       'December',
     ];
     return months[month - 1];
-  }
-}
-
-/// Modal bottom sheet content for the session effort rating (1-5). Pops
-/// with the chosen rating once it has been saved.
-class _FeelingSheetContent extends StatefulWidget {
-  final WorkoutState workoutState;
-  final String? modality;
-
-  /// When the rated session started; the subtitle reads "Today" for a
-  /// session that started today and the session's date otherwise.
-  final DateTime startedAt;
-  final int? initialRating;
-
-  const _FeelingSheetContent({
-    required this.workoutState,
-    this.modality,
-    required this.startedAt,
-    this.initialRating,
-  });
-
-  @override
-  State<_FeelingSheetContent> createState() => _FeelingSheetContentState();
-}
-
-class _FeelingSheetContentState extends State<_FeelingSheetContent> {
-  int? _selectedFeeling;
-
-  @override
-  void initState() {
-    super.initState();
-    // Pre-select the initial rating if provided
-    _selectedFeeling = widget.initialRating;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
-    final displayName = ModalityDisplay.getName(widget.modality);
-    final when = OmniDateUtils.isToday(widget.startedAt)
-        ? 'Today'
-        : _SessionSummaryScreenState._formatDate(widget.startedAt);
-    final subtitle = '$displayName · $when';
-
-    return Container(
-      decoration: BoxDecoration(
-        color: themeColors.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        24,
-        12,
-        24,
-        MediaQuery.of(context).padding.bottom + 40,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle bar
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: themeColors.primary.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(2),
-              ),
-              margin: const EdgeInsets.only(bottom: 28),
-            ),
-          ),
-          // Title
-          Text(
-            'How hard was this session?',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleLarge?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.9),
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 6),
-          // Subtitle
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: themeColors.textMuted,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 36),
-          // Number tiles row
-          Row(
-            children: [
-              for (int i = 1; i <= 5; i++) ...[
-                Expanded(child: _buildFeelingTile(i)),
-                if (i < 5) const SizedBox(width: 10),
-              ],
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Range labels row
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Very easy',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.0,
-                    color: themeColors.textMuted,
-                  ),
-                ),
-                Text(
-                  'Max effort',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.0,
-                    color: themeColors.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFeelingTile(int number) {
-    final theme = Theme.of(context);
-    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
-    final isSelected = _selectedFeeling == number;
-    final tileColor = feelingColor(number, themeColors);
-    final selectedTextColor = isSelected
-        ? effortTileTextColor(
-            number,
-            themeColors,
-            onPrimary: theme.colorScheme.onPrimary,
-          )
-        : theme.colorScheme.onSurface.withOpacity(0.35);
-
-    return GestureDetector(
-      onTap: () => _selectFeeling(number),
-      child: AspectRatio(
-        aspectRatio: 1.0,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? tileColor
-                : theme.colorScheme.surface.withOpacity(0.6),
-            border: Border.all(
-              color: isSelected
-                  ? tileColor
-                  : theme.colorScheme.onSurface.withOpacity(0.12),
-              width: 1.5,
-            ),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Center(
-            child: Text(
-              number.toString(),
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w500,
-                color: selectedTextColor,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _selectFeeling(int feeling) async {
-    setState(() => _selectedFeeling = feeling);
-
-    final session = widget.workoutState.currentSession;
-    if (session != null) {
-      await widget.workoutState.updateSessionFeeling(session.id, feeling);
-      if (mounted) {
-        Navigator.of(context).pop(feeling);
-      }
-    }
   }
 }
 

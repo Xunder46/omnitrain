@@ -1,0 +1,104 @@
+{
+  "protocolVersion": 1,
+  "name": "A snapshot for another session replaces the held one, entries included",
+  "description": "The receiver holds a finished session. A snapshot then arrives for a different session — a second workout started on the wrist. Snapshots for the held session merge entries by entryId; a snapshot that names another session is not a merge. It replaces the held session wholesale, entries included, so the first session's entries never leak into the second.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-switch-snapshot-a",
+    "sessionId": "s-sw-a",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-09-25T08:30:00Z",
+    "payload": {
+      "sessionId": "s-sw-a",
+      "revision": 3,
+      "status": "completed",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-a",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "e-a1",
+          "eventId": "e-a1",
+          "kind": "set",
+          "loggedAt": "2026-09-25T08:10:00Z",
+          "sessionExerciseId": "sx-a",
+          "exerciseId": "ex-barbell-bench-press",
+          "reps": 5,
+          "loadKg": 60
+        }
+      ],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-switch-snapshot-b",
+      "sessionId": "s-sw-b",
+      "type": "session_snapshot",
+      "origin": "watch",
+      "sentAt": "2026-09-25T09:15:00Z",
+      "payload": {
+        "sessionId": "s-sw-b",
+        "revision": 0,
+        "status": "active",
+        "currentExerciseIndex": 0,
+        "exercises": [
+          {
+            "sessionExerciseId": "sx-b",
+            "exerciseId": "ex-goblet-squat",
+            "name": "Goblet Squat",
+            "capabilities": ["sets", "reps", "load"]
+          }
+        ],
+        "entries": [
+          {
+            "entryId": "e-b1",
+            "eventId": "e-b1",
+            "kind": "set",
+            "loggedAt": "2026-09-25T09:10:00Z",
+            "sessionExerciseId": "sx-b",
+            "exerciseId": "ex-goblet-squat",
+            "reps": 8,
+            "loadKg": 24
+          }
+        ],
+        "timers": {}
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-sw-b",
+    "status": "active",
+    "revision": 0,
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-b",
+        "exerciseId": "ex-goblet-squat",
+        "name": "Goblet Squat",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-b1",
+        "eventId": "e-b1",
+        "kind": "set",
+        "loggedAt": "2026-09-25T09:10:00Z",
+        "sessionExerciseId": "sx-b",
+        "exerciseId": "ex-goblet-squat",
+        "reps": 8,
+        "loadKg": 24
+      }
+    ],
+    "timers": {}
+  }
+}

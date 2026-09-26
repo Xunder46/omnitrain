@@ -1,10 +1,11 @@
 {
-  "description": "The sensor vocabulary both watch clients share: the sample kinds the wrist stores, what each sample's value means, and the platform workout session type every modality maps to (HealthKit on watchOS, Health Connect on Wear OS). Neither client owns these values: the Flutter client derives the GPS decision from ModalityConfig's capability profile, the Swift client mirrors it, and both suites assert against this file — so a change on one platform fails the other's tests instead of diverging silently.",
-  "kinds": ["hr", "gps", "distance"],
+  "description": "The sensor vocabulary both watch clients share: the sample kinds the wrist stores, what each sample's value means, and the platform workout session type every modality maps to (HealthKit on watchOS, Health Connect on Wear OS). Neither client owns these values: the Flutter client derives the GPS decision from ModalityConfig's capability profile, the Swift client mirrors it, and both suites assert against this file — so a change on one platform fails the other's tests instead of diverging silently. `steps` is the platform's own step counter as a cumulative count since the platform workout began (`cumulativeCount`): a sample supersedes the one before it, and a smaller value than its predecessor means the counter restarted, not that steps were lost.",
+  "kinds": ["hr", "gps", "distance", "steps"],
   "sampleUnits": {
     "hr": "beatsPerMinute",
     "gps": "cumulativeMetres",
-    "distance": "totalMetres"
+    "distance": "totalMetres",
+    "steps": "cumulativeCount"
   },
   "gpsCapability": "distance",
   "gpsModalities": ["cardio_endurance", "sports"],

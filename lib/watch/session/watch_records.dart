@@ -105,7 +105,12 @@ abstract final class WatchSensorKind {
   /// the measurement is final.
   static const String distance = 'distance';
 
-  static const List<String> all = [heartRate, gps, distance];
+  /// The platform's step count since the platform workout began. Vocabulary
+  /// only on this client: it keeps the kind list equal to the shared contract,
+  /// and nothing here records it.
+  static const String steps = 'steps';
+
+  static const List<String> all = [heartRate, gps, distance, steps];
 }
 
 /// Base of every stored record — the single shape the store accepts.

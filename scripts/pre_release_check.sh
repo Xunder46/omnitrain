@@ -13,6 +13,9 @@
 #                 of the July 2026 pre-launch fix pack. These are meant to
 #                 FAIL until the fix pack has landed. Do not soften to warnings.
 # Sections 12–13: flutter analyze + full test suite (skipped by --fast)
+# Section  14:    swift test for the watchOS package in watch/watchos
+#                 (skipped by --fast; skipped with a warning on a host that
+#                 cannot build that package)
 #
 # ── Platform scoping ────────────────────────────────────────────────────────
 # Some sections need a real build artifact: the iOS checks need an IPA, the
@@ -902,6 +905,31 @@ else
     else
       log_err "flutter test failed. A red suite never ships."
     fi
+  fi
+fi
+
+# ── 14. The watchOS package's suite (swift test) ─────────────────────────────
+# The watch engine, its append-only store, its sensors and the capture
+# contract's wrist half are proven by `swift test` in watch/watchos, which
+# `flutter test` never runs (Stats PR 2, D-144). A red suite blocks exactly as
+# a red `flutter test` does.
+#
+# The package imports Apple frameworks (Combine, SwiftUI), so it builds only on
+# macOS. A host that is not a Mac, or has no usable Swift toolchain (`swift
+# --version` fails — the /usr/bin/swift stub of a Mac without Xcode tools
+# does), cannot run it: that is reported as a warning, never passed silently
+# and never failed, because that host cannot build the watch app either.
+echo ""
+if [[ $SKIP_HEAVY -eq 1 ]]; then
+  log_warn "Skipping swift test for watch/watchos (--fast). Do NOT archive from a --fast run."
+elif [[ "$(uname -s)" != "Darwin" ]] || ! swift --version >/dev/null 2>&1; then
+  log_warn "swift test for watch/watchos SKIPPED: this host has no usable Swift toolchain for the watchOS package (it needs macOS with Xcode). Run the gate on a Mac before shipping the watch app."
+else
+  echo "  — swift test (watch/watchos) —"
+  if (cd watch/watchos && swift test); then
+    log_ok "watchOS package suite passed (swift test in watch/watchos)"
+  else
+    log_err "swift test failed in watch/watchos. The watch engine's suite is red, and a red suite never ships."
   fi
 fi
 

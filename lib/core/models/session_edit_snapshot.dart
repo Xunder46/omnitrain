@@ -6,7 +6,8 @@ import '../../data/models/models.dart';
 /// Stored in [WorkoutSessionScreen] while editing. On *Save*, it is discarded.
 /// On *Back* (without Save), [WorkoutState.restoreSessionSnapshot] uses it to
 /// undo all structural changes (added/removed exercises, added/removed sets)
-/// that were persisted immediately to the repository.
+/// that were persisted immediately to the repository, and to put back the
+/// sensor summaries those changes and the undo deleted.
 ///
 /// Note: metric-value edits are separately buffered in [_editBuffer] on the
 /// screen and never reach the repository until Save — so they are automatically
@@ -39,6 +40,16 @@ class SessionEditSnapshot {
   /// (so their exerciseId still resolves after restore).
   final Map<String, Exercise> exerciseCache;
 
+  /// The session's wrist-measured sensor summaries at snapshot time.
+  ///
+  /// A summary is deleted together with the effort, timed instance or round
+  /// instance it targets (D-131). Both a live edit (deleting a round, removing
+  /// an exercise) and the restore's own delete-and-re-create do that, and
+  /// re-creating a row does not bring its summary back, so the restore
+  /// re-creates these (put-if-absent). Summaries are immutable; the list is a
+  /// copy.
+  final List<SensorSummary> sensorSummaries;
+
   // NOTE: EntryRest records are intentionally NOT included in the snapshot.
   // Rest records are never structurally mutated during edit mode — no new rests
   // are created, and add/remove set operations do not touch them. There is
@@ -52,5 +63,6 @@ class SessionEditSnapshot {
     required this.roundInstances,
     required this.timedInstances,
     required this.exerciseCache,
+    required this.sensorSummaries,
   });
 }

@@ -32,6 +32,7 @@ import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/watch/watch_incoming_router.dart';
 import 'package:omnitrain/state/watch/watch_nutrition_log_bridge.dart';
+import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/watch/nutrition/watch_nutrition_screen.dart';
 import 'package:omnitrain/watch/nutrition/watch_nutrition_state.dart';
 import 'package:omnitrain/watch/session/hive_watch_session_store.dart';
@@ -143,10 +144,13 @@ Food _food(
 /// with the bridge in front of it, so what "the phone applies it" means is
 /// asserted against the phone's own day log rather than a stand-in.
 class _PhoneNutritionHarness {
-  _PhoneNutritionHarness(this.nutrition, this.bridge);
+  _PhoneNutritionHarness(this.nutrition, this.bridge, this.repository);
 
   final NutritionState nutrition;
   final WatchNutritionLogBridge bridge;
+
+  /// The phone's storage, which the router's session inbox stages into.
+  final MockWorkoutRepository repository;
 
   static Future<_PhoneNutritionHarness> create({
     List<Food> foods = const [],
@@ -176,6 +180,7 @@ class _PhoneNutritionHarness {
         validator: _validator(),
         transport: transport,
       ),
+      repository,
     );
   }
 }
@@ -617,6 +622,10 @@ void main() {
         groups: _phoneGroups(payload),
       );
       final router = WatchIncomingRouter(
+        inbox: WatchSessionInbox(
+          repository: phone.repository,
+          validator: _validator(),
+        ),
         mirror: LiveSessionMirrorState(
           transport: RecordingMirrorTransport(),
           validator: _validator(),
@@ -689,6 +698,10 @@ void main() {
         groups: _phoneGroups(payload),
       );
       final router = WatchIncomingRouter(
+        inbox: WatchSessionInbox(
+          repository: phone.repository,
+          validator: _validator(),
+        ),
         mirror: LiveSessionMirrorState(
           transport: RecordingMirrorTransport(),
           validator: _validator(),

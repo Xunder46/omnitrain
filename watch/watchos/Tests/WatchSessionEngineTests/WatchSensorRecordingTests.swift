@@ -32,15 +32,23 @@ import XCTest
 final class FakeSensorSource: WatchSensorSource {
     var heartRateGrant: WatchSensorPermission = .granted
     var locationGrant: WatchSensorPermission = .granted
+    var stepsGrant: WatchSensorPermission = .granted
 
     private(set) var heartRateSubscriptions = 0
     private(set) var locationSubscriptions = 0
+    private(set) var stepsSubscriptions = 0
+
+    /// Whether the steps stream has ended — cancelled by its consumer, or
+    /// closed by the test.
+    private(set) var stepsStreamEnded = false
 
     private var beats: AsyncStream<Double>.Continuation?
     private var fixes: AsyncStream<WatchLocationFix>.Continuation?
+    private var counts: AsyncStream<Double>.Continuation?
 
     func heartRatePermission() async -> WatchSensorPermission { heartRateGrant }
     func locationPermission() async -> WatchSensorPermission { locationGrant }
+    func stepsPermission() async -> WatchSensorPermission { stepsGrant }
 
     func heartRate() -> AsyncStream<Double> {
         heartRateSubscriptions += 1
@@ -52,12 +60,22 @@ final class FakeSensorSource: WatchSensorSource {
         return AsyncStream { fixes = $0 }
     }
 
+    func steps() -> AsyncStream<Double> {
+        stepsSubscriptions += 1
+        return AsyncStream { continuation in
+            continuation.onTermination = { [weak self] _ in self?.stepsStreamEnded = true }
+            counts = continuation
+        }
+    }
+
     func beat(_ beatsPerMinute: Double) { beats?.yield(beatsPerMinute) }
     func fix(_ cumulativeMetres: Double) { fixes?.yield(WatchLocationFix(distanceMeters: cumulativeMetres)) }
+    func count(_ cumulativeSteps: Double) { counts?.yield(cumulativeSteps) }
 
     func close() {
         beats?.finish()
         fixes?.finish()
+        counts?.finish()
     }
 }
 
@@ -98,7 +116,13 @@ func eventually(
     XCTFail(message, file: file, line: line)
 }
 
-final class WatchSensorRecordingTests: XCTestCase {
+class WatchSensorRecordingTests: XCTestCase {
+
+    /// The steps permission every test in this class starts with. S-239 runs
+    /// the whole class a second time with it denied
+    /// (`WatchSensorRecordingStepsDeniedTests`): steps are a sensor of their
+    /// own, and nothing the other sensors do may depend on them.
+    class var stepsGrant: WatchSensorPermission { .granted }
 
     private var harness: Harness!
     private var source: FakeSensorSource!
@@ -109,6 +133,7 @@ final class WatchSensorRecordingTests: XCTestCase {
         super.setUp()
         harness = Harness()
         source = FakeSensorSource()
+        source.stepsGrant = Self.stepsGrant
         health = FakePlatformStore()
         clock = harness.clock
     }
@@ -504,12 +529,15 @@ final class WatchSensorRecordingTests: XCTestCase {
         await engine.appendSensorSample(kind: WatchSensorKind.heartRate, value: 128)
         _ = await engine.confirmObservations(["e-1"])
         _ = await engine.finishSession()
+        // The session's end carries what was computed from the log, so its
+        // receipt is the last thing the log waits for (D-129).
+        _ = await engine.confirmObservations([WatchSessionCapture.sessionEndId(harness.sessionId)])
 
         let released = await engine.pruneSettledSensorSamples()
 
         XCTAssertEqual(released.count, 1)
         XCTAssertTrue(engine.sensorSamples.isEmpty)
-        XCTAssertEqual(engine.observations.count, 1)
+        XCTAssertEqual(engine.observations.count, 2, "e-1 and the session's end (D-120) are untouched")
     }
 
     func testASessionStillRunningNeverLosesItsReadings() async throws {
@@ -529,11 +557,272 @@ final class WatchSensorRecordingTests: XCTestCase {
         try await engine.appendObservation(setEvent(harness.clock, entryId: "e-1"))
         await engine.appendSensorSample(kind: WatchSensorKind.heartRate, value: 96)
         _ = await engine.finishSession()
+        // The end is acknowledged, so the entry is the only thing still owed.
+        _ = await engine.confirmObservations([WatchSessionCapture.sessionEndId(harness.sessionId)])
 
         let released = await engine.pruneSettledSensorSamples()
 
         XCTAssertTrue(released.isEmpty)
         XCTAssertEqual(engine.sensorSamples.count, 1)
+    }
+
+    // MARK: - S-237 summaries before the prune
+
+    /// F-CAP `full` replayed through End, with the wrist's rating appended as
+    /// the prompt appends it.
+    private func capturedSession() async throws -> CaptureReplay {
+        let replay = try CaptureReplay("full")
+        try await replay.run(stoppingBefore: ["answer"])
+        let ratingId = WatchSessionCapture.effortRatingId(replay.sessionId)
+        _ = try await replay.engine.appendObservation([
+            "entryId": ratingId,
+            "eventId": ratingId,
+            "kind": WatchObservationKind.effortRating,
+            "loggedAt": "2026-09-25T10:55:20.000Z",
+            "rating": 4,
+        ])
+        return replay
+    }
+
+    func testS237TheLogIsReleasedOnlyOnceTheSessionEndIsAcknowledged() async throws {
+        let replay = try await capturedSession()
+        let engine = replay.engine!
+        let samples = engine.sensorSamples.count
+        XCTAssertGreaterThan(samples, 0, "S-237 F-CAP full records heart rate and steps")
+
+        _ = await engine.confirmObservations(
+            ["e-run", "e-r1", "e-r2", "e-r3", "e-set1", "e-set2", "e-set3"]
+        )
+        let afterEntries = await engine.pruneSettledSensorSamples()
+        XCTAssertEqual(afterEntries, [], "S-237 every effort acknowledged, the end not yet: nothing released")
+
+        _ = await engine.confirmObservations(["rating-s-cap-1"])
+        let afterRating = await engine.pruneSettledSensorSamples()
+        XCTAssertEqual(afterRating, [], "S-237 the rating acknowledged, the end not yet: still nothing released")
+        XCTAssertEqual(engine.sensorSamples.count, samples, "S-237")
+
+        _ = await engine.confirmObservations(["end-s-cap-1"])
+        let afterEnd = await engine.pruneSettledSensorSamples()
+        XCTAssertEqual(afterEnd.count, samples, "S-237 the end acknowledged: every reading of the session is released")
+        XCTAssertTrue(engine.sensorSamples.isEmpty, "S-237")
+    }
+
+    func testS237AnEndAcknowledgedAndPrunedStillReleasesTheLog() async throws {
+        let replay = try await capturedSession()
+        let engine = replay.engine!
+        let samples = engine.sensorSamples.count
+        _ = await engine.confirmObservations(engine.observations.map(\.entryId))
+
+        // The prunes may run in either order: the end's receipt outlives it.
+        _ = await engine.pruneConfirmed()
+        await replay.relaunch()
+        let released = await replay.engine.pruneSettledSensorSamples()
+
+        XCTAssertEqual(released.count, samples, "S-237 an acknowledged end still counts after it was pruned")
+    }
+
+    func testS237ACompletedWristSessionWithNoEndIsNeverReleased() async throws {
+        // Seeded the way a store written before session ends existed looks: a
+        // session the wrist created, completed, every entry acknowledged, and
+        // no end at all.
+        let store = InMemoryWatchSessionStore()
+        let startedAt = testInstant()
+        for (id, status) in [("row-1", WatchSessionStatus.active), ("row-2", WatchSessionStatus.completed)] {
+            _ = await store.append(
+                .session(
+                    WatchSessionRecord(
+                        recordId: id,
+                        sessionId: "s-legacy",
+                        recordedAt: startedAt,
+                        startedAt: startedAt,
+                        modality: nil,
+                        source: "watch",
+                        status: status,
+                        currentExerciseIndex: 0
+                    )
+                )
+            )
+        }
+        _ = await store.append(
+            .sensorSample(
+                WatchSensorSampleRecord(
+                    recordId: "sen-legacy",
+                    sessionId: "s-legacy",
+                    recordedAt: startedAt,
+                    kind: WatchSensorKind.heartRate,
+                    value: 120
+                )
+            )
+        )
+
+        let engine = await Harness(store: store).runningEngine()
+        let released = await engine.pruneSettledSensorSamples()
+
+        XCTAssertEqual(released, [], "S-237 no end, so no summary the phone holds: the readings stay")
+        let stored = await store.readAll()
+        XCTAssertEqual(stored.sensorSamples.count, 1, "S-237")
+        XCTAssertTrue(stored.observations.isEmpty, "a launch does not invent an end for it")
+    }
+
+    func testS237ASessionTheWristJoinedOwesNoEnd() async throws {
+        let engine = await harness.runningEngine()
+        _ = try await engine.applyMessage([
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-join",
+            "sessionId": "s-phone",
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:00:00Z",
+            "payload": [
+                "sessionId": "s-phone",
+                "revision": 0,
+                "status": WatchSessionStatus.active,
+                "currentExerciseIndex": 0,
+                "exercises": [exercise("sx-bench")],
+                "entries": [[String: Any]](),
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ])
+        await engine.appendSensorSample(kind: WatchSensorKind.heartRate, value: 110)
+        _ = await engine.finishSession()
+
+        let released = await engine.pruneSettledSensorSamples()
+
+        XCTAssertTrue(engine.observations.isEmpty, "S-237 a joined session gets no end (D-120)")
+        XCTAssertEqual(released.count, 1, "S-237 so nothing but today's gates holds its log")
+    }
+
+    // MARK: - S-239 steps change nothing else
+
+    /// What one scripted run shows the user and asks of the platform.
+    private struct Observed: Equatable {
+        let heartRate: Double?
+        let distance: Double?
+        let heartRateSubscriptions: Int
+        let locationSubscriptions: Int
+        let begun: [String]
+        let ended: [String]
+        let emitted: Int
+        let steps: [Double]
+    }
+
+    /// Starts a distance session, feeds every sensor, and stops — on a fresh
+    /// watch whose steps permission is `stepsGrant`.
+    private func observedRun(stepsGrant: WatchSensorPermission) async throws -> Observed {
+        let harness = Harness()
+        let source = FakeSensorSource()
+        source.stepsGrant = stepsGrant
+        let health = FakePlatformStore()
+        let engine = await harness.runningEngine()
+        let live = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
+        let sensors = WatchSessionSensors(
+            platform: WatchPlatformWorkout(store: health),
+            recorder: WatchSensorRecorder(engine: engine, source: source, clock: harness.clock.call)
+        )
+
+        await sensors.start(live)
+        source.count(40)
+        if stepsGrant == .granted {
+            await eventually(
+                { engine.sensorSamples.contains { $0.kind == WatchSensorKind.steps } },
+                "S-239 with permission, the count reaches storage"
+            )
+        }
+        source.beat(131)
+        await eventually { sensors.recorder.readings.heartRate == 131 }
+        source.fix(900)
+        await eventually { sensors.recorder.readings.distanceMeters == 900 }
+        harness.clock.advance(60)
+        await sensors.stop()
+        defer { source.close() }
+
+        return Observed(
+            heartRate: sensors.recorder.readings.heartRate,
+            distance: sensors.recorder.readings.distanceMeters,
+            heartRateSubscriptions: source.heartRateSubscriptions,
+            locationSubscriptions: source.locationSubscriptions,
+            begun: health.begun,
+            ended: health.ended,
+            emitted: harness.emitted.count,
+            steps: engine.sensorSamples.filter { $0.kind == WatchSensorKind.steps }.map(\.value)
+        )
+    }
+
+    func testS239StepsPermissionChangesNothingButTheStepsRecorded() async throws {
+        let granted = try await observedRun(stepsGrant: .granted)
+        let denied = try await observedRun(stepsGrant: .denied)
+
+        XCTAssertEqual(granted.steps, [40], "S-239 with permission, the count is stored")
+        XCTAssertEqual(denied.steps, [], "S-239 without it, nothing is")
+        XCTAssertEqual(granted.heartRate, denied.heartRate, "S-239 the heart-rate readout is identical")
+        XCTAssertEqual(granted.distance, denied.distance, "S-239 the distance readout is identical")
+        XCTAssertEqual(granted.heartRateSubscriptions, denied.heartRateSubscriptions, "S-239")
+        XCTAssertEqual(
+            granted.locationSubscriptions,
+            denied.locationSubscriptions,
+            "S-239 the GPS subscription decision is identical"
+        )
+        XCTAssertEqual(granted.begun, denied.begun, "S-239 the platform workout begins identically")
+        XCTAssertEqual(granted.ended, denied.ended, "S-239 and ends identically")
+        XCTAssertEqual(
+            granted.emitted,
+            denied.emitted,
+            "S-239 a stored count adds nothing to the outbound stream"
+        )
+    }
+
+    func testS239StoppingEndsTheStepsSubscription() async throws {
+        source.stepsGrant = .granted
+        let engine = await harness.runningEngine()
+        let live = await session(engine, modality: "resistance_lifting")
+        let sensors = sensors(for: engine)
+
+        await sensors.start(live)
+        XCTAssertEqual(source.stepsSubscriptions, 1, "S-239 steps are counted whatever the modality")
+        source.count(12)
+        await eventually { engine.sensorSamples.contains { $0.kind == WatchSensorKind.steps } }
+
+        await sensors.stop()
+        await eventually({ self.source.stepsStreamEnded }, "S-239 stop cancels the steps subscription")
+    }
+
+    func testS239EveryStreamReachesTheEngineOneReadingAtATime() async throws {
+        let store = ContendedWatchSessionStore()
+        let harness = Harness(store: store)
+        source.stepsGrant = .granted
+        let engine = await harness.runningEngine()
+        let live = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
+        let recorder = WatchSensorRecorder(engine: engine, source: source, clock: harness.clock.call)
+        await recorder.start(live)
+
+        for second in 1...5 {
+            harness.clock.advance(1)
+            // Three sensors delivering at once, as a run's do.
+            source.beat(Double(100 + second))
+            source.count(Double(second * 10))
+            source.fix(Double(second * 100))
+            await eventually { engine.sensorSamples.count == second * 3 }
+        }
+
+        let contended = await store.contended
+        XCTAssertEqual(
+            contended,
+            0,
+            "S-239 a second always-on sensor must not make two writers: every reading waits for the one before it"
+        )
+        await recorder.stop()
+    }
+
+    func testS239AppendingAStepCountEmitsNothing() async throws {
+        let engine = await harness.runningEngine()
+        _ = await session(engine, modality: "resistance_lifting")
+        let before = harness.emitted.count
+
+        await engine.appendSensorSample(kind: WatchSensorKind.steps, value: 250)
+        await engine.appendSensorSample(kind: WatchSensorKind.heartRate, value: 101)
+
+        XCTAssertEqual(engine.sensorSamples.count, 2)
+        XCTAssertEqual(harness.emitted.count, before, "S-239 raw readings, steps included, never leave the wrist")
     }
 
     // MARK: - Sensor wiring
@@ -615,5 +904,65 @@ final class WatchSensorRecordingTests: XCTestCase {
             3200,
             "the phone receives the measured total, not the last thing the dial was set to"
         )
+    }
+}
+
+/// S-239: every sensor scenario above, again, with the user having refused
+/// steps. Steps are a sensor of their own — the heart rate, the distance, the
+/// GPS decision and the platform workout must not notice the difference.
+final class WatchSensorRecordingStepsDeniedTests: WatchSensorRecordingTests {
+    override class var stepsGrant: WatchSensorPermission { .denied }
+}
+
+/// A store whose appends take a moment, as a disk write does, and that counts
+/// every append arriving while another is still in flight — a second writer
+/// the engine was not built for. It lets such an append wait its turn, so the
+/// count is the finding rather than a crash.
+final class ContendedWatchSessionStore: WatchSessionStore {
+    private let inner = InMemoryWatchSessionStore()
+    private let gate = AppendGate()
+
+    var contended: Int {
+        get async { await gate.contended }
+    }
+
+    func append(_ record: StoredWatchRecord) async -> StoredWatchRecord {
+        await gate.enter()
+        try? await Task.sleep(nanoseconds: 2_000_000)
+        let stored = await inner.append(record)
+        await gate.leave()
+        return stored
+    }
+
+    func readAll() async -> WatchStoreContents { await inner.readAll() }
+
+    func pruneConfirmed() async -> [String] { await inner.pruneConfirmed() }
+
+    func pruneSensorSamples(_ sessionIds: [String]) async -> [String] {
+        await inner.pruneSensorSamples(sessionIds)
+    }
+}
+
+/// One append at a time, counting the ones that had to wait.
+actor AppendGate {
+    private var busy = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    private(set) var contended = 0
+
+    func enter() async {
+        guard busy else {
+            busy = true
+            return
+        }
+        contended += 1
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func leave() {
+        if waiting.isEmpty {
+            busy = false
+        } else {
+            waiting.removeFirst().resume()
+        }
     }
 }

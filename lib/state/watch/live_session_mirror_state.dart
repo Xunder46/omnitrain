@@ -24,6 +24,7 @@ import '../../core/sync_protocol/message_validator.dart';
 import '../../core/sync_protocol/phone_envelope.dart';
 import '../../core/sync_protocol/session_reconciler.dart';
 import '../../core/sync_protocol/timer_derivation.dart';
+import '../../data/models/models.dart' show WatchInboxEntry;
 import '../../watch/session/watch_records.dart';
 
 /// What [LiveSessionMirrorState] needs from whatever carries messages to the
@@ -112,6 +113,25 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// `entryId`.
   List<Map<String, Object?>> get entries => _objects(state['entries']);
 
+  /// The entry kinds that describe the session as a whole rather than
+  /// something logged in it (PROTOCOL.md, "Session capture"): the wrist's
+  /// session effort rating and its session end.
+  static const Set<String> sessionScopedKinds = {
+    WatchInboxEntry.kindEffortRating,
+    WatchInboxEntry.kindSessionEnd,
+  };
+
+  /// [entries] without the session-scoped ones: what the user logged, and so
+  /// what a surface lists and counts as logged (D-141). The mirror itself keeps
+  /// every entry, because the snapshot it re-asserts must carry them all.
+  List<Map<String, Object?>> get effortEntries => effortEntriesOf(entries);
+
+  /// [effortEntries] for any list of entries — a closed record's included.
+  static List<Map<String, Object?>> effortEntriesOf(Object? entries) => [
+    for (final entry in _objects(entries))
+      if (!sessionScopedKinds.contains(entry['kind'])) entry,
+  ];
+
   /// The exercise the session is on, or null when the ladder is empty.
   Map<String, Object?>? get currentExercise {
     final ladder = exercises;
@@ -145,9 +165,17 @@ class LiveSessionMirrorState extends ChangeNotifier {
   ///
   /// Returns [MirrorOutcome.refused] — with nothing applied and the phone's
   /// snapshot on its way to the watch — when this build cannot read the
-  /// message. A watch snapshot that reports a different session shape is
-  /// applied like any other, and the phone then re-asserts what it holds of its
-  /// own, because structure is the phone's to own (authority rule 2).
+  /// message. A watch snapshot that reports a different shape of the session
+  /// this phone holds is applied like any other, and the phone then re-asserts
+  /// what it holds of its own, because structure is the phone's to own
+  /// (authority rule 2).
+  ///
+  /// A snapshot that names another session is not a disagreement about this
+  /// one: it is the next workout the wrist started. It replaces the held
+  /// session wholesale, the record the phone closed for the old one is
+  /// dropped, and nothing is answered (PROTOCOL.md, "Idempotency and
+  /// reconciliation"; D-130). Re-asserting the old session there would yank
+  /// the wrist back to a workout it has finished.
   Future<MirrorOutcome> receive(Map<String, Object?> envelope) async {
     final decision = SyncProtocolValidator.evaluateOrAccept(
       _validator,
@@ -176,8 +204,14 @@ class LiveSessionMirrorState extends ChangeNotifier {
     }
 
     final before = state;
+    final switchesSession =
+        envelope['type'] == 'session_snapshot' &&
+        _asObject(envelope['payload'])['sessionId'] != before['sessionId'];
     _reconciler.applyMessage(envelope);
+    if (switchesSession) _completedRecord = null;
     notifyListeners();
+
+    if (switchesSession) return MirrorOutcome.applied;
 
     if (envelope['type'] == 'session_snapshot' &&
         _shapeDiffers(envelope, before)) {
@@ -186,10 +220,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
       // last heard, and the watch's copy is the stale one: answer with what the
       // phone holds rather than adopting a ladder nobody asked for.
       //
-      // A phone that has never held a ladder has no shape to assert, and
-      // asserting an empty one would wipe the wrist's. It adopts the wrist's
-      // instead, which is what makes a session started on the wrist renderable
-      // here at all.
+      // A phone that holds no ladder for the session has no shape to assert,
+      // and asserting an empty one would wipe the wrist's. It adopts the
+      // wrist's instead. (A session started on the wrist names a session the
+      // phone does not hold, so it is adopted by the switch above.)
       if (_holdsLadder(before)) {
         await _transport.send(snapshotEnvelope(state: before));
       }

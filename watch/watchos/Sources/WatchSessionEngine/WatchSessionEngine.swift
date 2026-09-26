@@ -65,6 +65,20 @@ public final class WatchSessionEngine {
     private var entryCorrections: [String: [String: Any]] = [:]
     private var deletedEntryIds: Set<String> = []
 
+    /// Every observation the phone has acknowledged, by record id — including
+    /// the ones pruned since. A confirmation row outlives the observation it
+    /// names, which is what lets "this session's end was acknowledged" and "this
+    /// session already has one" be answered after a prune.
+    private var acknowledgedObservationIds: Set<String> = []
+
+    /// The two statuses a session ends in, and the source a session the wrist
+    /// itself created carries.
+    private static let terminalStatuses: Set<String> = [
+        WatchSessionStatus.completed,
+        WatchSessionStatus.abandoned,
+    ]
+    private static let wristSource = "watch"
+
     private var current: WatchSessionRecord?
 
     public init(
@@ -95,6 +109,7 @@ public final class WatchSessionEngine {
         storedObservations = contents.observations
         storedTimers = contents.timers
         storedSensorSamples = contents.sensorSamples
+        acknowledgedObservationIds = Set(contents.confirmations.flatMap(\.observationIds))
 
         current = contents.sessions.max { $0.sequence < $1.sequence }
         appliedChangeIds = Set(
@@ -155,6 +170,15 @@ public final class WatchSessionEngine {
         newestTimer(kind: kind)
     }
 
+    /// Every stored row of the current session's `kind` timers, oldest first:
+    /// the history a round's pauses are read back from (D-122 c), where
+    /// `timerFor` gives only the row that applies now.
+    public func timerRows(_ kind: String) -> [WatchTimerRecord] {
+        storedTimers
+            .filter { $0.sessionId == current?.sessionId && $0.kind == kind }
+            .sorted { $0.sequence < $1.sequence }
+    }
+
     /// The session's entries as the wrist shows them: the watch's own log plus
     /// the entries the phone sent, with the phone's corrections folded in and
     /// its deletions dropped, in the order they were logged.
@@ -163,8 +187,15 @@ public final class WatchSessionEngine {
     /// A correction is therefore a projection, not an edit, which is what keeps
     /// the store append-only and the phone the only side that can edit history.
     public var entries: [WatchObservationRecord] {
-        observations
-            .filter { !deletedEntryIds.contains($0.entryId) }
+        guard let sessionId = current?.sessionId else { return [] }
+        return projectedEntries(sessionId)
+    }
+
+    /// `entries` for any session the store holds — what a session end
+    /// summarises, whichever session the watch is on when it ends.
+    private func projectedEntries(_ sessionId: String) -> [WatchObservationRecord] {
+        storedObservations
+            .filter { $0.sessionId == sessionId && !deletedEntryIds.contains($0.entryId) }
             .map { observation in
                 guard let correction = entryCorrections[observation.entryId] else {
                     return observation
@@ -389,6 +420,11 @@ public final class WatchSessionEngine {
         let exercises = (payload["exercises"] as? [[String: Any]]) ?? []
         let entryMaps = (payload["entries"] as? [[String: Any]]) ?? []
         let existing = current?.sessionId == sessionId ? current : nil
+        let status = (payload["status"] as? String) ?? WatchSessionStatus.active
+
+        // A phone snapshot can be what ends a session the wrist created; its
+        // end is the moment the phone sent it (D-120).
+        await captureSessionEnd(sessionId, status: status, endedAt: sentAt)
 
         await storeSessionRow(
             WatchSessionRecord(
@@ -399,7 +435,7 @@ public final class WatchSessionEngine {
                     ?? Self.startedAtOf(entryMaps, fallback: sentAt),
                 modality: existing?.modality,
                 source: existing?.source ?? "phone",
-                status: (payload["status"] as? String) ?? WatchSessionStatus.active,
+                status: status,
                 currentExerciseIndex: Self.clampIndex(
                     (payload["currentExerciseIndex"] as? NSNumber)?.intValue ?? 0,
                     exercises.count
@@ -483,12 +519,21 @@ public final class WatchSessionEngine {
                 session.exercises.count
             )
             : session.currentExerciseIndex
+        let recordedAt = (try? parseUtcIso(envelope["sentAt"])) ?? clock()
+
+        // The phone ending a session the wrist created: its end is the moment
+        // the message says it happened (D-120).
+        await captureSessionEnd(
+            session.sessionId,
+            status: status,
+            endedAt: (try? parseUtcIso(payload["at"])) ?? recordedAt
+        )
 
         await storeSessionRow(
             WatchSessionRecord(
                 recordId: "\(Self.lifecyclePrefix)\(envelope["messageId"] as? String ?? newId())",
                 sessionId: session.sessionId,
-                recordedAt: (try? parseUtcIso(envelope["sentAt"])) ?? clock(),
+                recordedAt: recordedAt,
                 startedAt: session.startedAt,
                 modality: session.modality,
                 source: session.source,
@@ -846,10 +891,17 @@ public final class WatchSessionEngine {
         lifecycle: String?
     ) async -> WatchSessionRecord {
         let session = requireSession()
+        let now = clock()
+        if let status {
+            // The wrist's own End or abandon: its end is the wrist's clock at
+            // this moment, the same instant the new row records (D-120).
+            await captureSessionEnd(session.sessionId, status: status, endedAt: now)
+        }
+
         let row = WatchSessionRecord(
             recordId: newId(),
             sessionId: session.sessionId,
-            recordedAt: clock(),
+            recordedAt: now,
             startedAt: session.startedAt,
             modality: session.modality,
             source: session.source,
@@ -1038,6 +1090,11 @@ public final class WatchSessionEngine {
     /// session still running, or one with an entry still awaiting a receipt,
     /// keeps its log — which is what makes the live readout and the settled
     /// distance survive a kill.
+    ///
+    /// A session the wrist created is held one step longer: until its
+    /// `session_end` is stored and acknowledged (D-129). The summaries are
+    /// computed from these readings, so the readings stay until the phone holds
+    /// what was computed from them — whichever order the prunes run in.
     @discardableResult
     public func pruneSettledSensorSamples() async -> [String] {
         let awaitingReceipt = Set(
@@ -1048,6 +1105,7 @@ public final class WatchSessionEngine {
             .filter { session in
                 session.status != WatchSessionStatus.active
                     && !awaitingReceipt.contains(session.sessionId)
+                    && isEndAcknowledgedWhereOwed(session.sessionId)
                     && storedSensorSamples.contains { $0.sessionId == session.sessionId }
             }
             .map(\.sessionId)
@@ -1076,26 +1134,15 @@ public final class WatchSessionEngine {
     /// The messages the phone still owes a receipt for, rebuilt from storage.
     /// Emission is a projection of the stored rows, so replaying after a kill
     /// sends the same events with the same identifiers.
+    ///
+    /// Every session's, in the order they were stored — not only the session the
+    /// watch is on (D-128). A session that ended while the phone was out of
+    /// reach is still owed after the next one starts, and a quick-log taken with
+    /// no session (S-006) is owed like any other, under the id it was stored
+    /// with.
     public func pendingObservations() -> [[String: Any]] {
-        var pending: [[String: Any]] = []
-
-        if let session = current {
-            pending += observations
-                .filter { $0.confirmedAt == nil }
-                .map { observation in
-                    observationsUp(
-                        sessionId: session.sessionId,
-                        record: observation,
-                        sentAt: observation.recordedAt,
-                        messageId: messageId(for: observation.recordId)
-                    )
-                }
-        }
-
-        // A quick-log taken with no session (S-006) is owed just like an
-        // in-session one, and carries the id it was stored under.
-        pending += nutritionLog
-            .filter { $0.confirmedAt == nil && $0.sessionId != current?.sessionId }
+        storedObservations
+            .filter { $0.confirmedAt == nil }
             .map { observation in
                 observationsUp(
                     sessionId: observation.sessionId,
@@ -1104,8 +1151,153 @@ public final class WatchSessionEngine {
                     messageId: messageId(for: observation.recordId)
                 )
             }
+    }
 
-        return pending
+    // MARK: - Session end
+
+    /// Appends the `session_end` of a session the wrist created, the first time
+    /// it becomes completed or abandoned — by the wrist's End or abandon, or by
+    /// the phone's lifecycle message or snapshot (D-120).
+    ///
+    /// Called before the row that records the new status, so nothing else is
+    /// stored for the session first, and a kill in between leaves the session
+    /// still running with its end already owed to the phone rather than ended
+    /// with no end the phone could import. A session the wrist joined from the
+    /// phone gets none. A session that already has one — reopened and ended
+    /// again, or ended by two messages — keeps it: the id is the session's, so
+    /// no end is ever re-emitted with different values.
+    private func captureSessionEnd(_ sessionId: String, status: String, endedAt: Date) async {
+        guard Self.terminalStatuses.contains(status),
+              let origin = creationRow(sessionId),
+              origin.source == Self.wristSource,
+              !knowsObservation(WatchSessionCapture.sessionEndId(sessionId))
+        else { return }
+
+        do {
+            try await appendObservation(
+                sessionEndEvent(origin, status: status, endedAt: endedAt),
+                sessionId: sessionId
+            )
+        } catch {
+            // Every value is built within the protocol's own bounds
+            // (`WatchSensorSummaries`), so a refusal is a defect here, not bad
+            // data — and losing a session's end loses the session on the phone.
+            assertionFailure("the protocol refused a session_end: \(error)")
+        }
+    }
+
+    /// The `session_end` event: when the session ran, how it ended, and the
+    /// heart rate over the whole session and over each set block (D-121 to
+    /// D-123). A summary with nothing measured is left out, never zeroed.
+    private func sessionEndEvent(
+        _ origin: WatchSessionRecord,
+        status: String,
+        endedAt: Date
+    ) -> [String: Any] {
+        let sessionId = origin.sessionId
+        let startedAt = WatchSensorSummaries.wireInstant(origin.startedAt)
+        let end = WatchSensorSummaries.wireInstant(endedAt)
+        let samples = storedSensorSamples.filter { $0.sessionId == sessionId }
+        let id = WatchSessionCapture.sessionEndId(sessionId)
+
+        var event: [String: Any] = [
+            "entryId": id,
+            "eventId": id,
+            "kind": WatchObservationKind.sessionEnd,
+            "loggedAt": utcIso(clock()),
+            "startedAt": utcIso(startedAt),
+            "endedAt": utcIso(end),
+            "status": status,
+        ]
+        if let modality = origin.modality, !modality.isEmpty {
+            event["modality"] = modality
+        }
+
+        // A round's pause is not a session pause: the session's window is the
+        // whole session (D-122 g).
+        if let session = WatchSensorSummaries.heartRate(samples, from: startedAt, through: end) {
+            event.merge(session.fields) { _, measured in measured }
+        }
+
+        let blocks = WatchSensorSummaries
+            .blockSpans(projectedEntries(sessionId).map(\.payload), sessionStartedAt: startedAt)
+            .compactMap { span -> [String: Any]? in
+                guard let pair = WatchSensorSummaries.heartRate(
+                    samples,
+                    from: span.startedAt,
+                    through: span.endedAt
+                ) else { return nil }
+
+                var block: [String: Any] = [
+                    "sessionExerciseId": span.sessionExerciseId,
+                    "exerciseId": span.exerciseId,
+                    "startedAt": utcIso(span.startedAt),
+                    "endedAt": utcIso(span.endedAt),
+                ]
+                block.merge(pair.fields) { _, measured in measured }
+                return block
+            }
+        if !blocks.isEmpty {
+            event["setBlockHeartRates"] = blocks
+        }
+
+        return event
+    }
+
+    // MARK: - Effort rating
+
+    /// Whether the wrist holds an effort rating for `sessionId` — still stored,
+    /// or acknowledged and pruned since.
+    public func hasEffortRating(_ sessionId: String) -> Bool {
+        knowsObservation(WatchSessionCapture.effortRatingId(sessionId))
+    }
+
+    /// Appends `sessionId`'s effort rating and emits it (D-116), stamped with
+    /// the wrist's clock — or does nothing and returns nil when the session
+    /// already has one. Nothing on the wrist edits a rating or adds a second.
+    @discardableResult
+    public func recordEffortRating(
+        _ rating: Int,
+        sessionId: String
+    ) async throws -> WatchObservationRecord? {
+        let id = WatchSessionCapture.effortRatingId(sessionId)
+        guard !knowsObservation(id) else { return nil }
+
+        return try await appendObservation(
+            [
+                "entryId": id,
+                "eventId": id,
+                "kind": WatchObservationKind.effortRating,
+                "loggedAt": utcIso(clock()),
+                "rating": rating,
+            ],
+            sessionId: sessionId
+        )
+    }
+
+    /// The first row stored for `sessionId` — the one that says how the
+    /// session began, and so whether the wrist created it. Later rows written
+    /// from a phone message can carry another source, so the first is the one
+    /// that answers.
+    private func creationRow(_ sessionId: String) -> WatchSessionRecord? {
+        sessionRows
+            .filter { $0.sessionId == sessionId }
+            .min { $0.sequence < $1.sequence }
+    }
+
+    /// Whether the watch has held the observation `recordId` — still stored, or
+    /// acknowledged and pruned since.
+    private func knowsObservation(_ recordId: String) -> Bool {
+        acknowledgedObservationIds.contains(recordId)
+            || storedObservations.contains { $0.recordId == recordId }
+    }
+
+    /// The prune gate's extra step for a session the wrist created: its
+    /// `session_end` has been acknowledged (D-129). A session the wrist joined
+    /// owes no end, so nothing extra holds it.
+    private func isEndAcknowledgedWhereOwed(_ sessionId: String) -> Bool {
+        guard creationRow(sessionId)?.source == Self.wristSource else { return true }
+        return acknowledgedObservationIds.contains(WatchSessionCapture.sessionEndId(sessionId))
     }
 
     // MARK: - Timers
@@ -1265,6 +1457,7 @@ public final class WatchSessionEngine {
         )
 
         let acknowledgedIds = Set(acknowledged.map(\.recordId))
+        acknowledgedObservationIds.formUnion(acknowledgedIds)
         storedObservations = storedObservations.map { observation in
             acknowledgedIds.contains(observation.recordId)
                 ? observation.withConfirmation(now)

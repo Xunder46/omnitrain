@@ -156,6 +156,16 @@ void main() {
         expect(find.text('Rough'), findsNothing);
         expect(find.text('Great'), findsNothing);
 
+        // F-4: the system back button must not close a must-answer prompt.
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(
+          find.text('How hard was this session?'),
+          findsOneWidget,
+          reason:
+              'F-4 the system back button does not close a must-answer sheet',
+        );
+
         // Tap tile 4 on the automatic prompt (scoped to BottomSheet)
         final tile4 = find.descendant(
           of: find.byType(BottomSheet),
@@ -776,6 +786,42 @@ void main() {
         // Verify repository was not updated
         final stored = await repo.getSession(session.id);
         expect(stored?.sessionFeeling, 3);
+      },
+    );
+
+    testWidgets(
+      'F-4: the user-opened Change sheet stays dismissible by the system '
+      'back button',
+      (WidgetTester tester) async {
+        _useTallSurface(tester);
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        await workoutState.createNewSession();
+        final session = workoutState.currentSession!;
+        await workoutState.updateSessionFeeling(session.id, 3);
+
+        await tester.pumpWidget(await _buildSessionSummaryScreen(
+          workoutState: workoutState,
+          repo: repo,
+          showFeelingSurvey: false,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Change'));
+        await tester.pumpAndSettle();
+        expect(find.text(_sheetTitle), findsOneWidget);
+
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(_sheetTitle),
+          findsNothing,
+          reason: 'F-4 a sheet the user opened themselves stays dismissible '
+              'by the system back button',
+        );
+        expect(find.text('3 / 5'), findsOneWidget);
+        expect((await repo.getSession(session.id))?.sessionFeeling, 3);
       },
     );
 

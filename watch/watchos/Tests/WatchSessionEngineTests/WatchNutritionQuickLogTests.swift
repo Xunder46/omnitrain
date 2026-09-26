@@ -585,7 +585,10 @@ final class WatchNutritionQuickLogTests: XCTestCase {
     func testTheKindsTheWristCanEmitAreAClosedSet() {
         XCTAssertEqual(
             Set(WatchObservationKind.all),
-            Set(["set", "timed", "round", "hold", WatchObservationKind.nutritionQuickLog]),
+            Set([
+                "set", "timed", "round", "hold", WatchObservationKind.nutritionQuickLog,
+                "effort_rating", "session_end",
+            ]),
             "what the phone can be sent is a list, not whatever a client happens to spell"
         )
     }

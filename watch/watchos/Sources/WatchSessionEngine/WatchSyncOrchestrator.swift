@@ -51,16 +51,22 @@ public final class WatchSyncOrchestrator {
     /// watch without the surface has nothing to do with a `foods_down`.
     private let nutrition: WatchNutritionState?
 
+    /// The phone's preferences, when the app keeps them. A watch without them
+    /// has nothing to do with a `preferences_down`.
+    private let preferences: WatchPhonePreferences?
+
     public init(
         transport: WatchSyncTransport,
         paths: WatchSessionStartPaths,
         engine: WatchSessionEngine,
-        nutrition: WatchNutritionState? = nil
+        nutrition: WatchNutritionState? = nil,
+        preferences: WatchPhonePreferences? = nil
     ) {
         self.transport = transport
         self.paths = paths
         self.engine = engine
         self.nutrition = nutrition
+        self.preferences = preferences
     }
 
     /// Brings the watch up to date with the phone: the routines, and then the
@@ -117,6 +123,11 @@ public final class WatchSyncOrchestrator {
         case "foods_down":
             guard let nutrition else { return false }
             return await nutrition.applyFoodsDown(envelope).applied
+        case "preferences_down":
+            // Reference data, gated like the routines and the food list: a copy
+            // the watch cannot read is refused with nothing stored (D-113).
+            guard let preferences else { return false }
+            return await preferences.applyPreferencesDown(envelope).applied
         case "exercise_push", "session_snapshot", "structure_change",
              "session_lifecycle", "timer_state", "observations_up",
              "receipt":

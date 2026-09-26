@@ -120,6 +120,16 @@ class MockWorkoutRepository implements WorkoutRepository {
   // Supports day-based targets with backward walkback and forward propagation
   final Map<int, NutritionTarget> _nutritionTargetsByDate = {};
 
+  // Watch session inbox (D-132): entryId -> staged row. Put-if-absent; rows
+  // are never deleted (applied rows are tombstones), so no history delete
+  // cascades into it. Mirrors the Hive `watch_inbox` box.
+  final Map<String, WatchInboxEntry> _watchInbox = {};
+
+  // Wrist-measured sensor summaries (D-131): SensorSummary.id -> summary.
+  // Deleted together with their target. Mirrors the Hive
+  // `sensor_summaries` box.
+  final Map<String, SensorSummary> _sensorSummaries = {};
+
   bool _initialized = false;
 
   /// Initializes the repository with seed data from mock/seed_data.dart
@@ -460,6 +470,8 @@ class MockWorkoutRepository implements WorkoutRepository {
 
     _segments.removeWhere((_, segment) => segment.sessionId == id);
     _sessionBlocks.removeWhere((_, block) => block.sessionId == id);
+    // D-131: every summary carries its session, so none outlives it.
+    _sensorSummaries.removeWhere((_, summary) => summary.sessionId == id);
     _sessions.remove(id);
   }
 
@@ -622,6 +634,12 @@ class MockWorkoutRepository implements WorkoutRepository {
     return normalized.id;
   }
 
+  @override
+  Future<void> updateEffort(SegmentEffort effort) async {
+    if (!_efforts.containsKey(effort.id)) return;
+    _efforts[effort.id] = effort;
+  }
+
   // ===== OBSERVATIONS =====
 
   @override
@@ -674,6 +692,9 @@ class MockWorkoutRepository implements WorkoutRepository {
     await deleteTimedInstancesForEffort(id);
     // Delete all entry rest records for this effort
     await deleteEntryRestsForEffort(id);
+    // D-131: the effort's own summary goes with it (its instances' summaries
+    // went with the instances above)
+    _removeSensorSummariesTargeting(SensorSummary.scopeEffort, [id]);
     // Then remove the effort itself
     _efforts.remove(id);
   }
@@ -704,6 +725,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deleteRoundInstance(String id) async {
+    _removeSensorSummariesTargeting(SensorSummary.scopeRoundInstance, [id]);
     for (final list in _roundInstances.values) {
       list.removeWhere((r) => r.id == id);
     }
@@ -711,6 +733,10 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deleteRoundInstancesForEffort(String effortId) async {
+    _removeSensorSummariesTargeting(
+      SensorSummary.scopeRoundInstance,
+      (_roundInstances[effortId] ?? const <RoundInstance>[]).map((r) => r.id),
+    );
     _roundInstances.remove(effortId);
   }
 
@@ -750,6 +776,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deleteTimedInstance(String id) async {
+    _removeSensorSummariesTargeting(SensorSummary.scopeTimedInstance, [id]);
     for (final list in _timedInstances.values) {
       list.removeWhere((t) => t.id == id);
     }
@@ -757,6 +784,10 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deleteTimedInstancesForEffort(String effortId) async {
+    _removeSensorSummariesTargeting(
+      SensorSummary.scopeTimedInstance,
+      (_timedInstances[effortId] ?? const <TimedInstance>[]).map((t) => t.id),
+    );
     _timedInstances.remove(effortId);
   }
 
@@ -1548,6 +1579,8 @@ class MockWorkoutRepository implements WorkoutRepository {
     _catalogFoods.clear();
     _consumedFoods.clear();
     _waterVolumesByDate.clear();
+    _watchInbox.clear();
+    _sensorSummaries.clear();
     _initialized = false;
   }
 
@@ -1885,6 +1918,16 @@ class MockWorkoutRepository implements WorkoutRepository {
 
     // 2. For each linked effort, cascade-delete sub-records then the effort itself
     for (final effortId in linkedEffortIds) {
+      // D-131: summaries of the effort and of its instances go with them.
+      _removeSensorSummariesTargeting(SensorSummary.scopeEffort, [effortId]);
+      _removeSensorSummariesTargeting(
+        SensorSummary.scopeRoundInstance,
+        (_roundInstances[effortId] ?? const <RoundInstance>[]).map((r) => r.id),
+      );
+      _removeSensorSummariesTargeting(
+        SensorSummary.scopeTimedInstance,
+        (_timedInstances[effortId] ?? const <TimedInstance>[]).map((t) => t.id),
+      );
       _observations.removeWhere((_, obs) => obs.effortId == effortId);
       _roundInstances.remove(effortId);
       _timedInstances.remove(effortId);
@@ -2152,5 +2195,112 @@ class MockWorkoutRepository implements WorkoutRepository {
     final sessionId = _getSessionIdForSegment(segmentId);
     if (sessionId == null) return 0;
     return _nextTopLevelOrderForSession(sessionId);
+  }
+
+  // ===== WATCH CAPTURE: SESSION INBOX + SENSOR SUMMARIES (D-131 / D-132) =====
+  //
+  // Mirrors HiveWorkoutRepository value for value, including ordering and
+  // cascades; test/watch_capture_repository_parity_test.dart runs one body
+  // against both.
+
+  @override
+  Future<bool> stageWatchInboxEntry(WatchInboxEntry entry) async {
+    if (_watchInbox.containsKey(entry.entryId)) return false;
+    _watchInbox[entry.entryId] = entry;
+    return true;
+  }
+
+  @override
+  Future<List<WatchInboxEntry>> getWatchInboxEntriesForSession(
+    String watchSessionId,
+  ) async {
+    final entries = _watchInbox.values
+        .where((e) => e.watchSessionId == watchSessionId)
+        .toList();
+    entries.sort((a, b) {
+      final byReceived = a.receivedAtMs.compareTo(b.receivedAtMs);
+      if (byReceived != 0) return byReceived;
+      return a.entryId.compareTo(b.entryId);
+    });
+    return entries;
+  }
+
+  @override
+  Future<WatchInboxEntry?> getWatchInboxEntry(String entryId) async {
+    return _watchInbox[entryId];
+  }
+
+  @override
+  Future<void> markWatchInboxEntriesApplied(
+    Iterable<String> entryIds,
+    int appliedAtMs,
+  ) async {
+    for (final entryId in entryIds.toSet()) {
+      final staged = _watchInbox[entryId];
+      if (staged == null || staged.appliedAtMs != null) continue;
+      _watchInbox[entryId] = WatchInboxEntry.fromMap({
+        ...staged.toMap(),
+        'applied_at_ms': appliedAtMs,
+      });
+    }
+  }
+
+  @override
+  Future<List<String>> getWatchSessionIdsWithUnappliedEnd() async {
+    final ends = _watchInbox.values
+        .where(
+          (e) =>
+              e.kind == WatchInboxEntry.kindSessionEnd && e.appliedAtMs == null,
+        )
+        .toList();
+    ends.sort((a, b) {
+      final byReceived = a.receivedAtMs.compareTo(b.receivedAtMs);
+      if (byReceived != 0) return byReceived;
+      return a.watchSessionId.compareTo(b.watchSessionId);
+    });
+    final ids = <String>[];
+    for (final end in ends) {
+      if (!ids.contains(end.watchSessionId)) ids.add(end.watchSessionId);
+    }
+    return ids;
+  }
+
+  @override
+  Future<bool> createSensorSummary(SensorSummary summary) async {
+    if (_sensorSummaries.containsKey(summary.id)) return false;
+    _sensorSummaries[summary.id] = summary;
+    return true;
+  }
+
+  @override
+  Future<List<SensorSummary>> getSensorSummariesForSession(
+    String sessionId,
+  ) async {
+    final summaries = _sensorSummaries.values
+        .where((s) => s.sessionId == sessionId)
+        .toList();
+    summaries.sort((a, b) {
+      final byScope = SensorSummary.scopes
+          .indexOf(a.scope)
+          .compareTo(SensorSummary.scopes.indexOf(b.scope));
+      if (byScope != 0) return byScope;
+      final byStart = a.windowStartMs.compareTo(b.windowStartMs);
+      if (byStart != 0) return byStart;
+      return a.targetId.compareTo(b.targetId);
+    });
+    return summaries;
+  }
+
+  /// D-131: a summary is deleted together with its target. Removes every
+  /// summary of [scope] whose target is one of [targetIds].
+  void _removeSensorSummariesTargeting(
+    String scope,
+    Iterable<String> targetIds,
+  ) {
+    final targets = targetIds.toSet();
+    if (targets.isEmpty) return;
+    _sensorSummaries.removeWhere(
+      (_, s) => s.scope == scope && targets.contains(s.targetId),
+    );
   }
 }

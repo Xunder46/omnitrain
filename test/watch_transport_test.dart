@@ -7,6 +7,9 @@
 //   S-002 watch → phone delivery              → `S-002 ...`
 //   S-003 the phone answers a routine request → `S-003 ...`
 //   S-006 the transport is chosen by platform → `S-006 ...`
+//   S-253 every sync is answered with preferences → `S-253 ...`
+//         (Stats PR 2, `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//         D-113, D-115)
 //
 // The loopback below is a channel, not a transport: it carries frames in memory
 // in the order they were sent, which is the one property a fake can hold a real
@@ -19,12 +22,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/no_watch_transport.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/platform_watch_transport_factory.dart';
 import 'package:omnitrain/core/utils/watch_reference_sync.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/watch/logging/watch_logging_state.dart';
@@ -34,6 +39,8 @@ import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_session_engine.dart';
 import 'package:omnitrain/watch/start/watch_session_start_paths.dart';
 import 'package:omnitrain/watch/start/watch_sync_orchestrator.dart';
+
+import 'helpers/fake_preferences_service.dart';
 
 final DateTime _now = DateTime.utc(2026, 9, 21, 12);
 
@@ -194,6 +201,8 @@ void main() {
   late LiveSessionMirrorState? phoneMirror;
   late NutritionState phoneNutrition;
   late FoodLibraryState phoneLibrary;
+  late SettingsState phoneSettings;
+  late DateTime phoneNow;
   late InMemoryWatchSessionStore watchStore;
   late Object? reportedFailure;
 
@@ -256,14 +265,19 @@ void main() {
     await phoneLibrary.loadFoodGroups();
     phoneNutrition = NutritionState(repository);
     await phoneNutrition.loadConsumedToday();
+    phoneSettings = SettingsState(repository, fakePreferencesService());
+    await phoneSettings.initialize();
+    phoneNow = _now;
 
-    phoneMirror = await createWatchSync(
+    phoneMirror = (await createWatchSync(
       repository: repository,
       nutritionState: phoneNutrition,
       foodLibraryState: phoneLibrary,
+      settingsState: phoneSettings,
       transport: phoneTransport,
+      clock: () => phoneNow,
       onFailure: reportFailure,
-    );
+    ))?.mirror;
   });
 
   tearDown(() async {
@@ -425,8 +439,12 @@ void main() {
       await watchTransport.requestRoutines();
       await _settle();
 
-      expect(link.phone.sent, hasLength(1));
-      final message = link.phone.sent.single;
+      expect(
+        [for (final frame in link.phone.sent) frame['type']],
+        ['preferences_down', 'routines_down'],
+        reason: 'S-253 every sync is answered with preferences first',
+      );
+      final message = link.phone.sent.last;
       expect(message['type'], 'routines_down');
       final payload = _asObject(message['payload']);
       expect(_objects(payload['routines']).single['name'], 'Push A');
@@ -436,11 +454,17 @@ void main() {
       );
     });
 
-    test('S-003 a phone with nothing to send stays quiet', () async {
+    test('S-003 a phone with no routines answers with its preferences only',
+        () async {
       await watchTransport.requestRoutines();
       await _settle();
 
-      expect(link.phone.sent, isEmpty);
+      expect(
+        [for (final frame in link.phone.sent) frame['type']],
+        ['preferences_down'],
+        reason: 'S-253 no routines_down without routines, but the setting '
+            'always travels',
+      );
       expect(reportedFailure, isNull);
     });
 
@@ -475,6 +499,58 @@ void main() {
         isEmpty,
         reason: 'an empty session is not a state, and sending one would '
             'replace the ladder the wrist is working through',
+      );
+      expect(reportedFailure, isNull);
+    });
+  });
+
+  // D-113 and D-115: the setting reaches the wrist only when the wrist asks,
+  // so every sync request carries it — before the routines, and even when the
+  // phone has no routines to send. The value is SettingsState's own toggle.
+  group('S-253 the phone answers every sync with its preferences', () {
+    test('S-253 preferences alone, then preferences before routines',
+        () async {
+      await phoneSettings.setShowFeelingSurvey(false);
+
+      await watchTransport.requestRoutines();
+      await _settle();
+
+      expect(
+        [for (final frame in link.phone.sent) frame['type']],
+        ['preferences_down'],
+        reason: 'S-253 a phone with no routines still sends its preferences',
+      );
+      expect(
+        _asObject(link.phone.sent.single['payload']),
+        {'generatedAt': utcIso(_now), 'effortRatingPrompt': false},
+        reason: 'S-253 the setting as SettingsState holds it, stamped with '
+            'the phone clock at send',
+      );
+
+      link.phone.sent.clear();
+      await phoneSettings.setShowFeelingSurvey(true);
+      await _seedRoutine(
+        repository,
+        templateId: 'routine-push-a',
+        name: 'Push A',
+        exerciseId: 'exercise-goblet-squat',
+        effortKind: 'set',
+      );
+      phoneNow = _now.add(const Duration(minutes: 30));
+
+      await watchTransport.requestRoutines();
+      await _settle();
+
+      expect(
+        [for (final frame in link.phone.sent) frame['type']],
+        ['preferences_down', 'routines_down'],
+        reason: 'S-253 preferences first, then the routines',
+      );
+      expect(
+        _asObject(link.phone.sent.first['payload']),
+        {'generatedAt': utcIso(phoneNow), 'effortRatingPrompt': true},
+        reason: 'S-253 the setting turned on reaches the wrist at its next '
+            'sync',
       );
       expect(reportedFailure, isNull);
     });
@@ -602,6 +678,7 @@ void main() {
         repository: repository,
         nutritionState: NutritionState(repository),
         foodLibraryState: FoodLibraryState(repository),
+        settingsState: phoneSettings,
         transport: const NoWatchTransport(),
       );
       expect(none, isNull);

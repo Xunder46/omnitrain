@@ -53,11 +53,36 @@ public enum WatchObservationKind {
     public static let round = "round"
     public static let hold = "hold"
 
-    /// A food the user quick-logged. The one kind that is not tied to a session
-    /// slot: it names a food and a portion, and nothing else.
+    /// A food the user quick-logged. Not tied to a session slot: it names a
+    /// food and a portion, and nothing else.
     public static let nutritionQuickLog = "nutrition_quick_log"
 
-    public static let all = [set, timed, round, hold, nutritionQuickLog]
+    /// The session effort rating the wrist asks for when its End completes a
+    /// session. Session-scoped: it names no slot and no exercise, and a session
+    /// carries at most one (`WatchSessionCapture.effortRatingId`).
+    public static let effortRating = "effort_rating"
+
+    /// How and when a session the wrist created ended, with the heart-rate
+    /// summaries computed for it. Session-scoped, and one per such session
+    /// (`WatchSessionCapture.sessionEndId`).
+    public static let sessionEnd = "session_end"
+
+    public static let all = [
+        set, timed, round, hold, nutritionQuickLog, effortRating, sessionEnd,
+    ]
+
+    /// The kinds that record work done in a slot — what "an effort entry" means
+    /// to a set block's span and to whether an effort rating is owed.
+    public static let efforts = [set, timed, round, hold]
+}
+
+/// The ids of the two session-scoped observations. Derived from the session
+/// rather than minted, so appending one twice is a store no-op and "does this
+/// session have one" is a lookup (PROTOCOL.md, "Session capture").
+public enum WatchSessionCapture {
+    public static func sessionEndId(_ sessionId: String) -> String { "end-\(sessionId)" }
+
+    public static func effortRatingId(_ sessionId: String) -> String { "rating-\(sessionId)" }
 }
 
 /// The session id a nutrition quick-log carries when the wrist has no session
@@ -105,7 +130,12 @@ public enum WatchSensorKind {
     /// the measurement is final.
     public static let distance = "distance"
 
-    public static let all = [heartRate, gps, distance]
+    /// The platform's step count since the platform workout began, cumulative:
+    /// each sample supersedes the one before, and a smaller value than its
+    /// predecessor means the counter restarted.
+    public static let steps = "steps"
+
+    public static let all = [heartRate, gps, distance, steps]
 }
 
 /// A UTC timestamp in the protocol's wire shape: `YYYY-MM-DDTHH:MM:SS(.sss)Z`.
@@ -611,6 +641,8 @@ public enum StoredWatchRecord {
     public static let confirmationType = "confirmation"
     public static let routineCatalogType = "routine_catalog"
     public static let foodCatalogType = "food_catalog"
+    public static let preferencesType = "preferences"
+    public static let ratingPromptType = "rating_prompt"
 
     case session(WatchSessionRecord)
     case observation(WatchObservationRecord)
@@ -619,6 +651,8 @@ public enum StoredWatchRecord {
     case confirmation(WatchConfirmationRecord)
     case routineCatalog(WatchRoutineCatalogRecord)
     case foodCatalog(WatchFoodCatalogRecord)
+    case preferences(WatchPreferencesRecord)
+    case ratingPrompt(WatchRatingPromptRecord)
 
     public var recordType: String {
         switch self {
@@ -629,6 +663,8 @@ public enum StoredWatchRecord {
         case .confirmation: return Self.confirmationType
         case .routineCatalog: return Self.routineCatalogType
         case .foodCatalog: return Self.foodCatalogType
+        case .preferences: return Self.preferencesType
+        case .ratingPrompt: return Self.ratingPromptType
         }
     }
 
@@ -641,6 +677,8 @@ public enum StoredWatchRecord {
         case .confirmation(let row): return row.recordId
         case .routineCatalog(let row): return row.recordId
         case .foodCatalog(let row): return row.recordId
+        case .preferences(let row): return row.recordId
+        case .ratingPrompt(let row): return row.recordId
         }
     }
 
@@ -653,6 +691,8 @@ public enum StoredWatchRecord {
         case .confirmation(let row): return row.sessionId
         case .routineCatalog(let row): return row.sessionId
         case .foodCatalog(let row): return row.sessionId
+        case .preferences(let row): return row.sessionId
+        case .ratingPrompt(let row): return row.sessionId
         }
     }
 
@@ -665,6 +705,8 @@ public enum StoredWatchRecord {
         case .confirmation(let row): return row.recordedAt
         case .routineCatalog(let row): return row.recordedAt
         case .foodCatalog(let row): return row.recordedAt
+        case .preferences(let row): return row.recordedAt
+        case .ratingPrompt(let row): return row.recordedAt
         }
     }
 
@@ -677,6 +719,8 @@ public enum StoredWatchRecord {
         case .confirmation(let row): return row.sequence
         case .routineCatalog(let row): return row.sequence
         case .foodCatalog(let row): return row.sequence
+        case .preferences(let row): return row.sequence
+        case .ratingPrompt(let row): return row.sequence
         }
     }
 
@@ -689,6 +733,8 @@ public enum StoredWatchRecord {
         case .confirmation(let row): return .confirmation(row.withSequence(sequence))
         case .routineCatalog(let row): return .routineCatalog(row.withSequence(sequence))
         case .foodCatalog(let row): return .foodCatalog(row.withSequence(sequence))
+        case .preferences(let row): return .preferences(row.withSequence(sequence))
+        case .ratingPrompt(let row): return .ratingPrompt(row.withSequence(sequence))
         }
     }
 
@@ -701,6 +747,8 @@ public enum StoredWatchRecord {
         case .confirmation(let row): return row.toJson()
         case .routineCatalog(let row): return row.toJson()
         case .foodCatalog(let row): return row.toJson()
+        case .preferences(let row): return row.toJson()
+        case .ratingPrompt(let row): return row.toJson()
         }
     }
 
@@ -716,6 +764,8 @@ public enum StoredWatchRecord {
         case confirmationType: return .confirmation(try WatchConfirmationRecord.fromJson(json))
         case routineCatalogType: return .routineCatalog(try WatchRoutineCatalogRecord.fromJson(json))
         case foodCatalogType: return .foodCatalog(try WatchFoodCatalogRecord.fromJson(json))
+        case preferencesType: return .preferences(try WatchPreferencesRecord.fromJson(json))
+        case ratingPromptType: return .ratingPrompt(try WatchRatingPromptRecord.fromJson(json))
         default: throw WatchRecordError.unknownRecordType(type)
         }
     }

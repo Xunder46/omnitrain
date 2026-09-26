@@ -486,9 +486,249 @@ final class WatchSessionEngineTests: XCTestCase {
         XCTAssertEqual(relaunched.session?.status, WatchSessionStatus.abandoned)
         XCTAssertEqual(
             relaunched.observations.map(\.entryId),
-            ["e-1", "e-2"],
-            "giving up on the session does not discard work already logged"
+            ["e-1", "e-2", "end-s-watch-1"],
+            "giving up on the session does not discard work already logged, and "
+                + "the session's end records that it was abandoned (D-120)"
         )
+    }
+
+    // MARK: - D-120 a session the wrist created ends exactly once
+
+    private func sessionEnd(_ engine: WatchSessionEngine) -> [String: Any]? {
+        engine.observations.first { $0.kind == WatchObservationKind.sessionEnd }?.payload
+    }
+
+    private func lifecycle(_ state: String, at: String, messageId: String) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": "s-watch-1",
+            "type": "session_lifecycle",
+            "origin": "phone",
+            "sentAt": at,
+            "payload": ["state": state, "at": at],
+        ]
+    }
+
+    func testTheWristsEndIsStoredAndSentBeforeTheSessionIsMarkedComplete() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-bench")])
+        let startedAt = harness.clock.now
+        try await engine.appendObservation(setEvent(harness.clock, entryId: "e-1"))
+        harness.clock.advance(600)
+
+        _ = await engine.finishSession()
+
+        let end = try XCTUnwrap(sessionEnd(engine), "D-120 the wrist's End appends the session's end")
+        XCTAssertEqual(end["entryId"] as? String, "end-s-watch-1")
+        XCTAssertEqual(end["eventId"] as? String, "end-s-watch-1")
+        XCTAssertEqual(end["status"] as? String, WatchSessionStatus.completed)
+        XCTAssertEqual(end["startedAt"] as? String, utcIso(startedAt))
+        XCTAssertEqual(end["endedAt"] as? String, utcIso(harness.clock.now), "D-120 the wrist's clock at End")
+        XCTAssertEqual(end["loggedAt"] as? String, utcIso(harness.clock.now))
+        XCTAssertEqual(end["modality"] as? String, "resistance_lifting", "D-120 the session's modality, when it has one")
+        XCTAssertNil(end["avgHeartRateBpm"], "no reading, no pair — never a zero")
+
+        XCTAssertEqual(
+            harness.emitted.suffix(2).map { $0["type"] as? String },
+            ["observations_up", "session_lifecycle"],
+            "D-120 the end goes before the row that completes the session"
+        )
+        let stored = await harness.store.readAll()
+        let endRow = try XCTUnwrap(stored.observations.first { $0.entryId == "end-s-watch-1" })
+        let completedRow = try XCTUnwrap(stored.sessions.last)
+        XCTAssertEqual(completedRow.status, WatchSessionStatus.completed)
+        XCTAssertLessThan(endRow.sequence, completedRow.sequence, "D-120 stored before anything else for the session")
+        for envelope in harness.emitted {
+            XCTAssertTrue(Harness.validator().validateEnvelope(envelope).isEmpty)
+        }
+    }
+
+    func testAbandoningEndsTheSessionAsAbandoned() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+
+        _ = await engine.abandonSession()
+
+        XCTAssertEqual(sessionEnd(engine)?["status"] as? String, WatchSessionStatus.abandoned, "D-120")
+        XCTAssertNil(sessionEnd(engine)?["modality"], "D-120 a session with no modality says none")
+    }
+
+    func testThePhonesLifecycleEndsAWristSessionAtTheMomentItNames() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        harness.clock.advance(900)
+
+        _ = try await engine.applyMessage(
+            lifecycle(WatchLifecycleState.abandoned, at: "2026-07-13T06:10:00Z", messageId: "msg-life-1")
+        )
+        _ = try await engine.applyMessage(
+            lifecycle(WatchLifecycleState.completed, at: "2026-07-13T06:12:00Z", messageId: "msg-life-2")
+        )
+
+        let ends = engine.observations.filter { $0.kind == WatchObservationKind.sessionEnd }
+        XCTAssertEqual(ends.count, 1, "D-120 the first terminal transition ends it; the second does not")
+        XCTAssertEqual(ends.first?.payload["status"] as? String, WatchSessionStatus.abandoned)
+        XCTAssertEqual(ends.first?.payload["endedAt"] as? String, "2026-07-13T06:10:00.000Z", "D-120 the payload's `at`")
+        XCTAssertEqual(
+            ends.first?.payload["loggedAt"] as? String,
+            utcIso(harness.clock.now),
+            "D-120 appended on the wrist's own clock"
+        )
+    }
+
+    func testThePhonesSnapshotEndsAWristSessionOnceAtItsSentAt() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        let snapshot: [String: Any] = [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-snap-end",
+            "sessionId": "s-watch-1",
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:30:00Z",
+            "payload": [
+                "sessionId": "s-watch-1",
+                "revision": 0,
+                "status": WatchSessionStatus.completed,
+                "currentExerciseIndex": 0,
+                "exercises": [exercise("sx-bench")],
+                "entries": [[String: Any]](),
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ]
+
+        _ = try await engine.applyMessage(snapshot)
+        _ = try await engine.applyMessage(snapshot)
+
+        let ends = engine.observations.filter { $0.kind == WatchObservationKind.sessionEnd }
+        XCTAssertEqual(ends.count, 1, "D-120 one end, however often the phone says so")
+        XCTAssertEqual(ends.first?.payload["endedAt"] as? String, "2026-07-13T06:30:00.000Z", "D-120 the snapshot's sentAt")
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.completed)
+    }
+
+    func testAReopenedSessionThatEndsAgainKeepsItsFirstEnd() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        try await engine.appendObservation(setEvent(harness.clock, entryId: "e-1"))
+        _ = await engine.finishSession()
+        let first = try XCTUnwrap(sessionEnd(engine))
+
+        harness.clock.advance(60)
+        _ = try await engine.applyMessage(
+            lifecycle(WatchLifecycleState.started, at: "2026-07-13T06:01:00Z", messageId: "msg-reopen")
+        )
+        harness.clock.advance(60)
+        try await engine.appendObservation(setEvent(harness.clock, entryId: "e-2"))
+        _ = await engine.finishSession()
+
+        let ends = engine.observations.filter { $0.kind == WatchObservationKind.sessionEnd }
+        XCTAssertEqual(ends.count, 1, "D-120 a reopened session gets no second end")
+        XCTAssertEqual(ends.first?.payload["endedAt"] as? String, first["endedAt"] as? String)
+    }
+
+    func testAnEndThePhoneAcknowledgedIsNeverAppendedAgainAfterAPrune() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = await engine.finishSession()
+        _ = await engine.confirmObservations(["end-s-watch-1"])
+        _ = await engine.pruneConfirmed()
+
+        let relaunched = await harness.runningEngine()
+        _ = try await relaunched.applyMessage(
+            lifecycle(WatchLifecycleState.started, at: "2026-07-13T06:05:00Z", messageId: "msg-reopen")
+        )
+        _ = await relaunched.finishSession()
+
+        XCTAssertNil(sessionEnd(relaunched), "D-120 the session had its end; a receipt outlives the row it names")
+        XCTAssertTrue(relaunched.pendingObservations().isEmpty)
+    }
+
+    func testASessionTheWristJoinedEndsWithNoEnd() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = try await engine.applyMessage([
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-join",
+            "sessionId": "s-phone",
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:00:00Z",
+            "payload": [
+                "sessionId": "s-phone",
+                "revision": 0,
+                "status": WatchSessionStatus.active,
+                "currentExerciseIndex": 0,
+                "exercises": [exercise("sx-bench")],
+                "entries": [[String: Any]](),
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ])
+
+        _ = await engine.finishSession()
+
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.completed)
+        XCTAssertNil(sessionEnd(engine), "D-120 a session the wrist joined from the phone gets none")
+    }
+
+    // MARK: - S-240 resend across sessions
+
+    func testS240EveryUnacknowledgedObservationOfEverySessionIsResentInStoreOrder() async throws {
+        let harness = Harness()
+        var sessionIds = ["s-a", "s-b"]
+        var recordIds = 0
+        let engine = WatchSessionEngine(
+            store: harness.store,
+            validator: Harness.validator(),
+            clock: harness.clock.call,
+            idFactory: {
+                recordIds += 1
+                return "rec-\(recordIds)"
+            },
+            sessionIdFactory: { sessionIds.removeFirst() }
+        )
+        await engine.restore()
+
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        try await engine.appendObservation(setEvent(harness.clock, entryId: "e-a1"))
+        harness.clock.advance(60)
+        _ = await engine.finishSession() // ended with the phone out of reach
+        harness.clock.advance(3600)
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        try await engine.appendObservation(setEvent(harness.clock, entryId: "e-b1"))
+
+        func owed(_ envelopes: [[String: Any]]) -> [String] {
+            envelopes.compactMap {
+                (($0["payload"] as? [String: Any])?["events"] as? [[String: Any]])?.first?["entryId"] as? String
+            }
+        }
+        let pending = engine.pendingObservations()
+        XCTAssertEqual(
+            owed(pending),
+            ["e-a1", "end-s-a", "e-b1"],
+            "S-240 session A's events, then B's, in the order they were stored"
+        )
+        XCTAssertEqual(pending.map { $0["sessionId"] as? String }, ["s-a", "s-a", "s-b"], "S-240")
+        for envelope in pending {
+            XCTAssertTrue(Harness.validator().validateEnvelope(envelope).isEmpty, "S-240")
+        }
+
+        _ = try await engine.applyMessage([
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-receipt-a",
+            "type": "receipt",
+            "origin": "phone",
+            "sentAt": utcIso(harness.clock.now),
+            "payload": ["entryIds": ["e-a1", "end-s-a"]],
+        ])
+
+        XCTAssertEqual(owed(engine.pendingObservations()), ["e-b1"], "S-240 a receipt for A's ids removes them")
     }
 
     func testAStoppedTimerFreezesTheTimeItHadReached() async throws {

@@ -1,0 +1,37 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-bad-steps-round",
+  "sessionId": "s-cap-bad",
+  "type": "session_snapshot",
+  "origin": "watch",
+  "sentAt": "2026-09-25T11:00:00Z",
+  "payload": {
+    "sessionId": "s-cap-bad",
+    "revision": 0,
+    "status": "completed",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bjj",
+        "exerciseId": "ex-bjj",
+        "name": "BJJ Round",
+        "capabilities": ["rounds"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-snap-steps-round",
+        "eventId": "e-snap-steps-round",
+        "kind": "round",
+        "loggedAt": "2026-09-25T10:30:00Z",
+        "sessionExerciseId": "sx-bjj",
+        "exerciseId": "ex-bjj",
+        "startedAt": "2026-09-25T10:25:00Z",
+        "endedAt": "2026-09-25T10:30:00Z",
+        "roundNumber": 1,
+        "steps": 400
+      }
+    ],
+    "timers": {}
+  }
+}

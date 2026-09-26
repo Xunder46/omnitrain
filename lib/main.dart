@@ -366,10 +366,13 @@ Future<Widget> runStartup({
   // desktop, and Android (the Wear OS client is a later plan), and null when the
   // transport cannot be set up — a wrist that is not there is not a reason to
   // refuse to start.
-  final watchMirror = await createWatchSync(
+  final watchSync = await createWatchSync(
     repository: repository,
     nutritionState: nutritionState,
     foodLibraryState: foodLibraryState,
+    settingsState: settingsState,
+    // A wrist session that lands in history shows in the calendar's month.
+    onHistoryChanged: calendarState.refresh,
     onFailure: (error, stackTrace) {
       debugPrint('Watch transport unavailable: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -407,6 +410,7 @@ Future<Widget> runStartup({
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,
-    liveSession: watchMirror,
+    liveSession: watchSync?.mirror,
+    watchSessionRatings: watchSync?.ratings,
   );
 }

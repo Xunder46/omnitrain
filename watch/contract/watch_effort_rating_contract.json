@@ -1,0 +1,9 @@
+{
+  "description": "The session effort rating as both devices ask for it: the question, the scale, and the words at its two ends. The wrist reads its copy and scale from this file rather than restating them, and the phone's rating sheet is held to the same values, so the two devices never ask different questions about the same session. Whether the wrist asks at all follows the phone's own setting, `preferenceKey`, which reaches the wrist as the `effortRatingPrompt` field of `preferences_down` (`preferencesField`) at the wrist's next sync. `promptBeforeFirstSync` is false: a wrist that has never received `preferences_down` does not know the setting and does not ask.",
+  "title": "How hard was this session?",
+  "scale": { "min": 1, "max": 5 },
+  "labels": { "1": "Very easy", "5": "Max effort" },
+  "preferenceKey": "show_feeling_survey",
+  "preferencesField": "effortRatingPrompt",
+  "promptBeforeFirstSync": false
+}

@@ -151,6 +151,15 @@ class HiveWorkoutRepository implements WorkoutRepository {
   // Stores the day's volume in milliliters; absence of a key = 0 ml for the day.
   late Box<Map> _waterLogBox;
 
+  // Watch session inbox (D-132): key = WatchInboxEntry.entryId,
+  // value = WatchInboxEntry.toMap(). Put-if-absent; rows are never deleted
+  // (applied rows are tombstones), so no history delete cascades into it.
+  late Box<Map> _watchInboxBox;
+
+  // Wrist-measured sensor summaries (D-131): key = SensorSummary.id,
+  // value = SensorSummary.toMap(). Deleted together with their target.
+  late Box<Map> _sensorSummariesBox;
+
   late Box<List> _exerciseMuscleGroupsBox;
   late Box<List> _exerciseEquipmentBox;
   late Box<List> _exerciseTagsBox;
@@ -208,6 +217,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
     _plannedSessionsBox = await Hive.openBox<Map>('planned_sessions');
     _periodsBox = await Hive.openBox<Map>('training_periods');
     _sessionBlocksBox = await Hive.openBox<Map>('session_blocks');
+
+    // New in Stats PR 2. Both start empty on existing installs and hold no
+    // derived data, so no data-migration step is needed.
+    _watchInboxBox = await Hive.openBox<Map>('watch_inbox');
+    _sensorSummariesBox = await Hive.openBox<Map>('sensor_summaries');
 
     _exerciseMuscleGroupsBox = await Hive.openBox<List>(
       'exercise_muscle_groups',
@@ -1133,6 +1147,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
       }
     }
     await _sessionBlocksBox.deleteAll(blockIds);
+    await _deleteSensorSummariesForSession(id);
     await _sessionsBox.delete(id);
   }
 
@@ -1306,6 +1321,12 @@ class HiveWorkoutRepository implements WorkoutRepository {
     return normalized.id;
   }
 
+  @override
+  Future<void> updateEffort(SegmentEffort effort) async {
+    if (!_effortsBox.containsKey(effort.id)) return;
+    await _effortsBox.put(effort.id, effort.toMap());
+  }
+
   // ===== OBSERVATIONS =====
 
   @override
@@ -1364,6 +1385,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await deleteRoundInstancesForEffort(id);
     await deleteTimedInstancesForEffort(id);
     await deleteEntryRestsForEffort(id);
+    await _deleteSensorSummariesTargeting(SensorSummary.scopeEffort, [id]);
     await _effortsBox.delete(id);
   }
 
@@ -1392,18 +1414,27 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deleteRoundInstance(String id) async {
+    await _deleteSensorSummariesTargeting(SensorSummary.scopeRoundInstance, [
+      id,
+    ]);
     await _roundInstancesBox.delete(id);
   }
 
   @override
   Future<void> deleteRoundInstancesForEffort(String effortId) async {
     final idsToDelete = <dynamic>[];
+    final instanceIds = <String>[];
     for (final entry in _roundInstancesBox.toMap().entries) {
       final raw = _asStringMap(entry.value);
       if (raw['effort_id'] == effortId) {
         idsToDelete.add(entry.key);
+        instanceIds.add(raw['id'] as String);
       }
     }
+    await _deleteSensorSummariesTargeting(
+      SensorSummary.scopeRoundInstance,
+      instanceIds,
+    );
     await _roundInstancesBox.deleteAll(idsToDelete);
   }
 
@@ -1445,18 +1476,27 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deleteTimedInstance(String id) async {
+    await _deleteSensorSummariesTargeting(SensorSummary.scopeTimedInstance, [
+      id,
+    ]);
     await _timedInstancesBox.delete(id);
   }
 
   @override
   Future<void> deleteTimedInstancesForEffort(String effortId) async {
     final idsToDelete = <dynamic>[];
+    final instanceIds = <String>[];
     for (final entry in _timedInstancesBox.toMap().entries) {
       final raw = _asStringMap(entry.value);
       if (raw['effort_id'] == effortId) {
         idsToDelete.add(entry.key);
+        instanceIds.add(raw['id'] as String);
       }
     }
+    await _deleteSensorSummariesTargeting(
+      SensorSummary.scopeTimedInstance,
+      instanceIds,
+    );
     await _timedInstancesBox.deleteAll(idsToDelete);
   }
 
@@ -2461,6 +2501,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _foodCatalogBox.clear();
     await _consumedFoodsBox.clear();
     await _waterLogBox.clear();
+    await _watchInboxBox.clear();
+    await _sensorSummariesBox.clear();
     await _metaBox.delete(_seedLoadedKey);
     _initialized = false;
   }
@@ -2637,6 +2679,27 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
     // 2. For each linked effort, cascade-delete sub-records then the effort itself
     for (final effortKey in linkedEffortKeys) {
+      // D-131: summaries of the effort and of its instances go with them.
+      final effortId =
+          _asStringMap(_effortsBox.get(effortKey)!)['id'] as String;
+      await _deleteSensorSummariesTargeting(SensorSummary.scopeEffort, [
+        effortId,
+      ]);
+      await _deleteSensorSummariesTargeting(
+        SensorSummary.scopeRoundInstance,
+        _roundInstancesBox.values
+            .map(_asStringMap)
+            .where((m) => m['effort_id'] == effortId)
+            .map((m) => m['id'] as String),
+      );
+      await _deleteSensorSummariesTargeting(
+        SensorSummary.scopeTimedInstance,
+        _timedInstancesBox.values
+            .map(_asStringMap)
+            .where((m) => m['effort_id'] == effortId)
+            .map((m) => m['id'] as String),
+      );
+
       final obsKeys = _observationsBox
           .toMap()
           .entries
@@ -2971,5 +3034,142 @@ class HiveWorkoutRepository implements WorkoutRepository {
       // Error retrieving in-progress sessions
     }
     return inProgressSessions;
+  }
+
+  // ===== WATCH CAPTURE: SESSION INBOX + SENSOR SUMMARIES (D-131 / D-132) =====
+
+  @override
+  Future<bool> stageWatchInboxEntry(WatchInboxEntry entry) async {
+    // Put-if-absent. No await between the check and the put, so a
+    // concurrent stage of the same id cannot slip in between them.
+    if (_watchInboxBox.containsKey(entry.entryId)) return false;
+    await _watchInboxBox.put(entry.entryId, entry.toMap());
+    return true;
+  }
+
+  @override
+  Future<List<WatchInboxEntry>> getWatchInboxEntriesForSession(
+    String watchSessionId,
+  ) async {
+    final entries = _watchInboxBox.values
+        .map(_asStringMap)
+        .where((m) => m['watch_session_id'] == watchSessionId)
+        .map(WatchInboxEntry.fromMap)
+        .toList();
+    entries.sort((a, b) {
+      final byReceived = a.receivedAtMs.compareTo(b.receivedAtMs);
+      if (byReceived != 0) return byReceived;
+      return a.entryId.compareTo(b.entryId);
+    });
+    return entries;
+  }
+
+  @override
+  Future<WatchInboxEntry?> getWatchInboxEntry(String entryId) async {
+    final raw = _watchInboxBox.get(entryId);
+    if (raw == null) return null;
+    return WatchInboxEntry.fromMap(_asStringMap(raw));
+  }
+
+  @override
+  Future<void> markWatchInboxEntriesApplied(
+    Iterable<String> entryIds,
+    int appliedAtMs,
+  ) async {
+    final updates = <String, Map<String, dynamic>>{};
+    for (final entryId in entryIds.toSet()) {
+      final raw = _watchInboxBox.get(entryId);
+      if (raw == null) continue;
+      final staged = WatchInboxEntry.fromMap(_asStringMap(raw));
+      if (staged.appliedAtMs != null) continue;
+      updates[entryId] = WatchInboxEntry.fromMap({
+        ...staged.toMap(),
+        'applied_at_ms': appliedAtMs,
+      }).toMap();
+    }
+    if (updates.isEmpty) return;
+    await _watchInboxBox.putAll(updates);
+  }
+
+  @override
+  Future<List<String>> getWatchSessionIdsWithUnappliedEnd() async {
+    final ends = _watchInboxBox.values
+        .map(_asStringMap)
+        .where(
+          (m) =>
+              m['kind'] == WatchInboxEntry.kindSessionEnd &&
+              m['applied_at_ms'] == null,
+        )
+        .map(WatchInboxEntry.fromMap)
+        .toList();
+    ends.sort((a, b) {
+      final byReceived = a.receivedAtMs.compareTo(b.receivedAtMs);
+      if (byReceived != 0) return byReceived;
+      return a.watchSessionId.compareTo(b.watchSessionId);
+    });
+    final ids = <String>[];
+    for (final end in ends) {
+      if (!ids.contains(end.watchSessionId)) ids.add(end.watchSessionId);
+    }
+    return ids;
+  }
+
+  @override
+  Future<bool> createSensorSummary(SensorSummary summary) async {
+    // Put-if-absent by id (one row per scope + target); see
+    // stageWatchInboxEntry for why the check and the put are not split.
+    if (_sensorSummariesBox.containsKey(summary.id)) return false;
+    await _sensorSummariesBox.put(summary.id, summary.toMap());
+    return true;
+  }
+
+  @override
+  Future<List<SensorSummary>> getSensorSummariesForSession(
+    String sessionId,
+  ) async {
+    final summaries = _sensorSummariesBox.values
+        .map(_asStringMap)
+        .where((m) => m['session_id'] == sessionId)
+        .map(SensorSummary.fromMap)
+        .toList();
+    summaries.sort((a, b) {
+      final byScope = SensorSummary.scopes
+          .indexOf(a.scope)
+          .compareTo(SensorSummary.scopes.indexOf(b.scope));
+      if (byScope != 0) return byScope;
+      final byStart = a.windowStartMs.compareTo(b.windowStartMs);
+      if (byStart != 0) return byStart;
+      return a.targetId.compareTo(b.targetId);
+    });
+    return summaries;
+  }
+
+  /// D-131: every summary carries its session, so none outlives it.
+  Future<void> _deleteSensorSummariesForSession(String sessionId) async {
+    final keys = <dynamic>[];
+    for (final entry in _sensorSummariesBox.toMap().entries) {
+      if (_asStringMap(entry.value)['session_id'] == sessionId) {
+        keys.add(entry.key);
+      }
+    }
+    await _sensorSummariesBox.deleteAll(keys);
+  }
+
+  /// D-131: a summary is deleted together with its target. Removes every
+  /// summary of [scope] whose target is one of [targetIds].
+  Future<void> _deleteSensorSummariesTargeting(
+    String scope,
+    Iterable<String> targetIds,
+  ) async {
+    final targets = targetIds.toSet();
+    if (targets.isEmpty) return;
+    final keys = <dynamic>[];
+    for (final entry in _sensorSummariesBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (raw['scope'] == scope && targets.contains(raw['target_id'])) {
+        keys.add(entry.key);
+      }
+    }
+    await _sensorSummariesBox.deleteAll(keys);
   }
 }

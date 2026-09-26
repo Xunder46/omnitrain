@@ -39,8 +39,9 @@ class SyncSessionReconciler {
   final Set<String> _appliedEventIds = {};
   final Set<String> _appliedChangeIds = {};
 
-  // Assigned by `_applySnapshot`, which the only constructor calls.
-  late String _sessionId;
+  // Assigned by `_applySnapshot`, which the only constructor calls. The
+  // session id is null only until then.
+  String? _sessionId;
   late String _status;
   late int _revision;
   late int _currentExerciseIndex;
@@ -103,8 +104,19 @@ class SyncSessionReconciler {
   /// A snapshot is authoritative for structure, status, position, revision, and
   /// timers. Entries are merged by entryId, so an observation the phone has not
   /// seen yet survives the snapshot that arrives before it.
+  ///
+  /// That merge is for one session only. A snapshot that names another session
+  /// replaces the held one wholesale, entries included: a second workout
+  /// started on the wrist is not a continuation of the first, and merging would
+  /// file the first session's entries under the second.
   void _applySnapshot(Map<String, Object?> snapshot) {
-    _sessionId = snapshot['sessionId']! as String;
+    final sessionId = snapshot['sessionId']! as String;
+    if (sessionId != _sessionId) {
+      _entries.clear();
+      _appliedEventIds.clear();
+    }
+
+    _sessionId = sessionId;
     _status = snapshot['status']! as String;
     _revision = snapshot['revision']! as int;
     _currentExerciseIndex = snapshot['currentExerciseIndex']! as int;

@@ -34,7 +34,7 @@ Note on home-screen nutrition summary card:
 |------|--------|
 | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) | Foundational layout wrappers, card/section chrome, bottom CTA, input field wrappers |
 | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) | Home tiles, the home gauge card, and the calorie-ring / water / macro-donut cards |
-| [Session, Picker & Presentation Widgets](widget_catalog/session_widgets.md) | In-session metric editors, metric popups, PR toast, picker dialogs, presentation models |
+| [Session, Picker & Presentation Widgets](widget_catalog/session_widgets.md) | In-session metric editors, metric popups, PR toast, the effort rating sheet, picker dialogs, presentation models |
 | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) | Primer sheet, food rows, thumbnails, the shared food form, group management |
 | [Routine, Profile & Brand Widgets](widget_catalog/feature_primitives.md) | Routine badges, avatar crop, measurement sparkline, logo and Zen Halo |
 
@@ -52,6 +52,7 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `CalorieRingCard` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |
 | `DemoRoutineBadge` | [Routine, Profile & Brand](widget_catalog/feature_primitives.md) |
 | `DominantMetricWidget` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
+| `EffortRatingSheet` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `EnergyCore` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |
 | `EnergyTile` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |
 | `ExercisePickerScreen` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |

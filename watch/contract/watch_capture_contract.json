@@ -1,0 +1,1427 @@
+{
+  "description": "F-CAP: one wrist session end to end, in three cases, shared by both stacks so the wrist's capture and the phone's import are checked against the same numbers. `timeline` is the script: ops apply in array order, the array is ordered by `at`, and a sensor sample (`hr`, `steps`) is applied before any other op at the same instant. `start` creates the session with no modality over `exercises` (no slot declares an effort kind, so kinds derive from capabilities: timed, round, set), and the wrist's entry-id factory yields `entryIds` in order. `dial` sets a metric (a `WatchMetricKey`) to `value`, in seconds or kilograms, before the next `log`; a follow-on round timer is planned at the round length dialled for the round that started it. `pauseRound` and `resumeRound` pause and resume the running round timer. `end` is the wrist's own End; `answer` confirms the effort-rating prompt. `sensorPermissions` says which sensors the case grants. `expectedEvents` are the wrist's observations in store order, timestamps in the wrist's wire form. `expectedImport` is what the phone holds after importing them. `derivation` explains every summary value so the arithmetic can be rechecked by hand.",
+  "phoneCatalog": [
+    {
+      "exerciseId": "ex-run",
+      "name": "Run",
+      "capabilities": [
+        "time",
+        "distance"
+      ]
+    },
+    {
+      "exerciseId": "ex-bjj",
+      "name": "Brazilian Jiu-Jitsu",
+      "capabilities": [
+        "time",
+        "rounds"
+      ]
+    },
+    {
+      "exerciseId": "ex-bench",
+      "name": "Barbell Bench Press",
+      "capabilities": [
+        "sets",
+        "reps",
+        "load"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "name": "full",
+      "sessionId": "s-cap-1",
+      "sensorPermissions": {
+        "heartRate": true,
+        "steps": true
+      },
+      "timeline": [
+        {
+          "at": "2026-09-25T09:00:00.000Z",
+          "op": "preferences",
+          "generatedAt": "2026-09-25T09:00:00.000Z",
+          "effortRatingPrompt": true
+        },
+        {
+          "at": "2026-09-25T10:00:00.000Z",
+          "op": "start",
+          "sessionId": "s-cap-1",
+          "modality": null,
+          "exercises": [
+            {
+              "sessionExerciseId": "sx-run",
+              "exerciseId": "ex-run",
+              "name": "Run",
+              "capabilities": [
+                "time",
+                "distance"
+              ]
+            },
+            {
+              "sessionExerciseId": "sx-bjj",
+              "exerciseId": "ex-bjj",
+              "name": "Brazilian Jiu-Jitsu",
+              "capabilities": [
+                "time",
+                "rounds"
+              ]
+            },
+            {
+              "sessionExerciseId": "sx-bench",
+              "exerciseId": "ex-bench",
+              "name": "Barbell Bench Press",
+              "capabilities": [
+                "sets",
+                "reps",
+                "load"
+              ]
+            }
+          ],
+          "entryIds": [
+            "e-run",
+            "e-r1",
+            "e-r2",
+            "e-r3",
+            "e-set1",
+            "e-set2",
+            "e-set3"
+          ]
+        },
+        {
+          "at": "2026-09-25T10:05:00.000Z",
+          "op": "hr",
+          "bpm": 120
+        },
+        {
+          "at": "2026-09-25T10:05:00.000Z",
+          "op": "steps",
+          "count": 800
+        },
+        {
+          "at": "2026-09-25T10:10:00.000Z",
+          "op": "hr",
+          "bpm": 140
+        },
+        {
+          "at": "2026-09-25T10:10:00.000Z",
+          "op": "steps",
+          "count": 1600
+        },
+        {
+          "at": "2026-09-25T10:15:00.000Z",
+          "op": "hr",
+          "bpm": 160
+        },
+        {
+          "at": "2026-09-25T10:20:00.000Z",
+          "op": "steps",
+          "count": 3200
+        },
+        {
+          "at": "2026-09-25T10:20:00.000Z",
+          "op": "dial",
+          "metric": "duration",
+          "value": 1200
+        },
+        {
+          "at": "2026-09-25T10:20:00.000Z",
+          "op": "log",
+          "entryId": "e-run"
+        },
+        {
+          "at": "2026-09-25T10:21:00.000Z",
+          "op": "advance",
+          "sessionExerciseId": "sx-bjj"
+        },
+        {
+          "at": "2026-09-25T10:21:00.000Z",
+          "op": "dial",
+          "metric": "round-duration",
+          "value": 300
+        },
+        {
+          "at": "2026-09-25T10:24:30.000Z",
+          "op": "hr",
+          "bpm": 100
+        },
+        {
+          "at": "2026-09-25T10:26:00.000Z",
+          "op": "hr",
+          "bpm": 150
+        },
+        {
+          "at": "2026-09-25T10:28:00.000Z",
+          "op": "hr",
+          "bpm": 170
+        },
+        {
+          "at": "2026-09-25T10:30:00.000Z",
+          "op": "steps",
+          "count": 3300
+        },
+        {
+          "at": "2026-09-25T10:30:00.000Z",
+          "op": "log",
+          "entryId": "e-r1"
+        },
+        {
+          "at": "2026-09-25T10:31:00.000Z",
+          "op": "hr",
+          "bpm": 150
+        },
+        {
+          "at": "2026-09-25T10:32:00.000Z",
+          "op": "pauseRound"
+        },
+        {
+          "at": "2026-09-25T10:33:00.000Z",
+          "op": "hr",
+          "bpm": 100
+        },
+        {
+          "at": "2026-09-25T10:34:00.000Z",
+          "op": "resumeRound"
+        },
+        {
+          "at": "2026-09-25T10:36:00.000Z",
+          "op": "hr",
+          "bpm": 180
+        },
+        {
+          "at": "2026-09-25T10:37:05.000Z",
+          "op": "hr",
+          "bpm": 145
+        },
+        {
+          "at": "2026-09-25T10:37:05.000Z",
+          "op": "log",
+          "entryId": "e-r2"
+        },
+        {
+          "at": "2026-09-25T10:40:00.000Z",
+          "op": "hr",
+          "bpm": 165
+        },
+        {
+          "at": "2026-09-25T10:42:08.000Z",
+          "op": "hr",
+          "bpm": 175
+        },
+        {
+          "at": "2026-09-25T10:42:10.000Z",
+          "op": "log",
+          "entryId": "e-r3"
+        },
+        {
+          "at": "2026-09-25T10:43:00.000Z",
+          "op": "advance",
+          "sessionExerciseId": "sx-bench"
+        },
+        {
+          "at": "2026-09-25T10:43:00.000Z",
+          "op": "dial",
+          "metric": "reps",
+          "value": 5
+        },
+        {
+          "at": "2026-09-25T10:43:00.000Z",
+          "op": "dial",
+          "metric": "weight",
+          "value": 80
+        },
+        {
+          "at": "2026-09-25T10:44:00.000Z",
+          "op": "hr",
+          "bpm": 110
+        },
+        {
+          "at": "2026-09-25T10:45:00.000Z",
+          "op": "log",
+          "entryId": "e-set1"
+        },
+        {
+          "at": "2026-09-25T10:47:00.000Z",
+          "op": "hr",
+          "bpm": 130
+        },
+        {
+          "at": "2026-09-25T10:48:00.000Z",
+          "op": "log",
+          "entryId": "e-set2"
+        },
+        {
+          "at": "2026-09-25T10:50:00.000Z",
+          "op": "hr",
+          "bpm": 0
+        },
+        {
+          "at": "2026-09-25T10:51:00.000Z",
+          "op": "hr",
+          "bpm": 150
+        },
+        {
+          "at": "2026-09-25T10:51:00.000Z",
+          "op": "log",
+          "entryId": "e-set3"
+        },
+        {
+          "at": "2026-09-25T10:55:00.000Z",
+          "op": "end"
+        },
+        {
+          "at": "2026-09-25T10:55:20.000Z",
+          "op": "answer",
+          "rating": 4
+        }
+      ],
+      "expectedEvents": [
+        {
+          "entryId": "e-run",
+          "eventId": "e-run",
+          "kind": "timed",
+          "loggedAt": "2026-09-25T10:20:00.000Z",
+          "sessionExerciseId": "sx-run",
+          "exerciseId": "ex-run",
+          "startedAt": "2026-09-25T10:00:00.000Z",
+          "endedAt": "2026-09-25T10:20:00.000Z",
+          "avgHeartRateBpm": 140,
+          "maxHeartRateBpm": 160,
+          "steps": 3200
+        },
+        {
+          "entryId": "e-r1",
+          "eventId": "e-r1",
+          "kind": "round",
+          "loggedAt": "2026-09-25T10:30:00.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:25:00.000Z",
+          "endedAt": "2026-09-25T10:30:00.000Z",
+          "roundNumber": 1,
+          "avgHeartRateBpm": 160,
+          "maxHeartRateBpm": 170
+        },
+        {
+          "entryId": "e-r2",
+          "eventId": "e-r2",
+          "kind": "round",
+          "loggedAt": "2026-09-25T10:37:05.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:30:00.000Z",
+          "endedAt": "2026-09-25T10:37:00.000Z",
+          "roundNumber": 2,
+          "avgHeartRateBpm": 165,
+          "maxHeartRateBpm": 180,
+          "pausedMs": 120000
+        },
+        {
+          "entryId": "e-r3",
+          "eventId": "e-r3",
+          "kind": "round",
+          "loggedAt": "2026-09-25T10:42:10.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:37:05.000Z",
+          "endedAt": "2026-09-25T10:42:05.000Z",
+          "roundNumber": 3,
+          "avgHeartRateBpm": 155,
+          "maxHeartRateBpm": 165
+        },
+        {
+          "entryId": "e-set1",
+          "eventId": "e-set1",
+          "kind": "set",
+          "loggedAt": "2026-09-25T10:45:00.000Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-bench",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "e-set2",
+          "eventId": "e-set2",
+          "kind": "set",
+          "loggedAt": "2026-09-25T10:48:00.000Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-bench",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "e-set3",
+          "eventId": "e-set3",
+          "kind": "set",
+          "loggedAt": "2026-09-25T10:51:00.000Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-bench",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "end-s-cap-1",
+          "eventId": "end-s-cap-1",
+          "kind": "session_end",
+          "loggedAt": "2026-09-25T10:55:00.000Z",
+          "startedAt": "2026-09-25T10:00:00.000Z",
+          "endedAt": "2026-09-25T10:55:00.000Z",
+          "status": "completed",
+          "avgHeartRateBpm": 143,
+          "maxHeartRateBpm": 180,
+          "setBlockHeartRates": [
+            {
+              "sessionExerciseId": "sx-bench",
+              "exerciseId": "ex-bench",
+              "startedAt": "2026-09-25T10:42:10.000Z",
+              "endedAt": "2026-09-25T10:51:00.000Z",
+              "avgHeartRateBpm": 130,
+              "maxHeartRateBpm": 150
+            }
+          ]
+        },
+        {
+          "entryId": "rating-s-cap-1",
+          "eventId": "rating-s-cap-1",
+          "kind": "effort_rating",
+          "loggedAt": "2026-09-25T10:55:20.000Z",
+          "rating": 4
+        }
+      ],
+      "expectedImport": {
+        "session": {
+          "id": "s-cap-1",
+          "startedAt": "2026-09-25T10:00:00.000Z",
+          "endedAt": "2026-09-25T10:55:00.000Z",
+          "modality": null,
+          "sessionFeeling": 4
+        },
+        "efforts": [
+          {
+            "effortKind": "timed",
+            "sessionExerciseId": "sx-run",
+            "exerciseId": "ex-run",
+            "timedInstances": [
+              {
+                "entryIndex": 0,
+                "entryId": "e-run",
+                "startedAt": "2026-09-25T10:00:00.000Z",
+                "finishedAt": "2026-09-25T10:20:00.000Z",
+                "actualDurationSecs": 1200
+              }
+            ],
+            "observations": [
+              {
+                "entryIndex": 0,
+                "distanceMeters": 0,
+                "extraWeightKg": 0
+              }
+            ]
+          },
+          {
+            "effortKind": "round",
+            "sessionExerciseId": "sx-bjj",
+            "exerciseId": "ex-bjj",
+            "roundInstances": [
+              {
+                "roundIndex": 0,
+                "entryId": "e-r1",
+                "startedAt": "2026-09-25T10:25:00.000Z",
+                "finishedAt": "2026-09-25T10:30:00.000Z",
+                "totalPausedDurationMs": 0,
+                "actualDurationSecs": 300,
+                "plannedDurationSecs": 300,
+                "completed": true
+              },
+              {
+                "roundIndex": 1,
+                "entryId": "e-r2",
+                "startedAt": "2026-09-25T10:30:00.000Z",
+                "finishedAt": "2026-09-25T10:37:00.000Z",
+                "totalPausedDurationMs": 120000,
+                "actualDurationSecs": 300,
+                "plannedDurationSecs": 300,
+                "completed": true
+              },
+              {
+                "roundIndex": 2,
+                "entryId": "e-r3",
+                "startedAt": "2026-09-25T10:37:05.000Z",
+                "finishedAt": "2026-09-25T10:42:05.000Z",
+                "totalPausedDurationMs": 0,
+                "actualDurationSecs": 300,
+                "plannedDurationSecs": 300,
+                "completed": true
+              }
+            ]
+          },
+          {
+            "effortKind": "set",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-bench",
+            "observations": [
+              {
+                "entryIndex": 0,
+                "entryId": "e-set1",
+                "reps": 5,
+                "weightKg": 80.0
+              },
+              {
+                "entryIndex": 1,
+                "entryId": "e-set2",
+                "reps": 5,
+                "weightKg": 80.0
+              },
+              {
+                "entryIndex": 2,
+                "entryId": "e-set3",
+                "reps": 5,
+                "weightKg": 80.0
+              }
+            ],
+            "extraWeightObservations": false
+          }
+        ],
+        "sensorSummaries": [
+          {
+            "scope": "session",
+            "target": {
+              "sessionId": "s-cap-1"
+            },
+            "avgHeartRateBpm": 143,
+            "maxHeartRateBpm": 180
+          },
+          {
+            "scope": "effort",
+            "target": {
+              "effortKind": "set",
+              "sessionExerciseId": "sx-bench",
+              "exerciseId": "ex-bench"
+            },
+            "avgHeartRateBpm": 130,
+            "maxHeartRateBpm": 150
+          },
+          {
+            "scope": "timed_instance",
+            "target": {
+              "entryId": "e-run"
+            },
+            "avgHeartRateBpm": 140,
+            "maxHeartRateBpm": 160,
+            "steps": 3200
+          },
+          {
+            "scope": "round_instance",
+            "target": {
+              "entryId": "e-r1"
+            },
+            "avgHeartRateBpm": 160,
+            "maxHeartRateBpm": 170
+          },
+          {
+            "scope": "round_instance",
+            "target": {
+              "entryId": "e-r2"
+            },
+            "avgHeartRateBpm": 165,
+            "maxHeartRateBpm": 180
+          },
+          {
+            "scope": "round_instance",
+            "target": {
+              "entryId": "e-r3"
+            },
+            "avgHeartRateBpm": 155,
+            "maxHeartRateBpm": 165
+          }
+        ],
+        "receiptedEntryIds": [
+          "e-run",
+          "e-r1",
+          "e-r2",
+          "e-r3",
+          "e-set1",
+          "e-set2",
+          "e-set3",
+          "end-s-cap-1",
+          "rating-s-cap-1"
+        ]
+      },
+      "derivation": {
+        "e-run": "Window 10:00:00-10:20:00: loggedAt minus the dialled 1200 s. HR in the window: 120 (10:05:00), 140 (10:10:00), 160 (10:15:00), so avg 140, max 160. Steps: baseline 0 (no steps sample before 10:00:00); the chain 0 -> 800 -> 1600 -> 3200 (10:20:00, window end inclusive) adds 800 + 800 + 1600 = 3200. The 3300 at 10:30:00 is outside the window.",
+        "e-r1": "No round timer is running, so the window is 10:25:00-10:30:00: loggedAt minus the dialled 300 s. HR: 150 (10:26:00), 170 (10:28:00), so avg 160, max 170. The 100 at 10:24:30 is before the window. Rounds carry no steps, even though the steps sample at 10:30:00 lies inside this window and e-r2's.",
+        "e-r2": "The follow-on round timer starts at 10:30:00, planned 300 s, and is paused over [10:32:00, 10:34:00), so it completes at 10:37:00; logged at 10:37:05, the window is 10:30:00-10:37:00 and pausedMs is 120000. HR: 150 (10:31:00), 180 (10:36:00), so avg 165, max 180. The 100 at 10:33:00 falls inside the pause and is excluded; including it would give 143.33.",
+        "e-r3": "The next round timer starts at 10:37:05, planned 300 s, and completes at 10:42:05; logged at 10:42:10, the window is 10:37:05-10:42:05. HR: 145 (10:37:05, window start inclusive; the sample is applied before e-r2's log at the same instant), 165 (10:40:00), so avg 155, max 165. The 175 at 10:42:08 is after the window end.",
+        "e-set1, e-set2, e-set3": "Set events never carry heart rate. Each is 5 reps x 80 kg.",
+        "end-s-cap-1 session": "Session window 10:00:00-10:55:00. Fifteen positive samples sum to 2145, so avg 143; max 180. A round's pause is not a session pause, so the 100 at 10:33:00 counts. The 0 at 10:50:00 is a glitch and is ignored.",
+        "end-s-cap-1 set block sx-bench/ex-bench": "The span starts at the loggedAt of the latest effort entry logged before e-set1 (e-r3, 10:42:10) and ends at e-set3's loggedAt (10:51:00, inclusive). HR: 110 (10:44:00), 130 (10:47:00), 150 (10:51:00), so avg 130, max 150. The 175 at 10:42:08 is before the span; the 0 at 10:50:00 is ignored.",
+        "rating-s-cap-1": "The user answers 4 at 10:55:20."
+      }
+    },
+    {
+      "name": "no-sensors",
+      "sessionId": "s-cap-1",
+      "sensorPermissions": {
+        "heartRate": false,
+        "steps": false
+      },
+      "timeline": [
+        {
+          "at": "2026-09-25T09:00:00.000Z",
+          "op": "preferences",
+          "generatedAt": "2026-09-25T09:00:00.000Z",
+          "effortRatingPrompt": true
+        },
+        {
+          "at": "2026-09-25T10:00:00.000Z",
+          "op": "start",
+          "sessionId": "s-cap-1",
+          "modality": null,
+          "exercises": [
+            {
+              "sessionExerciseId": "sx-run",
+              "exerciseId": "ex-run",
+              "name": "Run",
+              "capabilities": [
+                "time",
+                "distance"
+              ]
+            },
+            {
+              "sessionExerciseId": "sx-bjj",
+              "exerciseId": "ex-bjj",
+              "name": "Brazilian Jiu-Jitsu",
+              "capabilities": [
+                "time",
+                "rounds"
+              ]
+            },
+            {
+              "sessionExerciseId": "sx-bench",
+              "exerciseId": "ex-bench",
+              "name": "Barbell Bench Press",
+              "capabilities": [
+                "sets",
+                "reps",
+                "load"
+              ]
+            }
+          ],
+          "entryIds": [
+            "e-run",
+            "e-r1",
+            "e-r2",
+            "e-r3",
+            "e-set1",
+            "e-set2",
+            "e-set3"
+          ]
+        },
+        {
+          "at": "2026-09-25T10:20:00.000Z",
+          "op": "dial",
+          "metric": "duration",
+          "value": 1200
+        },
+        {
+          "at": "2026-09-25T10:20:00.000Z",
+          "op": "log",
+          "entryId": "e-run"
+        },
+        {
+          "at": "2026-09-25T10:21:00.000Z",
+          "op": "advance",
+          "sessionExerciseId": "sx-bjj"
+        },
+        {
+          "at": "2026-09-25T10:21:00.000Z",
+          "op": "dial",
+          "metric": "round-duration",
+          "value": 300
+        },
+        {
+          "at": "2026-09-25T10:30:00.000Z",
+          "op": "log",
+          "entryId": "e-r1"
+        },
+        {
+          "at": "2026-09-25T10:32:00.000Z",
+          "op": "pauseRound"
+        },
+        {
+          "at": "2026-09-25T10:34:00.000Z",
+          "op": "resumeRound"
+        },
+        {
+          "at": "2026-09-25T10:37:05.000Z",
+          "op": "log",
+          "entryId": "e-r2"
+        },
+        {
+          "at": "2026-09-25T10:42:10.000Z",
+          "op": "log",
+          "entryId": "e-r3"
+        },
+        {
+          "at": "2026-09-25T10:43:00.000Z",
+          "op": "advance",
+          "sessionExerciseId": "sx-bench"
+        },
+        {
+          "at": "2026-09-25T10:43:00.000Z",
+          "op": "dial",
+          "metric": "reps",
+          "value": 5
+        },
+        {
+          "at": "2026-09-25T10:43:00.000Z",
+          "op": "dial",
+          "metric": "weight",
+          "value": 80
+        },
+        {
+          "at": "2026-09-25T10:45:00.000Z",
+          "op": "log",
+          "entryId": "e-set1"
+        },
+        {
+          "at": "2026-09-25T10:48:00.000Z",
+          "op": "log",
+          "entryId": "e-set2"
+        },
+        {
+          "at": "2026-09-25T10:51:00.000Z",
+          "op": "log",
+          "entryId": "e-set3"
+        },
+        {
+          "at": "2026-09-25T10:55:00.000Z",
+          "op": "end"
+        },
+        {
+          "at": "2026-09-25T10:55:20.000Z",
+          "op": "answer",
+          "rating": 4
+        }
+      ],
+      "expectedEvents": [
+        {
+          "entryId": "e-run",
+          "eventId": "e-run",
+          "kind": "timed",
+          "loggedAt": "2026-09-25T10:20:00.000Z",
+          "sessionExerciseId": "sx-run",
+          "exerciseId": "ex-run",
+          "startedAt": "2026-09-25T10:00:00.000Z",
+          "endedAt": "2026-09-25T10:20:00.000Z"
+        },
+        {
+          "entryId": "e-r1",
+          "eventId": "e-r1",
+          "kind": "round",
+          "loggedAt": "2026-09-25T10:30:00.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:25:00.000Z",
+          "endedAt": "2026-09-25T10:30:00.000Z",
+          "roundNumber": 1
+        },
+        {
+          "entryId": "e-r2",
+          "eventId": "e-r2",
+          "kind": "round",
+          "loggedAt": "2026-09-25T10:37:05.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:30:00.000Z",
+          "endedAt": "2026-09-25T10:37:00.000Z",
+          "roundNumber": 2,
+          "pausedMs": 120000
+        },
+        {
+          "entryId": "e-r3",
+          "eventId": "e-r3",
+          "kind": "round",
+          "loggedAt": "2026-09-25T10:42:10.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:37:05.000Z",
+          "endedAt": "2026-09-25T10:42:05.000Z",
+          "roundNumber": 3
+        },
+        {
+          "entryId": "e-set1",
+          "eventId": "e-set1",
+          "kind": "set",
+          "loggedAt": "2026-09-25T10:45:00.000Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-bench",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "e-set2",
+          "eventId": "e-set2",
+          "kind": "set",
+          "loggedAt": "2026-09-25T10:48:00.000Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-bench",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "e-set3",
+          "eventId": "e-set3",
+          "kind": "set",
+          "loggedAt": "2026-09-25T10:51:00.000Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-bench",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "end-s-cap-1",
+          "eventId": "end-s-cap-1",
+          "kind": "session_end",
+          "loggedAt": "2026-09-25T10:55:00.000Z",
+          "startedAt": "2026-09-25T10:00:00.000Z",
+          "endedAt": "2026-09-25T10:55:00.000Z",
+          "status": "completed"
+        },
+        {
+          "entryId": "rating-s-cap-1",
+          "eventId": "rating-s-cap-1",
+          "kind": "effort_rating",
+          "loggedAt": "2026-09-25T10:55:20.000Z",
+          "rating": 4
+        }
+      ],
+      "expectedImport": {
+        "session": {
+          "id": "s-cap-1",
+          "startedAt": "2026-09-25T10:00:00.000Z",
+          "endedAt": "2026-09-25T10:55:00.000Z",
+          "modality": null,
+          "sessionFeeling": 4
+        },
+        "efforts": [
+          {
+            "effortKind": "timed",
+            "sessionExerciseId": "sx-run",
+            "exerciseId": "ex-run",
+            "timedInstances": [
+              {
+                "entryIndex": 0,
+                "entryId": "e-run",
+                "startedAt": "2026-09-25T10:00:00.000Z",
+                "finishedAt": "2026-09-25T10:20:00.000Z",
+                "actualDurationSecs": 1200
+              }
+            ],
+            "observations": [
+              {
+                "entryIndex": 0,
+                "distanceMeters": 0,
+                "extraWeightKg": 0
+              }
+            ]
+          },
+          {
+            "effortKind": "round",
+            "sessionExerciseId": "sx-bjj",
+            "exerciseId": "ex-bjj",
+            "roundInstances": [
+              {
+                "roundIndex": 0,
+                "entryId": "e-r1",
+                "startedAt": "2026-09-25T10:25:00.000Z",
+                "finishedAt": "2026-09-25T10:30:00.000Z",
+                "totalPausedDurationMs": 0,
+                "actualDurationSecs": 300,
+                "plannedDurationSecs": 300,
+                "completed": true
+              },
+              {
+                "roundIndex": 1,
+                "entryId": "e-r2",
+                "startedAt": "2026-09-25T10:30:00.000Z",
+                "finishedAt": "2026-09-25T10:37:00.000Z",
+                "totalPausedDurationMs": 120000,
+                "actualDurationSecs": 300,
+                "plannedDurationSecs": 300,
+                "completed": true
+              },
+              {
+                "roundIndex": 2,
+                "entryId": "e-r3",
+                "startedAt": "2026-09-25T10:37:05.000Z",
+                "finishedAt": "2026-09-25T10:42:05.000Z",
+                "totalPausedDurationMs": 0,
+                "actualDurationSecs": 300,
+                "plannedDurationSecs": 300,
+                "completed": true
+              }
+            ]
+          },
+          {
+            "effortKind": "set",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-bench",
+            "observations": [
+              {
+                "entryIndex": 0,
+                "entryId": "e-set1",
+                "reps": 5,
+                "weightKg": 80.0
+              },
+              {
+                "entryIndex": 1,
+                "entryId": "e-set2",
+                "reps": 5,
+                "weightKg": 80.0
+              },
+              {
+                "entryIndex": 2,
+                "entryId": "e-set3",
+                "reps": 5,
+                "weightKg": 80.0
+              }
+            ],
+            "extraWeightObservations": false
+          }
+        ],
+        "sensorSummaries": [],
+        "receiptedEntryIds": [
+          "e-run",
+          "e-r1",
+          "e-r2",
+          "e-r3",
+          "e-set1",
+          "e-set2",
+          "e-set3",
+          "end-s-cap-1",
+          "rating-s-cap-1"
+        ]
+      },
+      "derivation": {
+        "all": "Heart-rate and steps permission are denied, so the wrist holds no samples: no event carries a summary field, the session end carries no heart-rate pair and no set blocks, and the phone holds no sensor summary. e-r2 still carries pausedMs 120000, because the pause is the round timer's, not a sensor's.",
+        "rating-s-cap-1": "The user answers 4 at 10:55:20."
+      }
+    },
+    {
+      "name": "prompt-off",
+      "sessionId": "s-cap-1",
+      "sensorPermissions": {
+        "heartRate": true,
+        "steps": true
+      },
+      "timeline": [
+        {
+          "at": "2026-09-25T09:00:00.000Z",
+          "op": "preferences",
+          "generatedAt": "2026-09-25T09:00:00.000Z",
+          "effortRatingPrompt": false
+        },
+        {
+          "at": "2026-09-25T10:00:00.000Z",
+          "op": "start",
+          "sessionId": "s-cap-1",
+          "modality": null,
+          "exercises": [
+            {
+              "sessionExerciseId": "sx-run",
+              "exerciseId": "ex-run",
+              "name": "Run",
+              "capabilities": [
+                "time",
+                "distance"
+              ]
+            },
+            {
+              "sessionExerciseId": "sx-bjj",
+              "exerciseId": "ex-bjj",
+              "name": "Brazilian Jiu-Jitsu",
+              "capabilities": [
+                "time",
+                "rounds"
+              ]
+            },
+            {
+              "sessionExerciseId": "sx-bench",
+              "exerciseId": "ex-bench",
+              "name": "Barbell Bench Press",
+              "capabilities": [
+                "sets",
+                "reps",
+                "load"
+              ]
+            }
+          ],
+          "entryIds": [
+            "e-run",
+            "e-r1",
+            "e-r2",
+            "e-r3",
+            "e-set1",
+            "e-set2",
+            "e-set3"
+          ]
+        },
+        {
+          "at": "2026-09-25T10:05:00.000Z",
+          "op": "hr",
+          "bpm": 120
+        },
+        {
+          "at": "2026-09-25T10:05:00.000Z",
+          "op": "steps",
+          "count": 800
+        },
+        {
+          "at": "2026-09-25T10:10:00.000Z",
+          "op": "hr",
+          "bpm": 140
+        },
+        {
+          "at": "2026-09-25T10:10:00.000Z",
+          "op": "steps",
+          "count": 1600
+        },
+        {
+          "at": "2026-09-25T10:15:00.000Z",
+          "op": "hr",
+          "bpm": 160
+        },
+        {
+          "at": "2026-09-25T10:20:00.000Z",
+          "op": "steps",
+          "count": 3200
+        },
+        {
+          "at": "2026-09-25T10:20:00.000Z",
+          "op": "dial",
+          "metric": "duration",
+          "value": 1200
+        },
+        {
+          "at": "2026-09-25T10:20:00.000Z",
+          "op": "log",
+          "entryId": "e-run"
+        },
+        {
+          "at": "2026-09-25T10:21:00.000Z",
+          "op": "advance",
+          "sessionExerciseId": "sx-bjj"
+        },
+        {
+          "at": "2026-09-25T10:21:00.000Z",
+          "op": "dial",
+          "metric": "round-duration",
+          "value": 300
+        },
+        {
+          "at": "2026-09-25T10:24:30.000Z",
+          "op": "hr",
+          "bpm": 100
+        },
+        {
+          "at": "2026-09-25T10:26:00.000Z",
+          "op": "hr",
+          "bpm": 150
+        },
+        {
+          "at": "2026-09-25T10:28:00.000Z",
+          "op": "hr",
+          "bpm": 170
+        },
+        {
+          "at": "2026-09-25T10:30:00.000Z",
+          "op": "steps",
+          "count": 3300
+        },
+        {
+          "at": "2026-09-25T10:30:00.000Z",
+          "op": "log",
+          "entryId": "e-r1"
+        },
+        {
+          "at": "2026-09-25T10:31:00.000Z",
+          "op": "hr",
+          "bpm": 150
+        },
+        {
+          "at": "2026-09-25T10:32:00.000Z",
+          "op": "pauseRound"
+        },
+        {
+          "at": "2026-09-25T10:33:00.000Z",
+          "op": "hr",
+          "bpm": 100
+        },
+        {
+          "at": "2026-09-25T10:34:00.000Z",
+          "op": "resumeRound"
+        },
+        {
+          "at": "2026-09-25T10:36:00.000Z",
+          "op": "hr",
+          "bpm": 180
+        },
+        {
+          "at": "2026-09-25T10:37:05.000Z",
+          "op": "hr",
+          "bpm": 145
+        },
+        {
+          "at": "2026-09-25T10:37:05.000Z",
+          "op": "log",
+          "entryId": "e-r2"
+        },
+        {
+          "at": "2026-09-25T10:40:00.000Z",
+          "op": "hr",
+          "bpm": 165
+        },
+        {
+          "at": "2026-09-25T10:42:08.000Z",
+          "op": "hr",
+          "bpm": 175
+        },
+        {
+          "at": "2026-09-25T10:42:10.000Z",
+          "op": "log",
+          "entryId": "e-r3"
+        },
+        {
+          "at": "2026-09-25T10:43:00.000Z",
+          "op": "advance",
+          "sessionExerciseId": "sx-bench"
+        },
+        {
+          "at": "2026-09-25T10:43:00.000Z",
+          "op": "dial",
+          "metric": "reps",
+          "value": 5
+        },
+        {
+          "at": "2026-09-25T10:43:00.000Z",
+          "op": "dial",
+          "metric": "weight",
+          "value": 80
+        },
+        {
+          "at": "2026-09-25T10:44:00.000Z",
+          "op": "hr",
+          "bpm": 110
+        },
+        {
+          "at": "2026-09-25T10:45:00.000Z",
+          "op": "log",
+          "entryId": "e-set1"
+        },
+        {
+          "at": "2026-09-25T10:47:00.000Z",
+          "op": "hr",
+          "bpm": 130
+        },
+        {
+          "at": "2026-09-25T10:48:00.000Z",
+          "op": "log",
+          "entryId": "e-set2"
+        },
+        {
+          "at": "2026-09-25T10:50:00.000Z",
+          "op": "hr",
+          "bpm": 0
+        },
+        {
+          "at": "2026-09-25T10:51:00.000Z",
+          "op": "hr",
+          "bpm": 150
+        },
+        {
+          "at": "2026-09-25T10:51:00.000Z",
+          "op": "log",
+          "entryId": "e-set3"
+        },
+        {
+          "at": "2026-09-25T10:55:00.000Z",
+          "op": "end"
+        }
+      ],
+      "expectedEvents": [
+        {
+          "entryId": "e-run",
+          "eventId": "e-run",
+          "kind": "timed",
+          "loggedAt": "2026-09-25T10:20:00.000Z",
+          "sessionExerciseId": "sx-run",
+          "exerciseId": "ex-run",
+          "startedAt": "2026-09-25T10:00:00.000Z",
+          "endedAt": "2026-09-25T10:20:00.000Z",
+          "avgHeartRateBpm": 140,
+          "maxHeartRateBpm": 160,
+          "steps": 3200
+        },
+        {
+          "entryId": "e-r1",
+          "eventId": "e-r1",
+          "kind": "round",
+          "loggedAt": "2026-09-25T10:30:00.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:25:00.000Z",
+          "endedAt": "2026-09-25T10:30:00.000Z",
+          "roundNumber": 1,
+          "avgHeartRateBpm": 160,
+          "maxHeartRateBpm": 170
+        },
+        {
+          "entryId": "e-r2",
+          "eventId": "e-r2",
+          "kind": "round",
+          "loggedAt": "2026-09-25T10:37:05.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:30:00.000Z",
+          "endedAt": "2026-09-25T10:37:00.000Z",
+          "roundNumber": 2,
+          "avgHeartRateBpm": 165,
+          "maxHeartRateBpm": 180,
+          "pausedMs": 120000
+        },
+        {
+          "entryId": "e-r3",
+          "eventId": "e-r3",
+          "kind": "round",
+          "loggedAt": "2026-09-25T10:42:10.000Z",
+          "sessionExerciseId": "sx-bjj",
+          "exerciseId": "ex-bjj",
+          "startedAt": "2026-09-25T10:37:05.000Z",
+          "endedAt": "2026-09-25T10:42:05.000Z",
+          "roundNumber": 3,
+          "avgHeartRateBpm": 155,
+          "maxHeartRateBpm": 165
+        },
+        {
+          "entryId": "e-set1",
+          "eventId": "e-set1",
+          "kind": "set",
+          "loggedAt": "2026-09-25T10:45:00.000Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-bench",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "e-set2",
+          "eventId": "e-set2",
+          "kind": "set",
+          "loggedAt": "2026-09-25T10:48:00.000Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-bench",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "e-set3",
+          "eventId": "e-set3",
+          "kind": "set",
+          "loggedAt": "2026-09-25T10:51:00.000Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-bench",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "end-s-cap-1",
+          "eventId": "end-s-cap-1",
+          "kind": "session_end",
+          "loggedAt": "2026-09-25T10:55:00.000Z",
+          "startedAt": "2026-09-25T10:00:00.000Z",
+          "endedAt": "2026-09-25T10:55:00.000Z",
+          "status": "completed",
+          "avgHeartRateBpm": 143,
+          "maxHeartRateBpm": 180,
+          "setBlockHeartRates": [
+            {
+              "sessionExerciseId": "sx-bench",
+              "exerciseId": "ex-bench",
+              "startedAt": "2026-09-25T10:42:10.000Z",
+              "endedAt": "2026-09-25T10:51:00.000Z",
+              "avgHeartRateBpm": 130,
+              "maxHeartRateBpm": 150
+            }
+          ]
+        }
+      ],
+      "expectedImport": {
+        "session": {
+          "id": "s-cap-1",
+          "startedAt": "2026-09-25T10:00:00.000Z",
+          "endedAt": "2026-09-25T10:55:00.000Z",
+          "modality": null,
+          "sessionFeeling": null
+        },
+        "efforts": [
+          {
+            "effortKind": "timed",
+            "sessionExerciseId": "sx-run",
+            "exerciseId": "ex-run",
+            "timedInstances": [
+              {
+                "entryIndex": 0,
+                "entryId": "e-run",
+                "startedAt": "2026-09-25T10:00:00.000Z",
+                "finishedAt": "2026-09-25T10:20:00.000Z",
+                "actualDurationSecs": 1200
+              }
+            ],
+            "observations": [
+              {
+                "entryIndex": 0,
+                "distanceMeters": 0,
+                "extraWeightKg": 0
+              }
+            ]
+          },
+          {
+            "effortKind": "round",
+            "sessionExerciseId": "sx-bjj",
+            "exerciseId": "ex-bjj",
+            "roundInstances": [
+              {
+                "roundIndex": 0,
+                "entryId": "e-r1",
+                "startedAt": "2026-09-25T10:25:00.000Z",
+                "finishedAt": "2026-09-25T10:30:00.000Z",
+                "totalPausedDurationMs": 0,
+                "actualDurationSecs": 300,
+                "plannedDurationSecs": 300,
+                "completed": true
+              },
+              {
+                "roundIndex": 1,
+                "entryId": "e-r2",
+                "startedAt": "2026-09-25T10:30:00.000Z",
+                "finishedAt": "2026-09-25T10:37:00.000Z",
+                "totalPausedDurationMs": 120000,
+                "actualDurationSecs": 300,
+                "plannedDurationSecs": 300,
+                "completed": true
+              },
+              {
+                "roundIndex": 2,
+                "entryId": "e-r3",
+                "startedAt": "2026-09-25T10:37:05.000Z",
+                "finishedAt": "2026-09-25T10:42:05.000Z",
+                "totalPausedDurationMs": 0,
+                "actualDurationSecs": 300,
+                "plannedDurationSecs": 300,
+                "completed": true
+              }
+            ]
+          },
+          {
+            "effortKind": "set",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-bench",
+            "observations": [
+              {
+                "entryIndex": 0,
+                "entryId": "e-set1",
+                "reps": 5,
+                "weightKg": 80.0
+              },
+              {
+                "entryIndex": 1,
+                "entryId": "e-set2",
+                "reps": 5,
+                "weightKg": 80.0
+              },
+              {
+                "entryIndex": 2,
+                "entryId": "e-set3",
+                "reps": 5,
+                "weightKg": 80.0
+              }
+            ],
+            "extraWeightObservations": false
+          }
+        ],
+        "sensorSummaries": [
+          {
+            "scope": "session",
+            "target": {
+              "sessionId": "s-cap-1"
+            },
+            "avgHeartRateBpm": 143,
+            "maxHeartRateBpm": 180
+          },
+          {
+            "scope": "effort",
+            "target": {
+              "effortKind": "set",
+              "sessionExerciseId": "sx-bench",
+              "exerciseId": "ex-bench"
+            },
+            "avgHeartRateBpm": 130,
+            "maxHeartRateBpm": 150
+          },
+          {
+            "scope": "timed_instance",
+            "target": {
+              "entryId": "e-run"
+            },
+            "avgHeartRateBpm": 140,
+            "maxHeartRateBpm": 160,
+            "steps": 3200
+          },
+          {
+            "scope": "round_instance",
+            "target": {
+              "entryId": "e-r1"
+            },
+            "avgHeartRateBpm": 160,
+            "maxHeartRateBpm": 170
+          },
+          {
+            "scope": "round_instance",
+            "target": {
+              "entryId": "e-r2"
+            },
+            "avgHeartRateBpm": 165,
+            "maxHeartRateBpm": 180
+          },
+          {
+            "scope": "round_instance",
+            "target": {
+              "entryId": "e-r3"
+            },
+            "avgHeartRateBpm": 155,
+            "maxHeartRateBpm": 165
+          }
+        ],
+        "receiptedEntryIds": [
+          "e-run",
+          "e-r1",
+          "e-r2",
+          "e-r3",
+          "e-set1",
+          "e-set2",
+          "e-set3",
+          "end-s-cap-1"
+        ]
+      },
+      "derivation": {
+        "e-run": "Window 10:00:00-10:20:00: loggedAt minus the dialled 1200 s. HR in the window: 120 (10:05:00), 140 (10:10:00), 160 (10:15:00), so avg 140, max 160. Steps: baseline 0 (no steps sample before 10:00:00); the chain 0 -> 800 -> 1600 -> 3200 (10:20:00, window end inclusive) adds 800 + 800 + 1600 = 3200. The 3300 at 10:30:00 is outside the window.",
+        "e-r1": "No round timer is running, so the window is 10:25:00-10:30:00: loggedAt minus the dialled 300 s. HR: 150 (10:26:00), 170 (10:28:00), so avg 160, max 170. The 100 at 10:24:30 is before the window. Rounds carry no steps, even though the steps sample at 10:30:00 lies inside this window and e-r2's.",
+        "e-r2": "The follow-on round timer starts at 10:30:00, planned 300 s, and is paused over [10:32:00, 10:34:00), so it completes at 10:37:00; logged at 10:37:05, the window is 10:30:00-10:37:00 and pausedMs is 120000. HR: 150 (10:31:00), 180 (10:36:00), so avg 165, max 180. The 100 at 10:33:00 falls inside the pause and is excluded; including it would give 143.33.",
+        "e-r3": "The next round timer starts at 10:37:05, planned 300 s, and completes at 10:42:05; logged at 10:42:10, the window is 10:37:05-10:42:05. HR: 145 (10:37:05, window start inclusive; the sample is applied before e-r2's log at the same instant), 165 (10:40:00), so avg 155, max 165. The 175 at 10:42:08 is after the window end.",
+        "e-set1, e-set2, e-set3": "Set events never carry heart rate. Each is 5 reps x 80 kg.",
+        "end-s-cap-1 session": "Session window 10:00:00-10:55:00. Fifteen positive samples sum to 2145, so avg 143; max 180. A round's pause is not a session pause, so the 100 at 10:33:00 counts. The 0 at 10:50:00 is a glitch and is ignored.",
+        "end-s-cap-1 set block sx-bench/ex-bench": "The span starts at the loggedAt of the latest effort entry logged before e-set1 (e-r3, 10:42:10) and ends at e-set3's loggedAt (10:51:00, inclusive). HR: 110 (10:44:00), 130 (10:47:00), 150 (10:51:00), so avg 130, max 150. The 175 at 10:42:08 is before the span; the 0 at 10:50:00 is ignored.",
+        "no rating": "The preferences say effortRatingPrompt false, so the wrist's End owes no prompt: there is no rating-s-cap-1, the phone's sessionFeeling stays null, and eight entries are receipted."
+      }
+    }
+  ]
+}

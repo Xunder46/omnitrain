@@ -50,6 +50,7 @@ public final class SyncProtocolValidator {
     public static let messageTypes = [
         "routines_down",
         "foods_down",
+        "preferences_down",
         "exercise_push",
         "structure_change",
         "observations_up",
@@ -60,6 +61,29 @@ public final class SyncProtocolValidator {
     ]
 
     public static let timerKinds = ["rest", "round", "hold", "elapsed"]
+
+    /// Entry kinds that are not logged against a slot: a nutrition quick-log,
+    /// and the two session-scoped kinds, which describe the whole session.
+    private static let slotlessKinds: Set<String> = [
+        "nutrition_quick_log",
+        "effort_rating",
+        "session_end",
+    ]
+
+    /// The entry kinds each capture field may travel on, in the order the
+    /// semantic layer reports them. The wrist computes these values for the
+    /// entries they describe and no other, so a field anywhere else is a
+    /// sender defect (PROTOCOL.md, "Session capture").
+    private static let captureFieldKinds: [(field: String, kinds: [String])] = [
+        ("steps", ["timed"]),
+        ("avgHeartRateBpm", ["timed", "round", "hold", "session_end"]),
+        ("maxHeartRateBpm", ["timed", "round", "hold", "session_end"]),
+        ("pausedMs", ["round"]),
+        ("setBlockHeartRates", ["session_end"]),
+        ("rating", ["effort_rating"]),
+        ("status", ["session_end"]),
+        ("modality", ["session_end"]),
+    ]
 
     /// Root of every message path, as a constant so `$` never needs escaping.
     private static let root = "$"
@@ -154,6 +178,10 @@ public final class SyncProtocolValidator {
             return snapshotRejections(payload)
         case "observations_up":
             return duplicateEventRejections(payload)
+                + captureRejections(
+                    payload["events"] as? [Any] ?? [],
+                    path: "\(Self.root).payload.events"
+                )
         case "receipt":
             return duplicateAcknowledgementRejections(payload)
         case "routines_down":
@@ -199,8 +227,10 @@ public final class SyncProtocolValidator {
             )
         }
 
+        let entries = payload["entries"] as? [Any] ?? []
         rejections += duplicateSlotRejections(exercises)
-        rejections += entryIdentityRejections(payload["entries"] as? [Any] ?? [])
+        rejections += entryIdentityRejections(entries)
+        rejections += captureRejections(entries, path: "\(Self.root).payload.entries")
         return rejections
     }
 
@@ -228,12 +258,13 @@ public final class SyncProtocolValidator {
     }
 
     /// A workout entry has to say both which exercise it recorded and which slot
-    /// it logged in; a nutrition quick-log is not tied to a slot at all.
+    /// it logged in; a nutrition quick-log, an effort rating, and a session end
+    /// are not tied to a slot at all.
     private func entryIdentityRejections(_ entries: [Any]) -> [SyncProtocolRejection] {
         var withoutIdentity: [String] = []
         for entry in entries {
             guard let record = entry as? [String: Any] else { continue }
-            if (record["kind"] as? String) == "nutrition_quick_log" { continue }
+            if Self.slotlessKinds.contains(record["kind"] as? String ?? "") { continue }
             if record["exerciseId"] == nil || record["sessionExerciseId"] == nil {
                 withoutIdentity.append(record["entryId"] as? String ?? "?")
             }
@@ -248,6 +279,132 @@ public final class SyncProtocolValidator {
                     + "it logged it in; missing on \(withoutIdentity.joined(separator: ", "))"
             )
         ]
+    }
+
+    /// The fields the wrist computes from its own readings, held to the rules
+    /// the schema cannot state: each travels only on the kinds it describes,
+    /// the heart-rate pair travels whole and in order, a round's pause fits
+    /// inside its window, and a session end names each set block once.
+    /// `observations_up` events and snapshot entries are the same entries, so
+    /// both are held to it.
+    private func captureRejections(_ entries: [Any], path: String) -> [SyncProtocolRejection] {
+        var rejections: [SyncProtocolRejection] = []
+        for (index, entry) in entries.enumerated() {
+            guard let record = entry as? [String: Any] else { continue }
+            let at = "\(path)[\(index)]"
+            let kind = record["kind"] as? String ?? ""
+            let entryId = record["entryId"] as? String ?? "?"
+
+            for (field, kinds) in Self.captureFieldKinds
+            where record[field] != nil && !kinds.contains(kind) {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        "\(at).\(field)",
+                        "\(field) is carried only by \(kinds.joined(separator: ", ")) entries; "
+                            + "\(entryId) is a \(kind) entry"
+                    )
+                )
+            }
+
+            rejections += heartRatePairRejections(record, path: at, where: entryId)
+            rejections += pauseWindowRejections(record, path: at, entryId: entryId)
+            rejections += blockHeartRateRejections(record, path: at, entryId: entryId)
+        }
+        return rejections
+    }
+
+    /// An average and a maximum describe the same readings, so one without the
+    /// other is half a measurement, and an average above its maximum is not
+    /// one.
+    private func heartRatePairRejections(
+        _ record: [String: Any],
+        path: String,
+        where subject: String
+    ) -> [SyncProtocolRejection] {
+        let average = numericValue(record["avgHeartRateBpm"])
+        let maximum = numericValue(record["maxHeartRateBpm"])
+        if record["avgHeartRateBpm"] == nil && record["maxHeartRateBpm"] == nil { return [] }
+        guard let average, let maximum else {
+            let present = record["avgHeartRateBpm"] == nil ? "maxHeartRateBpm" : "avgHeartRateBpm"
+            return [
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    path,
+                    "avgHeartRateBpm and maxHeartRateBpm travel together; "
+                        + "\(subject) carries only \(present)"
+                )
+            ]
+        }
+        guard average > maximum else { return [] }
+        return [
+            rejection(
+                SyncRejectionCode.semanticViolation,
+                "\(path).avgHeartRateBpm",
+                "avgHeartRateBpm must not exceed maxHeartRateBpm, but does on \(subject)"
+            )
+        ]
+    }
+
+    /// A round cannot have been paused for longer than it lasted.
+    private func pauseWindowRejections(
+        _ record: [String: Any],
+        path: String,
+        entryId: String
+    ) -> [SyncProtocolRejection] {
+        guard let pausedMs = numericValue(record["pausedMs"]),
+              let startedAt = try? parseUtcIso(record["startedAt"]),
+              let endedAt = try? parseUtcIso(record["endedAt"])
+        else { return [] }
+
+        // Whole milliseconds, as the wire writes them: the rounding absorbs the
+        // binary noise a `Date` difference carries.
+        let windowMs = (endedAt.timeIntervalSince(startedAt) * 1000).rounded()
+        guard pausedMs > windowMs else { return [] }
+        return [
+            rejection(
+                SyncRejectionCode.semanticViolation,
+                "\(path).pausedMs",
+                "pausedMs must not exceed the time between startedAt and endedAt, "
+                    + "but does on \(entryId)"
+            )
+        ]
+    }
+
+    /// A set block is every set logged for one slot and exercise, so a session
+    /// end names each block once, and each block's pair is a measurement.
+    private func blockHeartRateRejections(
+        _ record: [String: Any],
+        path: String,
+        entryId: String
+    ) -> [SyncProtocolRejection] {
+        guard let blocks = record["setBlockHeartRates"] as? [Any] else { return [] }
+
+        var rejections: [SyncProtocolRejection] = []
+        var seen = Set<String>()
+        var repeated: [String] = []
+        for (index, item) in blocks.enumerated() {
+            guard let block = item as? [String: Any] else { continue }
+            let key = "\(block["sessionExerciseId"] as? String ?? "?")/"
+                + "\(block["exerciseId"] as? String ?? "?")"
+            if !seen.insert(key).inserted { repeated.append(key) }
+            rejections += heartRatePairRejections(
+                block,
+                path: "\(path).setBlockHeartRates[\(index)]",
+                where: "\(entryId) set block \(key)"
+            )
+        }
+        if !repeated.isEmpty {
+            rejections.append(
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    "\(path).setBlockHeartRates",
+                    "a set block may appear once per sessionExerciseId and "
+                        + "exerciseId pair; repeated \(repeated.joined(separator: ", ")) on \(entryId)"
+                )
+            )
+        }
+        return rejections
     }
 
     /// One eventId may appear once per message — the idempotency key has to mean
@@ -674,8 +831,13 @@ func matchesType(_ value: Any?, _ expected: String) -> Bool {
     case "array": return value is [Any]
     case "string": return value is String
     case "integer":
-        guard let number = numericValue(value) else { return false }
-        return number == number.rounded()
+        // A JSON `3200.0` parses to a double, and the Dart validator's
+        // `value is int` refuses it. `number == number.rounded()` alone would
+        // take it, so a whole-number double would pass on the wrist and be
+        // refused by the phone — the two validators must agree on the bytes
+        // (F-10).
+        guard let number = value as? NSNumber, !isBoolean(number) else { return false }
+        return !CFNumberIsFloatType(number)
     case "number": return numericValue(value) != nil
     case "boolean": return isBoolean(value)
     case "null": return value == nil || value is NSNull
@@ -716,8 +878,12 @@ func describe(_ value: Any?) -> String {
     case let array as [Any]: return "a list of \(array.count)"
     case let object as [String: Any]: return "an object with \(object.count) fields"
     case let number as NSNumber:
-        return isBoolean(number)
-            ? (number.boolValue ? "true" : "false")
+        if isBoolean(number) { return number.boolValue ? "true" : "false" }
+        // A float-typed number keeps its fraction, as the Dart validator's
+        // `jsonEncode` renders it: a JSON `3200.0` reads back as `3200.0` on
+        // both stacks, so a refusal quotes the bytes that arrived (F-10, N6).
+        return CFNumberIsFloatType(number)
+            ? String(number.doubleValue)
             : trim(number.doubleValue)
     default: return "\(value!)"
     }

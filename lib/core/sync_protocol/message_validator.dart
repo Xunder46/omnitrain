@@ -105,6 +105,7 @@ class SyncProtocolValidator {
   static const List<String> messageTypes = [
     'routines_down',
     'foods_down',
+    'preferences_down',
     'exercise_push',
     'structure_change',
     'observations_up',
@@ -115,6 +116,29 @@ class SyncProtocolValidator {
   ];
 
   static const List<String> timerKinds = ['rest', 'round', 'hold', 'elapsed'];
+
+  /// Entry kinds that are not logged against a slot: a nutrition quick-log,
+  /// and the two session-scoped kinds, which describe the whole session.
+  static const Set<String> _slotlessKinds = {
+    'nutrition_quick_log',
+    'effort_rating',
+    'session_end',
+  };
+
+  /// The entry kinds each capture field may travel on, in the order the
+  /// semantic layer reports them. The wrist computes these values for the
+  /// entries they describe and no other, so a field anywhere else is a sender
+  /// defect (PROTOCOL.md, "Session capture").
+  static const Map<String, List<String>> _captureFieldKinds = {
+    'steps': ['timed'],
+    'avgHeartRateBpm': ['timed', 'round', 'hold', 'session_end'],
+    'maxHeartRateBpm': ['timed', 'round', 'hold', 'session_end'],
+    'pausedMs': ['round'],
+    'setBlockHeartRates': ['session_end'],
+    'rating': ['effort_rating'],
+    'status': ['session_end'],
+    'modality': ['session_end'],
+  };
 
   /// Every code this validator can emit. PROTOCOL.md documents each one, and
   /// the fixture test fails if a code is invented without being documented.
@@ -250,7 +274,13 @@ class SyncProtocolValidator {
       case 'session_snapshot':
         return _snapshotRejections(payload);
       case 'observations_up':
-        return _duplicateEventRejections(payload);
+        return [
+          ..._duplicateEventRejections(payload),
+          ..._captureRejections(
+            payload['events']! as List,
+            '$_root.payload.events',
+          ),
+        ];
       case 'receipt':
         return _duplicateAcknowledgementRejections(payload);
       case 'routines_down':
@@ -300,8 +330,10 @@ class SyncProtocolValidator {
       );
     }
 
+    final entries = payload['entries']! as List;
     rejections.addAll(_duplicateSlotRejections(exercises));
-    rejections.addAll(_entryIdentityRejections(payload['entries']! as List));
+    rejections.addAll(_entryIdentityRejections(entries));
+    rejections.addAll(_captureRejections(entries, '$_root.payload.entries'));
 
     return rejections;
   }
@@ -331,12 +363,13 @@ class SyncProtocolValidator {
   }
 
   /// A workout entry has to say both which exercise it recorded and which slot
-  /// it logged in; a nutrition quick-log is not tied to a slot at all.
+  /// it logged in; a nutrition quick-log, an effort rating, and a session end
+  /// are not tied to a slot at all.
   List<SyncProtocolRejection> _entryIdentityRejections(List<Object?> entries) {
     final withoutIdentity = <String>[];
     for (final entry in entries) {
       final record = _asObject(entry);
-      if (record['kind'] == 'nutrition_quick_log') continue;
+      if (_slotlessKinds.contains(record['kind'])) continue;
       if (!record.containsKey('exerciseId') ||
           !record.containsKey('sessionExerciseId')) {
         withoutIdentity.add(record['entryId']! as String);
@@ -352,6 +385,142 @@ class SyncProtocolValidator {
             'it logged it in; missing on ${withoutIdentity.join(', ')}',
       ),
     ];
+  }
+
+  /// The fields the wrist computes from its own readings, held to the rules the
+  /// schema cannot state: each travels only on the kinds it describes, the
+  /// heart-rate pair travels whole and in order, a round's pause fits inside
+  /// its window, and a session end names each set block once. `observations_up`
+  /// events and snapshot entries are the same entries, so both are held to it.
+  List<SyncProtocolRejection> _captureRejections(
+    List<Object?> entries,
+    String path,
+  ) {
+    final rejections = <SyncProtocolRejection>[];
+    for (var index = 0; index < entries.length; index++) {
+      final entry = _asObject(entries[index]);
+      final at = '$path[$index]';
+      final kind = entry['kind']! as String;
+      final entryId = entry['entryId']! as String;
+
+      for (final MapEntry(key: field, value: kinds)
+          in _captureFieldKinds.entries) {
+        if (!entry.containsKey(field) || kinds.contains(kind)) continue;
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: '$at.$field',
+            message:
+                '$field is carried only by ${kinds.join(', ')} entries; '
+                '$entryId is a $kind entry',
+          ),
+        );
+      }
+
+      rejections.addAll(_heartRatePairRejections(entry, at, entryId));
+      rejections.addAll(_pauseWindowRejections(entry, at, entryId));
+      rejections.addAll(_blockHeartRateRejections(entry, at, entryId));
+    }
+    return rejections;
+  }
+
+  /// An average and a maximum describe the same readings, so one without the
+  /// other is half a measurement, and an average above its maximum is not one.
+  List<SyncProtocolRejection> _heartRatePairRejections(
+    Map<String, Object?> record,
+    String path,
+    String where,
+  ) {
+    final average = record['avgHeartRateBpm'];
+    final maximum = record['maxHeartRateBpm'];
+    if (average == null && maximum == null) return const [];
+    if (average is! num || maximum is! num) {
+      final present = average == null ? 'maxHeartRateBpm' : 'avgHeartRateBpm';
+      return [
+        SyncProtocolRejection(
+          code: _semanticViolation,
+          path: path,
+          message:
+              'avgHeartRateBpm and maxHeartRateBpm travel together; '
+              '$where carries only $present',
+        ),
+      ];
+    }
+    if (average <= maximum) return const [];
+    return [
+      SyncProtocolRejection(
+        code: _semanticViolation,
+        path: '$path.avgHeartRateBpm',
+        message:
+            'avgHeartRateBpm must not exceed maxHeartRateBpm, but does on '
+            '$where',
+      ),
+    ];
+  }
+
+  /// A round cannot have been paused for longer than it lasted.
+  List<SyncProtocolRejection> _pauseWindowRejections(
+    Map<String, Object?> entry,
+    String path,
+    String entryId,
+  ) {
+    final pausedMs = entry['pausedMs'];
+    final startedAt = DateTime.tryParse(entry['startedAt'] as String? ?? '');
+    final endedAt = DateTime.tryParse(entry['endedAt'] as String? ?? '');
+    if (pausedMs is! num || startedAt == null || endedAt == null) {
+      return const [];
+    }
+    if (pausedMs <= endedAt.difference(startedAt).inMilliseconds) {
+      return const [];
+    }
+    return [
+      SyncProtocolRejection(
+        code: _semanticViolation,
+        path: '$path.pausedMs',
+        message:
+            'pausedMs must not exceed the time between startedAt and endedAt, '
+            'but does on $entryId',
+      ),
+    ];
+  }
+
+  /// A set block is every set logged for one slot and exercise, so a session
+  /// end names each block once, and each block's pair is a measurement.
+  List<SyncProtocolRejection> _blockHeartRateRejections(
+    Map<String, Object?> entry,
+    String path,
+    String entryId,
+  ) {
+    final blocks = entry['setBlockHeartRates'];
+    if (blocks is! List) return const [];
+
+    final rejections = <SyncProtocolRejection>[];
+    final seen = <String>{};
+    final repeated = <String>[];
+    for (var index = 0; index < blocks.length; index++) {
+      final block = _asObject(blocks[index]);
+      final key = '${block['sessionExerciseId']}/${block['exerciseId']}';
+      if (!seen.add(key)) repeated.add(key);
+      rejections.addAll(
+        _heartRatePairRejections(
+          block,
+          '$path.setBlockHeartRates[$index]',
+          '$entryId set block $key',
+        ),
+      );
+    }
+    if (repeated.isNotEmpty) {
+      rejections.add(
+        SyncProtocolRejection(
+          code: _semanticViolation,
+          path: '$path.setBlockHeartRates',
+          message:
+              'a set block may appear once per sessionExerciseId and '
+              'exerciseId pair; repeated ${repeated.join(', ')} on $entryId',
+        ),
+      );
+    }
+    return rejections;
   }
 
   /// One eventId may appear once per message — the idempotency key has to mean

@@ -9,6 +9,9 @@
 //   S-005 the timer's end moment is the same           → `S-005 ...`
 //   S-006 joining a phone session from the watch       → `S-006 ...`
 //   S-007 forced redelivery produces no duplicates     → `S-007 ...`
+//   S-251 a snapshot of another session replaces it    → `S-251 ...`
+//         (Stats PR 2, `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//         D-130; S-252 is the S-008 group, which stays unchanged)
 //
 // Two implementations, one register. The phone's live mirror
 // (`lib/state/watch/live_session_mirror_state.dart`) and the watch's engine
@@ -831,6 +834,91 @@ void main() {
 
       expect(session._watchTransport.sent.last['type'], 'session_snapshot');
       expect(_slotIds(session.engine), ['sx-bench']);
+    });
+  });
+
+  // D-130. A second workout the wrist started is not a continuation of the one
+  // the phone holds: the phone adopts it rather than re-asserting the old one
+  // (which would yank the wrist back to it), and the record the phone closed for
+  // the old one is not the new one's.
+  group('S-251 a snapshot naming another session replaces the held one', () {
+    test('S-251 the phone adopts it, answers nothing, and a later Finish '
+        'closes the new session', () async {
+      final clock = TestClock(DateTime.utc(2026, 9, 25, 9));
+      var ids = 0;
+      final transport = _RecordingTransport();
+      final phone = LiveSessionMirrorState(
+        transport: transport,
+        snapshot: _snapshotPayload(
+          sessionId: 's-prev',
+          exercises: [_slot('sx-p')],
+          entries: [
+            _setEvent(
+              TestClock(DateTime.utc(2026, 9, 25, 8, 30)),
+              entryId: 'e-p1',
+              slot: 'sx-p',
+            ),
+          ],
+        ),
+        validator: loadProtocolValidator(),
+        clock: clock.call,
+        idFactory: () => 'msg-${++ids}',
+      );
+
+      // The phone's own Finish closes s-prev and leaves its record.
+      final previous = await phone.completeSession();
+      expect(previous['sessionId'], 's-prev');
+      expect(phone.status, WatchSessionStatus.completed);
+      final sentBefore = transport.sent.length;
+
+      final outcome = await phone.receive(
+        _snapshot(
+          sessionId: 's-next',
+          exercises: [_slot('sx-b')],
+          entries: [
+            _setEvent(
+              TestClock(DateTime.utc(2026, 9, 25, 9, 5)),
+              entryId: 'e-b1',
+              slot: 'sx-b',
+            ),
+          ],
+          origin: 'watch',
+        ),
+      );
+
+      expect(outcome, MirrorOutcome.applied);
+      expect(phone.sessionId, 's-next', reason: 'S-251 the mirror is on s-next');
+      expect(phone.status, WatchSessionStatus.active);
+      expect(_slotIdsIn(phone.state['exercises']), ['sx-b']);
+      expect(
+        [for (final entry in phone.entries) entry['entryId']],
+        ['e-b1'],
+        reason: 'S-251 entries never merge across sessions',
+      );
+      expect(
+        phone.completedRecord,
+        isNull,
+        reason: 'S-251 the record the phone closed belongs to s-prev',
+      );
+      expect(
+        transport.sent.length,
+        sentBefore,
+        reason:
+            'S-251 a snapshot of another session is adopted, never answered',
+      );
+
+      clock.advance(const Duration(minutes: 30));
+      final next = await phone.completeSession();
+      expect(
+        next['sessionId'],
+        's-next',
+        reason: 'S-251 a later Finish closes the adopted session',
+      );
+      expect([
+        for (final entry in objectsOf(next['entries'])) entry['entryId'],
+      ], ['e-b1']);
+      expect(transport.sent.last['type'], 'session_lifecycle');
+      expect(transport.sent.last['sessionId'], 's-next');
     });
   });
 

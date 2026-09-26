@@ -105,7 +105,7 @@ before committing.
 
 ### `MeasurementSparkline`
 
-**File**: `lib/widgets/chart/measurement_sparkline.dart`
+**File**: `lib/features/profile/widgets/measurement_sparkline.dart`
 
 Compact trend preview inside each profile measurement card. Renders a single-value fallback when
 only one entry exists and a line-with-dots chart otherwise.
@@ -118,7 +118,7 @@ Tapping the chart opens the measurement's history sheet; the `+` control opens t
 
 ### `HomeLogoButton`
 
-**File**: `lib/features/home/widgets/home_logo_button.dart`
+**File**: `lib/widgets/common/home_logo_button.dart`
 
 The home-screen logo, which doubles as the maintenance-sheet opener. Its transparent padding
 extends the gesture bounds beyond the visible circle so the target clears the platform minimum

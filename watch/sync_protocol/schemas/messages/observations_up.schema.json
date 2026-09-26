@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/observations_up.schema.json",
   "title": "observations_up",
-  "description": "Watch → phone. Append-only observations. Every event is self-contained (it carries everything needed to materialise an entry) and idempotent (delivering it twice must not create a second entry).",
+  "description": "Watch → phone. Append-only observations. Every event is self-contained (it carries everything needed to materialise an entry) and idempotent (delivering it twice must not create a second entry). effort_rating and session_end are session-scoped: they describe the whole session and name no slot and no exercise.",
   "allOf": [
     { "$ref": "envelope.schema.json" },
     { "required": ["sessionId"] },
@@ -74,6 +74,14 @@
             {
               "required": ["kind", "foodId"],
               "properties": { "kind": { "const": "nutrition_quick_log" } }
+            },
+            {
+              "required": ["kind", "rating"],
+              "properties": { "kind": { "const": "effort_rating" } }
+            },
+            {
+              "required": ["kind", "startedAt", "endedAt", "status"],
+              "properties": { "kind": { "const": "session_end" } }
             }
           ]
         }

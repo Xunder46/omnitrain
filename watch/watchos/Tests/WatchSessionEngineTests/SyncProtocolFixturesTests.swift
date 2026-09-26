@@ -12,6 +12,11 @@
 //  `test/sync_protocol_fixtures_test.dart` — structural reconciliation is the
 //  receiver's job, delivered for the watch by the live-session items.
 //
+//  Also S-207 of `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`:
+//  every event `watch/contract/watch_capture_contract.json` expects the wrist to
+//  emit is one the protocol accepts — the same verdict the Dart suite
+//  (`test/watch_capture_contract_conformance_test.dart`) reaches on it.
+//
 
 import XCTest
 
@@ -134,6 +139,41 @@ final class SyncProtocolFixturesTests: XCTestCase {
                 harness.emitted.filter { $0["type"] as? String == "observations_up" }.isEmpty,
                 "a refused event is never emitted"
             )
+        }
+    }
+
+    func testS207EveryCaptureContractEventConformsAsTheWristSendsIt() throws {
+        let contract = try Fixtures.captureContract()
+        let cases = try XCTUnwrap(contract["cases"] as? [[String: Any]])
+        XCTAssertEqual(
+            cases.compactMap { $0["name"] as? String },
+            ["full", "no-sensors", "prompt-off"]
+        )
+
+        for captureCase in cases {
+            let name = try XCTUnwrap(captureCase["name"] as? String)
+            let sessionId = try XCTUnwrap(captureCase["sessionId"] as? String)
+            let events = try XCTUnwrap(captureCase["expectedEvents"] as? [[String: Any]])
+            XCTAssertFalse(events.isEmpty, "S-207 \(name) expects no events")
+
+            for event in events {
+                let entryId = event["entryId"] as? String ?? "?"
+                // One event per message, the way the wrist sends it.
+                let envelope: [String: Any] = [
+                    "protocolVersion": SyncProtocolValidator.protocolVersion,
+                    "messageId": "msg-\(entryId)",
+                    "sessionId": sessionId,
+                    "type": "observations_up",
+                    "origin": "watch",
+                    "sentAt": event["loggedAt"] ?? NSNull(),
+                    "payload": ["events": [event]],
+                ]
+                let rejections = validator.validateEnvelope(envelope)
+                XCTAssertTrue(
+                    rejections.isEmpty,
+                    "S-207 \(name): \(entryId) must conform, got \(rejections)"
+                )
+            }
         }
     }
 

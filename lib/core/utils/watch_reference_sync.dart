@@ -1,10 +1,12 @@
 // The phone's reference data on its way to the wrist: the lists that let the
-// watch work while the phone is in another room.
+// watch work while the phone is in another room, and the settings it honours.
 //
 // Plans: `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`
-// (scenario S-003, the foods), and
+// (scenario S-003, the foods),
 // `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md` (Phase 3,
-// scenario S-003/S-007, the routines).
+// scenario S-003/S-007, the routines), and
+// `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md` (D-113,
+// scenario S-253, the preferences).
 //
 // Building a message and carrying it are separate jobs, so nothing here sends
 // anything: a message is built and handed back, and whoever owns the transport
@@ -287,6 +289,34 @@ abstract final class WatchReferenceSync {
         ? (number * Duration.millisecondsPerSecond).round()
         : number;
   }
+
+  /// The phone's settings the wrist honours, as the `preferences_down` message
+  /// it reads — today, whether a session ended on the wrist asks for the
+  /// session effort rating ([effortRatingPrompt]).
+  ///
+  /// Its own message rather than a field on `routines_down`, because
+  /// [buildRoutinesDown] answers null for a phone with no routines, and a
+  /// setting riding on it would then never reach the wrist (D-113).
+  ///
+  /// The wrist keeps the copy with the latest [generatedAt], and on a tie the
+  /// one it received later. The message id follows the content for that
+  /// reason: a rebuild of the same setting is the same message, while a
+  /// different setting stamped in the same millisecond is a different one
+  /// that must not be dropped as a redelivery.
+  static Map<String, Object?> buildPreferencesDown({
+    required bool effortRatingPrompt,
+    required DateTime generatedAt,
+  }) => phoneEnvelope(
+    type: 'preferences_down',
+    messageId:
+        'msg-preferences-${generatedAt.toUtc().millisecondsSinceEpoch}-'
+        '${effortRatingPrompt ? 'on' : 'off'}',
+    sentAt: generatedAt,
+    payload: {
+      'generatedAt': utcIso(generatedAt),
+      'effortRatingPrompt': effortRatingPrompt,
+    },
+  );
 
   /// The phone's foods, as the `foods_down` message the wrist reads.
   ///

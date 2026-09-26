@@ -60,11 +60,17 @@ public protocol WatchSensorSource {
 
     func locationPermission() async -> WatchSensorPermission
 
+    func stepsPermission() async -> WatchSensorPermission
+
     /// Beats per minute, as the sensor reports them.
     func heartRate() -> AsyncStream<Double>
 
     /// Location fixes, whenever the platform produces one.
     func location() -> AsyncStream<WatchLocationFix>
+
+    /// The platform's step count since its workout began, cumulative: each
+    /// value supersedes the one before (`WatchSensorKind.steps`).
+    func steps() -> AsyncStream<Double>
 }
 
 /// What the sensors are reading right now, resolved together because a readout
@@ -96,6 +102,10 @@ public final class WatchSensorRecorder {
 
     private var beatTask: Task<Void, Never>?
     private var fixTask: Task<Void, Never>?
+    private var stepsTask: Task<Void, Never>?
+
+    /// Every write this recorder makes, one at a time and in arrival order.
+    private let writes = WatchSensorWrites()
 
     /// Whether a location subscription is live. False for work that has no
     /// distance, and false when the user refused permission.
@@ -124,11 +134,12 @@ public final class WatchSensorRecorder {
     /// Starts listening to whatever `session`'s modality calls for.
     ///
     /// Heart rate is recorded for every session that has a sensor to record it
-    /// with. Location is recorded only where the modality can cover distance, so
-    /// a lift does not drain the battery warming up a radio it will never use
-    /// (S-001, S-002).
+    /// with, and so are steps. Location is recorded only where the modality can
+    /// cover distance, so a lift does not drain the battery warming up a radio
+    /// it will never use (S-001, S-002).
     public func start(_ session: WatchSessionRecord) async {
         await startHeartRate()
+        await startSteps()
 
         guard WatchGpsPolicy.isRequired(session.modality) else { return }
         guard await source.locationPermission() == .granted else { return }
@@ -148,22 +159,39 @@ public final class WatchSensorRecorder {
     public func stop() async {
         beatTask?.cancel()
         fixTask?.cancel()
+        stepsTask?.cancel()
         beatTask = nil
         fixTask = nil
+        stepsTask = nil
 
         guard isMeasuringDistance else { return }
         isMeasuringDistance = false
 
-        guard let measured = engine.newestSensorSample(WatchSensorKind.gps)?.value else {
-            return
-        }
-        await engine.appendSensorSample(kind: WatchSensorKind.distance, value: measured)
+        // Settled behind any fix already on its way in, so the total is the
+        // last fix that arrived rather than the last one written.
+        await writes.enqueue { [engine] in
+            guard let measured = engine.newestSensorSample(WatchSensorKind.gps)?.value else {
+                return
+            }
+            await engine.appendSensorSample(kind: WatchSensorKind.distance, value: measured)
+        }.value
     }
 
     private func startHeartRate() async {
         guard await source.heartRatePermission() == .granted else { return }
         beatTask = consume(source.heartRate()) { [weak self] beats in
             await self?.record(kind: WatchSensorKind.heartRate, value: beats)
+        }
+    }
+
+    /// Steps are counted for every session the user allows it for, whatever its
+    /// modality: a timed effort can happen in any session, and a timed entry is
+    /// what carries a step total (D-125). They feed no readout — `readings` is
+    /// the beat and the distance, as before.
+    private func startSteps() async {
+        guard await source.stepsPermission() == .granted else { return }
+        stepsTask = consume(source.steps()) { [weak self] count in
+            await self?.record(kind: WatchSensorKind.steps, value: count)
         }
     }
 
@@ -176,8 +204,39 @@ public final class WatchSensorRecorder {
         Task { for await element in stream { await onElement(element) } }
     }
 
+    /// Stores one reading, stamped when it arrived.
     private func record(kind: String, value: Double) async {
-        await engine.appendSensorSample(kind: kind, value: value, recordedAt: clock())
+        let recordedAt = clock()
+        await writes.enqueue { [engine] in
+            await engine.appendSensorSample(kind: kind, value: value, recordedAt: recordedAt)
+        }.value
+    }
+}
+
+/// A chain of writes, each starting only once the one before it has finished.
+///
+/// Every sensor streams on a task of its own, and since steps are counted in
+/// every session there are always at least two streams — three on a run —
+/// while the engine and its store are built for one writer. Chaining the
+/// recorder's writes keeps them in arrival order and never concurrent, however
+/// the platform happens to deliver them.
+final class WatchSensorWrites {
+    private let lock = NSLock()
+    private var tail: Task<Void, Never>?
+
+    /// Runs `work` after every write enqueued before it; await the returned
+    /// task to wait for this one.
+    func enqueue(_ work: @escaping () async -> Void) -> Task<Void, Never> {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let previous = tail
+        let next = Task {
+            await previous?.value
+            await work()
+        }
+        tail = next
+        return next
     }
 }
 

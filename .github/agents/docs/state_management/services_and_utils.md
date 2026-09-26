@@ -272,6 +272,20 @@ apply it, then `notifyListeners()`. Phone-originated messages are applied
 locally *before* they go to the transport, because the session the user is
 looking at has to be the session the watch is told about.
 
+**A snapshot naming another session is a new workout, not a disagreement.** It
+replaces the held session wholesale, entries included, clears
+`completedRecord`, and is never answered; re-assertion is for a snapshot of the
+held session only (PROTOCOL.md, "Idempotency and reconciliation"). Answering it
+would pull the wrist back to a session it had finished, and merging would file
+one workout's entries under another. Verified by `test/live_mirroring_test.dart`
+(`S-251`); same-session re-assertion by its `S-008` group.
+
+**Session-scoped entries are held, not counted.** The mirror keeps the wrist's
+`effort_rating` and `session_end` entries (`sessionScopedKinds`), because a
+snapshot it re-asserts must carry every entry. `effortEntries` and
+`effortEntriesOf` are what a surface lists and counts as logged work. Verified
+by `test/live_session_capture_entries_test.dart` (`S-254`).
+
 `WatchMirrorTransport` is the phone's half of the transport contract: `send`
 and `requestSnapshot`. Per-platform carriers (WatchConnectivity, the Wear OS
 data layer) implement it; it is fire-and-forget with retries, and the protocol's
@@ -305,10 +319,11 @@ ordering does not depend on which device logged what.
 
 Two rules the bridge depends on, both already in `PROTOCOL.md`:
 
-- **A phone holding no ladder has no shape to assert.** When a snapshot arrives
-  reporting a different session and the phone's own ladder is empty, the phone
-  adopts the snapshot instead of answering with an empty one — otherwise joining
-  a wrist-started session would wipe it.
+- **A phone holding no ladder has no shape to assert.** A snapshot of the held
+  session is adopted, not answered, while the phone's own ladder is empty —
+  answering with an empty ladder would wipe the wrist's. (A session started on
+  the wrist names a session the phone does not hold, so the switch rule above
+  adopts it.)
 - **A correction is addressed by `entryId`, never by the slot.** What a slot
   holds can change under a logged entry, and history records what happened.
 
@@ -378,8 +393,8 @@ A change to the ordering on either platform therefore fails the other's suite.
 
 **File**: `lib/core/utils/watch_reference_sync.dart`
 
-Builds the reference-data messages the phone sends down — `foods_down` and
-`routines_down` — and nothing else. Building and carrying are separate jobs, so
+Builds the reference-data messages the phone sends down — `foods_down`,
+`routines_down` and `preferences_down` — and nothing else. Building and carrying are separate jobs, so
 it hands back an envelope and owns no transport; the foods' order is the phone's
 own Foods I Eat order rather than a rule the wrist has to be told, and the energy
 per serving comes from `calculateCalories` rather than being derived a second
@@ -407,8 +422,15 @@ decision rather than the wire's:
   milliseconds; metrics the wire has no key for (RPE, rest, band assist) are not
   sent, because the schema carries no field for them.
 
-Verified by `test/watch_reference_sync_test.dart` (S-003, S-004, S-007) and
-`test/watch_nutrition_quick_log_test.dart` (S-003, for the foods half).
+`preferences_down` is its own message rather than a field on `routines_down`
+because `buildRoutinesDown` answers null for a phone with no routines, and a
+setting riding on it would then never reach the wrist. Its message id follows
+its content as well as its `generatedAt`: the wrist keeps the newest copy and a
+tie goes to the later-received one, so two different settings stamped in the
+same millisecond must not share a delivery key.
+
+Verified by `test/watch_reference_sync_test.dart` (S-003, S-004, S-007, S-253)
+and `test/watch_nutrition_quick_log_test.dart` (S-003, for the foods half).
 
 ### The watch transport
 
@@ -454,29 +476,37 @@ over an in-memory two-ended channel.
 **File**: `lib/state/watch/watch_sync_request_handler.dart`
 
 Answers the frames that are requests rather than protocol messages: `routines`
-builds `routines_down` through `WatchReferenceSync` and sends it, `snapshot`
+is answered with `preferences_down` first and always, then with `routines_down`
+when the phone holds any, both built through `WatchReferenceSync`; `snapshot`
 re-asserts the phone's session. It is separate from `WatchIncomingRouter`
 because the two answer different kinds of frame, and merging them would make a
 transport detail a protocol one.
 
 **Nothing here answers a request the wrist has not made.** There is no phone-side
-schedule and no launch-time push. A phone holding no routines, or no session,
-answers nothing at all: the wrist keeps the copy it has, and an empty answer
-would be a state it never asked for.
+schedule and no launch-time push, which is why the preferences ride every
+`routines` request: a setting changed on the phone reaches the wrist at the
+wrist's next sync. The value is `SettingsState`'s own toggle, never a re-read of
+the stored preference. A phone holding no routines sends no `routines_down`,
+and one holding no session answers a `snapshot` request with nothing: the wrist
+keeps the copy it has, and an empty answer would be a state it never asked for.
 
-Verified by `test/watch_transport_test.dart` (S-003): a seeded routine is built
-and sent on request, a phone with nothing to send stays quiet, the wrist can ask
-for the phone's session, and a phone with no ladder answers that with silence.
+Verified by `test/watch_transport_test.dart` (the `S-003` and `S-253` groups).
 
 ### `createWatchSync` — the phone's watch graph
 
 **File**: `lib/state/watch/watch_sync_wiring.dart`
 
-The one place the phone's watch graph is built: transport, `LiveSessionMirrorState`,
-`WatchIncomingRouter` (mirror + nutrition bridge), and `WatchSyncRequestHandler`,
-with the transport's inbound handler dispatching between the last two. It returns
-null when the platform has no watch, which is what keeps the environment contract
-intact — `main.dart` passes `liveSession` to `MyApp` only when this answered.
+The one place the phone's watch graph is built: transport, `WatchSessionInbox`,
+`LiveSessionMirrorState` (whose transport stages the phone's corrections in the
+inbox), `WatchIncomingRouter` (inbox + mirror + nutrition bridge), and
+`WatchSyncRequestHandler` (which reads the wrist-facing settings from
+`SettingsState`), with the transport's inbound handler dispatching between the
+last two. It resumes any import the phone had not run when it last stopped;
+see [Watch Session Capture](../watch_session_capture.md). It returns a
+`WatchSyncGraph` — the mirror, and the inbox behind the one capability a screen
+needs, `WatchSessionRatings` — or null when the platform has no watch, which is
+what keeps the environment contract intact: `main.dart` passes `liveSession` and
+`watchSessionRatings` to `MyApp` only when this answered.
 
 Two construction details are load-bearing:
 
@@ -497,14 +527,20 @@ why the id is valid rather than empty.
 **File**: `lib/state/watch/watch_incoming_router.dart`
 
 The one place a message arriving from a wrist is handed to its owners:
-`LiveSessionMirrorState` and `WatchNutritionLogBridge`. Both are asked about
-every message, and each answers for itself which messages are its own — the
-mirror by session identity, the day log by observation kind — so a message that
-belongs to both is not forced to pick one, and a caller does not have to know
-that a quick-log can be session news and food intake at once. Verified by
+`WatchSessionInbox`, `LiveSessionMirrorState` and `WatchNutritionLogBridge`.
+Each is asked about every message, and each answers for itself which messages
+are its own — the inbox by entry kind, the mirror by session identity, the day
+log by observation kind — so a message that belongs to several is not forced to
+pick one, and a caller does not have to know that a quick-log can be session
+news and food intake at once. Verified by
 `test/watch_nutrition_quick_log_test.dart` (S-002), whose cases cover a
 standalone quick-log, a session's own message, and a quick-log taken with a
 session running.
+
+The inbox is asked first, so what a wrist session will become in history is
+durable before anything else can answer the message; see
+[Watch Session Capture](../watch_session_capture.md). Verified by
+`test/watch_session_import_test.dart` (`S-261`).
 
 ### `WatchNutritionLogBridge`
 
@@ -551,7 +587,8 @@ enforcement at the storage API`).
 check and the conformance verdict, including the case of a receiver that carries
 no schemas — a receiver that cannot read is not a receiver that should refuse.
 Every receiver that takes a message from a peer goes through it: the live
-mirror, the nutrition log bridge, and each engine's `_requireConformingIncoming`
+mirror, the nutrition log bridge, the watch session inbox, and each engine's
+`_requireConformingIncoming`
 / `requireConformingIncoming`, which differ only in what they do with a
 refusal. Verified by `test/sync_protocol_fixtures_test.dart` (`the receiver
 gate`), which exercises the shared gate directly, including its no-schema
@@ -572,7 +609,9 @@ cannot call a function. Verified by the protocol fixture suites.
 
 Both watch clients run the same layer: `lib/watch/sensors/`
 and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
-`WatchSensorRecording.swift`.
+`WatchSensorRecording.swift`. The steps sensor and the summaries computed from the
+readings (`WatchSensorSummaries.swift`) exist only in the watchOS package:
+`lib/watch/` records no steps and computes no summaries.
 
 ### Structure
 
@@ -580,9 +619,11 @@ and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
 |---------|-------|
 | The OS-level workout registration | `WatchPlatformWorkout`, over a `WatchPlatformWorkoutStore` the app target implements |
 | What the device's sensors read | `WatchSensorRecorder`, over a `WatchSensorSource` the app target implements |
+| Writing the readings one at a time | `WatchSensorWrites`, inside `WatchSensorRecorder` |
 | Starting and stopping both together | `WatchSessionSensors` |
 | Whether a session records GPS | `WatchGpsPolicy`, reading the modality's capability profile |
 | Modality → platform workout type | `WatchActivityTypes` |
+| What is computed from the readings before they may go | `WatchSensorSummaries`, pure functions over stored rows, called by `WatchLoggingState.log` for an entry and by `WatchSessionEngine` for a `session_end` |
 
 `WatchSensorSource` and `WatchPlatformWorkoutStore` are the seam the OS bindings
 sit behind, and they are why this layer is testable: `HKWorkoutSession`,
@@ -607,12 +648,29 @@ on the wrist that a kill loses, and the whole watch design exists to avoid that.
 **Sensor rows are dropped with the session, not with a receipt.** Observations
 are gated on the phone's receipt because the phone is their destination. A
 reading's destination is the session that produced it: once a session is over and
-every entry it produced has been acknowledged, its raw log has done its job. The
-distance that reached the phone is already the logged effort's `distanceMeters` —
-the protocol's own field — so no message type was added and the phone holds one
-source of truth for how far the user went. A session still running, or one with an
-entry still awaiting a receipt, keeps its log, which is what keeps the live
-readout and the settled distance across a kill.
+every entry it produced — and, for a session the wrist created, its `session_end`
+— has been acknowledged, its raw log has done its job. The distance that reached
+the phone is already the logged effort's `distanceMeters` — the protocol's own
+field — so no message type was added and the phone holds one source of truth for
+how far the user went. A session still running, or one with an entry still
+awaiting a receipt, keeps its log, which is what keeps the live readout and the
+settled distance across a kill.
+
+**Summaries are computed on the wrist, once, before the readings may go.** The
+phone never receives a raw reading, and the wrist prunes its readings once the
+phone holds the session, so anything derived from them has to be derived first and
+carried by an event the phone already imports. An entry's heart rate, and a timed
+entry's steps, are computed when it is logged, over the window the event itself
+states; the session's heart rate and each set block's are computed into the
+`session_end`, because a set has no window of its own — it carries only the moment
+it was logged. Nothing is recomputed afterwards: the stored event is what is re-sent,
+so the phone never sees one entry with two sets of values.
+
+**One writer.** Every sensor streams on a task of its own, and because steps are
+recorded in every session the user allows it for, at least two streams run at
+once. The engine and its store are built for one writer, so the recorder chains
+its writes (`WatchSensorWrites`) rather than letting a second always-on sensor
+become a second concurrent writer.
 
 **The workout is recovered, not resumed.** A kill cannot be caught, so the next
 launch ends whatever the health store still reports as running rather than trying
@@ -640,14 +698,34 @@ append entry point as every other row and emit nothing; the measured distance
 reaches the phone inside the logged effort. Verified by
 `test/watch_sensor_recording_test.dart` (`a reading is stored without being sent
 anywhere`) and by watchOS
-`WatchSensorRecordingTests.testAReadingIsStoredWithoutBeingSentAnywhere`.
+`WatchSensorRecordingTests.testAReadingIsStoredWithoutBeingSentAnywhere` and
+`WatchSensorRecordingTests.testS239AppendingAStepCountEmitsNothing`.
+- **The summary fields are the only values derived from readings on the wire,
+and none is ever recomputed.** They are the heart-rate, steps, pause and set-block
+fields `watch/sync_protocol/PROTOCOL.md` lists under "Session capture"; a re-send
+carries the stored event, whatever readings arrived later. Verified by watchOS
+`WatchSensorSummaryTests.testS238ALateReadingNeverRewritesWhatWasSent` and
+`WatchCaptureContractTests`, which replays
+`watch/contract/watch_capture_contract.json` and compares every event.
+- **Nothing measured is absent, never zero.** A window with no qualifying reading
+gets no pair and no step total, and a reading a summary could not send — below the
+protocol's heart-rate minimum, negative, or not a number — is not a reading. A
+summary therefore never makes its event unsendable. Verified by watchOS
+`WatchSensorSummaryTests.testS235WithTheSensorsDeniedNoEventCarriesASummary` and
+`WatchSensorSummaryTests.testAReadingBelowOneBeatPerMinuteIsNotAHeartRate`.
+- **Steps change nothing else.** With steps permission refused, every other sensor
+behaves exactly as with it granted. Verified by watchOS
+`WatchSensorRecordingStepsDeniedTests`, which runs the whole sensor suite again with
+steps denied, and `WatchSensorRecordingTests.testS239StepsPermissionChangesNothingButTheStepsRecorded`.
 - **Two prunes, both gated on having nothing to lose.** The store's public surface
 is exactly `append`, `readAll`, `pruneConfirmed` and `pruneSensorSamples`;
 confirmed observations go first, and a session's sensor log goes only after the
-session is over and all of its entries are acknowledged. Verified by
+session is over, all of its entries are acknowledged and — for a session the
+wrist created — its `session_end` is acknowledged, pruned or not. Verified by
 `test/watch_session_engine_test.dart` (`S-004 append-only enforcement at the
 storage API`) and by watchOS
-`WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule`.
+`WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule` and
+the `S-237` cases in `WatchSensorRecordingTests`.
 - **Timers travel as wall-clock timestamps.** A countdown is never sent;
 either end derives it, which is what keeps a timer correct through a
 suspension or a reconnect. Verified by `test/live_mirroring_test.dart`
@@ -669,6 +747,9 @@ which the watch reflects without rewriting its own history.
 - **Reflection** — a watch's copy of session structure or timer state, which it
 holds but does not originate. `PROTOCOL.md` authority rules 1 and 2 are what
 make the distinction consequential.
+- **Session end, set block** — defined in
+[Watch Session Capture](../watch_session_capture.md), which owns what the wrist
+sends for the import.
 
 ---
 

@@ -122,42 +122,22 @@ extension SessionCoreEntryMethods on SessionCore {
           targetDurationSecs: targetDuration,
         );
 
-        final obsToCreate = <EffortObservation>[];
-        if (effort.effortKind == 'timed') {
-          obsToCreate.add(
-            EffortObservation(
-              id: 'obs-$effortId-$timedIndex-distance',
-              effortId: effortId,
-              metricId: MetricIds.distance,
-              unitId: MetricIds.unitMeters,
-              valueReal: (previousValues?['distance'] as double?) ?? 0.0,
-              createdAtMs: now,
-              updatedAtMs: now,
-            ),
-          );
-          obsToCreate.add(
-            EffortObservation(
-              id: 'obs-$effortId-$timedIndex-extra-weight',
-              effortId: effortId,
-              metricId: MetricIds.extraWeight,
-              unitId: MetricIds.unitKg,
-              valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
-              createdAtMs: now,
-              updatedAtMs: now,
-            ),
-          );
-        } else {
-          obsToCreate.add(
-            EffortObservation(
-              id: 'obs-$effortId-$timedIndex-extra-weight',
-              effortId: effortId,
-              metricId: MetricIds.extraWeight,
-              valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
-              createdAtMs: now,
-              updatedAtMs: now,
-            ),
-          );
-        }
+        final extraWeightKg =
+            (previousValues?['extra-weight'] as double?) ?? 0.0;
+        final obsToCreate = effort.effortKind == 'timed'
+            ? LoggedEntryRows.timedObservations(
+                effortId: effortId,
+                entryIndex: timedIndex,
+                distanceMeters: (previousValues?['distance'] as double?) ?? 0.0,
+                extraWeightKg: extraWeightKg,
+                atMs: now,
+              )
+            : LoggedEntryRows.drillObservations(
+                effortId: effortId,
+                entryIndex: timedIndex,
+                extraWeightKg: extraWeightKg,
+                atMs: now,
+              );
         for (final obs in obsToCreate) {
           await _repository.createObservation(obs);
         }
@@ -171,46 +151,23 @@ extension SessionCoreEntryMethods on SessionCore {
 
       switch (effort.effortKind) {
         case 'set':
-          observations.add(
-            EffortObservation(
-              id: 'obs-$effortId-$entryIndex-reps',
-              effortId: effortId,
-              metricId: MetricIds.reps,
-              unitId: MetricIds.unitReps,
-              valueInt: (previousValues?['reps'] as int?) ?? 10,
-              createdAtMs: now,
-              updatedAtMs: now,
-            ),
-          );
-          observations.add(
-            EffortObservation(
-              id: 'obs-$effortId-$entryIndex-weight',
-              effortId: effortId,
-              metricId: MetricIds.weight,
-              unitId: MetricIds.unitKg,
-              valueReal: (previousValues?['weight'] as double?) ?? 0.0,
-              createdAtMs: now,
-              updatedAtMs: now,
-            ),
-          );
           final hasLoad =
               _exerciseCache[effort.exerciseId]?.capabilities.contains(
                 'load',
               ) ??
               false;
-          if (!hasLoad) {
-            observations.add(
-              EffortObservation(
-                id: 'obs-$effortId-$entryIndex-extra-weight',
-                effortId: effortId,
-                metricId: MetricIds.extraWeight,
-                unitId: MetricIds.unitKg,
-                valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
-                createdAtMs: now,
-                updatedAtMs: now,
-              ),
-            );
-          }
+          observations.addAll(
+            LoggedEntryRows.setObservations(
+              effortId: effortId,
+              entryIndex: entryIndex,
+              reps: (previousValues?['reps'] as int?) ?? 10,
+              weightKg: (previousValues?['weight'] as double?) ?? 0.0,
+              exerciseHasLoad: hasLoad,
+              extraWeightKg:
+                  (previousValues?['extra-weight'] as double?) ?? 0.0,
+              atMs: now,
+            ),
+          );
           break;
         default:
           observations.add(

@@ -33,6 +33,7 @@ import '../../state/food_library_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../state/exercise/exercise_library_state.dart';
 import '../../state/watch/live_session_mirror_state.dart';
+import '../../state/watch/watch_session_inbox.dart';
 import '../../widgets/session/live_session_entry_point.dart';
 import '../session/live_session_screen.dart';
 import '../nutrition/nutrition_screen.dart';
@@ -96,6 +97,11 @@ class HomeScreen extends StatefulWidget {
   /// reserved for it.
   final LiveSessionMirrorState? liveSession;
 
+  /// Where the Watch Session screen records the phone's own effort rating
+  /// for the wrist session it finished (D-139); null exactly when
+  /// [liveSession] is.
+  final WatchSessionRatings? watchSessionRatings;
+
   HomeScreen({
     super.key,
     required this.workoutState,
@@ -114,6 +120,7 @@ class HomeScreen extends StatefulWidget {
     required this.exerciseLibraryState,
     this.appVersionInfo,
     this.liveSession,
+    this.watchSessionRatings,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -241,6 +248,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         liveSession: liveSession,
         workoutState: widget.workoutState,
         settingsState: widget.settingsState,
+        watchSessionRatings: widget.watchSessionRatings,
       ),
     );
   }

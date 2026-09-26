@@ -39,6 +39,14 @@ public struct WatchStoreContents {
     /// list that applies.
     public let foodCatalogs: [WatchFoodCatalogRecord]
 
+    /// The phone's preferences as each `preferences_down` brought them, oldest
+    /// first. The newest by `generatedAt` is the one that applies.
+    public let preferences: [WatchPreferencesRecord]
+
+    /// The effort-rating prompts the wrist's End has owed, oldest first. A
+    /// session's prompt is answered by its rating, never by another row.
+    public let ratingPrompts: [WatchRatingPromptRecord]
+
     public init(
         sessions: [WatchSessionRecord] = [],
         observations: [WatchObservationRecord] = [],
@@ -46,7 +54,9 @@ public struct WatchStoreContents {
         confirmations: [WatchConfirmationRecord] = [],
         sensorSamples: [WatchSensorSampleRecord] = [],
         routineCatalogs: [WatchRoutineCatalogRecord] = [],
-        foodCatalogs: [WatchFoodCatalogRecord] = []
+        foodCatalogs: [WatchFoodCatalogRecord] = [],
+        preferences: [WatchPreferencesRecord] = [],
+        ratingPrompts: [WatchRatingPromptRecord] = []
     ) {
         self.sessions = sessions
         self.observations = observations
@@ -55,12 +65,15 @@ public struct WatchStoreContents {
         self.sensorSamples = sensorSamples
         self.routineCatalogs = routineCatalogs
         self.foodCatalogs = foodCatalogs
+        self.preferences = preferences
+        self.ratingPrompts = ratingPrompts
     }
 
     public var isEmpty: Bool {
         sessions.isEmpty && observations.isEmpty && timers.isEmpty
             && confirmations.isEmpty && sensorSamples.isEmpty
             && routineCatalogs.isEmpty && foodCatalogs.isEmpty
+            && preferences.isEmpty && ratingPrompts.isEmpty
     }
 }
 
@@ -143,6 +156,8 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         var sensorSamples: [WatchSensorSampleRecord] = []
         var routineCatalogs: [WatchRoutineCatalogRecord] = []
         var foodCatalogs: [WatchFoodCatalogRecord] = []
+        var preferences: [WatchPreferencesRecord] = []
+        var ratingPrompts: [WatchRatingPromptRecord] = []
 
         for row in rows {
             switch row {
@@ -153,6 +168,8 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             case .confirmation(let value): confirmations.append(value)
             case .routineCatalog(let value): routineCatalogs.append(value)
             case .foodCatalog(let value): foodCatalogs.append(value)
+            case .preferences(let value): preferences.append(value)
+            case .ratingPrompt(let value): ratingPrompts.append(value)
             }
         }
 
@@ -163,7 +180,9 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             confirmations: confirmations,
             sensorSamples: sensorSamples,
             routineCatalogs: routineCatalogs,
-            foodCatalogs: foodCatalogs
+            foodCatalogs: foodCatalogs,
+            preferences: preferences,
+            ratingPrompts: ratingPrompts
         )
     }
 

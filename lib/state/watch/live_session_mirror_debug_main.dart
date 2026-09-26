@@ -20,6 +20,7 @@ import '../../core/services/preferences_service.dart';
 import '../../core/utils/watch_reference_sync.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/mock_workout_repository.dart';
+import '../../data/repositories/workout_repository.dart';
 import '../../features/session/live_session_screen.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
@@ -35,6 +36,7 @@ import '../../watch/start/watch_sync_orchestrator.dart';
 import 'live_session_mirror_state.dart';
 import 'watch_incoming_router.dart';
 import 'watch_nutrition_log_bridge.dart';
+import 'watch_session_inbox.dart';
 
 /// Whether the QA surface was compiled in. The entry point below refuses to
 /// mount without it, so a release build carries nothing.
@@ -153,6 +155,10 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
   /// touched.
   WatchIncomingRouter? _router;
 
+  /// The router's inbox — what the live session screen records the phone's
+  /// own effort rating through, as the shipping graph's does.
+  WatchSessionInbox? _inbox;
+
   /// The phone states once they exist — what the readout reads the day log
   /// through.
   _PhoneStates? _states;
@@ -190,6 +196,10 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
 
     final states = _states = await _phoneStates;
     return _router = WatchIncomingRouter(
+      inbox: _inbox = WatchSessionInbox(
+        repository: states.repository,
+        transport: _phoneTransport,
+      ),
       mirror: _mirror,
       nutrition: WatchNutritionLogBridge(
         nutrition: states.nutrition,
@@ -339,6 +349,7 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
     await foodLibrary.loadFoods();
 
     return _PhoneStates(
+      repository: repository,
       workoutState: WorkoutState(repository),
       settingsState: settingsState,
       foodLibrary: foodLibrary,
@@ -350,6 +361,7 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
   /// screen itself, not a debug stand-in for it.
   Future<void> _manageOnPhone() async {
     final states = await _phoneStates;
+    await _incomingRouter();
     if (!mounted) return;
     await OmniNavigator.push(
       context,
@@ -357,6 +369,7 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
         liveSession: _mirror,
         workoutState: states.workoutState,
         settingsState: states.settingsState,
+        watchSessionRatings: _inbox,
       ),
     );
   }
@@ -519,12 +532,15 @@ class _Link {
 /// The states the harness's phone half runs on.
 class _PhoneStates {
   const _PhoneStates({
+    required this.repository,
     required this.workoutState,
     required this.settingsState,
     required this.foodLibrary,
     required this.nutrition,
   });
 
+  /// The phone's storage, which the watch session inbox stages into.
+  final WorkoutRepository repository;
   final WorkoutState workoutState;
   final SettingsState settingsState;
   final FoodLibraryState foodLibrary;

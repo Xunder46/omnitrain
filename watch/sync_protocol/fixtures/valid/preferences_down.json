@@ -1,0 +1,11 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-preferences-1",
+  "type": "preferences_down",
+  "origin": "phone",
+  "sentAt": "2026-09-25T09:00:00Z",
+  "payload": {
+    "generatedAt": "2026-09-25T09:00:00Z",
+    "effortRatingPrompt": false
+  }
+}

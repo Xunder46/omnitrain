@@ -563,6 +563,9 @@ public final class WatchLoggingState {
         for (field, value) in metricPayload(loggedAt: loggedAt) {
             event[field] = value
         }
+        for (field, value) in sensorSummary(of: event) {
+            event[field] = value
+        }
 
         let stored = try await engine.appendObservation(event)
         dialled.removeAll()
@@ -577,11 +580,23 @@ public final class WatchLoggingState {
         switch effortKind {
         case WatchEffortKind.round:
             let window = roundWindow(loggedAt: loggedAt)
-            return [
+            var payload: [String: Any] = [
                 "startedAt": utcIso(window.startedAt),
                 "endedAt": utcIso(window.endedAt),
                 "roundNumber": Int((value(of: WatchMetricKey.rounds) ?? Double(nextRoundNumber)).rounded()),
             ]
+            // The time the countdown spent paused, which the round's own
+            // duration excludes (D-126). A round with no countdown was never
+            // paused, and a pause of nothing is not sent.
+            if let countdown = engine.timerFor(WatchTimerKind.round) {
+                let paused = WatchSensorSummaries.pausedMs(
+                    countdown,
+                    windowStart: WatchSensorSummaries.wireInstant(window.startedAt),
+                    windowEnd: WatchSensorSummaries.wireInstant(window.endedAt)
+                )
+                if paused > 0 { payload["pausedMs"] = paused }
+            }
+            return payload
         case WatchEffortKind.set:
             let reps = Int((value(of: WatchMetricKey.reps) ?? 1).rounded())
             var payload: [String: Any] = ["reps": max(1, reps)]
@@ -629,6 +644,55 @@ public final class WatchLoggingState {
 
     private func value(of metricKey: String) -> Double? {
         fields.first(where: { $0.metricKey == metricKey })?.value
+    }
+
+    /// What the wrist measured over the entry's window, from the readings it
+    /// has stored: heart rate for timed work, rounds and holds, and a step
+    /// total for timed work only (D-121). Computed now, at log time, because
+    /// the readings are pruned once the phone holds the session — and never
+    /// again, so the event keeps the values it was logged with.
+    ///
+    /// The window is the event's own, read back from the timestamps it
+    /// carries, so the summary covers exactly what the phone will read. A
+    /// round leaves out the time its countdown was paused; a set carries
+    /// nothing, because a set has no window of its own.
+    private func sensorSummary(of event: [String: Any]) -> [String: Any] {
+        guard let startedAt = try? parseUtcIso(event["startedAt"]),
+              let endedAt = try? parseUtcIso(event["endedAt"])
+        else { return [:] }
+
+        let samples = engine.sensorSamples
+        var summary: [String: Any] = [:]
+        switch eventKind {
+        case WatchObservationKind.timed:
+            if let pair = WatchSensorSummaries.heartRate(samples, from: startedAt, through: endedAt) {
+                summary.merge(pair.fields) { _, measured in measured }
+            }
+            if let steps = WatchSensorSummaries.steps(samples, from: startedAt, through: endedAt) {
+                summary["steps"] = steps
+            }
+        case WatchObservationKind.round:
+            let pauses = WatchSensorSummaries.pauses(
+                of: engine.timerRows(WatchTimerKind.round),
+                startedAt: startedAt,
+                windowEnd: endedAt
+            )
+            if let pair = WatchSensorSummaries.heartRate(
+                samples,
+                from: startedAt,
+                through: endedAt,
+                excluding: pauses
+            ) {
+                summary.merge(pair.fields) { _, measured in measured }
+            }
+        case WatchObservationKind.hold:
+            if let pair = WatchSensorSummaries.heartRate(samples, from: startedAt, through: endedAt) {
+                summary.merge(pair.fields) { _, measured in measured }
+            }
+        default:
+            break
+        }
+        return summary
     }
 
     /// The countdown the effort kind runs next: rest after a set, the next

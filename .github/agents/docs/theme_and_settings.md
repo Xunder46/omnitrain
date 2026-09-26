@@ -19,6 +19,13 @@ All settings apply immediately. There is no save button and no staged draft stat
 
 **File**: `lib/core/constants/omni_theme.dart`
 
+> **Flagged, not owned here (documentation standard §5).** The `AppTheme` enum
+> block and the token-field table below are copied implementation content
+> (§3.5/§3.4). They predate this document's conformance pass and are left as
+> they are rather than silently rewritten: bringing them into conformance is a
+> follow-up, and until then the class and
+> [Design System](design_system.md) are the owners.
+
 ### `AppTheme` Enum
 
 ```dart
@@ -69,56 +76,25 @@ values themselves live only in `lib/core/constants/omni_theme.dart`.
 
 **File**: `lib/state/settings/settings_state.dart`
 
-`SettingsState` is a `ChangeNotifier` backed by `WorkoutRepository` preference storage.
+`SettingsState` is a `ChangeNotifier` backed by `WorkoutRepository` preference
+storage. It owns the preference set, the default each preference falls back to,
+and the key each is stored under — read them off the class. Each setter
+normalises what it is handed before persisting, so a value that is not one of
+its own is stored as the default rather than kept as given. Both the sound
+vocabulary and the rest-ping interval options are the state's own closed sets
+(`validSoundIds`, `restPingIntervalOptions`). The defaults, the keys, the
+normalisation and the fallbacks are pinned by `test/settings_state_test.dart`.
 
-### Persisted Fields
+**The Effort Rating toggle still stores under `show_feeling_survey`.** The key
+was published before the feature was named for the rating it feeds, and
+renaming it would silently reset the choice of every user who has ever answered
+the prompt. `test/settings_state_test.dart` pins the persisted key.
 
-| Field | Type | Default | Preference Key |
-|-------|------|---------|----------------|
-| `appTheme` | `AppTheme` | `abyssalNeon` | `app_theme` |
-| `preferredWeightUnit` | `String` | `kg` | `preferred_weight_unit` |
-| `preferredDistanceUnit` | `String` | `km` | `preferred_distance_unit` |
-| `preferredHeightUnit` | `String` | `cm` | `preferred_height_unit` |
-| `startOfWeek` | `String` | `monday` | `preferred_start_of_week` |
-| `showFeelingSurvey` | `bool` | `true` | `show_feeling_survey` (backs the "Effort Rating" toggle; key kept from the feeling survey so every user's choice carried over) |
-| `effortTimerSound` | `String` | `boxing_bell` | `effort_timer_sound` |
-| `restPingInterval` | `int` | `0` (`Off`) | `rest_ping_interval` |
-| `restPingSound` | `String` | `soft_chime` | `rest_ping_sound` |
-
-### Sound Options
-
-Valid sound IDs:
-
-- `boxing_bell`
-- `digital_buzzer`
-- `soft_chime`
-- `double_tap`
-- `signal_tone`
-
-Valid rest ping intervals:
-
-- `0` (`Off`)
-- `30`
-- `45`
-- `60`
-- `90`
-- `120`
-- `180`
-
-### Public API
-
-| Method | Purpose |
-|--------|---------|
-| `initialize()` | Loads all persisted preferences |
-| `setAppTheme(theme)` | Persists theme and notifies listeners |
-| `setPreferredWeightUnit(unit)` | Normalizes to `kg` or `lbs` |
-| `setPreferredDistanceUnit(unit)` | Normalizes to `km` or `miles` |
-| `setPreferredHeightUnit(unit)` | Normalizes to `cm` or `ftin` (feet/inches) |
-| `setStartOfWeek(value)` | Normalizes to `monday` or `sunday` |
-| `setShowFeelingSurvey(value)` | Enables/disables the automatic post-workout effort rating prompt |
-| `setEffortTimerSound(soundId)` | Persists the effort-timer alert sound |
-| `setRestPingInterval(seconds)` | Persists periodic rest reminders |
-| `setRestPingSound(soundId)` | Persists the rest-ping sound |
+**The Effort Rating toggle is also the wrist's.** `showFeelingSurvey` travels as
+`preferences_down`'s `effortRatingPrompt`, which `watch/sync_protocol/PROTOCOL.md`
+defines as whether a session ended on the wrist asks for the rating. The phone
+never pushes it: a change reaches the wrist with the answer to the wrist's next
+sync request. Verified by `test/watch_transport_test.dart` (`S-253`).
 
 ---
 

@@ -63,6 +63,7 @@ final class WatchStartHarness {
 
     private(set) var engine: WatchSessionEngine!
     private(set) var paths: WatchSessionStartPaths!
+    private(set) var preferences: WatchPhonePreferences!
     private(set) var orchestrator: WatchSyncOrchestrator!
 
     init(store: WatchSessionStore = InMemoryWatchSessionStore(), sessionId: String = "s-watch-1") {
@@ -79,6 +80,7 @@ final class WatchStartHarness {
         build()
         await engine.restore()
         await paths.restore()
+        await preferences.restore()
         return self
     }
 
@@ -106,10 +108,16 @@ final class WatchStartHarness {
                 return "cat-\(self.ids)"
             }
         )
+        preferences = WatchPhonePreferences(
+            store: store,
+            validator: Harness.validator(),
+            clock: clock.call
+        )
         orchestrator = WatchSyncOrchestrator(
             transport: transport,
             paths: paths,
-            engine: engine
+            engine: engine,
+            preferences: preferences
         )
     }
 
@@ -875,5 +883,76 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertFalse(harness.paths.phoneReachable)
         XCTAssertEqual(harness.paths.routines.count, 1)
         XCTAssertFalse(harness.paths.fallbackExercises.isEmpty)
+    }
+
+    // MARK: - The phone's preferences (D-113, D-114)
+
+    func testThePhonesPreferencesAreRoutedStoredAndReadBackAfterARelaunch() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        XCTAssertNil(harness.preferences.current, "D-114 nothing is known before the first sync")
+        XCTAssertFalse(harness.preferences.asksForEffortRating, "D-114 so the wrist does not ask")
+
+        let applied = try await harness.receive(try Fixtures.json("fixtures/valid/preferences_down.json"))
+
+        XCTAssertTrue(applied, "D-113 the orchestrator routes preferences_down to the preferences")
+        XCTAssertEqual(harness.preferences.current?.effortRatingPrompt, false, "D-113")
+        XCTAssertTrue(harness.transport.sent.isEmpty, "D-113 reference data is not answered")
+
+        await harness.launch()
+        XCTAssertEqual(
+            harness.preferences.current?.effortRatingPrompt,
+            false,
+            "D-113 the setting is stored, so a relaunch still knows it"
+        )
+    }
+
+    func testAPreferencesDownTheWristCannotReadIsRefusedAndChangesNothing() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(
+            preferencesDown(true, generatedAt: "2026-09-25T08:00:00Z", messageId: "msg-prefs-on")
+        )
+
+        let applied = try await harness.receive(
+            try Fixtures.json("fixtures/invalid/preferences_down_missing_effort_rating_prompt.json")
+        )
+
+        // Newer, and readable field by field — but a field the protocol does not
+        // define makes it a message the wrist cannot read (the payload is closed).
+        var surprise = preferencesDown(false, generatedAt: "2026-09-25T10:00:00Z", messageId: "msg-prefs-surprise")
+        surprise["payload"] = [
+            "generatedAt": "2026-09-25T10:00:00Z",
+            "effortRatingPrompt": false,
+            "surprise": true,
+        ]
+        let surpriseApplied = try await harness.receive(surprise)
+
+        XCTAssertFalse(applied, "D-113 a copy the wrist cannot read is refused")
+        XCTAssertFalse(surpriseApplied, "D-113 a copy the wrist cannot read is refused")
+        XCTAssertEqual(harness.preferences.current?.effortRatingPrompt, true, "D-113 and changes nothing")
+        let stored = await harness.store.readAll()
+        XCTAssertEqual(stored.preferences.count, 1, "D-113 nothing of either is stored")
+        XCTAssertTrue(harness.transport.sent.isEmpty, "D-113 reference data is not answered")
+    }
+
+    func testTheNewestPreferencesApplyAndALaterCopyWinsATie() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        _ = try await harness.receive(
+            preferencesDown(true, generatedAt: "2026-09-25T09:30:00Z", messageId: "msg-prefs-new")
+        )
+        let older = try await harness.receive(
+            preferencesDown(false, generatedAt: "2026-09-25T09:00:00Z", messageId: "msg-prefs-old")
+        )
+        XCTAssertFalse(older, "D-113 an older copy arriving late never replaces a newer one")
+        XCTAssertEqual(harness.preferences.current?.effortRatingPrompt, true, "D-113")
+
+        let tie = try await harness.receive(
+            preferencesDown(false, generatedAt: "2026-09-25T09:30:00Z", messageId: "msg-prefs-tie")
+        )
+        XCTAssertTrue(tie, "D-113 on a tie, the later-received copy applies")
+        XCTAssertEqual(harness.preferences.current?.effortRatingPrompt, false, "D-113")
     }
 }

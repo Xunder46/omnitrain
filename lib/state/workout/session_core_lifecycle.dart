@@ -266,6 +266,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
           entry.key: List<TimedInstance>.from(entry.value),
       },
       exerciseCache: Map<String, Exercise>.from(_exerciseCache),
+      sensorSummaries: List<SensorSummary>.from(_sensorSummaries),
     );
   }
 
@@ -328,6 +329,13 @@ extension SessionCoreLifecycleMethods on SessionCore {
             await _repository.createTimedInstance(ti);
           }
         }
+      }
+
+      // D-131 deleted the summaries of every target the edit or the deletes
+      // above removed; the targets are back, so put their summaries back.
+      // Put-if-absent leaves every summary that survived untouched.
+      for (final summary in snapshot.sensorSummaries) {
+        await _repository.createSensorSummary(summary);
       }
 
       _exerciseCache

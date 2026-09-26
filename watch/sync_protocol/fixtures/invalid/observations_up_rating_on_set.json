@@ -1,0 +1,23 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-bad-rating-set",
+  "sessionId": "s-cap-bad",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-09-25T11:00:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "e-bad-rating-set",
+        "entryId": "e-bad-rating-set",
+        "kind": "set",
+        "loggedAt": "2026-09-25T10:45:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-bench",
+        "reps": 5,
+        "loadKg": 80,
+        "rating": 3
+      }
+    ]
+  }
+}

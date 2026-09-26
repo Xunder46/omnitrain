@@ -132,6 +132,16 @@ void main() {
     expect(settingsState.preferredWeightUnit, 'lbs');
   });
 
+  test('SettingsState defaults preferred weight unit to kg', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+
+    final settingsState = SettingsState(repository, fakePreferencesService());
+    await settingsState.initialize();
+
+    expect(settingsState.preferredWeightUnit, 'kg');
+  });
+
   test('SettingsState defaults preferred distance unit to km', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
@@ -269,6 +279,53 @@ void main() {
     await settingsState.initialize();
 
     expect(settingsState.preferredDistanceUnit, 'km');
+  });
+
+  // Every setter that takes a free-form value normalises it: a value that is
+  // not one of its own is stored as the default, never as given. Pinned here
+  // because `theme_and_settings.md` says so.
+  test('setPreferredWeightUnit keeps only lbs or kg', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository, fakePreferencesService());
+    await state.initialize();
+
+    for (final (given, kept) in [
+      ('LB', 'lbs'),
+      ('lbs', 'lbs'),
+      ('kg', 'kg'),
+      ('stones', 'kg'),
+    ]) {
+      await state.setPreferredWeightUnit(given);
+      expect(state.preferredWeightUnit, kept, reason: 'given $given');
+      expect(
+        await repository.getPreferenceString('preferred_weight_unit'),
+        kept,
+        reason: 'given $given',
+      );
+    }
+  });
+
+  test('setStartOfWeek keeps only sunday or monday', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository, fakePreferencesService());
+    await state.initialize();
+
+    for (final (given, kept) in [
+      ('SUNDAY', 'sunday'),
+      ('sun', 'sunday'),
+      ('monday', 'monday'),
+      ('tuesday', 'monday'),
+    ]) {
+      await state.setStartOfWeek(given);
+      expect(state.startOfWeek, kept, reason: 'given $given');
+      expect(
+        await repository.getPreferenceString('preferred_start_of_week'),
+        kept,
+        reason: 'given $given',
+      );
+    }
   });
 
   test('Void Pulse uses a visible violet atmospheric gradient', () {

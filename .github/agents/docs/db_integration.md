@@ -589,7 +589,7 @@ separate mechanism keyed on `currentDataVersion` — see
 
 ## Session Block Semantics (Iteration 5 change)
 
-`deleteSessionBlock(blockId)` now **cascade-deletes** all linked `SegmentEffort` records and their sub-records (observations, round instances, timed instances, entry rests). This changed from the Iteration 1 design which only nulled `blockId` on linked efforts.
+`deleteSessionBlock(blockId)` now **cascade-deletes** all linked `SegmentEffort` records and their sub-records (observations, round instances, timed instances, entry rests, and the sensor summaries of the efforts and instances it deletes — verified by `test/watch_capture_repository_parity_test.dart`, `D-131 deleteSessionBlock removes …`). This changed from the Iteration 1 design which only nulled `blockId` on linked efforts.
 
 - Both `HiveWorkoutRepository` and `MockWorkoutRepository` implement the cascade.
 - `WorkoutState.deleteSessionBlock` mirrors the cascade in its in-memory caches.
@@ -598,6 +598,47 @@ separate mechanism keyed on `currentDataVersion` — see
 `cloneSessionBlock(blockId)` names clones using the current wall-clock time label (`"h:mm AM/PM"`) across all session modalities/intents.
 
 `addSessionBlock({String? name})` now accepts an optional `name` parameter. When `name` is omitted, the current time in `"h:mm AM/PM"` format is used.
+
+---
+
+## Watch Capture Storage
+
+Covers the watch session inbox and wrist-measured sensor summaries: the
+watch-capture methods of `WorkoutRepository`, their `HiveWorkoutRepository` and
+`MockWorkoutRepository` implementations, and the `app_watch_inbox_entry` and
+`app_sensor_summary` tables in `scripts/sqlite_schema.sql`. The models are in
+[Data Models](data_models.md#watch-capture-models).
+
+Structure:
+- Hive keeps each in its own box: `watch_inbox`, keyed by entry id, and
+  `sensor_summaries`, keyed by `SensorSummary.id`. Each value is the model's
+  `toMap()`. `MockWorkoutRepository` keeps one in-memory map per box.
+- `scripts/sqlite_schema.sql` documents both tables, with CHECK constraints
+  mirroring the models' refusals and a method-by-method SQL contract.
+  `test/db_seed_test.dart` (`Watch capture schema contract (D-131 / D-132)`)
+  proves every `toMap()` key is a column, that model rows insert and read back
+  unchanged, and that the constraints refuse what the models refuse.
+
+Invariants:
+- **Put-if-absent, reported.** Staging an inbox row and creating a summary
+  never replace an existing row, and report whether they stored anything.
+- **Summaries cascade; the inbox does not.** Every repository delete that
+  removes a summary target also removes that target's summaries, and
+  `deleteSession` removes all of the session's. No delete touches the inbox:
+  its applied rows are tombstones that must outlive the history they describe,
+  which is also why `app_watch_inbox_entry` has no foreign key. A summary's
+  target is polymorphic, so its SQL table can only hold a foreign key to the
+  owning session; the repository enforces the rest.
+- **Parity.** Hive and Mock agree value for value, ordering included.
+  `test/watch_capture_repository_parity_test.dart` runs one test body against
+  both, and compares one scripted sequence row by row by `toMap()`.
+
+Rationale:
+- **The payload is stored as JSON text.** Hive returns nested maps untyped,
+  and the SQL contract holds the event in one `TEXT` column. Storing the
+  encoding keeps the two stores identical and the staged payload immutable.
+- **No data-migration step.** Both boxes start empty on existing installs and
+  no existing row changes, so `currentDataVersion` is unchanged.
 
 ---
 
@@ -624,8 +665,8 @@ All repository reads and writes go through the same `WorkoutRepository` interfac
 
 ---
 
-**Document Version**: 1.5
-**Last Updated**: May 31, 2026
+**Document Version**: 1.6
+**Last Updated**: September 25, 2026
 
 
 ---

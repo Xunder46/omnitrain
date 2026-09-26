@@ -18,7 +18,7 @@ extension SessionCoreIOMethods on SessionCore {
 
       final session = TrainingSession(
         id: sessionId,
-        ownerUserId: 'user-1',
+        ownerUserId: LoggedEntryRows.ownerUserId,
         routineTemplateId: routineTemplateId,
         startedAtMs: now,
         title: title,
@@ -32,17 +32,13 @@ extension SessionCoreIOMethods on SessionCore {
       await _repository.createSession(session);
       _currentSession = session;
       _currentModalityConfig = ModalityConfig.forModality(modality);
+      _sensorSummaries.clear();
 
       if (includeDefaultSegment) {
-        final segmentId = 'segment-$now';
-        final segment = SessionSegment(
-          id: segmentId,
+        final segment = LoggedEntryRows.defaultSegment(
+          id: 'segment-$now',
           sessionId: sessionId,
-          orderIndex: 0,
-          segmentType: 'workout',
-          name: 'Main Workout',
-          createdAtMs: now,
-          updatedAtMs: now,
+          atMs: now,
         );
 
         await _repository.createSegment(segment);
@@ -74,6 +70,7 @@ extension SessionCoreIOMethods on SessionCore {
       _segments.clear();
       _efforts.clear();
       _observations.clear();
+      _sensorSummaries.clear();
       _timerManager.clearAll();
       _blockManager.clearAll();
 
@@ -116,6 +113,12 @@ extension SessionCoreIOMethods on SessionCore {
 
       final blocks = await _repository.getSessionBlocks(sessionId);
       _blockManager.setSessionBlocks(sessionId, blocks);
+
+      if (session.endedAtMs != null) {
+        _sensorSummaries.addAll(
+          await _repository.getSensorSummariesForSession(sessionId),
+        );
+      }
 
       _notify();
     } catch (e) {
@@ -188,6 +191,14 @@ extension SessionCoreIOMethods on SessionCore {
         _currentSession!.id,
       );
       _blockManager.setSessionBlocks(_currentSession!.id, sessionBlocks);
+
+      final session = _currentSession!;
+      final sensorSummaries = session.endedAtMs == null
+          ? const <SensorSummary>[]
+          : await _repository.getSensorSummariesForSession(session.id);
+      _sensorSummaries
+        ..clear()
+        ..addAll(sensorSummaries);
 
       _notify();
     } catch (e) {

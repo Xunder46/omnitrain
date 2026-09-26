@@ -11,6 +11,17 @@
 /// Everything the screen shows comes from [LiveSessionMirrorState], which is
 /// also what carries every edit down. There is no local copy of the session
 /// here — a second copy would be a second truth.
+///
+/// What it lists and counts as logged are the mirror's effort entries: the
+/// wrist's session effort rating and session end describe the session rather
+/// than work done in it (Stats PR 2, D-141; scenario S-254).
+///
+/// Only the device that ended a session asks how hard it was (D-104 c). The
+/// phone's own Finish asks, through the Session Summary's rating sheet, and
+/// the answer is the phone's own rating for the wrist session — staged until
+/// the session is history, written to it once it is (D-138, D-139). A session
+/// the wrist completed is shown closed, with nothing to finish and nothing to
+/// ask: the wrist that ended it asks (`test/live_session_effort_rating_test.dart`).
 library;
 
 import 'package:flutter/material.dart';
@@ -21,13 +32,16 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/watch/live_session_mirror_state.dart';
+import '../../state/watch/watch_session_inbox.dart';
 import '../../state/workout/workout_state.dart';
+import '../../watch/session/watch_records.dart' show WatchSessionStatus;
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/session/effort_rating_sheet.dart';
 import '../exercise/exercise_picker_screen.dart';
 
 class LiveSessionScreen extends StatelessWidget {
@@ -36,6 +50,7 @@ class LiveSessionScreen extends StatelessWidget {
     required this.liveSession,
     required this.workoutState,
     required this.settingsState,
+    this.watchSessionRatings,
   });
 
   /// The phone's live session — the mirror of the session on the wrist.
@@ -45,15 +60,28 @@ class LiveSessionScreen extends StatelessWidget {
   /// created mid-session.
   final WorkoutState workoutState;
 
-  /// The saved weight unit, for every load this screen shows or takes.
+  /// The saved weight unit, for every load this screen shows or takes, and
+  /// the Effort Rating setting the phone's Finish honours.
   final SettingsState settingsState;
+
+  /// Where the phone's own effort rating for the session goes (D-139). Null
+  /// where no watch graph was built, and then Finish asks nothing — there is
+  /// nowhere to put the answer.
+  final WatchSessionRatings? watchSessionRatings;
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: liveSession,
       builder: (context, _) {
-        final record = liveSession.completedRecord;
+        // The session as it closed: the record the phone's own Finish made,
+        // or — when the wrist completed it — the session as the mirror holds
+        // it (D-139).
+        final record =
+            liveSession.completedRecord ??
+            (liveSession.status == WatchSessionStatus.completed
+                ? liveSession.state
+                : null);
 
         return Scaffold(
           key: const Key('live_session_screen'),
@@ -71,10 +99,41 @@ class LiveSessionScreen extends StatelessWidget {
               ? OmniBottomCTA(
                   label: 'Finish',
                   buttonKey: const Key('live_session_finish'),
-                  onPressed: liveSession.completeSession,
+                  onPressed: () => _finish(context),
                 )
               : null,
         );
+      },
+    );
+  }
+
+  /// The phone's own Finish: closes the session on both devices, then — when
+  /// the phone ended a running session with something logged in it, and the
+  /// Effort Rating setting is on — asks how hard it was, with the question the
+  /// Session Summary's automatic prompt asks, which only an answer closes.
+  ///
+  /// A session with nothing logged is never history (D-133), so it is not
+  /// asked about, as the wrist does not ask about one (D-117; A-62 of the
+  /// Stats PR 2 plan).
+  Future<void> _finish(BuildContext context) async {
+    final sessionId = liveSession.sessionId;
+    final asks = liveSession.isActive && liveSession.effortEntries.isNotEmpty;
+    await liveSession.completeSession();
+
+    final ratings = watchSessionRatings;
+    if (!asks || ratings == null || sessionId == null) return;
+    if (!settingsState.showFeelingSurvey || !context.mounted) return;
+    await EffortRatingSheet.show(
+      context,
+      mustAnswer: true,
+      // A wrist session carries no modality (D-135), and the one being
+      // finished is being finished now.
+      startedAt: DateTime.now(),
+      onRated: (rating) async {
+        // The answer is given, so the question closes whatever the inbox
+        // made of it; a failure is the inbox's to report.
+        await ratings.recordPhoneRating(sessionId, rating);
+        return true;
       },
     );
   }
@@ -134,7 +193,7 @@ class LiveSessionScreen extends StatelessWidget {
   }
 
   Widget _buildLoggedSection(BuildContext context) {
-    final entries = liveSession.entries;
+    final entries = liveSession.effortEntries;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -191,7 +250,7 @@ class LiveSessionScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$position · ${liveSession.entries.length} logged',
+                  '$position · ${liveSession.effortEntries.length} logged',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: OmniTheme.colors.textSecondary,
                   ),
@@ -543,7 +602,7 @@ class _CompletedSession extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final entries = (record['entries'] as List?) ?? const [];
+    final entries = LiveSessionMirrorState.effortEntriesOf(record['entries']);
     final exercises = (record['exercises'] as List?) ?? const [];
 
     return Padding(

@@ -56,6 +56,33 @@ enum Fixtures {
         return object
     }
 
+    /// F-CAP: one wrist session end to end — the events the wrist must emit and
+    /// what the phone must hold after importing them — in three cases, shared by
+    /// both stacks.
+    static func captureContract() throws -> [String: Any] {
+        let url = repositoryRoot.appendingPathComponent(
+            "watch/contract/watch_capture_contract.json"
+        )
+        let data = try Data(contentsOf: url)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw FixtureError.malformed("watch/contract/watch_capture_contract.json")
+        }
+        return object
+    }
+
+    /// The session effort rating as both devices ask for it: the question, the
+    /// scale, its end labels, and whether a never-synced wrist asks at all.
+    static func effortRatingContract() throws -> [String: Any] {
+        let url = repositoryRoot.appendingPathComponent(
+            "watch/contract/watch_effort_rating_contract.json"
+        )
+        let data = try Data(contentsOf: url)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw FixtureError.malformed("watch/contract/watch_effort_rating_contract.json")
+        }
+        return object
+    }
+
     static func json(_ relativePath: String) throws -> [String: Any] {
         let url = protocolRoot.appendingPathComponent(relativePath)
         let data = try Data(contentsOf: url)

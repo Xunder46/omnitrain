@@ -23,6 +23,7 @@
       "enum": [
         "routines_down",
         "foods_down",
+        "preferences_down",
         "exercise_push",
         "structure_change",
         "observations_up",
@@ -170,7 +171,15 @@
           "minLength": 1
         },
         "kind": {
-          "enum": ["set", "timed", "round", "hold", "nutrition_quick_log"]
+          "enum": [
+            "set",
+            "timed",
+            "round",
+            "hold",
+            "nutrition_quick_log",
+            "effort_rating",
+            "session_end"
+          ]
         },
         "loggedAt": {
           "$ref": "#/$defs/timestamp"
@@ -221,6 +230,85 @@
         "calories": {
           "type": "number",
           "minimum": 0
+        },
+        "rating": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "The session effort rating, on an effort_rating entry only."
+        },
+        "status": {
+          "enum": ["completed", "abandoned"],
+          "description": "How the session ended, on a session_end entry only."
+        },
+        "modality": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The session's modality, on a session_end entry only. Omitted when the session has none."
+        },
+        "avgHeartRateBpm": {
+          "$ref": "#/$defs/heartRateBpm",
+          "description": "Mean heart rate over the entry's active window, computed on the wrist from its own readings. Travels with maxHeartRateBpm or not at all; absent means not measured, never zero."
+        },
+        "maxHeartRateBpm": {
+          "$ref": "#/$defs/heartRateBpm",
+          "description": "Maximum heart rate over the entry's active window. Travels with avgHeartRateBpm or not at all."
+        },
+        "steps": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Steps taken inside a timed entry's window, from the wrist's step counter. A measured zero is sent; absent means not measured."
+        },
+        "pausedMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "A round's accumulated pause, excluded from its active window."
+        },
+        "setBlockHeartRates": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/setBlockHeartRate" },
+          "description": "On a session_end entry only: one heart-rate summary per set block — the sets logged for one sessionExerciseId and exerciseId pair."
+        }
+      }
+    },
+    "heartRateBpm": {
+      "type": "number",
+      "minimum": 1,
+      "description": "Beats per minute, summarised on the wrist. The minimum makes a zero-filled summary unsendable."
+    },
+    "setBlockHeartRate": {
+      "type": "object",
+      "description": "One set block's heart-rate summary: the span it covers and the pair measured over it.",
+      "required": [
+        "sessionExerciseId",
+        "exerciseId",
+        "startedAt",
+        "endedAt",
+        "avgHeartRateBpm",
+        "maxHeartRateBpm"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sessionExerciseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exerciseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "endedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "avgHeartRateBpm": {
+          "$ref": "#/$defs/heartRateBpm"
+        },
+        "maxHeartRateBpm": {
+          "$ref": "#/$defs/heartRateBpm"
         }
       }
     },

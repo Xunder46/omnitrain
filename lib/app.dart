@@ -12,6 +12,7 @@ import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
 import 'state/watch/live_session_mirror_state.dart';
+import 'state/watch/watch_session_inbox.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/utils/rest_notification_service.dart';
 import 'state/nutrition_state.dart';
@@ -47,6 +48,10 @@ class MyApp extends StatelessWidget {
   /// Null otherwise, and the home panel reserves nothing for it.
   final LiveSessionMirrorState? liveSession;
 
+  /// Where the phone records its own effort rating for a wrist session, from
+  /// the same watch graph as [liveSession]; null exactly when that is.
+  final WatchSessionRatings? watchSessionRatings;
+
   MyApp({
     super.key,
     required this.repository,
@@ -67,6 +72,7 @@ class MyApp extends StatelessWidget {
     required this.timerAlertService,
     this.appVersionInfo,
     this.liveSession,
+    this.watchSessionRatings,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -159,6 +165,7 @@ class MyApp extends StatelessWidget {
                   restNotificationService: restNotificationService,
                   appVersionInfo: appVersionInfo,
                   liveSession: liveSession,
+                  watchSessionRatings: watchSessionRatings,
                 ),
         );
       },

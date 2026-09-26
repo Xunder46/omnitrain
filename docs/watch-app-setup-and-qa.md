@@ -18,7 +18,7 @@ Verified 2026-09-21:
 | | Apple Watch | Wear OS |
 |---|---|---|
 | Client logic | `watch/watchos/Sources/WatchSessionEngine/` (Swift) | `lib/watch/` (Dart) |
-| Tests | 148 passing (`swift test`) | covered in the Dart suite |
+| Tests | 241 passing (`swift test`, 2026-09-26), also run by the pre-release gate on a Mac | covered in the Dart suite |
 | App shell | **template only** — `ios/OmniTrain Watch App/` exists, still calling the Xcode template's `ContentView` (§3.6) | **none** — no production `main()` |
 | Build target | **exists**, `WatchSessionEngine` not yet linked (§3.5) | **none** — Gradle has only `:app` |
 | Transport | implemented (`lib/core/platform/`) | **none** |
@@ -30,9 +30,9 @@ Both wrist clients are libraries with nothing to run them in. The four
 once the Apple path is proven on hardware — see §4.
 
 The phone half is wired: `lib/main.dart` builds the watch graph through
-`createWatchSync` and passes `liveSession: watchMirror`, answering null on a
-platform with no watch. Verified by the S-006 tests in
-`test/watch_transport_test.dart`.
+`createWatchSync` and passes its mirror (`liveSession`) and its effort-rating
+handle (`watchSessionRatings`) to the app — both null on a platform with no
+watch. Verified by the S-006 tests in `test/watch_transport_test.dart`.
 
 **What this means practically**: you cannot install anything on a watch today.
 The first milestone is not a feature — it is getting the watch app shell onto
@@ -216,13 +216,15 @@ regression introduced by your work.
 flutter test
 ```
 
-Expected: **2778 passed, 1 skipped.**
+Expected: **2973 passed, 1 skipped** (2026-09-26).
 
 ```bash
 cd watch/watchos && swift test
 ```
 
-Expected: **146 tests, 0 failures.**
+Expected: **241 tests, 0 failures.** `bash scripts/pre_release_check.sh` runs
+this too on a Mac, and a red suite blocks the release; on a host that cannot
+build the package it logs a skip instead.
 
 **Neither suite compiles the watch UI.** `swift test` runs on macOS, and every
 SwiftUI view in the package sits behind `#if os(watchOS)` — so the views are
@@ -331,9 +333,49 @@ enforced in code, so a failure points at the transport, not the logic:
     "in progress" after you force-quit is the specific bug to hunt.
 14. **Check Apple Health.** The session should appear there once, not twice.
 
+Steps 15–20 check the session effort rating and the heart-rate and step capture
+(`.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). The
+logic is in the package and tested, but nothing hosts it on a wrist until the
+shipping plan's Phase 7 (the app shell) and Phase 8 (the HealthKit bindings)
+land — see that plan's O-1 and O-2.
+
+15. **The wrist asks how hard it was** *(needs Phase 7)*. Turn Settings →
+    Effort Rating on, on the phone, then sync from the wrist. Log a set on the
+    wrist and end the session there. The wrist asks "How hard was this
+    session?" from 1 to 5, and only an answer closes it — no skip, back or
+    swipe. Answer 4. After the wrist syncs, the session is in the phone's
+    calendar and its Summary shows 4 / 5. Repeat with the phone in Airplane
+    Mode while you end and answer: once it reconnects, the rating arrives
+    intact.
+16. **It asks only when the phone says so.** Turn Effort Rating off on the
+    phone and sync from the wrist: ending a session asks nothing, and the
+    phone's Summary offers Add rating. A wrist that has never synced does not
+    ask either. A session with nothing logged is never asked about.
+17. **The question survives a kill.** End a session on the wrist and
+    force-quit the watch app while the question shows. Relaunch: the question
+    comes back before anything else, and one answer records one rating.
+18. **Only the device that ended it asks.** With a session live on both, press
+    Finish on the phone's Watch Session screen: the phone asks and the wrist
+    does not. Answer 3; after the wrist syncs, the Summary shows 3 — the
+    phone's answer wins over anything the wrist sends. End a live session on
+    the wrist instead: the phone shows it completed and asks nothing.
+19. **Heart rate and steps reach the phone** *(needs Phase 8)*. With heart-rate
+    and motion permission granted, run a session with a run, three rounds of a
+    sports exercise and a block of sets. After sync the phone holds an average
+    and maximum heart rate for the session, the run, each round and the set
+    block, and a step total for the run only. The phone has no screen for
+    these yet: inspect them with a debug build that lists
+    `getSensorSummariesForSession`. With heart-rate permission denied the
+    session still syncs, with no heart-rate values and no zeros.
+20. **Samples arrive in time** *(Phase 8)*. Compare when heart-rate and step
+    samples arrive with when each entry is logged. An entry's values are
+    computed as it is logged, so a sample that arrives after that is missing
+    from them — the shipping plan's Phase 8 item 4 decides whether to wait.
+
 ### What "QA passed" means
 
-Levels 1 and 2 green, plus all fourteen steps at Level 3 on real paired hardware.
+Levels 1 and 2 green, plus every step at Level 3 on real paired hardware —
+steps 15–20 as soon as shipping-plan Phases 7 and 8 make them runnable.
 Anything less and the integration is still a test-suite reality.
 
 ---
@@ -349,7 +391,7 @@ Anything less and the integration is still a test-suite reality.
 4. Wire the phone side (`main.dart` → `liveSession`) and the `routines_down`
    producer.
 5. Run Level 3 on hardware. **This is the gate.** Apple Watch is not done until
-   all fourteen steps pass on a paired device.
+   every step passes on a paired device.
 6. Only after that: the Wear OS cloning job, as its own plan.
 
 The temptation is to build the transport first because it is the interesting

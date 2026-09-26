@@ -5,6 +5,7 @@ import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/services/health_sync_service.dart';
+import '../../core/utils/logged_entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'exercise_library.dart';
@@ -64,6 +65,14 @@ class SessionCore {
   final Map<String, List<SegmentEffort>> _efforts = {};
   final Map<String, List<EffortObservation>> _observations = {};
   final Map<String, Exercise> _exerciseCache = {};
+
+  /// The current session's sensor summaries, loaded with the session so an
+  /// edit snapshot can carry them without a repository read (F-1).
+  ///
+  /// Loaded only once the session has ended: summaries are imported with the
+  /// wrist's session end, so a session in progress has none, and reloading
+  /// one costs nothing extra.
+  final List<SensorSummary> _sensorSummaries = [];
 
   bool _isLoading = false;
 
@@ -172,6 +181,7 @@ class SessionCore {
     _segments.clear();
     _efforts.clear();
     _observations.clear();
+    _sensorSummaries.clear();
     _timerManager.clearAll();
     _blockManager.clearAll();
     _exerciseCache.clear();

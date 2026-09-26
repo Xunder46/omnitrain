@@ -143,6 +143,23 @@ exactly one PR definition per axis; all three surfaces change together.
 Triggered from `WorkoutSessionScreen._logSet()`, gated on `set`-kind efforts, suppressed in edit
 mode, and fired on a strict `>` against both the standing best and the session's running best.
 
+### `EffortRatingSheet`
+
+**File**: `lib/widgets/session/effort_rating_sheet.dart`
+
+The session effort rating question, for every phone surface that asks it: the Session Summary's
+automatic prompt and its EFFORT row's add/change control, and the Watch Session screen after the
+phone's own Finish. `EffortRatingSheet.show` decides only whether the question must be answered
+(`mustAnswer`); where the answer goes is the caller's `onRated`, so the sheet writes nothing and
+each caller keeps its own owner of the rating — `WorkoutState` for a session in history,
+`WatchSessionRatings` for a wrist session that may not be history yet.
+
+**Shared, so both devices ask one question.** The question, the scale and the end labels are held
+to `watch/contract/watch_effort_rating_contract.json`, the file the wrist's copy is held to.
+Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`). The rules each caller
+applies are in [Session Summary](../session_summary.md) ("Effort Rating Capture") and
+[Watch Session Capture](../watch_session_capture.md).
+
 ---
 
 ---

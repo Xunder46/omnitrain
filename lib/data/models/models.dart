@@ -2334,3 +2334,402 @@ class WaterLogEntry {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Watch capture — wrist-measured summaries and the watch session inbox
+// (Stats PR 2, D-131 / D-132)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A heart-rate and step summary the wrist measured over one window of a
+/// wrist session. It attaches to exactly one target: the session itself, a
+/// set block ([SegmentEffort]), a timed or hold entry ([TimedInstance]) or a
+/// round ([RoundInstance]).
+///
+/// It is measured, never entered, so it is not an [EffortObservation] and is
+/// never read or edited as a manual metric (`metric-heart-rate` stays
+/// unused). It is a separate row rather than new columns on its targets
+/// because those rows are rebuilt field by field in several places, where a
+/// new field would be silently dropped.
+///
+/// Invariants, enforced here at construction (a violation throws
+/// [ArgumentError]) and mirrored by CHECK constraints on `app_sensor_summary`
+/// in `scripts/sqlite_schema.sql`:
+///   - [scope] is one of [scopes]; a `session` summary targets its own session.
+///   - One row per (scope, target): [id] is derived from both, so the
+///     repository's put-if-absent keeps the pair unique.
+///   - The heart-rate pair travels together, both or neither, with
+///     1 ≤ average ≤ maximum. A missing reading is absence, never zero.
+///   - [steps] is ≥ 0 and appears only on a `timed_instance`. A measured 0 is
+///     a value.
+///   - At least one measured value: an empty summary cannot exist.
+///   - The window is ordered, and [source] is `watch`.
+///
+/// A summary is deleted together with its target, and every summary carries
+/// the [sessionId] it belongs to so deleting the session removes all of them.
+/// Verified by `test/watch_capture_repository_parity_test.dart`.
+class SensorSummary {
+  static const String scopeSession = 'session';
+  static const String scopeEffort = 'effort';
+  static const String scopeTimedInstance = 'timed_instance';
+  static const String scopeRoundInstance = 'round_instance';
+
+  /// Every scope, in the order a session's summaries are listed.
+  static const List<String> scopes = [
+    scopeSession,
+    scopeEffort,
+    scopeTimedInstance,
+    scopeRoundInstance,
+  ];
+
+  static const String sourceWatch = 'watch';
+
+  /// Every source a summary may come from.
+  static const List<String> sources = [sourceWatch];
+
+  /// Deterministic storage key: one row per (scope, target).
+  static String idFor(String scope, String targetId) =>
+      'sensor-$scope-$targetId';
+
+  final String id;
+
+  /// The [TrainingSession] this summary belongs to, whatever its scope.
+  final String sessionId;
+  final String scope;
+
+  /// The id of the row the summary attaches to: the session, the
+  /// [SegmentEffort], the [TimedInstance] or the [RoundInstance].
+  final String targetId;
+
+  /// The window the summary covers, wall-clock epoch ms, both ends inclusive.
+  final int windowStartMs;
+  final int windowEndMs;
+
+  /// Unrounded arithmetic mean of the qualifying heart-rate samples.
+  final double? avgHeartRateBpm;
+  final double? maxHeartRateBpm;
+
+  /// Steps taken inside the window (timed entries only).
+  final int? steps;
+  final String source;
+  final int createdAtMs;
+
+  SensorSummary({
+    required this.sessionId,
+    required this.scope,
+    required this.targetId,
+    required this.windowStartMs,
+    required this.windowEndMs,
+    this.avgHeartRateBpm,
+    this.maxHeartRateBpm,
+    this.steps,
+    this.source = sourceWatch,
+    required this.createdAtMs,
+  }) : id = idFor(scope, targetId) {
+    _checkInvariants();
+  }
+
+  void _checkInvariants() {
+    if (!scopes.contains(scope)) {
+      throw ArgumentError.value(scope, 'scope', 'D-131: unknown summary scope');
+    }
+    if (sessionId.isEmpty || targetId.isEmpty) {
+      throw ArgumentError('D-131: a summary names its session and its target');
+    }
+    if (scope == scopeSession && targetId != sessionId) {
+      throw ArgumentError.value(
+        targetId,
+        'targetId',
+        'D-131: a session summary targets its own session ($sessionId)',
+      );
+    }
+    final avg = avgHeartRateBpm;
+    final max = maxHeartRateBpm;
+    if ((avg == null) != (max == null)) {
+      throw ArgumentError(
+        'D-131: the heart-rate average and maximum are both present or both '
+        'absent',
+      );
+    }
+    if (avg != null && max != null) {
+      if (!avg.isFinite || !max.isFinite) {
+        throw ArgumentError('D-131: heart rate must be a finite number');
+      }
+      if (avg < 1) {
+        throw ArgumentError.value(
+          avg,
+          'avgHeartRateBpm',
+          'D-131: a missing heart rate is absent, never zero; 1 ≤ average',
+        );
+      }
+      if (avg > max) {
+        throw ArgumentError.value(
+          avg,
+          'avgHeartRateBpm',
+          'D-131: the heart-rate average cannot exceed the maximum ($max)',
+        );
+      }
+    }
+    final stepCount = steps;
+    if (stepCount != null) {
+      if (stepCount < 0) {
+        throw ArgumentError.value(stepCount, 'steps', 'D-131: steps ≥ 0');
+      }
+      if (scope != scopeTimedInstance) {
+        throw ArgumentError.value(
+          scope,
+          'scope',
+          'D-131: steps are recorded only on a timed_instance summary',
+        );
+      }
+    }
+    if (avg == null && stepCount == null) {
+      throw ArgumentError(
+        'D-131: a summary holds at least one measured value; an empty '
+        'summary is never stored',
+      );
+    }
+    if (windowEndMs < windowStartMs) {
+      throw ArgumentError.value(
+        windowEndMs,
+        'windowEndMs',
+        'D-131: the window ends at or after it starts ($windowStartMs)',
+      );
+    }
+    if (!sources.contains(source)) {
+      throw ArgumentError.value(source, 'source', 'D-131: unknown source');
+    }
+  }
+
+  factory SensorSummary.fromMap(Map<String, dynamic> m) {
+    final summary = SensorSummary(
+      sessionId: m['session_id'] as String,
+      scope: m['scope'] as String,
+      targetId: m['target_id'] as String,
+      windowStartMs: m['window_start_ms'] as int,
+      windowEndMs: m['window_end_ms'] as int,
+      avgHeartRateBpm: (m['avg_heart_rate_bpm'] as num?)?.toDouble(),
+      maxHeartRateBpm: (m['max_heart_rate_bpm'] as num?)?.toDouble(),
+      steps: m['steps'] as int?,
+      source: m['source'] as String,
+      createdAtMs: m['created_at_ms'] as int,
+    );
+    final storedId = m['id'] as String?;
+    if (storedId != null && storedId != summary.id) {
+      throw ArgumentError.value(
+        storedId,
+        'id',
+        'D-131: a stored summary id must be ${summary.id}',
+      );
+    }
+    return summary;
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'session_id': sessionId,
+    'scope': scope,
+    'target_id': targetId,
+    'window_start_ms': windowStartMs,
+    'window_end_ms': windowEndMs,
+    'avg_heart_rate_bpm': avgHeartRateBpm,
+    'max_heart_rate_bpm': maxHeartRateBpm,
+    'steps': steps,
+    'source': source,
+    'created_at_ms': createdAtMs,
+  };
+}
+
+/// One thing the phone learned about a wrist session before it became
+/// history: a wrist event, or one of the phone's own annotations on that
+/// session.
+///
+/// Wrist kinds are the protocol's `set`, `timed`, `round`, `hold`,
+/// `effort_rating` and `session_end` events. Phone kinds are the phone's own
+/// rating (`phone_rating`), and the live corrections and deletions it sent
+/// for a wrist entry (`phone_correction`, `phone_deletion`). The phone mints
+/// the annotation ids deterministically ([phoneRatingId], [phoneChangeId]),
+/// so a phone annotation is staged at most once too.
+///
+/// The repository stages rows put-if-absent by [entryId]: the first copy is
+/// the record, and a redelivered or altered copy never replaces it. Rows are
+/// never deleted, and no history delete cascades into the inbox: once
+/// [appliedAtMs] is set, a row is the tombstone that stops a later sync from
+/// re-creating history the user deleted.
+///
+/// [payload] is the event object as it arrived, or the phone's annotation.
+/// It is held as its JSON encoding, so the map a caller reads is a fresh copy
+/// and a staged row cannot be changed through it.
+///
+/// Verified by `test/watch_capture_repository_parity_test.dart`.
+class WatchInboxEntry {
+  static const String originWatch = 'watch';
+  static const String originPhone = 'phone';
+
+  static const String kindSet = 'set';
+  static const String kindTimed = 'timed';
+  static const String kindRound = 'round';
+  static const String kindHold = 'hold';
+  static const String kindEffortRating = 'effort_rating';
+  static const String kindSessionEnd = 'session_end';
+  static const String kindPhoneRating = 'phone_rating';
+  static const String kindPhoneCorrection = 'phone_correction';
+  static const String kindPhoneDeletion = 'phone_deletion';
+
+  /// The wrist event kinds the inbox stages (origin `watch`).
+  static const List<String> watchKinds = [
+    kindSet,
+    kindTimed,
+    kindRound,
+    kindHold,
+    kindEffortRating,
+    kindSessionEnd,
+  ];
+
+  /// The phone's own annotation kinds (origin `phone`).
+  static const List<String> phoneKinds = [
+    kindPhoneRating,
+    kindPhoneCorrection,
+    kindPhoneDeletion,
+  ];
+
+  static const String _phoneChangeIdPrefix = 'phone-change-';
+
+  /// The id of the phone's own rating for [watchSessionId]: one per session.
+  static String phoneRatingId(String watchSessionId) =>
+      'phone-rating-$watchSessionId';
+
+  /// The id of the [index]th change of the phone's structure change
+  /// [changeId] (a `correct_entry` or `delete_entry`).
+  static String phoneChangeId(String changeId, int index) =>
+      '$_phoneChangeIdPrefix$changeId-$index';
+
+  final String entryId;
+  final String watchSessionId;
+  final String kind;
+  final String origin;
+
+  /// The JSON encoding of [payload], exactly as stored.
+  final String payloadJson;
+
+  /// Wall-clock epoch ms when the phone staged the row.
+  final int receivedAtMs;
+
+  /// Wall-clock epoch ms when the row was applied (materialised into
+  /// history, or deliberately discarded); `null` while it waits.
+  final int? appliedAtMs;
+
+  WatchInboxEntry({
+    required String entryId,
+    required String watchSessionId,
+    required String kind,
+    required String origin,
+    required Map<String, dynamic> payload,
+    required int receivedAtMs,
+    int? appliedAtMs,
+  }) : this._(
+         entryId: entryId,
+         watchSessionId: watchSessionId,
+         kind: kind,
+         origin: origin,
+         payloadJson: _encodePayload(payload),
+         receivedAtMs: receivedAtMs,
+         appliedAtMs: appliedAtMs,
+       );
+
+  WatchInboxEntry._({
+    required this.entryId,
+    required this.watchSessionId,
+    required this.kind,
+    required this.origin,
+    required this.payloadJson,
+    required this.receivedAtMs,
+    this.appliedAtMs,
+  }) {
+    _checkInvariants();
+  }
+
+  static String _encodePayload(Map<String, dynamic> payload) {
+    try {
+      return jsonEncode(payload);
+    } on JsonUnsupportedObjectError catch (e) {
+      throw ArgumentError.value(
+        payload,
+        'payload',
+        'D-132: a staged payload must be JSON (${e.unsupportedObject})',
+      );
+    }
+  }
+
+  void _checkInvariants() {
+    if (entryId.isEmpty || watchSessionId.isEmpty) {
+      throw ArgumentError('D-132: a staged row names its entry and session');
+    }
+    final List<String> allowedKinds;
+    if (origin == originWatch) {
+      allowedKinds = watchKinds;
+    } else if (origin == originPhone) {
+      allowedKinds = phoneKinds;
+    } else {
+      throw ArgumentError.value(origin, 'origin', 'D-132: watch or phone');
+    }
+    if (!allowedKinds.contains(kind)) {
+      throw ArgumentError.value(
+        kind,
+        'kind',
+        'D-132: not a kind the inbox stages for origin $origin',
+      );
+    }
+    if (kind == kindPhoneRating && entryId != phoneRatingId(watchSessionId)) {
+      throw ArgumentError.value(
+        entryId,
+        'entryId',
+        'D-132: the phone rating id is ${phoneRatingId(watchSessionId)}',
+      );
+    }
+    if ((kind == kindPhoneCorrection || kind == kindPhoneDeletion) &&
+        !entryId.startsWith(_phoneChangeIdPrefix)) {
+      throw ArgumentError.value(
+        entryId,
+        'entryId',
+        'D-132: a phone change id comes from phoneChangeId',
+      );
+    }
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(payloadJson);
+    } on FormatException {
+      throw ArgumentError.value(payloadJson, 'payloadJson', 'D-132: not JSON');
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw ArgumentError.value(
+        payloadJson,
+        'payloadJson',
+        'D-132: a staged payload is a JSON object',
+      );
+    }
+  }
+
+  /// A fresh copy of the staged payload.
+  Map<String, dynamic> get payload =>
+      jsonDecode(payloadJson) as Map<String, dynamic>;
+
+  factory WatchInboxEntry.fromMap(Map<String, dynamic> m) => WatchInboxEntry._(
+    entryId: m['entry_id'] as String,
+    watchSessionId: m['watch_session_id'] as String,
+    kind: m['kind'] as String,
+    origin: m['origin'] as String,
+    payloadJson: m['payload_json'] as String,
+    receivedAtMs: m['received_at_ms'] as int,
+    appliedAtMs: m['applied_at_ms'] as int?,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'entry_id': entryId,
+    'watch_session_id': watchSessionId,
+    'kind': kind,
+    'origin': origin,
+    'payload_json': payloadJson,
+    'received_at_ms': receivedAtMs,
+    'applied_at_ms': appliedAtMs,
+  };
+}
