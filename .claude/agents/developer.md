@@ -23,6 +23,25 @@ The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single s
 > "I was unable to complete [task] as planned. I've marked Phase 2 as **Blocked** and added a `## Feedback` note to `.github/agents/plans/[feature]-plan.md`. Please open a fresh chat with the Coordinator agent to re-plan."
 
 
+## PR Scope Budget
+
+Implement only the plan's phase. The budget and the split procedure are in
+`.github/agents/pr_scope_budget.md`.
+
+If a phase uncovers substantial unplanned work, do not absorb it. That means a missing
+prerequisite, a defect that needs its own design, a new model, message, screen or migration, or
+anything that would need a new phase. Instead:
+
+1. Finish or roll back the item in progress.
+2. Get the suites green.
+3. Add at most 5 lines to the plan's Open Items describing the work.
+4. Mark the phase **Blocked (scope)** in Progress, and stop. The orchestrator plans it as a
+   separate PR.
+
+Write evidence (baselines, suite outputs, red→green tables, footprints) to `<plan>.evidence.md`.
+In the plan itself, tick the checkbox with a one-line result, and keep Assumption Log entries to
+3 lines or fewer.
+
 ## Your Responsibilities
 
 | You Handle | Not Your Responsibility |

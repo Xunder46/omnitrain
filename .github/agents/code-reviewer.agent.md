@@ -10,7 +10,7 @@ handoffs:
     send: false
   - label: Hand off to Developer for fixes
     agent: developer
-    prompt: Please address the implementation, test, and doc issues outlined above, and re-check every applicable rule in docs/global_conventions.md before handing back.
+    prompt: Please address the issues outlined above, and re-check every applicable rule in docs/global_conventions.md before handing back.
     send: false
   - label: Approve and close
     agent: conductor
@@ -54,6 +54,21 @@ The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single s
 **If the implementation does not meet the plan**, add a `## Feedback` section to the plan file describing exactly what needs to change and why, then present the findings to the user and wait for their decision.
 
 **If the review passes**, no changes to the plan file are required — present the approval to the user and wait for confirmation.
+
+## PR Scope Budget
+
+Write findings to `<plan>.review.md`, next to the plan, not into the plan. The plan's
+`## Feedback` gets only a pointer to that file and a fix checklist. This replaces the instruction
+above to add a `## Feedback` section describing exactly what needs to change.
+
+Triage against `.github/agents/pr_scope_budget.md` §1 "At review". Recommend a split when there
+are more than 6 substantive findings, a DESIGN finding spans layers, or a second review round would
+be needed:
+
+- list what to fix in this PR: CRITICAL findings and cheap MECHANICAL ones, in one round;
+- list what goes to a follow-up PR plan through conductor-v2.
+
+Never propose a review → fix → review loop.
 
 ## Your Role
 

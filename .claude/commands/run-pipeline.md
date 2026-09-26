@@ -34,6 +34,13 @@ skip a step, do not reorder, do not run them in parallel:
 
 4. Invoke the `code-reviewer` subagent to review the completed work.
 
+SCOPE CHECK — run the `pr-scope-guard` skill after step 1, after each implementation agent, and
+after step 4. If it calls for a split:
+
+- stop at a stopping point, where every item is done or not started and the suites are green;
+- kick off conductor-v2 for the moved scope;
+- report, instead of continuing the pipeline.
+
 BOUNDED AUTO-FIX — exactly one pass, and only for findings with no decision
 content:
 

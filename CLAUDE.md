@@ -78,6 +78,19 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
 - Never bypass repository interfaces from state/features.
 - Follow conventions/tokens from docs and constants; do not invent parallel patterns.
 
+### PR scope budget
+
+A plan that runs past a few hundred lines is several PRs in one file, or a feedback loop.
+
+- **The budget and the split procedure** are in `.github/agents/pr_scope_budget.md`.
+- **Checkpoints.** Run the `pr-scope-guard` skill when a plan is written, after each implementation
+  phase, and after a code review.
+- **Never grow a plan** to absorb new scope or another round of review feedback. Reach a stopping
+  point where every item is done or not started and the suites are green, then plan the rest as a
+  separate PR with conductor-v2.
+- **Evidence stays out of the plan.** It goes in `<plan>.evidence.md`, and review findings go in
+  `<plan>.review.md`.
+
 ### Decision ownership
 
 The project owner drives **product behavior** — what the app should do, how it should feel,

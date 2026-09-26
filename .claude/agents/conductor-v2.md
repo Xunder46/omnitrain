@@ -233,6 +233,22 @@ only a planner can do — audit whether the defect traces to plan
 imprecision, and if so amend the scenario by supersedure (S-NNNa) and
 note the spec accountability in verification notes.
 
+## PR Scope Budget
+
+Before writing a plan, estimate it against `.github/agents/pr_scope_budget.md`: its length,
+phases, tracks, ledger decisions, scenarios, predicted production code, and any missing
+prerequisites.
+
+- **Over budget:** write a PR series. That is a short index plan of 100 lines or fewer (the PRs in
+  order, a one-line scope for each, their dependencies, the shared decisions) and a full plan for
+  the first PR only. Plan later PRs when their turn comes.
+- **What the plan holds:** decisions, scenarios, phases with Done Criteria, Open Items, and a
+  Progress checklist with one line per item. Direct executors to write evidence (baselines, suite
+  outputs, red→green tables) to `<plan>.evidence.md`, and reviewers to write findings to
+  `<plan>.review.md`. Never into the plan.
+- **Re-invoked with scope moved out of an oversized PR:** plan only that scope, within the same
+  budget.
+
 ## Anti-Patterns
 
 - Planning from docs or memory without opening source

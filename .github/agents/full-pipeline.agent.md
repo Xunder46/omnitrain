@@ -43,6 +43,22 @@ iteration) and clear the Feedback body (keep the header).
 
 ---
 
+## PR Scope Budget (applies in every phase)
+
+The budget and the split procedure are in `.github/agents/pr_scope_budget.md`.
+
+- **Phase 0:** if the plan is over budget, write a PR series: a short index plan plus a full plan
+  for the first PR only.
+- **Implementation phases:**
+  - Implement only the plan's scope.
+  - Substantial unplanned work (a missing prerequisite, a defect that needs its own design, a new
+    model, message, screen or migration) is not absorbed. Reach a stopping point, add at most 5
+    lines to Open Items, mark the phase **Blocked (scope)**, and stop.
+  - Write evidence to `<plan>.evidence.md`, not into the plan.
+- **Review:** write findings to `<plan>.review.md`. With more than 6 substantive findings, fix only
+  CRITICAL and cheap MECHANICAL ones in one round, and move the rest to a follow-up PR plan.
+  Never loop review → fix → review.
+
 ## Phase Match Strategy
 
 Before doing anything, classify the request:
