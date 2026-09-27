@@ -253,6 +253,7 @@ extension SessionCoreEntryMethods on SessionCore {
           valueBool: shouldClearSkipMarker
               ? false
               : ((value is bool) ? value : oldObs.valueBool),
+          valueSource: oldObs.valueSource,
           rpeRating: oldObs.rpeRating,
           restDurationMs: oldObs.restDurationMs,
           createdAtMs: oldObs.createdAtMs,
@@ -284,6 +285,164 @@ extension SessionCoreEntryMethods on SessionCore {
     }
   }
 
+  /// Writes the distance of one entry, in metres (D-307, D-313).
+  ///
+  /// A value greater than zero is stored as given, with source `entered`; zero
+  /// stores 0.0 with no source, which is how a distance is removed. An
+  /// existing row keeps its id and `createdAtMs` and gets a new `updatedAtMs`.
+  ///
+  /// [entryIndex] is the entry's position among the effort's entries: its
+  /// timed instances, or — on an effort that is not timed — its distance rows,
+  /// which are the data-safety rows of D-319.
+  Future<void> setEntryDistance(
+    String effortId,
+    int entryIndex,
+    double metres,
+  ) async {
+    _clearError();
+
+    try {
+      await _writeEntryDistance(effortId, entryIndex, metres);
+    } catch (e) {
+      _setError('Failed to set distance: $e');
+    }
+  }
+
+  /// Records the distance an entry already holds as entered, keeping the
+  /// stored metres exactly (D-307). Confirming the value the dialog pre-filled
+  /// is what turns an estimate into a confirmed entry; an entry with no
+  /// distance has nothing to confirm and is left alone.
+  Future<void> confirmEntryDistance(String effortId, int entryIndex) async {
+    _clearError();
+
+    try {
+      final paired = DistancePairing.forEntries(
+        distanceRows: _observations[effortId] ?? const <EffortObservation>[],
+        entryCount: _distanceEntryCount(effortId),
+      );
+      if (entryIndex < 0 || entryIndex >= paired.length) return;
+
+      final stored = paired[entryIndex];
+      if (stored == null) return;
+
+      await _writeEntryDistance(effortId, entryIndex, stored.valueReal ?? 0.0);
+    } catch (e) {
+      _setError('Failed to set distance: $e');
+    }
+  }
+
+  Future<void> _writeEntryDistance(
+    String effortId,
+    int entryIndex,
+    double metres,
+  ) async {
+    final observations = _observations[effortId];
+    if (observations == null) return;
+
+    final entryCount = _distanceEntryCount(effortId);
+    if (entryIndex < 0 || entryIndex >= entryCount) return;
+
+    final paired = DistancePairing.forEntries(
+      distanceRows: observations,
+      entryCount: entryCount,
+    );
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Every entry before the edited one that has no row yet gets a
+    // zero-valued row with no source, so that the pairing the next write reads
+    // stays positional (D-313).
+    for (var i = 0; i < entryIndex; i++) {
+      if (paired[i] != null) continue;
+      final filled = _newDistanceRow(
+        effortId: effortId,
+        entryIndex: i,
+        observations: observations,
+        atMs: now,
+      );
+      await _repository.createObservation(filled);
+      observations.add(filled);
+    }
+
+    final hasDistance = metres > 0;
+    final stored = paired[entryIndex];
+    if (stored == null) {
+      final created = _newDistanceRow(
+        effortId: effortId,
+        entryIndex: entryIndex,
+        observations: observations,
+        atMs: now,
+        metres: hasDistance ? metres : 0.0,
+        source: hasDistance ? EffortObservation.sourceEntered : null,
+      );
+      await _repository.createObservation(created);
+      observations.add(created);
+    } else {
+      final updated = EffortObservation(
+        id: stored.id,
+        effortId: stored.effortId,
+        metricId: stored.metricId,
+        unitId: stored.unitId,
+        valueInt: stored.valueInt,
+        valueReal: hasDistance ? metres : 0.0,
+        valueText: stored.valueText,
+        valueBool: stored.valueBool,
+        valueSource: hasDistance ? EffortObservation.sourceEntered : null,
+        rpeRating: stored.rpeRating,
+        restDurationMs: stored.restDurationMs,
+        createdAtMs: stored.createdAtMs,
+        updatedAtMs: now,
+      );
+      await _repository.updateObservation(updated);
+      final index = observations.indexWhere((o) => o.id == stored.id);
+      if (index >= 0) observations[index] = updated;
+    }
+
+    _notify();
+  }
+
+  /// How many entries [effortId] holds for distance purposes (D-312, D-319):
+  /// its timed instances, or — on an effort that is not timed — its distance
+  /// rows themselves, because the data-safety rows have no instance behind
+  /// them.
+  int _distanceEntryCount(String effortId) {
+    if (_findEffort(effortId)?.effortKind == 'timed') {
+      return _timerManager.getTimedInstancesForEffort(effortId).length;
+    }
+    return (_observations[effortId] ?? const <EffortObservation>[])
+        .where((row) => row.metricId == MetricIds.distance)
+        .length;
+  }
+
+  /// A distance row named as every writer names one
+  /// (`obs-<effortId>-<n>-distance`), with the writing timestamp appended when
+  /// that id is already taken (D-313).
+  EffortObservation _newDistanceRow({
+    required String effortId,
+    required int entryIndex,
+    required List<EffortObservation> observations,
+    required int atMs,
+    double metres = 0.0,
+    String? source,
+  }) {
+    final plainId = LoggedEntryRows.observationId(
+      effortId,
+      entryIndex,
+      'distance',
+    );
+    return EffortObservation(
+      id: observations.any((row) => row.id == plainId)
+          ? '$plainId-$atMs'
+          : plainId,
+      effortId: effortId,
+      metricId: MetricIds.distance,
+      unitId: MetricIds.unitMeters,
+      valueReal: metres,
+      valueSource: source,
+      createdAtMs: atMs,
+      updatedAtMs: atMs,
+    );
+  }
+
   Future<void> markSetSkipped(String effortId, int entryIndex) async {
     _clearError();
     try {
@@ -308,6 +467,7 @@ extension SessionCoreEntryMethods on SessionCore {
           valueReal: oldObs.valueReal,
           valueText: oldObs.valueText,
           valueBool: true,
+          valueSource: oldObs.valueSource,
           rpeRating: oldObs.rpeRating,
           restDurationMs: oldObs.restDurationMs,
           createdAtMs: oldObs.createdAtMs,

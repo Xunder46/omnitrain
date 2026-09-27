@@ -100,9 +100,16 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 |--------|---------|
 | `addEntry(effortId, {previousValues})` | Creates a new set/interval/round/drill. The optional `previousValues` map carries forward metrics from the prior entry into the new observation rows / round instance — see the per-effort-kind table below. Keys not present fall back to the app-wide defaults in `lib/core/constants/effort_defaults.dart` and `workout_constants.dart`. The carry-forward is read-only on the prior entry — `previousValues` only seeds the new entry's defaults, it does not mutate prior observations. The `_addSet` caller in `workout_session_screen.dart` populates `previousValues` from the prior entry in `getExercisesWithEntries()` so each new set/interval/round/drill pre-fills with the prior values (June 2026, exercise-set-last-value-plan). |
 
-| `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately; preserves all existing fields including `rpeRating` and `restDurationMs` |
+| `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately; preserves all existing fields including `rpeRating`, `restDurationMs` and `valueSource` |
 | `deleteLastEntry(effortId)` | Removes last set |
 | `markSetSkipped(effortId, entryIndex)` | Marks set as explicitly skipped with `valueInt: 0, valueBool: true`; survives reload via `_isSetLogged` check |
+| `setEntryDistance(effortId, entryIndex, metres)` | Records a distance with source `entered` (zero removes it); an existing row keeps its id and `createdAtMs`, and earlier unpaired entries are filled in position first. Verified by `test/distance_source_test.dart` (`S-805`–`S-807`) |
+| `confirmEntryDistance(effortId, entryIndex)` | Re-records the metres an entry already holds, keeping them exactly, and flips the source to `entered`. Verified by `test/distance_source_test.dart` (`S-806`) |
+
+Both distance writes report failures through the same error channel as the
+other observation methods, and the entry-pairing rule they share with the
+Summary and Stats lives in [Distance Source & Pairing](../distance_source.md).
+`updateEntryValue` writes a distance too, pairing it by raw list order.
 
 #### Routine Session Support
 

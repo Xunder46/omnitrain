@@ -62,6 +62,7 @@ non-overlapping training periods).
 | [My Routines](my_routines.md) | Reusable workout template system — CRUD, template-to-session conversion, UI |
 | [Calendar & Periods](calendar_periods.md) | Month calendar planning, day-session management, and non-overlapping training periods |
 | [Session Summary](session_summary.md) | Post-workout analytics — per-group comparison vs the previous session, inline PRs, session effort rating (automatic prompt + EFFORT row), save-as-routine. (The earlier standalone "volume comparison" surface was removed; progress is shown as per-group delta chips.) |
+| [Distance Source & Pairing](distance_source.md) | Where a stored distance's value came from (GPS, entered, estimated), which entry a distance row belongs to, and the one write that changes a distance |
 | [Profile & Measurements](profile_and_measurements.md) | Profile identity, avatar flow, body measurement logging, and history chart behavior |
 | [Theme & Settings](theme_and_settings.md) | Theme system, measurement/calendar preferences, timer alerts, workout toggles, and Settings screen behavior |
 | [Rolling Sessions](rolling_sessions.md) | Rolling/continuous free session format, segment block grouping, isRolling flag, and inline start-sheet guidance |

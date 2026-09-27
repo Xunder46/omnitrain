@@ -150,6 +150,13 @@ class WorkoutState extends ChangeNotifier {
     String metricKey,
     dynamic value,
   ) => _sessionCore.updateEntryValue(effortId, entryIndex, metricKey, value);
+  Future<void> setEntryDistance(
+    String effortId,
+    int entryIndex,
+    double metres,
+  ) => _sessionCore.setEntryDistance(effortId, entryIndex, metres);
+  Future<void> confirmEntryDistance(String effortId, int entryIndex) =>
+      _sessionCore.confirmEntryDistance(effortId, entryIndex);
   Future<void> markSetSkipped(String effortId, int entryIndex) =>
       _sessionCore.markSetSkipped(effortId, entryIndex);
   Future<void> deleteEntry(String effortId, int entryIndex) =>

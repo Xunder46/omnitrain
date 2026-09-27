@@ -1,7 +1,7 @@
 # Feature: Session Effort Rating Redefines "How Did It Feel" (Phone)
 
-> Status: DRAFT awaiting D-8 validation | Iteration 1 active | Phase 1 (Settings & Theme Foundation)
-> Next handoff: @developer (Phase 1)
+> Status: CLOSED. Phases 1–5 are implemented and code-reviewed (CHANGES REQUESTED → addressed). It is on `develop` as dcfe474 (implementation) and ae71e23 (review fixes), and not yet pushed to origin as of 2026-09-27.
+> Next handoff: none. The next Stats work is the PR 3 series: `.github/agents/plans/2026-09-26-03-stats-pr3-distance-series-index.md`.
 > Binding conventions: docs/global_conventions.md + docs/session_summary.md, docs/calendar_periods.md, docs/stats_screen.md, docs/theme_and_settings.md, docs/design_system.md
 
 ## Overview

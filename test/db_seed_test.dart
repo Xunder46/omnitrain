@@ -14,6 +14,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -134,6 +135,68 @@ Future<void> _insertSession(Database db) async {
     'updated_at_ms': 5000,
   });
 }
+
+/// The parent rows one effort observation needs: a session, its segment, a
+/// timed effort, and the metric definitions and unit the rows name.
+Future<void> _insertEffortFixture(Database db) async {
+  await _insertSession(db);
+  await db.insert('app_session_segment', {
+    'id': 'seg-sql-1',
+    'session_id': _sqlSession,
+    'order_index': 0,
+    'segment_type': 'workout',
+    'created_at_ms': 1000,
+    'updated_at_ms': 1000,
+  });
+  await db.insert('app_segment_effort', {
+    'id': 'eff-sql-1',
+    'segment_id': 'seg-sql-1',
+    'order_index': 0,
+    'effort_kind': 'timed',
+    'created_at_ms': 1000,
+    'updated_at_ms': 1000,
+  });
+  for (final row in [
+    {'id': MetricIds.distance, 'key': 'distance', 'data_type': 'real'},
+    {'id': MetricIds.reps, 'key': 'reps', 'data_type': 'int'},
+  ]) {
+    await db.insert('app_metric_definition', {
+      ...row,
+      'name': row['key'],
+      'created_at_ms': 1000,
+    });
+  }
+  await db.insert('app_unit', {
+    'id': MetricIds.unitMeters,
+    'key': 'm',
+    'name': 'metres',
+    'created_at_ms': 1000,
+  });
+}
+
+/// A raw observation row: exactly one value column, as the CHECK requires —
+/// `EffortObservation.toMap` cannot be used here because it always writes
+/// `value_bool` (Open Item O-4).
+Map<String, Object?> _observationRow({
+  required String id,
+  required String metricId,
+  Object? valueInt,
+  Object? valueReal,
+  Object? valueText,
+  Object? valueBool,
+  String? valueSource,
+}) => {
+  'id': id,
+  'effort_id': 'eff-sql-1',
+  'metric_id': metricId,
+  'value_int': valueInt,
+  'value_real': valueReal,
+  'value_text': valueText,
+  'value_bool': valueBool,
+  'value_source': valueSource,
+  'created_at_ms': 1000,
+  'updated_at_ms': 1000,
+};
 
 /// One summary per scope, plus a measured zero step count (D-125).
 List<SensorSummary> _sampleSummaries() => [
@@ -574,6 +637,98 @@ void main() {
           'received_at_ms': 1,
         }, 'a second row with the same entry id');
         expect(await db.query('app_watch_inbox_entry'), hasLength(1));
+      },
+    );
+  });
+
+  // Stats PR 3a, Phase 1 (D-301, D-311): a distance records where it came
+  // from, the column belongs to the contract, and the CHECK refuses a source
+  // that could not have been written.
+  group('Distance source schema contract (D-301 / D-311)', () {
+    late Database db;
+
+    setUp(() async {
+      db = await _openSchemaDatabase();
+      await _insertEffortFixture(db);
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test(
+      'D-311 app_effort_observation has value_source, and every toMap key of '
+      'the model is one of its columns',
+      () async {
+        final columns = await _columnsOf(db, 'app_effort_observation');
+        expect(columns, contains('value_source'));
+
+        final written = EffortObservation(
+          id: 'obs-eff-sql-1-0-distance',
+          effortId: 'eff-sql-1',
+          metricId: MetricIds.distance,
+          unitId: MetricIds.unitMeters,
+          valueReal: 4873.6,
+          valueSource: EffortObservation.sourceEstimated,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ).toMap();
+        expect(
+          written.keys.toSet().difference(columns),
+          isEmpty,
+          reason:
+              'D-311: EffortObservation.toMap writes keys '
+              'app_effort_observation lacks',
+        );
+      },
+    );
+
+    test(
+      'S-803 the CHECK refuses a source on another metric and an unknown '
+      'source, and accepts an estimate on a distance',
+      () async {
+        expect(
+          await _insertRefusal(
+            db,
+            'app_effort_observation',
+            _observationRow(
+              id: 'obs-eff-sql-1-0-reps',
+              metricId: MetricIds.reps,
+              valueInt: 8,
+              valueSource: EffortObservation.sourceEntered,
+            ),
+          ),
+          isNotNull,
+          reason: 'D-311: a source belongs to a metric-distance row',
+        );
+        expect(
+          await _insertRefusal(
+            db,
+            'app_effort_observation',
+            _observationRow(
+              id: 'obs-eff-sql-1-0-distance',
+              metricId: MetricIds.distance,
+              valueReal: 1000.0,
+              valueSource: 'manual',
+            ),
+          ),
+          isNotNull,
+          reason: 'D-311: the vocabulary is gps, entered, estimated',
+        );
+        expect(
+          await _insertRefusal(
+            db,
+            'app_effort_observation',
+            _observationRow(
+              id: 'obs-eff-sql-1-0-distance',
+              metricId: MetricIds.distance,
+              valueReal: 3000.0,
+              valueSource: EffortObservation.sourceEstimated,
+            ),
+          ),
+          isNull,
+          reason: 'D-311: an estimated distance is a storable row',
+        );
       },
     );
   });

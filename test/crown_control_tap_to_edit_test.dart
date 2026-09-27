@@ -340,6 +340,58 @@ void main() {
       final result = MetricStepCalc.parseAndClamp('duration', '-10');
       expect(result, 0);
     });
+
+    // ── Distance (D-314, D-316) ─────────────────────────────────────────────
+
+    test('parseAndClamp distance parses 5.2 to 5.2', () {
+      final result = MetricStepCalc.parseAndClamp('distance', '5.2');
+      expect(result, 5.2);
+      expect(result, isA<double>());
+    });
+
+    test('parseAndClamp distance clamps -3 to 0.0', () {
+      expect(MetricStepCalc.parseAndClamp('distance', '-3'), 0.0);
+    });
+
+    test('parseAndClamp distance clamps 1500 to 999.99', () {
+      expect(MetricStepCalc.parseAndClamp('distance', '1500'), 999.99);
+    });
+
+    test('parseAndClamp distance rounds 4.876 to 4.88', () {
+      expect(MetricStepCalc.parseAndClamp('distance', '4.876'), 4.88);
+    });
+
+    testWidgets('the distance dialog is titled Edit Distance and is prefilled '
+        'to two decimals', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showMetricEditPopup(
+                context,
+                metricType: 'distance',
+                currentValue: 4.8736,
+                unitLabel: 'KM',
+                onValueChanged: (_) {},
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit Distance'), findsOneWidget);
+      expect(find.text('Edit distance'), findsNothing);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller?.text, '4.87');
+      // The field label never carries the estimate marker: Ok makes the value
+      // an entered one.
+      expect(find.text('KM'), findsOneWidget);
+      expect(find.text('EST.'), findsNothing);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════

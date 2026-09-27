@@ -6,9 +6,9 @@ library;
 
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
-import '../constants/metric_ids.dart';
 import '../models/stats_progress.dart';
 import '../utils/date_utils.dart';
+import '../utils/distance_source.dart';
 import '../utils/observation_grouper.dart';
 
 /// An in-memory, read-only snapshot of the whole training history,
@@ -476,16 +476,13 @@ class StatsProgressService {
       final trend = <CardioTrendPoint>[];
       for (final day in days) {
         final cd = dayMap[day]!;
-        double? pace;
-        if (cd.distanceM != null && cd.distanceM! > 0) {
-          pace = cd.durationSecs / (cd.distanceM! / 1000.0);
-        }
         trend.add(
           CardioTrendPoint(
             date: day,
             durationSecs: cd.durationSecs,
             distanceM: cd.distanceM,
-            paceSecPerKm: pace,
+            paceSecPerKm: cd.paceSecPerKm,
+            distanceEstimated: cd.distanceEstimated,
           ),
         );
       }
@@ -636,26 +633,42 @@ class StatsProgressService {
     final exerciseId = effort.exerciseId;
     if (exerciseId == null) return;
 
-    final timedInstances = (await _loadHistory()).timedInstancesOf(effort.id);
+    final history = await _loadHistory();
+    final timedInstances = [...history.timedInstancesOf(effort.id)]
+      ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
     final totalDuration = timedInstances
         .where((t) => t.state == TimedState.finished)
         .fold<int>(0, (sum, t) => sum + t.actualDurationSecs);
 
     if (totalDuration <= 0) return;
 
-    final observations = (await _loadHistory()).observationsOf(effort.id);
-    final distanceObs = observations
-        .where((o) => o.metricId == MetricIds.distance)
-        .toList();
+    // Each entry owns its own distance row (D-312). The day's totals count
+    // every stored distance; the pace counts only finished entries that have
+    // one, so an entry that was never finished contributes its distance to the
+    // total but no time and no pace distance (D-309).
+    final paired = DistancePairing.forEntries(
+      distanceRows: history.observationsOf(effort.id),
+      entryCount: timedInstances.length,
+    );
 
-    double? newDistanceM;
-    if (distanceObs.isNotEmpty) {
-      final sum = distanceObs.fold<double>(
-        0.0,
-        (s, o) => s + (o.valueReal ?? 0.0),
-      );
-      if (sum > 0) newDistanceM = sum;
+    var dayDistanceM = 0.0;
+    var paceDurationSecs = 0;
+    var paceDistanceM = 0.0;
+    var estimated = false;
+    for (var i = 0; i < paired.length; i++) {
+      final row = paired[i];
+      final metres = row?.valueReal ?? 0.0;
+      if (metres <= 0) continue;
+
+      dayDistanceM += metres;
+      if (DistanceSource.isEstimated(row?.valueSource)) estimated = true;
+      if (timedInstances[i].state != TimedState.finished) continue;
+
+      paceDurationSecs += timedInstances[i].actualDurationSecs;
+      paceDistanceM += metres;
     }
+
+    final newDistanceM = dayDistanceM > 0 ? dayDistanceM : null;
 
     final dayMap = cardioByExercise.putIfAbsent(exerciseId, () => {});
     final existing = dayMap[sessionDay];
@@ -664,6 +677,9 @@ class StatsProgressService {
       dayMap[sessionDay] = _CardioDay(
         durationSecs: totalDuration,
         distanceM: newDistanceM,
+        paceDurationSecs: paceDurationSecs,
+        paceDistanceM: paceDistanceM,
+        distanceEstimated: estimated,
       );
     } else {
       dayMap[sessionDay] = _CardioDay(
@@ -671,6 +687,9 @@ class StatsProgressService {
         distanceM: (existing.distanceM != null || newDistanceM != null)
             ? (existing.distanceM ?? 0.0) + (newDistanceM ?? 0.0)
             : null,
+        paceDurationSecs: existing.paceDurationSecs + paceDurationSecs,
+        paceDistanceM: existing.paceDistanceM + paceDistanceM,
+        distanceEstimated: existing.distanceEstimated || estimated,
       );
     }
   }
@@ -1429,7 +1448,29 @@ class _CardioDay {
   final int durationSecs;
   final double? distanceM;
 
-  const _CardioDay({required this.durationSecs, required this.distanceM});
+  /// The finished entries that carry a distance: their `actualDurationSecs`
+  /// summed, and their distances summed in metres. The day's pace is the first
+  /// divided by the second in kilometres; the totals above count every
+  /// finished entry and every stored distance, so the two are not the same
+  /// sum (D-309).
+  final int paceDurationSecs;
+  final double paceDistanceM;
+
+  /// True when any distance counted in [distanceM] is an estimate (D-317).
+  final bool distanceEstimated;
+
+  const _CardioDay({
+    required this.durationSecs,
+    required this.distanceM,
+    this.paceDurationSecs = 0,
+    this.paceDistanceM = 0.0,
+    this.distanceEstimated = false,
+  });
+
+  /// The pace this day's entries imply, or null when none of them carries a
+  /// distance.
+  double? get paceSecPerKm =>
+      paceDistanceM > 0 ? paceDurationSecs / (paceDistanceM / 1000.0) : null;
 }
 
 /// Per-day isometric drill-time accumulator (sum of all hold times on that day).

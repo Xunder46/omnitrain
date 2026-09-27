@@ -38,14 +38,21 @@ class CardioTrendPoint {
   /// Total distance in metres for the training day. Null if no distance was logged.
   final double? distanceM;
 
-  /// Pace in seconds per kilometre. Null if no distance was logged or distanceM == 0.
+  /// Pace in seconds per kilometre, counted over the finished entries that
+  /// have a distance. Null if none of them does.
   final double? paceSecPerKm;
+
+  /// True when any distance counted in [distanceM] came from the watch
+  /// platform's estimate rather than from a measurement or an entry. Marks
+  /// both this point's distance and its pace.
+  final bool distanceEstimated;
 
   const CardioTrendPoint({
     required this.date,
     required this.durationSecs,
     this.distanceM,
     this.paceSecPerKm,
+    this.distanceEstimated = false,
   });
 }
 

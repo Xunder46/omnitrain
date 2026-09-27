@@ -82,6 +82,7 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `OmniSurface` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `PRToast` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `SelectAllOnFocus` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
+| `SessionDistanceCard` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `UiSetData` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `WaterTrackerControl` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |
 | `ZenHaloPainter` | [Routine, Profile & Brand](widget_catalog/feature_primitives.md) |

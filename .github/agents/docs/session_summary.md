@@ -95,6 +95,71 @@ Behavior details:
 
 ---
 
+## Distance
+
+The Summary is the one phone surface where a person types or corrects a
+distance: the live screen and Edit Session have no distance field, so a
+distance the phone should hold is entered here, on the post-workout summary or
+on a past session's. Other writers still record a distance row by raw list
+order — see [Distance Source & Pairing](distance_source.md) and plan O-3. What
+a stored distance means, and which entry it belongs to, is
+[Distance Source & Pairing](distance_source.md); this section is what the
+Summary does with it.
+
+**Structure.** `SessionDistanceCard` in
+`lib/widgets/session/session_distance_card.dart` renders rows the screen builds
+in `_buildDistanceRows`; the card reads no state and the screen owns every
+rule. The rows come from the session's efforts in the order
+`getExercisesWithEntries()` gives them, then in entry order, with each entry's
+own distance found through `DistancePairing`. Tapping a row opens
+`showMetricEditPopup` with the `distance` metric type, and the answer goes
+through `WorkoutState.setEntryDistance` or `confirmEntryDistance`.
+
+**Rules.**
+
+- **An entry is listed when it was tracked through Cardio.** The picker's
+  modality decides the effort kind at the moment an exercise is added, and only
+  Cardio yields `timed`, so the effort kind is the stored record of Cardio
+  tracking — the modality itself is never stored. That holds in every kind of
+  session: a Cardio session, a routine, Free Training, a rolling session, a
+  watch-started session. Anything tracked through another modality is not
+  listed.
+- **A stored distance is never hidden.** An entry of any other kind that still
+  holds a distance greater than zero is listed too, so no distance the app ever
+  wrote becomes unreachable. Setting it to zero removes its row.
+- **A Cardio-tracked entry keeps its row even with no distance**, reading as
+  absence rather than zero, because the field has to exist somewhere to be
+  filled in.
+- **The section is hidden when it has no rows**, as the group cards are.
+- **A row carries a name, a distance and a unit, and nothing else.** No pace,
+  total, change indicator or duration is added anywhere on the Summary: the
+  values belong to Stats.
+- **Confirming the pre-filled value keeps the stored metres**, which is what
+  confirms an estimate; any other value is stored as entered, and zero removes
+  the distance. The field's label never carries the estimate marker, because
+  pressing Ok makes the value an entered one.
+- **A correction reaches Stats** through the stored value, since a
+  `StatsProgressService` is built per Stats load rather than held.
+- **Unit and precision** are `UnitFormatter`'s: metres are stored, the display
+  unit is the preference's, and no km↔mi constant appears on this screen.
+
+Verified by:
+
+- `test/session_summary_distance_test.dart`: the section's rows and their
+  order, in km and in miles (`S-811`, `S-812`); correcting an estimate (`S-813`),
+  confirming one unchanged (`S-814`), entering zero (`S-815`), cancelling by
+  an outside tap and by cleared text (`S-816`), filling an empty entry
+  (`S-817`); which sessions list what — Free Training (`S-818a`), a resistance
+  session with no section (`S-818b`), a watch-imported session (`S-818c`), a
+  non-Cardio entry with a stored distance (`S-818d`), removing that distance
+  (`S-819`); the post-workout summary's write on Done (`S-820`); an Edit
+  Session discard (`S-821`); a routine (`S-822`); a plank tracked through
+  Cardio (`S-823`).
+- `test/crown_control_tap_to_edit_test.dart`: the dialog's parse, clamp and
+  rounding for the `distance` type, and its title.
+
+---
+
 ## Rest Time and Duration
 
 Rolling sessions have no session clock, so neither value is shown for them

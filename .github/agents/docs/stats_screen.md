@@ -194,7 +194,9 @@ Auto-detects the top-2 most-frequently-performed exercises with at least one
 `timed`-kind effort with `TimedState.finished`, ranked by distinct training days.
 
 For each activity:
-- **Pace chart** — `durationSecs / (distanceM / 1000)` per training day; shown
+- **Pace chart** — a day's pace counts only the finished entries that have a
+  distance, so a day's walk-breaks and its untimed entries do not dilute it;
+  if no entry qualifies the day has no pace. Shown
   when at least one day has a distance measurement and ≥ 2 data points.
   Distance is rendered as a secondary overlaid trend (converted to preferred
   distance units) so pace and distance direction can be compared in one card.
@@ -202,8 +204,23 @@ For each activity:
 - **Duration chart** — total session minutes per training day; fallback when no
   distance data or only 1 data point.
 - Single-point fallback: inline text.
+- **Estimates are marked, not converted.** A day whose total counts a distance
+  the watch platform estimated carries the marker on both its distance and its
+  pace, in the single-point text and on the chart, and the legend gains one
+  `est.` item only when the card has such a day. An estimated day's dot is
+  found by the day it belongs to rather than by its position in a series, since
+  a series may hold fewer spots than the trend has days (S-835). The duration
+  and distance totals themselves are unchanged by the marker. Which entry a
+  distance belongs to, and what a source means, is
+  [Distance Source & Pairing](distance_source.md).
 
 Empty state: "No cardio history yet." when `topCardio` is empty.
+
+Verified by `test/stats_distance_estimate_test.dart` (`S-831` for the pace
+inputs, `S-832` for the per-day flag, `S-833`/`S-834` for the single-point
+marker in both units and its absence on a measured day, `S-835` for the dots
+and the legend, `S-836` for the conversions, `S-837` for a Summary correction)
+and `test/stats_progress_test.dart` (the `Cardio trend` group).
 
 ### RECORDS
 Per-exercise best observed values with the date each was set. Aggregated by

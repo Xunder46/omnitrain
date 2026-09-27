@@ -6,20 +6,19 @@
 > (O-20 and a shipping-plan Phase 7 item). Findings and their fixes live next to this plan:
 > `2026-09-25-02-stats-pr2-watch-capture-plan.review.md` (findings) and
 > `2026-09-25-02-stats-pr2-watch-capture-plan.evidence.md` (baselines, suites, red→green, footprints).
-> No item is open for implementation; the owner commits. Manual QA on hardware is the owner's and
+> No item is open for implementation; it is committed on `develop` as 21b5176. Manual QA on hardware is the owner's and
 > waits on the shipping plan's Phases 7 and 8. The owner was unavailable during planning: every
 > question was resolved with a recommended default, marked **Default — owner to confirm** in the
 > Ledger; the Assumption Log adds A-62, A-65 and A-68 to confirm. A veto becomes a superseding
 > Ledger entry.
-> Next handoff: the pre-approval verification pass (@code-reviewer, 2026-09-26) **approved the PR
-> with warnings** — no critical finding, no unmet acceptance criterion. All four findings (V-1 – V-4)
-> were then addressed by @developer on the owner's direction; the resolution and its measurements are
-> in the review companion and the evidence file. No further review round is proposed.
+> Next handoff: none. The PR is APPROVED WITH WARNINGS (@code-reviewer, 2026-09-26), and V-1 – V-4 are
+> addressed (see the review companion). The next Stats work is the PR 3 series:
+> `.github/agents/plans/2026-09-26-03-stats-pr3-distance-series-index.md`.
 > Tier: STANDARD. Consolidation findings (F-1 to F-19) widened the scope. See D-110 and D-111.
-> Branch: PR 2 is NOT merged. All of its work, including the partial review-fix round, is STAGED
-> (uncommitted) in the repository's main checkout on `develop` (2026-09-26). The same content exists
-> as commits on branch `feature/stats-pr2-watch-capture`. Its worktree was removed. Work and run
-> commands in the main checkout on `develop`, and leave committing to the owner.
+> Branch: committed on `develop` as 21b5176, squashed. Its title, "Add tests for session end handling
+> and phone preferences synchronization", doesn't say it is PR 2. It contains every later fix round.
+> The branch `feature/stats-pr2-watch-capture` (b9348fe) is superseded by it; do not merge that branch.
+> `develop` is not yet pushed (origin/develop = f1f9aaa) as of 2026-09-27.
 > Binding conventions: `.github/agents/docs/global_conventions.md`, `CLAUDE.md` ("Verification
 > is observed output"), `.github/agents/docs/documentation_standard.md` (every doc edit),
 > `watch/sync_protocol/PROTOCOL.md` (normative wire spec).

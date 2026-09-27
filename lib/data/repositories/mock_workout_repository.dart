@@ -2035,6 +2035,7 @@ class MockWorkoutRepository implements WorkoutRepository {
           valueReal: obs.valueReal,
           valueText: obs.valueText,
           valueBool: obs.valueBool,
+          valueSource: obs.valueSource,
           rpeRating: obs.rpeRating,
           restDurationMs: obs.restDurationMs,
           createdAtMs: nowMs,

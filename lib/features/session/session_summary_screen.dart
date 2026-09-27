@@ -11,6 +11,8 @@ import '../../core/constants/effort_defaults.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/utils/session_feeling_utils.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../../core/constants/metric_ids.dart';
+import '../../core/utils/distance_source.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -21,6 +23,8 @@ import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/session/effort_rating_sheet.dart';
+import '../../widgets/session/metric_crown_widget.dart';
+import '../../widgets/session/session_distance_card.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
@@ -709,6 +713,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                       _buildSessionInfoHeader(theme),
                       _buildSessionInfoCard(theme),
                       ..._buildGroupCards(theme),
+                      ..._buildDistanceSection(),
                       const SizedBox(height: 16),
                       const OmniCardHeader(title: 'SESSION NOTE'),
                       _buildNoteCard(theme),
@@ -815,9 +820,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               Expanded(
                 child: _StatPill(
                   label: 'Effort',
-                  value: feeling != null
-                      ? '$feeling / 5'
-                      : '—',
+                  value: feeling != null ? '$feeling / 5' : '—',
                   leading: feeling != null
                       ? Container(
                           key: const Key('omni_session_effort_marker'),
@@ -837,16 +840,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 style: ButtonStyle(
                   shape: WidgetStatePropertyAll(
                     RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonUtilityRadius,
+                      ),
                     ),
                   ),
                   padding: const WidgetStatePropertyAll(
                     EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   ),
                 ),
-                child: Text(
-                  feeling != null ? 'Change' : 'Add rating',
-                ),
+                child: Text(feeling != null ? 'Change' : 'Add rating'),
               ),
             ],
           ),
@@ -910,6 +913,144 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       icon: const Icon(Icons.open_in_new, size: 16),
       label: const Text('Open Calendar'),
     );
+  }
+
+  // ── DISTANCE section (D-315, D-319) ──────────────────────────────────────
+
+  /// The DISTANCE header and card, or nothing at all when no entry has a row:
+  /// a session that tracked nothing through Cardio and holds no stored
+  /// distance shows no section.
+  List<Widget> _buildDistanceSection() {
+    final rows = _buildDistanceRows();
+    if (rows.isEmpty) return const [];
+
+    return [
+      const SizedBox(height: 16),
+      const OmniCardHeader(title: 'DISTANCE'),
+      SessionDistanceCard(rows: rows),
+    ];
+  }
+
+  /// One row per entry a distance belongs to, in the Summary's effort order
+  /// and then entry order (D-315).
+  ///
+  /// An entry belongs to the section when it was tracked through Cardio —
+  /// which the stored record of it is the effort kind `timed` (D-319) — or,
+  /// on any other kind, when it still holds a stored distance.
+  List<DistanceRowModel> _buildDistanceRows() {
+    final unit = widget.settingsState.preferredDistanceUnit;
+    final metresPerUnit = UnitFormatter.metresPerUnit(unit);
+    final rows = <DistanceRowModel>[];
+
+    for (final exercise in widget.workoutState.getExercisesWithEntries()) {
+      final effortId = exercise['id'] as String;
+      final trackedThroughCardio = exercise['effortKind'] == 'timed';
+      final exerciseName = exercise['name'] as String;
+      final entries = exercise['entries'] as List;
+
+      // A Cardio-tracked effort's entries are its timed instances; on any
+      // other kind the distance rows are the entries themselves.
+      final paired = _pairedDistanceRows(
+        effortId: effortId,
+        entryCount: trackedThroughCardio
+            ? entries.length
+            : _storedDistanceRows(effortId).length,
+      );
+
+      for (var entryIndex = 0; entryIndex < paired.length; entryIndex++) {
+        final row = paired[entryIndex];
+        final metres = row?.valueReal ?? 0.0;
+        // A Cardio-tracked entry keeps its row whether or not a distance was
+        // recorded; any other kind appears only when it holds one.
+        if (!trackedThroughCardio && metres <= 0) continue;
+
+        final estimated = DistanceSource.isEstimated(row?.valueSource);
+        final unitLabel = UnitFormatter.distanceLabelForUnit(unit);
+        rows.add(
+          DistanceRowModel(
+            name: paired.length > 1
+                ? '$exerciseName · ${entryIndex + 1}'
+                : exerciseName,
+            value: metres > 0
+                ? (metres / metresPerUnit).toStringAsFixed(2)
+                : SessionDistanceCard.absentValue,
+            unitLabel: estimated ? '$unitLabel est.' : unitLabel,
+            onTap: () => _editDistance(effortId, entryIndex, metres),
+          ),
+        );
+      }
+    }
+
+    return rows;
+  }
+
+  /// [effortId]'s stored distance rows (D-312).
+  List<EffortObservation> _storedDistanceRows(String effortId) => widget
+      .workoutState
+      .getObservationsForEffort(effortId)
+      .where((row) => row.metricId == MetricIds.distance)
+      .toList();
+
+  /// [effortId]'s entries, each paired with its own distance row or with null
+  /// when it has none.
+  List<EffortObservation?> _pairedDistanceRows({
+    required String effortId,
+    required int entryCount,
+  }) => DistancePairing.forEntries(
+    distanceRows: _storedDistanceRows(effortId),
+    entryCount: entryCount,
+  );
+
+  /// Opens the distance field for one entry (D-316) and applies the answer.
+  Future<void> _editDistance(
+    String effortId,
+    int entryIndex,
+    double currentMetres,
+  ) async {
+    final unit = widget.settingsState.preferredDistanceUnit;
+    final metresPerUnit = UnitFormatter.metresPerUnit(unit);
+    final currentUnits = currentMetres / metresPerUnit;
+
+    await showMetricEditPopup(
+      context,
+      metricType: 'distance',
+      currentValue: currentUnits,
+      unitLabel: UnitFormatter.distanceLabelUpperForUnit(unit),
+      onValueChanged: (value) => _applyDistance(
+        effortId: effortId,
+        entryIndex: entryIndex,
+        prefilledUnits: double.parse(currentUnits.toStringAsFixed(2)),
+        enteredUnits: (value as num).toDouble(),
+        metresPerUnit: metresPerUnit,
+      ),
+    );
+  }
+
+  /// Records what the dialog answered (D-307).
+  ///
+  /// The dialog pre-filled the stored value to two decimals, so an answer equal
+  /// to that pre-fill is a confirm: it records the stored metres as they are,
+  /// which is what confirms an estimate. Anything else stores what was typed,
+  /// and zero removes the distance.
+  Future<void> _applyDistance({
+    required String effortId,
+    required int entryIndex,
+    required double prefilledUnits,
+    required double enteredUnits,
+    required double metresPerUnit,
+  }) async {
+    if (enteredUnits > 0 && enteredUnits == prefilledUnits) {
+      await widget.workoutState.confirmEntryDistance(effortId, entryIndex);
+    } else {
+      await widget.workoutState.setEntryDistance(
+        effortId,
+        entryIndex,
+        enteredUnits * metresPerUnit,
+      );
+    }
+
+    if (!mounted) return;
+    setState(() {});
   }
 
   List<Widget> _buildGroupCards(ThemeData theme) {
@@ -1268,11 +1409,7 @@ class _StatPill extends StatelessWidget {
   /// row's intensity marker).
   final Widget? leading;
 
-  const _StatPill({
-    required this.label,
-    required this.value,
-    this.leading,
-  });
+  const _StatPill({required this.label, required this.value, this.leading});
 
   @override
   Widget build(BuildContext context) {

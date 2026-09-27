@@ -174,7 +174,7 @@ Every section / card header in the app routes through `OmniCardHeader`. The widg
 | Screen | Headers |
 |--------|---------|
 | **Settings** | `PREFERENCES`, `SOUNDS & ALERTS`, `WORKOUT`, `APPEARANCE` |
-| **Session Summary** | Date (with the modality chip in actions), `SESSION NOTE` (note card), month label (with `Open Calendar` in actions) |
+| **Session Summary** | Date (with the modality chip in actions), `DISTANCE`, `SESSION NOTE` (note card), month label (with `Open Calendar` in actions) |
 | **Daily Nutrition** | `Today` (with `nutrition_target_button` labelled `OutlinedButton.icon` in actions — PR 3 / S-002), `Foods I Eat` (with `food_library_manage_pencil` in actions) |
 | **Profile** | One header per measurement definition (label + `+` add button in actions) |
 | **Stats** | `ALL TIME`, `STRENGTH` / `CARDIO` (with the window chip in actions), `NUTRITION` |

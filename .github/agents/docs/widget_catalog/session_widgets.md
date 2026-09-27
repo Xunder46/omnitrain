@@ -88,6 +88,9 @@ Future<void> showMetricEditPopup(
 - Keyboard: `signed: true` for `weight`/`extra-weight`; `signed: false` for all other metric types (e.g., `reps`).
 - Ok button has explicit `shape: RoundedRectangleBorder(borderRadius: OmniTheme.buttonUtilityRadius)`.
 
+Verified by `test/crown_control_tap_to_edit_test.dart` (parse, clamp, rounding
+and the dialog title).
+
 ---
 
 ### `showDurationEntryDialog`
@@ -122,6 +125,20 @@ Shared utility for value-adjustment math and popup parsing. Used by both `Metric
 
 - `MetricStepCalc.apply(metricType, currentValue, deltaY)` — drag step math (identical to previous `InlineMetricEditor._calculateNewValue`).
 - `MetricStepCalc.parseAndClamp(metricType, text)` — parse popup input, clamp to metric range, return typed result (`int` for reps, `double` for others). Returns `null` if unparseable.
+
+### `SessionDistanceCard`
+
+**File**: `lib/widgets/session/session_distance_card.dart`
+
+The Session Summary's DISTANCE card. Renders one `DistanceRowModel` per entry that carries a
+distance; the screen builds the models, so the card reads no state and holds no distance rule.
+Presentation-only: it renders the name, value text and unit label it is given, and the estimate
+marker is a suffix of the unit label rather than a flag of its own. An entry with no distance is
+rendered as `absentValue`, never as a zero. Rows are tap-to-edit — the callback is the caller's.
+Hides itself when its row list is empty.
+
+See [Session Summary](../session_summary.md#distance) for what the section lists and
+[Distance Source & Pairing](../distance_source.md) for what a stored distance means.
 
 ### `PRToast`
 

@@ -1632,6 +1632,14 @@ class _StatsScreenState extends State<StatsScreen> {
                     'Distance ($distUnit)',
                     themeColors,
                   ),
+                  if (_hasEstimatedDay(cardio.trend))
+                    _buildLegendItem(
+                      theme,
+                      themeColors.surface,
+                      'est.',
+                      themeColors,
+                      outline: themeColors.textMuted,
+                    ),
                 ],
               ),
             ],
@@ -1781,11 +1789,11 @@ class _StatsScreenState extends State<StatsScreen> {
                 isStrokeCapRound: true,
                 dotData: FlDotData(
                   show: true,
-                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                    radius: 3,
-                    color: themeColors.secondary,
-                    strokeWidth: 1.5,
-                    strokeColor: themeColors.surface,
+                  getDotPainter: (p, x, data, i) => _cardioDotPainter(
+                    points,
+                    p,
+                    themeColors.secondary,
+                    themeColors,
                   ),
                 ),
                 belowBarData: BarAreaData(
@@ -1803,11 +1811,11 @@ class _StatsScreenState extends State<StatsScreen> {
                   isStrokeCapRound: true,
                   dotData: FlDotData(
                     show: true,
-                    getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                      radius: 3,
-                      color: themeColors.primary,
-                      strokeWidth: 1.5,
-                      strokeColor: themeColors.surface,
+                    getDotPainter: (p, x, data, i) => _cardioDotPainter(
+                      points,
+                      p,
+                      themeColors.primary,
+                      themeColors,
                     ),
                   ),
                   belowBarData: BarAreaData(show: false),
@@ -1819,12 +1827,41 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
+  /// True when any day in [trend] carries a distance the watch estimated, so
+  /// the card needs the `est.` legend item (D-317).
+  bool _hasEstimatedDay(List<CardioTrendPoint> trend) =>
+      trend.any((point) => point.distanceEstimated);
+
+  /// The dot for one cardio spot: an estimated day is drawn hollow — the
+  /// series colour on the stroke, the surface on the fill — and every other
+  /// day keeps the filled dot it always had.
+  ///
+  /// The estimate flag is looked up through the spot's `x`, its trend index,
+  /// because a series may hold fewer spots than the trend has days.
+  FlDotPainter _cardioDotPainter(
+    List<CardioTrendPoint> trend,
+    FlSpot spot,
+    Color seriesColor,
+    OmniThemeColors themeColors,
+  ) {
+    final index = spot.x.round();
+    final estimated =
+        index >= 0 && index < trend.length && trend[index].distanceEstimated;
+    return FlDotCirclePainter(
+      radius: 3,
+      color: estimated ? themeColors.surface : seriesColor,
+      strokeWidth: 1.5,
+      strokeColor: estimated ? seriesColor : themeColors.surface,
+    );
+  }
+
   Widget _buildLegendItem(
     ThemeData theme,
     Color color,
     String label,
-    OmniThemeColors themeColors,
-  ) {
+    OmniThemeColors themeColors, {
+    Color? outline,
+  }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1834,6 +1871,7 @@ class _StatsScreenState extends State<StatsScreen> {
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(4),
+            border: outline == null ? null : Border.all(color: outline),
           ),
         ),
         const SizedBox(width: 6),
@@ -1895,15 +1933,18 @@ class _StatsScreenState extends State<StatsScreen> {
     final durStr = '$mins:${secs.toString().padLeft(2, '0')}';
 
     final parts = <String>['Duration: $durStr'];
+    final estimateSuffix = point.distanceEstimated ? ' est.' : '';
     if (point.distanceM != null) {
-      final km = point.distanceM! / 1000.0;
-      final isKm = distUnit == 'km';
-      final val = isKm ? km : km * 0.621371;
-      parts.add('Distance: ${val.toStringAsFixed(2)} $distUnit');
+      final value = _distanceForDisplay(point.distanceM!, distUnit);
+      parts.add(
+        'Distance: ${value.toStringAsFixed(2)} $distUnit$estimateSuffix',
+      );
     }
     if (point.paceSecPerKm != null) {
       final displayPace = _paceForDisplay(point.paceSecPerKm!, distUnit);
-      parts.add('Pace: ${displayPace.toStringAsFixed(0)} s/$distUnit');
+      parts.add(
+        'Pace: ${displayPace.toStringAsFixed(0)} s/$distUnit$estimateSuffix',
+      );
     }
 
     return Container(
@@ -2005,17 +2046,16 @@ class _StatsScreenState extends State<StatsScreen> {
     return value.toStringAsFixed(1);
   }
 
+  /// Seconds per display unit of distance — the pace a stored sec/km figure
+  /// reads as in the preferred unit. The conversion is
+  /// [UnitFormatter.metresPerUnit]'s, so no km↔mi constant is repeated here.
   double _paceForDisplay(double paceSecPerKm, String distUnit) {
-    if (distUnit == 'mi') {
-      // Convert sec/km to sec/mi for display when miles are preferred.
-      return paceSecPerKm * 1.609344;
-    }
-    return paceSecPerKm;
+    return paceSecPerKm * UnitFormatter.metresPerUnit(distUnit) / 1000.0;
   }
 
+  /// Metres as the display value of [distUnit].
   double _distanceForDisplay(double distanceM, String distUnit) {
-    final km = distanceM / 1000.0;
-    return distUnit == 'mi' ? km * 0.621371 : km;
+    return distanceM / UnitFormatter.metresPerUnit(distUnit);
   }
 
   /// Build the NUTRITION card's legend row. Carries the

@@ -62,6 +62,16 @@ Ordering contract:
 > Both the Dart model and `scripts/sqlite_schema.sql` agree on the corrected
 > shape above.
 
+**`valueSource`.** A distance observation records where its value came from:
+`gps`, `entered` or `estimated`, or nothing at all. It is the only field of its
+kind — no other metric may carry a source — and an absent source means the row
+was written by a path that did not record one, which reads as `entered`. The
+model refuses a source on any other metric and a value outside that
+vocabulary, and the schema's CHECK mirrors it. Which entry a distance belongs
+to and who may change it are the subject of
+[Distance Source & Pairing](distance_source.md). Verified by
+`test/distance_source_test.dart` and `test/db_seed_test.dart`.
+
 **Observation Layout by Effort Kind:**
 
 Observations are persisted one-per-entry and grouped by effort kind:

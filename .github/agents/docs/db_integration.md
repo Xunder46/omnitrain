@@ -512,6 +512,9 @@ It also includes session/observation extensions:
 - `app_training_session.quality_rating`
 - `app_effort_observation.rpe_rating`
 - `app_effort_observation.rest_duration_ms`
+- `app_effort_observation.value_source` — the provenance of a distance
+  (`gps` / `entered` / `estimated`), null on every other row; CHECK-enforced.
+  See [Distance Source & Pairing](distance_source.md).
 
 And exercise modality persistence for custom exercise parity:
 

@@ -362,6 +362,7 @@ CREATE TABLE app_effort_observation (
   value_real REAL,
   value_text TEXT,
   value_bool INTEGER,
+  value_source TEXT, -- 'gps' | 'entered' | 'estimated', metric-distance rows only (D-311)
   rpe_rating INTEGER, -- RPE 1-10, nullable, reserved for future use
   rest_duration_ms INTEGER, -- Rest before this set in ms, nullable
   created_at_ms INTEGER NOT NULL,
@@ -377,6 +378,14 @@ CREATE TABLE app_effort_observation (
     + (CASE WHEN value_real IS NOT NULL THEN 1 ELSE 0 END)
     + (CASE WHEN value_text IS NOT NULL THEN 1 ELSE 0 END)
     + (CASE WHEN value_bool IS NOT NULL THEN 1 ELSE 0 END) = 1
+  ),
+  -- A source belongs to a distance row and is one of the three the model
+  -- accepts, so a row can never claim a provenance that does not exist.
+  CHECK (
+    value_source IS NULL OR (
+      metric_id = 'metric-distance'
+      AND value_source IN ('gps', 'entered', 'estimated')
+    )
   )
 );
 CREATE INDEX IF NOT EXISTS IX_obs_effort ON app_effort_observation(effort_id);

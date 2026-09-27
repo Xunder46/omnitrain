@@ -198,7 +198,8 @@ class TrainingSession {
   final String? modality;
   final String? intent;
   final double? perceivedSessionRpe;
-  final int? sessionFeeling; // Session effort rating, 1-5: 1=Very easy, 5=Max effort
+  final int?
+  sessionFeeling; // Session effort rating, 1-5: 1=Very easy, 5=Max effort
   final int? qualityRating; // Reserved for future computed session quality
   final bool isRolling;
   final int createdAtMs;
@@ -547,7 +548,34 @@ class MetricDefinition {
   };
 }
 
+/// One logged value on an effort: the reps of a set, the distance of a timed
+/// entry, and so on.
+///
+/// [valueSource] records where a distance came from (D-301, D-311). It is set
+/// only on a `metric-distance` row, and only to one of [valueSources];
+/// anything else throws [ArgumentError] at construction, mirroring the CHECK
+/// on `app_effort_observation` in `scripts/sqlite_schema.sql`. A row stored
+/// without the key reads as null, which callers resolve as
+/// [sourceEntered] — every distance written before the field existed was
+/// typed or dialled by a person. Pairing a row with its entry and resolving
+/// the source is `DistancePairing`'s job (`lib/core/utils/distance_source.dart`).
 class EffortObservation {
+  /// Measured by the watch's GPS.
+  static const String sourceGps = 'gps';
+
+  /// Typed or dialled by a person.
+  static const String sourceEntered = 'entered';
+
+  /// The watch platform's estimate. The only source that is marked.
+  static const String sourceEstimated = 'estimated';
+
+  /// Every source a distance row may carry.
+  static const List<String> valueSources = [
+    sourceGps,
+    sourceEntered,
+    sourceEstimated,
+  ];
+
   final String id;
   final String effortId;
   final String metricId;
@@ -556,6 +584,10 @@ class EffortObservation {
   final double? valueReal;
   final String? valueText;
   final bool? valueBool;
+
+  /// Where this row's distance came from, on a `metric-distance` row only.
+  /// Null on every other row, and on a distance with no recorded source.
+  final String? valueSource;
   final int? rpeRating; // RPE 1-10 scale, nullable, reserved for future use
   final int? restDurationMs; // Actual rest taken before this set, in ms
   final int createdAtMs;
@@ -570,11 +602,27 @@ class EffortObservation {
     this.valueReal,
     this.valueText,
     this.valueBool,
+    this.valueSource,
     this.rpeRating,
     this.restDurationMs,
     required this.createdAtMs,
     required this.updatedAtMs,
-  });
+  }) {
+    _checkValueSource();
+  }
+
+  void _checkValueSource() {
+    final source = valueSource;
+    if (source == null) return;
+    if (metricId != 'metric-distance' || !valueSources.contains(source)) {
+      throw ArgumentError.value(
+        source,
+        'valueSource',
+        'D-311: a source belongs to a metric-distance row and is one of '
+            '$valueSources',
+      );
+    }
+  }
 
   factory EffortObservation.fromMap(Map<String, dynamic> m) =>
       EffortObservation(
@@ -586,6 +634,7 @@ class EffortObservation {
         valueReal: (m['value_real'] as num?)?.toDouble(),
         valueText: m['value_text'] as String?,
         valueBool: (m['value_bool'] as int?) == 1,
+        valueSource: m['value_source'] as String?,
         rpeRating: m['rpe_rating'] as int?,
         restDurationMs: m['rest_duration_ms'] as int?,
         createdAtMs: m['created_at_ms'] as int,
@@ -601,6 +650,7 @@ class EffortObservation {
     'value_real': valueReal,
     'value_text': valueText,
     'value_bool': valueBool == true ? 1 : 0,
+    'value_source': valueSource,
     'rpe_rating': rpeRating,
     'rest_duration_ms': restDurationMs,
     'created_at_ms': createdAtMs,

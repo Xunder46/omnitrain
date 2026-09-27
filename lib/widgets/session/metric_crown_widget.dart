@@ -8,6 +8,9 @@ import '../inputs/numeric_field_with_done_bar.dart';
 class MetricStepCalc {
   MetricStepCalc._();
 
+  /// The largest distance the dialog accepts, in display units.
+  static const double maxDistanceUnits = 999.99;
+
   /// Parse a string as a double and clamp to the metric's valid range.
   /// Returns `null` if the text is empty or cannot be parsed.
   /// For 'reps' returns an [int]; for others returns a [double].
@@ -37,6 +40,10 @@ class MetricStepCalc {
         return parsed.round().clamp(1, 10);
       case 'extra-weight':
         return double.parse(parsed.clamp(-100.0, 200.0).toStringAsFixed(1));
+      case 'distance':
+        return double.parse(
+          parsed.clamp(0.0, maxDistanceUnits).toStringAsFixed(2),
+        );
       default:
         return parsed;
     }
@@ -57,6 +64,8 @@ String _titleForMetric(String metricType) {
       return 'RPE';
     case 'extra-weight':
       return 'Extra Weight';
+    case 'distance':
+      return 'Distance';
     default:
       return metricType;
   }
@@ -76,6 +85,8 @@ String _formatCurrentValue(String metricType, dynamic currentValue) {
     case 'extra-weight':
       final ew = (currentValue as double?) ?? 0.0;
       return ew.toStringAsFixed(1);
+    case 'distance':
+      return ((currentValue as num?)?.toDouble() ?? 0.0).toStringAsFixed(2);
     default:
       return currentValue.toString();
   }
@@ -161,7 +172,8 @@ class _MetricEditDialogState extends State<_MetricEditDialog> {
               widget.metricType == 'extra-weight',
           decimal:
               widget.metricType == 'weight' ||
-              widget.metricType == 'extra-weight',
+              widget.metricType == 'extra-weight' ||
+              widget.metricType == 'distance',
         ),
         decoration: InputDecoration(labelText: widget.unitLabel),
         textAlign: TextAlign.center,
