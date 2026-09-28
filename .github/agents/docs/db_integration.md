@@ -515,6 +515,10 @@ It also includes session/observation extensions:
 - `app_effort_observation.value_source` — the provenance of a distance
   (`gps` / `entered` / `estimated`), null on every other row; CHECK-enforced.
   See [Distance Source & Pairing](distance_source.md).
+- `app_effort_observation`'s value CHECK — at most one of `value_int`,
+  `value_real` and `value_text`; `value_bool` is a flag the model writes on
+  every row (0 or 1) and does not count. Verified by `test/db_seed_test.dart`
+  (`S-861`).
 
 And exercise modality persistence for custom exercise parity:
 

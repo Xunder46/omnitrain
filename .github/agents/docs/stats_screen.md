@@ -210,8 +210,9 @@ For each activity:
   `est.` item only when the card has such a day. An estimated day's dot is
   found by the day it belongs to rather than by its position in a series, since
   a series may hold fewer spots than the trend has days (S-835). The duration
-  and distance totals themselves are unchanged by the marker. Which entry a
-  distance belongs to, and what a source means, is
+  and distance totals themselves are unchanged by the marker. A day counts only
+  distances that belong to an entry: a row no entry owns counts in no total
+  (D-321). Which entry a distance belongs to, and what a source means, is
   [Distance Source & Pairing](distance_source.md).
 
 Empty state: "No cardio history yet." when `topCardio` is empty.
@@ -219,8 +220,9 @@ Empty state: "No cardio history yet." when `topCardio` is empty.
 Verified by `test/stats_distance_estimate_test.dart` (`S-831` for the pace
 inputs, `S-832` for the per-day flag, `S-833`/`S-834` for the single-point
 marker in both units and its absence on a measured day, `S-835` for the dots
-and the legend, `S-836` for the conversions, `S-837` for a Summary correction)
-and `test/stats_progress_test.dart` (the `Cardio trend` group).
+and the legend, `S-836` for the conversions, `S-837` for a Summary correction),
+`test/entry_identity_summary_test.dart` (`S-858` for a leftover row that counts
+nowhere) and `test/stats_progress_test.dart` (the `Cardio trend` group).
 
 ### RECORDS
 Per-exercise best observed values with the date each was set. Aggregated by

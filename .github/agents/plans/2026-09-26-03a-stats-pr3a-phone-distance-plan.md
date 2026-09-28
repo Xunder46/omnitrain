@@ -1,7 +1,7 @@
 # Feature: Stats PR 3a — Distance entry on the Session Summary, distance source, "est." marking
 
-> Status: READY for implementation (Iteration 1, not started). Precondition: Open Item O-1 (push `develop`).
-> Next handoff: Copilot implementation, Phase 1 → 2 → 3, then `/code-reviewer`.
+> Status: CLOSED — implemented by Copilot, reviewed (fix round F-1–F-4 done), committed as 4bb4afb on `develop`
+> (2026-09-27). F-5, F-6 and O-3 moved to PR 3a2: `2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
 > Series: PR 3a of 3. Index: `.github/agents/plans/2026-09-26-03-stats-pr3-distance-series-index.md`.
 > Binding conventions: `.github/agents/docs/global_conventions.md`; `CLAUDE.md` ("Verification is observed
 > output"); `.github/agents/docs/documentation_standard.md` (every doc edit); `.github/agents/pr_scope_budget.md`.
@@ -10,8 +10,7 @@
 > keep their `createdAtMs`).
 > Evidence: `2026-09-26-03a-stats-pr3a-phone-distance-plan.evidence.md`. It holds the baselines and the code
 > facts F1–F19, and executors append to it. Review findings go in `…plan.review.md`, which the reviewer creates.
-> Branch: `feature/stats-pr3a-phone-distance`, cut from `develop`. Commit or open the PR as the owner directs;
-> never merge.
+> Branch: `feature/stats-pr3a-phone-distance` (fast-forwarded into `develop` and deleted, 2026-09-27).
 > Source of scope: `.github/agents/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md` item 4 (its
 > phone half); the owner's answers of 2026-09-26 (Q1–Q9); the owner's Q3 decision of 2026-09-27 (D-319).
 > Scope check (2026-09-27): about 520 lines (one soft signal: over 500), 3 phases, one track (the phone),

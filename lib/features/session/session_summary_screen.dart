@@ -11,7 +11,6 @@ import '../../core/constants/effort_defaults.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/utils/session_feeling_utils.dart';
 import '../../core/utils/unit_formatter.dart';
-import '../../core/constants/metric_ids.dart';
 import '../../core/utils/distance_source.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -934,48 +933,39 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// One row per entry a distance belongs to, in the Summary's effort order
   /// and then entry order (D-315).
   ///
-  /// An entry belongs to the section when it was tracked through Cardio —
-  /// which the stored record of it is the effort kind `timed` (D-319) — or,
-  /// on any other kind, when it still holds a stored distance.
+  /// The entries come from the same list every distance write addresses
+  /// (D-328), so the row on screen and the row an edit lands on are the same
+  /// entry. A non-Cardio effort shows only the entries that hold a distance:
+  /// on those the rows themselves are the entries.
   List<DistanceRowModel> _buildDistanceRows() {
     final unit = widget.settingsState.preferredDistanceUnit;
     final metresPerUnit = UnitFormatter.metresPerUnit(unit);
+    final unitLabel = UnitFormatter.distanceLabelForUnit(unit);
     final rows = <DistanceRowModel>[];
 
     for (final exercise in widget.workoutState.getExercisesWithEntries()) {
       final effortId = exercise['id'] as String;
       final trackedThroughCardio = exercise['effortKind'] == 'timed';
       final exerciseName = exercise['name'] as String;
-      final entries = exercise['entries'] as List;
+      final entries = widget.workoutState.getEffortDistanceEntries(effortId);
 
-      // A Cardio-tracked effort's entries are its timed instances; on any
-      // other kind the distance rows are the entries themselves.
-      final paired = _pairedDistanceRows(
-        effortId: effortId,
-        entryCount: trackedThroughCardio
-            ? entries.length
-            : _storedDistanceRows(effortId).length,
-      );
-
-      for (var entryIndex = 0; entryIndex < paired.length; entryIndex++) {
-        final row = paired[entryIndex];
-        final metres = row?.valueReal ?? 0.0;
+      for (final entry in entries) {
+        final metres = entry.metres;
         // A Cardio-tracked entry keeps its row whether or not a distance was
         // recorded; any other kind appears only when it holds one.
         if (!trackedThroughCardio && metres <= 0) continue;
 
-        final estimated = DistanceSource.isEstimated(row?.valueSource);
-        final unitLabel = UnitFormatter.distanceLabelForUnit(unit);
+        final estimated = DistanceSource.isEstimated(entry.row?.valueSource);
         rows.add(
           DistanceRowModel(
-            name: paired.length > 1
-                ? '$exerciseName · ${entryIndex + 1}'
+            name: entries.length > 1
+                ? '$exerciseName · ${entry.displayNumber}'
                 : exerciseName,
             value: metres > 0
                 ? (metres / metresPerUnit).toStringAsFixed(2)
                 : SessionDistanceCard.absentValue,
             unitLabel: estimated ? '$unitLabel est.' : unitLabel,
-            onTap: () => _editDistance(effortId, entryIndex, metres),
+            onTap: () => _editDistance(effortId, entry.entryIndex, metres),
           ),
         );
       }
@@ -983,23 +973,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     return rows;
   }
-
-  /// [effortId]'s stored distance rows (D-312).
-  List<EffortObservation> _storedDistanceRows(String effortId) => widget
-      .workoutState
-      .getObservationsForEffort(effortId)
-      .where((row) => row.metricId == MetricIds.distance)
-      .toList();
-
-  /// [effortId]'s entries, each paired with its own distance row or with null
-  /// when it has none.
-  List<EffortObservation?> _pairedDistanceRows({
-    required String effortId,
-    required int entryCount,
-  }) => DistancePairing.forEntries(
-    distanceRows: _storedDistanceRows(effortId),
-    entryCount: entryCount,
-  );
 
   /// Opens the distance field for one entry (D-316) and applies the answer.
   Future<void> _editDistance(

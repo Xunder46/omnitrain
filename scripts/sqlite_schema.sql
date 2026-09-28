@@ -373,11 +373,14 @@ CREATE TABLE app_effort_observation (
   FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE,
   FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id),
   FOREIGN KEY(unit_id) REFERENCES app_unit(id),
+  -- At most one value column carries the value. `value_bool` is a flag the
+  -- model writes on every row (0 or 1), so it does not count as a value: a
+  -- skipped set stores reps in `value_int` and the marker in `value_bool`
+  -- (D-330).
   CHECK (
     (CASE WHEN value_int IS NOT NULL THEN 1 ELSE 0 END)
     + (CASE WHEN value_real IS NOT NULL THEN 1 ELSE 0 END)
-    + (CASE WHEN value_text IS NOT NULL THEN 1 ELSE 0 END)
-    + (CASE WHEN value_bool IS NOT NULL THEN 1 ELSE 0 END) = 1
+    + (CASE WHEN value_text IS NOT NULL THEN 1 ELSE 0 END) <= 1
   ),
   -- A source belongs to a distance row and is one of the three the model
   -- accepts, so a row can never claim a provenance that does not exist.

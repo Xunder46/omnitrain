@@ -5,6 +5,7 @@ import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/services/health_sync_service.dart';
+import '../../core/utils/entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'exercise_library.dart';
@@ -70,6 +71,8 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.getEffortsForSegment(segmentId);
   List<EffortObservation> getObservationsForEffort(String effortId) =>
       _sessionCore.getObservationsForEffort(effortId);
+  List<DistanceEntry> getEffortDistanceEntries(String effortId) =>
+      _sessionCore.getEffortDistanceEntries(effortId);
   List<RoundInstance> getRoundsForEffort(String effortId) =>
       _timerManager.getRoundsForEffort(effortId);
   List<TimedInstance> getTimedInstancesForEffort(String effortId) =>

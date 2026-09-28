@@ -642,8 +642,9 @@ class StatsProgressService {
 
     if (totalDuration <= 0) return;
 
-    // Each entry owns its own distance row (D-312). The day's totals count
-    // every stored distance; the pace counts only finished entries that have
+    // Each entry owns its own distance row (D-324). The day's totals count
+    // every distance that belongs to an entry — a leftover no entry owns counts
+    // nowhere (D-321) — and the pace counts only finished entries that have
     // one, so an entry that was never finished contributes its distance to the
     // total but no time and no pace distance (D-309).
     final paired = DistancePairing.forEntries(

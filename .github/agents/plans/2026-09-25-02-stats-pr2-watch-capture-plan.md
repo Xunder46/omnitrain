@@ -17,8 +17,8 @@
 > Tier: STANDARD. Consolidation findings (F-1 to F-19) widened the scope. See D-110 and D-111.
 > Branch: committed on `develop` as 21b5176, squashed. Its title, "Add tests for session end handling
 > and phone preferences synchronization", doesn't say it is PR 2. It contains every later fix round.
-> The branch `feature/stats-pr2-watch-capture` (b9348fe) is superseded by it; do not merge that branch.
-> `develop` is not yet pushed (origin/develop = f1f9aaa) as of 2026-09-27.
+> The branch `feature/stats-pr2-watch-capture` (b9348fe), which 21b5176 superseded, was deleted on
+> 2026-09-27. 21b5176 is on origin/develop.
 > Binding conventions: `.github/agents/docs/global_conventions.md`, `CLAUDE.md` ("Verification
 > is observed output"), `.github/agents/docs/documentation_standard.md` (every doc edit),
 > `watch/sync_protocol/PROTOCOL.md` (normative wire spec).
@@ -413,8 +413,8 @@ decisions are cited as "Pack D-n". Entries are immutable. A change is a new supe
     (`workout_session_finish.dart:10-17`).
   - Abandoned and empty sessions are consumed and acknowledged without creating history.
   - *Alternative:* import abandoned sessions too.
-- **D-134 — The shape of an imported session. Default — owner to confirm (product; the mapping
-  itself is technical).**
+- **D-134 — The shape of an imported session. Confirmed by the owner, 2026-09-27 (product; the
+  mapping itself is technical).**
   - **Session.** `TrainingSession.id` is the wrist `sessionId`. The owner is the owner id the
     phone's own sessions use. `startedAt`, `endedAt` and `modality` come from `session_end`.
     `title`, `note`, `intent` and `routineTemplateId` are null, `isRolling` is false, and
@@ -443,7 +443,7 @@ decisions are cited as "Pack D-n". Entries are immutable. A change is a new supe
     when the target is created.
   - Reuse the phone's own row builders rather than restating them (the "Reuse the canonical
     owner" rule).
-- **D-135 — No routine or modality link yet. Default — owner to confirm (product).**
+- **D-135 — No routine or modality link yet. Confirmed by the owner, 2026-09-27 (product).**
   - F-7 means imported sessions appear in history as Free Training with no routine link.
     Analytics are unaffected (Pack D-3).
   - *Alternative:* add `routineId` to `session_end` in PR 2 and set `routineTemplateId` on import

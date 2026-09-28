@@ -100,20 +100,21 @@ Behavior details:
 The Summary is the one phone surface where a person types or corrects a
 distance: the live screen and Edit Session have no distance field, so a
 distance the phone should hold is entered here, on the post-workout summary or
-on a past session's. Other writers still record a distance row by raw list
-order — see [Distance Source & Pairing](distance_source.md) and plan O-3. What
-a stored distance means, and which entry it belongs to, is
-[Distance Source & Pairing](distance_source.md); this section is what the
-Summary does with it.
+on a past session's. Which entry a row belongs to is
+[Entry Identity](data_models.md#entry-identity)'s rule (D-324) and what a
+stored distance means is [Distance Source & Pairing](distance_source.md); this
+section is what the Summary does with it.
 
 **Structure.** `SessionDistanceCard` in
 `lib/widgets/session/session_distance_card.dart` renders rows the screen builds
 in `_buildDistanceRows`; the card reads no state and the screen owns every
 rule. The rows come from the session's efforts in the order
-`getExercisesWithEntries()` gives them, then in entry order, with each entry's
-own distance found through `DistancePairing`. Tapping a row opens
-`showMetricEditPopup` with the `distance` metric type, and the answer goes
-through `WorkoutState.setEntryDistance` or `confirmEntryDistance`.
+`getExercisesWithEntries()` gives them, then in entry order, built from
+`WorkoutState.getEffortDistanceEntries` — the same list every distance write
+addresses (D-328), so the row a tap names is the entry the write reaches.
+Tapping a row opens `showMetricEditPopup` with the `distance` metric type, and
+the answer goes through `WorkoutState.setEntryDistance` or
+`confirmEntryDistance`.
 
 **Rules.**
 
@@ -126,7 +127,9 @@ through `WorkoutState.setEntryDistance` or `confirmEntryDistance`.
   listed.
 - **A stored distance is never hidden.** An entry of any other kind that still
   holds a distance greater than zero is listed too, so no distance the app ever
-  wrote becomes unreachable. Setting it to zero removes its row.
+  wrote becomes unreachable. Setting it to zero removes its row. A row no entry
+  owns — one placed past the last entry — is not one of them: it belongs to no
+  entry, so it is listed nowhere and nothing deletes it (D-321, D-322).
 - **A Cardio-tracked entry keeps its row even with no distance**, reading as
   absence rather than zero, because the field has to exist somewhere to be
   filled in.
@@ -157,6 +160,10 @@ Verified by:
   Cardio (`S-823`).
 - `test/crown_control_tap_to_edit_test.dart`: the dialog's parse, clamp and
   rounding for the `distance` type, and its title.
+- `test/entry_identity_summary_test.dart`: the rows the section lists after a
+  delete (`S-855`), the entry that holds a value typed after an add (`S-856`),
+  a leftover row that shows nowhere (`S-858`) and a lone legacy row that
+  carries no number (`S-859`).
 
 ---
 

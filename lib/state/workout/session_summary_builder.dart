@@ -3,6 +3,7 @@ import '../../core/constants/metric_ids.dart';
 import '../../core/constants/workout_constants.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/services/stats_progress_service.dart';
+import '../../core/utils/entry_rows.dart';
 import '../../core/utils/observation_grouper.dart';
 import '../../data/models/models.dart';
 import 'timer_manager.dart';
@@ -346,6 +347,21 @@ class SessionSummaryBuilder {
             effort.effortKind == 'drill') {
           final timedList = _timerManager.getTimedInstancesForEffort(effort.id);
           final companionObs = _observations[effort.id] ?? [];
+          // Entry k's companions are the k-th row of each metric (D-324), not
+          // whichever row the store returned k-th.
+          final distances = effort.effortKind == 'timed'
+              ? EntryRows.companions(
+                  rows: companionObs,
+                  metricId: MetricIds.distance,
+                  entryCount: timedList.length,
+                )
+              : const <EffortObservation?>[];
+          final extraWeights = EntryRows.companions(
+            rows: companionObs,
+            metricId: MetricIds.extraWeight,
+            entryCount: timedList.length,
+          );
+
           entries = <Map<String, dynamic>>[];
           for (int i = 0; i < timedList.length; i++) {
             final t = timedList[i];
@@ -358,24 +374,12 @@ class SessionSummaryBuilder {
               'timedState': t.state.name,
             };
             if (effort.effortKind == 'timed') {
-              final distObs = companionObs
-                  .where((o) => o.metricId == MetricIds.distance)
-                  .toList();
-              final ewObs = companionObs
-                  .where((o) => o.metricId == MetricIds.extraWeight)
-                  .toList();
-              entryMap['distance'] = i < distObs.length
-                  ? (distObs[i].valueReal ?? 0.0)
-                  : 0.0;
-              if (i < ewObs.length) {
-                entryMap['extra-weight'] = ewObs[i].valueReal ?? 0.0;
+              entryMap['distance'] = distances[i]?.valueReal ?? 0.0;
+              if (extraWeights[i] != null) {
+                entryMap['extra-weight'] = extraWeights[i]!.valueReal ?? 0.0;
               }
             } else {
-              if (i < companionObs.length) {
-                entryMap['extra-weight'] = companionObs[i].valueReal ?? 0.0;
-              } else {
-                entryMap['extra-weight'] = 0.0;
-              }
+              entryMap['extra-weight'] = extraWeights[i]?.valueReal ?? 0.0;
             }
             entries.add(entryMap);
           }
@@ -388,13 +392,18 @@ class SessionSummaryBuilder {
 
           final hasLoad = exercise?.capabilities.contains('load') ?? false;
           if (effort.effortKind == 'set' && !hasLoad) {
-            final extraWeightObs = effortObservations
-                .where((o) => o.metricId == MetricIds.extraWeight)
-                .toList();
+            // Each set reads the added weight its own number holds (D-324) — not
+            // whichever row the store returned its position in. On the legacy
+            // fallback the group is sequential, so its own row is the positional
+            // one anyway (F-5).
+            final groups = EntryRows.setGroups(effortObservations);
             for (int i = 0; i < entries.length; i++) {
-              entries[i]['extra-weight'] = i < extraWeightObs.length
-                  ? (extraWeightObs[i].valueReal ?? 0.0)
-                  : (entries[i]['extra-weight'] as double? ?? 0.0);
+              final own = i < groups.length
+                  ? groups[i].rowFor(MetricIds.extraWeight)
+                  : null;
+              entries[i]['extra-weight'] =
+                  own?.valueReal ??
+                  (entries[i]['extra-weight'] as double? ?? 0.0);
             }
           }
         }

@@ -51,11 +51,9 @@ Ordering contract:
 >
 > - **`entryIndex`** — there is no such field and no `entry_index` column on
 >   `app_effort_observation`. The set/interval index is encoded in the
->   observation **id**, which is built as
->   `'obs-{effortId}-{entryIndex}-{metricSuffix}'` (see
->   `lib/state/workout/session_core_entry.dart`) and parsed back out with
->   `RegExp(r'obs-.+-(\d+)-[^-]+$')`. Code that needs the index must go
->   through that id convention.
+>   observation **id**, built as `'obs-{effortId}-{entryIndex}-{metricSuffix}'`
+>   (see `lib/state/workout/session_core_entry.dart`). Code that needs the
+>   index must go through **Entry identity** below.
 > - **`recordedAtMs`** — the model carries `createdAtMs` / `updatedAtMs`
 >   instead, matching the schema.
 >
@@ -504,6 +502,43 @@ Invariants:
 - **Kind follows origin.** A phone kind with origin `watch`, a wrist kind with
   origin `phone`, a kind outside both vocabularies, or a phone id not minted by
   the helpers is refused (`D-132 WatchInboxEntry refuses a kind outside …`).
+
+---
+
+## Entry Identity
+
+An entry's stored rows are found by the **number in their id**, never by their position in a list
+whose order depends on the store: Hive returns box values in key order, so it reads `obs-…-10-…`
+before `obs-…-2-…`, and an effort may hold up to `WorkoutConstants.maxEntriesPerEffort` entries.
+Ids are never renumbered, so an id built from an entry's current display position can name another
+entry's rows. `EntryRows` in `lib/core/utils/entry_rows.dart` holds that rule for the phone's own
+readers and writers. Two paths build and read their own ids instead: the watch import
+(below), and the routine-template defaults.
+
+**The rule.** An id is `obs-<effortId>-<n>-<metricKey>`, optionally followed by `-<digits>`. The
+metric keys are the values of `MetricIds.metricIdToKey`; an effort id may itself contain dashes, so
+only the number-key suffix is matched. Rows are ordered by number, then `createdAtMs`, then id; rows
+with no number follow in the store's own order. `set` entries are the groups of rows sharing a
+number, in ascending number; on an effort any of whose rows has no number, the sequential grouping
+of the legacy data applies instead. `timed` and `drill` entries are their `TimedInstance` records,
+and entry *k*'s row of each companion metric is the *k*-th row of that metric. A row placed past the
+last entry is a **leftover**: it belongs to no entry, it is ignored by every reader, and nothing
+deletes it.
+
+**Numbering new rows.** A new row takes 1 + the highest number the effort holds, or 0 when it holds
+none. That covers each new set, timed or hold entry, and every row a distance write creates. No
+suffix is ever minted; an existing suffixed id reads as its number. A copied block's rows are named
+for the effort they were copied into, keeping the source's own number and metric key.
+
+**The watch import is separate.** `WatchSessionImporter` numbers its own rows densely by entry
+position and parses ids with its own prefix reader; the phone's rule and the import's numbering are
+compatible (the import appends at the highest number plus 1). Verified by
+`test/watch_session_import_test.dart` (`A-51`), which holds a wrist entry arriving after the user's
+own rows in an imported effort.
+
+The phone's own rule is verified by `test/entry_rows_test.dart` (`S-841`–`S-847`) and
+`test/entry_identity_test.dart` (`S-851`–`S-860`, `S-862`–`S-864`); the distance half is
+[Distance Source & Pairing](distance_source.md)'s.
 
 ---
 

@@ -159,6 +159,8 @@ Future<void> _insertEffortFixture(Database db) async {
   for (final row in [
     {'id': MetricIds.distance, 'key': 'distance', 'data_type': 'real'},
     {'id': MetricIds.reps, 'key': 'reps', 'data_type': 'int'},
+    {'id': MetricIds.weight, 'key': 'weight', 'data_type': 'real'},
+    {'id': MetricIds.extraWeight, 'key': 'extra-weight', 'data_type': 'real'},
   ]) {
     await db.insert('app_metric_definition', {
       ...row,
@@ -166,17 +168,17 @@ Future<void> _insertEffortFixture(Database db) async {
       'created_at_ms': 1000,
     });
   }
-  await db.insert('app_unit', {
-    'id': MetricIds.unitMeters,
-    'key': 'm',
-    'name': 'metres',
-    'created_at_ms': 1000,
-  });
+  for (final row in [
+    {'id': MetricIds.unitMeters, 'key': 'm', 'name': 'metres'},
+    {'id': MetricIds.unitReps, 'key': 'reps', 'name': 'reps'},
+    {'id': MetricIds.unitKg, 'key': 'kg', 'name': 'kilograms'},
+  ]) {
+    await db.insert('app_unit', {...row, 'created_at_ms': 1000});
+  }
 }
 
-/// A raw observation row: exactly one value column, as the CHECK requires —
-/// `EffortObservation.toMap` cannot be used here because it always writes
-/// `value_bool` (Open Item O-4).
+/// A raw observation row for the fixture effort, with the keys
+/// `EffortObservation.toMap` writes.
 Map<String, Object?> _observationRow({
   required String id,
   required String metricId,
@@ -683,53 +685,157 @@ void main() {
       },
     );
 
-    test(
-      'S-803 the CHECK refuses a source on another metric and an unknown '
-      'source, and accepts an estimate on a distance',
-      () async {
-        expect(
-          await _insertRefusal(
-            db,
-            'app_effort_observation',
-            _observationRow(
-              id: 'obs-eff-sql-1-0-reps',
-              metricId: MetricIds.reps,
-              valueInt: 8,
-              valueSource: EffortObservation.sourceEntered,
-            ),
+    test('S-803 the CHECK refuses a source on another metric and an unknown '
+        'source, and accepts an estimate on a distance', () async {
+      expect(
+        await _insertRefusal(
+          db,
+          'app_effort_observation',
+          _observationRow(
+            id: 'obs-eff-sql-1-0-reps',
+            metricId: MetricIds.reps,
+            valueInt: 8,
+            valueSource: EffortObservation.sourceEntered,
           ),
-          isNotNull,
-          reason: 'D-311: a source belongs to a metric-distance row',
-        );
-        expect(
-          await _insertRefusal(
-            db,
-            'app_effort_observation',
-            _observationRow(
-              id: 'obs-eff-sql-1-0-distance',
-              metricId: MetricIds.distance,
-              valueReal: 1000.0,
-              valueSource: 'manual',
-            ),
+        ),
+        isNotNull,
+        reason: 'D-311: a source belongs to a metric-distance row',
+      );
+      expect(
+        await _insertRefusal(
+          db,
+          'app_effort_observation',
+          _observationRow(
+            id: 'obs-eff-sql-1-0-distance',
+            metricId: MetricIds.distance,
+            valueReal: 1000.0,
+            valueSource: 'manual',
           ),
-          isNotNull,
-          reason: 'D-311: the vocabulary is gps, entered, estimated',
-        );
-        expect(
-          await _insertRefusal(
-            db,
-            'app_effort_observation',
-            _observationRow(
-              id: 'obs-eff-sql-1-0-distance',
-              metricId: MetricIds.distance,
-              valueReal: 3000.0,
-              valueSource: EffortObservation.sourceEstimated,
-            ),
+        ),
+        isNotNull,
+        reason: 'D-311: the vocabulary is gps, entered, estimated',
+      );
+      expect(
+        await _insertRefusal(
+          db,
+          'app_effort_observation',
+          _observationRow(
+            id: 'obs-eff-sql-1-0-distance',
+            metricId: MetricIds.distance,
+            valueReal: 3000.0,
+            valueSource: EffortObservation.sourceEstimated,
           ),
+        ),
+        isNull,
+        reason: 'D-311: an estimated distance is a storable row',
+      );
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // S-861 — every row the app writes fits the contract
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // `EffortObservation.toMap` writes `value_bool` on every row (0 or 1), so
+  // the CHECK counts the value columns only and treats the flag as a flag.
+  // Until it did, every row the phone wrote was refused (3a O-4, D-330).
+  group('S-861 the SQL contract accepts what the app writes (D-330)', () {
+    late Database db;
+
+    setUp(() async {
+      db = await _openSchemaDatabase();
+      await _insertEffortFixture(db);
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('the five rows the app writes insert as written', () async {
+      final rows = <EffortObservation>[
+        EffortObservation(
+          id: 'obs-eff-sql-1-0-reps',
+          effortId: 'eff-sql-1',
+          metricId: MetricIds.reps,
+          unitId: MetricIds.unitReps,
+          valueInt: 8,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+        EffortObservation(
+          id: 'obs-eff-sql-1-1-reps',
+          effortId: 'eff-sql-1',
+          metricId: MetricIds.reps,
+          unitId: MetricIds.unitReps,
+          valueInt: 0,
+          valueBool: true,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+        EffortObservation(
+          id: 'obs-eff-sql-1-0-weight',
+          effortId: 'eff-sql-1',
+          metricId: MetricIds.weight,
+          unitId: MetricIds.unitKg,
+          valueReal: 60.0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+        EffortObservation(
+          id: 'obs-eff-sql-1-0-distance',
+          effortId: 'eff-sql-1',
+          metricId: MetricIds.distance,
+          unitId: MetricIds.unitMeters,
+          valueReal: 4873.6,
+          valueSource: EffortObservation.sourceEstimated,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+        EffortObservation(
+          id: 'obs-eff-sql-1-0-extra-weight',
+          effortId: 'eff-sql-1',
+          metricId: MetricIds.extraWeight,
+          unitId: MetricIds.unitKg,
+          valueReal: 5.0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      ];
+
+      for (final row in rows) {
+        expect(
+          await _insertRefusal(db, 'app_effort_observation', row.toMap()),
           isNull,
-          reason: 'D-311: an estimated distance is a storable row',
+          reason: 'D-330: the app wrote ${row.id} and the schema refused it',
         );
-      },
-    );
+      }
+
+      final stored = await db.query('app_effort_observation');
+      expect(stored, hasLength(rows.length));
+      expect(
+        stored.firstWhere(
+          (row) => row['id'] == 'obs-eff-sql-1-1-reps',
+        )['value_bool'],
+        1,
+        reason: 'the skipped marker is stored as the flag it is',
+      );
+    });
+
+    test('a row carrying two values is refused', () async {
+      expect(
+        await _insertRefusal(
+          db,
+          'app_effort_observation',
+          _observationRow(
+            id: 'obs-eff-sql-1-2-reps',
+            metricId: MetricIds.reps,
+            valueInt: 8,
+            valueReal: 8.0,
+          ),
+        ),
+        isNotNull,
+        reason: 'D-330: at most one value column carries the value',
+      );
+    });
   });
 }

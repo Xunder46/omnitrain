@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../core/constants/workout_constants.dart';
+import '../../core/utils/entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 
@@ -550,7 +551,12 @@ class TimerManager {
     _clearError();
     try {
       final list = _timedInstances[effortId];
-      if (list == null || entryIndex >= list.length) return;
+      if (list == null || entryIndex < 0 || entryIndex >= list.length) return;
+
+      // D-326: the entry's own rows are found before the instance goes, since
+      // the rule pairs them against the positions the instances hold now.
+      final doomed = _rowsOfTimedEntry(effortId, entryIndex, list.length);
+
       await _repository.deleteTimedInstance(list[entryIndex].id);
       list.removeAt(entryIndex);
 
@@ -564,20 +570,39 @@ class TimerManager {
 
       final observations = _observations?[effortId];
       if (observations != null) {
-        final idPrefix = 'obs-$effortId-$entryIndex-';
-        final toDelete = observations
-            .where((o) => o.id.startsWith(idPrefix))
-            .toList();
-        for (final obs in toDelete) {
-          await _repository.deleteObservation(obs.id);
+        for (final id in doomed) {
+          await _repository.deleteObservation(id);
         }
-        observations.removeWhere((o) => o.id.startsWith(idPrefix));
+        observations.removeWhere((row) => doomed.contains(row.id));
       }
 
       _notify();
     } catch (e) {
       _setError('Failed to delete timed entry: $e');
     }
+  }
+
+  /// The ids of the rows entry [entryIndex] owns among [entryCount] instances
+  /// (D-324): its own row of every companion metric the effort holds.
+  Set<String> _rowsOfTimedEntry(
+    String effortId,
+    int entryIndex,
+    int entryCount,
+  ) {
+    final rows = _observations?[effortId];
+    if (rows == null) return const {};
+
+    final doomed = <String>{};
+    for (final metricId in {for (final row in rows) row.metricId}) {
+      final paired = EntryRows.companions(
+        rows: rows,
+        metricId: metricId,
+        entryCount: entryCount,
+      );
+      final row = entryIndex < paired.length ? paired[entryIndex] : null;
+      if (row != null) doomed.add(row.id);
+    }
+    return doomed;
   }
 
   Future<void> updateTimedTargetDuration(

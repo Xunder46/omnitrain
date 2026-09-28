@@ -5,7 +5,7 @@ import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/services/health_sync_service.dart';
-import '../../core/utils/distance_source.dart';
+import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -157,8 +157,9 @@ class SessionCore {
 
   // ── Summary / query (delegated to SessionSummaryBuilder) ───────────────
   SessionSummary computeSessionSummary() {
-    if (_currentSession == null)
+    if (_currentSession == null) {
       throw Exception('No active session to summarize');
+    }
     return _summaryBuilder.buildSessionSummary(_currentSession!);
   }
 

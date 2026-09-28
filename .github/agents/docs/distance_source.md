@@ -4,10 +4,12 @@
 (`EffortObservation.valueSource` in `lib/data/models/models.dart` and the
 `value_source` column of `app_effort_observation` in
 `scripts/sqlite_schema.sql`), which entry a distance row belongs to
-(`DistancePairing` in `lib/core/utils/distance_source.dart`), what the stored
-source resolves to (`DistanceSource`, same file), and the write that changes a
-distance (`SessionCore.setEntryDistance` / `confirmEntryDistance` in
-`lib/state/workout/session_core_entry.dart`, delegated from `WorkoutState`).
+(`EntryRows.distanceEntries` in `lib/core/utils/entry_rows.dart`, reached from
+state through `WorkoutState.getEffortDistanceEntries`; `DistancePairing` in
+`lib/core/utils/distance_source.dart` is the thin delegate older callers use),
+what the stored source resolves to (`DistanceSource`, same file), and the write
+that changes a distance (`SessionCore.setEntryDistance` / `confirmEntryDistance`
+in `lib/state/workout/session_core_entry.dart`, delegated from `WorkoutState`).
 The Session Summary's DISTANCE section writes through these rules and
 `StatsProgressService` reads through them.
 
@@ -32,22 +34,24 @@ estimated when any distance counted in that day's total is one, and the Stats
 card renders that mark.
 
 `DistancePairing` is how the source-aware code decides which distance row
-belongs to which entry. Nothing in storage links the two, so it pairs the
-effort's `metric-distance` rows with the effort's entries by relative order,
-sorting the rows by the entry number in the row id
-(`obs-<effortId>-<n>-distance`), then `createdAtMs`, then id. The Session
-Summary's rows, the state write and the Stats pace all read through it.
-`updateEntryValue` (Edit Session, the live screen, routine pre-fill) and
-`SessionSummaryBuilder` still pair a distance with its entry by raw list order,
-so the two rules can disagree (plan O-3).
+belongs to which entry. It delegates to `EntryRows` in
+`lib/core/utils/entry_rows.dart`, the one rule that reads an observation id
+([Data Models § Entry Identity](data_models.md#entry-identity)): rows are
+ordered by the number in their id, then `createdAtMs`, then id — not by the
+order a store happens to return them in. The Session Summary's rows build from
+the same list (`WorkoutState.getEffortDistanceEntries`, D-328), and the Stats
+pace reads the same pairing, so a row on screen and the row a write reaches are
+the same entry. A row past the last entry is a leftover: it pairs with nothing,
+it counts nowhere, and nothing deletes it.
 
 `SessionCore` owns the write that records a source: `setEntryDistance` stores a
 value, and `confirmEntryDistance` re-records the value an entry already holds.
 Both keep an existing row's id and `createdAtMs` and stamp a new `updatedAtMs`.
 When the edited entry has no row of its own, the write first fills every
-earlier unpaired entry with a zero-valued row so that the pairing the next
-write reads stays positional. On an effort that is not timed, the entries are
-the distance rows
+earlier unpaired entry with a zero-valued row, numbering them upward, so the
+row the edit writes is the *k*-th and lands on the entry the user chose. A new
+row is numbered above every row the effort holds, so a row is never written over
+a stored one. On an effort that is not timed, the entries are the distance rows
 themselves — the rows a stored distance keeps visible, which have no timed
 instance behind them.
 
@@ -76,15 +80,16 @@ change it.
 written by different code paths, and an entry's duration lives on its
 `TimedInstance` rather than on the row. An explicit link (an `entryIndex`
 column, or the timed instance's id on the row) would be a second place that can
-disagree with the id convention the rest of the app already reads indices out
+disagree with the id convention the rest of the app already reads entries out
 of. Ordering by the number already in the id, with the same tie-breakers the
 repository ordering contract uses, resolves the same pairing from any list of
 rows — including the key-sorted order Hive returns, which is not entry order.
 
-**Why the write fills earlier gaps.** Pairing is positional, so a row created
-for entry 3 while entries 0-2 have none would be read as entry 0's. Writing the
-missing rows as zero-valued, source-less rows keeps the positions stable and
-costs nothing visible: a zero distance is absence, not a value.
+**Why the write fills earlier gaps.** A distance row addresses an entry by the
+number it carries, and the fill keeps the rows a session already holds in the
+order their entries are in. Writing the missing rows as zero-valued,
+source-less rows keeps a later write's number free and costs nothing visible: a
+zero distance is absence, not a value.
 
 ## Invariants
 
@@ -120,10 +125,14 @@ costs nothing visible: a zero distance is absence, not a value.
   than testing the stored string, so a legacy row marks nothing and a reader
   cannot invent a fourth meaning. Stats' estimate marking is
   `test/stats_distance_estimate_test.dart` (`S-832`–`S-835`).
-- A distance row belongs to the entry its position implies, in any order a
-  store returns rows in, and the Summary's write and the Stats reader agree on
-  that pairing. Verified by `test/distance_source_test.dart` (`S-808`) and
+- A distance row belongs to the entry the number in its id names, in any order
+  a store returns rows in, and the Summary's write and the Stats reader agree
+  on that pairing. Verified by `test/distance_source_test.dart` (`S-808`),
+  `test/entry_rows_test.dart` (`S-844`) and
   `test/stats_distance_estimate_test.dart` (`S-831`).
+- A row past the last entry is a leftover: it pairs with no entry, counts in no
+  total, and stays stored. Verified by `test/entry_identity_test.dart`
+  (`S-858`).
 
 ## Vocabulary
 
@@ -136,7 +145,9 @@ costs nothing visible: a zero distance is absence, not a value.
 - **Paired row** — the distance row an entry owns, as `DistancePairing`
   computes it. An entry with no distance has no paired row and reads as
   absence, never as zero.
-- **Entry index** — an entry's position among the effort's entries: its timed
-  instances, or its distance rows on an effort that is not timed. It is the
-  index the rest of the app encodes in observation ids and the index the
-  distance write takes.
+- **Leftover row** — a distance row placed past the last entry. No entry owns
+  it, so no reader counts it.
+- **Entry number** — the number an entry's rows carry in their ids. It is how
+  the rest of the app addresses an entry (see
+  [Data Models § Entry Identity](data_models.md#entry-identity)), and the
+  index the distance write takes.

@@ -9,6 +9,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/services/data_migration_service.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
+import '../../core/utils/entry_rows.dart';
 import '../../core/utils/date_utils.dart';
 import 'workout_repository.dart';
 
@@ -2027,7 +2028,12 @@ class MockWorkoutRepository implements WorkoutRepository {
           .toList();
       for (final obs in observations) {
         final newObs = EffortObservation(
-          id: _mockUuid.v4(),
+          id: _clonedRowId(
+            obs.id,
+            sourceEffortId: effort.id,
+            newEffortId: newEffortId,
+            freshId: _mockUuid.v4(),
+          ),
           effortId: newEffortId,
           metricId: obs.metricId,
           unitId: obs.unitId,
@@ -2087,6 +2093,23 @@ class MockWorkoutRepository implements WorkoutRepository {
     }
 
     return newBlock.id;
+  }
+
+  /// A copied row's id (D-329): its source id with the effort id replaced, so
+  /// the copy's entries stay addressable like any other. Nothing else about the
+  /// id changes — a 3a suffix stays, because dropping it would put two copied
+  /// rows on one id and merge them (F-8). A source row that carries no entry
+  /// number, or belongs to another effort, keeps a fresh unique id.
+  String _clonedRowId(
+    String sourceId, {
+    required String sourceEffortId,
+    required String newEffortId,
+    required String freshId,
+  }) {
+    final prefix = 'obs-$sourceEffortId-';
+    if (!sourceId.startsWith(prefix)) return freshId;
+    if (EntryRows.parseId(sourceId) == null) return freshId;
+    return 'obs-$newEffortId-${sourceId.substring(prefix.length)}';
   }
 
   String _formatBlockTimeLabel(int timestampMs) {

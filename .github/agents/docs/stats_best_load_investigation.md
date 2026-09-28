@@ -584,14 +584,9 @@ Stated separately so nothing above is read as more settled than it is.
    the finding: it would have changed *which set* won, not *what quantity* was stored.
 4. **Whether §2.5/§2.7's estimate-as-weight presentation has actually misled anyone.** NOT
    DETERMINED — no report, no telemetry. The finding is structural.
-5. **`ObservationGrouper` entry-index parsing.** The indexed regex
-   `obs-.+-(\d+)-[^-]+$` (`observation_grouper.dart:49`) does not match ids ending in
-   `-extra-weight` (the final segment `weight` is preceded by `extra`, not by digits), so any
-   effort carrying an extra-weight observation falls to the sequential grouping path at `:82`.
-   Tracing the creation order in `session_core_entry.dart:174–213`
-   (`reps, weight, extra-weight` per entry) shows the fallback still groups correctly, so **no
-   defect is claimed**. Flagged only because it is load-bearing for every computation in §1 and
-   was not obvious. Not investigated further — outside this phase's scope.
+5. **`ObservationGrouper` entry-index parsing.** RESOLVED — the grouper delegates set grouping to
+   `EntryRows`, which reads the number in the id (a 3a suffix included), so the sequential path is
+   left to rows that genuinely carry no number. Verified by `test/entry_rows_test.dart` (`S-843`).
 
 ---
 

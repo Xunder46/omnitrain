@@ -100,16 +100,19 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 |--------|---------|
 | `addEntry(effortId, {previousValues})` | Creates a new set/interval/round/drill. The optional `previousValues` map carries forward metrics from the prior entry into the new observation rows / round instance — see the per-effort-kind table below. Keys not present fall back to the app-wide defaults in `lib/core/constants/effort_defaults.dart` and `workout_constants.dart`. The carry-forward is read-only on the prior entry — `previousValues` only seeds the new entry's defaults, it does not mutate prior observations. The `_addSet` caller in `workout_session_screen.dart` populates `previousValues` from the prior entry in `getExercisesWithEntries()` so each new set/interval/round/drill pre-fills with the prior values (June 2026, exercise-set-last-value-plan). |
 
-| `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately; preserves all existing fields including `rpeRating`, `restDurationMs` and `valueSource` |
+| `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately; preserves all existing fields including `rpeRating`, `restDurationMs` and `valueSource`. The row it writes is the one entry *k* owns ([Entry Identity](../data_models.md#entry-identity), D-324), so an edit lands on the entry the user chose; a set's missing extra weight is created with that set's own number, and a hold's or a timed entry's missing predecessors are filled first. Verified by `test/entry_identity_test.dart` (`S-853`, `S-857`, `S-863`, `S-864`) |
 | `deleteLastEntry(effortId)` | Removes last set |
-| `markSetSkipped(effortId, entryIndex)` | Marks set as explicitly skipped with `valueInt: 0, valueBool: true`; survives reload via `_isSetLogged` check |
-| `setEntryDistance(effortId, entryIndex, metres)` | Records a distance with source `entered` (zero removes it); an existing row keeps its id and `createdAtMs`, and earlier unpaired entries are filled in position first. Verified by `test/distance_source_test.dart` (`S-805`–`S-807`) |
+| `deleteEntry(effortId, entryIndex)` | Removes exactly the rows entry *k* owns and nothing else — for a set, the *k*-th group; for a timed or hold entry, delegated to `deleteTimedEntry`. No row is renamed (D-326). Verified by `test/entry_identity_test.dart` (`S-851`, `S-852`, `S-860`) |
+| `markSetSkipped(effortId, entryIndex)` | Marks set as explicitly skipped with `valueInt: 0, valueBool: true`; survives reload via `_isSetLogged` check. Addresses entry *k* by the same rule as `updateEntryValue`. Verified by `test/entry_identity_test.dart` (`S-854`) |
+| `setEntryDistance(effortId, entryIndex, metres)` | Records a distance with source `entered` (zero removes it); an existing row keeps its id and `createdAtMs`, and earlier unpaired entries are filled first, numbered upward. A new row is numbered above every row the effort holds, so it never overwrites a stored one. Verified by `test/distance_source_test.dart` (`S-805`–`S-807`) and `test/entry_identity_test.dart` (`S-845`, `S-856`) |
 | `confirmEntryDistance(effortId, entryIndex)` | Re-records the metres an entry already holds, keeping them exactly, and flips the source to `entered`. Verified by `test/distance_source_test.dart` (`S-806`) |
+
+| `getEffortDistanceEntries(effortId)` | The effort's distance entries, each with its own row or none (D-328). The Summary builds its DISTANCE rows from this and the distance writes address the same list, so a row on screen and the row an edit lands on are the same entry. Verified by `test/entry_identity_summary_test.dart` (`S-858`, `S-859`) |
 
 Both distance writes report failures through the same error channel as the
 other observation methods, and the entry-pairing rule they share with the
 Summary and Stats lives in [Distance Source & Pairing](../distance_source.md).
-`updateEntryValue` writes a distance too, pairing it by raw list order.
+`updateEntryValue` writes a distance too, addressing the same entries.
 
 #### Routine Session Support
 
@@ -197,7 +200,7 @@ Handles all round, timed-entry, and rest state machines (Cluster B of the origin
 | `pauseTimedEntry(effortId, entryIndex)` | active → paused | Stamps `pausedAtMs` |
 | `resumeTimedEntry(effortId, entryIndex)` | paused → active | Folds pause duration into `totalPausedDurationMs`; clears `pausedAtMs` |
 | `finishTimedEntry(effortId, entryIndex)` | active/paused → finished | Derives `actualDurationSecs` from timestamps; folds final pause if paused |
-| `deleteTimedEntry(effortId, entryIndex)` | — | Removes instance and re-indexes subsequent entries |
+| `deleteTimedEntry(effortId, entryIndex)` | — | Removes the instance and its own rows — the *k*-th row of each companion metric, found before the instance goes (D-326) — and re-indexes subsequent entries. Verified by `test/entry_identity_test.dart` (`S-855`, `S-860`) |
 | `getTimedInstancesForEffort(effortId)` | — | Returns unmodifiable list of timed instances for an effort |
 
 #### Rest Tracking Methods
