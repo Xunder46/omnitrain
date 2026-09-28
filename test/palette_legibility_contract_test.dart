@@ -161,13 +161,8 @@ void main() {
 
         // Check 13: Highest-elevation surface container lighter than surface by ≥ 2 L*
         late Color containerHighest;
-        if (scheme.surfaceContainerHighest != null) {
-          containerHighest = scheme.surfaceContainerHighest!;
-        } else {
-          // Fallback if not defined (should fail the test)
-          containerHighest = colors.surface; // This will fail check 13
-        }
-        final containerHighestLightness = _getLabLightness(containerHighest);
+        containerHighest = scheme.surfaceContainerHighest;
+              final containerHighestLightness = _getLabLightness(containerHighest);
         final containerDelta = containerHighestLightness - surfaceLightness;
         if (containerDelta < 2.0) {
           results[theme.name]!.add(
@@ -177,19 +172,14 @@ void main() {
 
         // Check 14: On-surface-variant vs surface: contrast ≥ 4.5:1
         late Color onSurfaceVariant;
-        if (scheme.onSurfaceVariant != null) {
-          onSurfaceVariant = scheme.onSurfaceVariant!;
-        } else {
-          // Fallback if not defined (should fail the test)
-          onSurfaceVariant = Colors.white.withValues(alpha: 0.6);
-        }
-        final onSurfaceVariantContrast = contrastRatio(
+        onSurfaceVariant = scheme.onSurfaceVariant;
+              final onSurfaceVariantContrast = contrastRatio(
           onSurfaceVariant,
           colors.surface,
         );
         if (onSurfaceVariantContrast < 4.5) {
           results[theme.name]!.add(
-            'Check 14 FAIL: onSurfaceVariant ${onSurfaceVariant} vs surface contrast = $onSurfaceVariantContrast (required ≥ 4.5:1)',
+            'Check 14 FAIL: onSurfaceVariant $onSurfaceVariant vs surface contrast = $onSurfaceVariantContrast (required ≥ 4.5:1)',
           );
         }
         // ── Checks 15-16: home tile fills ────────────────────────────────

@@ -1,9 +1,7 @@
 // filepath: test/helpers/fake_asset_bundle.dart
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// Test asset bundle that models the production condition accurately.

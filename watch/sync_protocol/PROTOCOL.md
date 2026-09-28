@@ -243,6 +243,7 @@ the fields below are the only values derived from them that appear on the wire.
 |-------|-----------|---------|
 | `avgHeartRateBpm`, `maxHeartRateBpm` | `timed`, `round`, `hold`, `session_end` | Mean and maximum heart rate over the entry's active window — pauses excluded — or, on `session_end`, over the whole session. The two travel together, and the average never exceeds the maximum |
 | `steps` | `timed` | Steps inside the window, from the wrist's step counter. A measured zero is sent |
+| `distanceSource` | `timed`, with `distanceMeters` | Where the distance came from: `gps`, `entered` or `estimated` |
 | `pausedMs` | `round` | The round's accumulated pause, which its active window excludes. Never longer than the window |
 | `setBlockHeartRates` | `session_end` | One heart-rate pair per *set block* — the sets logged for one `sessionExerciseId` and `exerciseId` pair — with the span it covers. Each block appears once |
 | `rating` | `effort_rating` | The session effort rating |
@@ -251,6 +252,10 @@ the fields below are the only values derived from them that appear on the wire.
 `fixtures/valid/observations_up_session_capture.json` is the shape in full, and
 `watch/contract/watch_capture_contract.json` is one session end to end: the
 events a wrist emits and what the phone holds after importing them.
+
+A phone-side change to a distance is never sent to the watch: a `correct_entry`
+correction carries no distance
+(`fixtures/invalid/structure_change_correction_distance.json`).
 
 ## Idempotency and reconciliation (normative)
 
@@ -393,3 +398,4 @@ one pull request — never edit a fixture to match an implementation.
 |---------|------|-------|
 | 1 | 2026-07-13 | First published protocol: seven message families, the authority rules, wall-clock timer state, snapshot reconciliation |
 | 1 (amended) | 2026-09-25 | Session capture: the `preferences_down` message; the `effort_rating` and `session_end` event kinds; the heart-rate, steps, pause and set-block summary fields; the session-switch rule; the resend rule. Additive, as the `receipt` addition was: both clients ship from this repository in one release, v1 is unreleased, and no receiver that predates the change exists. No existing fixture changed |
+| 1 (amended) | 2026-09-27 | Session capture: the `distanceSource` summary field on a `timed` entry that also carries `distanceMeters`. Additive for the same reason as the 2026-09-25 amendment; optional in this release, PR 3c makes it required when the watch sends it. No existing fixture changed |

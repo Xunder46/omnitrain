@@ -76,6 +76,7 @@ public final class SyncProtocolValidator {
     /// sender defect (PROTOCOL.md, "Session capture").
     private static let captureFieldKinds: [(field: String, kinds: [String])] = [
         ("steps", ["timed"]),
+        ("distanceSource", ["timed"]),
         ("avgHeartRateBpm", ["timed", "round", "hold", "session_end"]),
         ("maxHeartRateBpm", ["timed", "round", "hold", "session_end"]),
         ("pausedMs", ["round"]),
@@ -308,10 +309,29 @@ public final class SyncProtocolValidator {
             }
 
             rejections += heartRatePairRejections(record, path: at, where: entryId)
+            rejections += distanceSourceRejections(record, path: at, entryId: entryId)
             rejections += pauseWindowRejections(record, path: at, entryId: entryId)
             rejections += blockHeartRateRejections(record, path: at, entryId: entryId)
         }
         return rejections
+    }
+
+    /// A source describes a distance, so one without the other says nothing
+    /// about where a value came from that is not there.
+    private func distanceSourceRejections(
+        _ record: [String: Any],
+        path: String,
+        entryId: String
+    ) -> [SyncProtocolRejection] {
+        guard record["distanceSource"] != nil, record["distanceMeters"] == nil else { return [] }
+        return [
+            rejection(
+                SyncRejectionCode.semanticViolation,
+                "\(path).distanceSource",
+                "distanceSource travels with distanceMeters; "
+                    + "\(entryId) carries no distanceMeters"
+            )
+        ]
     }
 
     /// An average and a maximum describe the same readings, so one without the

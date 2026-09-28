@@ -76,10 +76,15 @@ abstract final class LoggedEntryRows {
 
   /// Timed work's companions to its `TimedInstance`: distance and extra
   /// weight.
+  ///
+  /// [distanceSource] records where a distance came from (D-334, D-335): the
+  /// source the wrist sent, or `entered` when it sent none. It is written on
+  /// the distance row alone, and a distance with no value carries none.
   static List<EffortObservation> timedObservations({
     required String effortId,
     required int entryIndex,
     required double distanceMeters,
+    String? distanceSource,
     double extraWeightKg = 0.0,
     required int atMs,
   }) => [
@@ -89,6 +94,7 @@ abstract final class LoggedEntryRows {
       metricId: MetricIds.distance,
       unitId: MetricIds.unitMeters,
       valueReal: distanceMeters,
+      valueSource: distanceSource,
       createdAtMs: atMs,
       updatedAtMs: atMs,
     ),

@@ -175,7 +175,7 @@ void main() {
         lessThanOrEqualTo(150.0),
         reason:
             'Single-line-chip row must stay within the pre-PR-7 '
-            'row-height budget (actual=${height}).',
+            'row-height budget (actual=$height).',
       );
     });
   });
@@ -212,7 +212,7 @@ void main() {
         wrapHeight,
         lessThanOrEqualTo(36.0),
         reason:
-            'Wrap height (${wrapHeight}) must fit a single chip line '
+            'Wrap height ($wrapHeight) must fit a single chip line '
             'for a 3-chip row',
       );
     });
@@ -307,7 +307,7 @@ void main() {
         greaterThan(tileMidX - 1.0),
         reason:
             'info button must not intrude into the row-body tap area '
-            '(mid=${tileMidX}, infoRect.left=${infoRect.left})',
+            '(mid=$tileMidX, infoRect.left=${infoRect.left})',
       );
     });
   });

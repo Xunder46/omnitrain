@@ -49,7 +49,7 @@ Future<String> _persistSourceImage(
   final source = File(p.join(Directory.systemTemp.path, '$name.jpg'));
   await source.writeAsBytes(<int>[1, 2, 3, 4]);
   final basename = await service.persistPickedImage(XFile(source.path));
-  return basename!;
+  return basename;
 }
 
 void main() {

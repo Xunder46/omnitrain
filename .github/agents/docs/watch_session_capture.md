@@ -1,7 +1,8 @@
 # Watch Session Capture
 
 **Scope.** How a session the watch ran becomes phone history: the watch session
-inbox, the import, rating precedence, tombstones, receipts and history
+inbox, the import, the source it stores for an imported distance, rating
+precedence, tombstones, receipts and history
 liveness. It describes the phone half —
 `lib/state/watch/watch_session_inbox.dart` (`WatchSessionInbox`,
 `WatchInboxStagingTransport`), `lib/core/services/watch_session_importer.dart`
@@ -147,6 +148,11 @@ one the wrist asks, which the capture contract pins for both.
 - **Live corrections and deletions carry into history, and a correction staged
   after the import edits only the metrics it names.** Verified by `S-267`.
 - **Imported rows have the shape of the phone's own.** Verified by `S-274`.
+- **The import stores the source a timed entry's distance arrived with, or
+  `entered` when it arrived with none; a timed entry with no distance gets no
+  source.** Verified by `test/distance_source_import_test.dart` (S-876, S-877).
+- **A later sync leaves a distance the phone wrote as it is: its value and its
+  source.** Verified by `test/distance_source_import_test.dart` (S-878).
 - **A wrist entry never lands on, moves, edits or deletes a row the user added
   to an imported effort,** and a pass that stopped half-way finishes the entry it
   had started rather than adding it twice. Verified by
@@ -290,4 +296,4 @@ Invariants:
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-09-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+> **Doc freshness** — Last reconciled against source: 2026-09-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.

@@ -692,7 +692,7 @@ void main() {
           ),
           findsOneWidget,
           reason:
-              'header height subtitle must read "5\' 11\"" when the '
+              'header height subtitle must read "5\' 11"" when the '
               'height unit setting is ftin',
         );
         // The cm suffix must NOT appear when ftin is selected.

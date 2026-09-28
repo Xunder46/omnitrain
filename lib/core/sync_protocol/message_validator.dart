@@ -131,6 +131,7 @@ class SyncProtocolValidator {
   /// defect (PROTOCOL.md, "Session capture").
   static const Map<String, List<String>> _captureFieldKinds = {
     'steps': ['timed'],
+    'distanceSource': ['timed'],
     'avgHeartRateBpm': ['timed', 'round', 'hold', 'session_end'],
     'maxHeartRateBpm': ['timed', 'round', 'hold', 'session_end'],
     'pausedMs': ['round'],
@@ -418,10 +419,32 @@ class SyncProtocolValidator {
       }
 
       rejections.addAll(_heartRatePairRejections(entry, at, entryId));
+      rejections.addAll(_distanceSourceRejections(entry, at, entryId));
       rejections.addAll(_pauseWindowRejections(entry, at, entryId));
       rejections.addAll(_blockHeartRateRejections(entry, at, entryId));
     }
     return rejections;
+  }
+
+  /// A source describes a distance, so one without the other says nothing about
+  /// where a value came from that is not there.
+  List<SyncProtocolRejection> _distanceSourceRejections(
+    Map<String, Object?> entry,
+    String path,
+    String entryId,
+  ) {
+    if (entry['distanceSource'] == null || entry['distanceMeters'] != null) {
+      return const [];
+    }
+    return [
+      SyncProtocolRejection(
+        code: _semanticViolation,
+        path: '$path.distanceSource',
+        message:
+            'distanceSource travels with distanceMeters; '
+            '$entryId carries no distanceMeters',
+      ),
+    ];
   }
 
   /// An average and a maximum describe the same readings, so one without the

@@ -23,6 +23,7 @@ library;
 
 import '../constants/block_types.dart';
 import '../constants/metric_ids.dart';
+import '../utils/entry_rows.dart';
 import '../utils/logged_entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -608,14 +609,11 @@ class _Pass {
         <int, List<({EffortObservation observation, String metricKey})>>{};
     for (final row in rows) {
       if (!row.id.startsWith(prefix)) continue;
-      final rest = row.id.substring(prefix.length);
-      final dash = rest.indexOf('-');
-      if (dash <= 0) continue;
-      final index = int.tryParse(rest.substring(0, dash));
-      if (index == null) continue;
-      (grouped[index] ??= []).add((
+      final parsed = EntryRows.parseId(row.id);
+      if (parsed == null) continue;
+      (grouped[parsed.number] ??= []).add((
         observation: row,
-        metricKey: rest.substring(dash + 1),
+        metricKey: parsed.metricKey,
       ));
     }
     return grouped;
@@ -700,6 +698,11 @@ class _Pass {
           effortId: effortId,
           entryIndex: index,
           distanceMeters: entry.distanceMeters ?? 0.0,
+          // A distance the wrist dialled without naming its source was
+          // entered by hand: watch sessions never run GPS (D-335).
+          distanceSource: (entry.distanceMeters ?? 0.0) > 0
+              ? entry.distanceSource ?? EffortObservation.sourceEntered
+              : null,
           atMs: at,
         );
       case WatchInboxEntry.kindHold:
@@ -1219,6 +1222,7 @@ class _Entry {
     required this.measuredEndMs,
     required this.pausedMs,
     required this.distanceMeters,
+    required this.distanceSource,
     required this.extraLoadKg,
     required this.avgHeartRateBpm,
     required this.maxHeartRateBpm,
@@ -1241,6 +1245,10 @@ class _Entry {
   final int? measuredEndMs;
   final int pausedMs;
   final double? distanceMeters;
+
+  /// Where the distance came from, as the wrist sent it. Null when the event
+  /// carried no source, or carried one that is not a known value.
+  final String? distanceSource;
   final double? extraLoadKg;
   final double? avgHeartRateBpm;
   final double? maxHeartRateBpm;
@@ -1347,6 +1355,7 @@ class _Entry {
       measuredEndMs: _ms(payload['endedAt']),
       pausedMs: pausedMs is int && pausedMs > 0 ? pausedMs : 0,
       distanceMeters: _real(payload['distanceMeters']),
+      distanceSource: _knownDistanceSource(payload['distanceSource']),
       extraLoadKg: _real(payload['extraLoadKg']),
       avgHeartRateBpm: _real(payload['avgHeartRateBpm']),
       maxHeartRateBpm: _real(payload['maxHeartRateBpm']),
@@ -1458,3 +1467,11 @@ int? _ms(Object? iso) => iso is String
 
 double? _real(Object? value) =>
     value is num && value.isFinite ? value.toDouble() : null;
+
+/// The wire's `distanceSource` when it names one of the sources a distance row
+/// may carry, and null otherwise (D-334). An unknown value never reaches a
+/// row, where it would be refused at construction (D-311).
+String? _knownDistanceSource(Object? value) =>
+    value is String && EffortObservation.valueSources.contains(value)
+    ? value
+    : null;

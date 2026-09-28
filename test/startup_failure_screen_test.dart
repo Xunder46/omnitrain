@@ -26,8 +26,8 @@ class _CapturedStartupFailure {
   final StackTrace stackTrace;
 }
 
-Future<void> _noopPersist(Object _, StackTrace __) async {}
-void _noopLog(Object _, StackTrace __) {}
+Future<void> _noopPersist(Object _, StackTrace _) async {}
+void _noopLog(Object _, StackTrace _) {}
 
 class _FakePreferencesService implements PreferencesService {
   int _hubOpenCount = 0;
@@ -314,8 +314,8 @@ void main() {
         await tester.pumpWidget(
           StartupRoot(
             startupRunner: succeedImmediately,
-            onStartupFailureLogged: (_, __) => logCalls += 1,
-            onStartupFailureReported: (_, __) async => reportCalls += 1,
+            onStartupFailureLogged: (_, _) => logCalls += 1,
+            onStartupFailureReported: (_, _) async => reportCalls += 1,
             onStartupFailurePersisted: _noopPersist,
           ),
         );
@@ -386,7 +386,7 @@ void main() {
               createImageStorageService: () async => null,
               loadAppVersionInfo: () async =>
                   const AppVersionInfo(version: '1.0.0', build: '1'),
-              onNonFatalStartupIssue: (_, __) async {},
+              onNonFatalStartupIssue: (_, _) async {},
             ),
             onStartupFailurePersisted: _noopPersist,
           ),
@@ -414,7 +414,7 @@ void main() {
           createImageStorageService: () async => null,
           loadAppVersionInfo: () async =>
               const AppVersionInfo(version: '1.0.0', build: '1'),
-          onNonFatalStartupIssue: (_, __) async => nonFatalCalls += 1,
+          onNonFatalStartupIssue: (_, _) async => nonFatalCalls += 1,
         );
 
         expect(app, isA<MyApp>());
@@ -537,7 +537,7 @@ void main() {
           stackTrace: StackTrace.current,
           onStartupFailureLogged: _noopLog,
           onStartupFailureReported: _noopPersist,
-          onStartupFailurePersisted: (Object _, StackTrace __) async {
+          onStartupFailurePersisted: (Object _, StackTrace _) async {
             throw FileSystemException('simulated diagnostic write failure');
           },
         );

@@ -31,6 +31,11 @@
       "path": "valid/observations_up_paused_ms_equals_window.json",
       "type": "observations_up",
       "note": "F-6(b): pausedMs equal to its window is a real wire value (A-30 caps a round's pause at the window), so equality must be accepted, not just below it."
+    },
+    {
+      "path": "valid/observations_up_distance_source.json",
+      "type": "observations_up",
+      "scenario": "S-871"
     }
   ],
   "invalid": [
@@ -240,6 +245,34 @@
       "expectedCode": "invalid_type",
       "expectedReasonContains": "expected integer, found 3200.0",
       "note": "F-10: a JSON `3200.0` is a double. Dart's `value is int` refuses it, and the Swift validator must too, or the two disagree on the same bytes (review N6 pins the wording as well)."
+    },
+    {
+      "path": "invalid/observations_up_distance_source_on_round.json",
+      "type": "observations_up",
+      "scenario": "S-872",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "distanceSource is carried only by timed entries"
+    },
+    {
+      "path": "invalid/observations_up_distance_source_without_distance.json",
+      "type": "observations_up",
+      "scenario": "S-873",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "distanceSource travels with distanceMeters"
+    },
+    {
+      "path": "invalid/observations_up_distance_source_unknown.json",
+      "type": "observations_up",
+      "scenario": "S-874",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "pedometer"
+    },
+    {
+      "path": "invalid/structure_change_correction_distance.json",
+      "type": "structure_change",
+      "scenario": "S-875",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "distanceMeters"
     }
   ],
   "scenarios": [

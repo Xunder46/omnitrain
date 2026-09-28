@@ -242,18 +242,23 @@ extension SessionCoreEntryMethods on SessionCore {
         final oldObs = observations[obsIndex];
         final shouldClearSkipMarker =
             metricKey == 'reps' && value is int && value > 0;
+        final newReal = (value is double) ? value : oldObs.valueReal;
         final newObs = EffortObservation(
           id: oldObs.id,
           effortId: oldObs.effortId,
           metricId: oldObs.metricId,
           unitId: oldObs.unitId,
           valueInt: (value is int) ? value : oldObs.valueInt,
-          valueReal: (value is double) ? value : oldObs.valueReal,
+          valueReal: newReal,
           valueText: (value is String) ? value : oldObs.valueText,
           valueBool: shouldClearSkipMarker
               ? false
               : ((value is bool) ? value : oldObs.valueBool),
-          valueSource: oldObs.valueSource,
+          valueSource: _sourceAfterWrite(
+            oldObs.metricId,
+            newReal,
+            oldObs.valueSource,
+          ),
           rpeRating: oldObs.rpeRating,
           restDurationMs: oldObs.restDurationMs,
           createdAtMs: oldObs.createdAtMs,
@@ -307,6 +312,23 @@ extension SessionCoreEntryMethods on SessionCore {
     } catch (e) {
       _setError('Failed to update entry: $e');
     }
+  }
+
+  /// The source a write leaves on a distance row (D-311, D-334): the one the
+  /// row already carries, or `entered` for a value a person wrote. A zero
+  /// distance carries none, which is how a distance is removed — the same rule
+  /// the distance dialog's own write follows.
+  ///
+  /// Every other metric carries no source at all, so its row is returned as
+  /// it was.
+  static String? _sourceAfterWrite(
+    String metricId,
+    double? metres,
+    String? stored,
+  ) {
+    if (metricId != MetricIds.distance) return stored;
+    if ((metres ?? 0) <= 0) return null;
+    return stored ?? EffortObservation.sourceEntered;
   }
 
   /// Added load in kilograms, named for [number] as every writer names it.

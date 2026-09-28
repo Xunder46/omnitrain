@@ -512,8 +512,17 @@ whose order depends on the store: Hive returns box values in key order, so it re
 before `obs-…-2-…`, and an effort may hold up to `WorkoutConstants.maxEntriesPerEffort` entries.
 Ids are never renumbered, so an id built from an entry's current display position can name another
 entry's rows. `EntryRows` in `lib/core/utils/entry_rows.dart` holds that rule for the phone's own
-readers and writers. Two paths build and read their own ids instead: the watch import
-(below), and the routine-template defaults.
+readers and writers. One path builds its own ids instead: the watch import (below).
+
+**The routine-template defaults read rows without the rule.** Saving a session as a routine
+(`SessionSummaryBuilder.buildTemplateDraftExercises` in `lib/state/workout/session_summary_builder.dart`)
+drafts a timed or drill entry's extra-weight target from `_observations[effort.id].first`, and a set
+effort's targets from its rows sorted by `createdAtMs`, not by the number in each row's id. A row a
+store returns out of entry order, or a companion row created after the one it pairs with, can draft a
+template from the wrong entry's value. Exercised, but not pinned against reordering, by
+`test/state_test.dart` (`buildTemplateDraftExercises includes extra-weight target for timed`) and
+`test/services_test.dart` (`saveRoutineFromDraft`).
+
 
 **The rule.** An id is `obs-<effortId>-<n>-<metricKey>`, optionally followed by `-<digits>`. The
 metric keys are the values of `MetricIds.metricIdToKey`; an effort id may itself contain dashes, so
@@ -531,10 +540,10 @@ suffix is ever minted; an existing suffixed id reads as its number. A copied blo
 for the effort they were copied into, keeping the source's own number and metric key.
 
 **The watch import is separate.** `WatchSessionImporter` numbers its own rows densely by entry
-position and parses ids with its own prefix reader; the phone's rule and the import's numbering are
+position and reads ids with `EntryRows.parseId`; the phone's rule and the import's numbering are
 compatible (the import appends at the highest number plus 1). Verified by
 `test/watch_session_import_test.dart` (`A-51`), which holds a wrist entry arriving after the user's
-own rows in an imported effort.
+own rows in an imported effort, and by `test/row_invariants_guard_test.dart` (S-887).
 
 The phone's own rule is verified by `test/entry_rows_test.dart` (`S-841`–`S-847`) and
 `test/entry_identity_test.dart` (`S-851`–`S-860`, `S-862`–`S-864`); the distance half is

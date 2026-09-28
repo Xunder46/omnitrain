@@ -170,8 +170,9 @@ void main() {
         followLinks: false,
       )) {
         if (entity is! File || !entity.path.endsWith('.dart')) continue;
-        if (entity.path.endsWith('lib/core/constants/omni_theme.dart'))
+        if (entity.path.endsWith('lib/core/constants/omni_theme.dart')) {
           continue;
+        }
         final content = await entity.readAsString();
         for (final token in forbidden) {
           if (content.contains(token)) {

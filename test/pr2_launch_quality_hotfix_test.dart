@@ -48,7 +48,7 @@ import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
-Future<void> _noopPersist(Object _, StackTrace __) async {}
+Future<void> _noopPersist(Object _, StackTrace _) async {}
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -108,7 +108,7 @@ void main() {
   // ── S-001 / S-002 — StartupRoot preparing/distinct states ─────────────
 
   /// The preparing screen's only themed foreground element.
-  Color? _preparingSpinnerColor(WidgetTester tester) {
+  Color? preparingSpinnerColor(WidgetTester tester) {
     final indicator = tester.widget<CircularProgressIndicator>(
       find.descendant(
         of: find.byType(StartupPreparingScreen),
@@ -181,7 +181,7 @@ void main() {
         await tester.pump();
 
         expect(
-          _preparingSpinnerColor(tester),
+          preparingSpinnerColor(tester),
           OmniTheme.colorsForTheme(AppTheme.abyssalNeon).primary,
         );
 
@@ -191,7 +191,7 @@ void main() {
 
         expect(find.byType(StartupPreparingScreen), findsOneWidget);
         expect(
-          _preparingSpinnerColor(tester),
+          preparingSpinnerColor(tester),
           OmniTheme.colorsForTheme(AppTheme.crimsonDojo).primary,
           reason:
               'The preparing screen must listen for the theme adoption rather '

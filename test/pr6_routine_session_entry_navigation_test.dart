@@ -460,7 +460,7 @@ void main() {
 
   group('S-005 add buttons are always secondary', () {
     Future<({MockWorkoutRepository repo, WorkoutState workoutState})>
-    _bootEmptySession(WidgetTester tester) async {
+    bootEmptySession(WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final repo = await _freshRepo();
@@ -487,7 +487,7 @@ void main() {
       'empty session: Add Exercise and Add Block are OutlinedButtons, '
       'never FilledButtons',
       (WidgetTester tester) async {
-        await _bootEmptySession(tester);
+        await bootEmptySession(tester);
 
         expect(
           find.widgetWithText(OutlinedButton, 'Add Exercise'),
@@ -516,14 +516,14 @@ void main() {
     testWidgets('after adding a block: Add Exercise stays an OutlinedButton', (
       WidgetTester tester,
     ) async {
-      final boot = await _bootEmptySession(tester);
+      final boot = await bootEmptySession(tester);
 
       // Add a block via the secondary Add Block button (not the picker).
       await tester.tap(find.byKey(const Key('add-block')));
       await _pumpAndSettle(tester);
 
       // Sanity: a block now exists in the session.
-      expect((await boot.workoutState.getSessionBlocks()).isNotEmpty, isTrue);
+      expect((boot.workoutState.getSessionBlocks()).isNotEmpty, isTrue);
 
       // Re-pump so the populated layout (with bottom-anchored add
       // bar) mounts in place of the centered empty state.
@@ -550,7 +550,7 @@ void main() {
     testWidgets(
       'after adding an exercise: Add Exercise stays an OutlinedButton',
       (WidgetTester tester) async {
-        final boot = await _bootEmptySession(tester);
+        final boot = await bootEmptySession(tester);
 
         // Add an exercise directly via the state (the picker is a
         // separate screen that requires a navigator stack; here we only
@@ -703,11 +703,11 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════
 
   group('S-006 play glyph + Demo on metadata line', () {
-    const _platformMinTapTarget = 48.0;
-    const _narrowPhoneWidth = 320.0;
-    const _narrowPhoneHeight = 700.0;
+    const platformMinTapTarget = 48.0;
+    const narrowPhoneWidth = 320.0;
+    const narrowPhoneHeight = 700.0;
 
-    Future<MockWorkoutRepository> _seedMixedRoutines() async {
+    Future<MockWorkoutRepository> seedMixedRoutines() async {
       final repo = MockWorkoutRepository();
       await repo.initialize();
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -751,7 +751,7 @@ void main() {
       return repo;
     }
 
-    Widget _pumpNarrowRoutines(MockWorkoutRepository repo) {
+    Widget pumpNarrowRoutines(MockWorkoutRepository repo) {
       final routineState = RoutineState(repo);
       final workoutState = WorkoutState(repo);
       final settingsState = SettingsState(repo, fakePreferencesService());
@@ -771,13 +771,13 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(
-        const Size(_narrowPhoneWidth, _narrowPhoneHeight),
+        const Size(narrowPhoneWidth, narrowPhoneHeight),
       );
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final repo = await _seedMixedRoutines();
+      final repo = await seedMixedRoutines();
 
-      await tester.pumpWidget(_pumpNarrowRoutines(repo));
+      await tester.pumpWidget(pumpNarrowRoutines(repo));
       await tester.pumpAndSettle();
 
       // The play glyph must be findable on every row.
@@ -795,13 +795,13 @@ void main() {
       'play glyph uses the theme accent colour with no fill and no border',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(
-          const Size(_narrowPhoneWidth, _narrowPhoneHeight),
+          const Size(narrowPhoneWidth, narrowPhoneHeight),
         );
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = await _seedMixedRoutines();
+        final repo = await seedMixedRoutines();
 
-        await tester.pumpWidget(_pumpNarrowRoutines(repo));
+        await tester.pumpWidget(pumpNarrowRoutines(repo));
         await tester.pumpAndSettle();
 
         final glyph = tester.widget<Icon>(
@@ -824,13 +824,13 @@ void main() {
       'play glyph touch target meets the platform accessibility minimum',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(
-          const Size(_narrowPhoneWidth, _narrowPhoneHeight),
+          const Size(narrowPhoneWidth, narrowPhoneHeight),
         );
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = await _seedMixedRoutines();
+        final repo = await seedMixedRoutines();
 
-        await tester.pumpWidget(_pumpNarrowRoutines(repo));
+        await tester.pumpWidget(pumpNarrowRoutines(repo));
         await tester.pumpAndSettle();
 
         // Locate the play glyph by accessibility label rather than text,
@@ -839,8 +839,8 @@ void main() {
         expect(bySemantics, findsNWidgets(3));
 
         final glyphRect = tester.getRect(bySemantics.first);
-        expect(glyphRect.width, greaterThanOrEqualTo(_platformMinTapTarget));
-        expect(glyphRect.height, greaterThanOrEqualTo(_platformMinTapTarget));
+        expect(glyphRect.width, greaterThanOrEqualTo(platformMinTapTarget));
+        expect(glyphRect.height, greaterThanOrEqualTo(platformMinTapTarget));
       },
     );
 
@@ -848,13 +848,13 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(
-        const Size(_narrowPhoneWidth, _narrowPhoneHeight),
+        const Size(narrowPhoneWidth, narrowPhoneHeight),
       );
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final repo = await _seedMixedRoutines();
+      final repo = await seedMixedRoutines();
 
-      await tester.pumpWidget(_pumpNarrowRoutines(repo));
+      await tester.pumpWidget(pumpNarrowRoutines(repo));
       await tester.pumpAndSettle();
 
       final glyphRect = tester.getRect(find.byTooltip('Start routine').first);
@@ -876,13 +876,13 @@ void main() {
       'Demo marker renders on the metadata line, not the title line',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(
-          const Size(_narrowPhoneWidth, _narrowPhoneHeight),
+          const Size(narrowPhoneWidth, narrowPhoneHeight),
         );
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = await _seedMixedRoutines();
+        final repo = await seedMixedRoutines();
 
-        await tester.pumpWidget(_pumpNarrowRoutines(repo));
+        await tester.pumpWidget(pumpNarrowRoutines(repo));
         await tester.pumpAndSettle();
 
         // Find the title text for the demo routine.
@@ -978,13 +978,13 @@ void main() {
       'routine names of typical length render in full on a 320-dp surface',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(
-          const Size(_narrowPhoneWidth, _narrowPhoneHeight),
+          const Size(narrowPhoneWidth, narrowPhoneHeight),
         );
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = await _seedMixedRoutines();
+        final repo = await seedMixedRoutines();
 
-        await tester.pumpWidget(_pumpNarrowRoutines(repo));
+        await tester.pumpWidget(pumpNarrowRoutines(repo));
         await tester.pumpAndSettle();
 
         // "Bodyweight Conditioning" must fit in full — pre-refactor it
@@ -1022,11 +1022,11 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════
 
   group('S-007 tap region + Demo badge stability', () {
-    const _platformMinTapTarget = 44.0;
-    const _narrowPhoneWidth = 320.0;
-    const _narrowPhoneHeight = 800.0;
+    const platformMinTapTarget = 44.0;
+    const narrowPhoneWidth = 320.0;
+    const narrowPhoneHeight = 800.0;
 
-    Future<MockWorkoutRepository> _seedHeterogeneousRoutines() async {
+    Future<MockWorkoutRepository> seedHeterogeneousRoutines() async {
       final repo = MockWorkoutRepository();
       await repo.initialize();
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -1075,7 +1075,7 @@ void main() {
       return repo;
     }
 
-    Widget _pumpList(MockWorkoutRepository repo) {
+    Widget pumpList(MockWorkoutRepository repo) {
       final routineState = RoutineState(repo);
       final workoutState = WorkoutState(repo);
       final settingsState = SettingsState(repo, fakePreferencesService());
@@ -1096,13 +1096,13 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(
-        const Size(_narrowPhoneWidth, _narrowPhoneHeight),
+        const Size(narrowPhoneWidth, narrowPhoneHeight),
       );
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final repo = await _seedHeterogeneousRoutines();
+      final repo = await seedHeterogeneousRoutines();
 
-      await tester.pumpWidget(_pumpList(repo));
+      await tester.pumpWidget(pumpList(repo));
       await _pumpAndSettle(tester);
 
       // Measure the tap region via the locator the S-006 tests use,
@@ -1111,8 +1111,8 @@ void main() {
       final startRegion = tester.getRect(
         find.byKey(const Key('routine-card-start')).first,
       );
-      expect(startRegion.width, greaterThanOrEqualTo(_platformMinTapTarget));
-      expect(startRegion.height, greaterThanOrEqualTo(_platformMinTapTarget));
+      expect(startRegion.width, greaterThanOrEqualTo(platformMinTapTarget));
+      expect(startRegion.height, greaterThanOrEqualTo(platformMinTapTarget));
 
       // The tap region must be visibly larger than the glyph it
       // represents — measured on the Icon widget.
@@ -1137,9 +1137,9 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final repo = await _seedHeterogeneousRoutines();
+      final repo = await seedHeterogeneousRoutines();
 
-      await tester.pumpWidget(_pumpList(repo));
+      await tester.pumpWidget(pumpList(repo));
       await _pumpAndSettle(tester);
 
       final startRegion = tester.getRect(
@@ -1172,9 +1172,9 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final repo = await _seedHeterogeneousRoutines();
+      final repo = await seedHeterogeneousRoutines();
 
-      await tester.pumpWidget(_pumpList(repo));
+      await tester.pumpWidget(pumpList(repo));
       await _pumpAndSettle(tester);
 
       final startRegion = tester.getRect(
@@ -1210,8 +1210,8 @@ void main() {
       final xs = <double>[0, 0, 0, 0, 0]; // placeholder
 
       // Pump once to discover the card rect.
-      final firstRepo = await _seedHeterogeneousRoutines();
-      await tester.pumpWidget(_pumpList(firstRepo));
+      final firstRepo = await seedHeterogeneousRoutines();
+      await tester.pumpWidget(pumpList(firstRepo));
       await _pumpAndSettle(tester);
 
       final cardRect = tester.getRect(
@@ -1235,8 +1235,8 @@ void main() {
 
           // Fresh pump per probe so prior taps don't accumulate
           // state in the navigator stack.
-          final freshRepo = await _seedHeterogeneousRoutines();
-          await tester.pumpWidget(_pumpList(freshRepo));
+          final freshRepo = await seedHeterogeneousRoutines();
+          await tester.pumpWidget(pumpList(freshRepo));
           await _pumpAndSettle(tester);
 
           final startRegion = tester.getRect(
@@ -1288,7 +1288,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(
-        const Size(_narrowPhoneWidth, _narrowPhoneHeight),
+        const Size(narrowPhoneWidth, narrowPhoneHeight),
       );
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -1335,7 +1335,7 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(_pumpList(repo));
+      await tester.pumpWidget(pumpList(repo));
       await _pumpAndSettle(tester);
 
       final badges = find.byType(DemoRoutineBadge);
@@ -1385,13 +1385,13 @@ void main() {
       'a Demo pill and without misalignment',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(
-          const Size(_narrowPhoneWidth, _narrowPhoneHeight),
+          const Size(narrowPhoneWidth, narrowPhoneHeight),
         );
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = await _seedHeterogeneousRoutines();
+        final repo = await seedHeterogeneousRoutines();
 
-        await tester.pumpWidget(_pumpList(repo));
+        await tester.pumpWidget(pumpList(repo));
         await _pumpAndSettle(tester);
 
         // Locate the user row's title text. The user routine is "My
@@ -1467,7 +1467,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════
 
   group('S-008 Demo badge on title row + vertical centring', () {
-    Future<MockWorkoutRepository> _seedDemoAndUserRoutines() async {
+    Future<MockWorkoutRepository> seedDemoAndUserRoutines() async {
       final repo = MockWorkoutRepository();
       await repo.initialize();
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -1493,7 +1493,7 @@ void main() {
       return repo;
     }
 
-    Widget _pumpList(MockWorkoutRepository repo) {
+    Widget pumpList(MockWorkoutRepository repo) {
       final routineState = RoutineState(repo);
       final workoutState = WorkoutState(repo);
       final settingsState = SettingsState(repo, fakePreferencesService());
@@ -1515,9 +1515,9 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final repo = await _seedDemoAndUserRoutines();
+      final repo = await seedDemoAndUserRoutines();
 
-      await tester.pumpWidget(_pumpList(repo));
+      await tester.pumpWidget(pumpList(repo));
       await _pumpAndSettle(tester);
 
       // The demo title is "Easy Run — 30 min".
@@ -1546,9 +1546,9 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final repo = await _seedDemoAndUserRoutines();
+      final repo = await seedDemoAndUserRoutines();
 
-      await tester.pumpWidget(_pumpList(repo));
+      await tester.pumpWidget(pumpList(repo));
       await _pumpAndSettle(tester);
 
       final titleRect = tester.getRect(find.text('Easy Run — 30 min'));
@@ -1588,9 +1588,9 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final repo = await _seedDemoAndUserRoutines();
+      final repo = await seedDemoAndUserRoutines();
 
-      await tester.pumpWidget(_pumpList(repo));
+      await tester.pumpWidget(pumpList(repo));
       await _pumpAndSettle(tester);
 
       final badge = tester.widget<Container>(
@@ -1640,9 +1640,9 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = await _seedDemoAndUserRoutines();
+        final repo = await seedDemoAndUserRoutines();
 
-        await tester.pumpWidget(_pumpList(repo));
+        await tester.pumpWidget(pumpList(repo));
         await _pumpAndSettle(tester);
 
         // Locate the date text on the demo row.
@@ -1729,9 +1729,9 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = await _seedDemoAndUserRoutines();
+        final repo = await seedDemoAndUserRoutines();
 
-        await tester.pumpWidget(_pumpList(repo));
+        await tester.pumpWidget(pumpList(repo));
         await _pumpAndSettle(tester);
 
         // User routine is "My Squat Day". The title Row contains only

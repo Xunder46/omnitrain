@@ -215,6 +215,10 @@
           "minimum": 0,
           "description": "Distance covered, entered by hand when there is no fix. GPS is never a precondition for an entry."
         },
+        "distanceSource": {
+          "enum": ["gps", "entered", "estimated"],
+          "description": "Where a timed entry's distance came from, sent only with it."
+        },
         "extraLoadKg": {
           "type": "number",
           "description": "Load added to or assisting a hold. Negative is band assist, which is why this is not loadKg."

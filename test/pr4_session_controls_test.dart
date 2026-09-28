@@ -170,12 +170,12 @@ void main() {
   });
 
   group('Discard Session — confirm/cancel flows', () {
-    Finder _discardFinder() => find.widgetWithText(OutlinedButton, 'Discard');
+    Finder discardFinder() => find.widgetWithText(OutlinedButton, 'Discard');
 
     // The confirmation dialog also contains a "Discard" action —
     // scope its finder to the AlertDialog so the screen-level button
     // does not collide with the dialog action.
-    Finder _dialogDiscardFinder() => find.descendant(
+    Finder dialogDiscardFinder() => find.descendant(
       of: find.byType(AlertDialog),
       matching: find.widgetWithText(FilledButton, 'Discard'),
     );
@@ -190,7 +190,7 @@ void main() {
         // Default surface = list view, so the Discard button must be
         // reachable as an OutlinedButton labelled "Discard".
         expect(
-          _discardFinder(),
+          discardFinder(),
           findsOneWidget,
           reason: 'Discard button must be reachable from the list surface',
         );
@@ -211,7 +211,7 @@ void main() {
         // The Discard button is intentionally absent on the detail
         // surface — only the session-details screen offers discard.
         expect(
-          _discardFinder(),
+          discardFinder(),
           findsNothing,
           reason: 'Detail view must NOT show the Discard button',
         );
@@ -233,7 +233,7 @@ void main() {
       final sessionId = harness.workoutState.currentSession!.id;
 
       // Open the discard dialog → tap Cancel.
-      await tester.tap(_discardFinder());
+      await tester.tap(discardFinder());
       await tester.pumpAndSettle();
       expect(find.text('Discard session?'), findsOneWidget);
       await tester.tap(find.text('Cancel'));
@@ -261,10 +261,10 @@ void main() {
         // Open the dialog → confirm. Use the dialog-scoped finder so
         // the "Discard" tap lands on the dialog action, not the
         // screen-level button.
-        await tester.tap(_discardFinder());
+        await tester.tap(discardFinder());
         await tester.pumpAndSettle();
         expect(find.text('Discard session?'), findsOneWidget);
-        await tester.tap(_dialogDiscardFinder());
+        await tester.tap(dialogDiscardFinder());
         await tester.pumpAndSettle();
 
         // Session and every child record are gone from the repo.
@@ -296,7 +296,7 @@ void main() {
       // In edit mode the Discard button is hidden — its onPressed
       // is disabled but the widget still mounts. Verify that the
       // OutlinedButton is present but disabled.
-      final discard = tester.widget<OutlinedButton>(_discardFinder());
+      final discard = tester.widget<OutlinedButton>(discardFinder());
       expect(discard.onPressed, isNull);
     });
 
@@ -314,7 +314,7 @@ void main() {
         // header row stays visually aligned across list ↔ detail
         // navigation. Same height token as the calendar "+"
         // button (which uses VisualDensity.compact).
-        final discardRect = tester.getRect(_discardFinder());
+        final discardRect = tester.getRect(discardFinder());
         expect(
           discardRect.height,
           OmniTheme.headerSecondaryActionSize,
