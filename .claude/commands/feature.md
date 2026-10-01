@@ -107,7 +107,7 @@ developer starts. Then run `developer`. Do not commit between phases.
 
 ### 4. Verify (you)
 Run the verify commands yourself, with a timeout so a hang cannot block you:
-`bash .claude/scripts/macos/with-timeout.sh 900 flutter test` (and 300 for `flutter analyze`).
+`bash .claude/scripts/macos/with-timeout.sh 900 flutter test` (and 300 for `flutter analyze`; it exits non-zero on the repo's existing info notices, so compare the issue count with the plan's baseline and require 0 errors).
 Do not trust the agent's claim. On failure, write `brief-fix-<N>.md` with the trimmed failure output
 and the plan path, re-run the agent, repeat step 4. Each fix counts toward the round limit.
 
@@ -174,17 +174,21 @@ log and diff are both idle for `STALL_MINUTES`. On every `RUNNING` return, also 
 ## Standard brief footer (paste into every dba / developer / reviewer brief)
 
 ```
-Rules: read docs/global_conventions.md and the plan first. Do not commit, push, switch or create
-branches, or touch .claude/, .github/ or CLAUDE.md. You cannot run bash, perl, python or node;
-run flutter and dart directly. If a command hangs or fails twice, stop and report; never re-run the
-same command a third time. Never truncate test output; use `--reporter expanded` when debugging.
-NEVER run `dart format` on a directory or the tree (the repo is not format-clean); format only
-files you created or changed, by explicit path. Depend on WorkoutRepository only, never on a
-concrete storage class. Keep SQL schema/seed in step with models.dart when models change. Update
-the docs your change implicates, following docs/documentation_standard.md, and update the plan's
-Progress table and Assumption Log as phases complete.
-Before finishing: flutter analyze clean, full flutter test green with the pass/fail counts pasted,
-and the plan's own residue sweeps empty. For a bug fix, show the new test failing without the fix.
+Rules: read docs/global_conventions.md and the plan first. Do not commit, push, stage, switch or create
+branches, or touch .claude/, .github/ or CLAUDE.md. The only shell command you may run is the gateway,
+`.github/copilot/scripts/macos/gateway.sh`: `list`, `lint`, `test [paths]`, `pub-get`,
+`format <file paths>`, `git-status`, `git-diff`, `git-log`, `git-show`. Plain `git`, `flutter`, `dart`,
+`bash`, `perl` and `python` are denied; read and search with your built-in tools. If a command hangs
+or fails twice, stop and report; never re-run the same command a third time. Never truncate test
+output. Never format a directory or the tree (the repo is not format-clean); pass explicit file paths
+you created or changed. Depend on WorkoutRepository only, never on a concrete storage class. Keep SQL
+schema/seed in step with models.dart when models change. Update the docs your change implicates,
+following docs/documentation_standard.md, and update the plan's Progress table and Assumption Log
+as phases complete.
+Before finishing: `gateway.sh lint` reports no more issues than the plan's baseline (it exits non-zero
+while the repo carries pre-existing info notices; compare the count, and files you touched must have
+none), full `gateway.sh test` green with the pass/fail counts pasted, and the plan's own residue
+sweeps empty. For a bug fix, show the new test failing without the fix.
 ```
 
 Owner-prerequisite gaps: plan and build everything the agents can verify without them, mark the rest

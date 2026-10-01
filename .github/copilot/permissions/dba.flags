@@ -1,12 +1,2 @@
-# Developer: edits lib/ and test/, runs the analyzer and tests.
+# Developer: edits lib/, test/, docs/ and the plan's progress; runs checks through the gateway.
 --allow-tool=write
---allow-tool=shell(flutter analyze:*)
---allow-tool=shell(flutter test:*)
---allow-tool=shell(flutter pub get)
---allow-tool=shell(dart analyze:*)
---allow-tool=shell(dart format:*)
---allow-tool=shell(dart pub get)
---allow-tool=shell(mkdir:*)
---allow-tool=shell(mv:*)
---allow-tool=shell(cp:*)
---allow-tool=shell(rm:*)

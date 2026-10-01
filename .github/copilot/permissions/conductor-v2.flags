@@ -1,3 +1,2 @@
-# Planner: writes plan files and architecture docs only.
+# Planner: writes plan files only.
 --allow-tool=write(docs/plans/**)
---allow-tool=write(docs/architecture/**)

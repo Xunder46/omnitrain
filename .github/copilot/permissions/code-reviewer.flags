@@ -1,5 +1,2 @@
-# Reviewer: reads the diff, re-runs analyze and tests, writes findings into the plan's review file.
---allow-tool=write
---allow-tool=shell(flutter analyze:*)
---allow-tool=shell(flutter test:*)
---allow-tool=shell(dart analyze:*)
+# Reviewer: reads the diff and re-runs checks through the gateway; writes only the plan's review file.
+--allow-tool=write(docs/plans/**)

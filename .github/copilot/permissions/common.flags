@@ -1,39 +1,15 @@
 # Tool permissions shared by every Copilot agent run by .claude/scripts/macos/run-agent.sh.
 # One flag per line. The runner refuses --allow-all*, interpreters (bash, sh, perl, python, node, env…)
 # and anything that is not a flag. Unlisted shell commands are denied (runs are non-interactive).
-# The governor (Claude) owns git history: agents never commit, push, switch branches or discard work.
---deny-tool=shell(git commit:*)
---deny-tool=shell(git push:*)
---deny-tool=shell(git reset:*)
---deny-tool=shell(git switch:*)
---deny-tool=shell(git checkout:*)
---deny-tool=shell(git restore:*)
---deny-tool=shell(git clean:*)
---deny-tool=shell(git stash:*)
---deny-tool=shell(git merge:*)
---deny-tool=shell(git rebase:*)
---deny-tool=shell(git branch:*)
---deny-tool=shell(git add:*)
+# The only shell command an agent may run is the gateway (.github/copilot/gateway.conf): analyze, test,
+# format, pub get and read-only git. Reading and searching use Copilot's built-in tools, not the shell.
+# The governor (Claude) never commits for the owner and agents never touch git history either.
+--allow-tool=shell(.github/copilot/scripts/macos/gateway.sh:*)
+--deny-tool=shell(git:*)
 --deny-tool=shell(gh:*)
 --deny-tool=shell(rm -rf:*)
 --deny-tool=shell(rm -r:*)
-# Read-only inspection
---allow-tool=shell(git status:*)
---allow-tool=shell(git diff:*)
---allow-tool=shell(git log:*)
---allow-tool=shell(git show:*)
---allow-tool=shell(git ls-files:*)
---allow-tool=shell(git rev-parse:*)
---allow-tool=shell(ls:*)
---allow-tool=shell(cat:*)
---allow-tool=shell(head:*)
---allow-tool=shell(tail:*)
---allow-tool=shell(wc:*)
---allow-tool=shell(grep:*)
---allow-tool=shell(rg:*)
---allow-tool=shell(find:*)
---allow-tool=shell(diff:*)
---allow-tool=shell(sort:*)
---allow-tool=shell(pwd)
---allow-tool=shell(date:*)
---allow-tool=shell(echo:*)
+# Pipeline, agent and project-instruction files are the owner's, never an agent's.
+--deny-tool=write(.claude/**)
+--deny-tool=write(.github/**)
+--deny-tool=write(CLAUDE.md)
