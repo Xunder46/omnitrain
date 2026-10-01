@@ -38,9 +38,9 @@ Your output is fed back to the user and costs tokens. Follow these rules uncondi
 
 ## Plan File Protocol
 
-The shared plan file at `docs/plans/[feature]-plan.md` is the single source of truth for the current feature.
+The shared plan file at `docs/plans/[feature]-plan/[feature]-plan.md` is the single source of truth for the current feature.
 
-**Always begin by reading `docs/plans/[feature]-plan.md`** before reviewing any code. Use it to understand the original intent, requirements, and the iteration being reviewed, so you can assess whether the implementation matches the plan.
+**Always begin by reading `docs/plans/[feature]-plan/[feature]-plan.md`** before reviewing any code. Use it to understand the original intent, requirements, and the iteration being reviewed, so you can assess whether the implementation matches the plan.
 
 **If the implementation does not meet the plan**, add a `## Feedback` section to the plan file describing exactly what needs to change and why, then present the findings to the user and wait for their decision.
 
@@ -48,7 +48,7 @@ The shared plan file at `docs/plans/[feature]-plan.md` is the single source of t
 
 ## PR Scope Budget
 
-Write findings to `<plan>.review.md`, next to the plan, not into the plan. The plan's
+Write findings to `<plan>.review.md`, in the plan's folder (`docs/plans/<plan>/`), not into the plan. The plan's
 `## Feedback` gets only a pointer to that file and a fix checklist. This replaces the instruction
 above to add a `## Feedback` section describing exactly what needs to change.
 
@@ -506,7 +506,7 @@ mixin LoadingStateMixin on ChangeNotifier {
 Before reading any file, identify and state which layers are in scope.
 
 ### Step 1: Read the Plan File
-Read `docs/plans/[feature]-plan.md` for original intent, acceptance criteria, and scenarios.
+Read `docs/plans/[feature]-plan/[feature]-plan.md` for original intent, acceptance criteria, and scenarios.
 
 ### Step 2: Read Changed Files
 Read only files in touched layers and their corresponding test files.

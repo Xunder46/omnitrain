@@ -8,7 +8,7 @@ Invoke the `dba` subagent via the Task tool for:
 $ARGUMENTS
 
 Handling rules:
-- It reads `docs/plans/[feature]-plan.md` first. If no plan file exists, or its
+- It reads `docs/plans/[feature]-plan/[feature]-plan.md` first. If no plan file exists, or its
   `## Scenarios` and Done Criteria are missing or incomplete, stop and tell the user to run
   `/conductor-v2` first — do not let the agent guess.
 - After it finishes, confirm it updated the plan's `## Progress` checklist and marked the phase

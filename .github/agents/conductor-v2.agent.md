@@ -4,7 +4,7 @@ handoffs:
   - label: Hand off to DBA
     agent: dba
     prompt: |
-      Plan file: docs/plans/<feature>-plan.md (named in the plan
+      Plan file: docs/plans/<feature>-plan/<feature>-plan.md (named in the plan
       presented above). Your phase is named in the plan's "Next handoff"
       status line. Read the plan file and docs/global_conventions.md, then
       implement your phase. Follow Decision Ledger entries (D-x) exactly;
@@ -19,7 +19,7 @@ handoffs:
   - label: Hand off to Developer
     agent: developer
     prompt: |
-      Plan file: docs/plans/<feature>-plan.md (named in the plan
+      Plan file: docs/plans/<feature>-plan/<feature>-plan.md (named in the plan
       presented above). Your phase is named in the plan's "Next handoff"
       status line. Read the plan file and docs/global_conventions.md, then
       implement your phase. Follow Decision Ledger entries (D-x) exactly;
@@ -141,7 +141,7 @@ history-preservation.
 
 ## Plan File
 
-`docs/plans/<feature>-plan.md`. Read at session start; write
+`docs/plans/<feature>-plan/<feature>-plan.md`. Read at session start; write
 back at session end. **Self-contained for any executor**: assume the
 implementing agent sees ONLY this file plus `docs/global_conventions.md`
 and the repo. Do not rely on chat history or your own system prompt —
@@ -266,7 +266,7 @@ prerequisites.
 - **What the plan holds:** decisions, scenarios, phases with Done Criteria, Open Items, and a
   Progress checklist with one line per item. Direct executors to write evidence (baselines, suite
   outputs, red→green tables) to `<plan>.evidence.md`, and reviewers to write findings to
-  `<plan>.review.md`. Never into the plan.
+  `<plan>.review.md`, both in the plan's folder. Never into the plan. A plan is a folder named after the plan file: `docs/plans/<stem>/` holds `<stem>.md` (the plan), `<stem>.evidence.md` (executors' evidence) and `<stem>.review.md` (the reviewer's findings), where `<stem>` is the plan file name without `.md`. Create the folder when you write the plan.
 - **Re-invoked with scope moved out of an oversized PR:** plan only that scope, within the same
   budget.
 

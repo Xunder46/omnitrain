@@ -62,7 +62,7 @@ Claude Code.
 ## 4. Keep plans lean while briefing agents
 
 - Tell implementers to write evidence to `<plan>.evidence.md`, and reviewers to write findings to
-  `<plan>.review.md`. The plan keeps one-line checkboxes.
+  `<plan>.review.md`, both in the plan's folder (`docs/plans/<plan>/`). The plan keeps one-line checkboxes.
 - Point each agent at the sections it needs (its phase, the ledger, the relevant findings), never
   "read the whole plan".
 - The model per task and verification are covered by the memory notes on verifying agent claims.

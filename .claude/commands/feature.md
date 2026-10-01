@@ -32,7 +32,7 @@ Feature request: $ARGUMENTS
 - Branch: **`develop` only.** Never create or switch branches. The base for diffs is the commit `HEAD`
   pointed at when the run started (record it in step 0).
 - Docs live in `docs/` (conventions: `docs/global_conventions.md`, index: `docs/README.md`, doc rules:
-  `docs/documentation_standard.md`). Plans live in `docs/plans/`.
+  `docs/documentation_standard.md`). Each plan is a folder under `docs/plans/` named after the plan file (without `.md`) that holds the plan, its `.evidence.md` and its `.review.md`.
 - Verify commands: `flutter analyze`, then `flutter test`
 - Max plan revisions: 2
 - Max fix rounds (verify failures + review rejections combined): 3
@@ -64,7 +64,7 @@ Feature request: $ARGUMENTS
 9. **Scope.** Run the `pr-scope-guard` skill when the plan is written, after each implementation
    phase, and after the review. If the work is over budget, bring the current unit to a stopping
    point and plan the remainder as a separate unit instead of growing the plan. Evidence goes in
-   `<plan>.evidence.md`, review findings in `<plan>.review.md`, never in the plan itself.
+   `<plan>.evidence.md`, review findings in `<plan>.review.md`, both in the plan's folder, never in the plan itself.
 
 ## Workflow
 
@@ -87,7 +87,7 @@ Otherwise continue without asking.
 ### 2. Plan
 Write `.work/<slug>/brief-plan.md` with: goal, acceptance criteria, relevant files and patterns you
 found, constraints, answers to anything the user clarified, the plan file path
-(`docs/plans/<YYYY-MM-DD>-<NN>-<slug>-plan.md`, matching the neighbouring plans), and this line:
+(`docs/plans/<YYYY-MM-DD>-<NN>-<slug>-plan/<YYYY-MM-DD>-<NN>-<slug>-plan.md`: the folder is named after the plan file, and the planner creates it; matching the neighbouring plans' names), and this line:
 "List anything you are unsure about under an Open questions heading at the end of the plan."
 
 Run the planner with the runner. Find the plan file in FILES_CHANGED_DURING_RUN.

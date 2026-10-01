@@ -23,7 +23,7 @@ What to expect, and what to check before reporting back:
 - It presents the plan and names the next handoff. **Do not ask the user to
   approve the plan.** That gate is deliberately absent.
 
-Before reporting back, confirm the plan file at `docs/plans/<feature>-plan.md`
+Before reporting back, confirm the plan file at `docs/plans/<feature>-plan/<feature>-plan.md`
 exists and each phase carries:
 
 - [ ] **Done Criteria** — runnable commands, not prose

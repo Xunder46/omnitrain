@@ -78,10 +78,10 @@ If a scenario is a genuine product choice you can't resolve from the code or spe
 
 ## Plan File Protocol
 
-Every feature has a shared plan file at `docs/plans/[feature]-plan.md`. This file is the single source of truth shared across all agents and sessions.
+Every feature has a shared plan file at `docs/plans/[feature]-plan/[feature]-plan.md` (the folder holds the plan, its `.evidence.md` and its `.review.md`; create it with the plan). This file is the single source of truth shared across all agents and sessions.
 
 ### Always begin by reading the plan file
-Before doing anything else, attempt to read `docs/plans/[feature]-plan.md`.
+Before doing anything else, attempt to read `docs/plans/[feature]-plan/[feature]-plan.md`.
 
 **If the file does not exist**, create it using the standard structure below:
 
@@ -117,7 +117,7 @@ Before doing anything else, attempt to read `docs/plans/[feature]-plan.md`.
 **If a `## Feedback` section exists and is not empty**, incorporate its contents into a new `## Iteration N` plan block (incrementing N from the last iteration number), then clear the Feedback section body (leave the header with a placeholder).
 
 ### Always write the plan file at the end of every session
-After completing your planning, write the full updated plan back to `docs/plans/[feature]-plan.md`. This includes:
+After completing your planning, write the full updated plan back to `docs/plans/[feature]-plan/[feature]-plan.md`. This includes:
 - The new or updated iteration block with all phases and steps
 - Measurable acceptance criteria in `## Acceptance Criteria`
 - An updated `## Progress` checklist with all tasks as `- [ ]`
@@ -321,8 +321,8 @@ Always end with a clear next recommended handoff: state the agent immediately. F
 ## Remember
 
 - You analyze and plan - never write code
-- Always read `docs/plans/[feature]-plan.md` first; create it if missing
-- Always write the updated plan back to `docs/plans/[feature]-plan.md` at the end of each session
+- Always read `docs/plans/[feature]-plan/[feature]-plan.md` first; create it if missing
+- Always write the updated plan back to `docs/plans/[feature]-plan/[feature]-plan.md` at the end of each session
 - If `## Feedback` exists in the plan, fold it into a new Iteration block before re-planning
 - Edit tools (`edit/createFile`, `edit/editFiles`) are for plan markdown files ONLY — never for source code
 - Always create actionable todo items with acceptance criteria

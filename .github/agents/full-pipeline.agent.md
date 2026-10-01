@@ -19,7 +19,7 @@ narrative); keep every load-bearing rule.
 
 ## Plan File Protocol (applies in every phase)
 
-The shared plan file at `docs/plans/[feature]-plan.md` is
+The shared plan file at `docs/plans/[feature]-plan/[feature]-plan.md` is
 the single source of truth for the current feature. **You own it** for
 the lifetime of this feature.
 
@@ -34,7 +34,7 @@ the lifetime of this feature.
   **Blocked**, and stop. Notify the user with:
   > "I was unable to complete [task] as planned. I've marked Phase
   > N as **Blocked** and added a `## Feedback` note to
-  > `docs/plans/[feature]-plan.md`. Please open a fresh
+  > `docs/plans/[feature]-plan/[feature]-plan.md`. Please open a fresh
   > chat with the Coordinator agent to re-plan."
 
 If `## Feedback` already exists from a prior session, fold its
@@ -54,7 +54,7 @@ The budget and the split procedure are in `.github/agents/pr_scope_budget.md`.
   - Substantial unplanned work (a missing prerequisite, a defect that needs its own design, a new
     model, message, screen or migration) is not absorbed. Reach a stopping point, add at most 5
     lines to Open Items, mark the phase **Blocked (scope)**, and stop.
-  - Write evidence to `<plan>.evidence.md`, not into the plan.
+  - Write evidence to `<plan>.evidence.md` in the plan's folder, not into the plan.
 - **Review:** write findings to `<plan>.review.md`. With more than 6 substantive findings, fix only
   CRITICAL and cheap MECHANICAL ones in one round, and move the rest to a follow-up PR plan.
   Never loop review → fix → review.
@@ -90,7 +90,7 @@ the user is asked to confirm the plan.
 
 ### Step 0.1: Author the plan
 
-- Read `docs/plans/[feature]-plan.md` first; create it if
+- Read `docs/plans/[feature]-plan/[feature]-plan.md` first; create it if
   missing.
 - For the matching feature doc, read exactly the one that applies
   (use `docs/README.md` as the index). Do not read unrelated feature

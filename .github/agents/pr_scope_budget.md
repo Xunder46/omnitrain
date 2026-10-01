@@ -56,15 +56,17 @@ Split when:
 
 ## 2. What the plan holds
 
+Every plan is a folder, `docs/plans/<plan-name>/`, named after the plan file without `.md`. It holds the plan, `<plan-name>.evidence.md` and `<plan-name>.review.md`. A series index is a single file beside the plan folders.
+
 - **The plan:**
   - decisions, requirements, scenarios, and phases with Done Criteria;
   - Open Items;
   - a Progress checklist with **one line per item**, stating its result;
   - Assumption Log entries of at most 3 lines each.
-- **`<plan-name>.evidence.md`**, next to the plan: baselines, suite outputs, red→green tables,
+- **`<plan-name>.evidence.md`**, in the plan's folder: baselines, suite outputs, red→green tables,
   footprints, the detail behind Assumption Log entries. Implementers write here, not into the
   plan.
-- **`<plan-name>.review.md`**: the reviewer's findings. The plan's `## Feedback` holds only a
+- **`<plan-name>.review.md`**, in the plan's folder: the reviewer's findings. The plan's `## Feedback` holds only a
   pointer to it and the fix checklist.
 
 ---

@@ -8,7 +8,7 @@ Invoke the `code-reviewer` subagent via the Task tool for:
 $ARGUMENTS
 
 Handling rules:
-- It reads `docs/plans/[feature]-plan.md` first and reviews against the plan's intent.
+- It reads `docs/plans/[feature]-plan/[feature]-plan.md` first and reviews against the plan's intent.
 - It assesses and plans refactoring — it does not edit source code.
 - **Human checkpoint**: it is the end of the automated pipeline. Do NOT invoke any further agent
   after it, and do not start a fix → review → fix loop.

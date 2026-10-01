@@ -8,7 +8,7 @@ Invoke the `developer` subagent via the Task tool for:
 $ARGUMENTS
 
 Handling rules:
-- It reads `docs/plans/[feature]-plan.md` first and tests against the plan's
+- It reads `docs/plans/[feature]-plan/[feature]-plan.md` first and tests against the plan's
   `## Scenarios` register. It does NOT run an interactive scenario Q&A — the register is the
   conductor's deliverable. If the register is missing or incomplete, stop and tell the user to
   run `/conductor-v2` first.
