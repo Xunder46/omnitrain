@@ -8,6 +8,7 @@ import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
 import '../models/exercise_metric.dart';
+import '../models/instrument_list.dart';
 import '../models/stats_progress.dart';
 import '../utils/date_utils.dart';
 import '../utils/distance_source.dart';
@@ -27,7 +28,7 @@ import '../utils/observation_grouper.dart';
 /// 400-session history several minutes, on the main isolate, which is an
 /// ANR on Android and a watchdog kill on iOS.
 ///
-/// Building this snapshot costs one pass per store — six bulk reads
+/// Building this snapshot costs one pass per store — seven bulk reads
 /// total, regardless of history size — and every subsequent lookup is a
 /// map hit. The traversal logic in this service is unchanged; only where
 /// it reads from moved.
@@ -42,6 +43,7 @@ class _HistoryIndex {
     required this.observationsByEffort,
     required this.timedInstancesByEffort,
     required this.roundInstancesByEffort,
+    required this.sensorByTarget,
   });
 
   final List<TrainingSession> sessions;
@@ -50,6 +52,13 @@ class _HistoryIndex {
   final Map<String, List<EffortObservation>> observationsByEffort;
   final Map<String, List<TimedInstance>> timedInstancesByEffort;
   final Map<String, List<RoundInstance>> roundInstancesByEffort;
+
+  /// Every sensor summary on the device, keyed `'<scope>|<targetId>'`. A
+  /// summary's target is unique within its scope, so the pair is the key.
+  final Map<String, SensorSummary> sensorByTarget;
+
+  SensorSummary? sensorFor(String scope, String targetId) =>
+      sensorByTarget['$scope|$targetId'];
 
   List<SessionSegment> segmentsOf(String sessionId) =>
       segmentsBySession[sessionId] ?? const <SessionSegment>[];
@@ -94,6 +103,14 @@ class StatsProgressService {
     final observations = await _repository.getObservationsByEffort();
     final timedInstances = await _repository.getTimedInstancesByEffort();
     final roundInstances = await _repository.getRoundInstancesByEffort();
+    final sensorSummaries = await _repository.getSensorSummariesBySession();
+
+    final sensorByTarget = <String, SensorSummary>{};
+    for (final summaries in sensorSummaries.values) {
+      for (final summary in summaries) {
+        sensorByTarget['${summary.scope}|${summary.targetId}'] = summary;
+      }
+    }
 
     final index = _HistoryIndex(
       sessions: sessions,
@@ -102,6 +119,7 @@ class StatsProgressService {
       observationsByEffort: observations,
       timedInstancesByEffort: timedInstances,
       roundInstancesByEffort: roundInstances,
+      sensorByTarget: sensorByTarget,
     );
     _historyIndex = index;
     return index;
@@ -689,6 +707,230 @@ class StatsProgressService {
       return byName != 0 ? byName : a.exerciseId.compareTo(b.exerciseId);
     });
     return summaries;
+  }
+
+  // ── The Instruments list ───────────────────────────────────────────────────
+
+  /// The window's work, grouped into the sections the Instruments list shows.
+  ///
+  /// A section's rank is the number of distinct days in the window on which an
+  /// effort of that kind was logged, so the list leads with the biggest block
+  /// of work rather than with a fixed order. A section appears only when it has
+  /// a row, and a row appears for every exercise the window yields — including
+  /// one whose value is the zero fallback, which shows the zero figure and no
+  /// sparkline. Rows sort by training days, then name, then id.
+  ///
+  /// Each row also carries the same exercise's value over the immediately
+  /// preceding range of the same calendar length, when the two are comparable,
+  /// plus the cadence and heart-rate figures its section reads.
+  Future<List<InstrumentSectionData>> computeInstrumentSections({
+    required StatsWindow window,
+  }) async {
+    final fromMs = window.fromMs.millisecondsSinceEpoch;
+    final toMs = window.toMs.millisecondsSinceEpoch;
+
+    final current = await computeExerciseMetrics(fromMs: fromMs, toMs: toMs);
+    if (current.isEmpty) return const <InstrumentSectionData>[];
+
+    final previousRange = previousRangeFor(window);
+    final previous = await computeExerciseMetrics(
+      fromMs: previousRange.fromMs,
+      toMs: previousRange.toMs,
+    );
+    final previousByExercise = <String, ExerciseMetricSummary>{
+      for (final summary in previous) summary.exerciseId: summary,
+    };
+
+    final dayCounts = await _sectionTrainingDayCounts(fromMs, toMs);
+
+    final bySection = <ExerciseSection, List<InstrumentRow>>{};
+    for (final summary in current) {
+      final previousSummary = previousByExercise[summary.exerciseId];
+      final comparable =
+          previousSummary != null &&
+          previousSummary.best.metric == summary.best.metric;
+      final sensors = await _sensorFiguresFor(summary, fromMs, toMs);
+      (bySection[summary.section] ??= <InstrumentRow>[]).add(
+        InstrumentRow(
+          // A value nothing was readable for is the zero fallback: the row
+          // still appears, but it has no series to draw.
+          summary: summary.best.value <= 0
+              ? ExerciseMetricSummary(
+                  exerciseId: summary.exerciseId,
+                  name: summary.name,
+                  section: summary.section,
+                  best: summary.best,
+                  points: const <ExerciseMetricPoint>[],
+                  lastTrainedMs: summary.lastTrainedMs,
+                  sessionCount: summary.sessionCount,
+                )
+              : summary,
+          previousValue: comparable ? previousSummary.best : null,
+          cadenceStepsPerMin: sensors.cadenceStepsPerMin,
+          averageHeartRateBpm: sensors.averageHeartRateBpm,
+        ),
+      );
+    }
+
+    final sections = <InstrumentSectionData>[];
+    for (final entry in bySection.entries) {
+      final rows = entry.value
+        ..sort((a, b) {
+          final byDays = b.summary.points.length.compareTo(
+            a.summary.points.length,
+          );
+          if (byDays != 0) return byDays;
+          final byName = a.summary.name.compareTo(b.summary.name);
+          return byName != 0
+              ? byName
+              : a.summary.exerciseId.compareTo(b.summary.exerciseId);
+        });
+      sections.add(
+        InstrumentSectionData(
+          section: entry.key,
+          rows: rows,
+          trainingDayCount: dayCounts[entry.key] ?? 0,
+        ),
+      );
+    }
+
+    sections.sort((a, b) {
+      final byDays = b.trainingDayCount.compareTo(a.trainingDayCount);
+      return byDays != 0 ? byDays : a.section.index.compareTo(b.section.index);
+    });
+    return sections;
+  }
+
+  /// The range immediately before [window], of the same calendar length.
+  ///
+  /// The arithmetic is on calendar days, never on a duration: a DST transition
+  /// inside the range would otherwise shorten or widen it by an hour. The
+  /// window's own day count comes from its local-midnight bounds, inclusive.
+  static ({int fromMs, int toMs}) previousRangeFor(StatsWindow window) {
+    final from = window.fromMs;
+    final to = window.toMs;
+    final dayCount =
+        DateTime.utc(
+          to.year,
+          to.month,
+          to.day,
+        ).difference(DateTime.utc(from.year, from.month, from.day)).inDays +
+        1;
+    return (
+      fromMs: DateTime(
+        from.year,
+        from.month,
+        from.day - dayCount,
+      ).millisecondsSinceEpoch,
+      toMs: from.millisecondsSinceEpoch - 1,
+    );
+  }
+
+  /// The number of distinct days in `[fromMs, toMs]` on which an effort of each
+  /// section's kind was logged — the section ordering rank.
+  ///
+  /// The day key is the local-midnight day of the session's start, an effort
+  /// with no exercise is skipped, and only completed sessions count.
+  Future<Map<ExerciseSection, int>> _sectionTrainingDayCounts(
+    int fromMs,
+    int toMs,
+  ) async {
+    final history = await _loadHistory();
+    final daysBySection = <ExerciseSection, Set<int>>{};
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      if (session.startedAtMs < fromMs || session.startedAtMs > toMs) continue;
+      final dayMs = OmniDateUtils.startOfDayMs(
+        DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+      );
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (effort.exerciseId == null) continue;
+          final section = _sectionForKind(effort.effortKind);
+          if (section == null) continue;
+          (daysBySection[section] ??= <int>{}).add(dayMs);
+        }
+      }
+    }
+
+    return <ExerciseSection, int>{
+      for (final entry in daysBySection.entries) entry.key: entry.value.length,
+    };
+  }
+
+  /// The cadence and heart-rate figures [summary]'s row carries, read from the
+  /// sensor summaries of the exercise's own instances in the window.
+  ///
+  /// Cadence is Cardio only: the steps summed over the timed instances that
+  /// carry a step count, divided by the minutes of exactly those instances.
+  /// Heart rate is the mean over the timed (Cardio) or round (Sports) instance
+  /// summaries that carry a reading; Resistance and Isometric rows never show
+  /// one. Neither figure is rendered when no summary carries it.
+  Future<({int? cadenceStepsPerMin, int? averageHeartRateBpm})>
+  _sensorFiguresFor(ExerciseMetricSummary summary, int fromMs, int toMs) async {
+    final section = summary.section;
+    if (section != ExerciseSection.cardio &&
+        section != ExerciseSection.sports) {
+      return (cadenceStepsPerMin: null, averageHeartRateBpm: null);
+    }
+
+    final history = await _loadHistory();
+    final instanceScope = section == ExerciseSection.cardio
+        ? SensorSummary.scopeTimedInstance
+        : SensorSummary.scopeRoundInstance;
+
+    var steps = 0;
+    var stepsDurationSecs = 0;
+    var heartRateSum = 0.0;
+    var heartRateCount = 0;
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      if (session.startedAtMs < fromMs || session.startedAtMs > toMs) continue;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (effort.exerciseId != summary.exerciseId) continue;
+          if (_sectionForKind(effort.effortKind) != section) continue;
+
+          if (section == ExerciseSection.cardio) {
+            for (final instance in history.timedInstancesOf(effort.id)) {
+              final sensor = history.sensorFor(instanceScope, instance.id);
+              final instanceSteps = sensor?.steps;
+              if (instanceSteps == null) continue;
+              steps += instanceSteps;
+              stepsDurationSecs += instance.actualDurationSecs;
+            }
+            for (final instance in history.timedInstancesOf(effort.id)) {
+              final avg = history
+                  .sensorFor(instanceScope, instance.id)
+                  ?.avgHeartRateBpm;
+              if (avg == null) continue;
+              heartRateSum += avg;
+              heartRateCount++;
+            }
+          } else {
+            for (final instance in history.roundInstancesOf(effort.id)) {
+              final avg = history
+                  .sensorFor(instanceScope, instance.id)
+                  ?.avgHeartRateBpm;
+              if (avg == null) continue;
+              heartRateSum += avg;
+              heartRateCount++;
+            }
+          }
+        }
+      }
+    }
+
+    return (
+      cadenceStepsPerMin: stepsDurationSecs > 0
+          ? (steps / (stepsDurationSecs / 60.0)).round()
+          : null,
+      averageHeartRateBpm: heartRateCount > 0
+          ? (heartRateSum / heartRateCount).round()
+          : null,
+    );
   }
 
   // ── The native value, per section ──────────────────────────────────────────

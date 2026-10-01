@@ -781,4 +781,11 @@ abstract class WorkoutRepository {
   /// by scope (in `SensorSummary.scopes` order), then `windowStartMs`, then
   /// `targetId`.
   Future<List<SensorSummary>> getSensorSummariesForSession(String sessionId);
+
+  /// Every sensor summary on the device, grouped by `sessionId`.
+  ///
+  /// Each group carries the same order [getSensorSummariesForSession] returns:
+  /// scope (in `SensorSummary.scopes` order), then `windowStartMs`, then
+  /// `targetId`. A session with no summaries has no key.
+  Future<Map<String, List<SensorSummary>>> getSensorSummariesBySession();
 }

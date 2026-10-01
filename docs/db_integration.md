@@ -51,6 +51,20 @@ Bulk per-effort read:
   - An effort with no instances has no key, rather than an empty list.
   - Verified by `test/round_instances_by_effort_test.dart` (S-901, S-902).
 
+Bulk per-session read:
+
+- `getSensorSummariesBySession()`
+  - Every `SensorSummary` on the device, grouped by `sessionId`, each group in the same
+    order `getSensorSummariesForSession(sessionId)` returns: scope in
+    `SensorSummary.scopes` order, then `windowStartMs`, then `targetId`. Both reads sort
+    through one comparator per implementation, so the two orders cannot drift.
+  - A session with no summaries has no key, rather than an empty list.
+  - `MockWorkoutRepository` mirrors `HiveWorkoutRepository` value for value.
+  - The read adds no schema or seed requirement: it groups rows already stored, so
+    `scripts/sqlite_schema.sql` and `scripts/sqlite_seed.sql` need no change to
+    serve it, and `test/db_seed_test.dart` executes both as SQL.
+  - Verified by `test/sensor_summaries_by_session_test.dart` (S-1002, S-1003, S-1004).
+
 Any repository implementation must satisfy this full contract and remain compile-safe.
 
 Deterministic active-session ordering contract:

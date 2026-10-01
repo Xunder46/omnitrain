@@ -2,7 +2,8 @@
 
 **Scope.** The service and utility classes that are neither session, nutrition,
 nor app state: `lib/core/services/`, `lib/core/utils/`, and the cross-cutting
-pieces those classes own. It also covers the watch↔phone live mirroring surface
+pieces those classes own, including the shared Stats formatters
+(`lib/features/stats/widgets/native_value_format.dart`). It also covers the watch↔phone live mirroring surface
 (`lib/state/watch/`, `lib/watch/start/watch_sync_orchestrator.dart`,
 `lib/core/sync_protocol/`), the platform transport that surface rides on
 (`lib/core/platform/`), and the watch's own runtime layer (`lib/watch/`,
@@ -266,6 +267,45 @@ they cannot drift:
   stopped early still happened.
 
 Verified by `test/exercise_metric_service_test.dart` (S-904 … S-911).
+
+`computeInstrumentSections({required StatsWindow window})` returns the window's
+sections and rows, built from two `computeExerciseMetrics` calls — the window
+itself, and the immediately preceding range of the same calendar length, so a
+row's change compares like with like. It is the window's sections-and-rows read,
+and nothing it produces is persisted.
+
+- **Section order is by work done, not by declaration.** A section's rank is the
+  number of distinct days in the window on which an effort of that kind was
+  logged, descending; ties keep `ExerciseSection`'s declaration order. This
+  supersedes `computeProgressData`'s fixed order for this list only.
+- **Row order** is the count of days carrying a readable value, descending, then
+  name, then id. A row appears for every exercise the window yields, including one
+  whose value is the zero fallback; that row carries no readable value, so its
+  rank is zero and it sorts last.
+- **The change indicator** is the difference against the same exercise's value in
+  the preceding range. It is absent when that range has no summary for the
+  exercise, or holds a different metric — an exercise whose value is read a
+  different way is not comparable. The preceding range is calendar arithmetic on
+  the window's own day count, never a duration, so a DST transition cannot change
+  its length.
+- **Cadence and heart rate** come from the window's `SensorSummary` rows. Cadence
+  is the summed steps over the timed instances that carry a step count, divided
+  by those instances' summed minutes (Cardio only). Heart rate is the mean over
+  the timed (Cardio) or round (Sports) instance summaries that carry a reading.
+  Neither figure is produced when no summary carries it, and Resistance and
+  Isometric rows never carry a heart rate.
+
+The change a row shows is rendered by
+`formatNativeChange(metric, delta, settings)` in
+`lib/features/stats/widgets/native_value_format.dart`: an arrow and the signed
+magnitude, or `'—'` when the delta is zero. The sign is the raw numeric sign of
+the delta, with no per-metric inversion, and the magnitude is formatted by the
+same per-metric rule as `formatNativeMetric`, so a change and the figure above it
+read in one unit. `nativeSecondaryLabel` in the same file is the single source of
+a secondary figure's name, so it cannot read two ways.
+
+Verified by `test/instrument_list_service_test.dart` (S-1005, S-1007, S-1008,
+S-1009, S-1010) and `test/instrument_change_format_test.dart`.
 
 ---
 

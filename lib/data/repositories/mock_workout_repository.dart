@@ -2307,6 +2307,21 @@ class MockWorkoutRepository implements WorkoutRepository {
     return true;
   }
 
+  /// The order both sensor-summary reads use: scope (in
+  /// `SensorSummary.scopes` order), then `windowStartMs`, then `targetId`.
+  ///
+  /// One comparator for the single-session read and the bulk read, so the two
+  /// orders cannot drift (D-513).
+  static int _compareSensorSummaries(SensorSummary a, SensorSummary b) {
+    final byScope = SensorSummary.scopes
+        .indexOf(a.scope)
+        .compareTo(SensorSummary.scopes.indexOf(b.scope));
+    if (byScope != 0) return byScope;
+    final byStart = a.windowStartMs.compareTo(b.windowStartMs);
+    if (byStart != 0) return byStart;
+    return a.targetId.compareTo(b.targetId);
+  }
+
   @override
   Future<List<SensorSummary>> getSensorSummariesForSession(
     String sessionId,
@@ -2314,16 +2329,20 @@ class MockWorkoutRepository implements WorkoutRepository {
     final summaries = _sensorSummaries.values
         .where((s) => s.sessionId == sessionId)
         .toList();
-    summaries.sort((a, b) {
-      final byScope = SensorSummary.scopes
-          .indexOf(a.scope)
-          .compareTo(SensorSummary.scopes.indexOf(b.scope));
-      if (byScope != 0) return byScope;
-      final byStart = a.windowStartMs.compareTo(b.windowStartMs);
-      if (byStart != 0) return byStart;
-      return a.targetId.compareTo(b.targetId);
-    });
+    summaries.sort(_compareSensorSummaries);
     return summaries;
+  }
+
+  @override
+  Future<Map<String, List<SensorSummary>>> getSensorSummariesBySession() async {
+    final grouped = <String, List<SensorSummary>>{};
+    for (final summary in _sensorSummaries.values) {
+      (grouped[summary.sessionId] ??= <SensorSummary>[]).add(summary);
+    }
+    for (final summaries in grouped.values) {
+      summaries.sort(_compareSensorSummaries);
+    }
+    return grouped;
   }
 
   /// D-131: a summary is deleted together with its target. Removes every

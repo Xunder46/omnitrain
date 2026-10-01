@@ -150,7 +150,7 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
     ExerciseMetricSummary summary,
   ) {
     final theme = Theme.of(context);
-    final secondaryLabel = _secondaryLabel(summary.best.secondaryMetric);
+    final secondaryLabel = nativeSecondaryLabel(summary.best.secondaryMetric);
     final secondary = formatNativeSecondary(summary.best, widget.settingsState);
 
     return OmniSurface(
@@ -188,24 +188,6 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
         ],
       ),
     );
-  }
-
-  /// The name a [NativeValue]'s second figure reads under. It is the metric
-  /// that names it, not the screen.
-  static String? _secondaryLabel(NativeMetric? metric) {
-    switch (metric) {
-      case NativeMetric.duration:
-        return 'Total hold';
-      case NativeMetric.roundMinutes:
-        return 'Total time';
-      case NativeMetric.estimatedOneRepMax:
-      case NativeMetric.reps:
-      case NativeMetric.pace:
-      case NativeMetric.hold:
-      case NativeMetric.rounds:
-      case null:
-        return null;
-    }
   }
 
   Widget _buildChart(

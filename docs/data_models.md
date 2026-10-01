@@ -578,6 +578,10 @@ SensorSummary ──→ TrainingSession (owner, every scope)
 WatchInboxEntry  (keyed by entry id; references no history row, never cascaded)
 ```
 
+### The Instruments list value types
+
+`InstrumentSectionData` and `InstrumentRow` (`lib/core/models/instrument_list.dart`) are **derived, never persisted**: no box, schema file or seed file holds them. An `InstrumentSectionData` owns the section's ordered rows and the distinct-training-day count that ranked it; an `InstrumentRow` owns one exercise's `ExerciseMetricSummary` (its value and its series), the same exercise's value over the preceding range when the two are comparable, and the cadence and heart-rate figures its section reads. They are built by `StatsProgressService.computeInstrumentSections` and discarded with it. Verified by `test/instrument_list_service_test.dart` (S-1007).
+
 ---
 
 ## Code References
@@ -588,6 +592,7 @@ WatchInboxEntry  (keyed by entry id; references no history row, never cascaded)
 | Session summary models | `lib/core/models/session_summary.dart` |
 | Routine manifest models | `lib/core/models/routine_session_manifest.dart` |
 | Exercise metric and totals value types | `lib/core/models/exercise_metric.dart` |
+| Instruments list value types | `lib/core/models/instrument_list.dart` |
 | Exercise extensions | `lib/core/utils/exercise_helpers.dart` |
 | SQLite schema | `scripts/sqlite_schema.sql` |
 
