@@ -8,6 +8,7 @@ import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
 import '../models/exercise_metric.dart';
+import '../models/fuel_summary.dart';
 import '../models/instrument_list.dart';
 import '../models/stats_progress.dart';
 import '../utils/date_utils.dart';
@@ -180,6 +181,21 @@ class StatsProgressService {
   /// for callers that want a fixed window; the card itself uses
   /// `days: null`.
   static const int kNutritionTrendDays = 10;
+
+  /// Window length, in calendar days, over which the Fuel row averages
+  /// intake and counts logged days. Seven days matches the weekly
+  /// cadence a user reasons about their eating in.
+  static const int kFuelWindowDays = 7;
+
+  /// How far back the Fuel row looks for any logged food before it hides
+  /// itself entirely.
+  ///
+  /// Deliberately longer than [kFuelWindowDays]: the row compares the
+  /// current window against the previous one, so a user who has logged
+  /// nothing in the last seven days still sees a meaningful previous-week
+  /// average instead of an empty row. Much wider and the row would
+  /// describe the past rather than the present.
+  static const int kFuelVisibilityDays = 14;
 
   /// Compute all progress data for the Stats screen.
   ///
@@ -1600,6 +1616,118 @@ class StatsProgressService {
           ),
         )
         .toList();
+  }
+
+  /// The Fuel row's figures: intake averaged over logged days, split by
+  /// whether the day carried a completed session, against the day's target.
+  ///
+  /// Returns `null` when nothing has been logged within
+  /// [kFuelVisibilityDays] — the row is hidden rather than shown empty,
+  /// matching the NUTRITION card's behaviour.
+  ///
+  /// Averages divide by the number of **logged** days in the group, never
+  /// by the window length: a week with three logged days is a three-day
+  /// mean, so skipping a day of logging does not read as having eaten
+  /// nothing. A group with no logged day yields `null` rather than `0`,
+  /// and the widget renders that as an absence.
+  ///
+  /// A day is a training day when a **completed** session started on it —
+  /// the same `endedAtMs != null` rule the rest of this service applies.
+  /// An in-progress session does not move today's food into the training
+  /// bucket.
+  Future<FuelSummary?> computeFuelSummary() async {
+    final points = await computeNutritionTrend(days: kFuelVisibilityDays);
+    if (points.isEmpty) return null;
+
+    final todayMs = OmniDateUtils.todayMidnightMs();
+    final today = DateTime.fromMillisecondsSinceEpoch(todayMs);
+    // Calendar arithmetic rather than `subtract(Duration(days: n))` for the
+    // DST reason documented on `computeNutritionTrend`.
+    final windowStart = DateTime(
+      today.year,
+      today.month,
+      today.day - (kFuelWindowDays - 1),
+    );
+    final previousStart = DateTime(
+      today.year,
+      today.month,
+      today.day - (2 * kFuelWindowDays - 1),
+    );
+
+    final window = <NutritionTrendPoint>[];
+    final previous = <NutritionTrendPoint>[];
+    for (final p in points) {
+      if (!p.date.isBefore(windowStart)) {
+        window.add(p);
+      } else if (!p.date.isBefore(previousStart)) {
+        previous.add(p);
+      }
+    }
+
+    final trainingDays = await _trainingDayKeys(windowStart, today);
+    final training = <NutritionTrendPoint>[];
+    final rest = <NutritionTrendPoint>[];
+    for (final p in window) {
+      if (trainingDays.contains(OmniDateUtils.startOfDayMs(p.date))) {
+        training.add(p);
+      } else {
+        rest.add(p);
+      }
+    }
+
+    final target = await _repository.getNutritionTargetForDate(todayMs);
+
+    return FuelSummary(
+      loggedDays: window.length,
+      caloriesAverage: _averageOf(window, (p) => p.calories.toDouble()),
+      proteinAverage: _averageOf(window, (p) => p.protein.toDouble()),
+      previousCaloriesAverage: _averageOf(
+        previous,
+        (p) => p.calories.toDouble(),
+      ),
+      previousProteinAverage: _averageOf(previous, (p) => p.protein.toDouble()),
+      trainingCaloriesAverage: _averageOf(
+        training,
+        (p) => p.calories.toDouble(),
+      ),
+      trainingProteinAverage: _averageOf(training, (p) => p.protein.toDouble()),
+      restCaloriesAverage: _averageOf(rest, (p) => p.calories.toDouble()),
+      restProteinAverage: _averageOf(rest, (p) => p.protein.toDouble()),
+      targetCalories: target?.calories ?? 0,
+      targetProtein: target?.protein ?? 0,
+    );
+  }
+
+  /// Mean of [pick] over [points], or `null` when there is no point to
+  /// average. Dividing by the group's own length — never by a window
+  /// length — is what keeps unlogged days out of the denominator.
+  static double? _averageOf(
+    List<NutritionTrendPoint> points,
+    double Function(NutritionTrendPoint) pick,
+  ) {
+    if (points.isEmpty) return null;
+    var total = 0.0;
+    for (final p in points) {
+      total += pick(p);
+    }
+    return total / points.length;
+  }
+
+  /// Epoch-ms of every day in `[from, to]` on which a completed session
+  /// started.
+  Future<Set<int>> _trainingDayKeys(DateTime from, DateTime to) async {
+    final sessions = (await _loadHistory()).sessions;
+    final days = <int>{};
+    for (final s in sessions) {
+      if (s.endedAtMs == null) continue;
+      final day = OmniDateUtils.startOfDayMs(
+        DateTime.fromMillisecondsSinceEpoch(s.startedAtMs),
+      );
+      if (day < OmniDateUtils.startOfDayMs(from)) continue;
+      if (day > OmniDateUtils.startOfDayMs(to)) continue;
+      days.add(day);
+    }
+    return days;
   }
 
   /// Epley 1-rep-max estimate: weight × (1 + reps / 30).

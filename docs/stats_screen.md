@@ -34,8 +34,9 @@ case).
 ## What the Screen Displays
 
 The screen renders an empty-state card when no completed sessions exist;
-otherwise it shows the [Instruments list](#instruments-list) above the legacy
-sections described below. The legacy children are wrapped in
+otherwise it shows the [Instruments list](#instruments-list), then the
+[Fuel](#fuel) section, then the legacy sections described below. The legacy
+children are wrapped in
 `Key('stats_legacy_sections')` and their structure is unchanged, verified by
 `test/instrument_list_screen_test.dart` (`S-1015`). The exact count of legacy
 sections on screen is verified by `test/screen_widget_test.dart` (every
@@ -104,6 +105,63 @@ verified by `test/instrument_list_service_test.dart` (`S-1018`).
 A row is an entry point to Exercise Progress, the second one in `lib/` alongside
 Records & Trends. Verified by `S-1014` in that file and by the entry-point guard
 in `test/records_and_trends_screen_test.dart`.
+
+### Fuel
+
+The Fuel section reports how eating is going over a fixed recent window, and it
+is the entry point to the full-history nutrition trend screen (see
+[Navigation & Screens](navigation_and_screens.md)). It is the only section on
+this screen whose window is **not** the screen's selected window, so it carries
+no `StatsWindowChip` — a chip names the window the user selected for the
+Instruments sections, and a chip here would tell the user the figures were
+scoped to a period they are not. Verified by `test/fuel_row_screen_test.dart`
+(`S-1112`).
+
+**Window.** `StatsProgressService.kFuelWindowDays` calendar days ending today,
+by calendar arithmetic rather than elapsed hours; the previous range is the same
+number of days immediately before it. Verified by the same file (`S-1101`,
+`S-1107`).
+
+**Averages divide by logged days.** A logged day is a calendar day with at least
+one `ConsumedFood` row. The section averages over the window's logged days only,
+and states how many of the window's days were logged, so a day with no food
+never reads as a zero and never dilutes the average. Verified by the same file
+(`S-1101`, `S-1102`).
+
+**Comparison.** A figure is compared with the user's target for that field when
+the target is set, and with the previous range otherwise. A field with no target
+is never compared against zero, and a previous range with no food is not a
+comparison either. Verified by the same file (`S-1103`, `S-1104`, `S-1108`).
+
+**Training / rest split.** The window's logged days are partitioned into days
+with a finished session and days without one — each logged day counts on exactly
+one side, and a day that is both is a training day. A session that is still
+running does not make its day a training day. A side with no logged day reads a
+dash rather than a zero. Verified by the same file (`S-1105`, `S-1106`).
+
+**Absent values.** A figure with nothing to report — no logged day, no previous
+range, no target — reads the same no-change dash the Instruments rows use, never
+a zero and never a division by zero. The test reads each figure from the value
+type and from the rendered row, so the two cannot disagree. Verified by the same
+file (`S-1106`, `S-1108`, `S-1111`).
+
+**Visibility.** The section is absent when the last
+`StatsProgressService.kFuelVisibilityDays` days hold no logged food, and the
+screen's zero-session empty state wins over it: a repository with no completed
+session shows the empty state and no Fuel section, whatever the food log holds.
+Verified by `test/fuel_row_screen_test.dart` (`S-1107`) and
+`test/nutrition_trend_screen_test.dart` (`S-1110(b)`).
+
+**Placement.** The section renders between the Instruments sections and the
+`Key('stats_legacy_sections')` column, so the readouts that are not the legacy
+ones stay together and the legacy layout is untouched. Verified by the same file
+(`S-1112`).
+
+**Formatting.** A kcal or gram figure has no `NativeMetric`, so the section
+formats its own strings rather than borrowing `formatNativeChange`'s metric path;
+it follows the conventions that formatter sets — whole units, the no-change
+dash, and an arrow carrying the raw sign of the change. Verified by the same
+file (`S-1101`, `S-1103`).
 
 ### STRENGTH
 Auto-detects the top-3 most-frequently-trained exercises with at least one
@@ -342,7 +400,11 @@ removed (Phase 4)`).
 
 ### NUTRITION
 A **full-history** nutrition trend computed from every logged `ConsumedFood`
-row in the repository (no 10-day cap). The card carries a segmented pill
+row in the repository (no 10-day cap). The section renders
+`NutritionTrendCard` (`lib/features/nutrition/widgets/nutrition_trend_card.dart`),
+the same widget the full-history nutrition trend screen renders, so both hosts
+draw identical figures from identical inputs; `test/nutrition_trend_screen_test.dart`
+holds them together. The card carries a segmented pill
 toggle over the same plotted-day set:
 
 - **Calories view (default)** — single line in `themeColors.primary`,
@@ -522,6 +584,7 @@ one window in a given load.
 | ALL TIME pills (Sessions / Time / Streak) | No | Unchanged |
 | Instruments list — sections, rows, values and each row's trend line | **Yes** | The list is the window end to end; a row's trend line is built from the window's own points, unlike the legacy charts' full history |
 | NUTRITION card | No | Always full history (`days: null`) |
+| Fuel section | No | Today-anchored over `kFuelWindowDays`, never the screen's selected window — see [Fuel](#fuel) |
 
 ### On-screen Window Label
 
@@ -562,6 +625,8 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `kRecentTrainingDaysWindow` | Number of recent training days used for the Strength/Cardio selection window when no period qualifies |
 | `kTopExerciseRecencyDays` | Recency floor for top-slot selection; an exercise whose most-recent training day is older than this drops out regardless of historical frequency. Applied symmetrically to Strength and Cardio |
 | `kNutritionTrendDays` | Soft default-window hint; the NUTRITION card passes `days: null` for full history |
+| `kFuelWindowDays` | The Fuel section's window: the calendar days ending today that its averages cover, and the length of the range it compares against |
+| `kFuelVisibilityDays` | How many recent days the Fuel section looks at before it renders at all; wider than the window, so a window with no logged day still shows the row |
 | `kInstrumentRowCap` | Max rows an Instruments section shows before offering the rest; declared in `lib/features/stats/widgets/instrument_list.dart` |
 
 ---
@@ -576,12 +641,17 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/features/stats/widgets/instrument_list.dart` | The Instruments list: one section per exercise section, capped rows, the expand control; declares `kInstrumentRowCap` |
 | `lib/features/stats/widgets/instrument_row.dart` | One Instruments row (name, figure, change chip, trend line) and `InstrumentChangeChip` |
 | `lib/features/stats/widgets/instrument_sparkline.dart` | The row's trend line, drawn only when the window holds at least two points |
+| `lib/features/stats/widgets/fuel_section.dart` | `FuelSection` — the Fuel row: the logged-days indicator, the calories and protein figures with their comparison readouts, and the training / rest split |
 | `lib/features/stats/widgets/window_chip.dart` | `StatsWindowChip`, the shared header chip naming the resolved window |
 | `lib/features/stats/widgets/recent_pr_list.dart` | The Recent PRs card, shared with Records & Trends |
+| `lib/features/nutrition/widgets/nutrition_trend_card.dart` | `NutritionTrendCard` — the NUTRITION card's body (segmented view toggle, both charts, the empty chart, the single-point fallbacks, the legend). Rendered by this screen's NUTRITION section and by the nutrition trend screen |
+| `lib/features/nutrition/nutrition_trend_screen.dart` | The full-history nutrition trend screen: the same card at full height, with the header as its only difference |
+| `lib/widgets/chart/chart_primitives.dart` | `kChartBottomAxisReservedSize`, `buildLegendItem(...)`, `buildSinglePointCard(...)` — the chart primitives shared by the nutrition card and this screen's own charts |
 | `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `DrillProgress`, `RoundProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint`, `NutritionAdherence`, `StatsWindow` |
 | `lib/core/models/exercise_metric.dart` | Value types behind the per-exercise screens: `ExerciseSection`, `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
 | `lib/core/models/instrument_list.dart` | Value types behind the Instruments list: `InstrumentRow`, `InstrumentSectionData` |
-| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the nutrition adherence via `computeNutritionAdherence()`, the all-time totals via `computeTotals()`, the per-exercise all-time values via `computeExerciseMetrics()`, and the Instruments list via `computeInstrumentSections({required StatsWindow window})`) |
+| `lib/core/models/fuel_summary.dart` | `FuelSummary` — the Fuel row's value type: the window's logged-day averages, the previous range's, the training / rest split and the targets |
+| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the nutrition adherence via `computeNutritionAdherence()`, the Fuel row via `computeFuelSummary()`, the all-time totals via `computeTotals()`, the per-exercise all-time values via `computeExerciseMetrics()`, and the Instruments list via `computeInstrumentSections({required StatsWindow window})`) |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
 | `lib/state/settings/settings_state.dart` | Theme colors, weight/distance unit preferences |
@@ -600,7 +670,7 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 
 ---
 
-**Document Version**: 2.5
+**Document Version**: 2.6
 **Last Updated**: October 1, 2026
 
 

@@ -1,21 +1,22 @@
 # Stats PR 4 series — The new Stats structure (index)
 
-> Status (2026-10-01, after the 4b split): **4a** is DONE (implemented on `develop`). Item 5 is split into
-> three PRs: **4b** (the Instruments data) and **4b2** (the Instruments list on the Stats screen) are READY
-> with full plans; **4b3** (the Fuel row) has its decisions (D-520…D-527) and scenarios (S-1101…S-1110)
-> recorded but is **NOT READY** — its phases are written when its turn comes. **4c** is not planned yet.
-> Plan each remaining PR when its turn comes, against the code as it is then
+> Status (2026-10-01, after the 4b split, updated when 4b3's Iteration 1 was written): **4a** is DONE
+> (implemented on `develop`). Item 5 is split into three PRs: **4b** (the Instruments data), **4b2** (the
+> Instruments list on the Stats screen) and **4b3** (the Fuel row) are all **READY** with full plans; **4c**
+> is not planned yet. Plan each remaining PR when its turn comes, against the code as it is then
 > (`.github/agents/pr_scope_budget.md`).
 >
 > Source: `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md` items 5 and 6, and the
 > pack's Suggested Batching row "PR 4 = items 5 + 6". The owner delegated the split to the planner.
 > Implementer: Copilot with DeepSeek V4.1 Flash, running locally in this checkout. Plans are written for a
 > small model: numbered one-concern steps, exact strings, commands and greps, and rules inline.
-> Next handoff: Copilot implements 4b (the data), then 4b2 (the list); each is followed by `/code-reviewer`.
+> Next handoff: Copilot implements 4b (the data), then 4b2 (the list), then 4b3 (Phase 1 — the NUTRITION card
+> extraction — then Phase 2 — the Fuel row); each is followed by `/code-reviewer`.
 > Evidence for 4a: `2026-09-30-04a-stats-pr4a-records-and-exercise-progress-plan/2026-09-30-04a-stats-pr4a-records-and-exercise-progress-plan.evidence.md`.
 > Evidence for 4b: `2026-10-01-04b-stats-pr4b-instruments-data-plan/2026-10-01-04b-stats-pr4b-instruments-data-plan.evidence.md`.
 > Evidence for 4b2: `2026-10-01-04b2-stats-pr4b2-instruments-list-plan/2026-10-01-04b2-stats-pr4b2-instruments-list-plan.evidence.md`.
-> Evidence for 4b3: created when its phases are written.
+> Evidence for 4b3: `2026-10-01-04b3-stats-pr4b3-fuel-row-plan/2026-10-01-04b3-stats-pr4b3-fuel-row-plan.evidence.md`
+> (the planner's baselines are there; executors append).
 > Each plan is a folder named after its stem, holding `<stem>.md`, `<stem>.evidence.md` and (after review)
 > `<stem>.review.md`.
 
@@ -38,8 +39,9 @@ lines** against the 800-line hard limit. It was therefore split again along the 
   `computeInstrumentSections`, the two shared formatters. No visible change on screen.
 - **4b2 — the Instruments list.** The four widgets, the cap and `Show all (n)`, the legacy wrapper key, the
   legacy test re-stabilisation. The visible half.
-- **4b3 — the Fuel row.** Decisions and fixture-enumerated scenarios recorded now, so its fixtures cannot
-  be invented later; its phases are unwritten.
+- **4b3 — the Fuel row.** A Fuel section of its own on the Stats screen, plus the extraction of the
+  NUTRITION card into the trend screen the row opens. Two phases, both `@developer`; every phase named
+  here depends on 4b2.
 
 4b is independently shippable and green on its own (a repository read with no reader yet), which is what
 makes the second split safe.
@@ -57,8 +59,15 @@ makes the second split safe.
 | **4a** | Phone, **additive**: the shared exercise-metric layer, the **Exercise Progress** view, and the **Records & Trends** screen with the Stats header's chart-icon entry point.<br>• a bulk round-instance read on the repository (there is none today);<br>• the per-exercise native value and all-time best for all four effort kinds, computed once and reused;<br>• Records & Trends: all-time totals, the existing Recent PRs moved unchanged, and a searchable list of every exercise ever logged, grouped into the four sections, each showing its all-time best and when it was last trained;<br>• Exercise Progress: the full-history chart, the all-time best, and the recent-sessions list;<br>• nothing is removed — the old Stats sections stay exactly as they are. | — | `2026-09-30-04a-stats-pr4a-records-and-exercise-progress-plan/2026-09-30-04a-stats-pr4a-records-and-exercise-progress-plan.md` |
 | **4b** | Phone, **invisible**: the **Instruments data** the list needs.<br>• one new repository read, `getSensorSummariesBySession()`, on the interface with a Hive implementation and a Mock twin — the first bulk read of `SensorSummary` in `lib/`;<br>• the two value types (`InstrumentSectionData`, `InstrumentRow`);<br>• `computeInstrumentSections({required StatsWindow window})`: sections ordered by distinct training days, rows ordered by training days then name then id, each row's native value, its previous-range value for the change indicator, its cadence and its average heart rate;<br>• two shared formatters (`nativeSecondaryLabel` moved with byte-identical output, `formatNativeChange`).<br>Nothing changes on screen; this PR is green and shippable on its own. | 4a | `2026-10-01-04b-stats-pr4b-instruments-data-plan/2026-10-01-04b-stats-pr4b-instruments-data-plan.md` |
 | **4b2** | Phone, **additive**: the **Instruments list** on the main Stats screen.<br>• the four sections — Resistance, Cardio, Isometric, Sports — each listing every exercise trained in the window, up to 5 rows with "Show all (n)";<br>• each row: name, native value, change against that exercise's own previous comparable value, a trend line;<br>• the list renders **between the ALL TIME card and the old sections**, wrapped legacy children and all (D-503). The old Stats sections stay for one more PR. | 4b (its Phases 1–2 merged), 4a | `2026-10-01-04b2-stats-pr4b2-instruments-list-plan/2026-10-01-04b2-stats-pr4b2-instruments-list-plan.md` |
-| **4b3** | Phone, **additive**: the **Fuel row** on the main Stats screen. **NOT READY** — decisions (D-520…D-527) and scenarios (S-1101…S-1110) recorded; phases unwritten.<br>• 7-day averages against the user's own target (and against the previous 7 days), the logged-days indicator, the training-day vs rest-day split;<br>• hidden after 14 days without logs, and the zero-session empty state wins over it;<br>• tapping through to a full-history nutrition trend, which the existing NUTRITION card moves into (about 600 lines leave `stats_screen.dart`). | 4b2 (shares the row/header widgets and the screen edit), 4a (`computeNutritionTrend`) | `2026-10-01-04b3-stats-pr4b3-fuel-row-plan/2026-10-01-04b3-stats-pr4b3-fuel-row-plan.md` (plan; Iteration 1 not written) |
+| **4b3** | Phone, **additive**: the **Fuel section** on the main Stats screen, in **2 phases** (both `@developer`).<br>• **Phase 1** — the extraction: the NUTRITION card body moves into `NutritionTrendCard` (`lib/features/nutrition/widgets/`) with a new full-history `NutritionTrendScreen`, the three chart primitives it shares with the staying legacy charts get one home in `lib/widgets/chart/chart_primitives.dart`, and the Stats NUTRITION section renders the same extracted card. A move, not a rewrite — S-1110(a) is the proof.<br>• **Phase 2** — the row: a `Fuel` section of its own between the Instruments sections and the legacy sections, with 7-day averages over logged days only, against the user's own target (and against the previous 7 days), a `'<n>/7 days logged'` indicator and a training-day vs rest-day split; hidden after 14 days without logs, and the zero-session empty state wins over it; tapping it opens the Phase 1 screen with its Calories / Macros toggle.<br>• Nothing is removed — the old NUTRITION card stays for 4c (about 740 lines leave `stats_screen.dart`, ~810 including the new primitives and screen). | 4b2 (shares the row/header widgets and the screen edit), 4a (`computeNutritionTrend`) | `2026-10-01-04b3-stats-pr4b3-fuel-row-plan/2026-10-01-04b3-stats-pr4b3-fuel-row-plan.md` (plan, READY) |
 | **4c** | Phone, **removal**: delete the STRENGTH, CARDIO, ISOMETRIC, SPORTS and NUTRITION sections from the Stats screen, retire the top-N selection constants and the code only they used, update or retire their tests, and prove the old layout is unreachable from anywhere in the app.<br>Also rewrites `docs/stats_screen.md` to describe the screen that is left. | 4b, 4b2, 4b3 | not planned |
+
+### Carried into 4c
+
+- Move `lib/features/stats/widgets/scrollable_trend_chart.dart` to `lib/widgets/chart/`, so the nutrition card no longer imports from the Stats feature (4b3 review finding 6).
+- Add a narrow-width and a large-text-scale rendering case for the Fuel row to `test/fuel_row_screen_test.dart` (finding 7).
+- Add `lib/core/models/fuel_summary.dart` to the `docs/data_models.md` code-reference table (finding 8).
+- Give the Fuel row's tappable `InkWell` an explicit accessibility label and assert it (finding 11).
 
 ## Shared decisions (defined once in the plans named; later PRs cite them and never restate them)
 
@@ -86,9 +95,12 @@ makes the second split safe.
 - **4b D-516: one label source, one chip source.** The secondary-metric label (`nativeSecondaryLabel`, part
   a, in 4b) and the window chip (`StatsWindowChip`, part b, in 4b2) are each extracted to a single shared
   widget/function with byte-identical output, so a figure never reads two ways.
-- **4b3 D-520 … D-527: the Fuel row.** Recorded in 4b3's plan: the 7-day window and its previous range,
+- **4b3 D-520 … D-534: the Fuel row.** Recorded in 4b3's plan: the 7-day window and its previous range,
   logged-days-only averaging, the training-day definition, the split, the target rules, the 14-day
-  visibility rule, and moving the NUTRITION card into a new full-history screen.
+  visibility rule, and moving the NUTRITION card into a new full-history screen (D-520…D-527), plus
+  Iteration 1's own entries — the Fuel section's placement and chrome (D-528), its pinned anatomy (D-529),
+  `computeFuelSummary` and `FuelSummary` (D-530, D-531), how D-526 is executed (D-532), the shared chart
+  primitives' one home (D-533) and the doc ownership (D-534).
 - **4a D-416: `docs/stats_screen.md` is reconciled in 4a**, because the pack's D-13 requires it and 4a
   already touches that doc. 4b2 extends it with the Instruments list; 4c rewrites it for the screen that is
   left.
@@ -128,7 +140,7 @@ soft signals ⇒ split** (`.github/agents/pr_scope_budget.md` §1).
 |---|---|---|---|---|---|---|
 | **4b** — the Instruments data | 598 | 2 | 12 (D-501, D-502, D-504…D-506, D-508, D-509, D-511…D-514, D-516a) | 11 (S-1002…S-1010, S-1013, S-1018) | ~370 | one soft signal (length); no hard limit — within budget |
 | **4b2** — the Instruments list | 594 | 1 | 4 own (D-503, D-507, D-510, D-515) + 9 consumed from 4b | 7 (S-1001, S-1011, S-1012, S-1014…S-1017) | ~330 | one soft signal (length); no hard limit — within budget |
-| **4b3** — the Fuel row | 420 (no phases) | not written | 8 (D-520…D-527) | 10 (S-1101…S-1110) | not estimated | **NOT READY** — budgeted when its phases are written |
+| **4b3** — the Fuel row | 666 | 2 | 15 (D-520…D-534; D-528…D-534 written with Iteration 1) | 12 (S-1101…S-1112) | ~1,240 (of which ~810 is the D-526 move) | one soft signal (length); no hard limit — within budget |
 
 **The first split was not enough, and the second one was.** The superseded single 4b plan measured **1,016
 lines** — past the 800-line hard limit — with 3 phases, 16 decisions and 18 scenarios. The second split runs
@@ -141,7 +153,11 @@ recorded decisions and fixtures.
 edit) and one test file that proves them; splitting it would leave two phases neither of which is
 independently green. Its 594 lines are mostly verbatim scenario fixtures and the carried ledger.
 
-**4b3's known risk (O-3).** D-526 moves about 600 lines out of `stats_screen.dart` into a new screen **and**
-adds the Fuel row. If the written phase measures two soft signals it splits as 4b3a (the extraction, a move
-with S-1110 as its proof) + 4b3b (the row). 4c is still not estimated in detail; its churn is mostly test
-deletions in `test/screen_widget_test.dart`.
+**4b3's split question (O-3) — decided: one PR, two phases.** D-526 moves ~740 lines out of
+`stats_screen.dart` into a new screen and 4b3 adds the Fuel row, but measured together they are **one soft
+signal** (length) and no hard limit, so the split is not taken — and splitting would leave Phase 1's screen
+reachable from nowhere for a whole PR (the Fuel row is its only entry point), which is the dead-surface
+defect 4b's review blocked on. The seam is still named if the owner prefers two PRs: 4b3a (the extraction,
+proved by S-1110(a)) and 4b3b (the row), planned as an index plan first. See the 4b3 plan's §Scope check and
+§Open Items. 4c is still not estimated in detail; its churn is mostly test deletions in
+`test/screen_widget_test.dart`.

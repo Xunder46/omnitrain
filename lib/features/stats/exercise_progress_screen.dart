@@ -8,6 +8,7 @@ import '../../core/utils/chart_axis_helper.dart';
 import '../../core/utils/date_utils.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
+import '../../widgets/chart/chart_primitives.dart';
 import '../../widgets/chart/edge_aware_date_label.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
@@ -44,8 +45,6 @@ class ExerciseProgressScreen extends StatefulWidget {
 }
 
 class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
-  static const double _kBottomAxisReservedSize = 20;
-
   bool _isLoading = true;
   ExerciseMetricSummary? _summary;
 
@@ -251,7 +250,7 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
               bottomTitles: AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: true,
-                  reservedSize: _kBottomAxisReservedSize,
+                  reservedSize: kChartBottomAxisReservedSize,
                   interval: 1,
                   getTitlesWidget: (value, meta) {
                     final idx = value.round();
