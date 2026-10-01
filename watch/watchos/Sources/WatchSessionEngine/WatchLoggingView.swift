@@ -4,7 +4,7 @@
 //
 //  The native watchOS logging surface: one effort, its values, one confirm.
 //  Native half of
-//  `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
+//  `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
 //
 //  Another deliberate choice of the same kind `Package.swift` makes: this
 //  module is platform-independent so the engine, the stepping table, and the

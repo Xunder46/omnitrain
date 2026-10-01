@@ -1,6 +1,6 @@
 // Tests for the exercise-detail emphasis-tier rebalance.
 //
-// Plan: .github/agents/plans/exercise-detail-emphasis-tier-rebalance-plan.md
+// Plan: docs/plans/exercise-detail-emphasis-tier-rebalance-plan.md
 //
 // Phase 1 verifies the visual hierarchy rebalance (Decision Ledger
 // D-1, D-2, D-3, D-4, D-5, D-6) by pumping the two affected screens

@@ -1,7 +1,7 @@
 // The phone's half of a nutrition quick-log: what the wrist logged, in the
 // phone's own day log.
 //
-// Plan: `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
+// Plan: `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
 // scenario S-002.
 //
 // The wrist sends an observation, not a consumed-food row: what it knows is a

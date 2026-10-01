@@ -2,7 +2,7 @@
 // an imported wrist session to exactly the sensor summaries it had before the
 // edit; Save keeps D-131's loss.
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 // `## Feedback`, F-1 (A-70, O-15).
 //
 // Edit mode writes structural changes straight to the repository, and Discard

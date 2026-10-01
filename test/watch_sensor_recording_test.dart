@@ -1,7 +1,7 @@
 /// Sensor recording on the wrist: the platform workout session, live heart
 /// rate, and GPS-derived distance.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-11-d-watch-sensor-recording-plan.md`,
+/// Plan: `docs/plans/2026-07-13-11-d-watch-sensor-recording-plan.md`,
 /// scenarios S-001 to S-008. The same register runs in
 /// `watch/watchos/Tests/WatchSessionEngineTests/WatchSensorRecordingTests.swift`,
 /// and both suites read `watch/contract/watch_sensor_contract.json`.

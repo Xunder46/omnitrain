@@ -18,7 +18,7 @@ import '../../widgets/layout/omni_gradient_background.dart';
 /// "working" without putting anything on screen that the user
 /// could read as a state of the running app.
 ///
-/// See `.github/agents/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
+/// See `docs/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
 /// scenario S-001 for the contract.
 class StartupPreparingScreen extends StatelessWidget {
   const StartupPreparingScreen({super.key});

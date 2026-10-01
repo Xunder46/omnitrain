@@ -3,7 +3,7 @@
 //  WatchSessionEngineTests
 //
 //  The native watchOS half of
-//  `.github/agents/plans/2026-07-13-11-d-watch-sensor-recording-plan.md` — the
+//  `docs/plans/2026-07-13-11-d-watch-sensor-recording-plan.md` — the
 //  same scenarios the Flutter client proves in
 //  `test/watch_sensor_recording_test.dart`, run against the Swift sensor layer.
 //

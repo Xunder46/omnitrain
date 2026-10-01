@@ -1,6 +1,6 @@
 /// Build-flag-gated QA surface for the watch session engine.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-06-a1-watch-session-engine-plan.md`,
+/// Plan: `docs/plans/2026-07-13-06-a1-watch-session-engine-plan.md`,
 /// iteration 1 step 5 — exercise create → log → kill → restore by hand, on
 /// hardware, so the kill-safety claims can be checked outside the test suite.
 ///

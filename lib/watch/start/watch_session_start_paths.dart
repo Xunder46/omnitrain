@@ -1,7 +1,7 @@
 /// The two ways a session starts on the wrist, and everything that happens to
 /// the exercise ladder afterwards.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`,
+/// Plan: `docs/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`,
 /// scenarios S-001 to S-005.
 ///
 /// The full catalog never reaches the watch (a 23-sport catalog on a 40mm screen

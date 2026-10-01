@@ -33,7 +33,7 @@ class ProfileState extends ChangeNotifier {
         'ProfileState.imageStorage was read but no service was injected. '
         'main.dart must construct an ImageStorageService and pass it '
         'to ProfileState. See '
-        '.github/agents/plans/image-persistence-fix-plan.md (D-8).',
+        'docs/plans/image-persistence-fix-plan.md (D-8).',
       );
     }
     return svc;

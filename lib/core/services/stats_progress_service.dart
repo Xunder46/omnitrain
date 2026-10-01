@@ -139,7 +139,7 @@ class StatsProgressService {
   /// does not flicker a lift in and out between sessions; dropping
   /// out signals genuine abandonment, not normal spacing. Applies
   /// symmetrically to Strength and Cardio selection
-  /// (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+  /// (`docs/plans/stats-summary-fix-pack-plan.md`,
   /// Item 3). Trend charts and PR lists for exercises that DO
   /// appear are unaffected — only which exercises fill the top-N
   /// slots is filtered.
@@ -178,7 +178,7 @@ class StatsProgressService {
     // Populated by `_processSetEffort` for entries with weight == 0.
     // The reps axis lets bodyweight movements compete for the
     // Strength top slots on the same training-frequency basis as
-    // loaded lifts (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+    // loaded lifts (`docs/plans/stats-summary-fix-pack-plan.md`,
     // Item 2).
     final repsByExercise = <String, Map<DateTime, _RepsDay>>{};
 
@@ -342,7 +342,7 @@ class StatsProgressService {
       // set exists, and any added weight on weighted sets
       // becomes a per-day annotation on the reps trend. See the
       // Push-Up mixed-axis bug fix in
-      // `.github/agents/plans/stats-summary-fix-pack-plan.md`
+      // `docs/plans/stats-summary-fix-pack-plan.md`
       // and the user report "Push-Up weight-based stats".
       final isRepsAxis = repsDayMap.isNotEmpty;
 
@@ -582,7 +582,7 @@ class StatsProgressService {
         // axis decision is made on `metric-weight`, never on the
         // annotation row, so a 0 kg weight with a 10 kg belt
         // stays on the reps axis (per the bodyweight-inclusion
-        // plan in `.github/agents/plans/stats-summary-fix-pack-plan.md`,
+        // plan in `docs/plans/stats-summary-fix-pack-plan.md`,
         // Item 2). The choice of axis for the whole exercise is
         // made downstream in `computeProgressData` based on
         // whether the exercise has any reps data at all.
@@ -764,7 +764,7 @@ class StatsProgressService {
   /// normal rotation (e.g. weekly / biweekly) does not flicker a
   /// lift in and out between sessions; dropping out signals
   /// genuine abandonment, not normal spacing
-  /// (`.github/agents/plans/stats-summary-fix-pack-plan.md`, Item 3).
+  /// (`docs/plans/stats-summary-fix-pack-plan.md`, Item 3).
   ///
   /// The selection input is a `Map<String, Set<DateTime>>` of
   /// `exerciseId → training days`; the function does not care
@@ -914,7 +914,7 @@ class StatsProgressService {
   ///
   /// **Source of truth.** The Stats screen (`computeProgressData`'s
   /// PR detection loop) and the in-session "Congrats! New PR" toast
-  /// (see `.github/agents/plans/in-session-pr-toast-plan.md`) both
+  /// (see `docs/plans/in-session-pr-toast-plan.md`) both
   /// call this method. Do not introduce a second e1RM helper — keep
   /// the formula in one place so the two surfaces cannot drift.
   static double? epley1RM(double weight, int reps) {
@@ -928,7 +928,7 @@ class StatsProgressService {
   /// single strict `>` comparison to detect a new personal record —
   /// a first-ever set is a PR because its positive e1RM is greater
   /// than `0.0` (Decision Ledger D-2, D-3 in
-  /// `.github/agents/plans/in-session-pr-toast-plan.md`).
+  /// `docs/plans/in-session-pr-toast-plan.md`).
   ///
   /// **Source of truth.** This is the same walk `computeProgressData`
   /// performs when it detects PRs for the Stats screen. In-progress
@@ -942,7 +942,7 @@ class StatsProgressService {
   /// workout's own PRs are not compared against themselves. The
   /// zero-arg call (used by the in-session toast) is unchanged.
   ///
-  /// S-009 (in `.github/agents/plans/in-session-pr-toast-plan.md`)
+  /// S-009 (in `docs/plans/in-session-pr-toast-plan.md`)
   /// is the structural-guard test that locks this method to the
   /// Stats screen's PR detector for the same input data.
   Future<double> getAllTimeBestE1RM(
@@ -1008,7 +1008,7 @@ class StatsProgressService {
   /// the exercise's equipment label — pull-ups and chin-ups are
   /// included the moment they're logged at bodyweight, no
   /// equipment-label lookup required
-  /// (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+  /// (`docs/plans/stats-summary-fix-pack-plan.md`,
   /// Item 2).
   ///
   /// When [excludeSessionId] is non-null, the named completed

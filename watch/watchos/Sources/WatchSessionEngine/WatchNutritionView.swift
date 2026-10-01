@@ -4,7 +4,7 @@
 //
 //  The native watchOS quick-log surface: the foods the user eats, one portion,
 //  one log. Native half of
-//  `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
+//  `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
 //  scenarios S-001, S-004 and S-006.
 //
 //  Another deliberate choice of the same kind `Package.swift` makes: the state,

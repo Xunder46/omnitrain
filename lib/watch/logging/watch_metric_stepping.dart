@@ -1,6 +1,6 @@
 /// Metric stepping for the watch logging surfaces.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`,
+/// Plan: `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`,
 /// scenario S-007 — one rotary detent moves a value by an amount that follows
 /// from the metric and the saved unit preference, never from the surface. The
 /// watchOS client mirrors this table so a crown turn means the same thing on

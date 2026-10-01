@@ -18,17 +18,17 @@ The app is currently in private TestFlight beta. It is not yet publicly released
 
 Development is driven through a custom GitHub Copilot agent pipeline. A set of specialized agents — coordinator, DBA, developer, code reviewer, and prompt engineer — collaborate on each feature through a shared plan file, with a structured handoff protocol between phases. This pipeline also maintains the documentation system described below.
 
-The full documentation index is at [`.github/agents/docs/README.md`](.github/agents/docs/README.md).
+The full documentation index is at [`docs/README.md`](docs/README.md).
 
 ## Where to go next
 
 | Document | Contents |
 |---|---|
-| [`.github/agents/docs/README.md`](.github/agents/docs/README.md) | Documentation index — start here |
-| [`.github/agents/docs/app_philosophy.md`](.github/agents/docs/app_philosophy.md) | Product vision, scope, session and block architecture |
-| [`.github/agents/docs/state_management.md`](.github/agents/docs/state_management.md) | State layer: ChangeNotifier classes, repository interfaces, data flow |
-| [`.github/agents/docs/data_models.md`](.github/agents/docs/data_models.md) | Core data models and relationships |
-| [`.github/agents/docs/design_system.md`](.github/agents/docs/design_system.md) | Color tokens, typography, spacing, component patterns |
+| [`docs/README.md`](docs/README.md) | Documentation index — start here |
+| [`docs/app_philosophy.md`](docs/app_philosophy.md) | Product vision, scope, session and block architecture |
+| [`docs/state_management.md`](docs/state_management.md) | State layer: ChangeNotifier classes, repository interfaces, data flow |
+| [`docs/data_models.md`](docs/data_models.md) | Core data models and relationships |
+| [`docs/design_system.md`](docs/design_system.md) | Color tokens, typography, spacing, component patterns |
 
 ## Tech stack
 

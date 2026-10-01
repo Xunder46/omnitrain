@@ -3,7 +3,7 @@
 // every step that no effort holds a leftover, stray or unsourced row (D-339).
 //
 // Scenarios S-883 – S-887 of
-// `.github/agents/plans/2026-09-27-03b-stats-pr3b-distance-source-import-plan.md`.
+// `docs/plans/2026-09-27-03b-stats-pr3b-distance-source-import-plan.md`.
 // The invariants are `test/helpers/row_invariants.dart`. The import builders are
 // this file's own copies, as the plan requires (never an import across test
 // files).

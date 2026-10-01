@@ -790,7 +790,7 @@ void main() {
     // The 2026-08-08 bump publishes `beer_regular` and `red_wine`
     // with `hidden: true` (because the calorie model cannot
     // represent alcohol-derived energy — see
-    // `.github/agents/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`).
+    // `docs/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`).
     // The existing `CatalogRefreshService._foodDiffers` already
     // compares `isArchived`, so the published hidden state arrives
     // on every existing device through the same per-row diff path

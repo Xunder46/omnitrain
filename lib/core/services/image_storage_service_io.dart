@@ -25,7 +25,7 @@
 // `getApplicationDocumentsDirectory()` once at app start.
 //
 // See D-1..D-10 in
-// `.github/agents/plans/image-persistence-relocation-fix-plan.md`.
+// `docs/plans/image-persistence-relocation-fix-plan.md`.
 
 import 'dart:io';
 import 'dart:typed_data';

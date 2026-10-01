@@ -77,7 +77,7 @@ class ExerciseSummary {
   /// This is the bodyweight-axis PR metric — the same value the
   /// in-workout celebration, the Stats screen, and the Session
   /// Summary compare against for bodyweight exercises
-  /// (`.github/agents/plans/stats-summary-fix-pack-plan.md`, Item 2).
+  /// (`docs/plans/stats-summary-fix-pack-plan.md`, Item 2).
   /// Weighted calisthenics (sets with both `weight == 0` and a
   /// `metric-extra-weight` observation) contribute their reps here
   /// — the extra weight is an annotation only, never an axis

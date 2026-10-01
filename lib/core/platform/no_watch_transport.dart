@@ -1,6 +1,6 @@
 /// The transport for a platform with no watch: it carries nothing, and says so.
 ///
-/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 /// Phase 1 (D-2). This is what keeps the environment contract in CLAUDE.md
 /// intact — the app builds and tests on web, desktop, and Android without a
 /// watch, and a send that has nowhere to go resolves instead of throwing.

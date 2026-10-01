@@ -7,7 +7,7 @@
 /// The other half of the story — what a row's source means — is [DistanceSource]
 /// (D-301).
 ///
-/// Plan: `.github/agents/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
+/// Plan: `docs/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
 /// Verified by `test/distance_source_test.dart`.
 library;
 

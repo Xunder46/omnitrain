@@ -85,7 +85,7 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
       // Primary bottom CTA on the host's `bottomNavigationBar`. For
       // today/future dates this routes through the shared
       // `OmniBottomCTA` (see
-      // `.github/agents/plans/day-session-list-bottom-cta-plan.md`)
+      // `docs/plans/day-session-list-bottom-cta-plan.md`)
       // so the "+ New Planned Session" button sits at the same width,
       // height, and safe-area-anchored bottom as every other primary
       // bottom CTA in the app. For past dates the screen is

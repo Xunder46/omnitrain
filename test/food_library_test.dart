@@ -27,7 +27,7 @@ Future<MockWorkoutRepository> _freshRepoCleanConsumed() async {
 
 /// Helper to create a library food for testing. Macros are `double`
 /// to match the [Food] model (S-001 / S-002 — see
-/// `.github/agents/plans/food-form-decimals-and-autofocus-plan.md`).
+/// `docs/plans/food-form-decimals-and-autofocus-plan.md`).
 Food _testFood({
   String id = 'food-test-1',
   String name = 'Test Food',

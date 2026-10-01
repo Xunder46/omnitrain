@@ -3,7 +3,7 @@
 //  WatchSessionEngineTests
 //
 //  S-231 to S-236 and S-238 of
-//  `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`: the
+//  `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`: the
 //  heart-rate, steps and pause values the wrist computes from its own readings
 //  (D-121 to D-126), read off the events it emits when F-CAP
 //  (`watch/contract/watch_capture_contract.json`) is replayed through it, plus

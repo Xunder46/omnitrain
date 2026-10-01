@@ -390,7 +390,7 @@ void main() {
 
     // ── computePRs ────────────────────────────────────────────────────────
     //
-    // Plan: .github/agents/plans/summary-pr-parity-plan.md
+    // Plan: docs/plans/summary-pr-parity-plan.md
     //
     // PR definition here matches the in-workout toast and the Stats
     // screen: Epley e1RM, `weight × (1 + reps / 30)`, via
@@ -1021,7 +1021,7 @@ void main() {
 
       // ── Stats & Summary Fix Pack — PR 1 (PR de-duplication) ─────────────
       //
-      // Plan: .github/agents/plans/stats-summary-fix-pack-plan.md
+      // Plan: docs/plans/stats-summary-fix-pack-plan.md
       //
       // One session can produce only one new record per exercise.
       // When the same exercise appears in more than one block (e.g.

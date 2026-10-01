@@ -7,7 +7,7 @@
 // message "Language version 1.6 is no longer supported". The override
 // below promotes every sub-project's Kotlin compile to 1.9 so Sentry's
 // own builds complete under our pin. See
-// `.github/agents/plans/crash-reporting-plan.md` for the ADR.
+// `docs/plans/crash-reporting-plan.md` for the ADR.
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion as KVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 

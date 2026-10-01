@@ -2,7 +2,7 @@
 //
 // Scenario tests for the "log a food as consumed from the library"
 // feature. These tests pin the behavior described in
-// `.github/agents/plans/nutrition-log-from-library-plan.md`:
+// `docs/plans/nutrition-log-from-library-plan.md`:
 //
 //   S-001: Mark grams-type food consumed at 150 g (1.5x scaling).
 //   S-002: Mark count-type food consumed at 3     (3x scaling).

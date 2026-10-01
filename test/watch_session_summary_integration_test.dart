@@ -2,7 +2,7 @@
 // Session Summary, opened from the calendar, shows the wrist's rating and
 // offers PR 1's control to add or change one.
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
 // (Stats PR 2), Phase 5 — D-138, D-139.
 // Scenario mapping:
 //   S-285 the Summary offers to add a rating    → `S-285 ...`

@@ -1,7 +1,7 @@
 /// The real transport between the phone and the wrist: one object that satisfies
 /// both sides' interfaces and hands arriving frames to whoever owns them.
 ///
-/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 /// Phase 1 (D-1). Scenarios S-001, S-002, S-006.
 ///
 /// Two rules shape this file:

@@ -291,7 +291,7 @@ class _StatsScreenState extends State<StatsScreen> {
     // and single-point card so the user sees a "+10 kg" marker
     // on the day that used added weight. This is annotation only
     // — the reps trend never produces a kg-derived figure on a
-    // reps-axis exercise (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+    // reps-axis exercise (`docs/plans/stats-summary-fix-pack-plan.md`,
     // Push-Up mixed-axis bug fix).
     final repsDisplay = lift.repsTrend.toList();
     final repsHasAddedWeight = repsDisplay.any(

@@ -1,0 +1,2 @@
+# Planner: reads the repo, writes the plan file. No build or test commands.
+--allow-tool=write

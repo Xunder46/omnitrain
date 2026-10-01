@@ -719,7 +719,7 @@ abstract class WorkoutRepository {
 
   // ─── Watch Capture: Session Inbox + Sensor Summaries ─────────────────────
   //
-  // D-131 / D-132 in `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`.
+  // D-131 / D-132 in `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`.
   //
   // The watch session inbox stages everything the phone learns about a wrist
   // session before it becomes history. Rows are put-if-absent by `entryId`

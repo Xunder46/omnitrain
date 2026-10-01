@@ -1,7 +1,7 @@
 /// Proactive routine sync: what keeps the wrist's routines and fallback list
 /// current without the user asking.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`.
+/// Plan: `docs/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`.
 /// Carrying the messages is a separate item; this is the orchestrator that
 /// decides *when* they are asked for and where an arriving one goes.
 ///

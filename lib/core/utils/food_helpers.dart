@@ -5,7 +5,7 @@ import '../../data/models/models.dart';
 /// Formula: protein * 4 + carbs * 4 + fat * 9
 /// All values in grams per serving. Macros are stored as `double`
 /// (S-001 — see
-/// `.github/agents/plans/food-form-decimals-and-autofocus-plan.md`);
+/// `docs/plans/food-form-decimals-and-autofocus-plan.md`);
 /// the helper rounds to `int` at the boundary because calorie
 /// displays are always whole numbers.
 int calculateCalories(Food food) {

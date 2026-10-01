@@ -20,7 +20,7 @@ import '../data/repositories/workout_repository.dart';
 /// still has `groupId` equal to the category being deleted.
 ///
 /// The constraint (see
-/// `.github/agents/plans/2026-08-08-food-edit-orphan-category-plan.md`):
+/// `docs/plans/2026-08-08-food-edit-orphan-category-plan.md`):
 /// we cannot rewrite a bundled catalog food's `groupId` to "fix" the
 /// stranded-ness, because the catalog refresh restores the bundled
 /// food's category on every launch — so any such rewrite would
@@ -122,7 +122,7 @@ class FoodLibraryState extends ChangeNotifier {
         'FoodLibraryState.imageStorage was read but no service was '
         'injected. main.dart must construct an ImageStorageService '
         'and pass it to FoodLibraryState. See '
-        '.github/agents/plans/image-persistence-fix-plan.md (D-8).',
+        'docs/plans/image-persistence-fix-plan.md (D-8).',
       );
     }
     return svc;

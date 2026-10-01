@@ -3,7 +3,7 @@
 //  WatchSessionEngineTests
 //
 //  S-211 to S-220 of
-//  `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`: the
+//  `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`: the
 //  wrist's End, the effort-rating prompt it may owe, and the one answer the
 //  prompt records (D-113, D-114, D-116 – D-119). Plus the two things the plan
 //  asks to be structural: the copy and scale are the shared contract's, and

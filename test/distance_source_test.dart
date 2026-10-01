@@ -7,7 +7,7 @@
 // value, and a Hive restart must not change what a source or a pairing reads.
 //
 // Scenarios: S-801, S-802, S-803 (the model half), S-804–S-808 of
-// `.github/agents/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`.
+// `docs/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`.
 // The SQL half of S-803 lives in `db_seed_test.dart`.
 
 import 'dart:io';

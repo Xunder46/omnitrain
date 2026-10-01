@@ -1,7 +1,7 @@
 // PR 7 — Exercise Details View
 //
 // Acceptance scenarios from
-// .github/agents/plans/2026-07-27-07-pr7-exercise-details-view-plan.md:
+// docs/plans/2026-07-27-07-pr7-exercise-details-view-plan.md:
 //
 //   S-001  Inspect without adding  — open details, back. Session unchanged.
 //   S-002  Add from either path exactly once — row tap OR details Add.

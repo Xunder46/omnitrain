@@ -3,7 +3,7 @@
 //  WatchSessionEngineTests
 //
 //  The native watchOS half of
-//  `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md` —
+//  `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md` —
 //  the same scenarios the Dart suite proves in
 //  `test/watch_nutrition_quick_log_test.dart`, run against the Swift quick-log.
 //

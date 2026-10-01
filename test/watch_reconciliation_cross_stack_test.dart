@@ -1,7 +1,7 @@
 // Cross-stack conformance: the phone's reconciler and the wrist's engine on the
 // same fixtures, in lockstep.
 //
-// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 // Phase 5 (D-4).
 // Scenario mapping:
 //   S-008 snapshot merge                  → `S-008 ...`

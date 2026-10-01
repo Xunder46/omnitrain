@@ -1,6 +1,6 @@
 // Tests for the in-session "Congrats! New PR" toast feature.
 //
-// Plan: .github/agents/plans/in-session-pr-toast-plan.md
+// Plan: docs/plans/in-session-pr-toast-plan.md
 //
 // Phase 1 covers the source-of-truth e1RM helpers on
 // `StatsProgressService`:

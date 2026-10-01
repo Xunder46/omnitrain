@@ -3,7 +3,7 @@
 A hands-on guide for getting OmniTrain onto a wrist. Written for the person at
 the keyboard, not for an agent.
 
-> **Companion plan**: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`
+> **Companion plan**: `docs/plans/2026-09-21-13-watch-integration-shipping.md`
 > covers the code work. This guide covers the parts a human has to do and how to
 > tell whether any of it actually works.
 
@@ -54,7 +54,7 @@ do work an agent could have done.
   (`lib/core/platform/`; `watch_connectivity` is imported in exactly one file).
 - [x] The phone-side wiring: `main.dart` → `liveSession`, and the `routines_down`
   producer. Watch-initiated: the wrist asks, the phone answers
-  (`.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`, D-7).
+  (`docs/plans/2026-09-21-13-watch-integration-shipping.md`, D-7).
 
 (Deferred with Wear OS: the Dart wrist entry point, the Gradle module strategy,
 and the `AndroidManifest.xml` work — all agent-editable when that job starts.)
@@ -334,7 +334,7 @@ enforced in code, so a failure points at the transport, not the logic:
 14. **Check Apple Health.** The session should appear there once, not twice.
 
 Steps 15–20 check the session effort rating and the heart-rate and step capture
-(`.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). The
+(`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). The
 logic is in the package and tested, but nothing hosts it on a wrist until the
 shipping plan's Phase 7 (the app shell) and Phase 8 (the HealthKit bindings)
 land — see that plan's O-1 and O-2.

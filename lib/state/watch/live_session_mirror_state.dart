@@ -1,7 +1,7 @@
 /// The phone's live session mirror: what keeps the phone's view of a
 /// watch-led session current without the watch being asked anything.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-09-c1-live-session-mirroring-plan.md`.
+/// Plan: `docs/plans/2026-07-13-09-c1-live-session-mirroring-plan.md`.
 ///
 /// The reconciliation itself is the protocol's reference implementation
 /// (`lib/core/sync_protocol/session_reconciler.dart`); this class is the wiring

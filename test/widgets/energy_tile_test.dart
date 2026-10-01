@@ -543,7 +543,7 @@ void main() {
 
   // ══════════════════════════════════════════════════════════════════════════
   // Follow-up scenarios (S-101 … S-106) — centering, active dot, secondary
-  // icon lift. See .github/agents/plans/home-tile-fixes-plan.md.
+  // icon lift. See docs/plans/home-tile-fixes-plan.md.
   // ══════════════════════════════════════════════════════════════════════════
 
   group('S-101: tile content horizontal centering', () {

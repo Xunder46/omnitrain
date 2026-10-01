@@ -5,7 +5,7 @@
 // repository, and the ones marked "Mock and Hive" must end identical on both,
 // so both live here rather than in each test file.
 //
-// Plan: `.github/agents/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
+// Plan: `docs/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
 
 import 'dart:io';
 

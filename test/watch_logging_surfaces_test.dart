@@ -1,6 +1,6 @@
 // Watch logging surfaces — the four effort kinds, end to end.
 //
-// Plan: `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
+// Plan: `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
 // Scenario mapping:
 //   S-001 log a set (reps + load)                            → `S-001 ...`
 //   S-002 log timed work (duration, optional distance)       → `S-002 ...`

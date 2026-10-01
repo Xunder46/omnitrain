@@ -5,7 +5,7 @@
 // This file exercises the wired-up [ImageStorageService] +
 // [ProfileState] / [FoodLibraryState] combination. Each scenario
 // maps to an S-id in
-// `.github/agents/plans/image-persistence-relocation-fix-plan.md`:
+// `docs/plans/image-persistence-relocation-fix-plan.md`:
 //
 //   S-1   (reworked) avatar resolves across a relocated managed dir
 //   S-2   (reworked) food photo resolves across a relocated managed dir

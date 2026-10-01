@@ -1,6 +1,6 @@
 // Tests for the startup-failure screen and the retry path that
 // re-runs the entire `main()` initialization sequence. The
-// scenarios in `.github/agents/plans/startup-failure-screen-plan.md`
+// scenarios in `docs/plans/startup-failure-screen-plan.md`
 // (S-001..S-004) map 1:1 to the four tests below.
 
 import 'dart:async';

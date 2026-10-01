@@ -1,7 +1,7 @@
 // PR 8 — Exercise Library
 //
 // Acceptance scenarios from
-// .github/agents/plans/2026-07-27-08-pr8-exercise-library-plan.md:
+// docs/plans/2026-07-27-08-pr8-exercise-library-plan.md:
 //
 //   S-001  Browse/filter catalog — search/filter/custom-only + read-only details.
 //   S-002  Copy built-in safely — copy creates a new custom; original unchanged.

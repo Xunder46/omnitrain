@@ -3,7 +3,7 @@
 //  WatchSessionEngineTests
 //
 //  S-002 to S-007 of
-//  `.github/agents/plans/2026-07-13-09-c1-live-session-mirroring-plan.md` on the
+//  `docs/plans/2026-07-13-09-c1-live-session-mirroring-plan.md` on the
 //  native watchOS side — the same reconciliation fixtures the Dart suite
 //  replays in `test/live_mirroring_test.dart`, run through the Swift engine so
 //  the two watch clients converge identically.

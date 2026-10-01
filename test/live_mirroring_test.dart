@@ -1,6 +1,6 @@
 // Live session mirroring — watch ↔ phone convergence over the sync protocol.
 //
-// Plan: `.github/agents/plans/2026-07-13-09-c1-live-session-mirroring-plan.md`.
+// Plan: `docs/plans/2026-07-13-09-c1-live-session-mirroring-plan.md`.
 // Scenario mapping:
 //   S-001 a set logged on the watch reaches the phone  → `S-001 ...`
 //   S-002 a phone structure change reaches the watch   → `S-002 ...`
@@ -10,7 +10,7 @@
 //   S-006 joining a phone session from the watch       → `S-006 ...`
 //   S-007 forced redelivery produces no duplicates     → `S-007 ...`
 //   S-251 a snapshot of another session replaces it    → `S-251 ...`
-//         (Stats PR 2, `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-130; S-252 is the S-008 group, which stays unchanged)
 //
 // Two implementations, one register. The phone's live mirror

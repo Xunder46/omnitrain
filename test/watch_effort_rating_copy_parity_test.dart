@@ -2,7 +2,7 @@
 // (PR 1's, shared by every phone surface that asks) is held to the same
 // contract the wrist's copy is.
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
 // (Stats PR 2), Phase 5 — D-102, D-143.
 // Scenario mapping:
 //   S-287 copy parity → `S-287 ...`

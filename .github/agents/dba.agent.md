@@ -20,14 +20,14 @@ You are the database architect responsible for the data layer. You implement cha
 
 ## Plan File Protocol
 
-The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single source of truth for the current feature.
+The shared plan file at `docs/plans/[feature]-plan.md` is the single source of truth for the current feature.
 
-**Always begin by reading `.github/agents/plans/[feature]-plan.md`** before doing any implementation work. Use it to understand the full feature context, the current iteration's DB changes, and what the Developer and Reviewer will expect downstream.
+**Always begin by reading `docs/plans/[feature]-plan.md`** before doing any implementation work. Use it to understand the full feature context, the current iteration's DB changes, and what the Developer and Reviewer will expect downstream.
 
 **After completing work**, update the `## Progress` checklist in the plan file, marking each completed task with `- [x]`. Mark phase status as **Complete** or **Blocked**.
 
 **If something cannot be implemented as planned**, add a `## Feedback` section to the plan file describing what failed and why, then stop work and notify the user:
-> "I was unable to complete [task] as planned. I've marked Phase 1 as **Blocked** and added a `## Feedback` note to `.github/agents/plans/[feature]-plan.md`. Please open a fresh chat with the Coordinator agent to re-plan."
+> "I was unable to complete [task] as planned. I've marked Phase 1 as **Blocked** and added a `## Feedback` note to `docs/plans/[feature]-plan.md`. Please open a fresh chat with the Coordinator agent to re-plan."
 
 
 ## PR Scope Budget
@@ -196,7 +196,7 @@ Before making data layer changes, consult the relevant documentation in `docs/`:
 When you receive a handoff from @conductor:
 
 ### Step 0: Read the Plan File
-- [ ] Read `.github/agents/plans/[feature]-plan.md`
+- [ ] Read `docs/plans/[feature]-plan.md`
 - [ ] Identify all DB Changes listed in the current iteration
 - [ ] Note the full feature context so downstream phases align
 
@@ -405,7 +405,7 @@ Data layer implemented. Models, repository interface, and Hive implementation re
 
 ## When Done
 
-Before handing off, **update `.github/agents/plans/[feature]-plan.md`**:
+Before handing off, **update `docs/plans/[feature]-plan.md`**:
 - Mark all completed DB tasks with `- [x]` in the `## Progress` checklist
 - If a task could not be completed, add a `## Feedback` section explaining what failed and why, then notify the user to re-run the Coordinator in a fresh chat
 
@@ -431,13 +431,13 @@ Then hand off to @developer with a summary:
 - lib/data/repositories/hive_workout_repository.dart
 - lib/mock/seed_data.dart
 - scripts/sqlite_schema.sql
-- .github/agents/docs/[updated docs if any]
-- .github/agents/plans/[feature]-plan.md (Progress updated — phase marked Complete or Blocked)
+- docs/[updated docs if any]
+- docs/plans/[feature]-plan.md (Progress updated — phase marked Complete or Blocked)
 ```
 
 ## Remember
 
-- Always read `.github/agents/plans/[feature]-plan.md` first to understand full feature context
+- Always read `docs/plans/[feature]-plan.md` first to understand full feature context
 - Always update the `## Progress` checklist in the plan file after completing work
 - If blocked, mark phase as **Blocked**, add `## Feedback` to the plan file, and notify the user to re-run the Coordinator
 - Update docs before handing off — state explicitly if no update was needed

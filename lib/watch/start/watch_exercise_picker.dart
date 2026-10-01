@@ -1,6 +1,6 @@
 /// The exercise picker for a free workout: the fallback list, and nothing else.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`,
+/// Plan: `docs/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`,
 /// S-002 and S-005.
 ///
 /// The full catalog deliberately never reaches the wrist, so this is not a

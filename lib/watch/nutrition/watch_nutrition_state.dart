@@ -1,7 +1,7 @@
 /// The quick-log screen's state: the synced food list, the food and portion the
 /// user has picked, and the observation that comes out of confirming them.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
+/// Plan: `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
 /// scenarios S-001 to S-006.
 ///
 /// Everything the screen shows is derived — the list from the synced catalog

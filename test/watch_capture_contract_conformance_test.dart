@@ -1,6 +1,6 @@
 // Watch capture — the protocol additions and the shared capture contract.
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 // Phase 1 (protocol and shared contracts).
 // Scenario mapping:
 //   S-204 preferences_down conforms, and the Dart wrist ignores it → `S-204 ...`

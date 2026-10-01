@@ -47,7 +47,7 @@ export '../../../core/models/food_draft.dart' show FoodDraft;
 /// **Primary bottom CTA**: the form no longer renders an inline
 /// `Save` button. The host screen owns the bottom CTA via the
 /// shared [OmniBottomCTA] (see
-/// `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`).
+/// `docs/plans/primary-bottom-cta-anchor-width-plan.md`).
 /// The host wires the CTA's `onPressed` to
 /// [FoodFormController.submit] so the form's validation + save
 /// pipeline still runs in one place. See

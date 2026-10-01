@@ -1,7 +1,7 @@
 // Watch nutrition quick-log — storage, derivation parity, engine entry point,
 // and the surface.
 //
-// Plan: `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`.
+// Plan: `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`.
 // Scenario mapping:
 //   S-001 quick-log a favorite food with the phone off   → `S-001 ...`
 //   S-002 the phone applies it exactly once              → `S-002 ...`

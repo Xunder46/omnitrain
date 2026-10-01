@@ -77,7 +77,7 @@ class LiftProgress {
   /// (some sets with added weight, some without) the reps axis is
   /// still used because the added-weight sets stay on the reps
   /// axis as annotations only (see the bodyweight-inclusion plan
-  /// in `.github/agents/plans/stats-summary-fix-pack-plan.md`,
+  /// in `docs/plans/stats-summary-fix-pack-plan.md`,
   /// Item 2). Empty for exercises that have only weighted sets.
   final List<TrendPoint> repsTrend;
 

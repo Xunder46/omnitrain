@@ -1,6 +1,6 @@
 // Where a message that arrived from a wrist goes on the phone.
 //
-// Plan: `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
+// Plan: `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
 // scenarios S-002 and S-006.
 //
 // One transport, several owners: session state belongs to the live mirror, and
@@ -10,7 +10,7 @@
 // Each ignores what is not its own.
 //
 // The watch session inbox is asked first (Stats PR 2,
-// `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`, D-132):
+// `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`, D-132):
 // what a wrist session will become in history is staged before the mirror or
 // the day log can answer the message, so nothing either of them does — a
 // refusal, a snapshot answer — can come before it is durable.

@@ -86,7 +86,7 @@ class SessionSummaryBuilder {
             // toast and the Stats screen use. A rep-driven
             // improvement (more reps at a non-top weight) can be the
             // new PR even when its raw weight is below `bestWeight`.
-            // See .github/agents/plans/summary-pr-parity-plan.md
+            // See docs/plans/summary-pr-parity-plan.md
             // (D-1, D-2).
             final e1rm = StatsProgressService.epley1RM(
               weight ?? 0.0,
@@ -102,7 +102,7 @@ class SessionSummaryBuilder {
             // `StatsProgressService._processSetEffort` so the
             // session summary, the in-session toast, and the Stats
             // screen agree on the same verdict for the same set
-            // (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+            // (`docs/plans/stats-summary-fix-pack-plan.md`,
             // Item 2 — rep-based record parity).
             if ((weight ?? 0.0) == 0.0 && reps != null && reps > 0) {
               if (bestReps == null || reps > bestReps) bestReps = reps;

@@ -1,6 +1,6 @@
 /// Turns a wrist session the phone has staged into ordinary phone history.
 ///
-/// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
+/// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
 /// (Stats PR 2), D-110, D-132 – D-138, D-140.
 ///
 /// Everything the phone learns about a wrist session is staged first, in the

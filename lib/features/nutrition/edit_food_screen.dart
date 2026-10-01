@@ -24,7 +24,7 @@ import 'widgets/food_form.dart';
 ///
 /// **Primary bottom CTA**: the **Save** action uses the shared
 /// [OmniBottomCTA] (see
-/// `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`),
+/// `docs/plans/primary-bottom-cta-anchor-width-plan.md`),
 /// wired to a [FoodFormController] that triggers the form's
 /// validation + save pipeline. The `Key('food_form_save')` is
 /// preserved on the bottom CTA for backward compatibility with

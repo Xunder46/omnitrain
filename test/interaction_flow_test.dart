@@ -2139,7 +2139,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
   // Phone manage-bridge — the phone driving a session the wrist is running
   //
-  // Plan: `.github/agents/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
+  // Plan: `docs/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
   // What each message has to be on the wire is
   // `test/phone_manage_bridge_test.dart`'s job; these tests drive the surfaces
   // and assert on what the phone was left showing and sending.

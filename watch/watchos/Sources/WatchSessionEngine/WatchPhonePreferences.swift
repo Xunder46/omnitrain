@@ -3,7 +3,7 @@
 //  WatchSessionEngine
 //
 //  The phone's settings the wrist honours, as `preferences_down` last brought
-//  them. Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//  them. Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //  D-113 and D-114.
 //
 //  Reference data, like the routines and the food list: the wrist learns it when

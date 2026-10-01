@@ -2,7 +2,7 @@
 //
 // Automated enforcement of confirmation dialog consolidation.
 //
-// Rule (see `.github/agents/plans/confirmation-dialog-consolidation-plan.md`):
+// Rule (see `docs/plans/confirmation-dialog-consolidation-plan.md`):
 //   All confirmation dialogs (two-choice, three-choice) must use the shared
 //   ConfirmationDialog component. Raw AlertDialog confirmations outside the
 //   allowlist are not permitted.
@@ -80,7 +80,7 @@ void main() {
                     'Use ConfirmationDialog '
                     '(lib/widgets/dialogs/confirmation_dialog.dart) for all '
                     'confirmation prompts (two-choice, three-choice). '
-                    'See .github/agents/plans/confirmation-dialog-consolidation-plan.md.\n'
+                    'See docs/plans/confirmation-dialog-consolidation-plan.md.\n'
                     'Offending files:\n${violations.map((f) => '  $f').join('\n')}',
         );
       },

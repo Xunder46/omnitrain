@@ -1,7 +1,7 @@
 // The pre-release gate runs the watchOS package's suite (`swift test` in
 // `watch/watchos`) and blocks on a red one.
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
 // (Stats PR 2), Phase 6 — D-144.
 // Scenario mapping:
 //   S-293 the gate runs `swift test` → `S-293 ...`

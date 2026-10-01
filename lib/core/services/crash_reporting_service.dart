@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────────────────────────
 // OmniTrain crash-reporting integration
 //
-// ADR — see `.github/agents/plans/crash-reporting-plan.md` for the
+// ADR — see `docs/plans/crash-reporting-plan.md` for the
 // rationale for choosing `sentry_flutter` over Firebase Crashlytics.
 // Summary:
 //   • Flutter-native error capture (FlutterError.onError,
@@ -488,7 +488,7 @@ const Set<String> _allowedTagKeys = <String>{
 ///
 /// The budget-tier rationale and the tradeoff between exact event
 /// counts and budget survival are documented in
-/// `.github/agents/plans/crash-reporting-rate-limit-plan.md`. A single
+/// `docs/plans/crash-reporting-rate-limit-plan.md`. A single
 /// noisy failure must never exhaust the monthly reporting budget; the
 /// dashboard's raw count for a throttled signature becomes an undercount
 /// corrected by the `suppressedOccurrences` tag on each transmitted

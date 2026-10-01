@@ -1,6 +1,6 @@
 /// When the wrist is owed a haptic, derived from the timer's own timestamps.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`,
+/// Plan: `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`,
 /// scenarios S-003 and S-005.
 ///
 /// Nothing here counts down. A countdown's end is a property of the timer

@@ -101,8 +101,8 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   // bottom action (New Food / + New Category). Both are routed
   // through the shared `OmniBottomCTA` on the host's
   // `Scaffold.bottomNavigationBar` (see
-  // `.github/agents/plans/add-food-screen-bottom-cta-plan.md` and
-  // `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`)
+  // `docs/plans/add-food-screen-bottom-cta-plan.md` and
+  // `docs/plans/primary-bottom-cta-anchor-width-plan.md`)
   // so they sit at the same width, height, and vertical anchor as
   // every other primary bottom CTA in the app. The Library tab is
   // browse-only and renders no bottom CTA.
@@ -216,7 +216,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
       // Tab-aware primary bottom CTA. The host owns the bottom CTA
       // (not the individual tabs) so the shared placement + width
       // apply uniformly across tabs. See
-      // `.github/agents/plans/add-food-screen-bottom-cta-plan.md`.
+      // `docs/plans/add-food-screen-bottom-cta-plan.md`.
       bottomNavigationBar: _buildBottomCTA(context),
     );
   }

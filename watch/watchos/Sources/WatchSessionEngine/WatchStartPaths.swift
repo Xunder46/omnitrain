@@ -6,7 +6,7 @@
 //  the exercise ladder afterwards. Mirrors
 //  `lib/watch/start/watch_session_start_paths.dart` call for call.
 //
-//  Plan: `.github/agents/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`,
+//  Plan: `docs/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`,
 //  scenarios S-001 to S-005.
 //
 //  The full catalog never reaches the watch (a 23-sport catalog on a 40mm screen
@@ -26,7 +26,7 @@ import Foundation
 /// The words the start surface says, in one place so the views render them and
 /// the suite can hold them to the shared contract.
 ///
-/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 /// D-7 and S-010. They live here rather than on the SwiftUI view because the
 /// view is compiled only into a watch target, while the sentence itself is a
 /// product requirement on every client — and the Flutter client reads the same

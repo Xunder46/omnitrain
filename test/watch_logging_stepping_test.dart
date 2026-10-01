@@ -1,6 +1,6 @@
 // Watch logging surfaces — metric stepping.
 //
-// Plan: `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
+// Plan: `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
 // Scenario mapping:
 //   S-007 metric stepping matches metric semantics → `S-007 ...`
 //

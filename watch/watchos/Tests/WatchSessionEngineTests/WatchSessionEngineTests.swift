@@ -3,7 +3,7 @@
 //  WatchSessionEngineTests
 //
 //  The native watchOS half of
-//  `.github/agents/plans/2026-07-13-06-a1-watch-session-engine-plan.md` —
+//  `docs/plans/2026-07-13-06-a1-watch-session-engine-plan.md` —
 //  the same scenarios the Dart suite proves in
 //  `test/watch_session_engine_test.dart`, run against the Swift engine.
 //

@@ -8,7 +8,7 @@
 // included.
 //
 // Scenarios S-851–S-860 of
-// `.github/agents/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`, and
+// `docs/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`, and
 // S-862–S-864 from that plan's review round. The Summary's own rows are
 // `test/entry_identity_summary_test.dart`'s.
 

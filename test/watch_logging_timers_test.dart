@@ -1,6 +1,6 @@
 // Watch logging surfaces — timestamp-derived timers and their haptics.
 //
-// Plan: `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
+// Plan: `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
 // Scenario mapping:
 //   S-003 the round countdown fires at the right wall-clock moment → `S-003 ...`
 //   S-005 rest timer with screen-off haptic                        → `S-005 ...`

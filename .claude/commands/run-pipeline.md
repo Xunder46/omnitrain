@@ -6,7 +6,7 @@ You are orchestrating the OmniTrain development pipeline for this request:
 
 $ARGUMENTS
 
-The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single
+The shared plan file at `docs/plans/[feature]-plan.md` is the single
 source of truth. Each agent reads and updates it. Track the actual plan-file
 path the conductor establishes and ensure each subsequent agent uses it.
 

@@ -38,9 +38,9 @@ Your output is fed back to the user and costs tokens. Follow these rules uncondi
 
 ## Plan File Protocol
 
-The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single source of truth for the current feature.
+The shared plan file at `docs/plans/[feature]-plan.md` is the single source of truth for the current feature.
 
-**Always begin by reading `.github/agents/plans/[feature]-plan.md`** before reviewing any code. Use it to understand the original intent, requirements, and the iteration being reviewed, so you can assess whether the implementation matches the plan.
+**Always begin by reading `docs/plans/[feature]-plan.md`** before reviewing any code. Use it to understand the original intent, requirements, and the iteration being reviewed, so you can assess whether the implementation matches the plan.
 
 **If the implementation does not meet the plan**, add a `## Feedback` section to the plan file describing exactly what needs to change and why, then present the findings to the user and wait for their decision.
 
@@ -121,7 +121,7 @@ Only run checklist sections for in-scope layers. Skip others without comment.
 Before reviewing code quality, verify the implementation does what was asked.
 
 **Check in this order**:
-1. If a prompt file exists at `.github/agents/plans/[feature]-copilot-prompts.md`, read its Acceptance Criteria sections
+1. If a prompt file exists at `docs/plans/[feature]-copilot-prompts.md`, read its Acceptance Criteria sections
 2. If the plan file has a `## Acceptance Criteria` section, read it
 3. If both exist, check against both
 
@@ -148,7 +148,7 @@ If no `## Scenarios` section exists, note as **WARNING** and flag to Developer t
 **Run this on every change, including changes that touch no documentation at
 all.** A code-only change is the *normal* way documentation becomes false: the
 code moves and the prose stays behind. Every false claim in
-`.github/agents/plans/docs-standard-audit-2026-07-30.md` was produced by a change that
+`docs/plans/docs-standard-audit-2026-07-30.md` was produced by a change that
 added nothing to any document and was approved for exactly that reason. If you
 skip this step because there is no documentation diff, you have reproduced the
 bug this step exists to catch.
@@ -170,7 +170,7 @@ rejection, not a 5c-2 one.
 
 1. List the files the change actually touched.
 2. Read the **scope declaration** at the top of each document under
-   `.github/agents/docs/`. Every document states which parts of the codebase it
+   `docs/`. Every document states which parts of the codebase it
    covers. That declaration is your mapping.
 3. A document is **implicated** when any changed file falls inside its declared
    scope.
@@ -264,10 +264,10 @@ Do not print a row for a document that is not implicated.
 ### Step 5c-2 — Documentation Standard Enforcement (HARD REJECTION)
 
 **This is a rejection criterion, not a suggestion.** Any change that adds
-prohibited content to a document under `.github/agents/docs/` **MUST be rejected
+prohibited content to a document under `docs/` **MUST be rejected
 as ❌ Critical**, regardless of how accurate the added content is. Accuracy is
 not the test — accuracy decays silently, which is the entire reason these
-classes are banned. `.github/agents/docs/documentation_standard.md` is the
+classes are banned. `docs/documentation_standard.md` is the
 authority; read it before reviewing any documentation diff.
 
 Reject the change if it adds, to any reference document, content in any of these
@@ -371,7 +371,7 @@ FAIL: [rule name] — file.dart:line — [one-sentence fix] → @agent
 - [ ] `lib/state/` — any state class not imported by any screen or service is dead
 - [ ] `lib/features/` and `lib/widgets/` — any class not referenced by a route, parent widget, or another widget is a candidate for removal
 - [ ] `lib/core/services/` — any service not injected in main.dart or used by a state class is dead
-- [ ] `.github/agents/docs/` — any doc that references a class or file that no longer exists flags a stale doc
+- [ ] `docs/` — any doc that references a class or file that no longer exists flags a stale doc
 
 **Known current issue**: `AppState` (`lib/state/app_state.dart`) is documented as not used by any screen. Flag as **WARNING** on first adjacent review and hand off to Developer for removal or proper wiring.
 
@@ -506,7 +506,7 @@ mixin LoadingStateMixin on ChangeNotifier {
 Before reading any file, identify and state which layers are in scope.
 
 ### Step 1: Read the Plan File
-Read `.github/agents/plans/[feature]-plan.md` for original intent, acceptance criteria, and scenarios.
+Read `docs/plans/[feature]-plan.md` for original intent, acceptance criteria, and scenarios.
 
 ### Step 2: Read Changed Files
 Read only files in touched layers and their corresponding test files.

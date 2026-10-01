@@ -3,7 +3,7 @@
 // `test/watch_capture_contract_test.dart` (the Dart half of the capture
 // contract on Mock and Hive, S-272).
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`.
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`.
 //
 // The expected values are the contract's own (`watch/contract/
 // watch_capture_contract.json`, `expectedImport`), so a change to the importer

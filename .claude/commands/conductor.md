@@ -10,7 +10,7 @@ $ARGUMENTS
 Handling rules:
 - Surface its clarifying questions and WAIT for answers. That round is the designed checkpoint.
 - The Conductor writes plan markdown only — never source code. Note the plan-file path it
-  establishes (`.github/agents/plans/[feature]-plan.md`) and reuse it in later commands.
+  establishes (`docs/plans/[feature]-plan.md`) and reuse it in later commands.
 - When it presents the plan it also names the next handoff. Do NOT ask the user to approve the
   plan — in this single-agent command, stop after presenting it.
 - If the plan lacks **Done Criteria**, **Predicted Files**, or fixture-enumerated **Scenarios**

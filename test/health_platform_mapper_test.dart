@@ -1,7 +1,7 @@
 // filepath: test/health_platform_mapper_test.dart
 //
 // Scenario coverage for the platform health integration plan
-// (`.github/agents/plans/2026-07-13-04-pr3-platform-health-integration-plan.md`):
+// (`docs/plans/2026-07-13-04-pr3-platform-health-integration-plan.md`):
 //
 //   * S-001 / S-002 — a completed session's modality resolves to a
 //     deterministic activity type before the platform write.

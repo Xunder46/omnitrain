@@ -391,7 +391,7 @@ void main() {
     testWidgets('reps and weight both render dominant in session detail', (
       tester,
     ) async {
-      // Plan: .github/agents/plans/exercise-detail-emphasis-tier-rebalance-plan.md
+      // Plan: docs/plans/exercise-detail-emphasis-tier-rebalance-plan.md
       // Weight is now a primary data input (D-2), equal in tier and
       // color to reps.  The old "weight is subordinate to reps"
       // assumption from the original resistance-emphasis redesign

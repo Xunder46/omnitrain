@@ -1,5 +1,5 @@
 // Tests for the iOS reporting-destination pre-release gate check added
-// in `.github/agents/plans/crash-reporting-three-defects-plan.md`.
+// in `docs/plans/crash-reporting-three-defects-plan.md`.
 //
 // The previous gate (§11p / §11q in older revisions of
 // `scripts/pre_release_check.sh`) inspected the workflow file —

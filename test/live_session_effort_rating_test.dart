@@ -1,7 +1,7 @@
 // The phone's own Finish on the Watch Session screen, and the session effort
 // rating it asks for.
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
 // (Stats PR 2), Phase 5 — D-139.
 // Scenario mapping:
 //   S-281 phone Finish, setting on               → `S-281 ...`

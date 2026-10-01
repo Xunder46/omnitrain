@@ -9,7 +9,7 @@
 // `est.` after the unit for an estimate — never a pace, total or delta.
 //
 // Scenarios: S-811–S-820, S-821 (state layer), S-822, S-823 of
-// `.github/agents/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`.
+// `docs/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

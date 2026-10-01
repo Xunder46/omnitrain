@@ -9,7 +9,7 @@
 //  (`test/watch_capture_contract_test.dart`) imports the same events on the
 //  phone, so the two stacks are held to one set of numbers.
 //
-//  Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//  Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //  Phase 4a (the replay up to End) and Phase 4b (all three cases, rating
 //  included).
 //

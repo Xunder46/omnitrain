@@ -1,6 +1,6 @@
 // Unit tests for the extracted `PRToast.buildPRSnackBar` factory.
 //
-// Plan: .github/agents/plans/in-session-pr-toast-plan.md
+// Plan: docs/plans/in-session-pr-toast-plan.md
 // Widget under test: lib/widgets/session/pr_toast.dart
 //
 // These tests pin the static builder's output (duration, behavior,

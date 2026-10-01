@@ -11,7 +11,7 @@
 // both and compares what each stored, row by row, by `toMap`. The last group
 // covers the model rules that hold before anything reaches a repository.
 //
-// Plan: .github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md
+// Plan: docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md
 
 import 'dart:io';
 

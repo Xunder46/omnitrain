@@ -9,7 +9,7 @@
 //        and at most one extra-weight row;
 //   I-c  a distance row that carries a value carries a source.
 //
-// Plan: `.github/agents/plans/2026-09-27-03b-stats-pr3b-distance-source-import-plan.md`.
+// Plan: `docs/plans/2026-09-27-03b-stats-pr3b-distance-source-import-plan.md`.
 // Verified by `test/row_invariants_guard_test.dart` (S-883 – S-887).
 
 import 'package:flutter_test/flutter_test.dart';

@@ -3,7 +3,7 @@
 //  WatchSessionEngineTests
 //
 //  The native watchOS half of
-//  `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`
+//  `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`
 //  — the same scenarios the Flutter client proves in
 //  `test/watch_logging_surfaces_test.dart`, run against the Swift logging
 //  state.

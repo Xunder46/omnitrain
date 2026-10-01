@@ -1,7 +1,7 @@
 // Tests for PR 5: Routine Unsaved-Changes Guard.
 //
 // Scenarios in
-// `.github/agents/plans/2026-07-27-05-pr5-routine-unsaved-changes-guard-plan.md`
+// `docs/plans/2026-07-27-05-pr5-routine-unsaved-changes-guard-plan.md`
 // map 1:1 to the tests below:
 //
 //   S-001 — Untouched routine exits without prompt (existing + new).

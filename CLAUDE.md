@@ -19,14 +19,14 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
 
 ## Authoritative Rules and Docs
 
-> **Doc freshness.** The docs in `.github/agents/docs/` are derived from source, not hand-maintained. If a claim there disagrees with `lib/`, `lib/` wins. Past snapshots / superseded audits live under `.github/agents/docs/history/` and under `docs/releases/` — they are clearly labeled `HISTORY` and must not be treated as current state.
+> **Doc freshness.** The docs in `docs/` are derived from source, not hand-maintained. If a claim there disagrees with `lib/`, `lib/` wins. Past snapshots / superseded audits live under `docs/history/` and under `docs/releases/` — they are clearly labeled `HISTORY` and must not be treated as current state.
 >
-> **Audit — 2026-07-26.** A full audit against `lib/` corrected drift across the set: nutrition tracking was still listed as an explicit non-goal, six screens were missing from the inventory, four data models were undocumented, and the SQLite runtime was documented as live after being retired. Two oversized docs were split so the whole set is indexable. Read `.github/agents/docs/docs-audit-2026-07-26.md` for what changed and, more importantly, **what is still unresolved** — including two conflicting hub implementations and the absence of any way to identify a custom exercise.
+> **Audit — 2026-07-26.** A full audit against `lib/` corrected drift across the set: nutrition tracking was still listed as an explicit non-goal, six screens were missing from the inventory, four data models were undocumented, and the SQLite runtime was documented as live after being retired. Two oversized docs were split so the whole set is indexable. Read `docs/docs-audit-2026-07-26.md` for what changed and, more importantly, **what is still unresolved** — including two conflicting hub implementations and the absence of any way to identify a custom exercise.
 >
-> **Size ceiling.** No file in `.github/agents/docs/` may exceed 64 KiB; larger files are silently skipped by the tools that index them. Enforced by `test/docs_indexing_contract_test.dart`. Split oversized docs into part pages and keep the original path as an index so inbound links keep resolving.
+> **Size ceiling.** No file in `docs/` may exceed 64 KiB; larger files are silently skipped by the tools that index them. Enforced by `test/docs_indexing_contract_test.dart`. Split oversized docs into part pages and keep the original path as an index so inbound links keep resolving.
 
-- Start with `.github/agents/docs/global_conventions.md` (authoritative cross-cutting rules).
-- Then use `.github/agents/docs/README.md` for the index and relevant feature/architecture docs:
+- Start with `docs/global_conventions.md` (authoritative cross-cutting rules).
+- Then use `docs/README.md` for the index and relevant feature/architecture docs:
   - `app_philosophy.md` — product goals, entity model, home screen layout
   - `modality_tracking.md` — exercise capabilities, modalities, effort kinds
   - `modality_based_exercise_ui.md` — adaptive workout session screen
@@ -69,7 +69,7 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
 - `lib/features/`: screen-level features (home, session, exercise, routine, calendar, period, nutrition, profile, settings, stats, onboarding, splash, startup).
 - `lib/widgets/`: reusable presentation widgets.
 - `lib/core/`: shared constants, services, and utilities.
-- `.github/agents/docs/`: architecture and behavior source of truth.
+- `docs/`: architecture and behavior source of truth.
 - `test/`: layer and feature tests; update alongside behavior changes.
 
 ## Working Rules for Claude Code

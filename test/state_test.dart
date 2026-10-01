@@ -3051,7 +3051,7 @@ void main() {
 
     test('computeSessionSummary populates ExerciseSummary.bestE1RM '
         'for set-kind efforts (AC-5 parity-plan guard)', () async {
-      // Plan: .github/agents/plans/summary-pr-parity-plan.md (AC-5).
+      // Plan: docs/plans/summary-pr-parity-plan.md (AC-5).
       // The builder must produce `bestE1RM` so the Session Summary's
       // PR detector (which now uses the same Epley formula as the
       // toast and Stats screen) has a value to compare against.

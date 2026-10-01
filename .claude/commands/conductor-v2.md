@@ -13,7 +13,7 @@ Handling rules:
   not a stall.
 - Do not expect a second question round and do not ask the user to approve the plan.
 - It writes plan markdown only — never source code. Note the plan-file path it establishes
-  (`.github/agents/plans/[feature]-plan.md`) and reuse it in later commands.
+  (`docs/plans/[feature]-plan.md`) and reuse it in later commands.
 - Before continuing, confirm the plan carries **Decision Ledger**, **Done Criteria**,
   **Predicted Files**, and fixture-enumerated **Scenarios** per phase. A plan missing these
   cannot be verified mechanically downstream — send it back once with that reason.

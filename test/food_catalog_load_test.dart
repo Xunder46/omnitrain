@@ -250,7 +250,7 @@ void main() {
       // `beer_regular` and `red_wine` are bundled as hidden (the
       // app's calorie model cannot represent their alcohol-
       // derived energy — see
-      // `.github/agents/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`).
+      // `docs/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`).
       final catalogFoods = await repo.getCatalogFoods();
       expect(catalogFoods.length, 166);
       // Diagnostic read sees every row on disk.
@@ -2157,7 +2157,7 @@ void main() {
           'sugar_granulated': 'Sugar, granulated',
           'marinara_sauce': 'Marinara sauce',
           // `beer_regular` and `red_wine` are bundled as hidden
-          // (see `.github/agents/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`)
+          // (see `docs/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`)
           // — they are present in the catalog row count and resolvable
           // by id (S-003, S-006), but the user-facing search filter
           // excludes them. The S-005 search test in

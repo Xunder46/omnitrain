@@ -9,7 +9,7 @@
 // (D-303, D-308, D-317).
 //
 // Scenarios: S-831–S-837 of
-// `.github/agents/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`.
+// `docs/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`.
 
 import 'dart:io';
 

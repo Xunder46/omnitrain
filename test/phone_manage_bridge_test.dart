@@ -1,6 +1,6 @@
 // Phone manage-bridge for live sessions — the phone's half of a live sync.
 //
-// Plan: `.github/agents/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
+// Plan: `docs/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
 // Scenario mapping:
 //   S-001 the phone surfaces the live watch session   → `S-001 ...`
 //   S-002 add an exercise from full-catalog search    → `S-002 ...`

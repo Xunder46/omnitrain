@@ -28,7 +28,7 @@
 //
 // The **imagePath** written by the service is the **basename**
 // (D-1 in
-// `.github/agents/plans/image-persistence-relocation-fix-plan.md`):
+// `docs/plans/image-persistence-relocation-fix-plan.md`):
 // a portable identifier under the managed directory that survives
 // OS-driven relocations. Tests assert this contract by checking
 // that the path has no directory separator and resolves to a

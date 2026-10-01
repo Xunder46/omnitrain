@@ -8,7 +8,7 @@
 /// every phone reader and writer agrees on where an edit, a delete or a
 /// distance lands.
 ///
-/// Plan: `.github/agents/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
+/// Plan: `docs/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
 /// The watch import numbers its own rows and keeps its own parser (O-2).
 /// Verified by `test/entry_rows_test.dart`.
 library;

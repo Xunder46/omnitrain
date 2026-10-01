@@ -6,7 +6,7 @@
 //  heart rate over a window, the steps inside a window, the pauses a window
 //  excludes, and the set blocks a session end summarises.
 //
-//  Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//  Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //  D-121 to D-126. Raw readings never leave the watch (PROTOCOL.md, "Session
 //  capture"); these values are the only thing derived from them that does, so
 //  they are computed here, once, from stored rows — never from a live

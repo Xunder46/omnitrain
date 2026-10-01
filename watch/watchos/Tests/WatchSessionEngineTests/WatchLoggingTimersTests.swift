@@ -3,7 +3,7 @@
 //  WatchSessionEngineTests
 //
 //  The native watchOS half of
-//  `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`
+//  `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`
 //  — timestamp-derived countdowns and their haptics, proved the same way the
 //  Flutter client proves them in `test/watch_logging_timers_test.dart`.
 //

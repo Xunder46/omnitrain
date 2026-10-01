@@ -3,7 +3,7 @@
 //  WatchSessionEngine
 //
 //  The native watchOS effort-rating prompt and End control. Plan:
-//  `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`, D-118
+//  `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`, D-118
 //  and D-119.
 //
 //  Compiled only into a watch target, like the other views in this module:

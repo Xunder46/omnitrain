@@ -30,7 +30,7 @@ class FoodThumbnail extends StatelessWidget {
   /// Optional stored food photo reference. `null` or an empty
   /// string falls back to the placeholder. Under the
   /// post-relocation-fix contract this is a **basename** (D-1 in
-  /// `.github/agents/plans/image-persistence-relocation-fix-plan.md`),
+  /// `docs/plans/image-persistence-relocation-fix-plan.md`),
   /// not an absolute path; the [imageStorage] service resolves it
   /// to the current managed dir on render.
   final String? imagePath;

@@ -2,7 +2,7 @@
 // the wrist sends, and the importer turns a completed session into an
 // ordinary `TrainingSession`.
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
 // (Stats PR 2), Phase 3b — D-110, D-132 – D-138, D-140, D-142.
 // Scenario mapping:
 //   S-261 import from the offline stream        → `S-261 ...`

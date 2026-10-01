@@ -1,6 +1,6 @@
 /// The watch session engine: one training session, no phone required.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-06-a1-watch-session-engine-plan.md`.
+/// Plan: `docs/plans/2026-07-13-06-a1-watch-session-engine-plan.md`.
 ///
 /// Two invariants shape this class:
 ///

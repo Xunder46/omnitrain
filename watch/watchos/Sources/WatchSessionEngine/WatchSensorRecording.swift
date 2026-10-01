@@ -5,7 +5,7 @@
 //  Sensor recording: what the watch listens to while a session runs. Mirrors
 //  `lib/watch/sensors/watch_sensor_recording.dart`.
 //
-//  Plan: `.github/agents/plans/2026-07-13-11-d-watch-sensor-recording-plan.md`,
+//  Plan: `docs/plans/2026-07-13-11-d-watch-sensor-recording-plan.md`,
 //  scenarios S-002, S-003, S-004 and S-006.
 //
 //  Two rules shape this layer:

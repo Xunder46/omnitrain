@@ -7,7 +7,7 @@
 // read the same, and a Hive restart must not change the answer.
 //
 // Scenarios S-841–S-847 of
-// `.github/agents/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
+// `docs/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';

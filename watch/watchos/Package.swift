@@ -1,7 +1,7 @@
 // swift-tools-version: 5.9
 //
 // Watch session engine — the watchOS (native) half of
-// `.github/agents/plans/2026-07-13-06-a1-watch-session-engine-plan.md`.
+// `docs/plans/2026-07-13-06-a1-watch-session-engine-plan.md`.
 //
 // Deliberately a plain Swift package rather than an Xcode project: the engine,
 // its append-only store, its timer math, and the protocol conformance suite are
@@ -21,7 +21,7 @@ let package = Package(
     name: "WatchSessionEngine",
     // watchOS is declared so the watch app target can link this library; the
     // macOS platform is what keeps `swift test` runnable without a watch target
-    // (see `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+    // (see `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
     // Phase 7 step 0).
     platforms: [.macOS(.v13), .watchOS(.v9)],
     // The library the Xcode watch target links. Without a declared product the

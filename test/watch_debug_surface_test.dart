@@ -1,7 +1,7 @@
 // The QA surface of iteration 1 step 5: create → log → kill → restore, driven
 // through the UI a human taps on hardware.
 //
-// Plan: `.github/agents/plans/2026-07-13-06-a1-watch-session-engine-plan.md`.
+// Plan: `docs/plans/2026-07-13-06-a1-watch-session-engine-plan.md`.
 //
 // This is a harness test, not a scenario test: S-001 and S-002 already prove the
 // engine restores, and this proves the surface QA is handed actually drives the

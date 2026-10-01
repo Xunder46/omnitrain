@@ -1,11 +1,11 @@
 // The phone's reference data on its way to the wrist: the lists that let the
 // watch work while the phone is in another room, and the settings it honours.
 //
-// Plans: `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`
+// Plans: `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`
 // (scenario S-003, the foods),
-// `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md` (Phase 3,
+// `docs/plans/2026-09-21-13-watch-integration-shipping.md` (Phase 3,
 // scenario S-003/S-007, the routines), and
-// `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md` (D-113,
+// `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md` (D-113,
 // scenario S-253, the preferences).
 //
 // Building a message and carrying it are separate jobs, so nothing here sends

@@ -1,7 +1,7 @@
 // filepath: lib/features/nutrition/widgets/nutrition_primer_sheet.dart
 //
 // One-shot orientation sheet for the Daily Nutrition page (see
-// `.github/agents/plans/nutrition-page-primer-plan.md`).
+// `docs/plans/nutrition-page-primer-plan.md`).
 //
 // The page inverts the usual food-logging model and packs several
 // unfamiliar ideas onto one screen (curate a "Foods I Eat" list once

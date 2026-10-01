@@ -1,6 +1,6 @@
 /// The phone's view of a session that is running on the wrist.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
+/// Plan: `docs/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
 ///
 /// This is the phone doing the heavy lifting mid-workout: the ladder is the
 /// phone's to own (PROTOCOL.md, authority rule 2), so add, remove, reorder, and

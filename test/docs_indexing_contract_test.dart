@@ -1,7 +1,7 @@
 // filepath: test/docs_indexing_contract_test.dart
 //
 // Automated validation of the agent documentation set in
-// `.github/agents/docs/`.
+// `docs/`.
 //
 // Why this exists
 // ---------------
@@ -32,7 +32,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Root of the agent documentation set.
-const String _docsRoot = '.github/agents/docs';
+const String _docsRoot = 'docs';
 
 /// Hard per-file ceiling, in bytes, for any Markdown file under [_docsRoot].
 ///
@@ -386,7 +386,7 @@ void main() {
             'Roadmap or scheduled-change content found in documentation. '
             'Every such annotation in this repository has eventually inverted, '
             'labelling shipped behaviour as upcoming and removed behaviour as '
-            'current. Unbuilt ideas belong in .github/agents/plans/.\n'
+            'current. Unbuilt ideas belong in docs/plans/.\n'
             '${offenders.join('\n')}',
       );
     });

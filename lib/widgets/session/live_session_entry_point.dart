@@ -7,7 +7,7 @@ import '../layout/omni_surface.dart';
 /// The way into a session that is running on the wrist, shown on the home
 /// panel while one is live.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
+/// Plan: `docs/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
 ///
 /// One line: which exercise the wrist is on, and how much has been logged. It
 /// reads the session rather than a copy of it, so what it says is what the

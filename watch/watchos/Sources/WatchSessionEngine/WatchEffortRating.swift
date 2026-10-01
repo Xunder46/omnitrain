@@ -5,7 +5,7 @@
 //  The session effort rating on the wrist: the End action that may owe one, the
 //  prompt that asks for it, and the single answer it records.
 //
-//  Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//  Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //  D-113, D-114 and D-116 – D-119, scenarios S-211 – S-220.
 //
 //  Everything here is state. The prompt and End views

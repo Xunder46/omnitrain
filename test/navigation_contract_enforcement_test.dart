@@ -2,7 +2,7 @@
 //
 // Automated enforcement of OmniTrain's navigation contract.
 //
-// Rule (see `.github/agents/docs/navigation_contract.md`):
+// Rule (see `docs/navigation_contract.md`):
 //   Any `MaterialPageRoute` or `PageRouteBuilder` constructed outside
 //   `lib/core/navigation/` is a code-review blocker. All screen-level
 //   navigation in OmniTrain must go through `OmniNavigator`
@@ -88,7 +88,7 @@ void main() {
                   'Use OmniNavigator (in '
                   'lib/core/navigation/omni_navigator.dart) for every '
                   'screen-level push / pushReplacement. '
-                  'See .github/agents/docs/navigation_contract.md.\n'
+                  'See docs/navigation_contract.md.\n'
                   'Offending files:\n${violations.join('\n')}',
       );
     });

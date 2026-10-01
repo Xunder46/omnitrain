@@ -21,7 +21,7 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 ///
 /// The primary bottom **Save** action uses the shared
 /// [OmniBottomCTA] (see
-/// `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`)
+/// `docs/plans/primary-bottom-cta-anchor-width-plan.md`)
 /// so the Save button shares the app-wide width, height, and
 /// vertical anchor with every other primary bottom CTA.
 class NutritionTargetScreen extends StatefulWidget {

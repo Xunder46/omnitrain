@@ -1,7 +1,7 @@
 /// The value screen's state: the effort the session is on, the values the user
 /// has dialled in, and the observation that comes out of confirming them.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`,
+/// Plan: `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`,
 /// scenarios S-001 to S-006 and S-008.
 ///
 /// Everything the screen shows is derived — from the slot the engine is on, the

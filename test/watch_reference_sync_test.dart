@@ -1,13 +1,13 @@
 // The phone's `routines_down` producer: what the wrist reads to start a routine.
 //
-// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 // Phases 3 and 4 (D-6, D-7).
 // Scenario mapping:
 //   S-003 the phone builds routines on request  → `S-003 ...`
 //   S-004 the wrist reflects the declared kind  → `S-004 ...`
 //   S-007 the fallback list covers every exercise → `S-007 ...`
 //   S-253 the preferences the wrist honours        → `S-253 ...`
-//         (Stats PR 2, `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-113; the request/answer half is in `test/watch_transport_test.dart`)
 //
 // The message is judged the way the watch judges it: written into the shared

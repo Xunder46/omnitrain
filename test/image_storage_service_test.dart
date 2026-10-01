@@ -8,7 +8,7 @@
 // `test/image_persistence_round_trip_test.dart` (Phase 2).
 //
 // Scenarios referenced here come from
-// `.github/agents/plans/image-persistence-relocation-fix-plan.md`:
+// `docs/plans/image-persistence-relocation-fix-plan.md`:
 //
 //   * S-1 (service-level): persist produces a basename-shaped
 //     reference whose bytes match the source.

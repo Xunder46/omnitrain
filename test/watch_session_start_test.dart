@@ -1,6 +1,6 @@
 // Watch session start paths — routines, free workouts, and pushes from the phone.
 //
-// Plan: `.github/agents/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`.
+// Plan: `docs/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`.
 // Scenario mapping:
 //   S-001 start from a routine, phone offline   → `S-001 ...`
 //   S-002 free workout, phone offline           → `S-002 ...`

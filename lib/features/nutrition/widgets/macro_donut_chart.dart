@@ -26,7 +26,7 @@ import '../../../core/constants/omni_theme.dart';
 ///   - All colors come from [OmniTheme.colors.macroChart] and
 ///     [OmniTheme.colors.textDominant]. No hardcoded values.
 ///
-/// See `.github/agents/plans/daily-nutrition-macro-chart-plan.md`
+/// See `docs/plans/daily-nutrition-macro-chart-plan.md`
 /// for the full spec (scenarios S-001..S-014).
 class MacroDonutChart extends StatefulWidget {
   /// Consumed protein grams today. Negative values are clamped to 0.

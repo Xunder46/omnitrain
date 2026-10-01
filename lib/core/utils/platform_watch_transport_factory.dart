@@ -1,6 +1,6 @@
 /// Where the app asks for the thing that carries watch messages.
 ///
-/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 /// Phase 1 (D-2), scenario S-006.
 ///
 /// One place decides, and it decides on the platform rather than on what is

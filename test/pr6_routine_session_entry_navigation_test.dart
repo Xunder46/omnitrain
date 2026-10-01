@@ -1,7 +1,7 @@
 // Tests for PR 6: Routine and Session Entry Navigation.
 //
 // Scenarios in
-// `.github/agents/plans/2026-07-27-06-pr6-routine-session-entry-navigation-plan.md`
+// `docs/plans/2026-07-27-06-pr6-routine-session-entry-navigation-plan.md`
 // map 1:1 to the tests below:
 //
 //   S-001 — Card body opens the routine editor and creates no session;

@@ -1,7 +1,7 @@
 // Exercise Row Density Fix
 //
 // Acceptance scenarios from
-// .github/agents/plans/exercise-row-density-fix-plan.md:
+// docs/plans/exercise-row-density-fix-plan.md:
 //
 //   S-001  Info control aligns with the title line
 //   S-002  Row height returns toward the pre-PR-7 baseline

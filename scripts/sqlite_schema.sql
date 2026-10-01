@@ -1473,7 +1473,7 @@ CREATE INDEX IF NOT EXISTS IX_water_log_date ON app_water_log(date_ms DESC);
 -- WATCH CAPTURE — SENSOR SUMMARIES + WATCH SESSION INBOX (September 2026)
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Stats PR 2, D-131 and D-132 in
--- `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`.
+-- `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`.
 -- Models: `SensorSummary` and `WatchInboxEntry` in `lib/data/models/models.dart`.
 -- Hive boxes: `sensor_summaries` and `watch_inbox`. Both tables are new and
 -- start empty on every install, so they need no data migration.

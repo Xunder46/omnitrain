@@ -8,7 +8,7 @@
 // never rewritten by a later sync, in value or in source (D-336).
 //
 // Scenarios S-876, S-877, S-878 and S-880 of
-// `.github/agents/plans/2026-09-27-03b-stats-pr3b-distance-source-import-plan.md`.
+// `docs/plans/2026-09-27-03b-stats-pr3b-distance-source-import-plan.md`.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';

@@ -1,7 +1,7 @@
 /// Where a session begins on the wrist: a synced routine, or a free workout.
 ///
-/// Plans: `.github/agents/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`
-/// (the paths) and `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`
+/// Plans: `docs/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`
+/// (the paths) and `docs/plans/2026-09-21-13-watch-integration-shipping.md`
 /// (D-7 / S-010 — sync is watch-initiated, and this surface is where the user
 /// finds that out).
 ///
@@ -257,7 +257,7 @@ class WatchHintRow extends StatelessWidget {
 /// "The phone will not do this for you" — the one thing the wrist has to say
 /// about a routine list that only changes when the user asks.
 ///
-/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 /// D-7 and S-010. The label is part of the product, not decoration: sync is
 /// watch-initiated, so a user who never learns that waits for routines that are
 /// never coming. The watchOS client renders the same sentence from the same

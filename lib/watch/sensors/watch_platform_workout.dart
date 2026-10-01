@@ -1,7 +1,7 @@
 /// The platform workout session: the watch telling the operating system that
 /// training is happening.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-11-d-watch-sensor-recording-plan.md`,
+/// Plan: `docs/plans/2026-07-13-11-d-watch-sensor-recording-plan.md`,
 /// scenarios S-001, S-002, S-005, S-007 and S-008.
 ///
 /// Registering the session with the platform's health service is what unlocks

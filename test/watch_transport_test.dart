@@ -1,6 +1,6 @@
 // The real transport: one radio, two ends, and what each end does with a frame.
 //
-// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 // Phase 1 (D-1) and Phase 2 (D-2).
 // Scenario mapping:
 //   S-001 phone → watch delivery              → `S-001 ...`
@@ -8,7 +8,7 @@
 //   S-003 the phone answers a routine request → `S-003 ...`
 //   S-006 the transport is chosen by platform → `S-006 ...`
 //   S-253 every sync is answered with preferences → `S-253 ...`
-//         (Stats PR 2, `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
+//         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-113, D-115)
 //
 // The loopback below is a channel, not a transport: it carries frames in memory

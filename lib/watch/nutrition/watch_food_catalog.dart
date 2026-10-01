@@ -1,6 +1,6 @@
 /// The food list the phone sends down, in the shapes the wrist reasons about.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
+/// Plan: `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
 /// scenarios S-001 to S-004.
 ///
 /// The store keeps the phone's JSON as it arrived ([WatchFoodCatalogRecord]);

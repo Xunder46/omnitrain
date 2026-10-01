@@ -9,7 +9,7 @@
 // The test file is also the home of the red tests for the Iteration 3
 // polish: even-seam gaps (S-015), in-band labels (S-016), narrow
 // section hides its label (S-017), labels inherit section opacity
-// (S-018). See `.github/agents/plans/daily-nutrition-macro-chart-plan.md`.
+// (S-018). See `docs/plans/daily-nutrition-macro-chart-plan.md`.
 
 import 'dart:math' as math;
 

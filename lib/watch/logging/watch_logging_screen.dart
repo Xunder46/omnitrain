@@ -1,6 +1,6 @@
 /// The Wear OS logging surface: one effort, its values, one confirm.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
+/// Plan: `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
 ///
 /// The four effort kinds are one screen varying by the fields the session hands
 /// it (S-001 to S-004), because the wrist should not make the user learn four

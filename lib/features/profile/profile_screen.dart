@@ -623,7 +623,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// transition (avoids the bleed-through that happens when
   /// every Scaffold is transparent and `opaque == false`). This
   /// is the same pattern every other modal screen in the app
-  /// uses — see `.github/agents/docs/navigation_and_screens.md`
+  /// uses — see `docs/navigation_and_screens.md`
   /// and `lib/core/navigation/omni_route.dart`.
   Future<Uint8List?> _showCropSheet(Uint8List bytes) {
     return OmniNavigator.push<Uint8List>(

@@ -1,6 +1,6 @@
 /// Where a message that arrived from a wrist goes on the phone.
 ///
-/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 /// Phase 2 (D-2). Scenario S-006.
 ///
 /// Two kinds of frame arrive over the one radio, and they are answered by

@@ -4,7 +4,7 @@
 //
 //  The native watchOS start surface: a synced routine, or a free workout.
 //  Native half of
-//  `.github/agents/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`.
+//  `docs/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`.
 //
 //  Another deliberate choice of the same kind `Package.swift` makes: the engine,
 //  the store, the start paths and the fallback derivation are
@@ -26,7 +26,7 @@ import SwiftUI
 /// "The phone will not do this for you" — the one thing the wrist has to say
 /// about a routine list that only changes when the user asks.
 ///
-/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 /// D-7 and S-010. Sync is watch-initiated, so a user who never learns that waits
 /// for routines that are never coming. The Flutter client renders the same
 /// sentence from the same constants.

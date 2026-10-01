@@ -2,7 +2,7 @@
 //  SyncProtocolFixturesTests.swift
 //  WatchSessionEngineTests
 //
-//  S-007 of `.github/agents/plans/2026-07-13-06-a1-watch-session-engine-plan.md`:
+//  S-007 of `docs/plans/2026-07-13-06-a1-watch-session-engine-plan.md`:
 //  the native watch client is held to the same conformance register the Dart
 //  client is, by running the shared JSON fixtures through the Swift validator
 //  and through the engine's emission pipeline.
@@ -12,7 +12,7 @@
 //  `test/sync_protocol_fixtures_test.dart` — structural reconciliation is the
 //  receiver's job, delivered for the watch by the live-session items.
 //
-//  Also S-207 of `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`:
+//  Also S-207 of `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`:
 //  every event `watch/contract/watch_capture_contract.json` expects the wrist to
 //  emit is one the protocol accepts — the same verdict the Dart suite
 //  (`test/watch_capture_contract_conformance_test.dart`) reaches on it.

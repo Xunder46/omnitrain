@@ -59,7 +59,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
       appBar: const OmniBackHeader(title: 'My Routines'),
       // Primary bottom CTA — the shared `OmniBottomCTA` is the single
       // source of truth for full-width, safe-area-anchored primary actions
-      // (see `.github/agents/docs/widget_catalog.md` — `OmniBottomCTA`).
+      // (see `docs/widget_catalog.md` — `OmniBottomCTA`).
       // Replaces the legacy `FloatingActionButton` so the routines screen
       // matches the unified bottom-CTA pattern used elsewhere (calendar
       // day list, food library, etc.).

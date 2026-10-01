@@ -389,7 +389,7 @@ void main() {
 
       final data = await StatsProgressService(repo).computeProgressData();
       // Bodyweight sets are now tracked on the reps axis
-      // (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+      // (`docs/plans/stats-summary-fix-pack-plan.md`,
       // Item 2) — `weight == 0, reps > 0` is a legitimate signal,
       // not a skip. The exercise must appear in topLifts on its
       // reps axis with `e1RmTrend` and `volumeTrend` empty.
@@ -2303,7 +2303,7 @@ void main() {
 
   // ── Stats & Summary Fix Pack — PR 2 (bodyweight + recency floor) ─────────
   //
-  // Plan: .github/agents/plans/stats-summary-fix-pack-plan.md
+  // Plan: docs/plans/stats-summary-fix-pack-plan.md
   //
   // PR 2 ships the bodyweight inclusion (Item 2) and the recency
   // floor on Strength/Cardio selection (Item 3). These two items

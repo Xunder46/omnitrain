@@ -1,6 +1,6 @@
 /// The Wear OS quick-log surface: the foods the user eats, one portion, one log.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
+/// Plan: `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
 /// scenarios S-001, S-004 and S-006.
 ///
 /// There is no search, no catalog and no macro editing here: the phone owns all

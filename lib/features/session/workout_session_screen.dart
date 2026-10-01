@@ -133,7 +133,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // - Re-saving an already-celebrated set does not re-trigger (same e1RM)
   // - A lesser set after a greater set does not trigger (doesn't exceed session best)
   // - Ascending bests each trigger once (each exceeds the previous session best)
-  // See `.github/agents/plans/pr-celebration-throttle-plan.md`.
+  // See `docs/plans/pr-celebration-throttle-plan.md`.
   final Map<String, double> _sessionRunningBestE1RM = {};
 
   /// Session-scoped running max-reps per exercise. Mirror of
@@ -771,7 +771,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     // forget — it never awaits and never blocks the rest timer or the
     // set advance below.
     //
-    // Plan: .github/agents/plans/in-session-pr-toast-plan.md
+    // Plan: docs/plans/in-session-pr-toast-plan.md
     // Decision Ledger: D-1 (Epley), D-2 (standing best), D-3 (strict
     // greater), D-5 (set only), D-6 (no edit), D-7 (no skip),
     // D-8 (one toast per beating set).
@@ -844,7 +844,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   /// blocks the rest timer or the set advance.
   ///
   /// Decision Ledger references (in
-  /// `.github/agents/plans/in-session-pr-toast-plan.md`):
+  /// `docs/plans/in-session-pr-toast-plan.md`):
   /// - D-1: Epley e1RM = weight × (1 + reps / 30)
   /// - D-2: Standing best via `StatsProgressService.getAllTimeBestE1RM`
   ///   (completed sessions only — in-progress sets are excluded)
@@ -879,7 +879,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     // logic mirrors the e1RM-axis logic so the in-session toast,
     // the post-workout summary, and the Stats screen always agree
     // on the same verdict for the same set
-    // (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+    // (`docs/plans/stats-summary-fix-pack-plan.md`,
     // Item 2 — rep-based record parity).
     final hasAddedWeight = weight > 0;
     if (hasAddedWeight) {

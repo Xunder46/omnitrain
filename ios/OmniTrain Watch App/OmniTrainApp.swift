@@ -6,7 +6,7 @@
 //  `WatchSessionEngine` package in `watch/watchos/` — this target owns only the
 //  app lifecycle and, eventually, the transport.
 //
-//  Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+//  Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 //  Phase 7.
 //
 

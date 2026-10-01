@@ -796,7 +796,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
       // mid-set. Navigation is now exclusively via the explicit
       // Previous / Next arrows, the set dots, and the per-set
       // controls at the bottom of the detail view. See
-      // `.github/agents/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
+      // `docs/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
       // scenario S-003.
       body: Stack(
         children: [

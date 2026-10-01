@@ -17,7 +17,7 @@
 //     user-facing snackbar — never reach the service.
 //
 // See D-1..D-10 in
-// `.github/agents/plans/image-persistence-relocation-fix-plan.md`
+// `docs/plans/image-persistence-relocation-fix-plan.md`
 // for the full design contract.
 
 export 'image_storage_service_stub.dart'

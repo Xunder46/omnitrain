@@ -1,6 +1,6 @@
 // Watch session engine — kill-safe lifecycle, append-only storage, timer math.
 //
-// Plan: `.github/agents/plans/2026-07-13-06-a1-watch-session-engine-plan.md`.
+// Plan: `docs/plans/2026-07-13-06-a1-watch-session-engine-plan.md`.
 // Scenario mapping:
 //   S-001 force-kill restores an in-progress session   → `S-001 ...`
 //   S-002 reboot restores the session identically       → `S-002 ...`

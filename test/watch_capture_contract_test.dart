@@ -1,7 +1,7 @@
 // The Dart half of the capture contract: what the phone holds after importing
 // each F-CAP case, on both repositories (S-272).
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
 // (Stats PR 2), Phase 3b.
 // Scenario mapping:
 //   S-272 Hive ↔ Mock parity of every imported row → `S-272 ...`

@@ -2,7 +2,7 @@
 //
 // Tests for the **decimal macros** and **auto-select on focus**
 // polish on `FoodForm`. See
-// `.github/agents/plans/food-form-decimals-and-autofocus-plan.md`
+// `docs/plans/food-form-decimals-and-autofocus-plan.md`
 // for the full scenario register (S-001..S-008).
 //
 // The food form lives in

@@ -1,6 +1,6 @@
 /// The one file that imports the watch package.
 ///
-/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
 /// Phase 1 (D-1). `watch_connectivity` wraps `WCSession` on iOS and the Wear
 /// APIs on Android; keeping it here means a swap — a hand-rolled `MethodChannel`
 /// layer, or a different package — is a change to this file and nothing else

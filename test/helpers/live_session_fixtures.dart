@@ -1,7 +1,7 @@
 // Shared fixtures for the phone's live watch session — the mirror, a ladder,
 // entries, and a transport that records what the phone emits.
 //
-// Plan: `.github/agents/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
+// Plan: `docs/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
 //
 // The wire itself is proven in `test/phone_manage_bridge_test.dart`, where both
 // devices are real. Widget and flow tests only need to know what the phone was

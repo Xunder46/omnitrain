@@ -1,7 +1,7 @@
 /// The watch session inbox: where everything the phone learns about a wrist
 /// session waits until it becomes history.
 ///
-/// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
+/// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
 /// (Stats PR 2), D-132 – D-139, D-142.
 ///
 /// Every wrist effort entry, effort rating and session end — from an

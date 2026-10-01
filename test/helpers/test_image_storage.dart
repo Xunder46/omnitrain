@@ -5,7 +5,7 @@
 // directory for teardown.
 //
 // Why a helper: Phase 2 of
-// `.github/agents/plans/image-persistence-fix-plan.md` makes the
+// `docs/plans/image-persistence-fix-plan.md` makes the
 // `ImageStorageService` a required constructor argument on
 // `ProfileState` and `FoodLibraryState`. ~100 test sites construct
 // those states; the helper keeps the per-test setup to a single

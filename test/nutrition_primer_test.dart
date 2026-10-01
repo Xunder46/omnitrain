@@ -1,7 +1,7 @@
 // filepath: test/nutrition_primer_test.dart
 //
 // Tests for the one-time Daily Nutrition page primer sheet
-// (see `.github/agents/plans/nutrition-page-primer-plan.md`).
+// (see `docs/plans/nutrition-page-primer-plan.md`).
 //
 // These tests cover the six scenarios in the plan:
 //

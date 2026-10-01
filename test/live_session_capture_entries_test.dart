@@ -1,7 +1,7 @@
 // The Watch Session screen counts what the user logged, not what the wrist
 // reports about the session as a whole.
 //
-// Plan: `.github/agents/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
+// Plan: `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`
 // (Stats PR 2), D-141.
 // Scenario mapping:
 //   S-254 effort entries only → `S-254 ...`

@@ -63,7 +63,7 @@ String _renderFood(Map<String, dynamic> f) {
   final referenceAmount = (f['referenceAmount'] as num).toString();
   final referenceLabel = f['referenceLabel'] as String;
   // Macros are `double` on `Food` (S-001 — see
-  // `.github/agents/plans/food-form-decimals-and-autofocus-plan.md`).
+  // `docs/plans/food-form-decimals-and-autofocus-plan.md`).
   // The bundled JSON's macro values are integers in the v1 dataset
   // but may be fractional in future revisions; we preserve the
   // source precision here so the loader / seed parity test

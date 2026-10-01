@@ -1,5 +1,5 @@
 // Tests for the §11r and §11s pre-release gate checks added in
-// `.github/agents/plans/crash-reporting-rate-limit-plan.md`
+// `docs/plans/crash-reporting-rate-limit-plan.md`
 // (Iteration 3).
 //
 // Two invariants are added beside the existing crash-reporting checks:

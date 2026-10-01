@@ -1,7 +1,7 @@
 // Tests for PR 2: Launch Quality Hotfix.
 //
 // Scenarios in
-// `.github/agents/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
+// `docs/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
 // map 1:1 to the tests below:
 //
 //   S-001 — Healthy startup remains non-failure throughout
@@ -12,7 +12,7 @@
 // required because the current implementation renders the failure
 // surface during preparation as well as on genuine failure (see
 // `lib/app/startup_root.dart` and
-// `.github/agents/docs/navigation_and_screens.md` line 57: "current
+// `docs/navigation_and_screens.md` line 57: "current
 // implementation does not model preparation separately from
 // failure"). These tests assert the new contract: while the runner
 // is in flight, the failure surface must NOT render, and the

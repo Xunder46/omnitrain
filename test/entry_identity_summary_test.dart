@@ -7,7 +7,7 @@
 // number.
 //
 // Scenarios S-855, S-856, S-858 and S-859 of
-// `.github/agents/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
+// `docs/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
 // The state half of S-858 is `test/entry_identity_test.dart`'s.
 
 import 'package:flutter/material.dart';
