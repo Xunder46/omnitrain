@@ -73,9 +73,9 @@ non-overlapping training periods).
 ### Release & Operations
 | Document | Description | Status |
 |----------|-------------|--------|
-| [iOS TestFlight Release Checklist](../../../docs/releases/ios-testflight.md) | Release workflow, archive/upload steps, and pre-release checks | **Current — operational** |
-| [May 2026 Plan Review](../../../docs/releases/2026-05-plan-review.md) | Summary of the implementation plans reviewed for Apr 17-May 17, 2026 and the docs they affected | **History snapshot** (frozen window) |
-| [PR-Surface Verification — June 27, 2026](../../../docs/releases/2026-06-27-pr-surface-verification.md) | Read-only verification of the personal-record definition divergence across the in-workout toast, Stats screen, and Session Summary. The divergence it documents is real and unresolved. | **History report** (single-purpose) |
+| [iOS TestFlight Release Checklist](releases/ios-testflight.md) | Release workflow, archive/upload steps, and pre-release checks | **Current — operational** |
+| [May 2026 Plan Review](releases/2026-05-plan-review.md) | Summary of the implementation plans reviewed for Apr 17-May 17, 2026 and the docs they affected | **History snapshot** (frozen window) |
+| [PR-Surface Verification — June 27, 2026](releases/2026-06-27-pr-surface-verification.md) | Read-only verification of the personal-record definition divergence across the in-workout toast, Stats screen, and Session Summary. The divergence it documents is real and unresolved. | **History report** (single-purpose) |
 
 ### Architecture & Technical
 | Document | Description |
@@ -237,7 +237,7 @@ Documents that describe a past snapshot, a superseded design, or a single-purpos
 
 Current contents:
 
-- [`history/route-migration-audit.md`](history/route-migration-audit.md) — the original `centralized-route-system` migration audit (May–June 2026). Superseded as the enforcement mechanism by [`test/navigation_contract_enforcement_test.dart`](../../../test/navigation_contract_enforcement_test.dart); the test wins on disagreement.
+- [`history/route-migration-audit.md`](history/route-migration-audit.md) — the original `centralized-route-system` migration audit (May–June 2026). Superseded as the enforcement mechanism by [`test/navigation_contract_enforcement_test.dart`](../test/navigation_contract_enforcement_test.dart); the test wins on disagreement.
 - [`history/feedback-pack-baseline-2026-07-27.md`](history/feedback-pack-baseline-2026-07-27.md) — the source baseline recorded on 2026-07-27, immediately before the 2026-07-27 feedback pack (PRs 2–8). Frozen as of that date and no longer accurate: PRs 2, 4, 5 and 6 have since shipped.
 
 **Last Updated**: July 27, 2026

@@ -53,11 +53,29 @@ const int _maxDocBytes = 64 * 1024;
 /// separate, softer signal so the build does not break on a near-miss.
 const double _warnFraction = 0.80;
 
+/// Subfolders of [_docsRoot] that hold working records rather than the
+/// documentation set: plans (with their evidence and review files), release
+/// notes and agent memories. They are not indexed, size-limited or held to
+/// the content prohibitions.
+const List<String> _recordFolders = ['plans', 'releases', 'memories'];
+
+/// Owner-facing files in [_docsRoot] that are not part of the indexed
+/// documentation set: the unbuilt-ideas list and the manual watch setup guide.
+const List<String> _recordFiles = ['future-work.md', 'watch-app-setup-and-qa.md'];
+
+bool _isRecord(File file) =>
+    _recordFolders.any(
+      (folder) => file.path.startsWith('$_docsRoot/$folder/'),
+    ) ||
+    _recordFiles.any((name) => file.path == '$_docsRoot/$name');
+
 Iterable<File> _markdownFiles() sync* {
   final dir = Directory(_docsRoot);
   if (!dir.existsSync()) return;
   for (final entity in dir.listSync(recursive: true, followLinks: false)) {
-    if (entity is File && entity.path.endsWith('.md')) yield entity;
+    if (entity is File && entity.path.endsWith('.md') && !_isRecord(entity)) {
+      yield entity;
+    }
   }
 }
 

@@ -229,7 +229,7 @@ audit's scope and marked instead.
 
 ### 8.5 Pre-existing PR-definition divergence
 Untouched by this audit and still open — see
-[`docs/releases/2026-06-27-pr-surface-verification.md`](../../../docs/releases/2026-06-27-pr-surface-verification.md).
+[`docs/releases/2026-06-27-pr-surface-verification.md`](releases/2026-06-27-pr-surface-verification.md).
 
 ### 8.6 The watch sensor seams have no platform implementation
 *Flagged in `state_management/services_and_utils.md` under "Watch Sensors and the
@@ -247,7 +247,7 @@ Connect equivalents) is not part of this tree.
 Consequence: acceptance criterion 2 of the watch sensor plan — "live heart rate
 appears on the logging surface within seconds of session start **on real
 hardware**" — cannot be satisfied, and no reading is taken on a device. Tracked in
-[`plans/2026-07-13-11-d-watch-sensor-recording-plan.md`](../plans/2026-07-13-11-d-watch-sensor-recording-plan.md)
+[`plans/2026-07-13-11-d-watch-sensor-recording-plan.md`](plans/2026-07-13-11-d-watch-sensor-recording-plan.md)
 as the open item.
 
 **Cannot be resolved from source.** Writing the bindings is authoring new

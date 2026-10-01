@@ -136,8 +136,8 @@ Idempotency + interruption safety:
 OmniTrain consolidates thirteen previously-independent one-time migration
 steps (`seed_loaded`, `seed_units_migrated_v1`, …) into a single ordered
 update sequence tracked by the device's `data_version` integer (see
-[`lib/core/constants/data_version.dart`](../../../lib/core/constants/data_version.dart)
-and [`DataMigrationService`](../../../lib/core/services/data_migration_service.dart)).
+[`lib/core/constants/data_version.dart`](../lib/core/constants/data_version.dart)
+and [`DataMigrationService`](../lib/core/services/data_migration_service.dart)).
 On startup, `HiveWorkoutRepository.initialize()` runs the service:
 
 1. Reads the device's `data_version` (default `1`).
@@ -155,7 +155,7 @@ On startup, `HiveWorkoutRepository.initialize()` runs the service:
 
 The shim maps the highest legacy marker present to its implied version, because the legacy code
 always ran the steps in order. The mapping lives in
-[`lib/core/constants/data_version.dart`](../../../lib/core/constants/data_version.dart).
+[`lib/core/constants/data_version.dart`](../lib/core/constants/data_version.dart).
 
 Repository methods used by the service:
 
@@ -177,7 +177,7 @@ Storage shape (Hive runtime; SQL parity noted for the future importer):
 
 Adding a new step: append a row to `HiveWorkoutRepository._dataMigrationSteps()`
 and bump `currentDataVersion` in
-[`lib/core/constants/data_version.dart`](../../../lib/core/constants/data_version.dart).
+[`lib/core/constants/data_version.dart`](../lib/core/constants/data_version.dart).
 The next launch runs the new step exactly once per device. No new meta-box
 key is required for the step itself.
 
@@ -329,7 +329,7 @@ time:
   both legacy `INTEGER` rows and new `REAL` rows.
 - No row migration is required; the existing rows continue to
   read back with the same value (now as `double`).
-- See [food-form-decimals-and-autofocus-plan.md](../plans/food-form-decimals-and-autofocus-plan.md)
+- See [food-form-decimals-and-autofocus-plan.md](plans/food-form-decimals-and-autofocus-plan.md)
   for the full rationale and the back-compat pattern.
 
 ### `last_amount_consumed` column on `app_food` (June 2026)

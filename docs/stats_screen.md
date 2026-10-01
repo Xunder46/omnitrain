@@ -380,7 +380,7 @@ cardio pace + distance, cardio duration, nutrition calories, nutrition
 macros, volume trends (tonnage / time / distance), consistency
 (week / month), and the target-line overlay on the nutrition card —
 renders inside a `ScrollableTrendChart` wrapper
-([`lib/features/stats/widgets/scrollable_trend_chart.dart`](../../../lib/features/stats/widgets/scrollable_trend_chart.dart))
+([`lib/features/stats/widgets/scrollable_trend_chart.dart`](../lib/features/stats/widgets/scrollable_trend_chart.dart))
 that combines:
 
 - A **pinned y-axis label column** on the left (static; never moves

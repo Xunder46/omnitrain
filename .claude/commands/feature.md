@@ -14,6 +14,10 @@ Feature request: $ARGUMENTS
 ## Configuration
 
 - Runner: `bash .claude/scripts/macos/run-agent.sh` (settings in `.claude/pipeline.env`)
+- **Only Copilot agents do pipeline work.** Never use the Claude subagents (the Agent tool, `/plan`,
+  `/implement`, `/review`, `/run-pipeline`, the `.claude/agents/` copies) for planning, implementing or
+  reviewing inside `/feature`. Your own part is briefing, verifying, reviewing the diff yourself, and
+  reporting.
 - Copilot agents live in `.github/agents/<name>.agent.md`; the runner takes `<name>`. Tool permissions
   come from `.github/copilot/permissions/{common,<name>}.flags`; the runner refuses to start without them.
 - Planner: you pick per request.
@@ -44,7 +48,8 @@ Feature request: $ARGUMENTS
    work around, or propose changes for anything you record, and do not mention fixes in your reports.
 4. Do not read full agent logs. Work from the runner summary. If you need more, search the log for
    specific terms instead of opening it whole.
-5. Never merge, force-push, create branches, or open PRs. Never push unless the user asks.
+5. **Never commit, stage, push, merge, force-push, create branches or open PRs.** The owner commits.
+   Leave the finished work uncommitted on `develop`.
 6. Keep your own context small: targeted file reads, `git diff --stat` before full diffs, trimmed
    test output (failures only).
 7. **Verification is observed output.** `flutter analyze` is not a test run. A phase is done only when
@@ -97,8 +102,8 @@ Predicted Files and enumerated scenario fixtures, open questions resolvable.
 
 ### 3. Implement
 Write `.work/<slug>/brief-<agent>.md`: path to the approved plan, "implement the plan exactly",
-the footer below. Run `dba` first when the plan has data phases; verify and commit them (step 6)
-before the developer starts. Then run `developer`.
+the footer below. Run `dba` first when the plan has data phases and verify them (step 4) before the
+developer starts. Then run `developer`. Do not commit between phases.
 
 ### 4. Verify (you)
 Run the verify commands yourself, with a timeout so a hang cannot block you:
@@ -112,7 +117,7 @@ Write `brief-review-<N>.md`: plan path, base commit, "review `git diff <base>` a
 and reason", "end your response with exactly one line: VERDICT: APPROVE or VERDICT: CHANGES_REQUESTED".
 Run the reviewer and read the verdict from the log tail.
 
-Then do your own review: `git diff --stat <base>`, then read the files that matter, in particular
+Then do your own review: `git diff --stat <base>` (plus untracked files from `git status --short`), then read the files that matter, in particular
 the one or two where the plan's core invariant lives. Check that the change matches the plan,
 touches nothing unrelated, has tests that exercise the new behaviour (and, for a bug fix, that they
 fail without it), updated the docs it implicates, and has nothing the reviewer missed.
@@ -125,15 +130,14 @@ Decide:
 - Round limit reached → stop, summarise where things stand, ask the user.
 
 ### 6. Ship
-On `develop`: `git add` the files the plan and its progress table name (not `-A` when anything
-unrelated is dirty), commit with a conventional-commit message summarising the unit, and stop. The
-commit message names the plan file, the number of fix rounds, and any Open questions you resolved.
-Do not push and do not open a PR unless the user asks. Re-run `flutter test` after the commit to
-confirm the committed state is green.
+Do not commit, stage or push; the owner does that. Stop with the work uncommitted on `develop`, and
+tell the user the files changed (`git status --short`), a suggested conventional-commit message that
+names the plan file, and the base commit from step 0. Because the next unit's preflight needs a clean
+tree, say that the owner has to commit first.
 
 ### 7. Wrap up
 Append the SUMMARY entry to `.work/friction.md`. Report to the user in a few lines: what the app
-now does, the commit, rounds used, anything left open, and any **(owner)** checks the plan lists.
+now does, the files changed, rounds used, anything left open, and any **(owner)** checks the plan lists.
 
 ## Running agents
 
@@ -211,7 +215,7 @@ Per-feature summary, written once at the end (also when you stop early):
 
 ```
 ### <YYYY-MM-DD> · <slug> · SUMMARY
-- Plan revisions: <n> · Fix rounds: <n> · Verify green on first try: <yes/no> · Agent time: <n> min · Outcome: <commit / stopped: reason>
+- Plan revisions: <n> · Fix rounds: <n> · Verify green on first try: <yes/no> · Agent time: <n> min · Outcome: <ready for owner commit / stopped: reason>
 ```
 
 Record facts only. No suggested fixes, no opinions about the agents' instructions.

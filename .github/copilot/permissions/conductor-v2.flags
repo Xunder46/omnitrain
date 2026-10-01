@@ -1,2 +1,3 @@
-# Planner: reads the repo, writes the plan file. No build or test commands.
---allow-tool=write
+# Planner: writes plan files and architecture docs only.
+--allow-tool=write(docs/plans/**)
+--allow-tool=write(docs/architecture/**)
