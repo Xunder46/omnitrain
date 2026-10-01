@@ -657,4 +657,25 @@ void main() {
     }
     expect(offenders, ['lib/features/stats/stats_screen.dart']);
   });
+
+  // Exercise Progress is reached from Records & Trends and from an Instruments
+  // row, and from nowhere else. A static source scan, so it runs once rather
+  // than once per repository harness.
+  test('only Records & Trends and the Instruments list construct '
+      'ExerciseProgressScreen', () {
+    final offenders = <String>[];
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      // The screen's own declaration is not a construction site.
+      if (entity.path.endsWith('exercise_progress_screen.dart')) continue;
+      if (entity.readAsStringSync().contains('ExerciseProgressScreen(')) {
+        offenders.add(entity.path);
+      }
+    }
+    offenders.sort();
+    expect(offenders, [
+      'lib/features/stats/records_and_trends_screen.dart',
+      'lib/features/stats/widgets/instrument_list.dart',
+    ]);
+  });
 }

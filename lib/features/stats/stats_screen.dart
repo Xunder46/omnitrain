@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
+import '../../core/models/instrument_list.dart';
 import '../../core/models/stats_progress.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../core/utils/chart_axis_helper.dart';
@@ -16,9 +17,11 @@ import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/chart/edge_aware_date_label.dart';
 import 'records_and_trends_screen.dart';
+import 'widgets/instrument_list.dart';
 import 'widgets/recent_pr_list.dart';
 import 'widgets/scrollable_trend_chart.dart';
 import 'widgets/stats_pill.dart';
+import 'widgets/window_chip.dart';
 
 /// Segmented toggle state for the NUTRITION card. Local widget
 /// state only — not persisted across sessions. The two views
@@ -49,6 +52,7 @@ class _StatsScreenState extends State<StatsScreen> {
   int _streakDays = 0;
 
   StatsProgressData? _progressData;
+  List<InstrumentSectionData> _instrumentSections = const [];
   _NutritionView _nutritionView = _NutritionView.calories;
 
   NutritionAdherence? _nutritionAdherence;
@@ -83,6 +87,12 @@ class _StatsScreenState extends State<StatsScreen> {
 
       final adherence = await service.computeNutritionAdherence();
 
+      // The Instruments list is the same window's work, so it resolves the
+      // window from the data we already have rather than resolving it again.
+      final instrumentSections = await service.computeInstrumentSections(
+        window: progressData.window,
+      );
+
       if (!mounted) return;
 
       setState(() {
@@ -90,6 +100,7 @@ class _StatsScreenState extends State<StatsScreen> {
         _totalDurationMs = totals.durationMs;
         _streakDays = streak;
         _progressData = progressData;
+        _instrumentSections = instrumentSections;
         _nutritionAdherence = adherence;
         _isLoading = false;
       });
@@ -107,6 +118,7 @@ class _StatsScreenState extends State<StatsScreen> {
         final themeColors = OmniTheme.colorsForTheme(
           widget.settingsState.appTheme,
         );
+        final window = _progressData?.window;
 
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -144,15 +156,32 @@ class _StatsScreenState extends State<StatsScreen> {
                             const OmniCardHeader(title: 'ALL TIME'),
                             _buildAggregateCard(context, themeColors),
                             const SizedBox(height: 24),
-                            ..._buildStrengthSection(context, themeColors),
-                            const SizedBox(height: 24),
-                            ..._buildCardioSection(context, themeColors),
-                            const SizedBox(height: 24),
-                            ..._buildIsometricSection(context, themeColors),
-                            const SizedBox(height: 24),
-                            ..._buildSportsSection(context, themeColors),
-                            const SizedBox(height: 24),
-                            ..._buildNutritionSection(context, themeColors),
+                            if (window != null &&
+                                _instrumentSections.isNotEmpty) ...[
+                              InstrumentList(
+                                sections: _instrumentSections,
+                                window: window,
+                                themeColors: themeColors,
+                                workoutState: widget.workoutState,
+                                settingsState: widget.settingsState,
+                              ),
+                              const SizedBox(height: 24),
+                            ],
+                            Column(
+                              key: const Key('stats_legacy_sections'),
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                ..._buildStrengthSection(context, themeColors),
+                                const SizedBox(height: 24),
+                                ..._buildCardioSection(context, themeColors),
+                                const SizedBox(height: 24),
+                                ..._buildIsometricSection(context, themeColors),
+                                const SizedBox(height: 24),
+                                ..._buildSportsSection(context, themeColors),
+                                const SizedBox(height: 24),
+                                ..._buildNutritionSection(context, themeColors),
+                              ],
+                            ),
                           ],
                   ),
           ),
@@ -161,31 +190,7 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  // ── Section label ─────────────────────────────────────────────────────────
-
-  /// Small inline label that explains which "current window"
-  /// decided which exercises appear in this section. Reads as
-  /// `· Off-Season Strength Block` (period) or
-  /// `· Last 14 training days` (recent-days fallback). Lives
-  /// in the [OmniCardHeader] actions slot of the section above
-  /// the relevant card so the readout explains itself.
-  Widget _buildWindowChip(
-    BuildContext context,
-    OmniThemeColors themeColors,
-    StatsWindow window,
-  ) {
-    final theme = Theme.of(context);
-    return Text(
-      key: const Key('stats_window_chip'),
-      '· ${window.label}',
-      style: theme.textTheme.labelSmall?.copyWith(
-        color: themeColors.textMuted,
-        fontStyle: FontStyle.italic,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
+  // ── All-time aggregate ────────────────────────────────────────────────────
 
   Widget _buildAggregateCard(
     BuildContext context,
@@ -246,7 +251,8 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'STRENGTH',
         actions: [
-          if (data != null) _buildWindowChip(context, themeColors, data.window),
+          if (data != null)
+            StatsWindowChip(window: data.window, themeColors: themeColors),
         ],
       ),
     ];
@@ -547,7 +553,8 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'CARDIO',
         actions: [
-          if (data != null) _buildWindowChip(context, themeColors, data.window),
+          if (data != null)
+            StatsWindowChip(window: data.window, themeColors: themeColors),
         ],
       ),
     ];
@@ -582,7 +589,8 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'ISOMETRIC',
         actions: [
-          if (data != null) _buildWindowChip(context, themeColors, data.window),
+          if (data != null)
+            StatsWindowChip(window: data.window, themeColors: themeColors),
         ],
       ),
     ];
@@ -804,7 +812,8 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'SPORTS',
         actions: [
-          if (data != null) _buildWindowChip(context, themeColors, data.window),
+          if (data != null)
+            StatsWindowChip(window: data.window, themeColors: themeColors),
         ],
       ),
     ];

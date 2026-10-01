@@ -22,6 +22,10 @@ Note on resume dialog:
 - The cold-start `Unfinished Session` dialog is implemented as a private, screen-local widget in `HomeScreen` (`_ResumeSessionDialog`).
 - It is intentionally not promoted into `lib/widgets/` because it is feature-specific and not reused across screens.
 
+Note on the Stats screen's Instruments widgets:
+- The Stats screen's Instruments list is built from four feature-local widgets: `InstrumentList` in `lib/features/stats/widgets/instrument_list.dart` (the sections, the row cap and the expand control), `InstrumentRowTile` and `InstrumentChangeChip` in `lib/features/stats/widgets/instrument_row.dart` (one exercise's figure and its movement against the previous window), `InstrumentSparkline` in `lib/features/stats/widgets/instrument_sparkline.dart` (that exercise's trend line), and `StatsWindowChip` in `lib/features/stats/widgets/window_chip.dart` (the header chip naming the resolved window, shared with the legacy section headers).
+- They are feature-scoped rather than `lib/widgets/` material, but they are presentation-only and theme-reactive in the same sense as the catalogued widgets. Their behaviour is owned by [Stats Screen](stats_screen.md) and verified by `test/instrument_list_screen_test.dart`.
+
 Note on home-screen nutrition summary card:
 - The home-screen gauge card is implemented as a screen-local widget in `lib/features/home/widgets/nutrition_summary_card.dart` (`NutritionSummaryCard`).
 - It is feature-scoped (only the home screen needs it) but is still presentation-only and theme-reactive. Iteration 5 (Phase 5) supersedes the Phase 4.1 (D-8) `NutritionStripBar` (a full-bleed bottom strip with chevron-shaped fill) with a self-contained gauge card that visually belongs to the same instrument-panel family as the training tiles — rounded corners, raised/lit look, hairline border, and inset horizontal margin. The previous Phase 2 placeholder `NutritionStripButton` widget was already removed.

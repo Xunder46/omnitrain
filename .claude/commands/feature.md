@@ -87,7 +87,7 @@ Otherwise continue without asking.
 ### 2. Plan
 Write `.work/<slug>/brief-plan.md` with: goal, acceptance criteria, relevant files and patterns you
 found, constraints, answers to anything the user clarified, the plan file path
-(`docs/plans/<YYYY-MM-DD>-<NN>-<slug>-plan/<YYYY-MM-DD>-<NN>-<slug>-plan.md`: the folder is named after the plan file, and the planner creates it; matching the neighbouring plans' names), and this line:
+(`docs/plans/<YYYY-MM-DD>-<NN>-<slug>-plan/<YYYY-MM-DD>-<NN>-<slug>-plan.md`: the folder is named after the plan file; matching the neighbouring plans' names). **You create the empty folder yourself (`mkdir`) before running the planner**: the planner's create tool cannot make directories, so it would otherwise write the files flat. Tell the planner the exact folder and file paths to create inside it, and, if it may need to split the work, create one folder per expected plan, and this line:
 "List anything you are unsure about under an Open questions heading at the end of the plan."
 
 Run the planner with the runner. Find the plan file in FILES_CHANGED_DURING_RUN.

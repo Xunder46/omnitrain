@@ -4,9 +4,10 @@
 
 `StatsScreen` is a read-only analytics screen that surfaces aggregate training
 data and progress trends for the current user. It is accessible from the
-maintenance sheet on the home screen. Its sections have no interactive controls
-or filters; the one control it does carry is the header icon that opens
-[Records & Trends](records_and_trends.md).
+maintenance sheet on the home screen. Its sections carry no filters; the
+controls it does have are the header icon that opens
+[Records & Trends](records_and_trends.md), the Instruments rows (each an entry
+point to Exercise Progress) and the per-section expand control.
 
 ---
 
@@ -33,10 +34,13 @@ case).
 ## What the Screen Displays
 
 The screen renders an empty-state card when no completed sessions exist;
-otherwise it shows the sections below. The exact count of sections on
-screen is verified by `test/screen_widget_test.dart` (every
-`OmniCardHeader` is a section) and the per-section contracts are
-verified by `test/stats_progress_test.dart` (the underlying
+otherwise it shows the [Instruments list](#instruments-list) above the legacy
+sections described below. The legacy children are wrapped in
+`Key('stats_legacy_sections')` and their structure is unchanged, verified by
+`test/instrument_list_screen_test.dart` (`S-1015`). The exact count of legacy
+sections on screen is verified by `test/screen_widget_test.dart` (every
+`OmniCardHeader` inside that key is a legacy section) and the per-section
+contracts are verified by `test/stats_progress_test.dart` (the underlying
 `StatsProgressService` tests) and the screen widget tests in
 `test/screen_widget_test.dart`. Every on-card chart is a horizontally
 scrollable `ScrollableTrendChart` (pinned y-axis, full history, opens
@@ -50,6 +54,56 @@ A row of three stat pills (unchanged from v1):
 | **Sessions** | Count of completed sessions across all time |
 | **Total Time** | Sum of `endedAtMs − startedAtMs`, formatted as h:mm |
 | **Streak** | Current consecutive-day streak via `CalendarState.streakDays`; flame icon at ≥ 3 days |
+
+### Instruments list
+
+The counterpart to the [Selection Window](#selection-window-current-state-window).
+Where the legacy Strength and Cardio cards *select* a handful of exercises and
+chart each one's full history, the Instruments list enumerates everything the
+window contains and shows the figure the window itself produced: one section per
+exercise section, and one row per exercise trained in that window. Sections lead
+with the biggest block of work — ranked by the days the window logged of that
+kind, with `ExerciseSection`'s declared order as the tiebreak; the rule lives in
+`computeInstrumentSections`, verified by `test/instrument_list_service_test.dart`
+(`S-1006`).
+
+The list is data-driven rather than fixed. A kind of work with nothing in the
+window is absent instead of empty, and the whole list is absent when the window
+has no work at all — the legacy layout then renders exactly as it did before.
+Verified by `test/instrument_list_screen_test.dart` (`S-1001`, `S-1012`). The
+legacy sections below the list are untouched by it: their structure stays inside
+`Key('stats_legacy_sections')`, verified by the same file (`S-1015`).
+
+The list's first section header carries the same window chip as the legacy
+headers, so the scope of the readout is never ambiguous. Verified by the same
+file (`S-1011`).
+
+Each row is one exercise: its name, the value the window produced, how that
+value moved against the previous window of the same length, and the trend line
+behind it. The secondary line carries only the parts that exist, joined in a
+fixed order — the value's own secondary figure (hold time, total time), then the
+mean heart rate, then the cadence. Resistance rows carry no secondary line,
+because the weight added is already inside the figure. Verified by the same file
+(`S-1001`); the value strings themselves are owned by `formatNativeValue`,
+`formatNativeChange` and `nativeSecondaryLabel` in
+`lib/features/stats/widgets/native_value_format.dart`.
+
+The change readout compares the window's value with the previous window of the
+same length. With nothing comparable it reads the chip's no-change dash rather
+than a number, and its arrow follows the direction of the raw numeric change —
+so a *slower* pace reads as an increase, because pace is stored as time per
+distance. Verified by the same file (`S-1001`).
+
+A section past the row cap offers to show the rest; the cap is per section, so a
+busy kind of work never hides a quiet one. Verified by the same file (`S-1016`).
+The trend line is drawn only when the exercise has at least two points in the
+window and takes no space otherwise, verified by the same file (`S-1017`). A row
+whose window produced nothing readable still appears, with no trend line at all —
+verified by `test/instrument_list_service_test.dart` (`S-1018`).
+
+A row is an entry point to Exercise Progress, the second one in `lib/` alongside
+Records & Trends. Verified by `S-1014` in that file and by the entry-point guard
+in `test/records_and_trends_screen_test.dart`.
 
 ### STRENGTH
 Auto-detects the top-3 most-frequently-trained exercises with at least one
@@ -466,11 +520,12 @@ one window in a given load.
 | Cardio pace / distance / duration trend | No | Always full history for the selected exercise |
 | Recent PRs | No | Always all-time (Epley, `effortKind == 'set'`) |
 | ALL TIME pills (Sessions / Time / Streak) | No | Unchanged |
+| Instruments list — sections, rows, values and each row's trend line | **Yes** | The list is the window end to end; a row's trend line is built from the window's own points, unlike the legacy charts' full history |
 | NUTRITION card | No | Always full history (`days: null`) |
 
 ### On-screen Window Label
 
-Each section header carries an inline chip naming the resolved window — the training period's name when one is active, otherwise the recent-training-days fallback. The chip exists so the scope of the readout is never ambiguous.
+Each section header carries an inline chip naming the resolved window — the training period's name when one is active, otherwise the recent-training-days fallback. The chip exists so the scope of the readout is never ambiguous. It is one widget, `StatsWindowChip` in `lib/features/stats/widgets/window_chip.dart`, shared by the legacy headers and the Instruments list's first header. Verified by `test/instrument_list_screen_test.dart` (`S-1011`, the Instruments chip is text-identical to the legacy headers').
 
 ---
 
@@ -488,13 +543,16 @@ final data = await StatsProgressService(
 ```
 
 `StatsProgressService` is a pure-Dart service — it depends on the
-`WorkoutRepository` interface only, not on any concrete implementation.
+`WorkoutRepository` interface only, not on any concrete implementation. The same
+service then computes the Instruments list from the window
+`computeProgressData()` resolved, so the list and the legacy cards always share
+one window.
 
 ---
 
 ## Key Constants (StatsProgressService)
 
-Values live in `lib/core/services/stats_progress_service.dart`; this document names them and says what each governs.
+Values live in `lib/core/services/stats_progress_service.dart` unless the row names another file; this document names them and says what each governs.
 
 | Constant | Meaning |
 |----------|---------|
@@ -504,6 +562,7 @@ Values live in `lib/core/services/stats_progress_service.dart`; this document na
 | `kRecentTrainingDaysWindow` | Number of recent training days used for the Strength/Cardio selection window when no period qualifies |
 | `kTopExerciseRecencyDays` | Recency floor for top-slot selection; an exercise whose most-recent training day is older than this drops out regardless of historical frequency. Applied symmetrically to Strength and Cardio |
 | `kNutritionTrendDays` | Soft default-window hint; the NUTRITION card passes `days: null` for full history |
+| `kInstrumentRowCap` | Max rows an Instruments section shows before offering the rest; declared in `lib/features/stats/widgets/instrument_list.dart` |
 
 ---
 
@@ -514,10 +573,15 @@ Values live in `lib/core/services/stats_progress_service.dart`; this document na
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
 | `lib/features/stats/widgets/scrollable_trend_chart.dart` | Scrollable chart wrapper (pinned y-axis, horizontal scroll, newest-first jump) |
 | `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, shared with Records & Trends |
+| `lib/features/stats/widgets/instrument_list.dart` | The Instruments list: one section per exercise section, capped rows, the expand control; declares `kInstrumentRowCap` |
+| `lib/features/stats/widgets/instrument_row.dart` | One Instruments row (name, figure, change chip, trend line) and `InstrumentChangeChip` |
+| `lib/features/stats/widgets/instrument_sparkline.dart` | The row's trend line, drawn only when the window holds at least two points |
+| `lib/features/stats/widgets/window_chip.dart` | `StatsWindowChip`, the shared header chip naming the resolved window |
 | `lib/features/stats/widgets/recent_pr_list.dart` | The Recent PRs card, shared with Records & Trends |
 | `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `DrillProgress`, `RoundProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint`, `NutritionAdherence`, `StatsWindow` |
 | `lib/core/models/exercise_metric.dart` | Value types behind the per-exercise screens: `ExerciseSection`, `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
-| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the nutrition adherence via `computeNutritionAdherence()`, the all-time totals via `computeTotals()`, and the per-exercise all-time values via `computeExerciseMetrics()`) |
+| `lib/core/models/instrument_list.dart` | Value types behind the Instruments list: `InstrumentRow`, `InstrumentSectionData` |
+| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the nutrition adherence via `computeNutritionAdherence()`, the all-time totals via `computeTotals()`, the per-exercise all-time values via `computeExerciseMetrics()`, and the Instruments list via `computeInstrumentSections({required StatsWindow window})`) |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
 | `lib/state/settings/settings_state.dart` | Theme colors, weight/distance unit preferences |
