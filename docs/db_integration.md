@@ -43,6 +43,14 @@ Active session persistence API:
   - Sorted by `startedAtMs` descending (most recent first)
   - Hive implementation skips malformed records with per-row try/catch (no throw)
 
+Bulk per-effort read:
+
+- `getRoundInstancesByEffort()`
+  - The bulk counterpart to `getRoundInstances(effortId)`: every round instance on the
+    device, grouped by `effortId`, each group in `roundIndex` order.
+  - An effort with no instances has no key, rather than an empty list.
+  - Verified by `test/round_instances_by_effort_test.dart` (S-901, S-902).
+
 Any repository implementation must satisfy this full contract and remain compile-safe.
 
 Deterministic active-session ordering contract:

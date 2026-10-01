@@ -2,7 +2,7 @@
 
 ## Overview
 
-All domain models live in `lib/data/models/models.dart` as pure Dart classes (no Flutter imports). Models follow these conventions:
+Domain models live in `lib/data/models/models.dart` as pure Dart classes (no Flutter imports); derived value types a screen or service owns live in their own files, and the code-reference table below lists the model files it names. Models follow these conventions:
 - Immutable fields (`final`)
 - `fromMap()` factory constructor for deserialization
 - `toMap()` method for serialization
@@ -587,6 +587,7 @@ WatchInboxEntry  (keyed by entry id; references no history row, never cascaded)
 | All domain models | `lib/data/models/models.dart` |
 | Session summary models | `lib/core/models/session_summary.dart` |
 | Routine manifest models | `lib/core/models/routine_session_manifest.dart` |
+| Exercise metric and totals value types | `lib/core/models/exercise_metric.dart` |
 | Exercise extensions | `lib/core/utils/exercise_helpers.dart` |
 | SQLite schema | `scripts/sqlite_schema.sql` |
 

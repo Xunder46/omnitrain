@@ -235,6 +235,38 @@ list for the picker's search field, returning the original list unchanged for
 an empty query. This is the search layer that sits in front of the relevance
 scoring described in [Exercise Ranking](../exercise_ranking.md).
 
+### `StatsProgressService`
+
+**File**: `lib/core/services/stats_progress_service.dart`
+
+The read-side aggregation service behind the Stats screen. It depends only on
+the `WorkoutRepository` interface, and it caches one history snapshot per
+instance, so a screen calling several `compute*` methods pays for the bulk
+reads once instead of re-walking the history per figure. That cache is also why
+a caller that needs fresh data after a write constructs a new instance.
+
+`computeTotals()` is the all-time headline pair — completed sessions and their
+duration. A rolling session counts as a completed session but contributes no
+time, and the streak is deliberately not computed here because
+`CalendarState.streakDays` owns that rule. Verified by
+`test/screen_widget_test.dart`.
+
+`computeExerciseMetrics({fromMs, toMs})` returns one summary per exercise
+trained inside the range, carrying the section it sits in and the value that
+section is read by; null bounds mean all history. Two of its rules are the ones
+`computeProgressData` and `SessionSummaryBuilder` already own, and it exists so
+they cannot drift:
+
+- **The axis is a property of the exercise, not of the range or the day.** An
+  exercise is on the reps axis when any bodyweight set appears anywhere in its
+  history, so a range holding only loaded sets does not move it onto the weight
+  axis and one series never mixes metrics.
+- **The round predicate is `SessionSummaryBuilder`'s** — finished, started, and
+  with an end stamp — rather than the stored `completed` flag, because a round
+  stopped early still happened.
+
+Verified by `test/exercise_metric_service_test.dart` (S-904 … S-911).
+
 ---
 
 ## Watch ↔ Phone Live Session Mirroring

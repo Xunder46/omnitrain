@@ -711,6 +711,17 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<Map<String, List<RoundInstance>>> getRoundInstancesByEffort() async {
+    final grouped = <String, List<RoundInstance>>{};
+    for (final entry in _roundInstances.entries) {
+      if (entry.value.isEmpty) continue;
+      grouped[entry.key] = List<RoundInstance>.from(entry.value)
+        ..sort((a, b) => a.roundIndex.compareTo(b.roundIndex));
+    }
+    return grouped;
+  }
+
+  @override
   Future<String> createRoundInstance(RoundInstance instance) async {
     _roundInstances.putIfAbsent(instance.effortId, () => []).add(instance);
     return instance.id;

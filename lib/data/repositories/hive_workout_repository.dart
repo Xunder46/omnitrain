@@ -1403,6 +1403,19 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<Map<String, List<RoundInstance>>> getRoundInstancesByEffort() async {
+    final grouped = <String, List<RoundInstance>>{};
+    for (final raw in _roundInstancesBox.values) {
+      final instance = RoundInstance.fromMap(_asStringMap(raw));
+      (grouped[instance.effortId] ??= <RoundInstance>[]).add(instance);
+    }
+    for (final instances in grouped.values) {
+      instances.sort((a, b) => a.roundIndex.compareTo(b.roundIndex));
+    }
+    return grouped;
+  }
+
+  @override
   Future<String> createRoundInstance(RoundInstance instance) async {
     await _roundInstancesBox.put(instance.id, instance.toMap());
     return instance.id;

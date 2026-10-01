@@ -295,6 +295,31 @@ Future<void> seedHoldEffort(
   }
 }
 
+/// A `round` effort and the round instances the fixture wrote, in the order
+/// given — so a fixture can store them out of `roundIndex` order.
+Future<void> seedRoundEffort(
+  WorkoutRepository repo, {
+  required String segmentId,
+  required String effortId,
+  required String exerciseId,
+  required List<RoundInstance> rounds,
+}) async {
+  await repo.createEffort(
+    SegmentEffort(
+      id: effortId,
+      segmentId: segmentId,
+      orderIndex: 0,
+      effortKind: 'round',
+      exerciseId: exerciseId,
+      createdAtMs: fixtureStart,
+      updatedAtMs: fixtureStart,
+    ),
+  );
+  for (final round in rounds) {
+    await repo.createRoundInstance(round);
+  }
+}
+
 /// A set effort and its rows: entry n reads reps n+1, weight 10(n+1) kg, and —
 /// when [hasExtraWeight] — extra weight n kg.
 Future<void> seedSetEffort(
@@ -433,6 +458,41 @@ TimedInstance timedInstance(
     updatedAtMs: fixtureStart,
   );
 }
+
+/// A round instance of [effortId] at [roundIndex], finished by default.
+///
+/// [finishedAtMs] defaults to the natural finish the state implies, but the
+/// sentinel default lets a fixture pass an explicit `null` while the state
+/// stays [RoundState.finished] — the shape a paused-then-abandoned round
+/// persists (S-908).
+RoundInstance roundInstance(
+  String effortId,
+  int roundIndex, {
+  int durationSecs = 180,
+  RoundState state = RoundState.finished,
+  bool completed = true,
+  int? startedAtMs,
+  Object? finishedAtMs = _unsetFinishedAt,
+}) {
+  final start = startedAtMs ?? fixtureStart + roundIndex * 60000;
+  return RoundInstance(
+    id: 'ri-$effortId-$roundIndex',
+    effortId: effortId,
+    roundIndex: roundIndex,
+    plannedDurationSecs: durationSecs,
+    actualDurationSecs: state == RoundState.finished ? durationSecs : 0,
+    startedAtMs: start,
+    finishedAtMs: identical(finishedAtMs, _unsetFinishedAt)
+        ? (state == RoundState.finished ? start + durationSecs * 1000 : null)
+        : finishedAtMs as int?,
+    completed: completed,
+    state: state,
+    createdAtMs: fixtureStart,
+    updatedAtMs: fixtureStart,
+  );
+}
+
+const Object _unsetFinishedAt = Object();
 
 // ─── State and reads ────────────────────────────────────────────────────────
 

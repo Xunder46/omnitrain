@@ -191,6 +191,12 @@ abstract class WorkoutRepository {
   /// Get all round instances for a round-based effort, ordered by roundIndex ascending.
   Future<List<RoundInstance>> getRoundInstances(String effortId);
 
+  /// Every round instance on the device, grouped by `effortId`.
+  ///
+  /// The bulk counterpart to [getRoundInstances]; each group carries the
+  /// same `roundIndex` ordering, and an effort with no instances has no key.
+  Future<Map<String, List<RoundInstance>>> getRoundInstancesByEffort();
+
   /// Persist a newly created round instance (startedAtMs = 0, not yet begun).
   Future<String> createRoundInstance(RoundInstance instance);
 

@@ -7,6 +7,7 @@ import '../../core/services/stats_progress_service.dart';
 import '../../core/utils/chart_axis_helper.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../../core/navigation/omni_navigator.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -14,7 +15,10 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/chart/edge_aware_date_label.dart';
+import 'records_and_trends_screen.dart';
+import 'widgets/recent_pr_list.dart';
 import 'widgets/scrollable_trend_chart.dart';
+import 'widgets/stats_pill.dart';
 
 /// Segmented toggle state for the NUTRITION card. Local widget
 /// state only — not persisted across sessions. The two views
@@ -57,21 +61,6 @@ class _StatsScreenState extends State<StatsScreen> {
 
   Future<void> _loadData() async {
     try {
-      final allSessions = await widget.workoutState.getAllSessions();
-
-      // Compute all-time aggregates from completed sessions only.
-      // Rolling sessions still count as completed sessions, but they do not
-      // contribute to total duration to stay aligned with session-summary logic.
-      int totalCount = 0;
-      int totalMs = 0;
-      for (final s in allSessions) {
-        if (s.endedAtMs == null) continue;
-        totalCount++;
-        if (!s.isRolling) {
-          totalMs += s.endedAtMs! - s.startedAtMs;
-        }
-      }
-
       // Reuse CalendarState streak logic — do not re-implement the calculation.
       final calendarState = CalendarState(widget.workoutState.repository);
       await calendarState.init();
@@ -83,6 +72,10 @@ class _StatsScreenState extends State<StatsScreen> {
       // instance here would silently double that cost.
       final service = StatsProgressService(widget.workoutState.repository);
 
+      // All-time aggregates (completed sessions and their duration) come from
+      // the service, so the screen and Records & Trends agree on the figures.
+      final totals = await service.computeTotals();
+
       // Compute progress data (e1RM trends, cardio trends, isometric trends,
       // sports trends, PRs, and the nutrition trend — all in one call so we don't
       // double-walk the repository for the same screen).
@@ -93,8 +86,8 @@ class _StatsScreenState extends State<StatsScreen> {
       if (!mounted) return;
 
       setState(() {
-        _totalSessions = totalCount;
-        _totalDurationMs = totalMs;
+        _totalSessions = totals.completedSessions;
+        _totalDurationMs = totals.durationMs;
         _streakDays = streak;
         _progressData = progressData;
         _nutritionAdherence = adherence;
@@ -119,7 +112,27 @@ class _StatsScreenState extends State<StatsScreen> {
           backgroundColor: Colors.transparent,
           extendBody: true,
           extendBodyBehindAppBar: true,
-          appBar: const OmniBackHeader(title: 'Stats'),
+          appBar: OmniBackHeader(
+            title: 'Stats',
+            actions: [
+              Semantics(
+                label: 'Records & Trends',
+                button: true,
+                child: IconButton(
+                  icon: const Icon(Icons.show_chart),
+                  color: OmniTheme.colors.textDominant,
+                  tooltip: 'Records & Trends',
+                  onPressed: () => OmniNavigator.push(
+                    context,
+                    (_) => RecordsAndTrendsScreen(
+                      workoutState: widget.workoutState,
+                      settingsState: widget.settingsState,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
           body: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -185,7 +198,7 @@ class _StatsScreenState extends State<StatsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: _StatsPill(
+            child: StatsPill(
               label: 'Sessions',
               value: _totalSessions.toString(),
               themeColors: themeColors,
@@ -194,7 +207,7 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: _StatsPill(
+            child: StatsPill(
               label: 'Time',
               value: _formatDuration(_totalDurationMs),
               themeColors: themeColors,
@@ -203,7 +216,7 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: _StatsPill(
+            child: StatsPill(
               label: 'Streak',
               value: '$_streakDays d',
               themeColors: themeColors,
@@ -255,7 +268,9 @@ class _StatsScreenState extends State<StatsScreen> {
     }
 
     if (data.recentPRs.isNotEmpty) {
-      widgets.add(_buildPRList(context, themeColors, data.recentPRs));
+      widgets.add(
+        RecentPRList(prs: data.recentPRs, settingsState: widget.settingsState),
+      );
     }
 
     return widgets;
@@ -518,89 +533,6 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildPRList(
-    BuildContext context,
-    OmniThemeColors themeColors,
-    List<StatsPR> prs,
-  ) {
-    final theme = Theme.of(context);
-    final weightLabel = UnitFormatter.weightLabel(widget.settingsState);
-
-    return OmniSurface(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Recent PRs',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: OmniTheme.colors.textDominant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...prs.map((pr) {
-            final dateStr =
-                '${OmniDateUtils.shortMonthName(pr.date.month)} ${pr.date.day},'
-                ' ${pr.date.year}';
-            // Reps-axis PR (bodyweight) and weight-axis PR
-            // (e1RM) render differently on the right side:
-            //   - `pr.reps != null` → `${reps} reps`
-            //   - `pr.e1Rm != null` → `${displayE1Rm} $weightLabel`
-            // Exactly one of the two is non-null on any given PR
-            // (asserted in `StatsPR`).
-            final String valueText;
-            if (pr.reps != null) {
-              valueText = '${pr.reps} reps';
-            } else {
-              final displayE1Rm = UnitFormatter.convertWeight(
-                pr.e1Rm!,
-                widget.settingsState,
-              );
-              valueText = '${displayE1Rm.toStringAsFixed(1)} $weightLabel';
-            }
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.emoji_events_outlined,
-                    size: 16,
-                    color: themeColors.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      pr.exerciseName,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.colors.textDominant,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    valueText,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: themeColors.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    dateStr,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: themeColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
     );
   }
 
@@ -2236,56 +2168,5 @@ class _LinearScale {
     }
     final t = (targetValue - targetMin) / targetRange;
     return sourceMin + t * (sourceMax - sourceMin);
-  }
-}
-
-class _StatsPill extends StatelessWidget {
-  final String label;
-  final String value;
-  final OmniThemeColors themeColors;
-  final ThemeData theme;
-  final Widget? trailingIcon;
-
-  const _StatsPill({
-    required this.label,
-    required this.value,
-    required this.themeColors,
-    required this.theme,
-    this.trailingIcon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: theme.textTheme.labelSmall?.copyWith(
-            letterSpacing: 0.5,
-            color: themeColors.textMuted,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Text(
-                value,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: themeColors.primary,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (trailingIcon != null) ...[
-              const SizedBox(width: 4),
-              trailingIcon!,
-            ],
-          ],
-        ),
-      ],
-    );
   }
 }

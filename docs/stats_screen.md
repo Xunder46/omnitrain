@@ -4,8 +4,9 @@
 
 `StatsScreen` is a read-only analytics screen that surfaces aggregate training
 data and progress trends for the current user. It is accessible from the
-maintenance sheet on the home screen. There are no interactive controls or
-filters in the current release.
+maintenance sheet on the home screen. Its sections have no interactive controls
+or filters; the one control it does carry is the header icon that opens
+[Records & Trends](records_and_trends.md).
 
 ---
 
@@ -15,7 +16,17 @@ filters in the current release.
 HomeScreen
   └── Maintenance sheet (swipe up or tap hint)
         └── Stats → StatsScreen
+              └── header chart icon → RecordsAndTrendsScreen
 ```
+
+The chart icon in the screen's header is the only way into
+[Records & Trends](records_and_trends.md): this file is the only place in `lib/`
+that constructs `RecordsAndTrendsScreen`. The sections described below are still
+what `StatsScreen` itself renders — the per-exercise structure added alongside
+them lives on its own screens and removes nothing here.
+
+Verified by `test/records_and_trends_screen_test.dart` (the single-entry-point
+case).
 
 ---
 
@@ -224,70 +235,38 @@ and the legend, `S-836` for the conversions, `S-837` for a Summary correction),
 `test/entry_identity_summary_test.dart` (`S-858` for a leftover row that counts
 nowhere) and `test/stats_progress_test.dart` (the `Cardio trend` group).
 
-### RECORDS
-Per-exercise best observed values with the date each was set. Aggregated by
-`StatsProgressService.computeExerciseRecords()`, which walks every completed
-session once and produces one `ExerciseRecord` per exercise. Verified by
-`test/stats_progress_test.dart` (`computeExerciseRecords` group, scenarios
-S-001…S-008). Metrics surface on the section are the ones the exercise has
-ever been logged against:
+### ISOMETRIC
+Auto-detects the top-`StatsProgressService.kTopIsometricCount`
+most-frequently-performed exercises with at least one `drill`-kind effort,
+ranked by distinct training days on the same rule as Strength and Cardio. Each
+selected exercise gets a card holding one point per training day — the sum of
+that day's finished hold time in seconds — and falls back to inline text when
+there is only one point. An unfinished hold counts in no total, so an abandoned
+hold cannot inflate its day.
 
-- **Heaviest load** — max `load × reps` across the exercise's loaded
-  sets (the set with the heaviest single `weight` value carries its
-  tonnage as the record). Date is the day that set was performed.
-  Null for bodyweight-only exercises (`0 × N = 0` is not a record).
-- **Most reps at load** — the single set with the highest rep count,
-  plus the load (kg) it was performed at and the date. Bodyweight
-  sets are included with `loadKg: 0.0`.
-- **Longest duration** — total `actualDurationSecs` of timed efforts on
-  the longest day for this exercise. Per-day sum so a day with two
-  1 km runs shows 2 km, not 1.
-- **Longest distance** — same per-day-sum contract as duration but for
-  the sum of `metric-distance` observations on timed efforts.
+Empty state: "No isometric history yet. Log hold exercises to see trends here."
 
-Each row renders the value in the user's preferred units
-(`UnitFormatter.convertWeight` for kg, `formatDistanceValue` for km/mi)
-and the date as `"Mon DD, YYYY"`. Empty state: when the service
-returns an empty list, the section hides itself — the same shape
-every other section uses.
+Verified by `test/stats_progress_test.dart` (`Isometric drill aggregation (Phase
+D)` and `Exercise selection: isometric and sports (Phase D)`) and
+`test/screen_widget_test.dart` (the `ISOMETRIC` header and empty-state
+assertions).
 
-### VOLUME TRENDS
-Three buckets of effort, each on its own tab in a segmented toggle that
-swaps the chart without re-querying the repository:
+### SPORTS
+Auto-detects the top-`StatsProgressService.kTopSportsCount`
+most-frequently-performed exercises with at least one `round`-kind effort, on
+the same selection rule, and gives each one a card of the same shape — one point
+per training day, the sum of that day's round times in seconds.
 
-- **Tonnage** — Σ `load × reps` across load-based (`effortKind == 'set'`,
-  `weight > 0`) sets, bucketed by ISO week. One line per present
-  modality plus an "Overall" line; legend below the chart.
-  `computeVolumeTonnage()`.
-- **Time** — Σ `actualDurationSecs` across `TimedState.finished` timed
-  instances, bucketed by ISO week. `computeTimedDuration()`. y-axis
-  formatted as h:mm.
-- **Distance** — Σ `metric-distance` observations on timed efforts,
-  bucketed by ISO week. `computeTimedDistance()`. y-axis converted to
-  the user's preferred distance unit (`km` / `mi`) through
-  `UnitFormatter`.
+Each day's point sums the durations of that day's finished timed instances
+behind the round effort — the sports pass adds their `actualDurationSecs` and
+never reads a `RoundInstance`. The round-counting rule the per-exercise screens
+use is in [Records & Trends](records_and_trends.md).
 
-All three share the same multi-line chart primitive
-(`_buildMultiLineScrollableChart` in `stats_screen.dart`): one
-`LineChartBarData` per present modality plus an Overall line. Unit
-labels respect `SettingsState.preferredWeightUnit` /
-`preferredDistanceUnit`. Empty per-tab state: "No Tonnage data yet.
-Log a session to see this trend here." — descriptive only, no advice
-copy. Sections with no data across all three tabs hide themselves.
+Empty state: "No sports history yet. Log sports rounds to see trends here."
 
-### CONSISTENCY
-Sessions per period, per modality + overall. Two tabs in a segmented
-toggle:
-
-- **Week** — sessions per ISO week (Monday-start), aggregated by
-  `StatsProgressService.computeConsistencyWeekly()`.
-- **Month** — sessions per calendar month, aggregated by
-  `StatsProgressService.computeConsistencyMonthly()`.
-
-Same multi-line chart primitive as VOLUME TRENDS (Overall + per-modality
-lines). Empty per-tab state: "No Week data yet. Log a session to see
-this trend here." — descriptive only. Section hides itself when both
-tabs are empty.
+Verified by `test/stats_progress_test.dart` (`Sports round aggregation (Phase D)`
+and `Exercise selection: isometric and sports (Phase D)`) and
+`test/screen_widget_test.dart` (the `SPORTS` header and empty-state assertions).
 
 ### Effort rating (no section)
 The Stats screen has no effort-rating chart, scalar or pill: the rating
@@ -534,8 +513,11 @@ Values live in `lib/core/services/stats_progress_service.dart`; this document na
 |------|------|
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
 | `lib/features/stats/widgets/scrollable_trend_chart.dart` | Scrollable chart wrapper (pinned y-axis, horizontal scroll, newest-first jump) |
-| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint`, `ExerciseRecord`, `VolumeTrend`, `ConsistencyTrend`, `NutritionAdherence`, `StatsWindow` |
-| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the records via `computeExerciseRecords()`, the volume / time / distance trends via `computeVolumeTonnage` / `computeTimedDuration` / `computeTimedDistance`, the consistency trends via `computeConsistencyWeekly` / `computeConsistencyMonthly`, and the nutrition adherence via `computeNutritionAdherence()`) |
+| `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, shared with Records & Trends |
+| `lib/features/stats/widgets/recent_pr_list.dart` | The Recent PRs card, shared with Records & Trends |
+| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `DrillProgress`, `RoundProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint`, `NutritionAdherence`, `StatsWindow` |
+| `lib/core/models/exercise_metric.dart` | Value types behind the per-exercise screens: `ExerciseSection`, `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
+| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the nutrition adherence via `computeNutritionAdherence()`, the all-time totals via `computeTotals()`, and the per-exercise all-time values via `computeExerciseMetrics()`) |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
 | `lib/state/settings/settings_state.dart` | Theme colors, weight/distance unit preferences |
@@ -548,15 +530,16 @@ Values live in `lib/core/services/stats_progress_service.dart`; this document na
 ## Related Documentation
 
 - [Calendar & Periods](calendar_periods.md) — streak calculation details
+- [Records & Trends](records_and_trends.md) — the per-exercise screens the header icon opens
 - [State Management & Services](state_management.md)
 - [Navigation & Screens](navigation_and_screens.md)
 
 ---
 
-**Document Version**: 2.4
-**Last Updated**: August 10, 2026
+**Document Version**: 2.5
+**Last Updated**: October 1, 2026
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-08-10. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-10-01. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

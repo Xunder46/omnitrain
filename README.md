@@ -1,38 +1,80 @@
 # OmniTrain
 
-## Supported viewport
+A multi-sport training log for iOS and Android, built in Flutter. OmniTrain adapts its logging screen to the kind of training you're doing — lifting, cardio, sports, holds and stretches, or free training — so the right fields are always in front of you without any setup.
 
-The minimum supported portrait viewport is **360 × 640 logical pixels**, defined by `SupportedViewport.minimumSize` in `lib/core/constants/supported_viewport.dart`. Smaller screens are explicitly unsupported; contributors must not add special-case handling for them. The floor contract and layout regression coverage are verified by `test/supported_viewport_test.dart` and the screen-specific floor test groups.
-
-OmniTrain is a multimodal fitness tracking app built in Flutter, targeting iOS and Android. It adapts its interface to the type of training being performed — resistance, cardio, sports, isometric, and free training — so the right metrics and controls are always visible without manual configuration.
+The app is built around one job: logging your work quickly. Everything else supports that.
 
 ## What makes it different
 
-Most fitness apps treat every exercise the same way. OmniTrain uses a modality system: each exercise carries a set of capabilities (reps, weight, duration, distance, effort rating) and the workout session screen renders only what that exercise requires. A single unified data model serves all training contexts, so a user can move between a barbell squat and a 5K run within the same workout without switching apps or modes.
+Most fitness apps treat every exercise the same way. In OmniTrain, each exercise declares what it can track — time, hold, reps, sets, load, distance, rounds — and the session screen shows only those controls. One data model covers every kind of training, so a barbell squat and a 5K run can sit in the same workout without switching apps or modes.
 
-## Current status
+## Features
 
-The app is currently in private TestFlight beta. It is not yet publicly released.
+- **Adaptive workout sessions** — set, timed, round, and drill logging, chosen per exercise, with rest tracked automatically between efforts
+- **Rolling sessions** — continuous, open-ended free training without a fixed plan
+- **Routines** — reusable workout templates you can start a session from
+- **Custom exercises** — create your own, starting from the type of training
+- **Session summary** — a post-workout breakdown with changes against previous sessions and an optional effort rating
+- **Stats, records and trends** — all-time totals, strength and cardio trends, personal records, and per-exercise progress
+- **Calendar and training periods** — browse past sessions by month and group them into training blocks
+- **Nutrition** — daily food and water logging against your own targets
+- **Profile and measurements** — body measurement logging with a history chart
+- **Themes and settings** — multiple themes, unit preferences, and timer alerts
 
-## How it's built
+All data is stored locally on the device.
 
-Development is driven through a custom GitHub Copilot agent pipeline. A set of specialized agents — coordinator, DBA, developer, code reviewer, and prompt engineer — collaborate on each feature through a shared plan file, with a structured handoff protocol between phases. This pipeline also maintains the documentation system described below.
+## Status
 
-The full documentation index is at [`docs/README.md`](docs/README.md).
+OmniTrain is publicly available on iOS and Android. An Apple Watch companion is in development.
 
-## Where to go next
+## Getting started
 
-| Document | Contents |
-|---|---|
-| [`docs/README.md`](docs/README.md) | Documentation index — start here |
-| [`docs/app_philosophy.md`](docs/app_philosophy.md) | Product vision, scope, session and block architecture |
-| [`docs/state_management.md`](docs/state_management.md) | State layer: ChangeNotifier classes, repository interfaces, data flow |
-| [`docs/data_models.md`](docs/data_models.md) | Core data models and relationships |
-| [`docs/design_system.md`](docs/design_system.md) | Color tokens, typography, spacing, component patterns |
+Requires the Flutter SDK (Dart `^3.10.7`).
+
+```bash
+flutter pub get
+```
+
+```bash
+flutter run
+```
+
+```bash
+flutter test
+```
+
+The minimum supported screen size is **360 × 640** logical pixels in portrait, defined in `lib/core/constants/supported_viewport.dart` and covered by `test/supported_viewport_test.dart`. Smaller screens are not supported.
 
 ## Tech stack
 
 - Flutter / Dart
-- Hive (local persistence)
-- ChangeNotifier (state management)
+- Hive for local persistence, behind a repository interface
+- `ChangeNotifier` state with constructor dependency injection
 - Material 3 theming
+
+## How it's built
+
+Development runs through an AI agent pipeline. Claude Code plans each change and reviews the result; GitHub Copilot CLI agents (database, developer, and code-review roles) do the implementation against a shared plan file, with a structured handoff between phases. Each change is held to a fixed scope budget and has to pass the test suite before it lands. The same pipeline keeps the documentation in step with the code.
+
+Agent definitions live in [`.github/agents/`](.github/agents/).
+
+## Documentation
+
+The docs are generated from the source and checked against it; where they disagree, the code wins.
+
+| Document | Contents |
+|---|---|
+| [`docs/README.md`](docs/README.md) | Documentation index — start here |
+| [`docs/global_conventions.md`](docs/global_conventions.md) | Cross-cutting rules for the codebase |
+| [`docs/app_philosophy.md`](docs/app_philosophy.md) | Product goals and the core entity model |
+| [`docs/modality_tracking.md`](docs/modality_tracking.md) | Exercise capabilities, training types, and effort kinds |
+| [`docs/navigation_and_screens.md`](docs/navigation_and_screens.md) | Screen map and navigation flow |
+| [`docs/state_management.md`](docs/state_management.md) | State classes, services, and how data flows |
+| [`docs/data_models.md`](docs/data_models.md) | Domain models and their relationships |
+| [`docs/design_system.md`](docs/design_system.md) | Colors, typography, spacing, motion, and components |
+
+## License
+
+Copyright © 2026 Xunder46. All rights reserved.
+
+This repository is published for viewing only. No license is granted to use, copy, modify, distribute, or create derivative works from any part of this code, documentation, or assets without prior written permission.

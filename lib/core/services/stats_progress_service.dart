@@ -6,9 +6,12 @@ library;
 
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
+import '../constants/metric_ids.dart';
+import '../models/exercise_metric.dart';
 import '../models/stats_progress.dart';
 import '../utils/date_utils.dart';
 import '../utils/distance_source.dart';
+import '../utils/entry_rows.dart';
 import '../utils/observation_grouper.dart';
 
 /// An in-memory, read-only snapshot of the whole training history,
@@ -24,7 +27,7 @@ import '../utils/observation_grouper.dart';
 /// 400-session history several minutes, on the main isolate, which is an
 /// ANR on Android and a watchdog kill on iOS.
 ///
-/// Building this snapshot costs one pass per store — five bulk reads
+/// Building this snapshot costs one pass per store — six bulk reads
 /// total, regardless of history size — and every subsequent lookup is a
 /// map hit. The traversal logic in this service is unchanged; only where
 /// it reads from moved.
@@ -38,6 +41,7 @@ class _HistoryIndex {
     required this.effortsBySegment,
     required this.observationsByEffort,
     required this.timedInstancesByEffort,
+    required this.roundInstancesByEffort,
   });
 
   final List<TrainingSession> sessions;
@@ -45,6 +49,7 @@ class _HistoryIndex {
   final Map<String, List<SegmentEffort>> effortsBySegment;
   final Map<String, List<EffortObservation>> observationsByEffort;
   final Map<String, List<TimedInstance>> timedInstancesByEffort;
+  final Map<String, List<RoundInstance>> roundInstancesByEffort;
 
   List<SessionSegment> segmentsOf(String sessionId) =>
       segmentsBySession[sessionId] ?? const <SessionSegment>[];
@@ -57,6 +62,9 @@ class _HistoryIndex {
 
   List<TimedInstance> timedInstancesOf(String effortId) =>
       timedInstancesByEffort[effortId] ?? const <TimedInstance>[];
+
+  List<RoundInstance> roundInstancesOf(String effortId) =>
+      roundInstancesByEffort[effortId] ?? const <RoundInstance>[];
 }
 
 class StatsProgressService {
@@ -85,6 +93,7 @@ class StatsProgressService {
     final efforts = await _repository.getEffortsBySegment();
     final observations = await _repository.getObservationsByEffort();
     final timedInstances = await _repository.getTimedInstancesByEffort();
+    final roundInstances = await _repository.getRoundInstancesByEffort();
 
     final index = _HistoryIndex(
       sessions: sessions,
@@ -92,6 +101,7 @@ class StatsProgressService {
       effortsBySegment: efforts,
       observationsByEffort: observations,
       timedInstancesByEffort: timedInstances,
+      roundInstancesByEffort: roundInstances,
     );
     _historyIndex = index;
     return index;
@@ -551,6 +561,447 @@ class StatsProgressService {
       recentPRs: recentPRs,
       nutritionTrend: nutritionTrend,
       window: window,
+    );
+  }
+
+  /// The all-time totals the Stats screen and Records & Trends both show:
+  /// how many sessions are complete, and how long they lasted.
+  ///
+  /// A rolling session is a completed session and counts, but it contributes
+  /// no time — it has no end the user waited for. The streak is deliberately
+  /// absent: it stays `CalendarState.streakDays`, so the calendar keeps
+  /// owning that rule.
+  Future<StatsTotals> computeTotals() async {
+    final sessions = (await _loadHistory()).sessions;
+
+    var completedSessions = 0;
+    var durationMs = 0;
+    for (final session in sessions) {
+      final endedAtMs = session.endedAtMs;
+      if (endedAtMs == null) continue;
+      completedSessions++;
+      if (!session.isRolling) durationMs += endedAtMs - session.startedAtMs;
+    }
+
+    return StatsTotals(
+      completedSessions: completedSessions,
+      durationMs: durationMs,
+    );
+  }
+
+  /// One summary per exercise logged in at least one completed session that
+  /// started inside `[fromMs, toMs]`. Null bounds mean all history.
+  ///
+  /// The section is the effort kind the exercise was most often logged under
+  /// inside the range; the native value is the best the section's own rule
+  /// yields over the range. Both are computed here once, so Records & Trends,
+  /// Exercise Progress and the Instruments rows read the same answer.
+  Future<List<ExerciseMetricSummary>> computeExerciseMetrics({
+    int? fromMs,
+    int? toMs,
+  }) async {
+    final history = await _loadHistory();
+
+    final inRange = <TrainingSession>[];
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      if (fromMs != null && session.startedAtMs < fromMs) continue;
+      if (toMs != null && session.startedAtMs > toMs) continue;
+      inRange.add(session);
+    }
+    if (inRange.isEmpty) return const <ExerciseMetricSummary>[];
+
+    final logsByExercise = <String, List<_ExerciseLog>>{};
+    for (final session in inRange) {
+      final dayMs = OmniDateUtils.startOfDayMs(
+        DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+      );
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null) continue;
+          (logsByExercise[exerciseId] ??= <_ExerciseLog>[]).add(
+            _ExerciseLog(session: session, effort: effort, dayMs: dayMs),
+          );
+        }
+      }
+    }
+    if (logsByExercise.isEmpty) return const <ExerciseMetricSummary>[];
+
+    final repsAxis = await _repsAxisExercises(logsByExercise.keys.toSet());
+
+    final summaries = <ExerciseMetricSummary>[];
+    for (final entry in logsByExercise.entries) {
+      final logs = entry.value;
+      final section = _sectionForLogs(logs);
+      // An exercise whose only efforts carry no known kind has no section to
+      // sit in and no metric to be read by.
+      if (section == null) continue;
+      final isRepsAxis = repsAxis.contains(entry.key);
+
+      final best =
+          await _nativeValueFor(logs, section, isRepsAxis) ??
+          _zeroValueFor(section, isRepsAxis);
+
+      final logsByDay = <int, List<_ExerciseLog>>{};
+      for (final log in logs) {
+        (logsByDay[log.dayMs] ??= <_ExerciseLog>[]).add(log);
+      }
+      final days = logsByDay.keys.toList()..sort();
+      final points = <ExerciseMetricPoint>[];
+      for (final dayMs in days) {
+        // The same rule the best came from, over one day's logs. A day the
+        // exercise's metric cannot be read on contributes no point.
+        final value = await _nativeValueFor(
+          logsByDay[dayMs]!,
+          section,
+          isRepsAxis,
+        );
+        if (value == null) continue;
+        points.add(ExerciseMetricPoint(dayMs: dayMs, value: value));
+      }
+
+      var lastTrainedMs = 0;
+      final sessionIds = <String>{};
+      for (final log in logs) {
+        sessionIds.add(log.session.id);
+        if (log.session.startedAtMs > lastTrainedMs) {
+          lastTrainedMs = log.session.startedAtMs;
+        }
+      }
+
+      final exercise = await _exerciseById(entry.key);
+      summaries.add(
+        ExerciseMetricSummary(
+          exerciseId: entry.key,
+          name: exercise?.name ?? entry.key,
+          section: section,
+          best: best,
+          points: points,
+          lastTrainedMs: lastTrainedMs,
+          sessionCount: sessionIds.length,
+        ),
+      );
+    }
+
+    summaries.sort((a, b) {
+      final byName = a.name.compareTo(b.name);
+      return byName != 0 ? byName : a.exerciseId.compareTo(b.exerciseId);
+    });
+    return summaries;
+  }
+
+  // ── The native value, per section ──────────────────────────────────────────
+
+  /// The exercise ids among [exerciseIds] that hold a bodyweight set anywhere
+  /// in their **full** history — the axis rule `computeProgressData` shares.
+  ///
+  /// The walk ignores the caller's range on purpose: the axis is a property of
+  /// the exercise, so a range that happens to hold only loaded sets does not
+  /// move an exercise onto the weight axis, and every point of one series
+  /// carries the same metric.
+  Future<Set<String>> _repsAxisExercises(Set<String> exerciseIds) async {
+    final history = await _loadHistory();
+    final repsAxis = <String>{};
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (effort.effortKind != 'set') continue;
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null ||
+              !exerciseIds.contains(exerciseId) ||
+              repsAxis.contains(exerciseId)) {
+            continue;
+          }
+          if (_hasBodyweightEntry(history.observationsOf(effort.id))) {
+            repsAxis.add(exerciseId);
+          }
+        }
+      }
+    }
+    return repsAxis;
+  }
+
+  /// True when a set effort holds an entry of at least one rep and no load —
+  /// the shape that puts an exercise on the reps axis.
+  static bool _hasBodyweightEntry(List<EffortObservation> rows) {
+    for (final entry in ObservationGrouper.groupByEffortKind('set', rows)) {
+      final reps = entry['reps'] as int? ?? 0;
+      if (reps <= 0) continue;
+      if (((entry['weight'] as num?)?.toDouble() ?? 0.0) <= 0) return true;
+    }
+    return false;
+  }
+
+  /// The section an exercise sits in: the effort kind it was logged under most
+  /// often, ties resolving in [ExerciseSection] declaration order. Null when
+  /// none of its efforts carries a known kind.
+  static ExerciseSection? _sectionForLogs(List<_ExerciseLog> logs) {
+    final counts = <ExerciseSection, int>{};
+    for (final log in logs) {
+      final section = _sectionForKind(log.effort.effortKind);
+      if (section == null) continue;
+      counts[section] = (counts[section] ?? 0) + 1;
+    }
+
+    ExerciseSection? winner;
+    var winnerCount = 0;
+    for (final section in ExerciseSection.values) {
+      final count = counts[section] ?? 0;
+      if (count > winnerCount) {
+        winner = section;
+        winnerCount = count;
+      }
+    }
+    return winner;
+  }
+
+  static ExerciseSection? _sectionForKind(String effortKind) {
+    switch (effortKind) {
+      case 'set':
+        return ExerciseSection.resistance;
+      case 'timed':
+        return ExerciseSection.cardio;
+      case 'drill':
+        return ExerciseSection.isometric;
+      case 'round':
+        return ExerciseSection.sports;
+      default:
+        return null;
+    }
+  }
+
+  /// The value [logs] yield on [section]'s metric, or null when they yield
+  /// none — a day with nothing to read contributes no point.
+  Future<NativeValue?> _nativeValueFor(
+    List<_ExerciseLog> logs,
+    ExerciseSection section,
+    bool isRepsAxis,
+  ) async {
+    switch (section) {
+      case ExerciseSection.resistance:
+        return _resistanceValue(logs, isRepsAxis);
+      case ExerciseSection.cardio:
+        return _cardioValue(logs);
+      case ExerciseSection.isometric:
+        return _isometricValue(logs);
+      case ExerciseSection.sports:
+        return _sportsValue(logs);
+    }
+  }
+
+  /// The zero an exercise with no usable data reports, on the metric its
+  /// section reads it by.
+  static NativeValue _zeroValueFor(ExerciseSection section, bool isRepsAxis) {
+    switch (section) {
+      case ExerciseSection.resistance:
+        return isRepsAxis
+            ? const NativeValue(metric: NativeMetric.reps, value: 0)
+            : const NativeValue(
+                metric: NativeMetric.estimatedOneRepMax,
+                value: 0,
+              );
+      case ExerciseSection.cardio:
+        return const NativeValue(metric: NativeMetric.duration, value: 0);
+      case ExerciseSection.isometric:
+        return const NativeValue(
+          metric: NativeMetric.hold,
+          value: 0,
+          secondaryMetric: NativeMetric.duration,
+          secondaryValue: 0,
+        );
+      case ExerciseSection.sports:
+        return const NativeValue(
+          metric: NativeMetric.rounds,
+          value: 0,
+          secondaryMetric: NativeMetric.roundMinutes,
+          secondaryValue: 0,
+        );
+    }
+  }
+
+  /// Resistance: the highest e1RM on the weight axis, the highest single-set
+  /// reps — with that set's added weight noted — on the reps axis.
+  Future<NativeValue> _resistanceValue(
+    List<_ExerciseLog> logs,
+    bool isRepsAxis,
+  ) async {
+    final history = await _loadHistory();
+
+    var bestE1RM = 0.0;
+    var bestReps = 0;
+    var bestAddedWeightKg = 0.0;
+
+    for (final log in logs) {
+      if (log.effort.effortKind != 'set') continue;
+      final entries = ObservationGrouper.groupByEffortKind(
+        'set',
+        history.observationsOf(log.effort.id),
+      );
+      for (final entry in entries) {
+        final reps = entry['reps'] as int? ?? 0;
+        // A zero-rep set — skipped, or an empty row — reads on neither axis.
+        if (reps <= 0) continue;
+        final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
+        final added = (entry['extra-weight'] as num?)?.toDouble() ?? 0.0;
+
+        if (isRepsAxis) {
+          if (reps > bestReps) {
+            bestReps = reps;
+            bestAddedWeightKg = added;
+          } else if (reps == bestReps && added > bestAddedWeightKg) {
+            bestAddedWeightKg = added;
+          }
+        } else {
+          final e1rm = StatsProgressService.epley1RM(weight, reps);
+          if (e1rm != null && e1rm > bestE1RM) bestE1RM = e1rm;
+        }
+      }
+    }
+
+    if (isRepsAxis) {
+      if (bestReps <= 0) return _zeroValueFor(ExerciseSection.resistance, true);
+      return NativeValue(
+        metric: NativeMetric.reps,
+        value: bestReps.toDouble(),
+        addedWeightKg: bestAddedWeightKg > 0 ? bestAddedWeightKg : null,
+      );
+    }
+    if (bestE1RM <= 0) return _zeroValueFor(ExerciseSection.resistance, false);
+    return NativeValue(
+      metric: NativeMetric.estimatedOneRepMax,
+      value: bestE1RM,
+    );
+  }
+
+  /// Cardio: the fastest pace when any entry behind a pace carries a distance,
+  /// the summed duration of the finished entries otherwise.
+  Future<NativeValue> _cardioValue(List<_ExerciseLog> logs) async {
+    final history = await _loadHistory();
+
+    var fastestPaceSecPerKm = 0.0;
+    var totalDurationSecs = 0;
+    var estimated = false;
+
+    for (final log in logs) {
+      if (log.effort.effortKind != 'timed') continue;
+      final instances = [...history.timedInstancesOf(log.effort.id)]
+        ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+      totalDurationSecs += instances
+          .where((t) => t.state == TimedState.finished)
+          .fold<int>(0, (sum, t) => sum + t.actualDurationSecs);
+
+      final paired = DistancePairing.forEntries(
+        distanceRows: history.observationsOf(log.effort.id),
+        entryCount: instances.length,
+      );
+      for (var i = 0; i < paired.length; i++) {
+        final row = paired[i];
+        final metres = row?.valueReal ?? 0.0;
+        // An entry with no distance, an unfinished entry and a zero-length
+        // entry carry no pace (D-309).
+        if (metres <= 0) continue;
+        if (instances[i].state != TimedState.finished) continue;
+        final secs = instances[i].actualDurationSecs;
+        if (secs <= 0) continue;
+
+        final paceSecPerKm = secs / (metres / 1000.0);
+        if (fastestPaceSecPerKm == 0 || paceSecPerKm < fastestPaceSecPerKm) {
+          fastestPaceSecPerKm = paceSecPerKm;
+        }
+        if (DistanceSource.isEstimated(row?.valueSource)) estimated = true;
+      }
+    }
+
+    if (fastestPaceSecPerKm > 0) {
+      return NativeValue(
+        metric: NativeMetric.pace,
+        value: fastestPaceSecPerKm,
+        estimated: estimated,
+      );
+    }
+    if (totalDurationSecs <= 0) {
+      return _zeroValueFor(ExerciseSection.cardio, false);
+    }
+    return NativeValue(
+      metric: NativeMetric.duration,
+      value: totalDurationSecs.toDouble(),
+    );
+  }
+
+  /// Isometric: the longest single hold, with its added weight noted, and the
+  /// summed hold time as the secondary figure.
+  Future<NativeValue> _isometricValue(List<_ExerciseLog> logs) async {
+    final history = await _loadHistory();
+
+    var longestHoldSecs = 0;
+    var totalHoldSecs = 0;
+    var longestHoldAddedWeightKg = 0.0;
+
+    for (final log in logs) {
+      if (log.effort.effortKind != 'drill') continue;
+      final instances = [...history.timedInstancesOf(log.effort.id)]
+        ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+      // The added weight belongs to the entry it was logged for, so it is
+      // paired by entry rather than read from the effort's first row.
+      final paired = EntryRows.companions(
+        rows: history.observationsOf(log.effort.id),
+        metricId: MetricIds.extraWeight,
+        entryCount: instances.length,
+      );
+      for (var i = 0; i < instances.length; i++) {
+        final instance = instances[i];
+        if (instance.state != TimedState.finished) continue;
+        totalHoldSecs += instance.actualDurationSecs;
+        if (instance.actualDurationSecs > longestHoldSecs) {
+          longestHoldSecs = instance.actualDurationSecs;
+          longestHoldAddedWeightKg = paired[i]?.valueReal ?? 0.0;
+        }
+      }
+    }
+
+    if (totalHoldSecs <= 0) {
+      return _zeroValueFor(ExerciseSection.isometric, false);
+    }
+    return NativeValue(
+      metric: NativeMetric.hold,
+      value: longestHoldSecs.toDouble(),
+      secondaryMetric: NativeMetric.duration,
+      secondaryValue: totalHoldSecs.toDouble(),
+      addedWeightKg: longestHoldAddedWeightKg > 0
+          ? longestHoldAddedWeightKg
+          : null,
+    );
+  }
+
+  /// Sports: the rounds completed, and their total time in minutes.
+  ///
+  /// The round predicate is `SessionSummaryBuilder`'s own — finished, started,
+  /// and with an end stamp — so the two surfaces cannot disagree. The stored
+  /// `completed` flag does not decide: a round stopped early still happened.
+  Future<NativeValue> _sportsValue(List<_ExerciseLog> logs) async {
+    final history = await _loadHistory();
+
+    var rounds = 0;
+    var roundMs = 0;
+    for (final log in logs) {
+      if (log.effort.effortKind != 'round') continue;
+      for (final round in history.roundInstancesOf(log.effort.id)) {
+        if (round.state != RoundState.finished) continue;
+        if (round.startedAtMs <= 0) continue;
+        if (round.finishedAtMs == null) continue;
+        rounds++;
+        roundMs += round.elapsedMs;
+      }
+    }
+
+    if (rounds <= 0) return _zeroValueFor(ExerciseSection.sports, false);
+    return NativeValue(
+      metric: NativeMetric.rounds,
+      value: rounds.toDouble(),
+      secondaryMetric: NativeMetric.roundMinutes,
+      secondaryValue: roundMs / 60000.0,
     );
   }
 
@@ -1443,6 +1894,23 @@ class _SetTuple {
   final int reps;
 
   const _SetTuple({required this.weight, required this.reps});
+}
+
+/// One effort an exercise was logged under, with the session it belongs to and
+/// the local day that session started on.
+///
+/// `computeExerciseMetrics` groups these by exercise, then by day, so the same
+/// value rule can be pointed at either the whole range or a single day.
+class _ExerciseLog {
+  final TrainingSession session;
+  final SegmentEffort effort;
+  final int dayMs;
+
+  const _ExerciseLog({
+    required this.session,
+    required this.effort,
+    required this.dayMs,
+  });
 }
 
 class _CardioDay {

@@ -3257,10 +3257,19 @@ void main() {
         );
       }
 
-      // Tap the chart and verify no Tooltip renders.
+      // Tap the chart and verify no Tooltip renders inside the chart.
+      // The header's Records & Trends action carries the screen's only
+      // Tooltip, so the guard is scoped to the chart subtree.
       await tester.tap(find.byType(LineChart).first);
       await tester.pumpAndSettle();
-      expect(find.byType(Tooltip), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(LineChart),
+          matching: find.byType(Tooltip),
+        ),
+        findsNothing,
+      );
+      expect(find.byType(Tooltip), findsOneWidget);
     });
 
     // S-105 / S-105b / S-105c: no top headroom, no double padding,
@@ -3403,10 +3412,18 @@ void main() {
         expect(chart.data.lineTouchData.enabled, isFalse);
       }
 
-      // Tap and verify no Tooltip.
+      // Tap and verify no Tooltip inside the chart (the header's Records &
+      // Trends action is the screen's only Tooltip).
       await tester.tap(find.byType(LineChart).first);
       await tester.pumpAndSettle();
-      expect(find.byType(Tooltip), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(LineChart),
+          matching: find.byType(Tooltip),
+        ),
+        findsNothing,
+      );
+      expect(find.byType(Tooltip), findsOneWidget);
     });
 
     // ── Effort rating on Stats (HOW DID IT FEEL removed) ──────────────────────────
