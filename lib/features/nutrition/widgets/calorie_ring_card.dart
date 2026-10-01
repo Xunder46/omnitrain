@@ -273,14 +273,14 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                     ),
                     WaterTrackerControl(
                       glasses: widget.nutritionState.waterTodayGlasses,
-                      onIncrement: () => widget.nutritionState
-                          .incrementWaterForDate(
-                        OmniDateUtils.todayMidnightMs(),
-                      ),
-                      onDecrement: () => widget.nutritionState
-                          .decrementWaterForDate(
-                        OmniDateUtils.todayMidnightMs(),
-                      ),
+                      onIncrement: () =>
+                          widget.nutritionState.incrementWaterForDate(
+                            OmniDateUtils.todayMidnightMs(),
+                          ),
+                      onDecrement: () =>
+                          widget.nutritionState.decrementWaterForDate(
+                            OmniDateUtils.todayMidnightMs(),
+                          ),
                     ),
                   ],
                 ),
@@ -338,4 +338,3 @@ class _SodiumTotalChip extends StatelessWidget {
     );
   }
 }
-

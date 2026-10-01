@@ -1,0 +1,121 @@
+{
+  "protocolVersion": 1,
+  "name": "A slot id can be introduced only once",
+  "description": "A re-delivered exercise_push and a later add_exercise both name a slot that already exists. Neither may duplicate the slot, and neither may overwrite what the slot holds — replacing the exercise in a slot is swap_exercise's job. The structure change still counts as applied, so its revision is spent; the push changes nothing at all.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-dup-slot-snapshot",
+    "sessionId": "s-2026-07-13-10",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T19:00:00Z",
+    "payload": {
+      "sessionId": "s-2026-07-13-10",
+      "revision": 60,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        },
+        {
+          "sessionExerciseId": "sx-plank",
+          "exerciseId": "ex-plank",
+          "name": "Plank",
+          "capabilities": ["time", "hold"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "e-701",
+          "eventId": "evt-701",
+          "kind": "set",
+          "loggedAt": "2026-07-13T18:55:00Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "reps": 5,
+          "loadKg": 80
+        }
+      ],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-dup-slot-push",
+      "sessionId": "s-2026-07-13-10",
+      "type": "exercise_push",
+      "origin": "phone",
+      "sentAt": "2026-07-13T19:01:00Z",
+      "payload": {
+        "insertAtIndex": 0,
+        "exercise": {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-dumbbell-bench-press",
+          "name": "Dumbbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-dup-slot-add",
+      "sessionId": "s-2026-07-13-10",
+      "type": "structure_change",
+      "origin": "phone",
+      "sentAt": "2026-07-13T19:02:00Z",
+      "payload": {
+        "changeId": "chg-701",
+        "changes": [
+          {
+            "kind": "add_exercise",
+            "exercise": {
+              "sessionExerciseId": "sx-plank",
+              "exerciseId": "ex-goblet-squat",
+              "name": "Goblet Squat",
+              "capabilities": ["sets", "reps", "load"]
+            },
+            "atIndex": 1
+          }
+        ]
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-2026-07-13-10",
+    "status": "active",
+    "revision": 61,
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-701",
+        "eventId": "evt-701",
+        "kind": "set",
+        "loggedAt": "2026-07-13T18:55:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      }
+    ],
+    "timers": {}
+  }
+}

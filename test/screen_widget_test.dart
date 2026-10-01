@@ -37,7 +37,6 @@ import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/features/stats/widgets/scrollable_trend_chart.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:omnitrain/core/utils/chart_axis_helper.dart';
-import 'package:omnitrain/core/utils/session_feeling_utils.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
@@ -49,7 +48,9 @@ import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/features/session/live_session_screen.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
@@ -63,6 +64,7 @@ import 'helpers/test_nutrition_primer_state.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/test_content_column.dart';
 import 'helpers/fake_asset_bundle.dart';
+import 'helpers/live_session_fixtures.dart';
 import 'helpers/test_image_helper.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -249,9 +251,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('WORKOUT'), findsOneWidget);
-      expect(find.text('Feeling Survey'), findsOneWidget);
+      expect(find.text('Effort Rating'), findsOneWidget);
       expect(
-        find.text('Ask how the workout felt after finishing'),
+        find.text('Ask how hard the workout was after finishing'),
         findsOneWidget,
       );
 
@@ -1953,7 +1955,10 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('HomeScreen', () {
-    Future<HomeScreen> buildHomeScreen(MockWorkoutRepository repo) async {
+    Future<HomeScreen> buildHomeScreen(
+      MockWorkoutRepository repo, {
+      LiveSessionMirrorState? liveSession,
+    }) async {
       final workoutState = WorkoutState(repo);
       final homeState = HomeState(repo);
       await homeState.init();
@@ -1987,6 +1992,7 @@ void main() {
           service: ExerciseLibraryService(repo),
           workoutState: workoutState,
         ),
+        liveSession: liveSession,
       );
     }
 
@@ -2020,6 +2026,59 @@ void main() {
 
       // Should have multiple EnergyTile cards in a grid
       expect(find.byType(CustomScrollView), findsWidgets);
+    });
+
+    // S-001 — a session running on the wrist is an entry point one screen
+    // from launch, and its absence costs the panel nothing.
+    testWidgets(
+      'shows the live watch session entry point when one is running',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final screen = await buildHomeScreen(
+          repo,
+          liveSession: liveWatchSession(),
+        );
+
+        await tester.pumpWidget(MaterialApp(home: screen));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('live_session_entry_point')),
+          findsOneWidget,
+        );
+        expect(find.text('Barbell Bench Press'), findsOneWidget);
+        expect(find.text('TRAIN'), findsOneWidget);
+      },
+    );
+
+    testWidgets('shows no entry point without a live watch session', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final screen = await buildHomeScreen(repo);
+
+      await tester.pumpWidget(MaterialApp(home: screen));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('live_session_entry_point')), findsNothing);
+      expect(find.text('TRAIN'), findsOneWidget);
+    });
+
+    testWidgets('the entry point leaves when the session completes', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final liveSession = liveWatchSession();
+      final screen = await buildHomeScreen(repo, liveSession: liveSession);
+
+      await tester.pumpWidget(MaterialApp(home: screen));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('live_session_entry_point')), findsOneWidget);
+
+      await liveSession.completeSession();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('live_session_entry_point')), findsNothing);
     });
 
     testWidgets('free training flow shows rolling toggle and inline guidance', (
@@ -2215,7 +2274,9 @@ void main() {
 
         expect(find.text('Start New Session?'), findsOneWidget);
         expect(
-          find.text('Your current session will be discarded and cannot be recovered.'),
+          find.text(
+            'Your current session will be discarded and cannot be recovered.',
+          ),
           findsOneWidget,
         );
         expect(find.byType(MyRoutinesScreen), findsNothing);
@@ -3196,10 +3257,19 @@ void main() {
         );
       }
 
-      // Tap the chart and verify no Tooltip renders.
+      // Tap the chart and verify no Tooltip renders inside the chart.
+      // The header's Records & Trends action carries the screen's only
+      // Tooltip, so the guard is scoped to the chart subtree.
       await tester.tap(find.byType(LineChart).first);
       await tester.pumpAndSettle();
-      expect(find.byType(Tooltip), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(LineChart),
+          matching: find.byType(Tooltip),
+        ),
+        findsNothing,
+      );
+      expect(find.byType(Tooltip), findsOneWidget);
     });
 
     // S-105 / S-105b / S-105c: no top headroom, no double padding,
@@ -3342,20 +3412,25 @@ void main() {
         expect(chart.data.lineTouchData.enabled, isFalse);
       }
 
-      // Tap and verify no Tooltip.
+      // Tap and verify no Tooltip inside the chart (the header's Records &
+      // Trends action is the screen's only Tooltip).
       await tester.tap(find.byType(LineChart).first);
       await tester.pumpAndSettle();
-      expect(find.byType(Tooltip), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(LineChart),
+          matching: find.byType(Tooltip),
+        ),
+        findsNothing,
+      );
+      expect(find.byType(Tooltip), findsOneWidget);
     });
 
-    // ── Feeling trend (HOW DID IT FEEL card) ──────────────────────────────────────
-    // The HOW DID IT FEEL card surfaces the post-session feeling as a
-    // trend inside the same scrollable area as Strength / Cardio /
-    // NUTRITION. The tests below guard against the antipatterns
-    // flagged in the spec: no feeling scalar in the ALL TIME
-    // stat row, no feeling-only chart for an all-non-strength
-    // user, no fabricated flat line at zero when the window has
-    // no feeling data.
+    // ── Effort rating on Stats (HOW DID IT FEEL removed) ──────────────────────────
+    // The HOW DID IT FEEL trend card was removed when the post-session
+    // survey was redefined as the session effort rating (Stats redesign
+    // PR 1). The tests below guard that no effort/feeling scalar, pill or
+    // section appears on the Stats screen.
 
     Future<void> seedFeelingSession(
       MockWorkoutRepository repo, {
@@ -3433,8 +3508,7 @@ void main() {
     });
 
     testWidgets(
-      'feeling trend chart renders inside an OmniSurface — never a pill '
-      'or tile in place of a chart',
+      'HOW DID IT FEEL section is removed (Phase 4)',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(400, 1200));
         final repo = await _freshRepo();
@@ -3456,39 +3530,25 @@ void main() {
 
         await pumpStatsScreen(tester, repo);
 
-        // HOW DID IT FEEL header exists.
-        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
-        // The feeling chart card is rendered inside an OmniSurface
-        // — not as a pill / tile / compact stat. The card holds
-        // the chart only; signature check is the pinned y-axis
-        // tick "5" being present.
+        // HOW DID IT FEEL header must not appear (Phase 4 removal)
         expect(
-          find.descendant(
-            of: find.byType(OmniSurface),
-            matching: find.byType(LineChart),
-          ),
-          findsAtLeastNWidgets(1),
+          find.text('HOW DID IT FEEL'),
+          findsNothing,
+          reason: 'HOW DID IT FEEL section has been removed',
         );
-        // The chart line itself exists, with LineTouchData
-        // disabled — consistent with the other Stats charts.
-        final lineCharts = tester.widgetList<LineChart>(find.byType(LineChart));
-        expect(lineCharts, isNotEmpty);
-        for (final chart in lineCharts) {
-          expect(chart.data.lineTouchData.enabled, isFalse);
-        }
       },
     );
 
     testWidgets(
-      'all-non-strength dataset (runs and rolls only) renders a populated '
-      'feeling trend — universality guard',
+      'all-non-strength dataset renders STRENGTH/CARDIO/SPORTS sections '
+      'without HOW DID IT FEEL (Phase 4)',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(400, 1400));
         final repo = await _freshRepo();
         final now = DateTime.now();
         // 3 cardio/sports sessions with feelings; no set efforts
-        // anywhere → topLifts is empty → the feeling trend must
-        // still render and not be blank or gated.
+        // anywhere → topLifts is empty → Cardio and Sports sections
+        // render without the feeling trend.
         await seedFeelingSession(
           repo,
           id: 'run-1',
@@ -3516,22 +3576,22 @@ void main() {
 
         await pumpStatsScreen(tester, repo);
 
-        // HOW DID IT FEEL header is present, the chart is rendered.
-        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
-        // The card itself has no in-card title (the HOW DID IT FEEL
-        // section header above the card is the title); the card
-        // contains only the chart. Verify by asserting the
-        // pinned y-axis tick "5" is present — that's the
-        // chart's signature.
-        expect(find.text('5'), findsAtLeastNWidgets(1));
-        // Empty-state card must NOT be shown for a populated trend.
-        expect(find.text('No feeling logged in this window yet'), findsNothing);
+        // HOW DID IT FEEL header must not appear (Phase 4 removal)
+        expect(
+          find.text('HOW DID IT FEEL'),
+          findsNothing,
+          reason: 'HOW DID IT FEEL section has been removed',
+        );
+        // Verify CARDIO section is still present
+        expect(find.text('CARDIO'), findsOneWidget);
+        // Verify SPORTS section is still present
+        expect(find.text('SPORTS'), findsOneWidget);
       },
     );
 
     testWidgets(
-      'empty window — explicit empty state renders, not a chart, not a '
-      'flat line at zero',
+      'sessions without effort ratings — HOW DID IT FEEL section not rendered '
+      '(Phase 4)',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(400, 1200));
         final repo = await _freshRepo();
@@ -3552,18 +3612,12 @@ void main() {
 
         await pumpStatsScreen(tester, repo);
 
-        // HOW DID IT FEEL header is still present so the section is not
-        // silently dropped, but no chart is rendered — the empty
-        // state card is shown.
-        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
+        // HOW DID IT FEEL header must not appear (Phase 4 removal)
         expect(
-          find.text('No feeling logged in this window yet'),
-          findsOneWidget,
+          find.text('HOW DID IT FEEL'),
+          findsNothing,
+          reason: 'HOW DID IT FEEL section has been removed in Phase 4',
         );
-        // The feeling card's "Post-session feeling" label is NOT
-        // rendered when the trend is empty — only the empty-state
-        // card is shown.
-        expect(find.text('Post-session feeling'), findsNothing);
       },
     );
 
@@ -3584,587 +3638,7 @@ void main() {
     );
 
     testWidgets(
-      'omitted sessions are not rendered as dips in the feeling chart',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1400));
-        final repo = await _freshRepo();
-        final now = DateTime.now();
-        // Day-0: feeling 3. Day-1: no feeling. Day-2: feeling 5.
-        // The chart must contain 2 spots (3 and 5) and the middle
-        // day must not appear as an interpolated dip.
-        await seedFeelingSession(
-          repo,
-          id: 'dip-0',
-          start: now.subtract(const Duration(days: 2)),
-          duration: const Duration(minutes: 30),
-          feeling: 3,
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'dip-1',
-          start: now.subtract(const Duration(days: 1)),
-          duration: const Duration(minutes: 30),
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'dip-2',
-          start: now.subtract(const Duration(hours: 6)),
-          duration: const Duration(minutes: 30),
-          feeling: 5,
-        );
-
-        await pumpStatsScreen(tester, repo);
-
-        // The feeling chart exists. Filter to single-series
-        // charts so we don't accidentally pick up the
-        // consistency card's multi-line series (which can have
-        // session counts in the 1..5 range). The feeling chart
-        // always has exactly one LineChartBarData; the new
-        // consistency / volume sections have multiple.
-        final feelingCharts = tester
-            .widgetList<LineChart>(find.byType(LineChart))
-            .where((c) => c.data.lineBarsData.length == 1)
-            .toList();
-        expect(feelingCharts, isNotEmpty);
-        final feelingSpots = feelingCharts
-            .expand((c) => c.data.lineBarsData)
-            .expand((bar) => bar.spots)
-            .where((spot) => spot.y >= 1 && spot.y <= 5)
-            .toList();
-        // Exactly 2 spots on the feeling series.
-        expect(feelingSpots, hasLength(2));
-        // Values are 3 and 5 — no 0 or fabricated middle value.
-        final feelingYs = feelingSpots.map((s) => s.y).toList()..sort();
-        expect(feelingYs, [3.0, 5.0]);
-      },
-    );
-
-    testWidgets(
-      'feeling chart y-axis has exactly 5 integer ticks (1..5) and no '
-      'unit-suffix on the labels',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1400));
-        final repo = await _freshRepo();
-        final now = DateTime.now();
-        await seedFeelingSession(
-          repo,
-          id: 'axis-1',
-          start: now.subtract(const Duration(days: 2)),
-          duration: const Duration(minutes: 30),
-          feeling: 3,
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'axis-2',
-          start: now.subtract(const Duration(days: 1)),
-          duration: const Duration(minutes: 30),
-          feeling: 4,
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'axis-3',
-          start: now.subtract(const Duration(hours: 6)),
-          duration: const Duration(minutes: 30),
-          feeling: 5,
-        );
-
-        await pumpStatsScreen(tester, repo);
-
-        // The feeling LineChart has minY=1, maxY=5, interval=1.
-        final feelingCharts = tester
-            .widgetList<LineChart>(find.byType(LineChart))
-            .where((c) => c.data.minY == 1.0 && c.data.maxY == 5.0)
-            .toList();
-        expect(
-          feelingCharts,
-          hasLength(1),
-          reason: 'exactly one chart must be pinned to the 1..5 range',
-        );
-
-        // The pinned y-axis labels are the 5 integers 1..5, with
-        // no "feeling" suffix. Inspect the rendered text widgets
-        // inside the scrollable trend chart wrapper. The
-        // pinned-axis labels are direct `Text` children of
-        // `ScrollableTrendChart`, NOT inside the chart's inner
-        // `LineChart` — so we look at Text widgets that are
-        // descendants of `ScrollableTrendChart` but NOT
-        // descendants of `LineChart`. The "Post-session feeling"
-        // card title lives outside the chart wrapper and is
-        // therefore correctly excluded from this assertion.
-        final pinnedAxisTexts = tester
-            .widgetList<Text>(
-              find.descendant(
-                of: find.byType(ScrollableTrendChart),
-                matching: find.byType(Text),
-              ),
-            )
-            .map((w) => w.data)
-            .where((s) => s != null)
-            .toSet();
-        // Exactly the 5 integer tick labels appear on the pinned
-        // y-axis column.
-        for (final tick in ['1', '2', '3', '4', '5']) {
-          expect(
-            pinnedAxisTexts,
-            contains(tick),
-            reason: 'tick "$tick" must appear on the pinned y-axis',
-          );
-        }
-        // No "feeling" word on any pinned-axis label (the chart
-        // was wired with `unitLabel: ''`).
-        final feelingLabels = pinnedAxisTexts
-            .where((s) => s != null && s.contains('feeling'))
-            .toList();
-        expect(
-          feelingLabels,
-          isEmpty,
-          reason:
-              'no pinned y-axis label may include the word '
-              '"feeling"',
-        );
-      },
-    );
-
-    testWidgets(
-      'feeling chart width parity — barWidth == 2, dot radius == 3, dot '
-      'strokeWidth == 1.5 (the same conventions every other chart on the '
-      'screen already uses), straight segments, no area fill, no glow '
-      'shadow, no halo. Line color is the fixed themeColors.primary; '
-      'dots carry each session\'s feeling color via the shared '
-      'feelingColor helper.',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1400));
-        final repo = await _freshRepo();
-        final now = DateTime.now();
-        // Three consecutive sessions with feelings so the line
-        // has at least one segment to render.
-        await seedFeelingSession(
-          repo,
-          id: 'vis-1',
-          start: now.subtract(const Duration(days: 3)),
-          duration: const Duration(minutes: 30),
-          feeling: 3,
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'vis-2',
-          start: now.subtract(const Duration(days: 2)),
-          duration: const Duration(minutes: 30),
-          feeling: 4,
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'vis-3',
-          start: now.subtract(const Duration(hours: 6)),
-          duration: const Duration(minutes: 30),
-          feeling: 4,
-        );
-
-        await pumpStatsScreen(tester, repo);
-
-        // Locate the feeling LineChart (minY=1, maxY=5).
-        final feelingCharts = tester
-            .widgetList<LineChart>(find.byType(LineChart))
-            .where((c) => c.data.minY == 1.0 && c.data.maxY == 5.0)
-            .toList();
-        expect(feelingCharts, hasLength(1));
-        final chart = feelingCharts.first;
-        expect(chart.data.lineBarsData, hasLength(1));
-        final bar = chart.data.lineBarsData.first;
-
-        // Width parity — the feeling chart must use the same
-        // barWidth / dot radius / dot strokeWidth as every other
-        // chart on the screen (e1RM, volume, cardio, nutrition
-        // calories, nutrition macros). Heavier weights are no
-        // longer permitted; this locks the convention.
-        expect(
-          bar.barWidth,
-          2.0,
-          reason:
-              'line width must match the other charts on '
-              'the screen (barWidth: 2.0)',
-        );
-        final dotPainter = bar.dotData.getDotPainter;
-        final painter =
-            dotPainter(bar.spots.first, 0, bar, 0) as FlDotCirclePainter;
-        expect(
-          painter.radius,
-          3.0,
-          reason:
-              'dot radius must match the other charts on '
-              'the screen (radius: 3.0)',
-        );
-        expect(
-          painter.strokeWidth,
-          1.5,
-          reason:
-              'dot stroke width must match the other charts '
-              'on the screen (strokeWidth: 1.5)',
-        );
-        // No halo stroke — other charts use a plain dot with the
-        // default transparent strokeColor.
-        expect(
-          painter.strokeColor,
-          isNot(OmniTheme.colors.surface),
-          reason:
-              'dot must not carry a halo ring in the surface '
-              'color — that was added to compensate for a heavier '
-              'dot weight and is no longer needed; matches the '
-              'plain-dot convention used by every other chart on '
-              'the screen',
-        );
-
-        // No glow shadow — every other chart on the screen has a
-        // plain (no-shadow) line; the feeling chart must too.
-        expect(
-          bar.shadow.blurRadius,
-          0,
-          reason:
-              'line must not carry a glow shadow — that was '
-              'added to compensate for a heavier line weight; '
-              'every other chart on the screen renders a plain '
-              '2dp stroke',
-        );
-        expect(
-          bar.shadow.color.a,
-          0.0,
-          reason:
-              'line shadow must be a no-op (transparent) so '
-              'the 2dp stroke is not visually muddied',
-        );
-
-        // Shape parity — straight segments, no area fill. These
-        // were already conventions on the feeling chart; lock
-        // them so a future change can't drift.
-        expect(
-          bar.isCurved,
-          isFalse,
-          reason:
-              'line must use straight segments so it '
-              'reads unambiguously on a 120dp-tall chart',
-        );
-        expect(
-          bar.belowBarData.show,
-          isFalse,
-          reason:
-              'area fill must be off so the line is not '
-              'washed out by the tinted region underneath',
-        );
-
-        // Color: the connecting line is ONE fixed color
-        // (`themeColors.primary`), independent of any session's
-        // rating. Previously the line took `feelingColor(...)`,
-        // which made the line vanish when the latest rating
-        // mapped to a color close to the background. The points
-        // carry the meaning instead — each painted in its own
-        // session's feeling color via the shared
-        // `feelingColor(feeling, themeColors)` helper.
-        expect(
-          bar.color,
-          OmniTheme.colors.primary,
-          reason:
-              'line color must be themeColors.primary — '
-              'a single fixed color that never changes with '
-              'any session\'s rating',
-        );
-        // The line color is NOT a feeling color (the old buggy
-        // behavior): when the latest rating is 4, the line must
-        // NOT be Colors.green.
-        expect(
-          bar.color,
-          isNot(Colors.green),
-          reason:
-              'line color must not inherit a feeling '
-              'color — that was the visibility bug',
-        );
-
-        // The most-recent dot is the latest session's feeling
-        // color (4 → Colors.green), NOT the line color.
-        final latestFeeling = bar.spots.last.y.round();
-        final latestPainter =
-            bar.dotData.getDotPainter(
-                  bar.spots.last,
-                  0,
-                  bar,
-                  bar.spots.length - 1,
-                )
-                as FlDotCirclePainter;
-        expect(
-          latestPainter.color,
-          feelingColor(latestFeeling, OmniTheme.colors),
-          reason:
-              'dot color must match feelingColor($latestFeeling) — '
-              'the same source the survey tile and history-row '
-              'accent use for that rating',
-        );
-      },
-    );
-
-    // ─────────────────────────────────────────────────────────────────
-    // Feeling-trend color-visibility guards (regression suite for the
-    // bug where the line inherited a rating's color and vanished when
-    // the rating mapped to a low-contrast theme color).
-    //
-    // Contract being locked in here:
-    //   1. The connecting line is ONE fixed color (themeColors.primary),
-    //      independent of any session's rating.
-    //   2. Each point is painted in its OWN session's feeling color,
-    //      sourced from the shared `feelingColor(feeling, themeColors)`
-    //      helper (the same source as the survey tile and the history-
-    //      row accent).
-    //   3. A flat series (every session rated the same) still renders
-    //      every point individually with a halo stroke so it can be
-    //      distinguished from a horizontal gridline.
-    // ─────────────────────────────────────────────────────────────────
-
-    LineChartBarData _feelingBar(WidgetTester tester) {
-      final feelingCharts = tester
-          .widgetList<LineChart>(find.byType(LineChart))
-          .where((c) => c.data.minY == 1.0 && c.data.maxY == 5.0)
-          .toList();
-      expect(
-        feelingCharts,
-        hasLength(1),
-        reason:
-            'exactly one LineChart with the feeling-trend '
-            'y-axis (1..5) must be rendered',
-      );
-      expect(feelingCharts.first.data.lineBarsData, hasLength(1));
-      return feelingCharts.first.data.lineBarsData.first;
-    }
-
-    testWidgets(
-      'S-001 (regression guard): the connecting line color is FIXED — it '
-      'does not change when the latest session rating changes. Regression '
-      'guard for the bug where the line inherited a rating color and '
-      'vanished on some themes.',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1400));
-        final repo = await _freshRepo();
-        final now = DateTime.now();
-
-        // Series A: latest feeling is 1 (Colors.red in the bug).
-        // Series B: latest feeling is 4 (Colors.green in the bug).
-        // Both must produce the SAME line color.
-        await seedFeelingSession(
-          repo,
-          id: 'lc-1a',
-          start: now.subtract(const Duration(days: 3)),
-          duration: const Duration(minutes: 30),
-          feeling: 3,
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'lc-1b',
-          start: now.subtract(const Duration(hours: 6)),
-          duration: const Duration(minutes: 30),
-          feeling: 1,
-        );
-
-        await pumpStatsScreen(tester, repo);
-        final lineA = _feelingBar(tester).color;
-
-        // Build a fresh repo + settings for series B so the screen
-        // re-renders from scratch — same shape, different latest rating.
-        final repoB = await _freshRepo();
-        await seedFeelingSession(
-          repoB,
-          id: 'lc-4a',
-          start: now.subtract(const Duration(days: 3)),
-          duration: const Duration(minutes: 30),
-          feeling: 3,
-        );
-        await seedFeelingSession(
-          repoB,
-          id: 'lc-4b',
-          start: now.subtract(const Duration(hours: 6)),
-          duration: const Duration(minutes: 30),
-          feeling: 4,
-        );
-        await pumpStatsScreen(tester, repoB);
-        final lineB = _feelingBar(tester).color;
-
-        // The bug: lineA would equal Colors.red, lineB would equal
-        // Colors.green — i.e. the line color would vary with the
-        // latest rating. The fix: both equal `OmniTheme.colors.primary`.
-        expect(
-          lineA,
-          OmniTheme.colors.primary,
-          reason:
-              'line color must equal themeColors.primary '
-              'even when the latest rating is 1 (the old code '
-              'painted it Colors.red)',
-        );
-        expect(
-          lineB,
-          OmniTheme.colors.primary,
-          reason:
-              'line color must equal themeColors.primary '
-              'even when the latest rating is 4 (the old code '
-              'painted it Colors.green)',
-        );
-        expect(
-          lineA,
-          lineB,
-          reason:
-              'line color must be identical across series '
-              'with different latest ratings — this is the '
-              'regression guard for the visibility bug',
-        );
-      },
-    );
-
-    testWidgets(
-      'S-002: each point on the trend is colored by its own session\'s '
-      'feeling, sourced from the shared feelingColor helper. A mixed '
-      'series (1, 3, 4) renders three differently-colored points.',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1400));
-        final repo = await _freshRepo();
-        final now = DateTime.now();
-
-        // Three sessions, three distinct hardcoded feeling colors so
-        // the test is independent of Theme.of(context).
-        await seedFeelingSession(
-          repo,
-          id: 'pc-1',
-          start: now.subtract(const Duration(days: 3)),
-          duration: const Duration(minutes: 30),
-          feeling: 1, // Colors.red
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'pc-3',
-          start: now.subtract(const Duration(days: 2)),
-          duration: const Duration(minutes: 30),
-          feeling: 3, // Colors.yellow[700]
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'pc-4',
-          start: now.subtract(const Duration(hours: 6)),
-          duration: const Duration(minutes: 30),
-          feeling: 4, // Colors.green
-        );
-
-        await pumpStatsScreen(tester, repo);
-
-        final bar = _feelingBar(tester);
-        expect(bar.spots, hasLength(3));
-
-        // Each point's color must equal feelingColor(spot.y.round())
-        // — the same shared source the survey tile and the history-
-        // row accent draw from.
-        for (var i = 0; i < bar.spots.length; i++) {
-          final feeling = bar.spots[i].y.round();
-          final expected = feelingColor(feeling, OmniTheme.colors);
-          final painter =
-              bar.dotData.getDotPainter(bar.spots[i], 0, bar, i)
-                  as FlDotCirclePainter;
-          expect(
-            painter.color,
-            expected,
-            reason:
-                'point $i (feeling=$feeling) must be painted '
-                'in feelingColor($feeling) — the same source the '
-                'survey tile and history-row accent use',
-          );
-        }
-      },
-    );
-
-    testWidgets(
-      'S-003: flat-series visibility — when every session in the window '
-      'shares one rating, every point is rendered individually and the '
-      'line remains the fixed theme primary (not the feeling color) so '
-      'the chart never collapses a flat series into a single dot.',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1400));
-        final repo = await _freshRepo();
-        final now = DateTime.now();
-
-        // Five sessions, all rated 4. The dot fill is Colors.green;
-        // the line must be theme primary so the connecting line stays
-        // distinguishable from the dots and from a horizontal gridline.
-        for (var i = 0; i < 5; i++) {
-          await seedFeelingSession(
-            repo,
-            id: 'flat-$i',
-            start: now.subtract(Duration(hours: 6 + i * 18)),
-            duration: const Duration(minutes: 30),
-            feeling: 4,
-          );
-        }
-
-        await pumpStatsScreen(tester, repo);
-
-        final bar = _feelingBar(tester);
-
-        // Every point is rendered — the chart never collapses a flat
-        // series into a single dot.
-        expect(bar.spots, hasLength(5));
-
-        // The line is the FIXED theme primary, not the feeling color.
-        // On the default test theme (abyssalNeon) the primary is cyan,
-        // which is clearly distinct from Colors.green (the feeling-4
-        // color) so the line is not visually merged with the dots.
-        expect(
-          bar.color,
-          OmniTheme.colors.primary,
-          reason:
-              'line color must stay fixed at themeColors.primary '
-              'even when every dot is the same feeling color',
-        );
-        expect(
-          bar.color,
-          isNot(Colors.green),
-          reason:
-              'line color must not equal the feeling color '
-              'on a flat series — that was the old buggy behavior',
-        );
-
-        // Every point renders individually with the chart's
-        // standard dot conventions (radius 3, strokeWidth 1.5) and
-        // is filled in the session's feeling color via the shared
-        // helper. No halo ring — that was the convention under the
-        // old heavier dot weight and is no longer needed now that
-        // the dot matches every other chart on the screen.
-        for (var i = 0; i < bar.spots.length; i++) {
-          final painter =
-              bar.dotData.getDotPainter(bar.spots[i], 0, bar, i)
-                  as FlDotCirclePainter;
-          expect(
-            painter.radius,
-            3.0,
-            reason:
-                'point $i must use the standard dot radius '
-                '(3.0) shared with every other chart on the '
-                'screen',
-          );
-          expect(
-            painter.strokeWidth,
-            1.5,
-            reason:
-                'point $i must use the standard dot stroke '
-                'width (1.5) shared with every other chart on '
-                'the screen',
-          );
-          // Dot fill is the session's own feeling color.
-          expect(
-            painter.color,
-            feelingColor(4, OmniTheme.colors),
-            reason:
-                'point $i fill must equal feelingColor(4) — '
-                'the same color the survey tile and the history-'
-                'row accent use for rating 4',
-          );
-        }
-      },
-    );
-
-    testWidgets(
-      'feeling card has no in-card title (the HOW DID IT FEEL section header '
-      'above the card is the only label)',
+      'HOW DID IT FEEL section header is not rendered (Phase 4 removal)',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(400, 1400));
         final repo = await _freshRepo();
@@ -4186,19 +3660,12 @@ void main() {
 
         await pumpStatsScreen(tester, repo);
 
-        // HOW DID IT FEEL section header exists.
-        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
-        // The in-card "Post-session feeling" title and the
-        // "1 = Rough · 5 = Great" caption must NOT exist —
-        // they were noise that pushed the chart down and
-        // crowded the card without adding information that
-        // isn't already encoded in the y-axis labels and the
-        // line color.
-        expect(find.text('Post-session feeling'), findsNothing);
-        expect(find.text('1 = Rough · 5 = Great'), findsNothing);
-        // The chart is still rendered (signature: pinned y-axis
-        // tick "5" is present).
-        expect(find.text('5'), findsAtLeastNWidgets(1));
+        // HOW DID IT FEEL section header must not exist (Phase 4 removal)
+        expect(
+          find.text('HOW DID IT FEEL'),
+          findsNothing,
+          reason: 'HOW DID IT FEEL section has been removed in Phase 4',
+        );
       },
     );
 
@@ -4267,7 +3734,8 @@ void main() {
         // Verify that key section headers are present.
         expect(find.text('STRENGTH'), findsOneWidget);
         expect(find.text('CARDIO'), findsOneWidget);
-        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
+        // HOW DID IT FEEL section has been removed (Phase 4)
+        expect(find.text('HOW DID IT FEEL'), findsNothing);
 
         // D-5 guard: measure actual gaps between sections.
         // Verifies that inter-section gaps are 24dp and owned by the ListView,
@@ -4295,7 +3763,7 @@ void main() {
         for (final finder in omniSurfaceFinder.evaluate()) {
           final rect = finder.renderObject is RenderBox
               ? (finder.renderObject as RenderBox).localToGlobal(Offset.zero) &
-                  (finder.renderObject as RenderBox).size
+                    (finder.renderObject as RenderBox).size
               : null;
           if (rect != null &&
               rect.top > strengthHeaderRect.top &&
@@ -4305,12 +3773,18 @@ void main() {
           }
         }
 
-        expect(lastStrengthCardRect, isNotNull,
-            reason: 'Should find a Strength section exercise card (OmniSurface)');
+        expect(
+          lastStrengthCardRect,
+          isNotNull,
+          reason: 'Should find a Strength section exercise card (OmniSurface)',
+        );
 
         // Sanity check: header order
-        expect(strengthHeaderRect.top, lessThan(cardioHeaderRect.top),
-            reason: 'STRENGTH header should be above CARDIO header');
+        expect(
+          strengthHeaderRect.top,
+          lessThan(cardioHeaderRect.top),
+          reason: 'STRENGTH header should be above CARDIO header',
+        );
 
         // Measure the gap from the bottom of the last Strength card to the top of
         // the CARDIO header. This is the inter-section gap that D-5 specifies.
@@ -4320,20 +3794,26 @@ void main() {
         const expectedGap = 24.0;
         const tolerance = 3.0;
 
-        expect(gap, greaterThan(expectedGap - tolerance),
-            reason:
-                'Gap between Strength and Cardio sections should be ~24dp; '
-                'found ${gap.toStringAsFixed(1)}dp. '
-                'If _buildFeelingSection, _buildNutritionSection, or another '
-                'section builder has a self-prefixed SizedBox(height: 24), '
-                'this gap would be ~48dp and this test would fail.');
-        expect(gap, lessThan(expectedGap + tolerance),
-            reason:
-                'Gap between Strength and Cardio sections should be ~24dp; '
-                'found ${gap.toStringAsFixed(1)}dp. '
-                'If _buildFeelingSection, _buildNutritionSection, or another '
-                'section builder has a self-prefixed SizedBox(height: 24), '
-                'this gap would be ~48dp and this test would fail.');
+        expect(
+          gap,
+          greaterThan(expectedGap - tolerance),
+          reason:
+              'Gap between Strength and Cardio sections should be ~24dp; '
+              'found ${gap.toStringAsFixed(1)}dp. '
+              'If _buildFeelingSection, _buildNutritionSection, or another '
+              'section builder has a self-prefixed SizedBox(height: 24), '
+              'this gap would be ~48dp and this test would fail.',
+        );
+        expect(
+          gap,
+          lessThan(expectedGap + tolerance),
+          reason:
+              'Gap between Strength and Cardio sections should be ~24dp; '
+              'found ${gap.toStringAsFixed(1)}dp. '
+              'If _buildFeelingSection, _buildNutritionSection, or another '
+              'section builder has a self-prefixed SizedBox(height: 24), '
+              'this gap would be ~48dp and this test would fail.',
+        );
       },
     );
 
@@ -4362,10 +3842,7 @@ void main() {
                           value: 'calories',
                           label: Text('Calories'),
                         ),
-                        ButtonSegment(
-                          value: 'macros',
-                          label: Text('Macros'),
-                        ),
+                        ButtonSegment(value: 'macros', label: Text('Macros')),
                       ],
                       selected: const {'calories'},
                       onSelectionChanged: (selection) {},
@@ -4385,26 +3862,44 @@ void main() {
         );
 
         // At default 800x600 viewport, labels should render without wrapping.
-        expect(find.text('Calories'), findsWidgets,
-            reason: 'Calories label must be present and rendered');
-        expect(find.text('Macros'), findsWidgets,
-            reason: 'Macros label must be present and rendered');
+        expect(
+          find.text('Calories'),
+          findsWidgets,
+          reason: 'Calories label must be present and rendered',
+        );
+        expect(
+          find.text('Macros'),
+          findsWidgets,
+          reason: 'Macros label must be present and rendered',
+        );
 
         // Verify no layout overflow or clip artifacts.
         // Both labels are short (6-8 chars) and should fit on one line.
         final caloriesSize = tester.getSize(find.text('Calories').first);
         final macrosSize = tester.getSize(find.text('Macros').first);
 
-        expect(caloriesSize.width, greaterThan(0),
-            reason: 'Calories label must have positive width');
-        expect(macrosSize.width, greaterThan(0),
-            reason: 'Macros label must have positive width');
+        expect(
+          caloriesSize.width,
+          greaterThan(0),
+          reason: 'Calories label must have positive width',
+        );
+        expect(
+          macrosSize.width,
+          greaterThan(0),
+          reason: 'Macros label must have positive width',
+        );
 
         // Both labels should be reasonably sized (not excessively shrunk or wrapped).
-        expect(caloriesSize.width, lessThan(120),
-            reason: 'Calories label should not be excessively wide (no wrap)');
-        expect(macrosSize.width, lessThan(100),
-            reason: 'Macros label should not be excessively wide (no wrap)');
+        expect(
+          caloriesSize.width,
+          lessThan(120),
+          reason: 'Calories label should not be excessively wide (no wrap)',
+        );
+        expect(
+          macrosSize.width,
+          lessThan(100),
+          reason: 'Macros label should not be excessively wide (no wrap)',
+        );
       },
     );
 
@@ -4419,7 +3914,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(textScaleFactor: 5.0),
+              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(5.0)),
               child: child!,
             ),
             home: Scaffold(
@@ -4434,10 +3929,7 @@ void main() {
                           value: 'calories',
                           label: Text('Calories'),
                         ),
-                        ButtonSegment(
-                          value: 'macros',
-                          label: Text('Macros'),
-                        ),
+                        ButtonSegment(value: 'macros', label: Text('Macros')),
                       ],
                       selected: const {'calories'},
                       onSelectionChanged: (selection) {},
@@ -4458,15 +3950,24 @@ void main() {
 
         // Even at 5.0x text scale, labels should still render on a single line.
         // "Calories" and "Macros" are short words (6-8 chars) that should not wrap.
-        expect(find.text('Calories'), findsWidgets,
-            reason: 'Calories label must render on one line at 5.0x scale');
-        expect(find.text('Macros'), findsWidgets,
-            reason: 'Macros label must render on one line at 5.0x scale');
+        expect(
+          find.text('Calories'),
+          findsWidgets,
+          reason: 'Calories label must render on one line at 5.0x scale',
+        );
+        expect(
+          find.text('Macros'),
+          findsWidgets,
+          reason: 'Macros label must render on one line at 5.0x scale',
+        );
 
         // Verify the toggle renders without layout errors.
         final segmentedButtonFinder = find.byType(SegmentedButton<String>);
-        expect(segmentedButtonFinder, findsOneWidget,
-            reason: 'SegmentedButton must render successfully at 5.0x scale');
+        expect(
+          segmentedButtonFinder,
+          findsOneWidget,
+          reason: 'SegmentedButton must render successfully at 5.0x scale',
+        );
       },
     );
 
@@ -4486,285 +3987,54 @@ void main() {
         // might not render without data. But if a toggle IS found, verify it's unique.
         // This test documents that only one toggle should exist if any do.
         if (allSegmentedButtons.evaluate().isNotEmpty) {
-          expect(allSegmentedButtons, findsOneWidget,
-              reason: 'Only Nutrition toggle should exist (others deleted)');
+          expect(
+            allSegmentedButtons,
+            findsOneWidget,
+            reason: 'Only Nutrition toggle should exist (others deleted)',
+          );
         }
       },
     );
 
     // ── Phase E: Isometric and Sports sections ───────────────────────────────
 
-    testWidgets(
-      'S-601: Isometric section renders with exercise trend cards',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1200));
-        final repo = await _freshRepo();
+    testWidgets('S-601: Isometric section renders with exercise trend cards', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      final repo = await _freshRepo();
 
-        // Create exercise
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-plank',
-            name: 'Plank',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
+      // Create exercise
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-plank',
+          name: 'Plank',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
 
-        // Seed multiple isometric sessions across 14+ days
-        for (int i = 0; i < 5; i++) {
-          final day = DateTime.now().subtract(Duration(days: i * 2));
-          await repo.createSession(
-            TrainingSession(
-              id: 'sess-iso-$i',
-              ownerUserId: 'user-1',
-              startedAtMs: day.millisecondsSinceEpoch,
-              endedAtMs: day.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-              modality: 'isometric_stretching',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-
-          // Add drill effort
-          final segId = 'seg-iso-$i';
-          await repo.createSegment(
-            SessionSegment(
-              id: segId,
-              sessionId: 'sess-iso-$i',
-              orderIndex: 0,
-              segmentType: 'main',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-
-          final effId = 'eff-iso-$i';
-          await repo.createEffort(
-            SegmentEffort(
-              id: effId,
-              segmentId: segId,
-              orderIndex: 0,
-              effortKind: 'drill',
-              exerciseId: 'ex-plank',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-
-          await repo.createTimedInstance(
-            TimedInstance(
-              id: 'ti-iso-$i',
-              effortId: effId,
-              entryIndex: 0,
-              actualDurationSecs: 60,
-              state: TimedState.finished,
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-        }
-
-        await pumpStatsScreen(tester, repo);
-
-        // Verify ISOMETRIC header exists
-        expect(find.text('ISOMETRIC'), findsOneWidget);
-
-        // Verify exercise name appears
-        expect(find.text('Plank'), findsWidgets);
-
-        // Verify chart is rendered (look for Duration text)
-        expect(find.text('Duration (sec)'), findsWidgets);
-      },
-    );
-
-    testWidgets(
-      'S-602: Isometric section empty state',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 900));
-        final repo = await _freshRepo();
-
-        // Create a session but no isometric efforts
-        final now = DateTime.now();
+      // Seed multiple isometric sessions across 14+ days
+      for (int i = 0; i < 5; i++) {
+        final day = DateTime.now().subtract(Duration(days: i * 2));
         await repo.createSession(
           TrainingSession(
-            id: 'sess-1',
+            id: 'sess-iso-$i',
             ownerUserId: 'user-1',
-            startedAtMs: now.millisecondsSinceEpoch,
-            endedAtMs: now.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-            modality: 'cardio_endurance',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await pumpStatsScreen(tester, repo);
-
-        // Verify ISOMETRIC header exists
-        expect(find.text('ISOMETRIC'), findsOneWidget);
-
-        // Verify empty state message
-        expect(
-          find.text(
-            'No isometric history yet. Log hold exercises to see trends here.',
-          ),
-          findsOneWidget,
-        );
-      },
-    );
-
-    testWidgets(
-      'S-603: Sports section renders with exercise trend cards',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1200));
-        final repo = await _freshRepo();
-
-        // Create exercise
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-boxing',
-            name: 'Boxing',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Seed multiple sports sessions across 14+ days
-        for (int i = 0; i < 5; i++) {
-          final day = DateTime.now().subtract(Duration(days: i * 2));
-          await repo.createSession(
-            TrainingSession(
-              id: 'sess-sport-$i',
-              ownerUserId: 'user-1',
-              startedAtMs: day.millisecondsSinceEpoch,
-              endedAtMs: day.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-              modality: 'sports',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-
-          // Add round effort
-          final segId = 'seg-sport-$i';
-          await repo.createSegment(
-            SessionSegment(
-              id: segId,
-              sessionId: 'sess-sport-$i',
-              orderIndex: 0,
-              segmentType: 'main',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-
-          final effId = 'eff-sport-$i';
-          await repo.createEffort(
-            SegmentEffort(
-              id: effId,
-              segmentId: segId,
-              orderIndex: 0,
-              effortKind: 'round',
-              exerciseId: 'ex-boxing',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-
-          await repo.createTimedInstance(
-            TimedInstance(
-              id: 'ti-sport-$i',
-              effortId: effId,
-              entryIndex: 0,
-              actualDurationSecs: 180,
-              state: TimedState.finished,
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-        }
-
-        await pumpStatsScreen(tester, repo);
-
-        // Verify SPORTS header exists
-        expect(find.text('SPORTS'), findsOneWidget);
-
-        // Verify exercise name appears
-        expect(find.text('Boxing'), findsWidgets);
-
-        // Verify chart is rendered (look for Duration text)
-        expect(find.text('Duration (sec)'), findsWidgets);
-      },
-    );
-
-    testWidgets(
-      'S-604: Sports section empty state',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 900));
-        final repo = await _freshRepo();
-
-        // Create a session but no sports efforts
-        final now = DateTime.now();
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-1',
-            ownerUserId: 'user-1',
-            startedAtMs: now.millisecondsSinceEpoch,
-            endedAtMs: now.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-            modality: 'cardio_endurance',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await pumpStatsScreen(tester, repo);
-
-        // Verify SPORTS header exists
-        expect(find.text('SPORTS'), findsOneWidget);
-
-        // Verify empty state message
-        expect(
-          find.text(
-            'No sports history yet. Log sports rounds to see trends here.',
-          ),
-          findsOneWidget,
-        );
-      },
-    );
-
-    testWidgets(
-      'S-605: Hold time aggregation — sum per day',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1200));
-        final repo = await _freshRepo();
-
-        // Create exercise
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-plank',
-            name: 'Plank',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Seed a session with three 30-second holds (should sum to 90 sec)
-        final today = DateTime.now();
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-today',
-            ownerUserId: 'user-1',
-            startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+            startedAtMs: day.millisecondsSinceEpoch,
+            endedAtMs: day.add(const Duration(hours: 1)).millisecondsSinceEpoch,
             modality: 'isometric_stretching',
             createdAtMs: 1000,
             updatedAtMs: 1000,
           ),
         );
 
-        final segId = 'seg-today';
+        // Add drill effort
+        final segId = 'seg-iso-$i';
         await repo.createSegment(
           SessionSegment(
             id: segId,
-            sessionId: 'sess-today',
+            sessionId: 'sess-iso-$i',
             orderIndex: 0,
             segmentType: 'main',
             createdAtMs: 1000,
@@ -4772,101 +4042,7 @@ void main() {
           ),
         );
 
-        // Create three drill efforts, each 30 seconds
-        for (int i = 0; i < 3; i++) {
-          final effId = 'eff-today-$i';
-          await repo.createEffort(
-            SegmentEffort(
-              id: effId,
-              segmentId: segId,
-              orderIndex: i,
-              effortKind: 'drill',
-              exerciseId: 'ex-plank',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-
-          await repo.createTimedInstance(
-            TimedInstance(
-              id: 'ti-$effId',
-              effortId: effId,
-              entryIndex: 0,
-              actualDurationSecs: 30,
-              state: TimedState.finished,
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-          );
-        }
-
-        await pumpStatsScreen(tester, repo);
-
-        // Verify the aggregated value shows 90 seconds in some form
-        // The chart will show 90 on the y-axis due to aggregation
-        expect(find.text('ISOMETRIC'), findsOneWidget);
-        expect(find.text('Plank'), findsWidgets);
-
-        // Assert that the aggregated hold time (90 sec) is rendered.
-        // Single-point drill card shows "$secs sec" text.
-        expect(find.textContaining('90 sec'), findsOneWidget,
-            reason: 'aggregated hold time must sum all drills on the same day');
-      },
-    );
-
-    testWidgets(
-      'S-606: Isometric/Sports inherit shared 14-day window',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1200));
-        final repo = await _freshRepo();
-
-        // Create exercises
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-plank',
-            name: 'Plank',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-boxing',
-            name: 'Boxing',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Seed isometric and sports data
-        final today = DateTime.now();
-
-        // Isometric session
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-iso',
-            ownerUserId: 'user-1',
-            startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-            modality: 'isometric_stretching',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        var segId = 'seg-iso';
-        await repo.createSegment(
-          SessionSegment(
-            id: segId,
-            sessionId: 'sess-iso',
-            orderIndex: 0,
-            segmentType: 'main',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        var effId = 'eff-iso';
+        final effId = 'eff-iso-$i';
         await repo.createEffort(
           SegmentEffort(
             id: effId,
@@ -4881,7 +4057,7 @@ void main() {
 
         await repo.createTimedInstance(
           TimedInstance(
-            id: 'ti-iso',
+            id: 'ti-iso-$i',
             effortId: effId,
             entryIndex: 0,
             actualDurationSecs: 60,
@@ -4890,25 +4066,91 @@ void main() {
             updatedAtMs: 1000,
           ),
         );
+      }
 
-        // Sports session
+      await pumpStatsScreen(tester, repo);
+
+      // Verify ISOMETRIC header exists
+      expect(find.text('ISOMETRIC'), findsOneWidget);
+
+      // Verify exercise name appears
+      expect(find.text('Plank'), findsWidgets);
+
+      // Verify chart is rendered (look for Duration text)
+      expect(find.text('Duration (sec)'), findsWidgets);
+    });
+
+    testWidgets('S-602: Isometric section empty state', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+
+      // Create a session but no isometric efforts
+      final now = DateTime.now();
+      await repo.createSession(
+        TrainingSession(
+          id: 'sess-1',
+          ownerUserId: 'user-1',
+          startedAtMs: now.millisecondsSinceEpoch,
+          endedAtMs: now.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+          modality: 'cardio_endurance',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await pumpStatsScreen(tester, repo);
+
+      // Verify ISOMETRIC header exists
+      expect(find.text('ISOMETRIC'), findsOneWidget);
+
+      // Verify empty state message
+      expect(
+        find.text(
+          'No isometric history yet. Log hold exercises to see trends here.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('S-603: Sports section renders with exercise trend cards', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      final repo = await _freshRepo();
+
+      // Create exercise
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-boxing',
+          name: 'Boxing',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Seed multiple sports sessions across 14+ days
+      for (int i = 0; i < 5; i++) {
+        final day = DateTime.now().subtract(Duration(days: i * 2));
         await repo.createSession(
           TrainingSession(
-            id: 'sess-sport',
+            id: 'sess-sport-$i',
             ownerUserId: 'user-1',
-            startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+            startedAtMs: day.millisecondsSinceEpoch,
+            endedAtMs: day.add(const Duration(hours: 1)).millisecondsSinceEpoch,
             modality: 'sports',
             createdAtMs: 1000,
             updatedAtMs: 1000,
           ),
         );
 
-        segId = 'seg-sport';
+        // Add round effort
+        final segId = 'seg-sport-$i';
         await repo.createSegment(
           SessionSegment(
             id: segId,
-            sessionId: 'sess-sport',
+            sessionId: 'sess-sport-$i',
             orderIndex: 0,
             segmentType: 'main',
             createdAtMs: 1000,
@@ -4916,7 +4158,7 @@ void main() {
           ),
         );
 
-        effId = 'eff-sport';
+        final effId = 'eff-sport-$i';
         await repo.createEffort(
           SegmentEffort(
             id: effId,
@@ -4931,7 +4173,7 @@ void main() {
 
         await repo.createTimedInstance(
           TimedInstance(
-            id: 'ti-sport',
+            id: 'ti-sport-$i',
             effortId: effId,
             entryIndex: 0,
             actualDurationSecs: 180,
@@ -4940,19 +4182,281 @@ void main() {
             updatedAtMs: 1000,
           ),
         );
+      }
 
-        await pumpStatsScreen(tester, repo);
+      await pumpStatsScreen(tester, repo);
 
-        // Both sections should show the same window label
-        final isometricWindow = find.text('· Last 14 training days');
-        final sportsWindow = find.text('· Last 14 training days');
+      // Verify SPORTS header exists
+      expect(find.text('SPORTS'), findsOneWidget);
 
-        // Find window chips (they may be multiple due to Cardio also having one)
-        final windowChips = find.byKey(const Key('stats_window_chip'));
-        expect(windowChips, findsWidgets,
-            reason: 'All duration sections should inherit the shared 14-day window');
-      },
-    );
+      // Verify exercise name appears
+      expect(find.text('Boxing'), findsWidgets);
+
+      // Verify chart is rendered (look for Duration text)
+      expect(find.text('Duration (sec)'), findsWidgets);
+    });
+
+    testWidgets('S-604: Sports section empty state', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+
+      // Create a session but no sports efforts
+      final now = DateTime.now();
+      await repo.createSession(
+        TrainingSession(
+          id: 'sess-1',
+          ownerUserId: 'user-1',
+          startedAtMs: now.millisecondsSinceEpoch,
+          endedAtMs: now.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+          modality: 'cardio_endurance',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await pumpStatsScreen(tester, repo);
+
+      // Verify SPORTS header exists
+      expect(find.text('SPORTS'), findsOneWidget);
+
+      // Verify empty state message
+      expect(
+        find.text(
+          'No sports history yet. Log sports rounds to see trends here.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('S-605: Hold time aggregation — sum per day', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      final repo = await _freshRepo();
+
+      // Create exercise
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-plank',
+          name: 'Plank',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Seed a session with three 30-second holds (should sum to 90 sec)
+      final today = DateTime.now();
+      await repo.createSession(
+        TrainingSession(
+          id: 'sess-today',
+          ownerUserId: 'user-1',
+          startedAtMs: today.millisecondsSinceEpoch,
+          endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+          modality: 'isometric_stretching',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final segId = 'seg-today';
+      await repo.createSegment(
+        SessionSegment(
+          id: segId,
+          sessionId: 'sess-today',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Create three drill efforts, each 30 seconds
+      for (int i = 0; i < 3; i++) {
+        final effId = 'eff-today-$i';
+        await repo.createEffort(
+          SegmentEffort(
+            id: effId,
+            segmentId: segId,
+            orderIndex: i,
+            effortKind: 'drill',
+            exerciseId: 'ex-plank',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        await repo.createTimedInstance(
+          TimedInstance(
+            id: 'ti-$effId',
+            effortId: effId,
+            entryIndex: 0,
+            actualDurationSecs: 30,
+            state: TimedState.finished,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+      }
+
+      await pumpStatsScreen(tester, repo);
+
+      // Verify the aggregated value shows 90 seconds in some form
+      // The chart will show 90 on the y-axis due to aggregation
+      expect(find.text('ISOMETRIC'), findsOneWidget);
+      expect(find.text('Plank'), findsWidgets);
+
+      // Assert that the aggregated hold time (90 sec) is rendered.
+      // Single-point drill card shows "$secs sec" text.
+      expect(
+        find.textContaining('90 sec'),
+        findsOneWidget,
+        reason: 'aggregated hold time must sum all drills on the same day',
+      );
+    });
+
+    testWidgets('S-606: Isometric/Sports inherit shared 14-day window', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      final repo = await _freshRepo();
+
+      // Create exercises
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-plank',
+          name: 'Plank',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-boxing',
+          name: 'Boxing',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Seed isometric and sports data
+      final today = DateTime.now();
+
+      // Isometric session
+      await repo.createSession(
+        TrainingSession(
+          id: 'sess-iso',
+          ownerUserId: 'user-1',
+          startedAtMs: today.millisecondsSinceEpoch,
+          endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+          modality: 'isometric_stretching',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      var segId = 'seg-iso';
+      await repo.createSegment(
+        SessionSegment(
+          id: segId,
+          sessionId: 'sess-iso',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      var effId = 'eff-iso';
+      await repo.createEffort(
+        SegmentEffort(
+          id: effId,
+          segmentId: segId,
+          orderIndex: 0,
+          effortKind: 'drill',
+          exerciseId: 'ex-plank',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repo.createTimedInstance(
+        TimedInstance(
+          id: 'ti-iso',
+          effortId: effId,
+          entryIndex: 0,
+          actualDurationSecs: 60,
+          state: TimedState.finished,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Sports session
+      await repo.createSession(
+        TrainingSession(
+          id: 'sess-sport',
+          ownerUserId: 'user-1',
+          startedAtMs: today.millisecondsSinceEpoch,
+          endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+          modality: 'sports',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      segId = 'seg-sport';
+      await repo.createSegment(
+        SessionSegment(
+          id: segId,
+          sessionId: 'sess-sport',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      effId = 'eff-sport';
+      await repo.createEffort(
+        SegmentEffort(
+          id: effId,
+          segmentId: segId,
+          orderIndex: 0,
+          effortKind: 'round',
+          exerciseId: 'ex-boxing',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repo.createTimedInstance(
+        TimedInstance(
+          id: 'ti-sport',
+          effortId: effId,
+          entryIndex: 0,
+          actualDurationSecs: 180,
+          state: TimedState.finished,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await pumpStatsScreen(tester, repo);
+
+      // Both sections should show the same window label
+      final isometricWindow = find.text('· Last 14 training days');
+      final sportsWindow = find.text('· Last 14 training days');
+
+      // Find window chips (they may be multiple due to Cardio also having one)
+      final windowChips = find.byKey(const Key('stats_window_chip'));
+      expect(
+        windowChips,
+        findsWidgets,
+        reason: 'All duration sections should inherit the shared 14-day window',
+      );
+    });
 
     testWidgets(
       'Multi-modality: Same exercise appears in both CARDIO and ISOMETRIC sections',
@@ -4979,7 +4483,9 @@ void main() {
             id: 'sess-cardio',
             ownerUserId: 'user-1',
             startedAtMs: day1.millisecondsSinceEpoch,
-            endedAtMs: day1.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+            endedAtMs: day1
+                .add(const Duration(hours: 1))
+                .millisecondsSinceEpoch,
             modality: 'cardio_endurance',
             createdAtMs: 1000,
             updatedAtMs: 1000,
@@ -5029,7 +4535,9 @@ void main() {
             id: 'sess-isometric',
             ownerUserId: 'user-1',
             startedAtMs: day0.millisecondsSinceEpoch,
-            endedAtMs: day0.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+            endedAtMs: day0
+                .add(const Duration(hours: 1))
+                .millisecondsSinceEpoch,
             modality: 'isometric_stretching',
             createdAtMs: 1000,
             updatedAtMs: 1000,
@@ -5076,21 +4584,34 @@ void main() {
         await pumpStatsScreen(tester, repo);
 
         // Verify both section headers are present
-        expect(find.text('CARDIO'), findsOneWidget,
-            reason: 'CARDIO section must be present');
-        expect(find.text('ISOMETRIC'), findsOneWidget,
-            reason: 'ISOMETRIC section must be present');
+        expect(
+          find.text('CARDIO'),
+          findsOneWidget,
+          reason: 'CARDIO section must be present',
+        );
+        expect(
+          find.text('ISOMETRIC'),
+          findsOneWidget,
+          reason: 'ISOMETRIC section must be present',
+        );
 
         // Exercise appears multiple times (once per section)
-        expect(find.text('Squat'), findsWidgets,
-            reason: 'Squat should appear in both CARDIO and ISOMETRIC sections');
+        expect(
+          find.text('Squat'),
+          findsWidgets,
+          reason: 'Squat should appear in both CARDIO and ISOMETRIC sections',
+        );
 
         // Verify the exact count: Squat should appear exactly 2 times
         // (once in CARDIO section card, once in ISOMETRIC section card)
         // as the exercise title in each section's card.
         final squatOccurrences = find.text('Squat').evaluate();
-        expect(squatOccurrences.length, greaterThanOrEqualTo(2),
-            reason: 'Squat must appear at least twice: in CARDIO and ISOMETRIC sections (found ${squatOccurrences.length})');
+        expect(
+          squatOccurrences.length,
+          greaterThanOrEqualTo(2),
+          reason:
+              'Squat must appear at least twice: in CARDIO and ISOMETRIC sections (found ${squatOccurrences.length})',
+        );
       },
     );
 
@@ -5143,7 +4664,9 @@ void main() {
             id: 'sess-strength',
             ownerUserId: 'user-1',
             startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+            endedAtMs: today
+                .add(const Duration(hours: 1))
+                .millisecondsSinceEpoch,
             modality: 'resistance_lifting',
             createdAtMs: 1000,
             updatedAtMs: 1000,
@@ -5205,7 +4728,9 @@ void main() {
             id: 'sess-cardio',
             ownerUserId: 'user-1',
             startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+            endedAtMs: today
+                .add(const Duration(hours: 1))
+                .millisecondsSinceEpoch,
             modality: 'cardio_endurance',
             createdAtMs: 1000,
             updatedAtMs: 1000,
@@ -5255,7 +4780,9 @@ void main() {
             id: 'sess-iso',
             ownerUserId: 'user-1',
             startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+            endedAtMs: today
+                .add(const Duration(hours: 1))
+                .millisecondsSinceEpoch,
             modality: 'isometric_stretching',
             createdAtMs: 1000,
             updatedAtMs: 1000,
@@ -5305,7 +4832,9 @@ void main() {
             id: 'sess-sport',
             ownerUserId: 'user-1',
             startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+            endedAtMs: today
+                .add(const Duration(hours: 1))
+                .millisecondsSinceEpoch,
             modality: 'sports',
             createdAtMs: 1000,
             updatedAtMs: 1000,
@@ -5356,23 +4885,30 @@ void main() {
         expect(find.text('CARDIO'), findsOneWidget);
         expect(find.text('ISOMETRIC'), findsOneWidget);
         expect(find.text('SPORTS'), findsOneWidget);
-        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
+        // HOW DID IT FEEL section has been removed (Phase 4)
+        expect(find.text('HOW DID IT FEEL'), findsNothing);
 
         // Verify ordering by checking y-coordinates
         final strengthHeader = tester.getRect(find.text('STRENGTH'));
         final cardioHeader = tester.getRect(find.text('CARDIO'));
         final isometricHeader = tester.getRect(find.text('ISOMETRIC'));
         final sportsHeader = tester.getRect(find.text('SPORTS'));
-        final feelingHeader = tester.getRect(find.text('HOW DID IT FEEL'));
 
-        expect(strengthHeader.top, lessThan(cardioHeader.top),
-            reason: 'STRENGTH should be above CARDIO');
-        expect(cardioHeader.top, lessThan(isometricHeader.top),
-            reason: 'CARDIO should be above ISOMETRIC');
-        expect(isometricHeader.top, lessThan(sportsHeader.top),
-            reason: 'ISOMETRIC should be above SPORTS');
-        expect(sportsHeader.top, lessThan(feelingHeader.top),
-            reason: 'SPORTS should be above HOW DID IT FEEL');
+        expect(
+          strengthHeader.top,
+          lessThan(cardioHeader.top),
+          reason: 'STRENGTH should be above CARDIO',
+        );
+        expect(
+          cardioHeader.top,
+          lessThan(isometricHeader.top),
+          reason: 'CARDIO should be above ISOMETRIC',
+        );
+        expect(
+          isometricHeader.top,
+          lessThan(sportsHeader.top),
+          reason: 'ISOMETRIC should be above SPORTS',
+        );
       },
     );
   });
@@ -6613,7 +6149,9 @@ void main() {
         final border =
             (highlightedCards.first.decoration! as BoxDecoration).border!
                 as Border;
-        expect(border.left.color, Colors.green);
+        // Session has sessionFeeling: 4 → ramp step 4, asserted against the
+        // token directly so a regression in feelingColor fails here.
+        expect(border.left.color, OmniTheme.colors.intensityRamp.step4);
       },
     );
 
@@ -6902,6 +6440,94 @@ void main() {
       // The empty-state copy for past dates is shown.
       expect(find.text('No sessions on this day.'), findsOneWidget);
     });
+
+    testWidgets(
+      'effort tint: ratings 1, 3 and 5 on one day draw ramp steps 1, 3 and 5, '
+      'each visibly different',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1200));
+        final repo = await _freshRepo();
+        final today = DateTime.now();
+
+        Future<void> seedRated(String id, String title, int hour, int rating) {
+          final startedAt = DateTime(today.year, today.month, today.day, hour);
+          final ms = startedAt.millisecondsSinceEpoch;
+          return repo.createSession(
+            TrainingSession(
+              id: id,
+              ownerUserId: 'u-1',
+              startedAtMs: ms,
+              endedAtMs: startedAt
+                  .add(const Duration(minutes: 30))
+                  .millisecondsSinceEpoch,
+              title: title,
+              modality: Modality.resistanceLifting,
+              sessionFeeling: rating,
+              createdAtMs: ms,
+              updatedAtMs: ms,
+            ),
+          );
+        }
+
+        await seedRated('s-r1', 'Rated One', 7, 1);
+        await seedRated('s-r3', 'Rated Three', 10, 3);
+        await seedRated('s-r5', 'Rated Five', 13, 5);
+
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DaySessionListScreen(
+              date: DateTime(today.year, today.month, today.day),
+              calendarState: calendarState,
+              routineState: RoutineState(repo),
+              workoutState: WorkoutState(repo),
+              routineSessionService: RoutineSessionService(repo),
+              sessionSummaryService: SessionSummaryService(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
+              timerAlertService: FakeTimerAlertService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        Color leftTintOf(String title) {
+          final tinted = tester
+              .widgetList<Container>(
+                find.ancestor(
+                  of: find.text(title),
+                  matching: find.byType(Container),
+                ),
+              )
+              .where((c) {
+                final d = c.decoration;
+                return d is BoxDecoration &&
+                    d.border is Border &&
+                    (d.border! as Border).left.width == 4;
+              })
+              .toList();
+          expect(tinted, hasLength(1), reason: '$title must carry a left tint');
+          return ((tinted.single.decoration! as BoxDecoration).border!
+                  as Border)
+              .left
+              .color;
+        }
+
+        // Asserted against the ramp tokens directly (not via feelingColor)
+        // so a regression in the shared helper back to the old
+        // red/orange/yellow/green palette fails here.
+        final ramp = OmniTheme.colors.intensityRamp;
+        final c1 = leftTintOf('Rated One');
+        final c3 = leftTintOf('Rated Three');
+        final c5 = leftTintOf('Rated Five');
+        expect(c1, ramp.step1);
+        expect(c3, ramp.step3);
+        expect(c5, ramp.step5);
+        expect({c1, c3, c5}, hasLength(3),
+            reason: 'ratings 1, 3 and 5 must be visibly different');
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -6952,7 +6578,7 @@ void main() {
         workoutState: workoutState,
       );
 
-      expect(find.text('How did it feel?'), findsOneWidget);
+      expect(find.text('How hard was this session?'), findsOneWidget);
 
       final sheetFinder = find.byType(BottomSheet);
       expect(sheetFinder, findsOneWidget);
@@ -6978,22 +6604,22 @@ void main() {
           workoutState: workoutState,
         );
 
-        expect(find.text('How did it feel?'), findsOneWidget);
+        expect(find.text('How hard was this session?'), findsOneWidget);
         expect(tester.testTextInput.isVisible, isFalse);
 
         await tester.tapAt(const Offset(24, 24));
         await tester.pumpAndSettle();
-        expect(find.text('How did it feel?'), findsOneWidget);
+        expect(find.text('How hard was this session?'), findsOneWidget);
 
         await tester.tap(find.text('Done'), warnIfMissed: false);
         await tester.pumpAndSettle();
-        expect(find.text('How did it feel?'), findsOneWidget);
+        expect(find.text('How hard was this session?'), findsOneWidget);
         expect(find.byType(SessionSummaryScreen), findsOneWidget);
 
         await tester.tapAt(tester.getCenter(find.byType(TextField)));
         await tester.pump();
         expect(tester.testTextInput.isVisible, isFalse);
-        expect(find.text('How did it feel?'), findsOneWidget);
+        expect(find.text('How hard was this session?'), findsOneWidget);
       },
     );
 
@@ -7016,7 +6642,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('How did it feel?'), findsNothing);
+      expect(find.text('How hard was this session?'), findsNothing);
       expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(workoutState.currentSession!.sessionFeeling, 3);
     });
@@ -7036,7 +6662,7 @@ void main() {
           workoutState: workoutState,
         );
 
-        expect(find.text('How did it feel?'), findsNothing);
+        expect(find.text('How hard was this session?'), findsNothing);
         expect(find.text('Done'), findsOneWidget);
         expect(find.byType(TextField), findsOneWidget);
 
@@ -8093,7 +7719,8 @@ void main() {
         expect(
           find.text('kg'),
           findsOneWidget,
-          reason: 'Unit "kg" must appear exactly once in the pinned y-axis column.',
+          reason:
+              'Unit "kg" must appear exactly once in the pinned y-axis column.',
         );
       },
     );
@@ -8377,7 +8004,8 @@ void main() {
         expect(
           find.text('cm'),
           findsOneWidget,
-          reason: 'Unit "cm" must appear exactly once in the pinned y-axis column.',
+          reason:
+              'Unit "cm" must appear exactly once in the pinned y-axis column.',
         );
       },
     );
@@ -8865,8 +8493,9 @@ void main() {
           of: find.byType(ScrollableTrendChart),
           matching: find.byType(SingleChildScrollView),
         );
-        final scrollableChart =
-            tester.widget<SingleChildScrollView>(scrollableChartFinder);
+        final scrollableChart = tester.widget<SingleChildScrollView>(
+          scrollableChartFinder,
+        );
         final scrollController = scrollableChart.controller;
 
         // Opens at newest
@@ -8946,8 +8575,9 @@ void main() {
           of: find.byType(ScrollableTrendChart),
           matching: find.byType(SingleChildScrollView),
         );
-        final scrollableChart =
-            tester.widget<SingleChildScrollView>(scrollableChartFinder);
+        final scrollableChart = tester.widget<SingleChildScrollView>(
+          scrollableChartFinder,
+        );
         expect(
           scrollableChart.physics is NeverScrollableScrollPhysics,
           isTrue,
@@ -8965,8 +8595,7 @@ void main() {
         );
 
         if (lineChartElements.isNotEmpty) {
-          final lineChartWidget =
-              lineChartElements.first.widget as LineChart;
+          final lineChartWidget = lineChartElements.first.widget as LineChart;
           final spots = lineChartWidget.data.lineBarsData.first.spots;
           expect(
             spots.length,
@@ -8981,104 +8610,104 @@ void main() {
     // The pinned column (64 dp) and the plot area occupy distinct horizontal
     // space, so date labels below the plot never overlap axis labels in the
     // pinned column.
-    testWidgets(
-      'D-4: no horizontal date labels overlap the pinned axis column',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        final baseMs = DateTime.now().millisecondsSinceEpoch;
+    testWidgets('D-4: no horizontal date labels overlap the pinned axis column', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final baseMs = DateTime.now().millisecondsSinceEpoch;
 
-        // Seed enough entries to produce multiple date labels.
-        final values = List.generate(12, (i) => 175.0 + i * 0.5);
-        for (int i = 0; i < 12; i++) {
-          await repo.saveMeasurementEntry(
-            BodyMeasurementEntry(
-              id: 'h-$i',
-              measurementType: 'height',
-              value: values[i],
-              unitId: 'unit-cm',
-              recordedAtMs: baseMs - (11 - i) * 24 * 60 * 60 * 1000,
+      // Seed enough entries to produce multiple date labels.
+      final values = List.generate(12, (i) => 175.0 + i * 0.5);
+      for (int i = 0; i < 12; i++) {
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'h-$i',
+            measurementType: 'height',
+            value: values[i],
+            unitId: 'unit-cm',
+            recordedAtMs: baseMs - (11 - i) * 24 * 60 * 60 * 1000,
+          ),
+        );
+      }
+
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
+      await profileState.loadProfile();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: ProfileMeasurements.height,
+              settingsState: settingsState,
+              onLogNew: () async {},
             ),
-          );
-        }
-
-        final profileState = ProfileState(repo);
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
-        await profileState.loadProfile();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MeasurementHistoryChartSheet(
-                profileState: profileState,
-                definition: ProfileMeasurements.height,
-                settingsState: settingsState,
-                onLogNew: () async {},
-              ),
-            ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Locate the pinned y-axis column (64 dp wide SizedBox).
-        final pinnedAxisFinder = find.descendant(
-          of: find.byType(ScrollableTrendChart),
-          matching: find.byWidgetPredicate(
-            (w) => w is SizedBox && w.width == 64.0,
-          ),
-        );
-        expect(pinnedAxisFinder, findsOneWidget);
-        final pinnedAxisBox = tester.getRect(pinnedAxisFinder);
+      // Locate the pinned y-axis column (64 dp wide SizedBox).
+      final pinnedAxisFinder = find.descendant(
+        of: find.byType(ScrollableTrendChart),
+        matching: find.byWidgetPredicate(
+          (w) => w is SizedBox && w.width == 64.0,
+        ),
+      );
+      expect(pinnedAxisFinder, findsOneWidget);
+      final pinnedAxisBox = tester.getRect(pinnedAxisFinder);
 
-        // Locate the scrollable plot area (the SingleChildScrollView after the pinned axis).
-        final scrollableChartFinder = find.descendant(
-          of: find.byType(ScrollableTrendChart),
-          matching: find.byType(SingleChildScrollView),
-        );
-        expect(scrollableChartFinder, findsOneWidget);
-        final scrollableChartRect = tester.getRect(scrollableChartFinder);
+      // Locate the scrollable plot area (the SingleChildScrollView after the pinned axis).
+      final scrollableChartFinder = find.descendant(
+        of: find.byType(ScrollableTrendChart),
+        matching: find.byType(SingleChildScrollView),
+      );
+      expect(scrollableChartFinder, findsOneWidget);
+      final scrollableChartRect = tester.getRect(scrollableChartFinder);
 
-        // Locate date labels that are inside the LineChart.
-        // These are the labels that matter for the overlap check.
-        final dateLabelsInChart = find.descendant(
-          of: find.byType(LineChart),
-          matching: find.byWidgetPredicate(
-            (w) => w is Text &&
-                w.data != null &&
-                RegExp(r'^[A-Z][a-z]{2} +\d{1,2}$').hasMatch(w.data!),
-          ),
-        );
+      // Locate date labels that are inside the LineChart.
+      // These are the labels that matter for the overlap check.
+      final dateLabelsInChart = find.descendant(
+        of: find.byType(LineChart),
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is Text &&
+              w.data != null &&
+              RegExp(r'^[A-Z][a-z]{2} +\d{1,2}$').hasMatch(w.data!),
+        ),
+      );
 
-        // For each visible date label, check that its left edge doesn't
-        // overlap the pinned axis column. Only check labels that are actually
-        // visible on screen (not scrolled off).
-        for (final labelElement in dateLabelsInChart.evaluate()) {
-          final textWidget = labelElement.widget as Text;
-          final labelText = textWidget.data;
-          if (labelText != null) {
-            final labelFinder = find.text(labelText).first;
-            final labelRect = tester.getRect(labelFinder);
-            // Only check labels that are visible within the screen bounds
-            // (between the pinned column's right edge and the screen's right edge).
-            // Labels that are scrolled off-screen (negative left or beyond visible area)
-            // don't need to satisfy the non-overlap constraint.
-            if (labelRect.left >= pinnedAxisBox.right &&
-                labelRect.right <= scrollableChartRect.right) {
-              // This label is visible and should not overlap the pinned axis.
-              expect(
-                labelRect.left,
-                greaterThanOrEqualTo(pinnedAxisBox.right),
-                reason:
-                    'Date label "$labelText" at left: ${labelRect.left} must '
-                    'not overlap the pinned y-axis column (right edge: '
-                    '${pinnedAxisBox.right}).',
-              );
-            }
+      // For each visible date label, check that its left edge doesn't
+      // overlap the pinned axis column. Only check labels that are actually
+      // visible on screen (not scrolled off).
+      for (final labelElement in dateLabelsInChart.evaluate()) {
+        final textWidget = labelElement.widget as Text;
+        final labelText = textWidget.data;
+        if (labelText != null) {
+          final labelFinder = find.text(labelText).first;
+          final labelRect = tester.getRect(labelFinder);
+          // Only check labels that are visible within the screen bounds
+          // (between the pinned column's right edge and the screen's right edge).
+          // Labels that are scrolled off-screen (negative left or beyond visible area)
+          // don't need to satisfy the non-overlap constraint.
+          if (labelRect.left >= pinnedAxisBox.right &&
+              labelRect.right <= scrollableChartRect.right) {
+            // This label is visible and should not overlap the pinned axis.
+            expect(
+              labelRect.left,
+              greaterThanOrEqualTo(pinnedAxisBox.right),
+              reason:
+                  'Date label "$labelText" at left: ${labelRect.left} must '
+                  'not overlap the pinned y-axis column (right edge: '
+                  '${pinnedAxisBox.right}).',
+            );
           }
         }
-      },
-    );
+      }
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -10979,8 +10608,9 @@ void main() {
         final repo = await _freshRepo();
         final foodLibraryState = FoodLibraryState(repo);
         await foodLibraryState.loadCatalogFoods();
-        final chicken = foodLibraryState.catalogFoods
-            .firstWhere((f) => f.id == 'chicken_breast');
+        final chicken = foodLibraryState.catalogFoods.firstWhere(
+          (f) => f.id == 'chicken_breast',
+        );
 
         await tester.pumpWidget(
           DefaultAssetBundle(
@@ -10999,15 +10629,23 @@ void main() {
         expect(find.byKey(const Key('food_form_image_tile')), findsOneWidget);
         // No "Add photo" caption — the bundled photo is rendering,
         // not the placeholder.
-        expect(find.text('Add photo'), findsNothing,
-            reason: 'a photo is rendering in the form — the caption '
-                'belongs only to the empty placeholder');
+        expect(
+          find.text('Add photo'),
+          findsNothing,
+          reason:
+              'a photo is rendering in the form — the caption '
+              'belongs only to the empty placeholder',
+        );
         // The bundled tier's Image.asset is present and rendered
         // (non-zero size).
-        final imageRenderBox =
-            tester.renderObject<RenderBox>(find.byType(Image));
-        expect(imageRenderBox.size.width, greaterThan(0),
-            reason: 'bundled photo must render with non-zero width');
+        final imageRenderBox = tester.renderObject<RenderBox>(
+          find.byType(Image),
+        );
+        expect(
+          imageRenderBox.size.width,
+          greaterThan(0),
+          reason: 'bundled photo must render with non-zero width',
+        );
       },
     );
 
@@ -11064,7 +10702,8 @@ void main() {
         expect(
           find.text('Add photo'),
           findsOneWidget,
-          reason: 'edit-mode empty photo state must surface the '
+          reason:
+              'edit-mode empty photo state must surface the '
               '"Add photo" caption',
         );
       },
@@ -11289,14 +10928,22 @@ void main() {
           of: find.byKey(const Key('food_catalog_thumb_chicken_breast')),
           matching: find.byType(Image),
         );
-        expect(imageFinder, findsOneWidget,
-            reason: 'bundled-photo Image must be in the slot tree');
-        final imageRenderBox =
-            tester.renderObject<RenderBox>(imageFinder);
-        expect(imageRenderBox.size.width, greaterThan(0),
-            reason: 'bundled photo must render with non-zero width');
-        expect(imageRenderBox.size.height, greaterThan(0),
-            reason: 'bundled photo must render with non-zero height');
+        expect(
+          imageFinder,
+          findsOneWidget,
+          reason: 'bundled-photo Image must be in the slot tree',
+        );
+        final imageRenderBox = tester.renderObject<RenderBox>(imageFinder);
+        expect(
+          imageRenderBox.size.width,
+          greaterThan(0),
+          reason: 'bundled photo must render with non-zero width',
+        );
+        expect(
+          imageRenderBox.size.height,
+          greaterThan(0),
+          reason: 'bundled photo must render with non-zero height',
+        );
 
         // No icon-only placeholder visible — the photo is real,
         // not the fallback.
@@ -11306,15 +10953,20 @@ void main() {
             matching: find.byIcon(Icons.restaurant_outlined),
           ),
           findsNothing,
-          reason: 'icon-only fallback must NOT be visible when '
+          reason:
+              'icon-only fallback must NOT be visible when '
               'the bundled photo rendered',
         );
 
         // No "Add photo" caption — the catalog row must not
         // inherit the form's caption opt-in.
-        expect(find.text('Add photo'), findsNothing,
-            reason: 'list-row thumbnail must not surface the '
-                'form\'s caption');
+        expect(
+          find.text('Add photo'),
+          findsNothing,
+          reason:
+              'list-row thumbnail must not surface the '
+              'form\'s caption',
+        );
       },
     );
 
@@ -12177,6 +11829,174 @@ void main() {
           );
         }
       }
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LiveSessionScreen — the phone rendering a session the wrist is running
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('LiveSessionScreen', () {
+    Future<void> pumpLiveSession(
+      WidgetTester tester, {
+      required LiveSessionMirrorState liveSession,
+      MockWorkoutRepository? repo,
+      String weightUnit = 'kg',
+    }) async {
+      final repository = repo ?? await _freshRepo();
+      final settingsState = SettingsState(repository, fakePreferencesService());
+      await settingsState.initialize();
+      await settingsState.setPreferredWeightUnit(weightUnit);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LiveSessionScreen(
+            liveSession: liveSession,
+            workoutState: WorkoutState(repository),
+            settingsState: settingsState,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('S-001 renders the wrist\'s ladder and where it is', (
+      WidgetTester tester,
+    ) async {
+      await pumpLiveSession(
+        tester,
+        liveSession: liveWatchSession(currentExerciseIndex: 1),
+      );
+
+      expect(find.byKey(const Key('live_session_screen')), findsOneWidget);
+      for (final slot in liveSessionSlots()) {
+        expect(find.text(slot['name']! as String), findsWidgets);
+      }
+      expect(find.textContaining('2 of 3'), findsOneWidget);
+    });
+
+    testWidgets('S-004 renders logged entries in the saved weight unit', (
+      WidgetTester tester,
+    ) async {
+      await pumpLiveSession(
+        tester,
+        liveSession: liveWatchSession(
+          entries: [liveSessionEntry('e-1', reps: 5, loadKg: 80)],
+        ),
+      );
+
+      expect(find.text('5 × 80 kg'), findsOneWidget);
+    });
+
+    testWidgets('S-004 the same entry reads in lbs after the unit changes', (
+      WidgetTester tester,
+    ) async {
+      await pumpLiveSession(
+        tester,
+        liveSession: liveWatchSession(
+          entries: [liveSessionEntry('e-1', reps: 5, loadKg: 80)],
+        ),
+        weightUnit: 'lbs',
+      );
+
+      expect(find.text('5 × 176.4 lbs'), findsOneWidget);
+    });
+
+    testWidgets('renders the completion state once the session is finished', (
+      WidgetTester tester,
+    ) async {
+      final liveSession = liveWatchSession(
+        entries: [liveSessionEntry('e-1'), liveSessionEntry('e-2')],
+      );
+      await pumpLiveSession(tester, liveSession: liveSession);
+
+      await tester.tap(find.byKey(const Key('live_session_finish')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('live_session_completed')), findsOneWidget);
+      expect(find.byKey(const Key('live_session_add_exercise')), findsNothing);
+      expect(
+        find.byKey(const Key('live_session_finish')),
+        findsNothing,
+        reason: 'a finished session offers nothing left to manage',
+      );
+    });
+
+    // A session the watch has joined but has no exercises in yet is
+    // reachable — it is what a wrist-started session looks like before the
+    // first push, and what is left after the last exercise is removed. The
+    // screen has to stay usable in it: the two ways out are adding an
+    // exercise and finishing.
+    testWidgets('an empty ladder still offers both ways out', (
+      WidgetTester tester,
+    ) async {
+      await pumpLiveSession(
+        tester,
+        liveSession: liveWatchSession(
+          exercises: const [],
+          currentExerciseIndex: 0,
+        ),
+      );
+
+      expect(find.textContaining('No exercises'), findsOneWidget);
+      expect(find.text('Waiting for the wrist'), findsOneWidget);
+      expect(
+        find.byKey(const Key('live_session_add_exercise')),
+        findsOneWidget,
+        reason:
+            'with no exercises the ladder can only be rebuilt by adding '
+            'one — the action must survive the empty state',
+      );
+      expect(find.byKey(const Key('live_session_finish')), findsOneWidget);
+    });
+
+    // Effort kinds other than `set` carry no reps or load. A timed entry
+    // reads as its duration, and anything the screen cannot summarise still
+    // has to say something rather than render blank.
+    testWidgets('a timed entry reads as its duration', (
+      WidgetTester tester,
+    ) async {
+      await pumpLiveSession(
+        tester,
+        liveSession: liveWatchSession(
+          entries: [
+            {
+              'entryId': 'e-timed',
+              'eventId': 'e-timed',
+              'kind': 'timed',
+              'loggedAt': '2026-07-13T06:00:00Z',
+              'sessionExerciseId': 'sx-plank',
+              'exerciseId': 'ex-sx-plank',
+              'startedAt': '2026-07-13T06:00:00Z',
+              'endedAt': '2026-07-13T06:01:30Z',
+            },
+          ],
+        ),
+      );
+
+      expect(find.text('1:30'), findsOneWidget);
+    });
+
+    testWidgets('an entry with nothing to summarise still reads', (
+      WidgetTester tester,
+    ) async {
+      await pumpLiveSession(
+        tester,
+        liveSession: liveWatchSession(
+          entries: [
+            {
+              'entryId': 'e-bare',
+              'eventId': 'e-bare',
+              'kind': 'set',
+              'loggedAt': '2026-07-13T06:00:00Z',
+              'sessionExerciseId': 'sx-bench',
+              'exerciseId': 'ex-sx-bench',
+            },
+          ],
+        ),
+      );
+
+      expect(find.text('Logged'), findsOneWidget);
     });
   });
 }

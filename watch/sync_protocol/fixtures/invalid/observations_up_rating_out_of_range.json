@@ -1,0 +1,19 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-bad-rating-range",
+  "sessionId": "s-cap-bad",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-09-25T11:00:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "rating-s-cap-bad",
+        "entryId": "rating-s-cap-bad",
+        "kind": "effort_rating",
+        "loggedAt": "2026-09-25T10:55:20Z",
+        "rating": 6
+      }
+    ]
+  }
+}

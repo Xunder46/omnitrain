@@ -59,7 +59,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
       appBar: const OmniBackHeader(title: 'My Routines'),
       // Primary bottom CTA — the shared `OmniBottomCTA` is the single
       // source of truth for full-width, safe-area-anchored primary actions
-      // (see `.github/agents/docs/widget_catalog.md` — `OmniBottomCTA`).
+      // (see `docs/widget_catalog.md` — `OmniBottomCTA`).
       // Replaces the legacy `FloatingActionButton` so the routines screen
       // matches the unified bottom-CTA pattern used elsewhere (calendar
       // day list, food library, etc.).
@@ -287,8 +287,9 @@ Future<bool> showDeleteRoutineDialog(
   required String templateId,
   required String routineName,
 }) async {
-  final plannedCount =
-      await routineState.countPlannedSessionsForTemplate(templateId);
+  final plannedCount = await routineState.countPlannedSessionsForTemplate(
+    templateId,
+  );
   if (!context.mounted) return false;
 
   final bodyText = plannedCount > 0
@@ -396,8 +397,7 @@ class _RoutineCard extends StatelessWidget {
                                 Expanded(
                                   child: Text(
                                     routine.name,
-                                    style: theme.textTheme.titleSmall
-                                        ?.copyWith(
+                                    style: theme.textTheme.titleSmall?.copyWith(
                                       fontWeight: FontWeight.w600,
                                       color: theme.colorScheme.onSurface,
                                     ),

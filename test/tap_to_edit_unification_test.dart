@@ -11,7 +11,6 @@ import 'package:omnitrain/widgets/session/duration_entry_dialog.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_preferences_service.dart';
 
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 Future<MockWorkoutRepository> _freshRepo() async {
@@ -22,8 +21,9 @@ Future<MockWorkoutRepository> _freshRepo() async {
   return repo;
 }
 
-Widget _wrap(Widget child) =>
-    MaterialApp(home: Scaffold(body: Center(child: child)));
+Widget _wrap(Widget child) => MaterialApp(
+  home: Scaffold(body: Center(child: child)),
+);
 
 Widget _buildEditor({
   String metricType = 'reps',
@@ -60,15 +60,17 @@ void main() {
         dynamic lastValue;
         int callCount = 0;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 5,
-          unitLabel: 'REPS',
-          onValueChanged: (v) {
-            callCount++;
-            lastValue = v;
-          },
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'reps',
+            currentValue: 5,
+            unitLabel: 'REPS',
+            onValueChanged: (v) {
+              callCount++;
+              lastValue = v;
+            },
+          ),
+        );
 
         // Tap the number to open the modal.
         await tester.tap(find.text('5'));
@@ -99,12 +101,14 @@ void main() {
       (tester) async {
         double? updatedValue;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'weight',
-          currentValue: 80.0,
-          unitLabel: 'KG',
-          onValueChanged: (v) => updatedValue = v as double,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'weight',
+            currentValue: 80.0,
+            unitLabel: 'KG',
+            onValueChanged: (v) => updatedValue = v as double,
+          ),
+        );
 
         await tester.tap(find.text('80.0'));
         await tester.pumpAndSettle();
@@ -131,13 +135,15 @@ void main() {
         // set effort _buildMetricWidget. AlertDialog opens on tap.
         dynamic result;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 10,
-          unitLabel: 'REPS',
-          emphasisTier: MetricEmphasisTier.dominant,
-          onValueChanged: (v) => result = v,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'reps',
+            currentValue: 10,
+            unitLabel: 'REPS',
+            emphasisTier: MetricEmphasisTier.dominant,
+            onValueChanged: (v) => result = v,
+          ),
+        );
 
         await tester.tap(find.text('10'));
         await tester.pumpAndSettle();
@@ -153,26 +159,23 @@ void main() {
     );
 
     // U-04: weight modal has signed keyboard
-    testWidgets(
-      'U-04: weight modal keyboard is signed (signed: true)',
-      (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'weight',
-          currentValue: 60.0,
-          unitLabel: 'KG',
-        ));
+    testWidgets('U-04: weight modal keyboard is signed (signed: true)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildEditor(metricType: 'weight', currentValue: 60.0, unitLabel: 'KG'),
+      );
 
-        await tester.tap(find.text('60.0'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('60.0'));
+      await tester.pumpAndSettle();
 
-        final tf = tester.widget<TextField>(find.byType(TextField));
-        final kbType = tf.keyboardType;
-        expect(kbType.signed, isTrue);
+      final tf = tester.widget<TextField>(find.byType(TextField));
+      final kbType = tf.keyboardType;
+      expect(kbType.signed, isTrue);
 
-        await tester.tapAt(const Offset(10, 10));
-        await tester.pumpAndSettle();
-      },
-    );
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+    });
 
     // U-05: Historical edit (editMode: true), set effort — tapping reps opens AlertDialog
     testWidgets(
@@ -180,11 +183,13 @@ void main() {
       (tester) async {
         dynamic lastValue;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 8,
-          onValueChanged: (v) => lastValue = v,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'reps',
+            currentValue: 8,
+            onValueChanged: (v) => lastValue = v,
+          ),
+        );
 
         await tester.tap(find.text('8'));
         await tester.pumpAndSettle();
@@ -436,57 +441,54 @@ void main() {
 
   group('Reps keyboard is positive-only', () {
     // U-15: _MetricEditDialog for reps has signed: false
-    testWidgets(
-      'U-15: reps editor opens dialog with signed: false keyboard',
-      (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 10,
-        ));
+    testWidgets('U-15: reps editor opens dialog with signed: false keyboard', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildEditor(metricType: 'reps', currentValue: 10),
+      );
 
-        await tester.tap(find.text('10'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('10'));
+      await tester.pumpAndSettle();
 
-        final tf = tester.widget<TextField>(find.byType(TextField));
-        final kbType = tf.keyboardType;
-        expect(kbType.signed, isFalse);
+      final tf = tester.widget<TextField>(find.byType(TextField));
+      final kbType = tf.keyboardType;
+      expect(kbType.signed, isFalse);
 
-        await tester.tapAt(const Offset(10, 10));
-        await tester.pumpAndSettle();
-      },
-    );
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+    });
 
     // U-16: _MetricEditDialog for weight has signed: true
-    testWidgets(
-      'U-16: weight editor opens dialog with signed: true keyboard',
-      (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'weight',
-          currentValue: 50.0,
-          unitLabel: 'KG',
-        ));
+    testWidgets('U-16: weight editor opens dialog with signed: true keyboard', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildEditor(metricType: 'weight', currentValue: 50.0, unitLabel: 'KG'),
+      );
 
-        await tester.tap(find.text('50.0'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('50.0'));
+      await tester.pumpAndSettle();
 
-        final tf = tester.widget<TextField>(find.byType(TextField));
-        final kbType = tf.keyboardType;
-        expect(kbType.signed, isTrue);
+      final tf = tester.widget<TextField>(find.byType(TextField));
+      final kbType = tf.keyboardType;
+      expect(kbType.signed, isTrue);
 
-        await tester.tapAt(const Offset(10, 10));
-        await tester.pumpAndSettle();
-      },
-    );
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+    });
 
     // extra-weight also signed: true
     testWidgets(
       'U-16b: extra-weight editor opens dialog with signed: true keyboard',
       (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'extra-weight',
-          currentValue: 0.0,
-          unitLabel: 'KG',
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'extra-weight',
+            currentValue: 0.0,
+            unitLabel: 'KG',
+          ),
+        );
 
         await tester.tap(find.text('0.0'));
         await tester.pumpAndSettle();
@@ -510,10 +512,9 @@ void main() {
     testWidgets(
       'U-17: showMetricEditPopup reps dialog has exactly one Ok, no Cancel',
       (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 10,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(metricType: 'reps', currentValue: 10),
+        );
 
         await tester.tap(find.text('10'));
         await tester.pumpAndSettle();
@@ -586,44 +587,43 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('Duration dialog pre-fills with decomposed h/m/s', () {
-    testWidgets(
-      'showDurationEntryDialog pre-fills h/m/s from initialSecs',
-      (tester) async {
-        // 1h 2m 3s = 3723 secs
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Builder(
-              builder: (context) => Scaffold(
-                body: Center(
-                  child: FilledButton(
-                    onPressed: () => showDurationEntryDialog(
-                      context,
-                      title: 'Test',
-                      initialSecs: 3723,
-                    ),
-                    child: const Text('Open'),
+    testWidgets('showDurationEntryDialog pre-fills h/m/s from initialSecs', (
+      tester,
+    ) async {
+      // 1h 2m 3s = 3723 secs
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () => showDurationEntryDialog(
+                    context,
+                    title: 'Test',
+                    initialSecs: 3723,
                   ),
+                  child: const Text('Open'),
                 ),
               ),
             ),
           ),
-        );
+        ),
+      );
 
-        await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
 
-        final textFields = find.byType(TextField);
-        final hCtrl = tester.widget<TextField>(textFields.at(0)).controller;
-        final mCtrl = tester.widget<TextField>(textFields.at(1)).controller;
-        final sCtrl = tester.widget<TextField>(textFields.at(2)).controller;
+      final textFields = find.byType(TextField);
+      final hCtrl = tester.widget<TextField>(textFields.at(0)).controller;
+      final mCtrl = tester.widget<TextField>(textFields.at(1)).controller;
+      final sCtrl = tester.widget<TextField>(textFields.at(2)).controller;
 
-        expect(hCtrl?.text, '1');
-        expect(mCtrl?.text, '02');
-        expect(sCtrl?.text, '03');
+      expect(hCtrl?.text, '1');
+      expect(mCtrl?.text, '02');
+      expect(sCtrl?.text, '03');
 
-        await tester.tapAt(const Offset(10, 10));
-        await tester.pumpAndSettle();
-      },
-    );
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+    });
   });
 }

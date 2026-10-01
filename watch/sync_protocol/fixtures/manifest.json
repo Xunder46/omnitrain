@@ -1,0 +1,345 @@
+{
+  "protocolVersion": 1,
+  "description": "Conformance fixture register. Every fixture file in this directory is listed here exactly once; the Dart validator, the watchOS suite, and the Wear OS suite walk this manifest rather than a hardcoded list. Every reconciliation fixture is replayed by the conformance test and must converge on its `expected` state; each entry under `scenarios` records the property the fixture pins, and the plan scenario it belongs to where there is one (`scenario` is null for fixtures that pin a protocol rule rather than a plan scenario).",
+  "valid": [
+    { "path": "valid/routines_down.json", "type": "routines_down" },
+    { "path": "valid/foods_down.json", "type": "foods_down" },
+    { "path": "valid/exercise_push.json", "type": "exercise_push" },
+    { "path": "valid/structure_change.json", "type": "structure_change" },
+    { "path": "valid/observations_up.json", "type": "observations_up" },
+    { "path": "valid/observations_up_distance_and_load.json", "type": "observations_up" },
+    { "path": "valid/receipt.json", "type": "receipt" },
+    { "path": "valid/session_lifecycle.json", "type": "session_lifecycle" },
+    { "path": "valid/session_snapshot.json", "type": "session_snapshot" },
+    { "path": "valid/timer_state.json", "type": "timer_state" },
+    {
+      "path": "valid/preferences_down.json",
+      "type": "preferences_down",
+      "scenario": "S-204"
+    },
+    {
+      "path": "valid/observations_up_session_capture.json",
+      "type": "observations_up",
+      "scenario": "S-201"
+    },
+    {
+      "path": "valid/session_snapshot_session_capture.json",
+      "type": "session_snapshot",
+      "scenario": "S-203"
+    },
+    {
+      "path": "valid/observations_up_paused_ms_equals_window.json",
+      "type": "observations_up",
+      "note": "F-6(b): pausedMs equal to its window is a real wire value (A-30 caps a round's pause at the window), so equality must be accepted, not just below it."
+    },
+    {
+      "path": "valid/observations_up_distance_source.json",
+      "type": "observations_up",
+      "scenario": "S-871"
+    }
+  ],
+  "invalid": [
+    {
+      "path": "invalid/routines_down_missing_routine_id.json",
+      "type": "routines_down",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "routineId"
+    },
+    {
+      "path": "invalid/routines_down_unlisted_fallback_exercise.json",
+      "type": "routines_down",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "fallbackExercises"
+    },
+    {
+      "path": "invalid/foods_down_missing_food_id.json",
+      "type": "foods_down",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "foodId"
+    },
+    {
+      "path": "invalid/receipt_missing_entry_ids.json",
+      "type": "receipt",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "entryIds"
+    },
+    {
+      "path": "invalid/exercise_push_unknown_origin.json",
+      "type": "exercise_push",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "garmin"
+    },
+    {
+      "path": "invalid/structure_change_unknown_kind.json",
+      "type": "structure_change",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "rotate_exercise"
+    },
+    {
+      "path": "invalid/observations_up_missing_event_id.json",
+      "type": "observations_up",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "eventId"
+    },
+    {
+      "path": "invalid/session_lifecycle_unknown_state.json",
+      "type": "session_lifecycle",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "finished"
+    },
+    {
+      "path": "invalid/session_snapshot_missing_session_id.json",
+      "type": "session_snapshot",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "sessionId"
+    },
+    {
+      "path": "invalid/session_snapshot_index_out_of_range.json",
+      "type": "session_snapshot",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "currentExerciseIndex"
+    },
+    {
+      "path": "invalid/session_snapshot_duplicate_slot.json",
+      "type": "session_snapshot",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "sessionExerciseId"
+    },
+    {
+      "path": "invalid/timer_state_remaining_seconds.json",
+      "type": "timer_state",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "remainingSeconds",
+      "note": "The only fixture that carries a remaining-time field, on purpose: the field is the defect. Every fixture that represents timer state must be free of one — see test/sync_protocol_fixtures_test.dart (S-003)."
+    },
+    {
+      "path": "invalid/observations_up_steps_on_round.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "steps is carried only by timed entries"
+    },
+    {
+      "path": "invalid/observations_up_heart_rate_on_set.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "avgHeartRateBpm is carried only by timed, round, hold, session_end entries"
+    },
+    {
+      "path": "invalid/observations_up_heart_rate_zero.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1, found 0"
+    },
+    {
+      "path": "invalid/observations_up_heart_rate_avg_above_max.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "avgHeartRateBpm must not exceed maxHeartRateBpm, but does on e-bad-hr-order"
+    },
+    {
+      "path": "invalid/observations_up_heart_rate_avg_without_max.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "avgHeartRateBpm and maxHeartRateBpm travel together"
+    },
+    {
+      "path": "invalid/observations_up_rating_out_of_range.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at most 5, found 6"
+    },
+    {
+      "path": "invalid/observations_up_session_end_missing_ended_at.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "endedAt"
+    },
+    {
+      "path": "invalid/observations_up_paused_ms_on_timed.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "pausedMs is carried only by round entries"
+    },
+    {
+      "path": "invalid/observations_up_set_blocks_on_timed.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "setBlockHeartRates is carried only by session_end entries"
+    },
+    {
+      "path": "invalid/preferences_down_missing_effort_rating_prompt.json",
+      "type": "preferences_down",
+      "scenario": "S-202",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "effortRatingPrompt"
+    },
+    {
+      "path": "invalid/session_snapshot_set_without_slot.json",
+      "type": "session_snapshot",
+      "scenario": "S-203",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "the slot it logged it in; missing on e-snap-noslot"
+    },
+    {
+      "path": "invalid/observations_up_paused_ms_exceeds_window.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "pausedMs must not exceed the time between startedAt and endedAt"
+    },
+    {
+      "path": "invalid/observations_up_set_block_avg_above_max.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "avgHeartRateBpm must not exceed maxHeartRateBpm, but does on end-s-cap-bad set block sx-bench/ex-bench"
+    },
+    {
+      "path": "invalid/observations_up_set_block_repeated.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "a set block may appear once per sessionExerciseId and exerciseId pair"
+    },
+    {
+      "path": "invalid/observations_up_rating_on_set.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "rating is carried only by effort_rating entries"
+    },
+    {
+      "path": "invalid/observations_up_status_on_timed.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "status is carried only by session_end entries"
+    },
+    {
+      "path": "invalid/observations_up_modality_on_timed.json",
+      "type": "observations_up",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "modality is carried only by session_end entries"
+    },
+    {
+      "path": "invalid/session_snapshot_steps_on_round.json",
+      "type": "session_snapshot",
+      "scenario": "S-202",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "steps is carried only by timed entries",
+      "note": "F-6(a): capture-field placement is unguarded on a snapshot's own entries unless a snapshot fixture exercises it too — the observations_up fixture above does not reach that code path."
+    },
+    {
+      "path": "invalid/observations_up_steps_as_double.json",
+      "type": "observations_up",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer, found 3200.0",
+      "note": "F-10: a JSON `3200.0` is a double. Dart's `value is int` refuses it, and the Swift validator must too, or the two disagree on the same bytes (review N6 pins the wording as well)."
+    },
+    {
+      "path": "invalid/observations_up_distance_source_on_round.json",
+      "type": "observations_up",
+      "scenario": "S-872",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "distanceSource is carried only by timed entries"
+    },
+    {
+      "path": "invalid/observations_up_distance_source_without_distance.json",
+      "type": "observations_up",
+      "scenario": "S-873",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "distanceSource travels with distanceMeters"
+    },
+    {
+      "path": "invalid/observations_up_distance_source_unknown.json",
+      "type": "observations_up",
+      "scenario": "S-874",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "pedometer"
+    },
+    {
+      "path": "invalid/structure_change_correction_distance.json",
+      "type": "structure_change",
+      "scenario": "S-875",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "distanceMeters"
+    }
+  ],
+  "scenarios": [
+    {
+      "path": "reconciliation/snapshot_then_events.json",
+      "scenario": "S-004",
+      "property": "reconnect reconciliation converges"
+    },
+    {
+      "path": "reconciliation/duplicate_delivery.json",
+      "scenario": "S-002",
+      "property": "replaying the stream twice equals applying it once"
+    },
+    {
+      "path": "reconciliation/remove_current_exercise.json",
+      "scenario": "S-005",
+      "property": "removing the current exercise advances to the next valid one"
+    },
+    {
+      "path": "reconciliation/repeated_exercise.json",
+      "scenario": null,
+      "property": "the same exercise in two slots is two addresses"
+    },
+    {
+      "path": "reconciliation/structure_change_apply.json",
+      "scenario": null,
+      "property": "every structure-change kind applies in order"
+    },
+    {
+      "path": "reconciliation/snapshot_merge.json",
+      "scenario": null,
+      "property": "a second snapshot merges entries and replaces structure and timers"
+    },
+    {
+      "path": "reconciliation/timer_cleared.json",
+      "scenario": null,
+      "property": "a null timer clears; an unnamed timer survives"
+    },
+    {
+      "path": "reconciliation/lifecycle_transitions.json",
+      "scenario": null,
+      "property": "lifecycle states apply in order and out-of-range positions clamp"
+    },
+    {
+      "path": "reconciliation/lifecycle_started.json",
+      "scenario": null,
+      "property": "a session reported started is live again"
+    },
+    {
+      "path": "reconciliation/lifecycle_completed.json",
+      "scenario": null,
+      "property": "a completed session stays completed"
+    },
+    {
+      "path": "reconciliation/duplicate_slot_add.json",
+      "scenario": "S-005",
+      "property": "a slot id can be introduced only once"
+    },
+    {
+      "path": "reconciliation/version_mismatch.json",
+      "scenario": "S-006",
+      "property": "version mismatch rejects and answers with a snapshot"
+    },
+    {
+      "path": "reconciliation/session_switch.json",
+      "scenario": "S-205",
+      "property": "a snapshot for another session replaces the held one, entries included"
+    }
+  ]
+}

@@ -2,10 +2,12 @@ import 'package:omnitrain/core/utils/rest_notification_service.dart';
 
 /// Test double for [RestNotificationService].
 class FakeRestNotificationService extends RestNotificationService {
-  final List<({int restStartMs, int intervalSecs, String soundId, bool playSound})>
+  final List<
+    ({int restStartMs, int intervalSecs, String soundId, bool playSound})
+  >
   scheduled = [];
-  final List<({int fireAtMs, String soundId, bool playSound})>
-  effortSchedules = [];
+  final List<({int fireAtMs, String soundId, bool playSound})> effortSchedules =
+      [];
   int cancelCallCount = 0;
   int effortCancelCallCount = 0;
   bool permissionGranted = true;
@@ -53,9 +55,11 @@ class FakeRestNotificationService extends RestNotificationService {
     required String soundId,
     bool playSound = true,
   }) async {
-    effortSchedules.add(
-      (fireAtMs: fireAtMs, soundId: soundId, playSound: playSound),
-    );
+    effortSchedules.add((
+      fireAtMs: fireAtMs,
+      soundId: soundId,
+      playSound: playSound,
+    ));
   }
 
   @override

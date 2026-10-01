@@ -197,7 +197,7 @@ CREATE TABLE app_training_session (
   modality TEXT, -- Functional training type: 'cardio_endurance', 'resistance_lifting', 'isometric_stretching', 'sports', or NULL for 'Free Training'
   intent TEXT,
   perceived_session_rpe REAL,
-  session_feeling INTEGER, -- 1-5 scale, nullable (1=Rough, 5=Great)
+  session_feeling INTEGER, -- session effort rating 1-5, nullable (1=Very easy, 5=Max effort)
   quality_rating INTEGER, -- Reserved for computed session quality score, nullable
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
@@ -362,6 +362,7 @@ CREATE TABLE app_effort_observation (
   value_real REAL,
   value_text TEXT,
   value_bool INTEGER,
+  value_source TEXT, -- 'gps' | 'entered' | 'estimated', metric-distance rows only (D-311)
   rpe_rating INTEGER, -- RPE 1-10, nullable, reserved for future use
   rest_duration_ms INTEGER, -- Rest before this set in ms, nullable
   created_at_ms INTEGER NOT NULL,
@@ -372,11 +373,22 @@ CREATE TABLE app_effort_observation (
   FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE,
   FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id),
   FOREIGN KEY(unit_id) REFERENCES app_unit(id),
+  -- At most one value column carries the value. `value_bool` is a flag the
+  -- model writes on every row (0 or 1), so it does not count as a value: a
+  -- skipped set stores reps in `value_int` and the marker in `value_bool`
+  -- (D-330).
   CHECK (
     (CASE WHEN value_int IS NOT NULL THEN 1 ELSE 0 END)
     + (CASE WHEN value_real IS NOT NULL THEN 1 ELSE 0 END)
-    + (CASE WHEN value_text IS NOT NULL THEN 1 ELSE 0 END)
-    + (CASE WHEN value_bool IS NOT NULL THEN 1 ELSE 0 END) = 1
+    + (CASE WHEN value_text IS NOT NULL THEN 1 ELSE 0 END) <= 1
+  ),
+  -- A source belongs to a distance row and is one of the three the model
+  -- accepts, so a row can never claim a provenance that does not exist.
+  CHECK (
+    value_source IS NULL OR (
+      metric_id = 'metric-distance'
+      AND value_source IN ('gps', 'entered', 'estimated')
+    )
   )
 );
 CREATE INDEX IF NOT EXISTS IX_obs_effort ON app_effort_observation(effort_id);
@@ -1456,6 +1468,148 @@ CREATE TABLE app_water_log (
   updated_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS IX_water_log_date ON app_water_log(date_ms DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WATCH CAPTURE — SENSOR SUMMARIES + WATCH SESSION INBOX (September 2026)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Stats PR 2, D-131 and D-132 in
+-- `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`.
+-- Models: `SensorSummary` and `WatchInboxEntry` in `lib/data/models/models.dart`.
+-- Hive boxes: `sensor_summaries` and `watch_inbox`. Both tables are new and
+-- start empty on every install, so they need no data migration.
+--
+-- app_sensor_summary: a heart-rate and step summary the wrist measured over
+-- one window of a wrist session, attached to exactly one target:
+--   scope 'session'        → target_id = app_training_session.id (= session_id)
+--   scope 'effort'         → target_id = app_segment_effort.id (a set block)
+--   scope 'timed_instance' → target_id = app_timed_instance.id (timed or hold entry)
+--   scope 'round_instance' → target_id = app_round_instance.id
+-- Why not `metric-heart-rate` observations: a summary is an average and
+-- maximum pair (plus steps), it can target a session or a round, which an
+-- observation cannot address, and it is measured, never entered. Why not
+-- new columns on the targets: those rows are rebuilt field by field in
+-- several places, where a new column would be silently dropped.
+--
+-- The CHECK constraints mirror what `SensorSummary` refuses at construction:
+-- one row per (scope, target); the heart-rate pair is both-or-neither with
+-- 1 <= average <= maximum (a missing reading is absent, never zero); steps
+-- are >= 0 and only on a timed_instance; at least one measured value; an
+-- ordered window; source 'watch'.
+--
+-- Cascades: session_id carries ON DELETE CASCADE. target_id is polymorphic,
+-- so no foreign key can hold it; the repository deletes a summary together
+-- with its target, and runs the summary delete BEFORE the target delete so
+-- the subqueries below still see the target rows.
+--
+-- Repository → SQL contract (WorkoutRepository method: equivalent SQL):
+--   createSensorSummary(summary):  -- put-if-absent; stored = (changes() = 1)
+--     INSERT INTO app_sensor_summary (...) VALUES (...) ON CONFLICT DO NOTHING;
+--   getSensorSummariesForSession(sessionId):
+--     SELECT * FROM app_sensor_summary WHERE session_id = ?
+--     ORDER BY CASE scope WHEN 'session' THEN 0 WHEN 'effort' THEN 1
+--                         WHEN 'timed_instance' THEN 2 ELSE 3 END,
+--              window_start_ms, target_id;
+--   deleteSession(id):
+--     DELETE FROM app_sensor_summary WHERE session_id = ?;
+--   deleteEffort(id), and deleteSessionBlock(blockId) per effort it deletes:
+--     DELETE FROM app_sensor_summary WHERE scope = 'effort' AND target_id = ?;
+--     (plus the two *InstancesForEffort statements below)
+--   deleteTimedInstance(id):
+--     DELETE FROM app_sensor_summary
+--     WHERE scope = 'timed_instance' AND target_id = ?;
+--   deleteTimedInstancesForEffort(effortId):
+--     DELETE FROM app_sensor_summary WHERE scope = 'timed_instance'
+--       AND target_id IN (SELECT id FROM app_timed_instance WHERE effort_id = ?);
+--   deleteRoundInstance(id):
+--     DELETE FROM app_sensor_summary
+--     WHERE scope = 'round_instance' AND target_id = ?;
+--   deleteRoundInstancesForEffort(effortId):
+--     DELETE FROM app_sensor_summary WHERE scope = 'round_instance'
+--       AND target_id IN (SELECT id FROM app_round_instance WHERE effort_id = ?);
+CREATE TABLE IF NOT EXISTS app_sensor_summary (
+  id                 TEXT    NOT NULL PRIMARY KEY,  -- 'sensor-<scope>-<target_id>'
+  session_id         TEXT    NOT NULL,              -- owning session, whatever the scope
+  scope              TEXT    NOT NULL
+    CHECK (scope IN ('session', 'effort', 'timed_instance', 'round_instance')),
+  target_id          TEXT    NOT NULL,
+  window_start_ms    INTEGER NOT NULL,              -- window start, inclusive
+  window_end_ms      INTEGER NOT NULL,              -- window end, inclusive
+  avg_heart_rate_bpm REAL,                          -- unrounded mean; NULL = not measured
+  max_heart_rate_bpm REAL,                          -- NULL = not measured
+  steps              INTEGER,                       -- NULL = not measured; 0 is a measured value
+  source             TEXT    NOT NULL DEFAULT 'watch' CHECK (source IN ('watch')),
+  created_at_ms      INTEGER NOT NULL,
+  CHECK (id = 'sensor-' || scope || '-' || target_id),
+  CHECK (scope <> 'session' OR target_id = session_id),
+  CHECK ((avg_heart_rate_bpm IS NULL) = (max_heart_rate_bpm IS NULL)),
+  CHECK (avg_heart_rate_bpm IS NULL OR avg_heart_rate_bpm >= 1),
+  CHECK (avg_heart_rate_bpm IS NULL OR avg_heart_rate_bpm <= max_heart_rate_bpm),
+  CHECK (steps IS NULL OR steps >= 0),
+  CHECK (steps IS NULL OR scope = 'timed_instance'),
+  CHECK (avg_heart_rate_bpm IS NOT NULL OR steps IS NOT NULL),
+  CHECK (window_end_ms >= window_start_ms),
+  FOREIGN KEY(session_id) REFERENCES app_training_session(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS UX_sensor_summary_scope_target
+  ON app_sensor_summary(scope, target_id);
+CREATE INDEX IF NOT EXISTS IX_sensor_summary_session
+  ON app_sensor_summary(session_id);
+
+-- app_watch_inbox_entry: the watch session inbox. Everything the phone
+-- learns about a wrist session before it becomes history is staged here on
+-- arrival: the wrist's set, timed, round, hold, effort_rating and
+-- session_end events (origin 'watch'), and the phone's own annotations on
+-- that session, meaning its rating and the live corrections and deletions it
+-- sent for a wrist entry (origin 'phone'; kinds phone_rating,
+-- phone_correction, phone_deletion; ids 'phone-rating-<sessionId>' and
+-- 'phone-change-<changeId>-<index>').
+--
+-- Rows are put-if-absent by entry_id: the first copy is the record, and a
+-- redelivered or altered copy never replaces it. Rows are never deleted and
+-- carry NO foreign key into history: once applied_at_ms is set, a row is the
+-- tombstone that stops a later sync from re-creating history the user
+-- deleted, so it must outlive the session it describes. payload_json is the
+-- event object as it arrived, or the phone's annotation, JSON-encoded.
+--
+-- Repository → SQL contract (WorkoutRepository method: equivalent SQL):
+--   stageWatchInboxEntry(entry):  -- put-if-absent; stored = (changes() = 1)
+--     INSERT INTO app_watch_inbox_entry (...) VALUES (...)
+--       ON CONFLICT(entry_id) DO NOTHING;
+--   getWatchInboxEntriesForSession(watchSessionId):
+--     SELECT * FROM app_watch_inbox_entry WHERE watch_session_id = ?
+--     ORDER BY received_at_ms, entry_id;
+--   getWatchInboxEntry(entryId):
+--     SELECT * FROM app_watch_inbox_entry WHERE entry_id = ?;
+--   markWatchInboxEntriesApplied(entryIds, appliedAtMs):  -- first stamp wins
+--     UPDATE app_watch_inbox_entry SET applied_at_ms = ?
+--     WHERE entry_id IN (...) AND applied_at_ms IS NULL;
+--   getWatchSessionIdsWithUnappliedEnd():
+--     SELECT watch_session_id FROM app_watch_inbox_entry
+--     WHERE kind = 'session_end' AND applied_at_ms IS NULL
+--     GROUP BY watch_session_id
+--     ORDER BY MIN(received_at_ms), watch_session_id;
+--   No delete statement exists for this table.
+CREATE TABLE IF NOT EXISTS app_watch_inbox_entry (
+  entry_id         TEXT    NOT NULL PRIMARY KEY,
+  watch_session_id TEXT    NOT NULL,
+  kind             TEXT    NOT NULL CHECK (kind IN (
+                     'set', 'timed', 'round', 'hold', 'effort_rating', 'session_end',
+                     'phone_rating', 'phone_correction', 'phone_deletion')),
+  origin           TEXT    NOT NULL CHECK (origin IN ('watch', 'phone')),
+  payload_json     TEXT    NOT NULL,                -- the event or annotation, JSON-encoded
+  received_at_ms   INTEGER NOT NULL,                -- when the phone staged the row
+  applied_at_ms    INTEGER,                         -- NULL = waiting; set once, never cleared
+  CHECK ((origin = 'phone') =
+         (kind IN ('phone_rating', 'phone_correction', 'phone_deletion'))),
+  CHECK (kind <> 'phone_rating' OR entry_id = 'phone-rating-' || watch_session_id),
+  CHECK (kind NOT IN ('phone_correction', 'phone_deletion')
+         OR entry_id LIKE 'phone-change-%')
+);
+CREATE INDEX IF NOT EXISTS IX_watch_inbox_session
+  ON app_watch_inbox_entry(watch_session_id, received_at_ms, entry_id);
+CREATE INDEX IF NOT EXISTS IX_watch_inbox_unapplied_end
+  ON app_watch_inbox_entry(received_at_ms, watch_session_id)
+  WHERE kind = 'session_end' AND applied_at_ms IS NULL;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- CATALOG VERSION + SEED-ENTRY TOMBSTONES (July 2026)

@@ -1,0 +1,34 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-2",
+  "sessionId": "s-2026-07-13-2",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-07-13T18:20:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "evt-distance-1",
+        "entryId": "evt-distance-1",
+        "kind": "timed",
+        "loggedAt": "2026-07-13T18:06:00Z",
+        "sessionExerciseId": "sx-ride",
+        "exerciseId": "ex-stationary-bike",
+        "startedAt": "2026-07-13T18:00:00Z",
+        "endedAt": "2026-07-13T18:06:00Z",
+        "distanceMeters": 2400
+      },
+      {
+        "eventId": "evt-assist-1",
+        "entryId": "evt-assist-1",
+        "kind": "hold",
+        "loggedAt": "2026-07-13T18:12:00Z",
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "startedAt": "2026-07-13T18:11:00Z",
+        "endedAt": "2026-07-13T18:12:00Z",
+        "extraLoadKg": -10
+      }
+    ]
+  }
+}

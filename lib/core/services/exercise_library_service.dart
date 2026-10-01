@@ -232,7 +232,7 @@ class ExerciseLibraryService {
   Future<Exercise> copyAsCustom(Exercise source) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final copy = Exercise(
-      id: 'exercise-${now}-${source.id.hashCode.abs()}',
+      id: 'exercise-$now-${source.id.hashCode.abs()}',
       ownerUserId: 'user-1',
       modality: source.modality,
       disciplineId: source.disciplineId,

@@ -1,0 +1,401 @@
+# Watch ↔ Phone Sync Protocol — v1
+
+Two watch clients on two stacks (native watchOS, Flutter Wear OS) speak to one
+phone. This document is the language they share. It is platform-neutral,
+transport-neutral, and enforced by fixtures rather than by convention: every
+statement here that a client could get wrong has a machine-readable fixture
+next to it, and the fixtures are the contract.
+
+**Protocol version: 1.** Every message carries it. See
+[Versioning policy](#versioning-policy-normative).
+
+What this document is not: it defines no transport (WatchConnectivity, Wear OS
+Data Layer, and anything that replaces them are out of scope), no UI, and no
+cloud sync. It defines payloads, authority, and convergence.
+
+## Layout
+
+| Path | Contents |
+|------|----------|
+| `schemas/envelope.schema.json` | Envelope fields plus the payload fragments shared by more than one message type |
+| `schemas/messages/` | One JSON Schema per message type |
+| `fixtures/manifest.json` | Register of every fixture in this tree: valid, invalid, and scenario |
+| `fixtures/valid/` | Conforming messages, at least one per type |
+| `fixtures/invalid/` | One or more non-conforming messages per type, each with the reason it must be rejected |
+| `fixtures/reconciliation/` | Scenario fixtures: replayable snapshots with event streams, covering reconciliation, duplicate delivery, structure-change application, snapshot merge, timer clearing, slot identity, lifecycle ordering, and version mismatch. `fixtures/manifest.json` is the complete register |
+
+Schema dialect: the subset of JSON Schema 2020-12 the protocol actually uses —
+`type`, `const`, `enum`, `required`, `properties`, `additionalProperties`,
+`items`, `minItems`, `minLength`, `minimum`, `maximum`, `pattern`, `allOf`,
+`oneOf`, and `$ref`. A `$ref` target is either `#/…` inside the current
+document or `<document>.schema.json#/…` relative to `schemas/`.
+
+`integer` means an integer on the wire, not a number without a fraction: a
+whole-number double such as `3200.0` is refused wherever `integer` is declared,
+because the two validators must agree on the bytes rather than on the value —
+`fixtures/invalid/observations_up_steps_as_double.json` is the register's
+witness, and its `expectedReasonContains` is the wording contract.
+
+The Dart validator that consumes these files lives at
+`lib/core/sync_protocol/message_validator.dart` and is pure Dart: the caller
+supplies the decoded schema documents, which is what keeps file access out of
+the app bundle. The reference implementation of the apply rules below lives at
+`lib/core/sync_protocol/session_reconciler.dart`; `test/sync_protocol_fixtures_test.dart`
+runs every fixture through both.
+
+## Envelope
+
+Every message is an object with these fields, and nothing else
+(`additionalProperties: false` — see [Validation profiles](#validation-profiles)):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `protocolVersion` | integer ≥ 1 | Required |
+| `messageId` | non-empty string | Required. Identifies the message, not the data in it |
+| `sessionId` | non-empty string | Required for every session-scoped message |
+| `type` | one of the message types below | Required |
+| `origin` | `"watch"` or `"phone"` | Required |
+| `sentAt` | UTC timestamp | Required |
+| `payload` | object | Required. Shape depends on `type` |
+
+A timestamp is an ISO-8601 UTC instant, `YYYY-MM-DDTHH:MM:SS(.sss)Z`. Local
+counters are never part of a message.
+
+## Message families
+
+| Type | Direction | Purpose | Schema | Fixture |
+|------|-----------|---------|--------|---------|
+| `routines_down` | phone → watch | The user's routines (routine → segments → efforts → per-metric targets) plus the fallback exercise list | `schemas/messages/routines_down.schema.json` | `fixtures/valid/routines_down.json` |
+| `foods_down` | phone → watch | The user's Foods I Eat list — the foods the wrist may quick-log — plus the categories that order it | `schemas/messages/foods_down.schema.json` | `fixtures/valid/foods_down.json` |
+| `preferences_down` | phone → watch | The phone's settings the wrist honours: today, whether a session ended on the wrist asks for the session effort rating | `schemas/messages/preferences_down.schema.json` | `fixtures/valid/preferences_down.json` |
+| `exercise_push` | phone → watch | A catalog exercise the user searched for on the phone, pushed into the live session | `schemas/messages/exercise_push.schema.json` | `fixtures/valid/exercise_push.json` |
+| `structure_change` | phone → watch | Add, remove, reorder, swap, correct a logged entry, delete a logged entry | `schemas/messages/structure_change.schema.json` | `fixtures/valid/structure_change.json` |
+| `observations_up` | watch → phone | Append-only observations: sets, timed entries, rounds, holds, nutrition quick-logs, the session effort rating, and the session end | `schemas/messages/observations_up.schema.json` | `fixtures/valid/observations_up.json` |
+| `receipt` | phone → watch | The observations the phone has taken responsibility for — what lets the watch drop an observation it sent | `schemas/messages/receipt.schema.json` | `fixtures/valid/receipt.json` |
+| `session_lifecycle` | either | Session started, exercise advanced, completed, abandoned | `schemas/messages/session_lifecycle.schema.json` | `fixtures/valid/session_lifecycle.json` |
+| `session_snapshot` | either | The full live-session state, exchanged on connect, on reconnect, and after a rejection | `schemas/messages/session_snapshot.schema.json` | `fixtures/valid/session_snapshot.json` |
+| `timer_state` | either | Rest, round, hold, and elapsed timers as wall-clock timestamps plus pause bookkeeping | `schemas/messages/timer_state.schema.json` | `fixtures/valid/timer_state.json` |
+
+Notes that follow from the schemas:
+
+- The fallback exercise list MUST cover every exercise any synced routine
+  references — the watch must never hold a routine it cannot log. The validator
+  reports a `semantic_violation` when coverage is missing.
+- `fallbackExercises` is catalog reference data: it names exercises, not session
+  slots, so its entries carry no `sessionExerciseId`.
+- `foods_down` is reference data too, and the wrist owns none of it: a food the
+  user creates, edits or deletes on the phone reaches the watch only in the next
+  `foods_down`, and the watch that quick-logs a food never edits the catalog. A
+  food's `categoryId` is the phone's own grouping, already resolved to the
+  categories the message carries; `null` means the phone groups it under
+  Uncategorized.
+- `preferences_down` carries the phone's settings the wrist honours. It is
+  reference data about the user, not a session, so it names no session. The
+  phone MUST answer every wrist sync request with one — even when it holds no
+  routines, and before any `routines_down` — so a setting changed on the phone
+  reaches the wrist at the wrist's next sync. The wrist keeps the newest: the
+  copy with the latest `generatedAt` applies, a tie goes to the copy received
+  later, and an older copy that arrives late MUST NOT replace a newer one. A
+  wrist that has never received one does not ask for an effort rating
+  (`watch/contract/watch_effort_rating_contract.json`).
+- `exercise_push` is itself the structural edit: it carries `insertAtIndex`
+  and the slot it creates. The phone MUST NOT follow it with an `add_exercise`
+  change for the same slot.
+- Every observation event is self-contained. An effort event carries the slot
+  it was logged in, the catalog exercise, the kind, the wall-clock timestamps,
+  and the metrics the entry needs. A *session-scoped* event — `effort_rating` or
+  `session_end` — describes the whole session, so it names no slot and no
+  exercise (see [Session capture](#session-capture-normative)). The phone never
+  has to ask the watch a follow-up question to materialise an entry.
+- An observation event carries both `eventId` and `entryId`. `eventId` is the
+  delivery key, `entryId` is the entry's identity; the two are equal in
+  practice, and either one alone is enough to reject a duplicate.
+- A `receipt` names the `entryId`s the phone holds. It is deliberately
+  session-free: a nutrition quick-log taken with no workout running names a
+  session the phone does not hold, so `session_snapshot` never carries it back,
+  and without a receipt the watch would re-send it on every connect and could
+  never prune the row. A receipt asserts that the phone has the observation, not
+  that anything changed — a food the phone's library no longer carries is
+  acknowledged too. A snapshot also confirms the `entryId`s it carries, so a
+  receipt is what acknowledges an entry no snapshot carries, and the two are the
+  whole of it: an entry neither message names stays owed.
+  This was the first message type added after v1 was published, and it is
+  additive in the sense that matters here: the two clients ship from this
+  repository in one release, so a receiver that predates the type cannot be in
+  the field. The session-capture amendment (see
+  [Version history](#version-history)) is additive on the same grounds.
+- A `session_snapshot` payload carries its own `sessionId`, which MUST match the
+  envelope's.
+- An observation event carries the metrics its entry needs: `reps` and `loadKg`
+  for a set, `startedAt` and `endedAt` for timed work, rounds and holds,
+  `distanceMeters` for distance-capable work, and `extraLoadKg` for a hold's
+  added or assisting load. Distance is entered by hand whenever the watch has no
+  fix: GPS is a separate concern and MUST NOT gate an entry.
+  `fixtures/valid/observations_up_distance_and_load.json` is the shape in full.
+
+## Authority rules (normative)
+
+1. The watch MUST NOT edit or delete existing records. It appends new
+   observations and MAY reflect corrections the phone sends, but it never
+   originates a mutation of anything already recorded.
+2. The phone MUST be authoritative for session structure: adding, removing,
+   reordering, and swapping exercises. Only the phone sends `structure_change`.
+3. When a structure change removes the exercise the watch is currently on, the
+   watch MUST advance to the next valid exercise: the position stays at the
+   same index, which now holds the exercise that followed, or moves to the last
+   exercise when the removed one was last. `fixtures/reconciliation/remove_current_exercise.json`
+   pins this.
+4. The phone MUST accept watch-appended observations. There is no negotiation,
+   no approval step, and no "watch data pending" state — an observation the
+   watch sent is part of the session. An `effort_rating` is accepted the same
+   way, with one limit: a rating the phone already holds for the session is the
+   user's own answer on the phone, and a wrist rating MUST NOT replace it,
+   however it arrives.
+5. Removing an exercise MUST NOT remove the entries already logged against it,
+   and swapping an exercise MUST NOT rewrite the exerciseId on existing
+   entries. History records what happened.
+6. A structure change is identified by `changeId`. A receiver MUST apply a given
+   `changeId` at most once, so re-delivery cannot duplicate an edit.
+
+## Exercise identity (normative)
+
+A live session is an ordered list of exercise *slots*. A slot carries two
+identifiers, and they answer different questions:
+
+| Field | Identifies | Lifetime |
+|-------|-----------|----------|
+| `sessionExerciseId` | The slot — where in the session this exercise sits | The life of the session. Stable across reorder, preserved across swap |
+| `exerciseId` | Which catalog exercise the slot holds | Changes when the slot is swapped |
+
+- Every `sessionExerciseId` MUST be unique within a session. The same
+  `exerciseId` MAY appear in more than one slot — a routine that benches in two
+  segments produces exactly that — so `exerciseId` MUST NOT be used to address a
+  slot. The validator reports a `semantic_violation` when slot ids repeat.
+- Structure operations (`remove_exercise`, `reorder_exercises`,
+  `swap_exercise`) MUST address the session by `sessionExerciseId`. Only
+  `add_exercise` and `exercise_push` introduce a slot, and the phone MUST choose
+  its id.
+- An operation that introduces a slot — `exercise_push` or `add_exercise` —
+  whose `sessionExerciseId` is already present MUST be ignored. That is what
+  makes a re-delivered push harmless; replacing what a slot holds is
+  `swap_exercise`'s job, and MUST NOT be attempted by re-adding the slot.
+- `swap_exercise` MUST preserve the slot's `sessionExerciseId`. It replaces what
+  the slot holds and nothing else, so the watch's position does not move and an
+  entry logged against the slot still points at it.
+- A logged entry MUST record both the slot it was logged in
+  (`sessionExerciseId`) and the catalog exercise it recorded (`exerciseId`).
+  Neither is rewritten by a later structure change: history records what
+  happened, not what the slot holds now.
+- Removing a slot MUST NOT touch the entries logged against it.
+- A slot MAY carry the `effortKind` its routine declared, and a slot that does
+  MUST be rendered with it. This is the one field a receiver does not derive:
+  the routine is the user's own plan, and re-deriving the kind from the
+  exercise's capabilities would render the effort as something the plan never
+  asked for (a Plank carries `time` and `hold`, which the capability rule reads
+  as a hold, while the routine that declares it `timed` is what the user set
+  up). A slot with no `effortKind` — a free workout, or an exercise pushed into
+  a live session — is resolved from its capabilities, which is the rule
+  `watch/contract/watch_start_paths_contract.json` (`effortKindParity`) pins for
+  both clients.
+
+## Timer state (normative)
+
+Timers MUST be exchanged as wall-clock timestamps plus pause accounting:
+`startedAt`, optionally `pausedAt` and `stoppedAt`, `accumulatedPauseMs`, and
+optionally the planned duration. A remaining-time field MUST NOT be sent, and
+MUST NOT appear in any fixture that carries state: the receiver derives
+remaining time from `startedAt`, `accumulatedPauseMs`, and its own clock, which
+is what keeps a timer correct across backgrounding, reconnect, and clock drift
+between devices.
+
+A `timer_state` message is authoritative for every timer kind it names. A kind
+carrying `null` clears that timer. A `session_snapshot` is authoritative for
+timer state as a whole; kinds it omits are cleared.
+
+## Session capture (normative)
+
+A wrist that ends a session reports two session-scoped events and the
+summaries it computed from its own sensor readings. Raw readings never travel:
+the fields below are the only values derived from them that appear on the wire.
+
+- **`effort_rating`** carries `rating`, an integer on the scale
+  `watch/contract/watch_effort_rating_contract.json` defines. A wrist appends at
+  most one per session, with `entryId` and `eventId` both `rating-<sessionId>`,
+  and never edits one. The phone's own rating for the session is final
+  (authority rule 4).
+- **`session_end`** carries the session's `startedAt` and `endedAt`, its
+  `status` (`completed` or `abandoned`), its `modality` when it has one, and the
+  session's heart-rate summary. A wrist appends exactly one for each session it
+  created — `entryId` and `eventId` both `end-<sessionId>` — at the session's
+  first transition to completed or abandoned, whichever device caused it. A
+  session reopened and ended again gets no second one, and a session the wrist
+  joined from the phone gets none. `endedAt` is the wrist's clock when the
+  wrist ended the session, the payload's `at` when a `session_lifecycle` from
+  the phone did, and the envelope's `sentAt` when a `session_snapshot` from the
+  phone did.
+- **Summary fields.** Each travels only on the kinds in the table; anywhere
+  else it is a `semantic_violation`, in an `observations_up` event and in a
+  `session_snapshot` entry alike. A value is absent when nothing was measured,
+  never zero: the heart-rate fields have a minimum of 1, so a zero-filled
+  summary cannot be sent. An event is never re-sent with different values.
+
+| Field | Carried by | Meaning |
+|-------|-----------|---------|
+| `avgHeartRateBpm`, `maxHeartRateBpm` | `timed`, `round`, `hold`, `session_end` | Mean and maximum heart rate over the entry's active window — pauses excluded — or, on `session_end`, over the whole session. The two travel together, and the average never exceeds the maximum |
+| `steps` | `timed` | Steps inside the window, from the wrist's step counter. A measured zero is sent |
+| `distanceSource` | `timed`, with `distanceMeters` | Where the distance came from: `gps`, `entered` or `estimated` |
+| `pausedMs` | `round` | The round's accumulated pause, which its active window excludes. Never longer than the window |
+| `setBlockHeartRates` | `session_end` | One heart-rate pair per *set block* — the sets logged for one `sessionExerciseId` and `exerciseId` pair — with the span it covers. Each block appears once |
+| `rating` | `effort_rating` | The session effort rating |
+| `status`, `modality` | `session_end` | How the session ended, and its modality |
+
+`fixtures/valid/observations_up_session_capture.json` is the shape in full, and
+`watch/contract/watch_capture_contract.json` is one session end to end: the
+events a wrist emits and what the phone holds after importing them.
+
+A phone-side change to a distance is never sent to the watch: a `correct_entry`
+correction carries no distance
+(`fixtures/invalid/structure_change_correction_distance.json`).
+
+## Idempotency and reconciliation (normative)
+
+- Every observation MUST be safe to deliver more than once. Re-applying an
+  event whose `eventId` or `entryId` has already been seen MUST NOT create a
+  second entry and MUST NOT raise an error.
+- On connect and on reconnect, the devices exchange `session_snapshot`. A
+  snapshot MUST replace structure, status, position, revision, and timer state.
+  When it names the session the receiver holds, its entries MUST be merged by
+  `entryId` rather than replacing the local set, so observations the
+  snapshot's sender has not seen are not lost.
+- A snapshot that names a session other than the one the receiver holds is not
+  a merge. It MUST replace the held session wholesale — structure, status,
+  position, revision, timers, and entries — so entries never merge across
+  sessions. The receiver adopts it and MUST NOT answer it: re-assertion (below)
+  is for a snapshot of the session the receiver holds.
+  `fixtures/reconciliation/session_switch.json` pins it.
+- Between snapshots, incremental messages keep the two sides aligned. A device
+  that reconnects MUST resume from the last snapshot it reconciled, then replay
+  the observations it accumulated while apart.
+- On sync, a wrist MUST re-send every observation the phone has not
+  acknowledged, for every session it stores — not only the current one — in the
+  order it stored them. A session that ended while the wrist was out of reach is
+  still owed to the phone after the next one starts.
+- A device MAY ask its peer for a snapshot at any time — joining a session that
+  is already running, or resuming after a reconnect. The request is a transport
+  concern and carries no message of its own; the answer MUST be a
+  `session_snapshot`. A device with no session to report answers nothing: an
+  empty session is not a state, and a device that has logged nothing is not
+  the authority on anything.
+  Verified by `test/live_mirroring_test.dart` (`S-006 joining an in-progress
+  phone session from the watch`, `S-009 a sessionless watch answers a snapshot
+  request with nothing`) and by watchOS
+  `WatchLiveMirroringTests.testASnapshotRequestIsAnsweredOnce` and
+  `WatchLiveMirroringTests.testASessionlessWatchAnswersNothing`.
+- A snapshot MUST NOT be answered with a snapshot that says the same thing:
+  agreeing peers stay silent, or two connected devices would answer each other
+  for ever. This is the phone's rule to apply, and it applies to the phone
+  alone: structure is the phone's to own (authority rule 2), so when a watch
+  snapshot of the session the phone holds reports a different shape, the phone
+  answers with the shape it held, and a watch never answers a snapshot at all —
+  its ladder is the phone's reflection, and a watch that re-asserted one would
+  be originating structure.
+  Entries are not part of this comparison: they merge by `entryId`, so an entry
+  one side lacks is a convergence in progress rather than a disagreement.
+  Verified by `test/live_mirroring_test.dart` (`S-008 a snapshot the phone
+  disagrees with is answered with its own`) and by watchOS
+  `WatchLiveMirroringTests.testPendingObservationsSurviveARelaunchAndClearOnTheSnapshotsReceipt`.
+- Concurrent edits are resolved by authority, not by last-write-wins: structure
+  comes from the phone, entries come from whoever logged them.
+- Lifecycle messages are applied in the order received, and the most recent
+  status wins. A session reported `started` after an abandon is live again;
+  `completed` and `abandoned` are terminal until a later lifecycle message
+  says otherwise.
+- `revision` increases by one per applied structure change, so two clients can
+  tell at a glance whether they are looking at the same session shape.
+- Applying the same event stream twice MUST produce the same end state as
+  applying it once. `fixtures/reconciliation/duplicate_delivery.json` and
+  `fixtures/reconciliation/snapshot_then_events.json` pin both halves of this.
+
+## Versioning policy (normative)
+
+- Every message MUST carry the protocol version it was written against.
+- A receiver MUST NOT interpret a message that advertises a different version —
+  older or newer. It MUST reject the message, MUST NOT apply it, and MUST
+  answer with a `session_snapshot` so the peer converges from authoritative
+  state instead of from a stream it cannot read.
+- After a version mismatch the pair stays in snapshot-only exchange until both
+  devices advertise the same version. A device that cannot read the other's
+  snapshot MUST suspend sync and surface an upgrade prompt; it MUST NOT resume
+  incremental sync.
+- Version 1 is the only version defined today. Adding a version means adding
+  schemas, fixtures, and a `## Version history` entry here; it never means
+  editing a fixture that v1 clients already ship.
+
+`fixtures/reconciliation/version_mismatch.json` carries both directions of the
+mismatch (watch older, watch newer) with the decision each must produce.
+
+## Validation profiles
+
+- **Conformance (this repository, both watch clients).** Strict: unknown fields
+  are rejected, every required field must be present, and every valid fixture
+  must parse. This is what `additionalProperties: false` is for — it turns a
+  typo and a stray remaining-time field into a build failure.
+- **Cross-version reading.** Lenient: ignore fields the reader does not know,
+  require the fields it does, and never guess at a field it cannot interpret.
+  This profile exists only so a peer one version away can still read a
+  `session_snapshot`; it is not an invitation to skip the conformance profile.
+
+## Rejection codes
+
+A rejection carries a stable machine-readable `code`, the `path` inside the
+message, and a human-readable reason. Clients MUST switch on the code, never on
+the reason text.
+
+| Code | Meaning |
+|------|---------|
+| `unsupported_protocol_version` | The message advertises a version this receiver does not speak. The payload was not read |
+| `unknown_message_type` | `type` is missing, not a string, or not a defined message family |
+| `missing_schema` | The receiver has no schema document for a known type |
+| `unresolvable_reference` | A `$ref` in the schema could not be resolved — a defect in the schema set, not in the message |
+| `missing_required_field` | A field the schema requires is absent |
+| `unexpected_field` | A field the schema does not define is present (this is how a remaining-time field is caught) |
+| `invalid_type` | The value is not the type the schema requires |
+| `invalid_enum_value` | The value is not one of the allowed values |
+| `invalid_const_value` | The value is not the single value a message type pins (e.g. `type`, `origin`) |
+| `constraint_violation` | A bound was broken: `minItems`, `minLength`, `minimum`, `maximum`, or `pattern` |
+| `no_matching_variant` | The value matches none (or more than one) of the allowed shapes in a `oneOf` |
+| `semantic_violation` | The message is well-formed but violates a rule JSON Schema cannot express — fallback coverage, timer kind mismatch, position out of range, a workout entry without its exercise, a repeated `eventId`, a summary field on a kind that does not carry it |
+
+## Consuming these fixtures
+
+All three clients run the same files. Each MUST run every fixture in
+`fixtures/manifest.json`: conforming fixtures MUST validate, non-conforming
+fixtures MUST be rejected with the code and reason the manifest states, and
+every reconciliation fixture MUST converge on its `expected` state.
+
+- **Phone (Flutter).** `test/sync_protocol_fixtures_test.dart` walks the
+  manifest and covers all three. `test/live_mirroring_test.dart` replays the
+  same register through the phone's live mirror
+  (`lib/state/watch/live_session_mirror_state.dart`) and through the Wear OS
+  watch engine, which is what keeps "the phone's half" and "the watch's half"
+  of the apply rules from drifting apart. The standing `flutter test` gate runs
+  both, so they also run as part of the pre-release check.
+- **watchOS.** The Swift package that owns the watch-side sync client MUST load
+  the same JSON from this directory and re-run the conformance and
+  reconciliation cases in XCTest: `SyncProtocolFixturesTests.swift` for
+  conformance, `WatchLiveMirroringTests.swift` for the watch engine's half of
+  the reconciliation.
+- **Wear OS.** The Kotlin module MUST do the same in JUnit, using the repository
+  copy of `fixtures/manifest.json`.
+
+A client that disagrees with a fixture has found either a bug or a protocol
+change. Fix the bug, or change the spec, the schema, and the fixture together in
+one pull request — never edit a fixture to match an implementation.
+
+## Version history
+
+| Version | Date | Notes |
+|---------|------|-------|
+| 1 | 2026-07-13 | First published protocol: seven message families, the authority rules, wall-clock timer state, snapshot reconciliation |
+| 1 (amended) | 2026-09-25 | Session capture: the `preferences_down` message; the `effort_rating` and `session_end` event kinds; the heart-rate, steps, pause and set-block summary fields; the session-switch rule; the resend rule. Additive, as the `receipt` addition was: both clients ship from this repository in one release, v1 is unreleased, and no receiver that predates the change exists. No existing fixture changed |
+| 1 (amended) | 2026-09-27 | Session capture: the `distanceSource` summary field on a `timed` entry that also carries `distanceMeters`. Additive for the same reason as the 2026-09-25 amendment; optional in this release, PR 3c makes it required when the watch sends it. No existing fixture changed |

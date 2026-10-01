@@ -115,14 +115,10 @@ class WaterTrackerControl extends StatelessWidget {
             tooltip: 'Remove one glass',
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(
-              minWidth: 36,
-              minHeight: 36,
-            ),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             style: IconButton.styleFrom(
               shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(OmniTheme.buttonIconRadius),
+                borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
               ),
             ),
           ),
@@ -150,22 +146,14 @@ class WaterTrackerControl extends StatelessWidget {
           IconButton(
             key: const Key('water_tracker_plus'),
             onPressed: onIncrement,
-            icon: Icon(
-              Icons.add,
-              size: 18,
-              color: theme.colorScheme.primary,
-            ),
+            icon: Icon(Icons.add, size: 18, color: theme.colorScheme.primary),
             tooltip: 'Add one glass',
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(
-              minWidth: 36,
-              minHeight: 36,
-            ),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             style: IconButton.styleFrom(
               shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(OmniTheme.buttonIconRadius),
+                borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
               ),
             ),
           ),

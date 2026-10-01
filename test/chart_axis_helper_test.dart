@@ -5,34 +5,61 @@ void main() {
   // ── computeBounds ─────────────────────────────────────────────────────────
 
   group('ChartAxisHelper.computeBounds', () {
-    test('ascending data: min rounded down, max rounded up to multiples of interval', () {
-      final bounds = ChartAxisHelper.computeBounds([90, 95, 100, 110]);
-      // D-2: min should be a multiple of interval and ≤ original minimum (90).
-      // max should be a multiple of interval and ≥ original maximum (110).
-      expect(bounds.min % bounds.interval, closeTo(0.0, 0.01),
-          reason: 'min should be multiple of interval');
-      expect(bounds.min, lessThanOrEqualTo(90.0),
-          reason: 'min should not be above data minimum');
-      expect(bounds.max % bounds.interval, closeTo(0.0, 0.01),
-          reason: 'max should be multiple of interval');
-      expect(bounds.max, greaterThanOrEqualTo(110.0),
-          reason: 'max should not be below data maximum');
-      expect(bounds.interval, greaterThan(0.0));
-    });
+    test(
+      'ascending data: min rounded down, max rounded up to multiples of interval',
+      () {
+        final bounds = ChartAxisHelper.computeBounds([90, 95, 100, 110]);
+        // D-2: min should be a multiple of interval and ≤ original minimum (90).
+        // max should be a multiple of interval and ≥ original maximum (110).
+        expect(
+          bounds.min % bounds.interval,
+          closeTo(0.0, 0.01),
+          reason: 'min should be multiple of interval',
+        );
+        expect(
+          bounds.min,
+          lessThanOrEqualTo(90.0),
+          reason: 'min should not be above data minimum',
+        );
+        expect(
+          bounds.max % bounds.interval,
+          closeTo(0.0, 0.01),
+          reason: 'max should be multiple of interval',
+        );
+        expect(
+          bounds.max,
+          greaterThanOrEqualTo(110.0),
+          reason: 'max should not be below data maximum',
+        );
+        expect(bounds.interval, greaterThan(0.0));
+      },
+    );
 
     test(
       'descending data (Conventional Deadlift decline): full range preserved',
       () {
         final bounds = ChartAxisHelper.computeBounds([200, 190, 180, 170]);
         // D-2: min at or below 170, max at or above 200, both multiples of interval.
-        expect(bounds.min, lessThanOrEqualTo(170.0),
-            reason: 'rounded min should be at or below data minimum');
-        expect(bounds.max, greaterThanOrEqualTo(200.0),
-            reason: 'rounded max should be at or above data maximum');
-        expect(bounds.min % bounds.interval, closeTo(0.0, 0.01),
-            reason: 'min must be multiple of interval');
-        expect(bounds.max % bounds.interval, closeTo(0.0, 0.01),
-            reason: 'max must be multiple of interval');
+        expect(
+          bounds.min,
+          lessThanOrEqualTo(170.0),
+          reason: 'rounded min should be at or below data minimum',
+        );
+        expect(
+          bounds.max,
+          greaterThanOrEqualTo(200.0),
+          reason: 'rounded max should be at or above data maximum',
+        );
+        expect(
+          bounds.min % bounds.interval,
+          closeTo(0.0, 0.01),
+          reason: 'min must be multiple of interval',
+        );
+        expect(
+          bounds.max % bounds.interval,
+          closeTo(0.0, 0.01),
+          reason: 'max must be multiple of interval',
+        );
         // The full decline magnitude (≥30) should be visible.
         expect(bounds.max - bounds.min, greaterThan(30.0));
         expect(bounds.interval, greaterThan(0.0));
@@ -44,11 +71,18 @@ void main() {
       () {
         final bounds = ChartAxisHelper.computeBounds([100, 100, 100]);
         // D-2: At least 2 distinct labels (min and min+interval, or more).
-        final labelCount = ((bounds.max - bounds.min) / bounds.interval).floor() + 1;
-        expect(labelCount, greaterThanOrEqualTo(2),
-            reason: 'flat data should produce at least 2 labels');
-        expect(bounds.max, greaterThan(bounds.min),
-            reason: 'max should be strictly greater than min');
+        final labelCount =
+            ((bounds.max - bounds.min) / bounds.interval).floor() + 1;
+        expect(
+          labelCount,
+          greaterThanOrEqualTo(2),
+          reason: 'flat data should produce at least 2 labels',
+        );
+        expect(
+          bounds.max,
+          greaterThan(bounds.min),
+          reason: 'max should be strictly greater than min',
+        );
         expect(bounds.interval, greaterThan(0.0));
       },
     );
@@ -56,25 +90,44 @@ void main() {
     test('single value: produces at least 2 distinct labels', () {
       final bounds = ChartAxisHelper.computeBounds([150.0]);
       // D-2: At least 2 distinct labels with visible range.
-      final labelCount = ((bounds.max - bounds.min) / bounds.interval).floor() + 1;
-      expect(labelCount, greaterThanOrEqualTo(2),
-          reason: 'single value should produce at least 2 labels');
+      final labelCount =
+          ((bounds.max - bounds.min) / bounds.interval).floor() + 1;
+      expect(
+        labelCount,
+        greaterThanOrEqualTo(2),
+        reason: 'single value should produce at least 2 labels',
+      );
       expect(bounds.max, greaterThan(bounds.min));
       expect(bounds.interval, greaterThan(0.0));
     });
 
-    test('near-zero data: min ≥ 0, max ≥ data max, both multiples of interval', () {
-      final bounds = ChartAxisHelper.computeBounds([0.0, 1.0, 2.0]);
-      // D-2: min should be ≥ 0 (clamp), max ≥ 2.0 (data max), both multiples.
-      expect(bounds.min, greaterThanOrEqualTo(0.0),
-          reason: 'min should not go negative');
-      expect(bounds.max, greaterThanOrEqualTo(2.0),
-          reason: 'max should be at or above data maximum');
-      expect(bounds.min % bounds.interval, closeTo(0.0, 0.01),
-          reason: 'min must be multiple of interval');
-      expect(bounds.max % bounds.interval, closeTo(0.0, 0.01),
-          reason: 'max must be multiple of interval');
-    });
+    test(
+      'near-zero data: min ≥ 0, max ≥ data max, both multiples of interval',
+      () {
+        final bounds = ChartAxisHelper.computeBounds([0.0, 1.0, 2.0]);
+        // D-2: min should be ≥ 0 (clamp), max ≥ 2.0 (data max), both multiples.
+        expect(
+          bounds.min,
+          greaterThanOrEqualTo(0.0),
+          reason: 'min should not go negative',
+        );
+        expect(
+          bounds.max,
+          greaterThanOrEqualTo(2.0),
+          reason: 'max should be at or above data maximum',
+        );
+        expect(
+          bounds.min % bounds.interval,
+          closeTo(0.0, 0.01),
+          reason: 'min must be multiple of interval',
+        );
+        expect(
+          bounds.max % bounds.interval,
+          closeTo(0.0, 0.01),
+          reason: 'max must be multiple of interval',
+        );
+      },
+    );
 
     test('interval is a nice round number (power-of-10-based)', () {
       // Various data sets — each interval should be 1, 2, 5, or 10×10^n.
@@ -108,26 +161,40 @@ void main() {
       expect(bounds.interval, greaterThan(0.0));
     });
 
-    test('D-2: axis labels are multiples of interval for two-digit, three-digit, four-digit ranges', () {
-      // Test that min/max are exact multiples for various ranges.
-      for (final data in [
-        [10.0, 20.0, 30.0],      // two-digit
-        [100.0, 200.0, 300.0],   // three-digit
-        [1000.0, 2000.0, 3000.0], // four-digit
-      ]) {
-        final bounds = ChartAxisHelper.computeBounds(data);
-        // Min must be exact multiple of interval (no fractional part).
-        expect(bounds.min / bounds.interval, isA<double>(),
-            reason: 'min/interval should be a number');
-        final minModulo = (bounds.min % bounds.interval).abs();
-        expect(minModulo, closeTo(0.0, 0.0001),
-            reason: 'min $bounds.min must be exact multiple of interval $bounds.interval');
-        // Max must be exact multiple of interval.
-        final maxModulo = (bounds.max % bounds.interval).abs();
-        expect(maxModulo, closeTo(0.0, 0.0001),
-            reason: 'max $bounds.max must be exact multiple of interval $bounds.interval');
-      }
-    });
+    test(
+      'D-2: axis labels are multiples of interval for two-digit, three-digit, four-digit ranges',
+      () {
+        // Test that min/max are exact multiples for various ranges.
+        for (final data in [
+          [10.0, 20.0, 30.0], // two-digit
+          [100.0, 200.0, 300.0], // three-digit
+          [1000.0, 2000.0, 3000.0], // four-digit
+        ]) {
+          final bounds = ChartAxisHelper.computeBounds(data);
+          // Min must be exact multiple of interval (no fractional part).
+          expect(
+            bounds.min / bounds.interval,
+            isA<double>(),
+            reason: 'min/interval should be a number',
+          );
+          final minModulo = (bounds.min % bounds.interval).abs();
+          expect(
+            minModulo,
+            closeTo(0.0, 0.0001),
+            reason:
+                'min $bounds.min must be exact multiple of interval $bounds.interval',
+          );
+          // Max must be exact multiple of interval.
+          final maxModulo = (bounds.max % bounds.interval).abs();
+          expect(
+            maxModulo,
+            closeTo(0.0, 0.0001),
+            reason:
+                'max $bounds.max must be exact multiple of interval $bounds.interval',
+          );
+        }
+      },
+    );
 
     test('D-2: minimum is at or below series minimum for various ranges', () {
       for (final data in [
@@ -137,8 +204,12 @@ void main() {
       ]) {
         final bounds = ChartAxisHelper.computeBounds(data);
         final seriesMin = data.reduce((a, b) => a < b ? a : b);
-        expect(bounds.min, lessThanOrEqualTo(seriesMin),
-            reason: 'rounded min $bounds.min should not exceed series min $seriesMin');
+        expect(
+          bounds.min,
+          lessThanOrEqualTo(seriesMin),
+          reason:
+              'rounded min $bounds.min should not exceed series min $seriesMin',
+        );
       }
     });
 
@@ -150,35 +221,57 @@ void main() {
       ]) {
         final bounds = ChartAxisHelper.computeBounds(data);
         final seriesMax = data.reduce((a, b) => a > b ? a : b);
-        expect(bounds.max, greaterThanOrEqualTo(seriesMax),
-            reason: 'rounded max $bounds.max should not be below series max $seriesMax');
+        expect(
+          bounds.max,
+          greaterThanOrEqualTo(seriesMax),
+          reason:
+              'rounded max $bounds.max should not be below series max $seriesMax',
+        );
       }
     });
 
-    test('D-2: adjacent label spacing is uniform (all multiples of interval)', () {
-      final bounds = ChartAxisHelper.computeBounds([100.0, 200.0, 300.0, 400.0, 500.0]);
-      // Generate labels by starting at min and stepping by interval.
-      final labels = <double>[];
-      var label = bounds.min;
-      while (label <= bounds.max + 0.001) {
-        labels.add(label);
-        label += bounds.interval;
-      }
-      expect(labels.length, greaterThanOrEqualTo(2),
-          reason: 'should have at least 2 labels');
-      // Verify all labels are multiples of interval.
-      for (final lbl in labels) {
-        final modulo = (lbl % bounds.interval).abs();
-        expect(modulo, closeTo(0.0, 0.0001),
-            reason: 'label $lbl must be multiple of interval $bounds.interval');
-      }
-      // Verify uniform spacing.
-      for (var i = 1; i < labels.length; i++) {
-        final gap = labels[i] - labels[i - 1];
-        expect(gap, closeTo(bounds.interval, 0.0001),
-            reason: 'gap between labels should equal interval');
-      }
-    });
+    test(
+      'D-2: adjacent label spacing is uniform (all multiples of interval)',
+      () {
+        final bounds = ChartAxisHelper.computeBounds([
+          100.0,
+          200.0,
+          300.0,
+          400.0,
+          500.0,
+        ]);
+        // Generate labels by starting at min and stepping by interval.
+        final labels = <double>[];
+        var label = bounds.min;
+        while (label <= bounds.max + 0.001) {
+          labels.add(label);
+          label += bounds.interval;
+        }
+        expect(
+          labels.length,
+          greaterThanOrEqualTo(2),
+          reason: 'should have at least 2 labels',
+        );
+        // Verify all labels are multiples of interval.
+        for (final lbl in labels) {
+          final modulo = (lbl % bounds.interval).abs();
+          expect(
+            modulo,
+            closeTo(0.0, 0.0001),
+            reason: 'label $lbl must be multiple of interval $bounds.interval',
+          );
+        }
+        // Verify uniform spacing.
+        for (var i = 1; i < labels.length; i++) {
+          final gap = labels[i] - labels[i - 1];
+          expect(
+            gap,
+            closeTo(bounds.interval, 0.0001),
+            reason: 'gap between labels should equal interval',
+          );
+        }
+      },
+    );
   });
 
   // ── y-axis label formatting ──────────────────────────────────────────────
@@ -298,8 +391,11 @@ void main() {
 
     test('total=10: every 3rd index is labelled (0, 3, 6, 9)', () {
       for (final idx in [0, 3, 6, 9]) {
-        expect(ChartAxisHelper.shouldShowDateLabel(idx, 10), isTrue,
-            reason: 'idx $idx should be labelled (every 3rd rule)');
+        expect(
+          ChartAxisHelper.shouldShowDateLabel(idx, 10),
+          isTrue,
+          reason: 'idx $idx should be labelled (every 3rd rule)',
+        );
       }
     });
 
@@ -317,8 +413,11 @@ void main() {
     test('total ≤ 7: every index is labelled (chart is not scrollable)', () {
       for (final total in [1, 2, 3, 4, 5, 6, 7]) {
         for (var i = 0; i < total; i++) {
-          expect(ChartAxisHelper.shouldShowDateLabel(i, total), isTrue,
-              reason: 'idx $i should be labelled for short series total=$total');
+          expect(
+            ChartAxisHelper.shouldShowDateLabel(i, total),
+            isTrue,
+            reason: 'idx $i should be labelled for short series total=$total',
+          );
         }
       }
     });
@@ -340,11 +439,14 @@ void main() {
         if ((total - 1) % 3 == 2) {
           expected.add(total - 1);
         }
-        expect(trueCount, expected.length,
-            reason:
-                'total=$total should produce ${expected.length} labels '
-                '(multiples of 3 + last when ≥ 2 past the last multiple of 3); '
-                'got $trueCount');
+        expect(
+          trueCount,
+          expected.length,
+          reason:
+              'total=$total should produce ${expected.length} labels '
+              '(multiples of 3 + last when ≥ 2 past the last multiple of 3); '
+              'got $trueCount',
+        );
       }
     });
 
@@ -363,16 +465,22 @@ void main() {
             visible.add(i);
           }
         }
-        expect(visible.length, greaterThanOrEqualTo(3),
-            reason:
-                'total=$total should show ≥3 labels in the last 8 points '
-                '(idx $viewStart..${total - 1}); got ${visible.length}');
+        expect(
+          visible.length,
+          greaterThanOrEqualTo(3),
+          reason:
+              'total=$total should show ≥3 labels in the last 8 points '
+              '(idx $viewStart..${total - 1}); got ${visible.length}',
+        );
         // Verify no two adjacent labels (≥ 2 indices apart).
         for (var j = 1; j < visible.length; j++) {
-          expect(visible[j] - visible[j - 1], greaterThanOrEqualTo(2),
-              reason:
-                  'consecutive labels at ${visible[j - 1]} and ${visible[j]} would '
-                  'collide visually for total=$total');
+          expect(
+            visible[j] - visible[j - 1],
+            greaterThanOrEqualTo(2),
+            reason:
+                'consecutive labels at ${visible[j - 1]} and ${visible[j]} would '
+                'collide visually for total=$total',
+          );
         }
       }
     });
@@ -396,21 +504,31 @@ void main() {
       // (clean gap, so it IS labelled).
       for (final total in [10, 13, 16]) {
         // (total - 1) % 3 == 0
-        expect(ChartAxisHelper.shouldShowDateLabel(total - 1, total), isTrue,
-            reason: 'last is a multiple of 3 for total=$total');
+        expect(
+          ChartAxisHelper.shouldShowDateLabel(total - 1, total),
+          isTrue,
+          reason: 'last is a multiple of 3 for total=$total',
+        );
       }
       for (final total in [8, 11, 14, 17]) {
         // (total - 1) % 3 == 1
-        expect(ChartAxisHelper.shouldShowDateLabel(total - 1, total), isFalse,
-            reason:
-                'last is 1 after a multiple of 3 for total=$total; should be '
-                'skipped to avoid collision');
+        expect(
+          ChartAxisHelper.shouldShowDateLabel(total - 1, total),
+          isFalse,
+          reason:
+              'last is 1 after a multiple of 3 for total=$total; should be '
+              'skipped to avoid collision',
+        );
       }
       for (final total in [12, 15, 18]) {
         // (total - 1) % 3 == 2
-        expect(ChartAxisHelper.shouldShowDateLabel(total - 1, total), isTrue,
-            reason: 'last is 2 after a multiple of 3 for total=$total; '
-                'clean gap so it is labelled');
+        expect(
+          ChartAxisHelper.shouldShowDateLabel(total - 1, total),
+          isTrue,
+          reason:
+              'last is 2 after a multiple of 3 for total=$total; '
+              'clean gap so it is labelled',
+        );
       }
     });
   });

@@ -22,11 +22,14 @@ class ModalityConfig {
 
   // Exercise ranking fields
   final String? categoryId; // SportCategory.id for discipline affinity scoring
-  final List<String> primaryCapabilities; // Core capabilities defining this modality
+  final List<String>
+  primaryCapabilities; // Core capabilities defining this modality
   final List<String> secondaryCapabilities; // Bonus/optional capabilities
   final List<String> antiCapabilities; // Signals poor fit for this modality
-  final List<String> formRequiredCapabilities; // Must select >=1 for create form validity
-  final bool showMuscleGroupsInForm; // Controls create form muscle group section visibility
+  final List<String>
+  formRequiredCapabilities; // Must select >=1 for create form validity
+  final bool
+  showMuscleGroupsInForm; // Controls create form muscle group section visibility
 
   const ModalityConfig({
     required this.primaryMetric,
@@ -187,7 +190,8 @@ class ModalityConfig {
 
   /// Concrete inline validation message for required capabilities.
   static String formRequiredCapabilitiesLabel(String? modality) {
-    final required = forModality(modality)?.formRequiredCapabilities ?? const [];
+    final required =
+        forModality(modality)?.formRequiredCapabilities ?? const [];
     if (required.isEmpty) {
       return 'Select at least one capability.';
     }
@@ -307,8 +311,8 @@ class ModalityConfig {
     // 4. Isometric nature bonus: 0-15 points
     // Special recognition for isometric exercises (hold + time) in isometric_stretching modality
     // This allows cross-category isometric exercises (e.g., calisthenics planks) to score well
-    if (primaryCapabilities.contains('hold') && 
-        exerciseCapabilities.contains('hold') && 
+    if (primaryCapabilities.contains('hold') &&
+        exerciseCapabilities.contains('hold') &&
         exerciseCapabilities.contains('time')) {
       score += 15.0;
     }
@@ -337,8 +341,9 @@ class ModalityConfig {
     required String? exerciseCategoryId,
   }) {
     return calculateRelevanceScore(
-      exerciseCapabilities: exerciseCapabilities,
-      exerciseCategoryId: exerciseCategoryId,
-    ) >= 50.0;
+          exerciseCapabilities: exerciseCapabilities,
+          exerciseCategoryId: exerciseCategoryId,
+        ) >=
+        50.0;
   }
 }

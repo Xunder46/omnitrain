@@ -17,17 +17,17 @@
 //    not supported there yet."
 //
 // See D-8 in
-// `.github/agents/plans/image-persistence-relocation-fix-plan.md`.
+// `docs/plans/image-persistence-relocation-fix-plan.md`.
 
 import 'dart:typed_data';
 
 import 'package:image_picker/image_picker.dart' show XFile;
 
 Never _unsupported() => throw UnsupportedError(
-      'ImageStorageService is not available on web. '
-      'Image persistence is native-only in this iteration; '
-      'see .github/agents/plans/image-persistence-fix-plan.md (D-5).',
-    );
+  'ImageStorageService is not available on web. '
+  'Image persistence is native-only in this iteration; '
+  'see docs/plans/image-persistence-fix-plan.md (D-5).',
+);
 
 /// Web stub. Mirrors the IO variant's public surface. Every
 /// method throws `UnsupportedError` — see file-level doc.
@@ -70,8 +70,7 @@ class ImageStorageService {
   Future<String> persistImageBytes(
     Uint8List bytes, {
     String extension = '.png',
-  }) async =>
-      _unsupported();
+  }) async => _unsupported();
 
   Future<void> deleteIfManaged(String? path) async => _unsupported();
 }

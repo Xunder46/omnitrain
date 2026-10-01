@@ -224,8 +224,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     int entryIndex,
     String effortKind, {
     bool playSound = true,
-  }
-  ) {
+  }) {
     final targetSeconds = _getEffortTargetDuration(
       effortId,
       entryIndex,

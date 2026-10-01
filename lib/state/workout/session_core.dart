@@ -4,6 +4,9 @@ import '../../core/constants/workout_constants.dart';
 import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
+import '../../core/services/health_sync_service.dart';
+import '../../core/utils/entry_rows.dart';
+import '../../core/utils/logged_entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'exercise_library.dart';
@@ -48,6 +51,12 @@ class SessionCore {
   final void Function() _clearErrorCallback;
   final TimerManager _timerManager;
   final ExerciseLibrary _exerciseLibrary;
+
+  /// Optional platform-health write pipeline. Null in tests and in
+  /// builds without a health integration; the lifecycle calls it only
+  /// after a session has been persisted.
+  final HealthSyncService? _healthSync;
+
   late final SessionBlockManager _blockManager;
   late final SessionSummaryBuilder _summaryBuilder;
 
@@ -58,6 +67,14 @@ class SessionCore {
   final Map<String, List<EffortObservation>> _observations = {};
   final Map<String, Exercise> _exerciseCache = {};
 
+  /// The current session's sensor summaries, loaded with the session so an
+  /// edit snapshot can carry them without a repository read (F-1).
+  ///
+  /// Loaded only once the session has ended: summaries are imported with the
+  /// wrist's session end, so a session in progress has none, and reloading
+  /// one costs nothing extra.
+  final List<SensorSummary> _sensorSummaries = [];
+
   bool _isLoading = false;
 
   SessionCore(
@@ -67,11 +84,13 @@ class SessionCore {
     required void Function() clearError,
     required TimerManager timerManager,
     required ExerciseLibrary exerciseLibrary,
+    HealthSyncService? healthSync,
   }) : _notify = notify,
        _setErrorCallback = setError,
        _clearErrorCallback = clearError,
        _timerManager = timerManager,
-       _exerciseLibrary = exerciseLibrary {
+       _exerciseLibrary = exerciseLibrary,
+       _healthSync = healthSync {
     _blockManager = SessionBlockManager(
       _repository,
       notify: _notify,
@@ -138,8 +157,9 @@ class SessionCore {
 
   // ── Summary / query (delegated to SessionSummaryBuilder) ───────────────
   SessionSummary computeSessionSummary() {
-    if (_currentSession == null)
+    if (_currentSession == null) {
       throw Exception('No active session to summarize');
+    }
     return _summaryBuilder.buildSessionSummary(_currentSession!);
   }
 
@@ -163,6 +183,7 @@ class SessionCore {
     _segments.clear();
     _efforts.clear();
     _observations.clear();
+    _sensorSummaries.clear();
     _timerManager.clearAll();
     _blockManager.clearAll();
     _exerciseCache.clear();

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/effort_defaults.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
@@ -14,6 +14,7 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'helpers/fake_preferences_service.dart';
+import 'contrast_helpers.dart';
 
 // ── Minimal observation stub for ObservationGrouper tests ─────────────────
 // ObservationGrouper accesses .metricId, .valueInt, .valueReal, .valueBool
@@ -141,7 +142,7 @@ void main() {
       final copy = original.copyWith(name: 'Renamed');
       expect(copy.modality, 'isometric_stretching');
     });
-    
+
     test('Exercise toMap/fromMap round-trips modality', () {
       final original = _exercise(
         modality: 'resistance_lifting',
@@ -188,11 +189,14 @@ void main() {
       expect(UnitFormatter.heightLabelUpper(settingsFtin), 'FT IN');
     });
 
-    test('formatHeight renders centimeters in cm mode with one-decimal policy', () {
-      expect(UnitFormatter.formatHeight(180.0, settingsCm), '180 cm');
-      expect(UnitFormatter.formatHeight(180.34, settingsCm), '180.3 cm');
-      expect(UnitFormatter.formatHeight(180.35, settingsCm), '180.3 cm');
-    });
+    test(
+      'formatHeight renders centimeters in cm mode with one-decimal policy',
+      () {
+        expect(UnitFormatter.formatHeight(180.0, settingsCm), '180 cm');
+        expect(UnitFormatter.formatHeight(180.34, settingsCm), '180.3 cm');
+        expect(UnitFormatter.formatHeight(180.35, settingsCm), '180.3 cm');
+      },
+    );
 
     test('formatHeight renders compound feet/inches in ftin mode', () {
       // 180 cm = 70.866 in → rounds to 71 in = 5' 11"
@@ -254,10 +258,7 @@ void main() {
         expect(ftinDisplay, "5' 11\"");
         // Switch back: the canonical value is unchanged, so the cm
         // display still reads the same.
-        final cmDisplay = UnitFormatter.formatHeight(
-          canonicalCm,
-          settingsCm,
-        );
+        final cmDisplay = UnitFormatter.formatHeight(canonicalCm, settingsCm);
         expect(cmDisplay, '180 cm');
       },
     );
@@ -646,9 +647,12 @@ void main() {
         expect(ModalityConfig.forModality('nonexistent'), isNull);
       });
 
-      test('martial_arts is no longer a known modality (compat guard removed)', () {
-        expect(ModalityConfig.forModality('martial_arts'), isNull);
-      });
+      test(
+        'martial_arts is no longer a known modality (compat guard removed)',
+        () {
+          expect(ModalityConfig.forModality('martial_arts'), isNull);
+        },
+      );
     });
 
     group('getRequiredMetrics', () {
@@ -690,40 +694,46 @@ void main() {
 
       test('formRequiredCapabilities map to expected modality-primary set', () {
         expect(
-          ModalityConfig.forModality('cardio_endurance')!
-              .formRequiredCapabilities,
+          ModalityConfig.forModality(
+            'cardio_endurance',
+          )!.formRequiredCapabilities,
           ['time', 'distance'],
         );
         expect(
-          ModalityConfig.forModality('resistance_lifting')!
-              .formRequiredCapabilities,
+          ModalityConfig.forModality(
+            'resistance_lifting',
+          )!.formRequiredCapabilities,
           ['reps', 'load'],
         );
         expect(
-          ModalityConfig.forModality('isometric_stretching')!
-              .formRequiredCapabilities,
+          ModalityConfig.forModality(
+            'isometric_stretching',
+          )!.formRequiredCapabilities,
           ['hold'],
         );
-        expect(
-          ModalityConfig.forModality('sports')!.formRequiredCapabilities,
-          ['time', 'rounds'],
-        );
+        expect(ModalityConfig.forModality('sports')!.formRequiredCapabilities, [
+          'time',
+          'rounds',
+        ]);
       });
 
       test('showMuscleGroupsInForm true for resistance and isometric only', () {
         expect(
-          ModalityConfig.forModality('resistance_lifting')!
-              .showMuscleGroupsInForm,
+          ModalityConfig.forModality(
+            'resistance_lifting',
+          )!.showMuscleGroupsInForm,
           isTrue,
         );
         expect(
-          ModalityConfig.forModality('isometric_stretching')!
-              .showMuscleGroupsInForm,
+          ModalityConfig.forModality(
+            'isometric_stretching',
+          )!.showMuscleGroupsInForm,
           isTrue,
         );
         expect(
-          ModalityConfig.forModality('cardio_endurance')!
-              .showMuscleGroupsInForm,
+          ModalityConfig.forModality(
+            'cardio_endurance',
+          )!.showMuscleGroupsInForm,
           isFalse,
         );
         expect(
@@ -839,10 +849,7 @@ void main() {
       });
 
       test('legacyCapabilitiesForEdit returns empty for null modality', () {
-        final legacy = ModalityConfig.legacyCapabilitiesForEdit(
-          null,
-          ['reps'],
-        );
+        final legacy = ModalityConfig.legacyCapabilitiesForEdit(null, ['reps']);
         expect(legacy, isEmpty);
       });
     });
@@ -1220,12 +1227,15 @@ void main() {
   // ── shouldFireRestPing ──────────────────────────────────────────────────
 
   group('shouldFireRestPing', () {
-    test('returns true when elapsed is multiple of interval and not yet pinged', () {
-      expect(
-        shouldFireRestPing(elapsed: 60, interval: 60, lastPinged: 0),
-        isTrue,
-      );
-    });
+    test(
+      'returns true when elapsed is multiple of interval and not yet pinged',
+      () {
+        expect(
+          shouldFireRestPing(elapsed: 60, interval: 60, lastPinged: 0),
+          isTrue,
+        );
+      },
+    );
 
     test('returns false when already pinged at this elapsed value', () {
       expect(
@@ -1287,57 +1297,238 @@ void main() {
   // ─────────────────────────────────────────────────────────────────
 
   group('feelingColor', () {
-    test(
-      'S-001: rating 5 equals themeColors.primary for every AppTheme '
-      '— single source of truth, no Theme.of(context) indirection',
-      () {
-        for (final t in AppTheme.values) {
-          final themeColors = OmniTheme.colorsForTheme(t);
+    test('S-001: rating 5 equals themeColors.primary for every AppTheme '
+        '— single source of truth, no Theme.of(context) indirection', () {
+      for (final t in AppTheme.values) {
+        final themeColors = OmniTheme.colorsForTheme(t);
+        expect(
+          feelingColor(5, themeColors),
+          themeColors.primary,
+          reason:
+              'rating 5 must equal themeColors.primary '
+              'on theme "$t" so the accent token has one source '
+              'and reads as the same accent every chart, button, '
+              'and history-row accent already use',
+        );
+      }
+    });
+
+    test('S-002: feelingColor is theme-pure — the same themeColors '
+        'yields the same color regardless of any BuildContext. '
+        'No `Theme.of(context)` indirection survives in the helper.', () {
+      // The active theme stays at its default while every theme's
+      // tokens are passed in: each call must answer from the tokens
+      // it was given (that theme's ramp), never from ambient state.
+      for (final t in AppTheme.values) {
+        final themeColors = OmniTheme.colorsForTheme(t);
+        final ramp = themeColors.intensityRamp;
+        expect(feelingColor(1, themeColors), ramp.step1, reason: '$t step 1');
+        expect(feelingColor(2, themeColors), ramp.step2, reason: '$t step 2');
+        expect(feelingColor(3, themeColors), ramp.step3, reason: '$t step 3');
+        expect(feelingColor(4, themeColors), ramp.step4, reason: '$t step 4');
+        expect(feelingColor(5, themeColors), ramp.step5, reason: '$t step 5');
+      }
+    });
+
+    test('intensity ramp: ratings 1..5 map to the theme intensity ramp, '
+        'from faintest (step 1) to full strength (step 5).', () {
+      final themeColors = OmniTheme.colors;
+      expect(feelingColor(1, themeColors), themeColors.intensityRamp.step1);
+      expect(feelingColor(2, themeColors), themeColors.intensityRamp.step2);
+      expect(feelingColor(3, themeColors), themeColors.intensityRamp.step3);
+      expect(feelingColor(4, themeColors), themeColors.intensityRamp.step4);
+      expect(feelingColor(5, themeColors), themeColors.intensityRamp.step5);
+    });
+  });
+
+  group('Intensity ramp spacing (T-1)', () {
+    test('Each step contrast is within ±0.1 of its evenly-spaced target '
+        'on all themes', () {
+      for (final theme in AppTheme.values) {
+        final colors = OmniTheme.colorsForTheme(theme);
+        final ramp = colors.intensityRamp;
+        final rampSteps = [
+          ramp.step1,
+          ramp.step2,
+          ramp.step3,
+          ramp.step4,
+          ramp.step5,
+        ];
+
+        // Calculate contrasts for each step vs surface
+        final contrasts = rampSteps
+            .map((step) => contrastRatio(step, colors.surface))
+            .toList();
+
+        // Verify each step's contrast is within ±0.1 of its target
+        // Target for step k: c1 + (c5 - c1) * (k-1) / 4
+        final c1 = contrasts[0];
+        final c5 = contrasts[4];
+
+        for (int k = 0; k < 5; k++) {
+          final targetContrast = c1 + (c5 - c1) * k / 4;
+          final actualContrast = contrasts[k];
+          final error = (actualContrast - targetContrast).abs();
+
           expect(
-            feelingColor(5, themeColors),
-            themeColors.primary,
-            reason: 'rating 5 must equal themeColors.primary '
-                'on theme "$t" so the accent token has one source '
-                'and reads as the same accent every chart, button, '
-                'and history-row accent already use',
+            error,
+            lessThanOrEqualTo(0.1),
+            reason:
+                'Theme ${theme.name}: step ${k + 1} contrast $actualContrast '
+                'should be within ±0.1 of target $targetContrast '
+                '(c1=$c1, c5=$c5)',
           );
         }
-      },
-    );
+      }
+    });
+
+    test('Step 1 is the lowest qualifying alpha: ≥ 1.8:1 vs surface, and '
+        'one alpha increment (0.01) lower is < 1.8:1, on all themes', () {
+      int ch(double c) => (c * 255.0).round().clamp(0, 255);
+      Color over(Color fg, Color bg, double a) => Color.fromARGB(
+        255,
+        (ch(fg.r) * a + ch(bg.r) * (1 - a)).round(),
+        (ch(fg.g) * a + ch(bg.g) * (1 - a)).round(),
+        (ch(fg.b) * a + ch(bg.b) * (1 - a)).round(),
+      );
+
+      for (final theme in AppTheme.values) {
+        final colors = OmniTheme.colorsForTheme(theme);
+        final primary = colors.primary;
+        final surface = colors.surface;
+        final step1 = colors.intensityRamp.step1;
+
+        // Recover step 1's alpha by projecting it onto the
+        // surface → primary line, then snap to the 0.01 grid.
+        final d = [
+          ch(primary.r) - ch(surface.r),
+          ch(primary.g) - ch(surface.g),
+          ch(primary.b) - ch(surface.b),
+        ];
+        final v = [
+          ch(step1.r) - ch(surface.r),
+          ch(step1.g) - ch(surface.g),
+          ch(step1.b) - ch(surface.b),
+        ];
+        final dot = v[0] * d[0] + v[1] * d[1] + v[2] * d[2];
+        final norm = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        final k = (dot / norm * 100).round();
+
+        // Guard: step 1 really is the composite at that alpha.
+        final atK = over(primary, surface, k / 100);
+        expect(
+          [
+            (ch(atK.r) - ch(step1.r)).abs(),
+            (ch(atK.g) - ch(step1.g)).abs(),
+            (ch(atK.b) - ch(step1.b)).abs(),
+          ].every((delta) => delta <= 1),
+          isTrue,
+          reason: '${theme.name}: step 1 must be primary over surface at '
+              'alpha ${k / 100}',
+        );
+
+        final c1 = contrastRatio(step1, surface);
+        expect(c1, greaterThanOrEqualTo(1.8),
+            reason: '${theme.name}: step 1 ($c1:1) must reach 1.8:1');
+        final below = contrastRatio(over(primary, surface, (k - 1) / 100),
+            surface);
+        expect(below, lessThan(1.8),
+            reason: '${theme.name}: alpha ${(k - 1) / 100} already reaches '
+                '$below:1, so step 1 (alpha ${k / 100}) is not the lowest');
+      }
+    });
+
+    test('Cached ramps: two calls for the same theme return identical results', () {
+      for (final theme in AppTheme.values) {
+        // Get the ramp twice
+        final colors1 = OmniTheme.colorsForTheme(theme);
+        final ramp1 = colors1.intensityRamp;
+
+        final colors2 = OmniTheme.colorsForTheme(theme);
+        final ramp2 = colors2.intensityRamp;
+
+        // They should be the exact same object: same (primary, surface)
+        // pair, same cache entry.
+        expect(identical(ramp1, ramp2), true,
+            reason:
+                'Theme ${theme.name}: ramps should be identical (cached) but were different objects');
+        expect(
+          identical(
+            OmniTheme.intensityRampFor(colors1.primary, colors1.surface),
+            ramp1,
+          ),
+          isTrue,
+          reason: 'Theme ${theme.name}: the cache is keyed on the '
+              '(primary, surface) pair',
+        );
+
+        // And all steps should have the same color values
+        expect(ramp1.step1, ramp2.step1);
+        expect(ramp1.step2, ramp2.step2);
+        expect(ramp1.step3, ramp2.step3);
+        expect(ramp1.step4, ramp2.step4);
+        expect(ramp1.step5, ramp2.step5);
+      }
+    });
+
+    test('Ramp cache never serves a stale ramp after a palette edit '
+        '(new primary or new surface → fresh ramp)', () {
+      for (final theme in AppTheme.values) {
+        final colors = OmniTheme.colorsForTheme(theme);
+        final cached = colors.intensityRamp;
+
+        // Same theme, edited primary (as after a hot-reloaded palette
+        // change): the ramp must be derived from the new primary.
+        final editedPrimary = Color.fromARGB(
+          255,
+          (colors.primary.r * 255).round() ^ 0x20,
+          (colors.primary.g * 255).round(),
+          (colors.primary.b * 255).round(),
+        );
+        final fromPrimary =
+            OmniTheme.intensityRampFor(editedPrimary, colors.surface);
+        expect(fromPrimary.step5, editedPrimary,
+            reason: '${theme.name}: step 5 must follow the edited primary');
+        expect(identical(fromPrimary, cached), isFalse);
+
+        // Same theme, edited surface.
+        final editedSurface = Color.fromARGB(
+          255,
+          (colors.surface.r * 255).round(),
+          (colors.surface.g * 255).round() ^ 0x04,
+          (colors.surface.b * 255).round(),
+        );
+        final fromSurface =
+            OmniTheme.intensityRampFor(colors.primary, editedSurface);
+        expect(identical(fromSurface, cached), isFalse,
+            reason: '${theme.name}: an edited surface must not reuse the '
+                'cached ramp');
+        expect(fromSurface.step1, isNot(cached.step1));
+      }
+    });
+  });
+
+  group('OmniDateUtils.formatClock', () {
+    test('renders m:ss below an hour', () {
+      expect(OmniDateUtils.formatClock(0), '0:00');
+      expect(OmniDateUtils.formatClock(65000), '1:05');
+      expect(OmniDateUtils.formatClock(3599000), '59:59');
+    });
+
+    test('rolls into h:mm:ss at an hour, and keeps the minutes padded', () {
+      expect(OmniDateUtils.formatClock(3600000), '1:00:00');
+      expect(OmniDateUtils.formatClock(3661000), '1:01:01');
+    });
+
+    test('rounds to the nearest second, so a countdown does not stall', () {
+      expect(OmniDateUtils.formatClock(1499), '0:01');
+      expect(OmniDateUtils.formatClock(1500), '0:02');
+    });
 
     test(
-      'S-002: feelingColor is theme-pure — the same themeColors '
-      'yields the same color regardless of any BuildContext. '
-      'No `Theme.of(context)` indirection survives in the helper.',
+      'a timer past its instant reads zero rather than a negative clock',
       () {
-        final themeColors = OmniTheme.colors;
-        // Call twice and confirm the result is identical. If the
-        // helper still secretly consulted Theme.of(context), calling
-        // it inside vs outside a widget tree would diverge.
-        final fromBareCall = feelingColor(5, themeColors);
-        final fromBareCallAgain = feelingColor(5, themeColors);
-        expect(fromBareCall, fromBareCallAgain);
-        expect(fromBareCall, themeColors.primary);
-
-        // Every other rating must also be deterministic from the
-        // theme tokens (today they are Material defaults; this
-        // guards against accidental regression to a context read).
-        expect(feelingColor(1, themeColors), feelingColor(1, themeColors));
-        expect(feelingColor(4, themeColors), Colors.green);
-      },
-    );
-
-    test(
-      'ratings 1..4 keep their established Material palette — only '
-      'rating 5 changed (it now equals themeColors.primary instead '
-      'of Theme.of(context).primaryColor)',
-      () {
-        final themeColors = OmniTheme.colors;
-        expect(feelingColor(1, themeColors), Colors.red);
-        expect(feelingColor(2, themeColors), Colors.orange);
-        expect(feelingColor(3, themeColors), Colors.yellow[700]);
-        expect(feelingColor(4, themeColors), Colors.green);
-        expect(feelingColor(5, themeColors), themeColors.primary);
+        expect(OmniDateUtils.formatClock(-5000), '0:00');
       },
     );
   });

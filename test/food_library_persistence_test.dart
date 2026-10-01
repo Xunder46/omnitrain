@@ -22,9 +22,7 @@ class _PathProviderChannel {
   static void install(Directory root) {
     _root = root;
     TestWidgetsFlutterBinding.ensureInitialized();
-    TestDefaultBinaryMessengerBinding
-        .instance
-        .defaultBinaryMessenger
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_channel, _handle);
   }
 
@@ -152,9 +150,25 @@ void main() {
       await state1.loadFoods();
 
       // Create multiple foods
-      final food1 = _testFood(id: 'food-1', name: 'Chicken Breast', protein: 31);
-      final food2 = _testFood(id: 'food-2', name: 'Brown Rice', protein: 3, carbs: 23, fat: 1);
-      final food3 = _testFood(id: 'food-3', name: 'Broccoli', protein: 3, carbs: 7, fat: 0);
+      final food1 = _testFood(
+        id: 'food-1',
+        name: 'Chicken Breast',
+        protein: 31,
+      );
+      final food2 = _testFood(
+        id: 'food-2',
+        name: 'Brown Rice',
+        protein: 3,
+        carbs: 23,
+        fat: 1,
+      );
+      final food3 = _testFood(
+        id: 'food-3',
+        name: 'Broccoli',
+        protein: 3,
+        carbs: 7,
+        fat: 0,
+      );
 
       await state1.createFood(food1);
       await state1.createFood(food2);
@@ -175,8 +189,10 @@ void main() {
 
       // Verify all foods persisted
       expect(state2.foods.length, 3);
-      expect(state2.foods.map((f) => f.name).toList(),
-          containsAll(['Chicken Breast', 'Brown Rice', 'Broccoli']));
+      expect(
+        state2.foods.map((f) => f.name).toList(),
+        containsAll(['Chicken Breast', 'Brown Rice', 'Broccoli']),
+      );
 
       await repo2.clear();
     });

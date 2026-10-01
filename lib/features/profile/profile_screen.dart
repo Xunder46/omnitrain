@@ -184,10 +184,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     const maxCharsPerLine = 6.0;
 
     // Calculate font size based on the longest word so all words are consistent
-    final longestWordLength = words.map((w) => w.length).reduce((a, b) => a > b ? a : b);
+    final longestWordLength = words
+        .map((w) => w.length)
+        .reduce((a, b) => a > b ? a : b);
     final fontSize = longestWordLength <= maxCharsPerLine
         ? baseFontSize
-        : (baseFontSize * maxCharsPerLine / longestWordLength).clamp(14.0, baseFontSize);
+        : (baseFontSize * maxCharsPerLine / longestWordLength).clamp(
+            14.0,
+            baseFontSize,
+          );
 
     return Material(
       color: Colors.transparent,
@@ -618,7 +623,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// transition (avoids the bleed-through that happens when
   /// every Scaffold is transparent and `opaque == false`). This
   /// is the same pattern every other modal screen in the app
-  /// uses — see `.github/agents/docs/navigation_and_screens.md`
+  /// uses — see `docs/navigation_and_screens.md`
   /// and `lib/core/navigation/omni_route.dart`.
   Future<Uint8List?> _showCropSheet(Uint8List bytes) {
     return OmniNavigator.push<Uint8List>(

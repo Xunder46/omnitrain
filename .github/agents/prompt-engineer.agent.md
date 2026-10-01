@@ -77,7 +77,7 @@ Stop asking questions when all are true:
 
 When clarity is reached, create a markdown file at:
 
-`.github/agents/plans/[feature]-copilot-prompts.md`
+`docs/plans/[feature]-copilot-prompts.md`
 
 If a file with that name already exists, update it in place and preserve useful prior context.
 

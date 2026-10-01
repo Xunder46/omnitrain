@@ -1,3 +1,6 @@
+import '../../data/models/models.dart';
+import 'entry_rows.dart';
+
 /// Utility for grouping observations into entries by effort kind
 /// Handles the mapping between raw observations and UI-ready entry maps
 class ObservationGrouper {
@@ -41,82 +44,21 @@ class ObservationGrouper {
     }
   }
 
-  /// Group set observations by entry index when encoded in the observation ID.
-  /// Falls back to sequential grouping for legacy/tests that only provide metric pairs.
+  /// Group set observations into the entry each row belongs to (D-324).
+  ///
+  /// The rule and the legacy fallback both live in [EntryRows], so a reader
+  /// here and a write in `WorkoutState` cannot disagree about which set a row
+  /// belongs to. Note this reads `…-extra-weight` rows too: an id the old
+  /// pattern here could not parse made every bodyweight effort fall back to
+  /// the store's own order (G3).
   static List<Map<String, dynamic>> _groupSetObservations(
     List<dynamic> observations,
-  ) {
-    final entryPattern = RegExp(r'obs-.+-(\d+)-[^-]+$');
-    final hasIndexedIds = observations.every(
-      (obs) => obs.id is String && entryPattern.hasMatch(obs.id as String),
-    );
+  ) => EntryRows.setEntries(_asRows(observations));
 
-    if (hasIndexedIds) {
-      final entriesByIndex = <int, Map<String, dynamic>>{};
-
-      for (final obs in observations) {
-        final match = entryPattern.firstMatch(obs.id as String);
-        final entryIndex = int.tryParse(match?.group(1) ?? '') ?? 0;
-        final entry = entriesByIndex.putIfAbsent(entryIndex, () {
-          return {'reps': 0, 'weight': 0.0, 'skipped': false};
-        });
-
-        switch (obs.metricId) {
-          case 'metric-reps':
-            entry['reps'] = obs.valueInt ?? 0;
-            entry['skipped'] = (obs.valueBool as bool?) ?? false;
-            break;
-          case 'metric-weight':
-            entry['weight'] = obs.valueReal ?? 0.0;
-            break;
-          case 'metric-extra-weight':
-            entry['extra-weight'] = obs.valueReal ?? 0.0;
-            break;
-        }
-      }
-
-      final sortedIndices = entriesByIndex.keys.toList()..sort();
-      return sortedIndices.map((index) => entriesByIndex[index]!).toList();
-    }
-
-    final entries = <Map<String, dynamic>>[];
-    var current = <String, dynamic>{'reps': 0, 'weight': 0.0, 'skipped': false};
-    final seenMetrics = <String>{};
-
-    void flushCurrent() {
-      if (seenMetrics.isEmpty) return;
-      if (seenMetrics.contains('metric-reps') &&
-          seenMetrics.contains('metric-weight')) {
-        entries.add(Map<String, dynamic>.from(current));
-      }
-      current = {'reps': 0, 'weight': 0.0, 'skipped': false};
-      seenMetrics.clear();
-    }
-
-    for (final obs in observations) {
-      final metricId = obs.metricId as String;
-      if (seenMetrics.contains(metricId)) {
-        flushCurrent();
-      }
-      seenMetrics.add(metricId);
-
-      switch (metricId) {
-        case 'metric-reps':
-          current['reps'] = obs.valueInt ?? 0;
-          current['skipped'] = (obs.valueBool as bool?) ?? false;
-          break;
-        case 'metric-weight':
-          current['weight'] = obs.valueReal ?? 0.0;
-          break;
-        case 'metric-extra-weight':
-          current['extra-weight'] = obs.valueReal ?? 0.0;
-          break;
-      }
-    }
-
-    flushCurrent();
-    return entries;
-  }
+  /// The rows behind [observations], which the repository hands this helper as
+  /// `dynamic` to keep it free of the data layer.
+  static List<EffortObservation> _asRows(List<dynamic> observations) =>
+      observations.whereType<EffortObservation>().toList();
 
   /// Group duration + distance pairs for timed/cardio exercises
   static List<Map<String, dynamic>> _groupTimedObservations(

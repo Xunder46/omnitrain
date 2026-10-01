@@ -1,0 +1,18 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-change-ds-1",
+  "sessionId": "s-ds",
+  "type": "structure_change",
+  "origin": "phone",
+  "sentAt": "2026-09-27T11:05:00Z",
+  "payload": {
+    "changeId": "chg-ds-1",
+    "changes": [
+      {
+        "kind": "correct_entry",
+        "entryId": "e-ds-entered",
+        "correction": { "distanceMeters": 5200 }
+      }
+    ]
+  }
+}

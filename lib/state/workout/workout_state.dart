@@ -4,6 +4,8 @@ import '../../core/constants/modality_config.dart';
 import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
+import '../../core/services/health_sync_service.dart';
+import '../../core/utils/entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'exercise_library.dart';
@@ -20,7 +22,9 @@ class WorkoutState extends ChangeNotifier {
 
   String? _error;
 
-  WorkoutState(this._repository) {
+  /// [healthSync] is optional so existing construction sites (tests stand
+  /// in for most of them) keep working; `main.dart` always injects one.
+  WorkoutState(this._repository, {HealthSyncService? healthSync}) {
     _timerManager = TimerManager(
       _repository,
       notify: notifyListeners,
@@ -41,6 +45,7 @@ class WorkoutState extends ChangeNotifier {
       clearError: _clearError,
       timerManager: _timerManager,
       exerciseLibrary: _exerciseLibrary,
+      healthSync: healthSync,
     );
     _timerManager.bindObservations(_sessionCore.observationsMap);
   }
@@ -66,6 +71,8 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.getEffortsForSegment(segmentId);
   List<EffortObservation> getObservationsForEffort(String effortId) =>
       _sessionCore.getObservationsForEffort(effortId);
+  List<DistanceEntry> getEffortDistanceEntries(String effortId) =>
+      _sessionCore.getEffortDistanceEntries(effortId);
   List<RoundInstance> getRoundsForEffort(String effortId) =>
       _timerManager.getRoundsForEffort(effortId);
   List<TimedInstance> getTimedInstancesForEffort(String effortId) =>
@@ -146,6 +153,13 @@ class WorkoutState extends ChangeNotifier {
     String metricKey,
     dynamic value,
   ) => _sessionCore.updateEntryValue(effortId, entryIndex, metricKey, value);
+  Future<void> setEntryDistance(
+    String effortId,
+    int entryIndex,
+    double metres,
+  ) => _sessionCore.setEntryDistance(effortId, entryIndex, metres);
+  Future<void> confirmEntryDistance(String effortId, int entryIndex) =>
+      _sessionCore.confirmEntryDistance(effortId, entryIndex);
   Future<void> markSetSkipped(String effortId, int entryIndex) =>
       _sessionCore.markSetSkipped(effortId, entryIndex);
   Future<void> deleteEntry(String effortId, int entryIndex) =>

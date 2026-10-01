@@ -466,35 +466,36 @@ void main() {
     });
 
     // S-009: Start button starts the timer (outer GestureDetector removed per B-02-1)
-    testWidgets('S-009: tapping Start button starts timer (play/pause icons reflect state)', (
-      tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _buildDeps(modality: 'cardio_endurance');
-      final repo = await _freshRepo();
-      final exercise = await _getExerciseById(repo, 'exercise-easy-run');
-      await deps.workoutState.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'timed',
-      );
+    testWidgets(
+      'S-009: tapping Start button starts timer (play/pause icons reflect state)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await _buildDeps(modality: 'cardio_endurance');
+        final repo = await _freshRepo();
+        final exercise = await _getExerciseById(repo, 'exercise-easy-run');
+        await deps.workoutState.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'timed',
+        );
 
-      await tester.pumpWidget(_buildSessionScreen(deps));
-      await _openDetailView(tester, 'Easy Run');
+        await tester.pumpWidget(_buildSessionScreen(deps));
+        await _openDetailView(tester, 'Easy Run');
 
-      // Before starting: play_circle_outline icon is shown
-      expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
+        // Before starting: play_circle_outline icon is shown
+        expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
 
-      // Start the timer via the dedicated Start button.
-      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
-      await tester.pump();
+        // Start the timer via the dedicated Start button.
+        await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+        await tester.pump();
 
-      // After starting, timer should be running (RUNNING text or pause icon).
-      expect(
-        find.textContaining('RUNNING').evaluate().isNotEmpty ||
-            find.byIcon(Icons.pause_circle_outline).evaluate().isNotEmpty,
-        isTrue,
-      );
-    });
+        // After starting, timer should be running (RUNNING text or pause icon).
+        expect(
+          find.textContaining('RUNNING').evaluate().isNotEmpty ||
+              find.byIcon(Icons.pause_circle_outline).evaluate().isNotEmpty,
+          isTrue,
+        );
+      },
+    );
 
     // S-010: Timer display shows play affordance when not running
     testWidgets('S-010: timer shows play_circle_outline when not running', (
@@ -806,10 +807,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final deps = await _buildDeps(modality: 'resistance_lifting');
         final repo = await _freshRepo();
-        final exercise = await _getExerciseById(
-          repo,
-          'exercise-barbell-squat',
-        );
+        final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
         // addExerciseToSession seeds exactly 1 entry
         await deps.workoutState.addExerciseToSession(
           exercise,
@@ -832,10 +830,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final deps = await _buildDeps(modality: 'resistance_lifting');
         final repo = await _freshRepo();
-        final exercise = await _getExerciseById(
-          repo,
-          'exercise-barbell-squat',
-        );
+        final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
         final effortId = await deps.workoutState.addExerciseToSession(
           exercise,
           chosenMetric: 'reps',
@@ -859,10 +854,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final deps = await _buildDeps(modality: 'resistance_lifting');
         final repo = await _freshRepo();
-        final exercise = await _getExerciseById(
-          repo,
-          'exercise-barbell-squat',
-        );
+        final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
         final effortId = await deps.workoutState.addExerciseToSession(
           exercise,
           chosenMetric: 'reps',
@@ -893,10 +885,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final deps = await _buildDeps(modality: 'resistance_lifting');
         final repo = await _freshRepo();
-        final exercise = await _getExerciseById(
-          repo,
-          'exercise-barbell-squat',
-        );
+        final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
         await deps.workoutState.addExerciseToSession(
           exercise,
           chosenMetric: 'reps',

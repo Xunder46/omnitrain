@@ -2,7 +2,7 @@
 //
 // Scenario tests for the "log a food as consumed from the library"
 // feature. These tests pin the behavior described in
-// `.github/agents/plans/nutrition-log-from-library-plan.md`:
+// `docs/plans/nutrition-log-from-library-plan.md`:
 //
 //   S-001: Mark grams-type food consumed at 150 g (1.5x scaling).
 //   S-002: Mark count-type food consumed at 3     (3x scaling).
@@ -187,10 +187,7 @@ void main() {
       expect(state.consumedToday.length, 2);
       // chicken: 151 * 1.5 = 226.5 (226 or 227); egg: 73 * 3 = 219;
       // total 445 or 446.
-      expect(
-        state.todayConsumedCalories,
-        anyOf(226 + 219, 227 + 219),
-      );
+      expect(state.todayConsumedCalories, anyOf(226 + 219, 227 + 219));
       // chicken: 31 * 1.5 = 46.5 (46 or 47); egg: 6 * 3 = 18; total 64-65.
       expect(state.todayConsumedProtein, anyOf(64, 65));
       // chicken: 3 * 1.5 = 4.5 (4 or 5); egg: 5 * 3 = 15; total 19-20.
@@ -236,8 +233,11 @@ void main() {
       await state.refreshConsumedToday();
       final entry = state.consumedToday.first;
       expect(entry.protein, 31, reason: 'snapshot is frozen');
-      expect(entry.caloriesConsumed, anyOf(226, 227),
-          reason: 'calories computed from frozen macros');
+      expect(
+        entry.caloriesConsumed,
+        anyOf(226, 227),
+        reason: 'calories computed from frozen macros',
+      );
     });
   });
 
@@ -261,8 +261,11 @@ void main() {
       await state.refreshConsumedToday();
       expect(state.consumedToday.length, 1);
       final entry = state.consumedToday.first;
-      expect(entry.sourceFoodId, 'food-chicken',
-          reason: 'dangling reference is expected');
+      expect(
+        entry.sourceFoodId,
+        'food-chicken',
+        reason: 'dangling reference is expected',
+      );
       expect(entry.name, 'Chicken Breast');
       expect(entry.protein, 31);
       expect(entry.amountConsumed, 150.0);
@@ -295,10 +298,12 @@ void main() {
       await state.refreshConsumedToday();
 
       final entryAfter = state.consumedToday.first;
-      expect(entryAfter.targetCalories, 2000.0,
-          reason: 'frozen at log time');
-      expect(entryAfter.caloriesConsumed, anyOf(226, 227),
-          reason: 'calories from frozen macros + frozen amount');
+      expect(entryAfter.targetCalories, 2000.0, reason: 'frozen at log time');
+      expect(
+        entryAfter.caloriesConsumed,
+        anyOf(226, 227),
+        reason: 'calories from frozen macros + frozen amount',
+      );
     });
   });
 
@@ -316,38 +321,43 @@ void main() {
       final id1 = await state.logConsumedFoodAt(food, 150.0);
       final id2 = await state.logConsumedFoodAt(food, 200.0);
 
-      expect(id1, equals(id2),
-          reason: 'day-uniqueness: same row id, not a new row');
+      expect(
+        id1,
+        equals(id2),
+        reason: 'day-uniqueness: same row id, not a new row',
+      );
       expect(state.consumedToday.length, 1);
       // 151 * 2 = 302
       expect(state.todayConsumedCalories, 302);
       expect(state.consumedToday.first.amountConsumed, 200.0);
     });
 
-    test('snapshot fields (macros, unit, name) are preserved on amount edit',
-        () async {
-      final repo = await _freshRepo();
-      final foodLib = FoodLibraryState(repo);
-      final food = _chicken();
-      await foodLib.createFood(food);
+    test(
+      'snapshot fields (macros, unit, name) are preserved on amount edit',
+      () async {
+        final repo = await _freshRepo();
+        final foodLib = FoodLibraryState(repo);
+        final food = _chicken();
+        await foodLib.createFood(food);
 
-      final state = await _buildState(repo);
-      final id = await state.logConsumedFoodAt(food, 150.0);
-      final before = (await repo.getConsumedFoodById(id!))!;
-      final beforeMacros = (before.protein, before.carbs, before.fat);
+        final state = await _buildState(repo);
+        final id = await state.logConsumedFoodAt(food, 150.0);
+        final before = (await repo.getConsumedFoodById(id!))!;
+        final beforeMacros = (before.protein, before.carbs, before.fat);
 
-      // Re-log with a different amount.
-      await state.logConsumedFoodAt(food, 200.0);
+        // Re-log with a different amount.
+        await state.logConsumedFoodAt(food, 200.0);
 
-      final after = (await repo.getConsumedFoodById(id))!;
-      expect((after.protein, after.carbs, after.fat), beforeMacros);
-      expect(after.amountConsumed, 200.0);
-      expect(after.sourceFoodId, 'food-chicken');
-      expect(after.unitType, FoodUnitType.grams);
-      expect(after.referenceAmount, 100.0);
-      // updatedAtMs should be ≥ the previous value (monotonic).
-      expect(after.updatedAtMs >= before.updatedAtMs, isTrue);
-    });
+        final after = (await repo.getConsumedFoodById(id))!;
+        expect((after.protein, after.carbs, after.fat), beforeMacros);
+        expect(after.amountConsumed, 200.0);
+        expect(after.sourceFoodId, 'food-chicken');
+        expect(after.unitType, FoodUnitType.grams);
+        expect(after.referenceAmount, 100.0);
+        // updatedAtMs should be ≥ the previous value (monotonic).
+        expect(after.updatedAtMs >= before.updatedAtMs, isTrue);
+      },
+    );
   });
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -392,8 +402,11 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 5));
       final id2 = await state.logConsumedFoodAt(food, 150.0);
 
-      expect(id1, isNot(equals(id2)),
-          reason: 'a deleted-then-recreated log has a new id');
+      expect(
+        id1,
+        isNot(equals(id2)),
+        reason: 'a deleted-then-recreated log has a new id',
+      );
       expect(state.consumedToday.length, 1);
     });
   });
@@ -454,36 +467,43 @@ void main() {
       final state = await _buildState(repo);
       await state.logConsumedFoodAt(food, 200.0);
       // 200 g × 74 mg / 100 g = 148 mg.
-      expect(state.consumedToday.single.sodium, 74,
-          reason: 'sodium is frozen on the snapshot at log time');
+      expect(
+        state.consumedToday.single.sodium,
+        74,
+        reason: 'sodium is frozen on the snapshot at log time',
+      );
       expect(state.todayConsumedSodium, 148);
     });
 
-    test(
-      'editing the source food\'s sodium after logging does NOT change '
-      'the snapshot',
-      () async {
-        final repo = await _freshRepo();
-        final foodLib = FoodLibraryState(repo);
-        final food = _chicken().copyWith(sodium: 74);
-        await foodLib.createFood(food);
+    test('editing the source food\'s sodium after logging does NOT change '
+        'the snapshot', () async {
+      final repo = await _freshRepo();
+      final foodLib = FoodLibraryState(repo);
+      final food = _chicken().copyWith(sodium: 74);
+      await foodLib.createFood(food);
 
-        final state = await _buildState(repo);
-        await state.logConsumedFoodAt(food, 200.0);
-        expect(state.consumedToday.single.sodium, 74);
+      final state = await _buildState(repo);
+      await state.logConsumedFoodAt(food, 200.0);
+      expect(state.consumedToday.single.sodium, 74);
 
-        // Edit the source food's sodium in the library.
-        await foodLib.updateFood(food.copyWith(sodium: 999));
-        await state.refreshConsumedToday();
+      // Edit the source food's sodium in the library.
+      await foodLib.updateFood(food.copyWith(sodium: 999));
+      await state.refreshConsumedToday();
 
-        // The snapshot is unchanged.
-        expect(state.consumedToday.single.sodium, 74,
-            reason: 'sodium freeze is a one-way copy at log time');
-        expect(state.todayConsumedSodium, 148,
-            reason: 'todayConsumedSodium is derived from the snapshot, '
-                'not the live food');
-      },
-    );
+      // The snapshot is unchanged.
+      expect(
+        state.consumedToday.single.sodium,
+        74,
+        reason: 'sodium freeze is a one-way copy at log time',
+      );
+      expect(
+        state.todayConsumedSodium,
+        148,
+        reason:
+            'todayConsumedSodium is derived from the snapshot, '
+            'not the live food',
+      );
+    });
 
     test('null sodium on the source food is frozen as null', () async {
       final repo = await _freshRepo();
@@ -530,8 +550,9 @@ void main() {
     // a widget pump. Importing the private `_GramsAmountFormatter`
     // would require exposing it; pumping a `LogFoodRow` exercises the
     // formatter end-to-end and is the contract that matters to users.
-    testWidgets('typing "0.5" in the grams amount field keeps the dot',
-        (tester) async {
+    testWidgets('typing "0.5" in the grams amount field keeps the dot', (
+      tester,
+    ) async {
       final repo = await _freshRepo();
       final foodLib = FoodLibraryState(repo);
       final food = _chicken();
@@ -561,8 +582,11 @@ void main() {
 
       // The field must show "0.5" verbatim — the dot is preserved.
       final widget = tester.widget<TextField>(find.byKey(amountKey));
-      expect(widget.controller!.text, '0.5',
-          reason: 'dot must be allowed in the grams amount input');
+      expect(
+        widget.controller!.text,
+        '0.5',
+        reason: 'dot must be allowed in the grams amount input',
+      );
     });
 
     testWidgets('typing more than one dot is rejected', (tester) async {
@@ -593,12 +617,16 @@ void main() {
       await tester.pump();
 
       final widget = tester.widget<TextField>(find.byKey(amountKey));
-      expect(widget.controller!.text, isNot('1.5.5'),
-          reason: 'a second dot must be rejected by the formatter');
+      expect(
+        widget.controller!.text,
+        isNot('1.5.5'),
+        reason: 'a second dot must be rejected by the formatter',
+      );
     });
 
-    testWidgets('count-type amount field also allows the dot (regression)',
-        (tester) async {
+    testWidgets('count-type amount field also allows the dot (regression)', (
+      tester,
+    ) async {
       // The count-type field used to be gated by `digitsOnly`, which
       // stripped the dot character even though the user could see
       // (and want to type) it. The dot must now be visible in both
@@ -634,8 +662,11 @@ void main() {
       // the value when the user tries to commit, but the dot must be
       // visible to the user.
       final widget = tester.widget<TextField>(find.byKey(amountKey));
-      expect(widget.controller!.text, '3.5',
-          reason: 'dot must be allowed in the count amount input too');
+      expect(
+        widget.controller!.text,
+        '3.5',
+        reason: 'dot must be allowed in the count amount input too',
+      );
     });
 
     testWidgets('fractional count is accepted as a multiplier', (tester) async {
@@ -720,12 +751,12 @@ void main() {
       await tester.tap(find.byKey(thumbKey));
       await tester.pumpAndSettle();
 
-      expect(nutritionState.consumedToday, isEmpty,
-          reason: 'zero is rejected for both unit types');
       expect(
-        find.text('Amount must be greater than 0'),
-        findsOneWidget,
+        nutritionState.consumedToday,
+        isEmpty,
+        reason: 'zero is rejected for both unit types',
       );
+      expect(find.text('Amount must be greater than 0'), findsOneWidget);
     });
   });
 
@@ -811,10 +842,7 @@ void main() {
         createdAtMs: 0,
         updatedAtMs: 0,
       );
-      expect(
-        () => repo.updateConsumedFood(ghost),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => repo.updateConsumedFood(ghost), throwsA(isA<StateError>()));
     });
 
     test('getConsumedFoodById returns null for unknown id', () async {

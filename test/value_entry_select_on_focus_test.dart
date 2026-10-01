@@ -17,10 +17,8 @@ void main() {
               body: Center(
                 child: SelectAllOnFocus(
                   controller: controller,
-                  builder: (context, focusNode) => TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                  ),
+                  builder: (context, focusNode) =>
+                      TextField(controller: controller, focusNode: focusNode),
                 ),
               ),
             ),
@@ -78,9 +76,7 @@ void main() {
         final controller = TextEditingController(text: '5');
         addTearDown(controller.dispose);
 
-        final focusNode = SelectAllOnFocusNode(
-          selectAllController: controller,
-        );
+        final focusNode = SelectAllOnFocusNode(selectAllController: controller);
         addTearDown(focusNode.dispose);
 
         await tester.pumpWidget(
@@ -103,36 +99,33 @@ void main() {
       },
     );
 
-    testWidgets(
-      'Empty value is a no-op (no selection is assigned)',
-      (tester) async {
-        final controller = TextEditingController();
-        addTearDown(controller.dispose);
+    testWidgets('Empty value is a no-op (no selection is assigned)', (
+      tester,
+    ) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Center(
-                child: SelectAllOnFocus(
-                  controller: controller,
-                  builder: (context, focusNode) => TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                  ),
-                ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SelectAllOnFocus(
+                controller: controller,
+                builder: (context, focusNode) =>
+                    TextField(controller: controller, focusNode: focusNode),
               ),
             ),
           ),
-        );
+        ),
+      );
 
-        await tester.tap(find.byType(TextField));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
 
-        // Empty field: selection stays collapsed (Flutter default at offset 0).
-        expect(controller.selection.isCollapsed, isTrue);
-        expect(controller.text, '');
-      },
-    );
+      // Empty field: selection stays collapsed (Flutter default at offset 0).
+      expect(controller.selection.isCollapsed, isTrue);
+      expect(controller.text, '');
+    });
   });
 
   group('Value-entry select-all on focus — NumericFieldWithDoneBar', () {
@@ -198,73 +191,71 @@ void main() {
   });
 
   group('Value-entry select-all on focus — typing replaces', () {
-    testWidgets(
-      'Typing immediately after focus replaces the prior value',
-      (tester) async {
-        final controller = TextEditingController(text: '100');
-        addTearDown(controller.dispose);
+    testWidgets('Typing immediately after focus replaces the prior value', (
+      tester,
+    ) async {
+      final controller = TextEditingController(text: '100');
+      addTearDown(controller.dispose);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Center(
-                child: SelectAllOnFocus(
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SelectAllOnFocus(
+                controller: controller,
+                builder: (context, focusNode) => TextField(
                   controller: controller,
-                  builder: (context, focusNode) => TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    keyboardType: TextInputType.number,
-                  ),
+                  focusNode: focusNode,
+                  keyboardType: TextInputType.number,
                 ),
               ),
             ),
           ),
-        );
+        ),
+      );
 
-        await tester.tap(find.byType(TextField));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
 
-        // Enter text with a single character — it should replace `100`,
-        // not append to it. We use `tester.enterText` which clears the
-        // existing text and types the new value, simulating a real
-        // "type to replace" interaction through the test driver.
-        await tester.enterText(find.byType(TextField), '8');
-        await tester.pumpAndSettle();
+      // Enter text with a single character — it should replace `100`,
+      // not append to it. We use `tester.enterText` which clears the
+      // existing text and types the new value, simulating a real
+      // "type to replace" interaction through the test driver.
+      await tester.enterText(find.byType(TextField), '8');
+      await tester.pumpAndSettle();
 
-        expect(controller.text, '8');
-      },
-    );
+      expect(controller.text, '8');
+    });
   });
 
   group('Value-entry select-all on focus — free-text exclusion', () {
-    testWidgets(
-      'A plain TextField (no wrapper) does not select on focus',
-      (tester) async {
-        final controller = TextEditingController(text: 'felt strong today');
-        addTearDown(controller.dispose);
+    testWidgets('A plain TextField (no wrapper) does not select on focus', (
+      tester,
+    ) async {
+      final controller = TextEditingController(text: 'felt strong today');
+      addTearDown(controller.dispose);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Center(
-                child: TextField(
-                  controller: controller,
-                  maxLines: 3,
-                  textCapitalization: TextCapitalization.sentences,
-                ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: TextField(
+                controller: controller,
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
               ),
             ),
           ),
-        );
+        ),
+      );
 
-        await tester.tap(find.byType(TextField));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
 
-        // No wrapper => default behavior. Selection is collapsed.
-        expect(controller.selection.isCollapsed, isTrue);
-        expect(controller.text, 'felt strong today');
-      },
-    );
+      // No wrapper => default behavior. Selection is collapsed.
+      expect(controller.selection.isCollapsed, isTrue);
+      expect(controller.text, 'felt strong today');
+    });
 
     testWidgets(
       'A multi-line TextField does not auto-select even if a value is present',
@@ -273,9 +264,7 @@ void main() {
         // Multi-line notes must keep default behavior. This test
         // documents the design: a multi-line TextField without the
         // wrapper retains its text without selection on focus.
-        final controller = TextEditingController(
-          text: 'Multi-line\nnote text',
-        );
+        final controller = TextEditingController(text: 'Multi-line\nnote text');
         addTearDown(controller.dispose);
 
         await tester.pumpWidget(
@@ -350,63 +339,60 @@ void main() {
   });
 
   group('Value-entry select-all on focus — manual cursor placement', () {
-    testWidgets(
-      'Re-focusing after blur re-applies the select-all',
-      (tester) async {
-        // Documents the design: the listener fires on every focus gain,
-        // not just the first one. Blurring and re-focusing re-selects
-        // the full value, matching the design intent.
-        final controller = TextEditingController(text: '30');
-        addTearDown(controller.dispose);
+    testWidgets('Re-focusing after blur re-applies the select-all', (
+      tester,
+    ) async {
+      // Documents the design: the listener fires on every focus gain,
+      // not just the first one. Blurring and re-focusing re-selects
+      // the full value, matching the design intent.
+      final controller = TextEditingController(text: '30');
+      addTearDown(controller.dispose);
 
-        final focusNode = FocusNode();
-        addTearDown(focusNode.dispose);
+      final focusNode = FocusNode();
+      addTearDown(focusNode.dispose);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Column(
-                children: [
-                  SelectAllOnFocus(
-                    controller: controller,
-                    focusNode: focusNode,
-                    builder: (context, fn) => TextField(
-                      controller: controller,
-                      focusNode: fn,
-                    ),
-                  ),
-                  TextField(
-                    focusNode: FocusNode(),
-                    decoration: const InputDecoration(labelText: 'Other'),
-                  ),
-                ],
-              ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                SelectAllOnFocus(
+                  controller: controller,
+                  focusNode: focusNode,
+                  builder: (context, fn) =>
+                      TextField(controller: controller, focusNode: fn),
+                ),
+                TextField(
+                  focusNode: FocusNode(),
+                  decoration: const InputDecoration(labelText: 'Other'),
+                ),
+              ],
             ),
           ),
-        );
+        ),
+      );
 
-        // First focus -> select all
-        await tester.tap(find.byType(TextField).first);
-        await tester.pumpAndSettle();
-        expect(
-          controller.selection,
-          const TextSelection(baseOffset: 0, extentOffset: 2),
-        );
+      // First focus -> select all
+      await tester.tap(find.byType(TextField).first);
+      await tester.pumpAndSettle();
+      expect(
+        controller.selection,
+        const TextSelection(baseOffset: 0, extentOffset: 2),
+      );
 
-        // Move focus away
-        await tester.tap(find.byType(TextField).last);
-        await tester.pumpAndSettle();
-        expect(focusNode.hasFocus, isFalse);
+      // Move focus away
+      await tester.tap(find.byType(TextField).last);
+      await tester.pumpAndSettle();
+      expect(focusNode.hasFocus, isFalse);
 
-        // Re-focus -> select all again
-        await tester.tap(find.byType(TextField).first);
-        await tester.pumpAndSettle();
-        expect(focusNode.hasFocus, isTrue);
-        expect(
-          controller.selection,
-          const TextSelection(baseOffset: 0, extentOffset: 2),
-        );
-      },
-    );
+      // Re-focus -> select all again
+      await tester.tap(find.byType(TextField).first);
+      await tester.pumpAndSettle();
+      expect(focusNode.hasFocus, isTrue);
+      expect(
+        controller.selection,
+        const TextSelection(baseOffset: 0, extentOffset: 2),
+      );
+    });
   });
 }

@@ -1,0 +1,24 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-bad-hr-zero",
+  "sessionId": "s-cap-bad",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-09-25T11:00:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "e-bad-hr-zero",
+        "entryId": "e-bad-hr-zero",
+        "kind": "timed",
+        "loggedAt": "2026-09-25T10:20:00Z",
+        "sessionExerciseId": "sx-run",
+        "exerciseId": "ex-run",
+        "startedAt": "2026-09-25T10:00:00Z",
+        "endedAt": "2026-09-25T10:20:00Z",
+        "avgHeartRateBpm": 0,
+        "maxHeartRateBpm": 150
+      }
+    ]
+  }
+}

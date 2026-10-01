@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- HealthKit capability for the opt-in workout write-back and
+	     body-weight import. Reference this file from the Runner target's
+	     CODE_SIGN_ENTITLEMENTS build setting. -->
+	<key>com.apple.developer.healthkit</key>
+	<true/>
+</dict>
+</plist>

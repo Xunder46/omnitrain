@@ -324,7 +324,7 @@ void main() {
       // Use the diagnostic `includeArchived: true` read so the
       // assertion sees every row on disk — `beer_regular` and
       // `red_wine` are bundled as hidden (see
-      // `.github/agents/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`)
+      // `docs/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`)
       // and so are filtered out of the default non-archived read.
       // This test asserts the on-disk catalog has the full bundled
       // shape, not the user-facing subset.

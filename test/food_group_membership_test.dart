@@ -73,7 +73,8 @@ void main() {
       expect(
         bundledDrinks,
         greaterThan(1),
-        reason: 'the bundled catalog must ship several drinks for this '
+        reason:
+            'the bundled catalog must ship several drinks for this '
             'test to be meaningful',
       );
 
@@ -91,7 +92,8 @@ void main() {
       expect(
         _suffixFor(tester, 'food-group-drinks'),
         '$bundledDrinks',
-        reason: 'the Drinks tally must reflect the drinks the category '
+        reason:
+            'the Drinks tally must reflect the drinks the category '
             'holds, not just the personal library',
       );
     });
@@ -175,27 +177,30 @@ void main() {
   });
 
   group('Delete guard — cold catalog cache', () {
-    test('refuses to delete a category the bundled catalog still uses', () async {
-      final repo = await _freshRepo();
-      final state = FoodLibraryState(repo);
-      await state.loadFoodGroups();
-      // Deliberately NOT loading the catalog: the guard reads the
-      // in-memory catalog cache, and a cold cache used to make it
-      // wave the deletion through and strand every bundled drink.
+    test(
+      'refuses to delete a category the bundled catalog still uses',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await state.loadFoodGroups();
+        // Deliberately NOT loading the catalog: the guard reads the
+        // in-memory catalog cache, and a cold cache used to make it
+        // wave the deletion through and strand every bundled drink.
 
-      await expectLater(
-        state.deleteFoodGroupReassigningFoods('food-group-drinks', null),
-        throwsA(isA<FoodGroupHasBundledFoodsError>()),
-      );
+        await expectLater(
+          state.deleteFoodGroupReassigningFoods('food-group-drinks', null),
+          throwsA(isA<FoodGroupHasBundledFoodsError>()),
+        );
 
-      final groups = await repo.getFoodGroups(includeArchived: true);
-      final drinks = groups.firstWhere((g) => g.id == 'food-group-drinks');
-      expect(
-        drinks.isArchived,
-        isFalse,
-        reason: 'a refused deletion must be a true no-op',
-      );
-    });
+        final groups = await repo.getFoodGroups(includeArchived: true);
+        final drinks = groups.firstWhere((g) => g.id == 'food-group-drinks');
+        expect(
+          drinks.isArchived,
+          isFalse,
+          reason: 'a refused deletion must be a true no-op',
+        );
+      },
+    );
   });
 
   group('Foods I Eat — food filed under a missing category', () {

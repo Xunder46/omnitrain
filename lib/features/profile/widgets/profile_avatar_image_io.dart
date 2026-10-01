@@ -8,7 +8,7 @@ import 'package:omnitrain/core/services/image_storage_service.dart';
 /// the file is missing or unreadable. The [reference] is the
 /// stored value from `UserProfile.avatarPath` — under the
 /// post-relocation-fix contract this is a **basename** (D-1 in
-/// `.github/agents/plans/image-persistence-relocation-fix-plan.md`),
+/// `docs/plans/image-persistence-relocation-fix-plan.md`),
 /// not an absolute path. The widget resolves the basename to an
 /// absolute path via [imageStorage] (when provided) before handing
 /// it to [Image.file]. When [imageStorage] is `null` (legacy or

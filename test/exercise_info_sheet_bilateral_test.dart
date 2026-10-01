@@ -32,8 +32,15 @@ Future<void> _pumpSessionScreen(
   await tester.pumpAndSettle();
 }
 
-Future<({WorkoutState workoutState, RoutineState routineState, SessionSummaryService summaryService, MockWorkoutRepository repository})>
-    _setUpSession() async {
+Future<
+  ({
+    WorkoutState workoutState,
+    RoutineState routineState,
+    SessionSummaryService summaryService,
+    MockWorkoutRepository repository,
+  })
+>
+_setUpSession() async {
   final repository = MockWorkoutRepository();
   await repository.initialize();
   // Skip coach-mark overlays so they don't block button taps.
@@ -64,13 +71,8 @@ void main() {
     // hydration path).
     final exercise = (await ctx.workoutState.getExercisesRankedForModality(
       modality: 'resistance_lifting',
-    )).firstWhere(
-      (e) => e.capabilities.contains(ExerciseCapability.bilateral),
-    );
-    await ctx.workoutState.addExerciseToSession(
-      exercise,
-      chosenMetric: 'reps',
-    );
+    )).firstWhere((e) => e.capabilities.contains(ExerciseCapability.bilateral));
+    await ctx.workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
 
     await _pumpSessionScreen(
       tester,
@@ -93,10 +95,7 @@ void main() {
       find.textContaining('Log both sides as a single combined set'),
       findsOneWidget,
     );
-    expect(
-      find.textContaining('20 kg × 10 reps'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('20 kg × 10 reps'), findsOneWidget);
   });
 
   // ── S-002: non-bilateral exercise does NOT show LOGGING NOTE ─────────────
@@ -112,10 +111,7 @@ void main() {
           e.capabilities.contains('reps') &&
           !e.capabilities.contains(ExerciseCapability.bilateral),
     );
-    await ctx.workoutState.addExerciseToSession(
-      exercise,
-      chosenMetric: 'reps',
-    );
+    await ctx.workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
 
     await _pumpSessionScreen(
       tester,
@@ -249,13 +245,15 @@ void main() {
       expect(
         cached!.capabilities,
         isNotEmpty,
-        reason: 'cached exercise should carry the seeded capabilities, '
+        reason:
+            'cached exercise should carry the seeded capabilities, '
             'not the empty list passed in by the caller',
       );
       expect(
         cached.capabilities,
         contains(ExerciseCapability.bilateral),
-        reason: 'the cached exercise must carry its real bilateral flag '
+        reason:
+            'the cached exercise must carry its real bilateral flag '
             'so the info sheet can show the bilateral note',
       );
     },
@@ -268,48 +266,48 @@ void main() {
   // not catch a regression where addExerciseToSession trusts the caller.
   // S-007 explicitly constructs an Exercise WITHOUT caps and relies on the
   // session hydration to populate them before the info sheet renders.
-  testWidgets(
-    'S-007: info sheet renders bilateral note when exercise is added '
-    'without capabilities and hydrated via session path',
-    (WidgetTester tester) async {
-      final ctx = await _setUpSession();
+  testWidgets('S-007: info sheet renders bilateral note when exercise is added '
+      'without capabilities and hydrated via session path', (
+    WidgetTester tester,
+  ) async {
+    final ctx = await _setUpSession();
 
-      // Build an Exercise whose id matches a seeded bilateral exercise but
-      // whose capabilities are empty — no capabilities injected by the test.
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final exercise = Exercise(
-        id: 'exercise-dumbbell-curl',
-        name: 'Dumbbell Curl',
-        createdAtMs: now,
-        updatedAtMs: now,
-        capabilities: const [],
-      );
-      await ctx.workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
+    // Build an Exercise whose id matches a seeded bilateral exercise but
+    // whose capabilities are empty — no capabilities injected by the test.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final exercise = Exercise(
+      id: 'exercise-dumbbell-curl',
+      name: 'Dumbbell Curl',
+      createdAtMs: now,
+      updatedAtMs: now,
+      capabilities: const [],
+    );
+    await ctx.workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
 
-      await _pumpSessionScreen(
-        tester,
-        workoutState: ctx.workoutState,
-        routineState: ctx.routineState,
-        sessionSummaryService: ctx.summaryService,
-        repository: ctx.repository,
-      );
+    await _pumpSessionScreen(
+      tester,
+      workoutState: ctx.workoutState,
+      routineState: ctx.routineState,
+      sessionSummaryService: ctx.summaryService,
+      repository: ctx.repository,
+    );
 
-      await tester.tap(find.text(exercise.name));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text(exercise.name));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('exercise-info-button')));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('exercise-info-button')));
+    await tester.pumpAndSettle();
 
-      expect(
-        find.text('LOGGING NOTE'),
-        findsOneWidget,
-        reason: 'session must hydrate capabilities so the bilateral note '
-            'renders for a bilateral-flagged exercise',
-      );
-      expect(
-        find.textContaining('Log both sides as a single combined set'),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(
+      find.text('LOGGING NOTE'),
+      findsOneWidget,
+      reason:
+          'session must hydrate capabilities so the bilateral note '
+          'renders for a bilateral-flagged exercise',
+    );
+    expect(
+      find.textContaining('Log both sides as a single combined set'),
+      findsOneWidget,
+    );
+  });
 }

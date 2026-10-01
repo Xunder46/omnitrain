@@ -36,15 +36,15 @@ class EnergyCore extends StatelessWidget {
           center: Alignment.topLeft,
           radius: 1.2,
         ),
-        boxShadow: [
-          OmniTheme.glowShadow(glowColor, opacity: glowOpacity),
-        ],
+        boxShadow: [OmniTheme.glowShadow(glowColor, opacity: glowOpacity)],
       ),
-      child: iconWidget ?? Icon(
-        icon!,
-        size: size * 0.4, // Icon is 40% of core size
-        color: OmniTheme.colors.textDominant,
-      ),
+      child:
+          iconWidget ??
+          Icon(
+            icon!,
+            size: size * 0.4, // Icon is 40% of core size
+            color: OmniTheme.colors.textDominant,
+          ),
     );
   }
 }

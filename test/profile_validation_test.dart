@@ -162,29 +162,35 @@ void main() {
       expect(251 > range.max, isTrue);
     });
 
-    test('0 ft 0 in (0 in) is below min of 1 ft 8 in (20 in, ftin mode)', () async {
-      final s = await _settingsKg();
-      await s.setPreferredHeightUnit('ftin');
-      final range = ProfileMeasurements.validationRangeFor(
-        'height',
-        s.preferredWeightUnit,
-        heightUnit: s.preferredHeightUnit,
-      );
-      // 0 * 12 + 0 = 0 in < 20 in min
-      expect((0 * 12 + 0) < range.min, isTrue);
-    });
+    test(
+      '0 ft 0 in (0 in) is below min of 1 ft 8 in (20 in, ftin mode)',
+      () async {
+        final s = await _settingsKg();
+        await s.setPreferredHeightUnit('ftin');
+        final range = ProfileMeasurements.validationRangeFor(
+          'height',
+          s.preferredWeightUnit,
+          heightUnit: s.preferredHeightUnit,
+        );
+        // 0 * 12 + 0 = 0 in < 20 in min
+        expect((0 * 12 + 0) < range.min, isTrue);
+      },
+    );
 
-    test('9 ft 0 in (108 in) is above max of 8 ft 2 in (98 in, ftin mode)', () async {
-      final s = await _settingsKg();
-      await s.setPreferredHeightUnit('ftin');
-      final range = ProfileMeasurements.validationRangeFor(
-        'height',
-        s.preferredWeightUnit,
-        heightUnit: s.preferredHeightUnit,
-      );
-      // 9 * 12 + 0 = 108 in > 98 in max
-      expect((9 * 12 + 0) > range.max, isTrue);
-    });
+    test(
+      '9 ft 0 in (108 in) is above max of 8 ft 2 in (98 in, ftin mode)',
+      () async {
+        final s = await _settingsKg();
+        await s.setPreferredHeightUnit('ftin');
+        final range = ProfileMeasurements.validationRangeFor(
+          'height',
+          s.preferredWeightUnit,
+          heightUnit: s.preferredHeightUnit,
+        );
+        // 9 * 12 + 0 = 108 in > 98 in max
+        expect((9 * 12 + 0) > range.max, isTrue);
+      },
+    );
 
     test('1 ft 8 in (20 in) is the lower boundary (ftin mode)', () async {
       final s = await _settingsKg();

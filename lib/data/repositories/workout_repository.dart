@@ -80,6 +80,15 @@ abstract class WorkoutRepository {
   /// - block-local order (efforts assigned to blocks)
   Future<String> createEffort(SegmentEffort effort);
 
+  /// Replace the stored effort that has [effort]'s id with [effort], its order
+  /// metadata stored exactly as given. An id that is not stored is ignored:
+  /// this never creates an effort.
+  ///
+  /// The watch-session import re-ranks an imported session's efforts with it
+  /// when a late entry changes which effort came first (Stats PR 2, D-134).
+  /// Hive ↔ Mock parity: `test/watch_capture_contract_test.dart` (S-272).
+  Future<void> updateEffort(SegmentEffort effort);
+
   // Observations
   Future<List<EffortObservation>> getEffortObservations(String effortId);
 
@@ -181,6 +190,12 @@ abstract class WorkoutRepository {
 
   /// Get all round instances for a round-based effort, ordered by roundIndex ascending.
   Future<List<RoundInstance>> getRoundInstances(String effortId);
+
+  /// Every round instance on the device, grouped by `effortId`.
+  ///
+  /// The bulk counterpart to [getRoundInstances]; each group carries the
+  /// same `roundIndex` ordering, and an effort with no instances has no key.
+  Future<Map<String, List<RoundInstance>>> getRoundInstancesByEffort();
 
   /// Persist a newly created round instance (startedAtMs = 0, not yet begun).
   Future<String> createRoundInstance(RoundInstance instance);
@@ -497,7 +512,10 @@ abstract class WorkoutRepository {
 
   /// Get all non-archived foods belonging to a specific group.
   /// Pass [includeArchived] = true to include archived foods.
-  Future<List<Food>> getFoodsByGroup(String groupId, {bool includeArchived = false});
+  Future<List<Food>> getFoodsByGroup(
+    String groupId, {
+    bool includeArchived = false,
+  });
 
   /// Get a single food by ID, or null if not found.
   Future<Food?> getFoodById(String id);
@@ -704,4 +722,63 @@ abstract class WorkoutRepository {
   /// Record the most recent `(from, to)` data-migration transition.
   /// Called by `DataMigrationService` after a successful migration run.
   Future<void> setLastDataVersionTransition(int from, int to);
+
+  // ─── Watch Capture: Session Inbox + Sensor Summaries ─────────────────────
+  //
+  // D-131 / D-132 in `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`.
+  //
+  // The watch session inbox stages everything the phone learns about a wrist
+  // session before it becomes history. Rows are put-if-absent by `entryId`
+  // and are never deleted: once applied they are the tombstones that keep
+  // deleted history deleted, so no history delete cascades into the inbox.
+  //
+  // Sensor summaries are wrist-measured and attach to a session, an effort,
+  // a timed instance or a round instance. They are deleted together with
+  // their target: `deleteSession`, `deleteSessionBlock`, `deleteEffort`,
+  // `deleteTimedInstance`, `deleteTimedInstancesForEffort`,
+  // `deleteRoundInstance` and `deleteRoundInstancesForEffort` each remove the
+  // summaries of the rows they delete.
+  //
+  // Hive ↔ Mock parity: `test/watch_capture_repository_parity_test.dart`.
+
+  /// Stage [entry] unless a row with its `entryId` is already staged.
+  ///
+  /// Returns `true` when [entry] was stored. Returns `false` when a row was
+  /// already staged; that row is left exactly as it was, even when [entry]
+  /// differs from it.
+  Future<bool> stageWatchInboxEntry(WatchInboxEntry entry);
+
+  /// Every staged row of [watchSessionId], applied or not, ordered by
+  /// `receivedAtMs`, then `entryId`.
+  Future<List<WatchInboxEntry>> getWatchInboxEntriesForSession(
+    String watchSessionId,
+  );
+
+  /// The staged row with [entryId], or `null` when none is staged.
+  Future<WatchInboxEntry?> getWatchInboxEntry(String entryId);
+
+  /// Stamp [appliedAtMs] on every staged row named in [entryIds] that is not
+  /// applied yet. A row that is already applied keeps its first stamp;
+  /// unknown ids are skipped.
+  Future<void> markWatchInboxEntriesApplied(
+    Iterable<String> entryIds,
+    int appliedAtMs,
+  );
+
+  /// The watch session ids whose `session_end` row is staged but not yet
+  /// applied, without repeats, ordered by that row's `receivedAtMs`, then
+  /// session id.
+  Future<List<String>> getWatchSessionIdsWithUnappliedEnd();
+
+  /// Store [summary] unless a summary with its id — one per scope and
+  /// target — already exists.
+  ///
+  /// Returns `true` when [summary] was stored; an existing row is never
+  /// replaced.
+  Future<bool> createSensorSummary(SensorSummary summary);
+
+  /// Every summary that belongs to [sessionId], whatever its scope, ordered
+  /// by scope (in `SensorSummary.scopes` order), then `windowStartMs`, then
+  /// `targetId`.
+  Future<List<SensorSummary>> getSensorSummariesForSession(String sessionId);
 }

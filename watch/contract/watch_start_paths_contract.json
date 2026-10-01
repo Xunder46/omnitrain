@@ -1,0 +1,250 @@
+{
+  "description": "What both watch clients must agree on when a session starts on the wrist: the fallback list's contents and order, the slots a synced routine turns into, the position rule when the phone pushes an exercise into a live session, the effort-kind each capability set resolves to, and the lifecycle event a session start emits. Neither client owns these values — both suites read this file, so a change on one platform fails the other's tests instead of diverging silently. The two routines_down messages below are schema-conformant phone messages, fed through the same validator the protocol fixtures use. `effortKindParity` is the rule for a slot that declares no kind of its own — a free workout, or an exercise the phone pushed. A slot a routine produced carries the routine's declared `effortKind`, and both clients render that instead: it is what the user set up on the phone, and `routineSession.expectedSlots` pins it. `startSurface` is the sentence the start surface must carry about sync being watch-initiated — nothing arrives unless the user asks, and a user who is not told waits for routines that are never coming.",
+  "fallback": {
+    "recents": [
+      {
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      },
+      {
+        "exerciseId": "ex-goblet-squat",
+        "name": "Goblet Squat",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "routinesDown": {
+      "protocolVersion": 1,
+      "messageId": "msg-routines-contract-1",
+      "type": "routines_down",
+      "origin": "phone",
+      "sentAt": "2026-07-13T17:00:00Z",
+      "payload": {
+        "generatedAt": "2026-07-13T17:00:00Z",
+        "routines": [
+          {
+            "routineId": "routine-push-a",
+            "name": "Push A",
+            "updatedAt": "2026-07-12T09:00:00Z",
+            "segments": [
+              {
+                "segmentId": "seg-main",
+                "name": "Main",
+                "efforts": [
+                  {
+                    "effortId": "eff-bench",
+                    "exerciseId": "ex-barbell-bench-press",
+                    "exerciseName": "Barbell Bench Press",
+                    "effortKind": "set",
+                    "capabilities": ["sets", "reps", "load"],
+                    "targets": { "sets": 3, "reps": 5, "loadKg": 80 }
+                  },
+                  {
+                    "effortId": "eff-plank",
+                    "exerciseId": "ex-plank",
+                    "exerciseName": "Plank",
+                    "effortKind": "timed",
+                    "capabilities": ["time", "hold"],
+                    "targets": { "holdMs": 60000 }
+                  },
+                  {
+                    "effortId": "eff-pullup",
+                    "exerciseId": "ex-pull-up",
+                    "exerciseName": "Pull-Up",
+                    "effortKind": "set",
+                    "capabilities": ["sets", "reps", "load"],
+                    "targets": { "sets": 3, "reps": 8 }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "fallbackExercises": [
+          {
+            "exerciseId": "ex-barbell-bench-press",
+            "name": "Barbell Bench Press",
+            "capabilities": ["sets", "reps", "load"]
+          },
+          {
+            "exerciseId": "ex-plank",
+            "name": "Plank",
+            "capabilities": ["time", "hold"]
+          },
+          {
+            "exerciseId": "ex-pull-up",
+            "name": "Pull-Up",
+            "capabilities": ["sets", "reps", "load"]
+          }
+        ]
+      }
+    },
+    "routineOrder": ["ex-barbell-bench-press", "ex-plank", "ex-pull-up"],
+    "expected": [
+      "ex-plank",
+      "ex-goblet-squat",
+      "ex-barbell-bench-press",
+      "ex-pull-up"
+    ],
+    "expectedPickerSlotId": "sx-ex-barbell-bench-press"
+  },
+  "routineSession": {
+    "routineId": "routine-push-a",
+    "expectedSlots": [
+      {
+        "sessionExerciseId": "sx-eff-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"],
+        "effortKind": "set"
+      },
+      {
+        "sessionExerciseId": "sx-eff-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"],
+        "effortKind": "timed"
+      },
+      {
+        "sessionExerciseId": "sx-eff-pullup",
+        "exerciseId": "ex-pull-up",
+        "name": "Pull-Up",
+        "capabilities": ["sets", "reps", "load"],
+        "effortKind": "set"
+      }
+    ]
+  },
+  "routineEdit": {
+    "routinesDown": {
+      "protocolVersion": 1,
+      "messageId": "msg-routines-contract-2",
+      "type": "routines_down",
+      "origin": "phone",
+      "sentAt": "2026-07-13T18:00:00Z",
+      "payload": {
+        "generatedAt": "2026-07-13T18:00:00Z",
+        "routines": [
+          {
+            "routineId": "routine-push-a",
+            "name": "Push A (deload)",
+            "updatedAt": "2026-07-13T18:00:00Z",
+            "segments": [
+              {
+                "segmentId": "seg-main",
+                "name": "Main",
+                "efforts": [
+                  {
+                    "effortId": "eff-bench",
+                    "exerciseId": "ex-barbell-bench-press",
+                    "exerciseName": "Barbell Bench Press",
+                    "effortKind": "set",
+                    "capabilities": ["sets", "reps", "load"],
+                    "targets": { "sets": 3, "reps": 5, "loadKg": 60 }
+                  },
+                  {
+                    "effortId": "eff-plank",
+                    "exerciseId": "ex-plank",
+                    "exerciseName": "Plank",
+                    "effortKind": "timed",
+                    "capabilities": ["time", "hold"],
+                    "targets": { "holdMs": 60000 }
+                  },
+                  {
+                    "effortId": "eff-pullup",
+                    "exerciseId": "ex-pull-up",
+                    "exerciseName": "Pull-Up",
+                    "effortKind": "set",
+                    "capabilities": ["sets", "reps", "load"],
+                    "targets": { "sets": 2, "reps": 8 }
+                  },
+                  {
+                    "effortId": "eff-front-squat",
+                    "exerciseId": "ex-front-squat",
+                    "exerciseName": "Front Squat",
+                    "effortKind": "set",
+                    "capabilities": ["sets", "reps", "load"],
+                    "targets": { "sets": 3, "reps": 5, "loadKg": 50 }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "fallbackExercises": [
+          {
+            "exerciseId": "ex-barbell-bench-press",
+            "name": "Barbell Bench Press",
+            "capabilities": ["sets", "reps", "load"]
+          },
+          {
+            "exerciseId": "ex-plank",
+            "name": "Plank",
+            "capabilities": ["time", "hold"]
+          },
+          {
+            "exerciseId": "ex-pull-up",
+            "name": "Pull-Up",
+            "capabilities": ["sets", "reps", "load"]
+          },
+          {
+            "exerciseId": "ex-front-squat",
+            "name": "Front Squat",
+            "capabilities": ["sets", "reps", "load"]
+          }
+        ]
+      }
+    },
+    "expectedRoutineName": "Push A (deload)",
+    "expectedSlotIds": [
+      "sx-eff-bench",
+      "sx-eff-plank",
+      "sx-eff-pullup",
+      "sx-eff-front-squat"
+    ]
+  },
+  "exercisePush": {
+    "envelope": {
+      "protocolVersion": 1,
+      "messageId": "msg-push-contract-1",
+      "sessionId": "s-watch-1",
+      "type": "exercise_push",
+      "origin": "phone",
+      "sentAt": "2026-07-13T17:41:00Z",
+      "payload": {
+        "insertAtIndex": 2,
+        "exercise": {
+          "sessionExerciseId": "sx-push-front-squat",
+          "exerciseId": "ex-front-squat",
+          "name": "Front Squat",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      }
+    },
+    "startIndex": 2,
+    "pushedSlotId": "sx-push-front-squat",
+    "expectedSlotIds": [
+      "sx-eff-bench",
+      "sx-eff-plank",
+      "sx-push-front-squat",
+      "sx-eff-pullup"
+    ],
+    "expectedCurrentSlotId": "sx-eff-pullup"
+  },
+  "effortKindParity": [
+    { "capabilities": ["sets", "reps", "load"], "effortKind": "set" },
+    { "capabilities": ["time", "hold"], "effortKind": "drill" },
+    { "capabilities": ["time", "distance"], "effortKind": "timed" },
+    { "capabilities": ["time", "rounds"], "effortKind": "round" },
+    { "capabilities": ["load"], "effortKind": "set" },
+    { "capabilities": ["hold"], "effortKind": "drill" }
+  ],
+  "startSurface": {
+    "noAutoSyncLabel": "No automatic sync",
+    "syncLabel": "Sync routines"
+  },
+  "sessionStarted": {
+    "type": "session_lifecycle",
+    "origin": "watch",
+    "state": "started"
+  }
+}

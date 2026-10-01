@@ -49,38 +49,44 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('set count — resistance (set) modality', () {
-    test('S-SET-01: 4 planned sets show count 4 before any are logged', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(modality: 'resistance_lifting');
+    test(
+      'S-SET-01: 4 planned sets show count 4 before any are logged',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'resistance_lifting');
 
-      final exercise = await _exerciseWith(repo, 'load');
-      final effortId = await state.addExerciseToSession(exercise);
-      // addExerciseToSession seeds one entry; add 3 more to get 4 total.
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'load');
+        final effortId = await state.addExerciseToSession(exercise);
+        // addExerciseToSession seeds one entry; add 3 more to get 4 total.
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
 
-      expect(_entryCount(state), 4);
-    });
+        expect(_entryCount(state), 4);
+      },
+    );
 
-    test('S-SET-02: count remains 4 after partially logging 2 of 4 sets', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(modality: 'resistance_lifting');
+    test(
+      'S-SET-02: count remains 4 after partially logging 2 of 4 sets',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'resistance_lifting');
 
-      final exercise = await _exerciseWith(repo, 'load');
-      final effortId = await state.addExerciseToSession(exercise);
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'load');
+        final effortId = await state.addExerciseToSession(exercise);
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
 
-      // "Log" sets 0 and 1 by writing non-zero reps.
-      await state.updateEntryValue(effortId, 0, 'reps', 10);
-      await state.updateEntryValue(effortId, 1, 'reps', 10);
+        // "Log" sets 0 and 1 by writing non-zero reps.
+        await state.updateEntryValue(effortId, 0, 'reps', 10);
+        await state.updateEntryValue(effortId, 1, 'reps', 10);
 
-      expect(_entryCount(state), 4);
-    });
+        expect(_entryCount(state), 4);
+      },
+    );
 
     test('S-SET-03: count remains 4 after all 4 sets are logged', () async {
       final repo = await _freshRepo();
@@ -106,68 +112,83 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('set count — timed modality', () {
-    test('S-TIMED-01: 3 planned intervals show count 3 before any are started', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(modality: 'cardio_endurance');
+    test(
+      'S-TIMED-01: 3 planned intervals show count 3 before any are started',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'cardio_endurance');
 
-      final exercise = await _exerciseWith(repo, 'time');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'timed',
-      );
-      // addExerciseToSession seeds 1; add 2 more.
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'time');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'timed',
+        );
+        // addExerciseToSession seeds 1; add 2 more.
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
 
-      expect(_entryCount(state), 3);
-    });
+        expect(_entryCount(state), 3);
+      },
+    );
 
-    test('S-TIMED-02: count remains 3 after 1 of 3 intervals is finished', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(modality: 'cardio_endurance');
+    test(
+      'S-TIMED-02: count remains 3 after 1 of 3 intervals is finished',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'cardio_endurance');
 
-      final exercise = await _exerciseWith(repo, 'time');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'timed',
-      );
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'time');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'timed',
+        );
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
 
-      await state.startTimedEntry(effortId, 0);
-      await state.finishTimedEntry(effortId, 0);
+        await state.startTimedEntry(effortId, 0);
+        await state.finishTimedEntry(effortId, 0);
 
-      expect(_entryCount(state), 3);
+        expect(_entryCount(state), 3);
 
-      // All three instances must be visible — not just the finished one.
-      final instances = state.getTimedInstancesForEffort(effortId);
-      expect(instances, hasLength(3));
-      expect(instances.where((i) => i.state == TimedState.finished), hasLength(1));
-      expect(instances.where((i) => i.state == TimedState.notStarted), hasLength(2));
-    });
+        // All three instances must be visible — not just the finished one.
+        final instances = state.getTimedInstancesForEffort(effortId);
+        expect(instances, hasLength(3));
+        expect(
+          instances.where((i) => i.state == TimedState.finished),
+          hasLength(1),
+        );
+        expect(
+          instances.where((i) => i.state == TimedState.notStarted),
+          hasLength(2),
+        );
+      },
+    );
 
-    test('S-TIMED-03: count remains 3 after all 3 intervals are finished', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(modality: 'cardio_endurance');
+    test(
+      'S-TIMED-03: count remains 3 after all 3 intervals are finished',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'cardio_endurance');
 
-      final exercise = await _exerciseWith(repo, 'time');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'timed',
-      );
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'time');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'timed',
+        );
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
 
-      for (int i = 0; i < 3; i++) {
-        await state.startTimedEntry(effortId, i);
-        await state.finishTimedEntry(effortId, i);
-      }
+        for (int i = 0; i < 3; i++) {
+          await state.startTimedEntry(effortId, i);
+          await state.finishTimedEntry(effortId, i);
+        }
 
-      expect(_entryCount(state), 3);
-    });
+        expect(_entryCount(state), 3);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -175,59 +196,68 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('set count — drill modality', () {
-    test('S-DRILL-01: 2 planned holds show count 2 before any are started', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession();
+    test(
+      'S-DRILL-01: 2 planned holds show count 2 before any are started',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
 
-      final exercise = await _exerciseWith(repo, 'hold');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'drill',
-      );
-      // addExerciseToSession seeds 1; add 1 more.
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'hold');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'drill',
+        );
+        // addExerciseToSession seeds 1; add 1 more.
+        await state.addEntry(effortId);
 
-      expect(_entryCount(state), 2);
-    });
+        expect(_entryCount(state), 2);
+      },
+    );
 
-    test('S-DRILL-02: count remains 2 after 1 of 2 holds is finished', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession();
+    test(
+      'S-DRILL-02: count remains 2 after 1 of 2 holds is finished',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
 
-      final exercise = await _exerciseWith(repo, 'hold');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'drill',
-      );
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'hold');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'drill',
+        );
+        await state.addEntry(effortId);
 
-      await state.startTimedEntry(effortId, 0);
-      await state.finishTimedEntry(effortId, 0);
+        await state.startTimedEntry(effortId, 0);
+        await state.finishTimedEntry(effortId, 0);
 
-      expect(_entryCount(state), 2);
-    });
+        expect(_entryCount(state), 2);
+      },
+    );
 
-    test('S-DRILL-03: count remains 2 after all 2 holds are finished', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession();
+    test(
+      'S-DRILL-03: count remains 2 after all 2 holds are finished',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
 
-      final exercise = await _exerciseWith(repo, 'hold');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'drill',
-      );
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'hold');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'drill',
+        );
+        await state.addEntry(effortId);
 
-      for (int i = 0; i < 2; i++) {
-        await state.startTimedEntry(effortId, i);
-        await state.finishTimedEntry(effortId, i);
-      }
+        for (int i = 0; i < 2; i++) {
+          await state.startTimedEntry(effortId, i);
+          await state.finishTimedEntry(effortId, i);
+        }
 
-      expect(_entryCount(state), 2);
-    });
+        expect(_entryCount(state), 2);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -235,114 +265,129 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('set count — round modality', () {
-    test('S-ROUND-01: 3 planned rounds show total count 3 before any are started', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(modality: 'sports');
+    test(
+      'S-ROUND-01: 3 planned rounds show total count 3 before any are started',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'sports');
 
-      final exercise = await _exerciseWith(repo, 'rounds');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'round',
-      );
-      // addExerciseToSession seeds 1; add 2 more.
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'rounds');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'round',
+        );
+        // addExerciseToSession seeds 1; add 2 more.
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
 
-      // entries in getExercisesWithEntries() should reflect all 3 rounds.
-      expect(_entryCount(state), 3);
+        // entries in getExercisesWithEntries() should reflect all 3 rounds.
+        expect(_entryCount(state), 3);
 
-      // getRoundsForEffort should also return all 3.
-      final rounds = state.getRoundsForEffort(effortId);
-      expect(rounds, hasLength(3));
-      expect(rounds.every((r) => r.state == RoundState.notStarted), isTrue);
-    });
+        // getRoundsForEffort should also return all 3.
+        final rounds = state.getRoundsForEffort(effortId);
+        expect(rounds, hasLength(3));
+        expect(rounds.every((r) => r.state == RoundState.notStarted), isTrue);
+      },
+    );
 
-    test('S-ROUND-02: total remains 3 after 1 round is ended early (not naturally completed)', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(modality: 'sports');
+    test(
+      'S-ROUND-02: total remains 3 after 1 round is ended early (not naturally completed)',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'sports');
 
-      final exercise = await _exerciseWith(repo, 'rounds');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'round',
-      );
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'rounds');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'round',
+        );
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
 
-      // Start and end round 0 early (completed == false, but state == finished).
-      await state.startRound(effortId, 0);
-      await state.endRoundEarly(effortId, 0);
+        // Start and end round 0 early (completed == false, but state == finished).
+        await state.startRound(effortId, 0);
+        await state.endRoundEarly(effortId, 0);
 
-      expect(_entryCount(state), 3);
+        expect(_entryCount(state), 3);
 
-      final rounds = state.getRoundsForEffort(effortId);
-      expect(rounds, hasLength(3));
-      // Round 0 finished early — not naturally completed.
-      expect(rounds[0].state, RoundState.finished);
-      expect(rounds[0].completed, isFalse);
-      // Rounds 1 and 2 still not started.
-      expect(rounds.where((r) => r.state == RoundState.notStarted), hasLength(2));
-    });
+        final rounds = state.getRoundsForEffort(effortId);
+        expect(rounds, hasLength(3));
+        // Round 0 finished early — not naturally completed.
+        expect(rounds[0].state, RoundState.finished);
+        expect(rounds[0].completed, isFalse);
+        // Rounds 1 and 2 still not started.
+        expect(
+          rounds.where((r) => r.state == RoundState.notStarted),
+          hasLength(2),
+        );
+      },
+    );
 
-    test('S-ROUND-03: total remains 3 after all 3 rounds are naturally completed', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(modality: 'sports');
+    test(
+      'S-ROUND-03: total remains 3 after all 3 rounds are naturally completed',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'sports');
 
-      final exercise = await _exerciseWith(repo, 'rounds');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'round',
-      );
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'rounds');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'round',
+        );
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
 
-      for (int i = 0; i < 3; i++) {
-        await state.startRound(effortId, i);
-        await state.completeRound(effortId, i);
-      }
+        for (int i = 0; i < 3; i++) {
+          await state.startRound(effortId, i);
+          await state.completeRound(effortId, i);
+        }
 
-      expect(_entryCount(state), 3);
+        expect(_entryCount(state), 3);
 
-      final rounds = state.getRoundsForEffort(effortId);
-      expect(rounds, hasLength(3));
-      expect(rounds.every((r) => r.completed), isTrue);
-    });
+        final rounds = state.getRoundsForEffort(effortId);
+        expect(rounds, hasLength(3));
+        expect(rounds.every((r) => r.completed), isTrue);
+      },
+    );
 
-    test('S-ROUND-04: subtitle count equals total rounds regardless of completion state', () async {
-      // This test directly validates the fixed _buildExerciseSubtitle logic
-      // (the round case now uses .length instead of filtering for completed rounds).
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(modality: 'sports');
+    test(
+      'S-ROUND-04: subtitle count equals total rounds regardless of completion state',
+      () async {
+        // This test directly validates the fixed _buildExerciseSubtitle logic
+        // (the round case now uses .length instead of filtering for completed rounds).
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'sports');
 
-      final exercise = await _exerciseWith(repo, 'rounds');
-      final effortId = await state.addExerciseToSession(
-        exercise,
-        effortKindOverride: 'round',
-      );
-      await state.addEntry(effortId);
-      await state.addEntry(effortId);
+        final exercise = await _exerciseWith(repo, 'rounds');
+        final effortId = await state.addExerciseToSession(
+          exercise,
+          effortKindOverride: 'round',
+        );
+        await state.addEntry(effortId);
+        await state.addEntry(effortId);
 
-      // Before any round is started, all 3 should be in the total.
-      final beforeAny = state.getRoundsForEffort(effortId).length;
-      expect(beforeAny, 3);
+        // Before any round is started, all 3 should be in the total.
+        final beforeAny = state.getRoundsForEffort(effortId).length;
+        expect(beforeAny, 3);
 
-      // After 1 round completed naturally.
-      await state.startRound(effortId, 0);
-      await state.completeRound(effortId, 0);
-      final after1 = state.getRoundsForEffort(effortId).length;
-      expect(after1, 3); // total unchanged
+        // After 1 round completed naturally.
+        await state.startRound(effortId, 0);
+        await state.completeRound(effortId, 0);
+        final after1 = state.getRoundsForEffort(effortId).length;
+        expect(after1, 3); // total unchanged
 
-      // After all 3 rounds completed.
-      await state.startRound(effortId, 1);
-      await state.completeRound(effortId, 1);
-      await state.startRound(effortId, 2);
-      await state.completeRound(effortId, 2);
-      final afterAll = state.getRoundsForEffort(effortId).length;
-      expect(afterAll, 3); // still 3 — stable
-    });
+        // After all 3 rounds completed.
+        await state.startRound(effortId, 1);
+        await state.completeRound(effortId, 1);
+        await state.startRound(effortId, 2);
+        await state.completeRound(effortId, 2);
+        final afterAll = state.getRoundsForEffort(effortId).length;
+        expect(afterAll, 3); // still 3 — stable
+      },
+    );
   });
 }

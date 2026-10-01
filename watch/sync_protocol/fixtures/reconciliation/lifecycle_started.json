@@ -1,0 +1,56 @@
+{
+  "protocolVersion": 1,
+  "name": "Lifecycle: a session reported started is live again",
+  "description": "Lifecycle messages apply in the order received and the most recent status wins. Here the session is abandoned when the snapshot is taken and either device then reports it started, so the converged status is active. Nothing but the status moves.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-started-snapshot",
+    "sessionId": "s-2026-07-13-11",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T19:10:00Z",
+    "payload": {
+      "sessionId": "s-2026-07-13-11",
+      "revision": 70,
+      "status": "abandoned",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-started",
+      "sessionId": "s-2026-07-13-11",
+      "type": "session_lifecycle",
+      "origin": "watch",
+      "sentAt": "2026-07-13T19:11:00Z",
+      "payload": { "state": "started", "at": "2026-07-13T19:11:00Z" }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-2026-07-13-11",
+    "status": "active",
+    "revision": 70,
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

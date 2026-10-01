@@ -13,16 +13,17 @@ class MetricChooserDialog extends StatelessWidget {
   List<String> _deduplicateCapabilities(List<String> capabilities) {
     final strSet = capabilities.toSet();
     final repsLoadSetVariants = {'reps', 'sets', 'load'};
-    
+
     // Remove sets and load if any of the reps/sets/load variants exist
     if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
       strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
       // Ensure 'reps' is included as the canonical value
-      if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+      if (!strSet.contains('reps') &&
+          strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
         strSet.add('reps');
       }
     }
-    
+
     return strSet.toList();
   }
 
@@ -36,7 +37,9 @@ class MetricChooserDialog extends StatelessWidget {
     if (capabilities.isEmpty) {
       return AlertDialog(
         title: const Text('No Capabilities'),
-        content: const Text('This exercise has no defined tracking capabilities.'),
+        content: const Text(
+          'This exercise has no defined tracking capabilities.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -120,10 +123,7 @@ class _MetricOption extends StatelessWidget {
   final String capability;
   final VoidCallback onTap;
 
-  const _MetricOption({
-    required this.capability,
-    required this.onTap,
-  });
+  const _MetricOption({required this.capability, required this.onTap});
 
   IconData _getIcon() {
     switch (capability) {
@@ -172,7 +172,7 @@ class _MetricOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Material(
       color: theme.colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(12),

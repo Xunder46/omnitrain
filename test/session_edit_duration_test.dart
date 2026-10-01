@@ -64,7 +64,10 @@ void main() {
                         routineState: routineState,
                         sessionSummaryService: sessionSummaryService,
                         timerAlertService: FakeTimerAlertService(),
-                        settingsState: SettingsState(MockWorkoutRepository(), fakePreferencesService()),
+                        settingsState: SettingsState(
+                          MockWorkoutRepository(),
+                          fakePreferencesService(),
+                        ),
                         editMode: true,
                       ),
                     ),
@@ -173,26 +176,26 @@ void main() {
     });
 
     testWidgets(
-        'Tapping Session Time chip opens Edit Session Duration dialog', (
-      WidgetTester tester,
-    ) async {
-      final deps = await setupEndedSession();
+      'Tapping Session Time chip opens Edit Session Duration dialog',
+      (WidgetTester tester) async {
+        final deps = await setupEndedSession();
 
-      await openEditScreen(
-        tester,
-        workoutState: deps.workoutState,
-        routineState: deps.routineState,
-        sessionSummaryService: deps.sessionSummaryService,
-      );
+        await openEditScreen(
+          tester,
+          workoutState: deps.workoutState,
+          routineState: deps.routineState,
+          sessionSummaryService: deps.sessionSummaryService,
+        );
 
-      await tester.tap(find.text('Session Time'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Session Time'));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Edit Session Duration'), findsOneWidget);
-      expect(find.text('Hours'), findsOneWidget);
-      expect(find.text('Min'), findsOneWidget);
-      expect(find.text('Sec'), findsOneWidget);
-    });
+        expect(find.text('Edit Session Duration'), findsOneWidget);
+        expect(find.text('Hours'), findsOneWidget);
+        expect(find.text('Min'), findsOneWidget);
+        expect(find.text('Sec'), findsOneWidget);
+      },
+    );
 
     testWidgets('Cancelling the dialog leaves duration unchanged', (
       WidgetTester tester,
@@ -296,35 +299,37 @@ void main() {
       expect(deps.workoutState.currentSession!.endedAtMs, originalEnd);
     });
 
-    testWidgets('Saving persists corrected endedAtMs via updateSessionEndTime',
-        (WidgetTester tester) async {
-      final deps = await setupEndedSession();
-      final startedAtMs = deps.workoutState.currentSession!.startedAtMs;
+    testWidgets(
+      'Saving persists corrected endedAtMs via updateSessionEndTime',
+      (WidgetTester tester) async {
+        final deps = await setupEndedSession();
+        final startedAtMs = deps.workoutState.currentSession!.startedAtMs;
 
-      await openEditScreen(
-        tester,
-        workoutState: deps.workoutState,
-        routineState: deps.routineState,
-        sessionSummaryService: deps.sessionSummaryService,
-      );
+        await openEditScreen(
+          tester,
+          workoutState: deps.workoutState,
+          routineState: deps.routineState,
+          sessionSummaryService: deps.sessionSummaryService,
+        );
 
-      // Apply exactly 1 hour (3600 s).
-      await tester.tap(find.text('Session Time'));
-      await tester.pumpAndSettle();
+        // Apply exactly 1 hour (3600 s).
+        await tester.tap(find.text('Session Time'));
+        await tester.pumpAndSettle();
 
-      final hField = find.widgetWithText(TextField, '0');
-      await tester.enterText(hField.first, '1');
-      // Leave min/sec as 00.
-      await tester.tap(find.text('Ok'));
-      await tester.pumpAndSettle();
+        final hField = find.widgetWithText(TextField, '0');
+        await tester.enterText(hField.first, '1');
+        // Leave min/sec as 00.
+        await tester.tap(find.text('Ok'));
+        await tester.pumpAndSettle();
 
-      // Tap "Save Changes" in the bottom bar.
-      await tester.tap(find.text('Save Changes').last);
-      await tester.pumpAndSettle();
+        // Tap "Save Changes" in the bottom bar.
+        await tester.tap(find.text('Save Changes').last);
+        await tester.pumpAndSettle();
 
-      // endedAtMs must equal startedAtMs + 1 h.
-      final expectedEnd = startedAtMs + 3600 * 1000;
-      expect(deps.workoutState.currentSession!.endedAtMs, expectedEnd);
-    });
+        // endedAtMs must equal startedAtMs + 1 h.
+        final expectedEnd = startedAtMs + 3600 * 1000;
+        expect(deps.workoutState.currentSession!.endedAtMs, expectedEnd);
+      },
+    );
   });
 }

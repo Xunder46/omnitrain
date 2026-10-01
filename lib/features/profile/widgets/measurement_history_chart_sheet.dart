@@ -210,10 +210,7 @@ class _MeasurementHistoryChartSheetState
               // top space.
               titlesData: FlTitlesData(
                 topTitles: const AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: false,
-                    reservedSize: 0,
-                  ),
+                  sideTitles: SideTitles(showTitles: false, reservedSize: 0),
                 ),
                 rightTitles: const AxisTitles(
                   sideTitles: SideTitles(showTitles: false),
@@ -419,7 +416,10 @@ class _MeasurementHistoryChartSheetState
   // - everything else → passthrough.
   double _toChartValue(BodyMeasurementEntry entry) {
     if (entry.measurementType == 'height') {
-      return UnitFormatter.convertHeightFromCm(entry.value, widget.settingsState);
+      return UnitFormatter.convertHeightFromCm(
+        entry.value,
+        widget.settingsState,
+      );
     }
     if (entry.unitId == 'unit-kg') {
       return UnitFormatter.convertWeight(entry.value, widget.settingsState);

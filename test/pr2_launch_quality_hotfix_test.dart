@@ -1,7 +1,7 @@
 // Tests for PR 2: Launch Quality Hotfix.
 //
 // Scenarios in
-// `.github/agents/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
+// `docs/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
 // map 1:1 to the tests below:
 //
 //   S-001 — Healthy startup remains non-failure throughout
@@ -12,7 +12,7 @@
 // required because the current implementation renders the failure
 // surface during preparation as well as on genuine failure (see
 // `lib/app/startup_root.dart` and
-// `.github/agents/docs/navigation_and_screens.md` line 57: "current
+// `docs/navigation_and_screens.md` line 57: "current
 // implementation does not model preparation separately from
 // failure"). These tests assert the new contract: while the runner
 // is in flight, the failure surface must NOT render, and the
@@ -48,7 +48,7 @@ import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
-Future<void> _noopPersist(Object _, StackTrace __) async {}
+Future<void> _noopPersist(Object _, StackTrace _) async {}
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -58,10 +58,7 @@ Future<MockWorkoutRepository> _freshRepo() async {
   return repo;
 }
 
-Future<Exercise> _getExerciseById(
-  MockWorkoutRepository repo,
-  String id,
-) async {
+Future<Exercise> _getExerciseById(MockWorkoutRepository repo, String id) async {
   final exercises = await repo.getExercises();
   return exercises.firstWhere((e) => e.id == id);
 }
@@ -111,7 +108,7 @@ void main() {
   // ── S-001 / S-002 — StartupRoot preparing/distinct states ─────────────
 
   /// The preparing screen's only themed foreground element.
-  Color? _preparingSpinnerColor(WidgetTester tester) {
+  Color? preparingSpinnerColor(WidgetTester tester) {
     final indicator = tester.widget<CircularProgressIndicator>(
       find.descendant(
         of: find.byType(StartupPreparingScreen),
@@ -184,7 +181,7 @@ void main() {
         await tester.pump();
 
         expect(
-          _preparingSpinnerColor(tester),
+          preparingSpinnerColor(tester),
           OmniTheme.colorsForTheme(AppTheme.abyssalNeon).primary,
         );
 
@@ -194,7 +191,7 @@ void main() {
 
         expect(find.byType(StartupPreparingScreen), findsOneWidget);
         expect(
-          _preparingSpinnerColor(tester),
+          preparingSpinnerColor(tester),
           OmniTheme.colorsForTheme(AppTheme.crimsonDojo).primary,
           reason:
               'The preparing screen must listen for the theme adoption rather '
@@ -275,8 +272,7 @@ void main() {
         expect(
           find.byType(StartupFailureScreen),
           findsNothing,
-          reason:
-              'S-002: entering preparing must remove the failure screen.',
+          reason: 'S-002: entering preparing must remove the failure screen.',
         );
         expect(find.text('RECOVERED-SURFACE'), findsNothing);
 
@@ -364,75 +360,74 @@ void main() {
       },
     );
 
-    testWidgets(
-      'S-003b: vertical fling does not change exercise',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final deps = await _buildSessionDeps(modality: 'resistance_lifting');
-        final repo = await _freshRepo();
-        final squat = await _getExerciseById(repo, 'exercise-barbell-squat');
-        final rounds = await _getExerciseById(
-          repo,
-          'exercise-heavy-bag-rounds',
-        );
+    testWidgets('S-003b: vertical fling does not change exercise', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildSessionDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final squat = await _getExerciseById(repo, 'exercise-barbell-squat');
+      final rounds = await _getExerciseById(repo, 'exercise-heavy-bag-rounds');
 
-        await deps.workoutState.addExerciseToSession(squat, chosenMetric: 'reps');
-        await deps.workoutState.addExerciseToSession(
-          rounds,
-          effortKindOverride: 'round',
-        );
+      await deps.workoutState.addExerciseToSession(squat, chosenMetric: 'reps');
+      await deps.workoutState.addExerciseToSession(
+        rounds,
+        effortKindOverride: 'round',
+      );
 
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _openDetailView(tester, 'Barbell Back Squat');
-        expect(find.text('Barbell Back Squat'), findsOneWidget);
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Barbell Back Squat');
+      expect(find.text('Barbell Back Squat'), findsOneWidget);
 
-        // Fling upward — must NOT advance to the next exercise.
-        await tester.fling(find.byType(Scaffold).first, const Offset(0, -500), 1200);
-        await tester.pumpAndSettle();
+      // Fling upward — must NOT advance to the next exercise.
+      await tester.fling(
+        find.byType(Scaffold).first,
+        const Offset(0, -500),
+        1200,
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.text('Barbell Back Squat'),
-          findsOneWidget,
-          reason: 'S-003: vertical swipe must not advance the exercise.',
-        );
-        expect(find.text('Heavy Bag Rounds'), findsNothing);
-      },
-    );
+      expect(
+        find.text('Barbell Back Squat'),
+        findsOneWidget,
+        reason: 'S-003: vertical swipe must not advance the exercise.',
+      );
+      expect(find.text('Heavy Bag Rounds'), findsNothing);
+    });
 
-    testWidgets(
-      'S-003c: horizontal fling does not change set',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final deps = await _buildSessionDeps(modality: 'resistance_lifting');
-        final repo = await _freshRepo();
-        final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
-        final effortId = await deps.workoutState.addExerciseToSession(
-          exercise,
-          chosenMetric: 'reps',
-        );
-        await deps.workoutState.addEntry(effortId);
-        await deps.workoutState.addEntry(effortId);
+    testWidgets('S-003c: horizontal fling does not change set', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildSessionDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        chosenMetric: 'reps',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
 
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _openDetailView(tester, 'Barbell Back Squat');
-        expect(find.text('Set 1 of 3'), findsOneWidget);
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Barbell Back Squat');
+      expect(find.text('Set 1 of 3'), findsOneWidget);
 
-        // Fling left — must NOT advance to set 2.
-        await tester.fling(
-          find.byType(Scaffold).first,
-          const Offset(-500, 0),
-          1200,
-        );
-        await tester.pumpAndSettle();
+      // Fling left — must NOT advance to set 2.
+      await tester.fling(
+        find.byType(Scaffold).first,
+        const Offset(-500, 0),
+        1200,
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.text('Set 1 of 3'),
-          findsOneWidget,
-          reason: 'S-003: horizontal swipe must not advance the set.',
-        );
-        expect(find.text('Set 2 of 3'), findsNothing);
-      },
-    );
+      expect(
+        find.text('Set 1 of 3'),
+        findsOneWidget,
+        reason: 'S-003: horizontal swipe must not advance the set.',
+      );
+      expect(find.text('Set 2 of 3'), findsNothing);
+    });
 
     testWidgets(
       'S-003d: explicit Previous/Next arrows still navigate between sets',
@@ -485,8 +480,11 @@ void main() {
 
         final beforeReps =
             tester
-                .widget<InlineMetricEditor>(find.byType(InlineMetricEditor).first)
-                .currentValue as int;
+                    .widget<InlineMetricEditor>(
+                      find.byType(InlineMetricEditor).first,
+                    )
+                    .currentValue
+                as int;
 
         await tester.tap(find.byType(InlineMetricEditor).first);
         await tester.pumpAndSettle();
@@ -500,8 +498,11 @@ void main() {
 
         final afterReps =
             tester
-                .widget<InlineMetricEditor>(find.byType(InlineMetricEditor).first)
-                .currentValue as int;
+                    .widget<InlineMetricEditor>(
+                      find.byType(InlineMetricEditor).first,
+                    )
+                    .currentValue
+                as int;
 
         expect(
           afterReps,

@@ -11,6 +11,7 @@ import '../../core/constants/effort_defaults.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/utils/session_feeling_utils.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../../core/utils/distance_source.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -20,6 +21,9 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/session/effort_rating_sheet.dart';
+import '../../widgets/session/metric_crown_widget.dart';
+import '../../widgets/session/session_distance_card.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
@@ -169,7 +173,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           .compareGroupsToPreviousSession(currentSession, _summary);
       // Exclude the current session so the just-finished workout's
       // own PRs are not compared against themselves (D-3 in
-      // .github/agents/plans/summary-pr-parity-plan.md). The same
+      // docs/plans/summary-pr-parity-plan.md). The same
       // e1RM formula is used by the in-workout toast and the Stats
       // screen — single source of truth
       // (StatsProgressService.epley1RM).
@@ -259,24 +263,77 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (!widget.settingsState.showFeelingSurvey) return;
     if (_hasShownFeelingSheet) return;
 
+    // Only show automatic prompt for fresh sessions, not historical ones
+    if (_isHistoricalView) return;
+
     final session = widget.workoutState.currentSession;
     if (session == null) return;
     if (session.sessionFeeling != null) return;
 
     _hasShownFeelingSheet = true;
 
-    await showModalBottomSheet<void>(
-      context: context,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black54,
-      isScrollControlled: true,
-      builder: (context) => _FeelingSheetContent(
-        workoutState: widget.workoutState,
-        modality: session.modality,
-      ),
+    await EffortRatingSheet.show(
+      context,
+      mustAnswer: true,
+      modality: session.modality,
+      startedAt: OmniDateUtils.fromMs(session.startedAtMs),
+      onRated: _saveEffortRating,
     );
+
+    // Rebuild to reflect any rating changes made in the automatic prompt
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// Open the effort-rating sheet from the Summary's add/change control.
+  /// Unlike the post-workout prompt (isDismissible: false), this sheet
+  /// CAN be dismissed without selecting a value — tapping outside or
+  /// swiping down cancels without changing the rating.
+  Future<void> _openEffortRatingSheet() async {
+    final session = widget.workoutState.currentSession;
+    if (session == null) return;
+
+    final saved = await EffortRatingSheet.show(
+      context,
+      mustAnswer: false,
+      modality: session.modality,
+      startedAt: OmniDateUtils.fromMs(session.startedAtMs),
+      initialRating: session.sessionFeeling,
+      onRated: _saveEffortRating,
+    );
+
+    // A calendar-opened summary returns to a day list / grid that drew
+    // the old rating; refresh it the same way Discard does.
+    if (saved != null && _isHistoricalView) {
+      await _refreshOriginatingCalendar();
+    }
+
+    // Rebuild to reflect any rating changes made in the sheet
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// Where either rating sheet's answer goes: the summary's session, through
+  /// [WorkoutState.updateSessionFeeling]. Answers false — and the sheet stays
+  /// open — only when no session is loaded to rate.
+  Future<bool> _saveEffortRating(int rating) async {
+    final session = widget.workoutState.currentSession;
+    if (session == null) return false;
+    await widget.workoutState.updateSessionFeeling(session.id, rating);
+    return true;
+  }
+
+  /// Reload the calendar this summary was opened from so it reflects a
+  /// change made here (a discarded session, a new effort rating).
+  Future<void> _refreshOriginatingCalendar() async {
+    try {
+      await (widget.originatingCalendarState ?? _calendarState).refresh();
+    } catch (_) {
+      // Calendar refresh is best-effort; a failure here shouldn't block
+      // the user.
+    }
   }
 
   Future<void> _showDiscardDialog() async {
@@ -286,7 +343,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       body: Text(
         _isHistoricalView
             ? 'This will permanently delete this session from your history '
-                'and return to the previous screen.'
+                  'and return to the previous screen.'
             : 'This will remove all session data and return to Home.',
       ),
       dismissLabel: 'Cancel',
@@ -320,12 +377,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // Refresh the originating calendar so the deleted session
       // disappears from the grid, then pop back to where the user
       // came from (calendar or day list).
-      try {
-        await (widget.originatingCalendarState ?? _calendarState).refresh();
-      } catch (_) {
-        // Calendar refresh is best-effort; the user is already
-        // navigating back, so a failure here shouldn't block that.
-      }
+      await _refreshOriginatingCalendar();
+      if (!mounted) return;
       Navigator.pop(context);
     } else {
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -635,18 +688,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               }
             },
             itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'edit',
-                child: Text('Edit Session'),
-              ),
-              PopupMenuItem(
-                value: 'save',
-                child: Text('Save as Routine'),
-              ),
-              PopupMenuItem(
-                value: 'discard',
-                child: Text('Discard'),
-              ),
+              PopupMenuItem(value: 'edit', child: Text('Edit Session')),
+              PopupMenuItem(value: 'save', child: Text('Save as Routine')),
+              PopupMenuItem(value: 'discard', child: Text('Discard')),
             ],
           ),
         ],
@@ -661,17 +705,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      // The date header (with the modality chip) is
-                      // always rendered — even when the combined
-                      // Duration/Rest Time card is hidden for a
-                      // rolling session. The header acts as a
-                      // day-context reminder; the card body is the
-                      // only part that the rolling branch omits.
+                      // The date header (with the modality chip) and
+                      // the session info card are always rendered; for
+                      // a rolling session the card carries only the
+                      // EFFORT row (no Duration/Rest Time row).
                       _buildSessionInfoHeader(theme),
-                      if (!widget.workoutState.isRollingSession) ...[
-                        _buildSessionInfoCard(theme),
-                      ],
+                      _buildSessionInfoCard(theme),
                       ..._buildGroupCards(theme),
+                      ..._buildDistanceSection(),
                       const SizedBox(height: 16),
                       const OmniCardHeader(title: 'SESSION NOTE'),
                       _buildNoteCard(theme),
@@ -724,31 +765,92 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  /// Combined session info card: Duration pill + Rest Time pill.
+  /// Combined session info card: Duration pill + Rest Time pill + Effort pill.
   ///
   /// Replaces the previous two-card layout (header card + stats card)
   /// per the Phase 2.1 refinement. The page title lives in
   /// [OmniBackHeader]; the date and modality chip live in
   /// [_buildSessionInfoHeader] above this card. The card body is
-  /// content-only.
+  /// content-only. The EFFORT row is always shown (even if toggle is off),
+  /// with an "Add rating" or "Change" button to modify the rating. The value
+  /// text uses the pills' shared value color; the rating's intensity is a
+  /// non-text marker in its ramp step, because low ramp steps are below the
+  /// text contrast floor (D-15 in the Stats PR 1 plan).
+  ///
+  /// For rolling sessions, Duration/Rest Time are hidden, but EFFORT row
+  /// remains visible so the user can rate the session.
   Widget _buildSessionInfoCard(ThemeData theme) {
+    final session = widget.workoutState.currentSession;
+    final feeling = session?.sessionFeeling;
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+    final isRolling = widget.workoutState.isRollingSession;
+
     return OmniSurface(
       key: const Key('omni_session_info_card'),
       padding: const EdgeInsets.all(16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: _StatPill(
-              label: 'Duration',
-              value: _formatDuration(_summary.totalDurationMs),
+          // First row: Duration | Rest Time (hidden for rolling sessions)
+          if (!isRolling) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _StatPill(
+                    label: 'Duration',
+                    value: _formatDuration(_summary.totalDurationMs),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _StatPill(
+                    label: 'Rest Time',
+                    value: _formatDurationOrZero(_restTimeMs),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _StatPill(
-              label: 'Rest Time',
-              value: _formatDurationOrZero(_restTimeMs),
-            ),
+            // Gap between rows (only when Duration row is visible)
+            const SizedBox(height: 16),
+          ],
+          // Effort rating row: always visible (even for rolling sessions)
+          Row(
+            children: [
+              Expanded(
+                child: _StatPill(
+                  label: 'Effort',
+                  value: feeling != null ? '$feeling / 5' : '—',
+                  leading: feeling != null
+                      ? Container(
+                          key: const Key('omni_session_effort_marker'),
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: feelingColor(feeling, themeColors),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: _openEffortRatingSheet,
+                style: ButtonStyle(
+                  shape: WidgetStatePropertyAll(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonUtilityRadius,
+                      ),
+                    ),
+                  ),
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                ),
+                child: Text(feeling != null ? 'Change' : 'Add rating'),
+              ),
+            ],
           ),
         ],
       ),
@@ -782,8 +884,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Widget _buildCalendarHeader(ThemeData theme) {
     // Use the historical session's month when viewing one, so the
     // header label matches the grid below it.
-    final monthLabel =
-        '${_monthName(_viewMonth.month)} ${_viewMonth.year}';
+    final monthLabel = '${_monthName(_viewMonth.month)} ${_viewMonth.year}';
     return OmniCardHeader(
       title: monthLabel,
       actions: [_buildOpenCalendarButton()],
@@ -811,6 +912,118 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       icon: const Icon(Icons.open_in_new, size: 16),
       label: const Text('Open Calendar'),
     );
+  }
+
+  // ── DISTANCE section (D-315, D-319) ──────────────────────────────────────
+
+  /// The DISTANCE header and card, or nothing at all when no entry has a row:
+  /// a session that tracked nothing through Cardio and holds no stored
+  /// distance shows no section.
+  List<Widget> _buildDistanceSection() {
+    final rows = _buildDistanceRows();
+    if (rows.isEmpty) return const [];
+
+    return [
+      const SizedBox(height: 16),
+      const OmniCardHeader(title: 'DISTANCE'),
+      SessionDistanceCard(rows: rows),
+    ];
+  }
+
+  /// One row per entry a distance belongs to, in the Summary's effort order
+  /// and then entry order (D-315).
+  ///
+  /// The entries come from the same list every distance write addresses
+  /// (D-328), so the row on screen and the row an edit lands on are the same
+  /// entry. A non-Cardio effort shows only the entries that hold a distance:
+  /// on those the rows themselves are the entries.
+  List<DistanceRowModel> _buildDistanceRows() {
+    final unit = widget.settingsState.preferredDistanceUnit;
+    final metresPerUnit = UnitFormatter.metresPerUnit(unit);
+    final unitLabel = UnitFormatter.distanceLabelForUnit(unit);
+    final rows = <DistanceRowModel>[];
+
+    for (final exercise in widget.workoutState.getExercisesWithEntries()) {
+      final effortId = exercise['id'] as String;
+      final trackedThroughCardio = exercise['effortKind'] == 'timed';
+      final exerciseName = exercise['name'] as String;
+      final entries = widget.workoutState.getEffortDistanceEntries(effortId);
+
+      for (final entry in entries) {
+        final metres = entry.metres;
+        // A Cardio-tracked entry keeps its row whether or not a distance was
+        // recorded; any other kind appears only when it holds one.
+        if (!trackedThroughCardio && metres <= 0) continue;
+
+        final estimated = DistanceSource.isEstimated(entry.row?.valueSource);
+        rows.add(
+          DistanceRowModel(
+            name: entries.length > 1
+                ? '$exerciseName · ${entry.displayNumber}'
+                : exerciseName,
+            value: metres > 0
+                ? (metres / metresPerUnit).toStringAsFixed(2)
+                : SessionDistanceCard.absentValue,
+            unitLabel: estimated ? '$unitLabel est.' : unitLabel,
+            onTap: () => _editDistance(effortId, entry.entryIndex, metres),
+          ),
+        );
+      }
+    }
+
+    return rows;
+  }
+
+  /// Opens the distance field for one entry (D-316) and applies the answer.
+  Future<void> _editDistance(
+    String effortId,
+    int entryIndex,
+    double currentMetres,
+  ) async {
+    final unit = widget.settingsState.preferredDistanceUnit;
+    final metresPerUnit = UnitFormatter.metresPerUnit(unit);
+    final currentUnits = currentMetres / metresPerUnit;
+
+    await showMetricEditPopup(
+      context,
+      metricType: 'distance',
+      currentValue: currentUnits,
+      unitLabel: UnitFormatter.distanceLabelUpperForUnit(unit),
+      onValueChanged: (value) => _applyDistance(
+        effortId: effortId,
+        entryIndex: entryIndex,
+        prefilledUnits: double.parse(currentUnits.toStringAsFixed(2)),
+        enteredUnits: (value as num).toDouble(),
+        metresPerUnit: metresPerUnit,
+      ),
+    );
+  }
+
+  /// Records what the dialog answered (D-307).
+  ///
+  /// The dialog pre-filled the stored value to two decimals, so an answer equal
+  /// to that pre-fill is a confirm: it records the stored metres as they are,
+  /// which is what confirms an estimate. Anything else stores what was typed,
+  /// and zero removes the distance.
+  Future<void> _applyDistance({
+    required String effortId,
+    required int entryIndex,
+    required double prefilledUnits,
+    required double enteredUnits,
+    required double metresPerUnit,
+  }) async {
+    if (enteredUnits > 0 && enteredUnits == prefilledUnits) {
+      await widget.workoutState.confirmEntryDistance(effortId, entryIndex);
+    } else {
+      await widget.workoutState.setEntryDistance(
+        effortId,
+        entryIndex,
+        enteredUnits * metresPerUnit,
+      );
+    }
+
+    if (!mounted) return;
+    setState(() {});
   }
 
   List<Widget> _buildGroupCards(ThemeData theme) {
@@ -1116,7 +1329,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return value.toStringAsFixed(1);
   }
 
-  String _formatDate(DateTime date) {
+  /// Short "Mon D" date (e.g. "Sep 18").
+  static String _formatDate(DateTime date) {
     const months = [
       'Jan',
       'Feb',
@@ -1160,175 +1374,25 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 }
 
-/// Modal bottom sheet content for session feeling rating (1-5).
-class _FeelingSheetContent extends StatefulWidget {
-  final WorkoutState workoutState;
-  final String? modality;
-
-  const _FeelingSheetContent({required this.workoutState, this.modality});
-
-  @override
-  State<_FeelingSheetContent> createState() => _FeelingSheetContentState();
-}
-
-class _FeelingSheetContentState extends State<_FeelingSheetContent> {
-  int? _selectedFeeling;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
-    final displayName = ModalityDisplay.getName(widget.modality);
-    final subtitle = '$displayName · Today';
-
-    return Container(
-      decoration: BoxDecoration(
-        color: themeColors.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        24,
-        12,
-        24,
-        MediaQuery.of(context).padding.bottom + 40,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle bar
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: themeColors.primary.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(2),
-              ),
-              margin: const EdgeInsets.only(bottom: 28),
-            ),
-          ),
-          // Title
-          Text(
-            'How did it feel?',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleLarge?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.9),
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 6),
-          // Subtitle
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: themeColors.textMuted,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 36),
-          // Number tiles row
-          Row(
-            children: [
-              for (int i = 1; i <= 5; i++) ...[
-                Expanded(child: _buildFeelingTile(i)),
-                if (i < 5) const SizedBox(width: 10),
-              ],
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Range labels row
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Rough',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.0,
-                    color: themeColors.textMuted,
-                  ),
-                ),
-                Text(
-                  'Great',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.0,
-                    color: themeColors.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFeelingTile(int number) {
-    final theme = Theme.of(context);
-    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
-    final isSelected = _selectedFeeling == number;
-    final tileColor = feelingColor(number, themeColors);
-
-    return GestureDetector(
-      onTap: () => _selectFeeling(number),
-      child: AspectRatio(
-        aspectRatio: 1.0,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? tileColor
-                : theme.colorScheme.surface.withOpacity(0.6),
-            border: Border.all(
-              color: isSelected
-                  ? tileColor
-                  : theme.colorScheme.onSurface.withOpacity(0.12),
-              width: 1.5,
-            ),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Center(
-            child: Text(
-              number.toString(),
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w500,
-                color: isSelected
-                    ? Colors.white
-                    : theme.colorScheme.onSurface.withOpacity(0.35),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _selectFeeling(int feeling) async {
-    setState(() => _selectedFeeling = feeling);
-
-    final session = widget.workoutState.currentSession;
-    if (session != null) {
-      await widget.workoutState.updateSessionFeeling(session.id, feeling);
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    }
-  }
-}
-
 class _StatPill extends StatelessWidget {
   final String label;
   final String value;
 
-  const _StatPill({required this.label, required this.value});
+  /// Optional non-text mark drawn immediately before [value] (the EFFORT
+  /// row's intensity marker).
+  final Widget? leading;
+
+  const _StatPill({required this.label, required this.value, this.leading});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final valueText = Text(
+      value,
+      style: theme.textTheme.titleLarge?.copyWith(
+        color: theme.colorScheme.primary,
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1340,12 +1404,13 @@ class _StatPill extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          value,
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: theme.colorScheme.primary,
+        if (leading == null)
+          valueText
+        else
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [leading!, const SizedBox(width: 8), valueText],
           ),
-        ),
       ],
     );
   }

@@ -38,8 +38,8 @@ Widget buildEdgeAwareDateLabel({
   final shift = isFirst
       ? const Offset(kEdgeLabelHorizontalShift, 0)
       : isLast
-          ? const Offset(-kEdgeLabelHorizontalShift, 0)
-          : Offset.zero;
+      ? const Offset(-kEdgeLabelHorizontalShift, 0)
+      : Offset.zero;
   return SideTitleWidget(
     meta: meta,
     space: 8,

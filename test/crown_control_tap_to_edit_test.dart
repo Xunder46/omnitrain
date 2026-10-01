@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
@@ -23,7 +22,9 @@ Future<MockWorkoutRepository> _freshRepo() async {
   return repo;
 }
 
-Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: Center(child: child)));
+Widget _wrap(Widget child) => MaterialApp(
+  home: Scaffold(body: Center(child: child)),
+);
 
 // Build an InlineMetricEditor under test with the given parameters.
 Widget _buildEditor({
@@ -64,14 +65,16 @@ void main() {
         dynamic lastValue;
         int callCount = 0;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 10,
-          onValueChanged: (v) {
-            callCount++;
-            lastValue = v;
-          },
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'reps',
+            currentValue: 10,
+            onValueChanged: (v) {
+              callCount++;
+              lastValue = v;
+            },
+          ),
+        );
 
         // Tap the number text to open the modal.
         await tester.tap(find.text('10'));
@@ -102,12 +105,14 @@ void main() {
       (tester) async {
         double? updatedValue;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'weight',
-          currentValue: 10.0,
-          unitLabel: 'KG',
-          onValueChanged: (v) => updatedValue = v as double,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'weight',
+            currentValue: 10.0,
+            unitLabel: 'KG',
+            onValueChanged: (v) => updatedValue = v as double,
+          ),
+        );
 
         await tester.tap(find.text('10.0'));
         await tester.pumpAndSettle();
@@ -132,11 +137,9 @@ void main() {
     testWidgets(
       'T-10: tapping the number Text opens dialog pre-filled with current value',
       (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 10,
-          unitLabel: 'REPS',
-        ));
+        await tester.pumpWidget(
+          _buildEditor(metricType: 'reps', currentValue: 10, unitLabel: 'REPS'),
+        );
 
         // Tap the number text.
         await tester.tap(find.text('10'));
@@ -156,12 +159,14 @@ void main() {
       (tester) async {
         dynamic lastValue;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 10,
-          unitLabel: 'REPS',
-          onValueChanged: (v) => lastValue = v,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'reps',
+            currentValue: 10,
+            unitLabel: 'REPS',
+            onValueChanged: (v) => lastValue = v,
+          ),
+        );
 
         await tester.tap(find.text('10'));
         await tester.pumpAndSettle();
@@ -180,12 +185,14 @@ void main() {
       (tester) async {
         int callCount = 0;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 10,
-          unitLabel: 'REPS',
-          onValueChanged: (_) => callCount++,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'reps',
+            currentValue: 10,
+            unitLabel: 'REPS',
+            onValueChanged: (_) => callCount++,
+          ),
+        );
 
         await tester.tap(find.text('10'));
         await tester.pumpAndSettle();
@@ -203,11 +210,9 @@ void main() {
     testWidgets(
       'T-13: popup dialog has exactly one Ok FilledButton and no Cancel button',
       (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 10,
-          unitLabel: 'REPS',
-        ));
+        await tester.pumpWidget(
+          _buildEditor(metricType: 'reps', currentValue: 10, unitLabel: 'REPS'),
+        );
 
         await tester.tap(find.text('10'));
         await tester.pumpAndSettle();
@@ -235,13 +240,15 @@ void main() {
         bool customTapFired = false;
         bool valueChangedCalled = false;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'duration',
-          currentValue: 120,
-          unitLabel: 'ELAPSED',
-          onTap: () => customTapFired = true,
-          onValueChanged: (_) => valueChangedCalled = true,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'duration',
+            currentValue: 120,
+            unitLabel: 'ELAPSED',
+            onTap: () => customTapFired = true,
+            onValueChanged: (_) => valueChangedCalled = true,
+          ),
+        );
 
         // Tap the number — should call onTap, not open popup.
         await tester.tap(find.text('02:00'));
@@ -333,6 +340,58 @@ void main() {
       final result = MetricStepCalc.parseAndClamp('duration', '-10');
       expect(result, 0);
     });
+
+    // ── Distance (D-314, D-316) ─────────────────────────────────────────────
+
+    test('parseAndClamp distance parses 5.2 to 5.2', () {
+      final result = MetricStepCalc.parseAndClamp('distance', '5.2');
+      expect(result, 5.2);
+      expect(result, isA<double>());
+    });
+
+    test('parseAndClamp distance clamps -3 to 0.0', () {
+      expect(MetricStepCalc.parseAndClamp('distance', '-3'), 0.0);
+    });
+
+    test('parseAndClamp distance clamps 1500 to 999.99', () {
+      expect(MetricStepCalc.parseAndClamp('distance', '1500'), 999.99);
+    });
+
+    test('parseAndClamp distance rounds 4.876 to 4.88', () {
+      expect(MetricStepCalc.parseAndClamp('distance', '4.876'), 4.88);
+    });
+
+    testWidgets('the distance dialog is titled Edit Distance and is prefilled '
+        'to two decimals', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showMetricEditPopup(
+                context,
+                metricType: 'distance',
+                currentValue: 4.8736,
+                unitLabel: 'KM',
+                onValueChanged: (_) {},
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit Distance'), findsOneWidget);
+      expect(find.text('Edit distance'), findsNothing);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller?.text, '4.87');
+      // The field label never carries the estimate marker: Ok makes the value
+      // an entered one.
+      expect(find.text('KM'), findsOneWidget);
+      expect(find.text('EST.'), findsNothing);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -345,12 +404,14 @@ void main() {
       (tester) async {
         double? updatedValue;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'weight',
-          currentValue: 0.0,
-          unitLabel: 'KG',
-          onValueChanged: (v) => updatedValue = v as double,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'weight',
+            currentValue: 0.0,
+            unitLabel: 'KG',
+            onValueChanged: (v) => updatedValue = v as double,
+          ),
+        );
 
         await tester.tap(find.text('0.0'));
         await tester.pumpAndSettle();
@@ -368,11 +429,13 @@ void main() {
       (tester) async {
         dynamic updatedValue;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'reps',
-          currentValue: 10,
-          onValueChanged: (v) => updatedValue = v,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'reps',
+            currentValue: 10,
+            onValueChanged: (v) => updatedValue = v,
+          ),
+        );
 
         await tester.tap(find.text('10'));
         await tester.pumpAndSettle();
@@ -395,7 +458,10 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('Surface verification', () {
-    Future<void> navigateToSetDetail(WidgetTester tester, String exerciseName) async {
+    Future<void> navigateToSetDetail(
+      WidgetTester tester,
+      String exerciseName,
+    ) async {
       await tester.pumpAndSettle();
       final labelFinder = find.text(exerciseName).first;
       await tester.ensureVisible(labelFinder);
@@ -465,7 +531,10 @@ void main() {
           // Find the first editable (non-read-only) editor.
           final editableEditor = tester
               .widgetList<InlineMetricEditor>(editors)
-              .firstWhere((e) => !e.isReadOnly, orElse: () => tester.widget<InlineMetricEditor>(editors.first));
+              .firstWhere(
+                (e) => !e.isReadOnly,
+                orElse: () => tester.widget<InlineMetricEditor>(editors.first),
+              );
           if (!editableEditor.isReadOnly && editableEditor.onTap == null) {
             await tester.tap(find.byWidget(editableEditor));
             await tester.pumpAndSettle();
@@ -527,60 +596,59 @@ void main() {
     );
 
     // T-16
-    testWidgets(
-      'T-16: RoutineSetupScreen (effortKind==set) exercise detail '
-      'exposes tap-to-edit on the value',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets('T-16: RoutineSetupScreen (effortKind==set) exercise detail '
+        'exposes tap-to-edit on the value', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = await _freshRepo();
-        final routineState = RoutineState(repo);
-        final workoutState = WorkoutState(repo);
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
+      final repo = await _freshRepo();
+      final routineState = RoutineState(repo);
+      final workoutState = WorkoutState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
 
-        routineState.setAutosaveEnabled(false);
-        await routineState.createNewRoutine('Test Routine');
-        await workoutState.loadAllExercises();
+      routineState.setAutosaveEnabled(false);
+      await routineState.createNewRoutine('Test Routine');
+      await workoutState.loadAllExercises();
 
-        final exercises = await repo.getExercises();
-        final exercise = exercises.firstWhere(
-          (e) =>
-              e.capabilities.contains('sets') &&
-              e.capabilities.contains('load') &&
-              e.capabilities.contains('reps'),
-          orElse: () => exercises.first,
-        );
-        await routineState.addExerciseToRoutine(exercise, 'set');
-        await routineState.saveRoutine();
-        final templateId = routineState.currentTemplate!.id;
+      final exercises = await repo.getExercises();
+      final exercise = exercises.firstWhere(
+        (e) =>
+            e.capabilities.contains('sets') &&
+            e.capabilities.contains('load') &&
+            e.capabilities.contains('reps'),
+        orElse: () => exercises.first,
+      );
+      await routineState.addExerciseToRoutine(exercise, 'set');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: RoutineSetupScreen(
-              routineState: routineState,
-              workoutState: workoutState,
-              templateId: templateId,
-              settingsState: settingsState,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+            settingsState: settingsState,
           ),
-        );
+        ),
+      );
 
-        await navigateToSetDetail(tester, exercise.name);
-      },
-    );
+      await navigateToSetDetail(tester, exercise.name);
+    });
 
     // T-17: read-only timer display in live mode is not tap-editable
     testWidgets(
       'T-17: live-mode timed editor (isReadOnly:true) is not tap-editable',
       (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'duration',
-          currentValue: 120,
-          unitLabel: 'ELAPSED',
-          isReadOnly: true,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'duration',
+            currentValue: 120,
+            unitLabel: 'ELAPSED',
+            isReadOnly: true,
+          ),
+        );
       },
     );
   });
@@ -593,12 +661,14 @@ void main() {
     testWidgets(
       'duration editor (not read-only, no onTap) exposes tap-to-edit',
       (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'duration',
-          currentValue: 180,
-          unitLabel: 'DURATION',
-          isReadOnly: false,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'duration',
+            currentValue: 180,
+            unitLabel: 'DURATION',
+            isReadOnly: false,
+          ),
+        );
       },
     );
 
@@ -607,12 +677,14 @@ void main() {
       (tester) async {
         int? updatedValue;
 
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'duration',
-          currentValue: 60,
-          unitLabel: 'DURATION',
-          onValueChanged: (v) => updatedValue = v as int,
-        ));
+        await tester.pumpWidget(
+          _buildEditor(
+            metricType: 'duration',
+            currentValue: 60,
+            unitLabel: 'DURATION',
+            onValueChanged: (v) => updatedValue = v as int,
+          ),
+        );
 
         // The formatted display is MM:SS.
         await tester.tap(find.text('01:00'));

@@ -77,3 +77,5 @@ macos/Runner.xcworkspace/
 
 android/key.properties
 *.jks
+# Agent pipeline scratch (briefs, run logs, friction log)
+.work/

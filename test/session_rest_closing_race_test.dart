@@ -31,8 +31,9 @@ Future<String> _addTimedEffort(
   MockWorkoutRepository repo,
 ) async {
   final exercises = await repo.getExercises();
-  final timedExercise =
-      exercises.firstWhere((e) => e.capabilities.contains('time'));
+  final timedExercise = exercises.firstWhere(
+    (e) => e.capabilities.contains('time'),
+  );
   final effortId = await workoutState.addExerciseToSession(
     timedExercise,
     chosenMetric: 'duration',
@@ -72,14 +73,14 @@ void main() {
         expect(
           workoutState.hasRestRecord(effortId, 1),
           isFalse,
-          reason: 'rest should be closed in-memory immediately after '
+          reason:
+              'rest should be closed in-memory immediately after '
               'startTimedEntry, not wait for async persist',
         );
         expect(
           workoutState.getRestElapsedSeconds(effortId, 1),
           equals(0),
-          reason:
-              'closed rest should return 0 elapsed seconds immediately',
+          reason: 'closed rest should return 0 elapsed seconds immediately',
         );
 
         // Step 6: Log the timed entry
@@ -117,8 +118,10 @@ void main() {
         // Add a delay to ensure enough time has passed since rest start
         // (elapsedSeconds needs at least 1 second to show > 0)
         await Future.delayed(const Duration(milliseconds: 1100));
-        final restElapsedBefore =
-            workoutState.getRestElapsedSeconds(effortId, 1);
+        final restElapsedBefore = workoutState.getRestElapsedSeconds(
+          effortId,
+          1,
+        );
         expect(restElapsedBefore, greaterThan(0));
 
         // Step 3: Start timed timer for entryIndex 1
@@ -140,13 +143,15 @@ void main() {
         expect(
           workoutState.hasRestRecord(effortId, 1),
           isFalse,
-          reason: 'rest should be closed in-memory IMMEDIATELY, even while '
+          reason:
+              'rest should be closed in-memory IMMEDIATELY, even while '
               'repository persist is in-flight',
         );
         expect(
           workoutState.getRestElapsedSeconds(effortId, 1),
           equals(0),
-          reason: 'closed rest should return 0 elapsed seconds immediately, '
+          reason:
+              'closed rest should return 0 elapsed seconds immediately, '
               'even while persist is in-flight',
         );
 
@@ -161,10 +166,7 @@ void main() {
           reason:
               'rest should still be closed after repository persist completes',
         );
-        expect(
-          workoutState.getRestElapsedSeconds(effortId, 1),
-          equals(0),
-        );
+        expect(workoutState.getRestElapsedSeconds(effortId, 1), equals(0));
 
         // Step 6: Start new rest for entryIndex 2
         await workoutState.recordRestStart(effortId, 2);

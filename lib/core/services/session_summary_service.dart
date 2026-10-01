@@ -208,9 +208,9 @@ class SessionSummaryService {
     // exercise keeps its e1RM verdict. This stops Push-Up from
     // emitting a "New best e1RM" line just because one session
     // was logged with added weight — see the Push-Up mixed-axis
-    // bug fix in `.github/agents/plans/stats-summary-fix-pack-plan.md`.
+    // bug fix in `docs/plans/stats-summary-fix-pack-plan.md`.
     //
-    // Plan: .github/agents/plans/stats-summary-fix-pack-plan.md (PR 1 + PR 2).
+    // Plan: docs/plans/stats-summary-fix-pack-plan.md (PR 1 + PR 2).
     final byExerciseId = <String, ExerciseSummary>{};
     for (final summary in exercises) {
       if (summary.effortKind != 'set') continue;
@@ -227,11 +227,11 @@ class SessionSummaryService {
 
     for (final summary in byExerciseId.values) {
       final bestE1RM = summary.bestE1RM!;
-      final previousBest =
-          await StatsProgressService(_repository).getAllTimeBestE1RM(
-        summary.exerciseId,
-        excludeSessionId: currentSessionId,
-      );
+      final previousBest = await StatsProgressService(_repository)
+          .getAllTimeBestE1RM(
+            summary.exerciseId,
+            excludeSessionId: currentSessionId,
+          );
 
       if (bestE1RM > previousBest) {
         results.add(
@@ -252,7 +252,7 @@ class SessionSummaryService {
     // best via `StatsProgressService.getAllTimeBestReps`. The
     // same one-entry-per-exercise collapse applies.
     //
-    // Plan: .github/agents/plans/stats-summary-fix-pack-plan.md,
+    // Plan: docs/plans/stats-summary-fix-pack-plan.md,
     // Item 2 (rep-based record parity).
     final repsByExerciseId = <String, ExerciseSummary>{};
     for (final summary in exercises) {
@@ -267,11 +267,11 @@ class SessionSummaryService {
 
     for (final summary in repsByExerciseId.values) {
       final bestReps = summary.bestReps!;
-      final previousBest =
-          await StatsProgressService(_repository).getAllTimeBestReps(
-        summary.exerciseId,
-        excludeSessionId: currentSessionId,
-      );
+      final previousBest = await StatsProgressService(_repository)
+          .getAllTimeBestReps(
+            summary.exerciseId,
+            excludeSessionId: currentSessionId,
+          );
 
       if (bestReps > previousBest) {
         results.add(

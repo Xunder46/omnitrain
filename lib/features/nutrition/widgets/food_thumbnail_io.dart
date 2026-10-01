@@ -11,7 +11,7 @@ import 'package:omnitrain/core/services/image_storage_service.dart';
 /// [reference] is the stored value from `Food.imagePath` — under
 /// the post-relocation-fix contract this is a **basename** (D-1
 /// in
-/// `.github/agents/plans/image-persistence-relocation-fix-plan.md`),
+/// `docs/plans/image-persistence-relocation-fix-plan.md`),
 /// not an absolute path. The widget resolves the basename via
 /// [imageStorage] (when provided) before `Image.file`.
 class FoodThumbnailImage extends StatelessWidget {

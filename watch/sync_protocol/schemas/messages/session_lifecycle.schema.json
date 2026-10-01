@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/session_lifecycle.schema.json",
+  "title": "session_lifecycle",
+  "description": "Either direction. Session started, exercise advanced, session completed, session abandoned. exerciseIndex is required — and only allowed — for exercise_advanced.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    { "required": ["sessionId"] },
+    {
+      "properties": {
+        "type": { "const": "session_lifecycle" },
+        "payload": {
+          "type": "object",
+          "required": ["state", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "started",
+                "exercise_advanced",
+                "completed",
+                "abandoned"
+              ]
+            },
+            "at": { "$ref": "envelope.schema.json#/$defs/timestamp" },
+            "exerciseIndex": { "type": "integer", "minimum": 0 }
+          },
+          "allOf": [
+            {
+              "oneOf": [
+                {
+                  "required": ["state", "exerciseIndex"],
+                  "properties": { "state": { "const": "exercise_advanced" } }
+                },
+                {
+                  "required": ["state"],
+                  "properties": {
+                    "state": { "enum": ["started", "completed", "abandoned"] }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

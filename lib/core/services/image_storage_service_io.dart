@@ -25,7 +25,7 @@
 // `getApplicationDocumentsDirectory()` once at app start.
 //
 // See D-1..D-10 in
-// `.github/agents/plans/image-persistence-relocation-fix-plan.md`.
+// `docs/plans/image-persistence-relocation-fix-plan.md`.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -81,8 +81,8 @@ class ImageStorageService {
   ImageStorageService.fromBaseDirectory(
     String baseDirectory, {
     List<String>? extraCandidateDirs,
-  })  : _managedDir = p.normalize(p.join(baseDirectory, _managedSubdir)),
-        _candidateDirs = List.unmodifiable(extraCandidateDirs ?? const []);
+  }) : _managedDir = p.normalize(p.join(baseDirectory, _managedSubdir)),
+       _candidateDirs = List.unmodifiable(extraCandidateDirs ?? const []);
 
   /// Async factory that resolves the app documents directory via
   /// `path_provider`. Use from `main.dart` at app start.

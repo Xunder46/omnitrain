@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/modality_colors.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
+import 'package:omnitrain/core/utils/session_feeling_utils.dart';
 import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/app.dart';
 import 'contrast_helpers.dart';
@@ -54,7 +55,10 @@ void main() {
           Colors.white.withValues(alpha: 0.6),
           colors.surface,
         );
-        final secondaryTextContrast = contrastRatio(secondaryTextComposited, colors.surface);
+        final secondaryTextContrast = contrastRatio(
+          secondaryTextComposited,
+          colors.surface,
+        );
         if (secondaryTextContrast < 4.5) {
           results[theme.name]!.add(
             'Check 5 FAIL: secondary text (60% white) vs surface contrast = $secondaryTextContrast (required ≥ 4.5:1)',
@@ -100,7 +104,10 @@ void main() {
 
         // Check 10: On-secondary label vs secondary accent: contrast ≥ 4.5:1
         final onSecondary = getOnSecondaryForTheme(theme);
-        final onSecondaryContrast = contrastRatio(onSecondary, colors.secondary);
+        final onSecondaryContrast = contrastRatio(
+          onSecondary,
+          colors.secondary,
+        );
         if (onSecondaryContrast < 4.5) {
           results[theme.name]!.add(
             'Check 10 FAIL: onSecondary vs secondary contrast = $onSecondaryContrast (required ≥ 4.5:1)',
@@ -127,7 +134,10 @@ void main() {
           scheme.outline,
           colors.surface,
         );
-        final outlineContrast = contrastRatio(outlineComposited, colors.surface);
+        final outlineContrast = contrastRatio(
+          outlineComposited,
+          colors.surface,
+        );
         if (outlineContrast < 3.0) {
           results[theme.name]!.add(
             'Check 11 FAIL: outline ${scheme.outline} vs surface contrast = $outlineContrast (required ≥ 3:1)',
@@ -139,7 +149,10 @@ void main() {
           scheme.outlineVariant,
           colors.surface,
         );
-        final outlineVariantContrast = contrastRatio(outlineVariantComposited, colors.surface);
+        final outlineVariantContrast = contrastRatio(
+          outlineVariantComposited,
+          colors.surface,
+        );
         if (outlineVariantContrast < 1.8) {
           results[theme.name]!.add(
             'Check 12 FAIL: outlineVariant ${scheme.outlineVariant} vs surface contrast = $outlineVariantContrast (required ≥ 1.8:1)',
@@ -148,13 +161,8 @@ void main() {
 
         // Check 13: Highest-elevation surface container lighter than surface by ≥ 2 L*
         late Color containerHighest;
-        if (scheme.surfaceContainerHighest != null) {
-          containerHighest = scheme.surfaceContainerHighest!;
-        } else {
-          // Fallback if not defined (should fail the test)
-          containerHighest = colors.surface; // This will fail check 13
-        }
-        final containerHighestLightness = _getLabLightness(containerHighest);
+        containerHighest = scheme.surfaceContainerHighest;
+              final containerHighestLightness = _getLabLightness(containerHighest);
         final containerDelta = containerHighestLightness - surfaceLightness;
         if (containerDelta < 2.0) {
           results[theme.name]!.add(
@@ -164,16 +172,14 @@ void main() {
 
         // Check 14: On-surface-variant vs surface: contrast ≥ 4.5:1
         late Color onSurfaceVariant;
-        if (scheme.onSurfaceVariant != null) {
-          onSurfaceVariant = scheme.onSurfaceVariant!;
-        } else {
-          // Fallback if not defined (should fail the test)
-          onSurfaceVariant = Colors.white.withValues(alpha: 0.6);
-        }
-        final onSurfaceVariantContrast = contrastRatio(onSurfaceVariant, colors.surface);
+        onSurfaceVariant = scheme.onSurfaceVariant;
+              final onSurfaceVariantContrast = contrastRatio(
+          onSurfaceVariant,
+          colors.surface,
+        );
         if (onSurfaceVariantContrast < 4.5) {
           results[theme.name]!.add(
-            'Check 14 FAIL: onSurfaceVariant ${onSurfaceVariant} vs surface contrast = $onSurfaceVariantContrast (required ≥ 4.5:1)',
+            'Check 14 FAIL: onSurfaceVariant $onSurfaceVariant vs surface contrast = $onSurfaceVariantContrast (required ≥ 4.5:1)',
           );
         }
         // ── Checks 15-16: home tile fills ────────────────────────────────
@@ -241,6 +247,55 @@ void main() {
             );
           }
         }
+
+        // ── Checks 18-20: Effort-rating intensity ramp ─────────────────────
+        // The intensity ramp is used for effort-rating tiles, calendar tints,
+        // and future analytics displays. All five steps must pass three checks:
+        //
+        // Check 18a: Each step ≥ 1.8:1 vs surface (minimum legible tint).
+        // Check 18b: Contrast strictly increases from step 1 to 5.
+        // Check 18c: Number text (headlineSmall) on each step tile ≥ 3:1,
+        //           using whichever of onPrimary or textDominant passes.
+        //
+        // The ramp is guaranteed to exist (calculated per theme in omni_theme.dart).
+        final ramp = colors.intensityRamp;
+        final rampSteps = [ramp.step1, ramp.step2, ramp.step3, ramp.step4, ramp.step5];
+        final rampNames = ['step1', 'step2', 'step3', 'step4', 'step5'];
+
+        // Check 18a: All steps ≥ 1.8:1 vs surface
+        for (int i = 0; i < rampSteps.length; i++) {
+          final rampContrast = contrastRatio(rampSteps[i], colors.surface);
+          if (rampContrast < 1.8) {
+            results[theme.name]!.add(
+              'Check 18a FAIL: intensity ${rampNames[i]} vs surface = $rampContrast (required ≥ 1.8:1)',
+            );
+          }
+        }
+
+        // Check 18b: Contrast strictly increases 1→5
+        for (int i = 0; i < rampSteps.length - 1; i++) {
+          final contrastI = contrastRatio(rampSteps[i], colors.surface);
+          final contrastI1 = contrastRatio(rampSteps[i + 1], colors.surface);
+          if (contrastI1 <= contrastI) {
+            results[theme.name]!.add(
+              'Check 18b FAIL: intensity contrast does not strictly increase: ${rampNames[i]} = $contrastI, ${rampNames[i + 1]} = $contrastI1 (required: strict increase)',
+            );
+          }
+        }
+
+        // Check 18c: Number text on each tile ≥ 3:1
+        // Use the same helper the UI uses for selecting text color on effort tiles
+        // (onPrimary was already obtained for Check 9)
+        for (int i = 1; i <= 5; i++) {
+          final textColor = effortTileTextColor(i, colors, onPrimary: onPrimary);
+          final rampStep = feelingColor(i, colors);
+          final textContrast = contrastRatio(textColor, rampStep);
+          if (textContrast < 3.0) {
+            results[theme.name]!.add(
+              'Check 18c FAIL: text on intensity step $i tile: contrast = $textContrast (required ≥ 3:1)',
+            );
+          }
+        }
       }
 
       // Report all failures
@@ -253,7 +308,9 @@ void main() {
       }
 
       if (allFailures.isNotEmpty) {
-        fail('Palette legibility contract violations:\n${allFailures.join('\n')}');
+        fail(
+          'Palette legibility contract violations:\n${allFailures.join('\n')}',
+        );
       }
     });
   });
@@ -275,8 +332,10 @@ Color _compositeOverSurface(Color foreground, Color background) {
   final fgAlpha = foreground.alpha / 255.0;
 
   final r = (foreground.red * fgAlpha + background.red * (1 - fgAlpha)).round();
-  final g = (foreground.green * fgAlpha + background.green * (1 - fgAlpha)).round();
-  final b = (foreground.blue * fgAlpha + background.blue * (1 - fgAlpha)).round();
+  final g = (foreground.green * fgAlpha + background.green * (1 - fgAlpha))
+      .round();
+  final b = (foreground.blue * fgAlpha + background.blue * (1 - fgAlpha))
+      .round();
 
   return Color.fromARGB(255, r, g, b);
 }

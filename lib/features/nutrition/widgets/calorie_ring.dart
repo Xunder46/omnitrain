@@ -84,15 +84,15 @@ class CalorieRing extends StatelessWidget {
     final targetRounded = target?.round() ?? 0;
 
     // Center text style and subtext style
-    final centerStyle = theme.textTheme.headlineSmall?.copyWith(
+    final centerStyle =
+        theme.textTheme.headlineSmall?.copyWith(
           color: themeColors.textDominant,
           fontWeight: FontWeight.w700,
           fontFeatures: const [FontFeature.tabularFigures()],
         ) ??
         const TextStyle();
-    final subtextStyle = theme.textTheme.bodySmall?.copyWith(
-          color: themeColors.textMuted,
-        ) ??
+    final subtextStyle =
+        theme.textTheme.bodySmall?.copyWith(color: themeColors.textMuted) ??
         const TextStyle();
 
     // Compose the center label from the four branches.

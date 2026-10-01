@@ -140,7 +140,10 @@ Future<_SessionDeps> _buildSessionDeps({
   );
 }
 
-Future<void> _openSessionDetail(WidgetTester tester, String exerciseName) async {
+Future<void> _openSessionDetail(
+  WidgetTester tester,
+  String exerciseName,
+) async {
   await tester.pumpAndSettle();
   final labelFinder = find.text(exerciseName).first;
   await tester.ensureVisible(labelFinder);
@@ -207,7 +210,10 @@ Future<_RoutineDeps> _buildRoutineSetupDeps({
   final exercises = await repo.getExercises();
   final exercise = _pickExercise(exercises, effortKind);
 
-  final effortId = await routineState.addExerciseToRoutine(exercise, effortKind);
+  final effortId = await routineState.addExerciseToRoutine(
+    exercise,
+    effortKind,
+  );
   if (effortKind == 'set') {
     await routineState.setTargetValue(
       effortId,
@@ -236,7 +242,10 @@ Future<_RoutineDeps> _buildRoutineSetupDeps({
   );
 }
 
-Future<void> _openRoutineDetail(WidgetTester tester, String exerciseName) async {
+Future<void> _openRoutineDetail(
+  WidgetTester tester,
+  String exerciseName,
+) async {
   await tester.pumpAndSettle();
   final labelFinder = find.text(exerciseName).first;
   await tester.ensureVisible(labelFinder);
@@ -282,7 +291,8 @@ void _expectDotColors(
   expect(
     dotColors
         .where(
-          (c) => c == theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+          (c) =>
+              c == theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
         )
         .length,
     greaterThanOrEqualTo(minNeutralCount),
@@ -319,7 +329,9 @@ void main() {
 
         await _openSessionDetail(tester, deps.exercise.name);
 
-        final theme = Theme.of(tester.element(find.byType(WorkoutSessionScreen)));
+        final theme = Theme.of(
+          tester.element(find.byType(WorkoutSessionScreen)),
+        );
 
         final addSetIcon = tester.widget<Icon>(
           find.descendant(
@@ -333,12 +345,7 @@ void main() {
         );
 
         expect(find.widgetWithText(FilledButton, 'Log Set'), findsOneWidget);
-        _expectDotColors(
-          tester,
-          theme,
-          primaryCount: 0,
-          minNeutralCount: 2,
-        );
+        _expectDotColors(tester, theme, primaryCount: 0, minNeutralCount: 2);
 
         await tester.tap(find.byTooltip('Add set'));
         await tester.pumpAndSettle();
@@ -351,88 +358,86 @@ void main() {
       },
     );
 
-    testWidgets(
-      'skipped set dot is treated as completed and rendered primary',
-      (tester) async {
-        final deps = await _buildSessionDeps(
+    testWidgets('skipped set dot is treated as completed and rendered primary', (
+      tester,
+    ) async {
+      final deps = await _buildSessionDeps(
+        theme: AppTheme.abyssalNeon,
+        effortKind: 'set',
+        seedSetValues: false,
+      );
+
+      await tester.pumpWidget(
+        _themeWrappedApp(
           theme: AppTheme.abyssalNeon,
-          effortKind: 'set',
-          seedSetValues: false,
-        );
-
-        await tester.pumpWidget(
-          _themeWrappedApp(
-            theme: AppTheme.abyssalNeon,
-            home: WorkoutSessionScreen(
-              workoutState: deps.workoutState,
-              routineState: deps.routineState,
-              sessionSummaryService: deps.sessionSummaryService,
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: deps.settingsState,
-            ),
+          home: WorkoutSessionScreen(
+            workoutState: deps.workoutState,
+            routineState: deps.routineState,
+            sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: deps.settingsState,
           ),
-        );
+        ),
+      );
 
-        await _openSessionDetail(tester, deps.exercise.name);
-        final theme = Theme.of(tester.element(find.byType(WorkoutSessionScreen)));
+      await _openSessionDetail(tester, deps.exercise.name);
+      final theme = Theme.of(tester.element(find.byType(WorkoutSessionScreen)));
 
-        // Skip first set by logging with zero reps; dot 1 should become primary.
-        await _triggerLogSet(tester);
-        _expectDotColors(tester, theme, primaryCount: 1);
-      },
-    );
+      // Skip first set by logging with zero reps; dot 1 should become primary.
+      await _triggerLogSet(tester);
+      _expectDotColors(tester, theme, primaryCount: 1);
+    });
 
-    testWidgets(
-      'reps and weight both render dominant in session detail',
-      (tester) async {
-        // Plan: .github/agents/plans/exercise-detail-emphasis-tier-rebalance-plan.md
-        // Weight is now a primary data input (D-2), equal in tier and
-        // color to reps.  The old "weight is subordinate to reps"
-        // assumption from the original resistance-emphasis redesign
-        // no longer holds.
-        final deps = await _buildSessionDeps(
+    testWidgets('reps and weight both render dominant in session detail', (
+      tester,
+    ) async {
+      // Plan: docs/plans/exercise-detail-emphasis-tier-rebalance-plan.md
+      // Weight is now a primary data input (D-2), equal in tier and
+      // color to reps.  The old "weight is subordinate to reps"
+      // assumption from the original resistance-emphasis redesign
+      // no longer holds.
+      final deps = await _buildSessionDeps(
+        theme: AppTheme.abyssalNeon,
+        effortKind: 'set',
+      );
+
+      await tester.pumpWidget(
+        _themeWrappedApp(
           theme: AppTheme.abyssalNeon,
-          effortKind: 'set',
-        );
-
-        await tester.pumpWidget(
-          _themeWrappedApp(
-            theme: AppTheme.abyssalNeon,
-            home: WorkoutSessionScreen(
-              workoutState: deps.workoutState,
-              routineState: deps.routineState,
-              sessionSummaryService: deps.sessionSummaryService,
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: deps.settingsState,
-            ),
+          home: WorkoutSessionScreen(
+            workoutState: deps.workoutState,
+            routineState: deps.routineState,
+            sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: deps.settingsState,
           ),
-        );
+        ),
+      );
 
-        await _openSessionDetail(tester, deps.exercise.name);
+      await _openSessionDetail(tester, deps.exercise.name);
 
-        final repsTexts = tester.widgetList<Text>(
-          find.descendant(
-            of: find.byType(InlineMetricEditor).at(0),
-            matching: find.byType(Text),
-          ),
-        );
-        final weightTexts = tester.widgetList<Text>(
-          find.descendant(
-            of: find.byType(InlineMetricEditor).at(1),
-            matching: find.byType(Text),
-          ),
-        );
+      final repsTexts = tester.widgetList<Text>(
+        find.descendant(
+          of: find.byType(InlineMetricEditor).at(0),
+          matching: find.byType(Text),
+        ),
+      );
+      final weightTexts = tester.widgetList<Text>(
+        find.descendant(
+          of: find.byType(InlineMetricEditor).at(1),
+          matching: find.byType(Text),
+        ),
+      );
 
-        final repsValueText = repsTexts.first;
-        final weightValueText = weightTexts.first;
+      final repsValueText = repsTexts.first;
+      final weightValueText = weightTexts.first;
 
-        // Both figures share the same emphasis tier (D-2/D-3): the
-        // same display font, the same size, and the same color.
-        expect(repsValueText.style?.fontSize, weightValueText.style?.fontSize);
-        expect(repsValueText.style?.color, OmniTheme.colors.textDominant);
-        expect(weightValueText.style?.color, OmniTheme.colors.textDominant);
-      },
-    );
+      // Both figures share the same emphasis tier (D-2/D-3): the
+      // same display font, the same size, and the same color.
+      expect(repsValueText.style?.fontSize, weightValueText.style?.fontSize);
+      expect(repsValueText.style?.color, OmniTheme.colors.textDominant);
+      expect(weightValueText.style?.color, OmniTheme.colors.textDominant);
+    });
 
     testWidgets(
       'previous set line is absent for set timed round drill on session and routine setup surfaces',
@@ -548,7 +553,10 @@ void main() {
           final routineTheme = Theme.of(
             tester.element(find.byType(WorkoutSessionScreen)),
           );
-          final routinePrimaryBeforeLog = _primaryDotCount(tester, routineTheme);
+          final routinePrimaryBeforeLog = _primaryDotCount(
+            tester,
+            routineTheme,
+          );
           _expectDotColors(
             tester,
             routineTheme,

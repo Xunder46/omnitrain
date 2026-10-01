@@ -1,0 +1,28 @@
+{
+  "description": "The wrist's food list, as fixture data. Neither client owns the values here: the payload under `datasetFixture` is the wire shape the phone sends (the valid `foods_down` fixture), and `expected` is what the two watch clients must derive from it after applying the phone's Foods I Eat ordering with the wrist's own recents lifted to the front. Both suites assert against this file, so an ordering change on one platform fails the other's tests instead of diverging silently.",
+  "portion": {
+    "description": "The portion control's detents and bounds, in servings. A serving is the food's reference amount.",
+    "stepServings": 0.5,
+    "minServings": 0.5,
+    "maxServings": 10
+  },
+  "datasetFixture": "watch/sync_protocol/fixtures/valid/foods_down.json",
+  "recentlyLoggedFoodIds": {
+    "description": "The foods the wrist logged on the wrist, in the order its list shows them: most recent first.",
+    "ids": ["food-greek-yogurt", "food-almonds"]
+  },
+  "phoneOrder": [
+    "food-oatmeal",
+    "food-banana",
+    "food-egg",
+    "food-greek-yogurt",
+    "food-almonds"
+  ],
+  "expected": [
+    "food-greek-yogurt",
+    "food-almonds",
+    "food-oatmeal",
+    "food-banana",
+    "food-egg"
+  ]
+}

@@ -47,7 +47,7 @@ export '../../../core/models/food_draft.dart' show FoodDraft;
 /// **Primary bottom CTA**: the form no longer renders an inline
 /// `Save` button. The host screen owns the bottom CTA via the
 /// shared [OmniBottomCTA] (see
-/// `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`).
+/// `docs/plans/primary-bottom-cta-anchor-width-plan.md`).
 /// The host wires the CTA's `onPressed` to
 /// [FoodFormController.submit] so the form's validation + save
 /// pipeline still runs in one place. See
@@ -264,9 +264,7 @@ class _FoodFormState extends State<FoodForm> {
     _carbs = TextEditingController(text: (initial?.carbs ?? 0.0).toString());
     _fiber = TextEditingController(text: (initial?.fiber ?? 0.0).toString());
     _fat = TextEditingController(text: (initial?.fat ?? 0.0).toString());
-    _sodium = TextEditingController(
-      text: (initial?.sodium ?? 0.0).toString(),
-    );
+    _sodium = TextEditingController(text: (initial?.sodium ?? 0.0).toString());
     _notes = TextEditingController(text: initial?.notes ?? '');
     _unitType = initial?.unitType ?? FoodUnitType.grams;
     _groupId = initial?.groupId;
@@ -293,10 +291,7 @@ class _FoodFormState extends State<FoodForm> {
         focusNode: _referenceLabelFocus,
         controller: _referenceLabel,
       ),
-      bindSelectAllOnFocus(
-        focusNode: _proteinFocus,
-        controller: _protein,
-      ),
+      bindSelectAllOnFocus(focusNode: _proteinFocus, controller: _protein),
       bindSelectAllOnFocus(focusNode: _carbsFocus, controller: _carbs),
       bindSelectAllOnFocus(focusNode: _fiberFocus, controller: _fiber),
       bindSelectAllOnFocus(focusNode: _fatFocus, controller: _fat),
@@ -370,9 +365,9 @@ class _FoodFormState extends State<FoodForm> {
       await handlePickedImage(picked);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update photo: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update photo: $e')));
     }
   }
 
@@ -419,9 +414,9 @@ class _FoodFormState extends State<FoodForm> {
     final partialDraft = _partialDraftFromInitial(persistedPath);
     final ok = await onImageSave(partialDraft);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save photo')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not save photo')));
     }
   }
 
@@ -482,9 +477,9 @@ class _FoodFormState extends State<FoodForm> {
     final partialDraft = _partialDraftFromInitial(null);
     final ok = await onImageSave(partialDraft);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not clear photo')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not clear photo')));
     }
   }
 
@@ -555,202 +550,202 @@ class _FoodFormState extends State<FoodForm> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-              FoodFormImageTile(
-                key: const Key('food_form_image_tile'),
-                imagePath: _imagePath,
-                imageStorage: widget.foodLibraryState.imageStorageOrNull,
-                // Thread the form's initial food's id and
-                // catalogId into the tile so the bundled-photo
-                // tier can resolve a shipped photograph the
-                // same way the library list's `FoodThumbnail`
-                // does. The tier is render-only — it never
-                // writes to `Food.imagePath`; the user's
-                // imagePath stays at whatever it was when the
-                // editor opened.
-                foodId: widget.initial?.id,
-                catalogId: widget.initial?.catalogId,
-                onPickGallery: () => _pickImage(ImageSource.gallery),
-                onPickCamera: () => _pickImage(ImageSource.camera),
-                onClear: clearImage,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                key: const Key('food_form_name'),
-                controller: _name,
-                focusNode: _nameFocus,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
-                  border: OutlineInputBorder(),
+                FoodFormImageTile(
+                  key: const Key('food_form_image_tile'),
+                  imagePath: _imagePath,
+                  imageStorage: widget.foodLibraryState.imageStorageOrNull,
+                  // Thread the form's initial food's id and
+                  // catalogId into the tile so the bundled-photo
+                  // tier can resolve a shipped photograph the
+                  // same way the library list's `FoodThumbnail`
+                  // does. The tier is render-only — it never
+                  // writes to `Food.imagePath`; the user's
+                  // imagePath stays at whatever it was when the
+                  // editor opened.
+                  foodId: widget.initial?.id,
+                  catalogId: widget.initial?.catalogId,
+                  onPickGallery: () => _pickImage(ImageSource.gallery),
+                  onPickCamera: () => _pickImage(ImageSource.camera),
+                  onClear: clearImage,
                 ),
-                textCapitalization: TextCapitalization.words,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return 'Name is required';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String?>(
-                key: const Key('food_form_group'),
-                initialValue: _groupId,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  border: OutlineInputBorder(),
-                ),
-                items: _categoryDropdownItems(groups),
-                onChanged: (v) => setState(() => _groupId = v),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<FoodUnitType>(
-                key: const Key('food_form_unit_type'),
-                initialValue: _unitType,
-                decoration: const InputDecoration(
-                  labelText: 'Unit type',
-                  border: OutlineInputBorder(),
-                ),
-                items: const [
-                  DropdownMenuItem(
-                    value: FoodUnitType.count,
-                    child: Text('Count (1 unit)'),
-                  ),
-                  DropdownMenuItem(
-                    value: FoodUnitType.grams,
-                    child: Text('Grams (100 g)'),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() {
-                    _unitType = v;
-                    if (v == FoodUnitType.grams) {
-                      if (_referenceAmount.text == '1') {
-                        _referenceAmount.text = '100';
-                        _referenceLabel.text = 'g';
-                      }
-                    } else {
-                      if (_referenceAmount.text == '100') {
-                        _referenceAmount.text = '1';
-                        _referenceLabel.text = 'unit';
-                      }
-                    }
-                  });
-                },
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      key: const Key('food_form_reference_amount'),
-                      controller: _referenceAmount,
-                      focusNode: _referenceAmountFocus,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d*\.?\d*$'),
-                        ),
-                      ],
-                      decoration: const InputDecoration(
-                        labelText: 'Reference amount',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: _validatePositiveDouble,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextFormField(
-                      key: const Key('food_form_reference_label'),
-                      controller: _referenceLabel,
-                      focusNode: _referenceLabelFocus,
-                      decoration: const InputDecoration(
-                        labelText: 'Reference label',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Required';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Macros (the reference above)',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: OmniTheme.colors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _macroField(
-                key: const Key('food_form_protein'),
-                controller: _protein,
-                focusNode: _proteinFocus,
-                label: 'Protein (g)',
-                required: true,
-              ),
-              const SizedBox(height: 8),
-              _macroField(
-                key: const Key('food_form_carbs'),
-                controller: _carbs,
-                focusNode: _carbsFocus,
-                label: 'Carbs (g)',
-                required: true,
-              ),
-              const SizedBox(height: 8),
-              _macroField(
-                key: const Key('food_form_fiber'),
-                controller: _fiber,
-                focusNode: _fiberFocus,
-                label: 'Fiber (g)',
-                required: false,
-              ),
-              const SizedBox(height: 8),
-              _macroField(
-                key: const Key('food_form_fat'),
-                controller: _fat,
-                focusNode: _fatFocus,
-                label: 'Fat (g)',
-                required: true,
-              ),
-              const SizedBox(height: 8),
-              _macroField(
-                key: const Key('food_form_sodium'),
-                controller: _sodium,
-                focusNode: _sodiumFocus,
-                label: 'Sodium (mg)',
-                required: false,
-              ),
-              if (widget.showNotesField) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 TextFormField(
-                  key: const Key('food_form_notes'),
-                  controller: _notes,
-                  focusNode: _notesFocus,
-                  minLines: 1,
-                  maxLines: 3,
+                  key: const Key('food_form_name'),
+                  controller: _name,
+                  focusNode: _nameFocus,
                   decoration: const InputDecoration(
-                    labelText: 'Notes (optional)',
+                    labelText: 'Name',
                     border: OutlineInputBorder(),
                   ),
+                  textCapitalization: TextCapitalization.words,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Name is required';
+                    }
+                    return null;
+                  },
                 ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  key: const Key('food_form_group'),
+                  initialValue: _groupId,
+                  decoration: const InputDecoration(
+                    labelText: 'Category',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _categoryDropdownItems(groups),
+                  onChanged: (v) => setState(() => _groupId = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<FoodUnitType>(
+                  key: const Key('food_form_unit_type'),
+                  initialValue: _unitType,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit type',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: FoodUnitType.count,
+                      child: Text('Count (1 unit)'),
+                    ),
+                    DropdownMenuItem(
+                      value: FoodUnitType.grams,
+                      child: Text('Grams (100 g)'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      _unitType = v;
+                      if (v == FoodUnitType.grams) {
+                        if (_referenceAmount.text == '1') {
+                          _referenceAmount.text = '100';
+                          _referenceLabel.text = 'g';
+                        }
+                      } else {
+                        if (_referenceAmount.text == '100') {
+                          _referenceAmount.text = '1';
+                          _referenceLabel.text = 'unit';
+                        }
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        key: const Key('food_form_reference_amount'),
+                        controller: _referenceAmount,
+                        focusNode: _referenceAmountFocus,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d*$'),
+                          ),
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'Reference amount',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: _validatePositiveDouble,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        key: const Key('food_form_reference_label'),
+                        controller: _referenceLabel,
+                        focusNode: _referenceLabelFocus,
+                        decoration: const InputDecoration(
+                          labelText: 'Reference label',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Required';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Macros (the reference above)',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: OmniTheme.colors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _macroField(
+                  key: const Key('food_form_protein'),
+                  controller: _protein,
+                  focusNode: _proteinFocus,
+                  label: 'Protein (g)',
+                  required: true,
+                ),
+                const SizedBox(height: 8),
+                _macroField(
+                  key: const Key('food_form_carbs'),
+                  controller: _carbs,
+                  focusNode: _carbsFocus,
+                  label: 'Carbs (g)',
+                  required: true,
+                ),
+                const SizedBox(height: 8),
+                _macroField(
+                  key: const Key('food_form_fiber'),
+                  controller: _fiber,
+                  focusNode: _fiberFocus,
+                  label: 'Fiber (g)',
+                  required: false,
+                ),
+                const SizedBox(height: 8),
+                _macroField(
+                  key: const Key('food_form_fat'),
+                  controller: _fat,
+                  focusNode: _fatFocus,
+                  label: 'Fat (g)',
+                  required: true,
+                ),
+                const SizedBox(height: 8),
+                _macroField(
+                  key: const Key('food_form_sodium'),
+                  controller: _sodium,
+                  focusNode: _sodiumFocus,
+                  label: 'Sodium (mg)',
+                  required: false,
+                ),
+                if (widget.showNotesField) ...[
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: const Key('food_form_notes'),
+                    controller: _notes,
+                    focusNode: _notesFocus,
+                    minLines: 1,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+                // The form no longer renders an inline save button.
+                // The host screen owns the primary bottom CTA via
+                // the shared `OmniBottomCTA`. The host wires the
+                // CTA's `onPressed` to `FoodFormController.submit`,
+                // which calls into the form's `_onSave` pipeline
+                // (validation + `widget.onSave(draft)`) — the same
+                // pipeline the inline button used to trigger.
               ],
-              // The form no longer renders an inline save button.
-              // The host screen owns the primary bottom CTA via
-              // the shared `OmniBottomCTA`. The host wires the
-              // CTA's `onPressed` to `FoodFormController.submit`,
-              // which calls into the form's `_onSave` pipeline
-              // (validation + `widget.onSave(draft)`) — the same
-              // pipeline the inline button used to trigger.
-            ],
+            ),
           ),
-        ),
         );
       },
     );
@@ -860,12 +855,7 @@ class _FoodFormState extends State<FoodForm> {
       ),
     );
     for (final g in activeGroups) {
-      items.add(
-        DropdownMenuItem<String?>(
-          value: g.id,
-          child: Text(g.name),
-        ),
-      );
+      items.add(DropdownMenuItem<String?>(value: g.id, child: Text(g.name)));
     }
     return items;
   }

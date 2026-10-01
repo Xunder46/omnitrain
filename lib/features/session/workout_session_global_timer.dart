@@ -101,7 +101,7 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
   /// timer while an effort is running.
   ///
   /// Edits the rest-tracking helper when changing this rule; see
-  /// `.github/agents/docs/rest_tracking.md`.
+  /// `docs/rest_tracking.md`.
   bool _shouldShowRestOverlay() {
     if (widget.editMode) return false;
     if (_getMostRecentOpenRestKey() == null) return false;

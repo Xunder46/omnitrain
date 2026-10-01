@@ -2,7 +2,7 @@
 name: prompt-engineer
 description: Build an implementation prompt pack by running iterative Q&A and repo analysis, then writing phased prompts with intent and acceptance criteria.
 tools: Read, Write, Edit, Grep, Glob, TodoWrite
-model: sonnet
+model: opus
 ---
 
 <!-- Tip: Use /create-agent in chat to generate content with agent assistance -->
@@ -77,7 +77,7 @@ Stop asking questions when all are true:
 
 When clarity is reached, create a markdown file at:
 
-`.github/agents/plans/[feature]-copilot-prompts.md`
+`docs/plans/[feature]-copilot-prompts.md`
 
 If a file with that name already exists, update it in place and preserve useful prior context.
 

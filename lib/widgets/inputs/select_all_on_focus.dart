@@ -102,7 +102,7 @@ class _SelectAllOnFocusState extends State<SelectAllOnFocus> {
 /// listener is detached automatically.
 class SelectAllOnFocusNode extends FocusNode {
   SelectAllOnFocusNode({required TextEditingController selectAllController})
-      : _controller = selectAllController {
+    : _controller = selectAllController {
     _detachListener = bindSelectAllOnFocus(
       focusNode: this,
       controller: _controller,
@@ -148,10 +148,7 @@ VoidCallback bindSelectAllOnFocus({
       if (!focusNode.hasFocus) return;
       final length = controller.text.length;
       if (length == 0) return;
-      controller.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: length,
-      );
+      controller.selection = TextSelection(baseOffset: 0, extentOffset: length);
     });
   }
 

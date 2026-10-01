@@ -16,7 +16,8 @@ import '../../data/models/models.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import 'my_routines_screen.dart' show showDeleteRoutineDialog;
-import '../../widgets/dialogs/confirmation_dialog.dart' show ConfirmationDialog, UnsavedChangesAction;
+import '../../widgets/dialogs/confirmation_dialog.dart'
+    show ConfirmationDialog, UnsavedChangesAction;
 
 /// Screen for creating or editing a workout routine (template)
 class RoutineSetupScreen extends StatefulWidget {
@@ -721,7 +722,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     final focusModality = widget.routineState.currentTemplate?.focusModality;
     final String effortKind;
     if (focusModality != null) {
-      effortKind = ModalityConfig.forModality(focusModality)?.effortKind ?? 'set';
+      effortKind =
+          ModalityConfig.forModality(focusModality)?.effortKind ?? 'set';
     } else {
       final modalityResult = await showDialog<(bool, String?)>(
         context: context,
@@ -978,7 +980,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     final templateId = widget.templateId;
     if (templateId == null) return;
 
-    final routineName = widget.routineState.currentTemplate?.name ??
+    final routineName =
+        widget.routineState.currentTemplate?.name ??
         _nameController.text.trim();
 
     final confirmed = await showDeleteRoutineDialog(
@@ -992,9 +995,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     await widget.routineState.deleteRoutine(templateId);
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Deleted "$routineName"')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Deleted "$routineName"')));
 
     // Cancel any pending autosave draft for this routine and pop without
     // re-prompting — the routine is gone, so the dirty baseline is moot.
@@ -1050,7 +1053,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     return ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
-      body: 'You have unsaved edits. Save them or discard to return to the routines list.',
+      body:
+          'You have unsaved edits. Save them or discard to return to the routines list.',
       keepEditingKey: const Key('routine-edit-unsaved-keep'),
       discardKey: const Key('routine-edit-unsaved-discard'),
       saveKey: const Key('routine-edit-unsaved-save'),

@@ -38,6 +38,16 @@ extension SessionCoreLifecycleMethods on SessionCore {
       _notify();
     } catch (e) {
       _setError('Failed to end session: $e');
+      return;
+    }
+
+    // Platform health write. Deliberately outside the persistence
+    // try/catch above: the session is already saved and the service is
+    // contract-bound never to throw, so nothing here can flip the
+    // session into an error state.
+    final completedSession = _currentSession;
+    if (completedSession != null) {
+      await _healthSync?.onSessionCompleted(completedSession);
     }
   }
 
@@ -256,6 +266,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
           entry.key: List<TimedInstance>.from(entry.value),
       },
       exerciseCache: Map<String, Exercise>.from(_exerciseCache),
+      sensorSummaries: List<SensorSummary>.from(_sensorSummaries),
     );
   }
 
@@ -318,6 +329,13 @@ extension SessionCoreLifecycleMethods on SessionCore {
             await _repository.createTimedInstance(ti);
           }
         }
+      }
+
+      // D-131 deleted the summaries of every target the edit or the deletes
+      // above removed; the targets are back, so put their summaries back.
+      // Put-if-absent leaves every summary that survived untouched.
+      for (final summary in snapshot.sensorSummaries) {
+        await _repository.createSensorSummary(summary);
       }
 
       _exerciseCache

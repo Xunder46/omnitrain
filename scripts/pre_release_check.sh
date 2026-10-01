@@ -13,6 +13,9 @@
 #                 of the July 2026 pre-launch fix pack. These are meant to
 #                 FAIL until the fix pack has landed. Do not soften to warnings.
 # Sections 12–13: flutter analyze + full test suite (skipped by --fast)
+# Section  14:    swift test for the watchOS package in watch/watchos
+#                 (skipped by --fast; skipped with a warning on a host that
+#                 cannot build that package)
 #
 # ── Platform scoping ────────────────────────────────────────────────────────
 # Some sections need a real build artifact: the iOS checks need an IPA, the
@@ -104,6 +107,50 @@ if [[ ! -f "$PUBSPEC" ]]; then
   exit 1
 fi
 
+# ── Scope a project.pbxproj check to the iPhone app ─────────────────────────
+# `project.pbxproj` describes every target in the project, not just the app:
+# the test bundle, and — since the watch work — the watch app that embeds into
+# Runner. Only Runner's own build settings describe what ships as the iPhone
+# app, so checks about the app's bundle identifier and device family must read
+# those and nothing else. The watch app legitimately carries a different value
+# for both: its bundle identifier is `<runner-id>.watchkitapp` (required for the
+# companion relationship, and it cannot be the same string as the app it pairs
+# with), and `TARGETED_DEVICE_FAMILY = 4` is watchOS, required to install at
+# all. Neither is a regression in the iPhone app.
+#
+# The scope is every configuration list whose owner comment says "Runner" —
+# both the PBXNativeTarget and the PBXProject whose defaults it inherits.
+# `"Runner" */` matches exactly those two and not `"RunnerTests"`.
+runner_pbxproj_settings() {
+  local ids
+  ids=$(awk '
+    /\/\* Begin XCConfigurationList section \*\// { lists = 1; next }
+    /\/\* End XCConfigurationList section \*\//   { lists = 0; next }
+    lists && /"Runner" \*\// { in_list = 1; next }
+    lists && in_list && /^[[:space:]]*[0-9A-F]+[[:space:]]*\/\*/ { print $1; next }
+    lists && in_list && /^[[:space:]]*\};/ { in_list = 0; next }
+  ' "$PBXPROJ" | tr '\n' ' ')
+
+  awk -v ids="$ids" '
+    BEGIN { n = split(ids, a, " "); for (i = 1; i <= n; i++) runner[a[i]] = 1 }
+    /\/\* Begin XCBuildConfiguration section \*\// { section = 1; next }
+    /\/\* End XCBuildConfiguration section \*\//   { exit }
+    !section { next }
+    /^[[:space:]]*[0-9A-F]+[[:space:]]*\/\*/ { printing = ($1 in runner); next }
+    printing { print }
+    printing && /^[[:space:]]*\};/ { printing = 0 }
+  ' "$PBXPROJ"
+}
+
+# Read once: both checks below need it, and it costs two awk passes.
+RUNNER_SETTINGS=$(runner_pbxproj_settings)
+
+# An empty scope would make both checks pass by having nothing to look at,
+# which is the failure mode they exist to prevent.
+if ! grep -q 'isa = XCBuildConfiguration' <<<"$RUNNER_SETTINGS"; then
+  log_err "Could not find the Runner app's build configurations in $PBXPROJ (expected configuration lists owned by Runner). The bundle-identifier and device-family checks below cannot be trusted, so they have not run."
+fi
+
 # ── 1. Parse version from pubspec.yaml ──────────────────────────────────────
 version_line=$(grep '^version:' "$PUBSPEC" | head -1 | tr -d '\r')
 version_full=$(echo "$version_line" | sed 's/version:[[:space:]]*//')  # e.g. "1.0.1+3"
@@ -161,24 +208,17 @@ else
 fi
 
 # ── 6. Bundle identifier must be consistent across all Runner build configs ──
-# (Excludes RunnerTests targets)
-bundle_ids_count=$(grep 'PRODUCT_BUNDLE_IDENTIFIER' "$PBXPROJ" \
-  | grep -v RunnerTests \
+bundle_id=$(grep 'PRODUCT_BUNDLE_IDENTIFIER' <<<"$RUNNER_SETTINGS" \
   | grep -oE '= [^;]+;' \
   | sed 's/= //; s/;//; s/[[:space:]]//g' \
-  | sort -u \
-  | wc -l \
-  | tr -d ' ')
+  | sort -u)
+
+bundle_ids_count=$(grep -c . <<<"$bundle_id" || true)
 
 if [[ "$bundle_ids_count" -eq 1 ]]; then
-  bundle_id=$(grep 'PRODUCT_BUNDLE_IDENTIFIER' "$PBXPROJ" \
-    | grep -v RunnerTests \
-    | grep -oE '= [^;]+;' \
-    | sed 's/= //; s/;//; s/[[:space:]]//g' \
-    | head -1)
-  log_ok "Bundle identifier is consistent across all configs: $bundle_id"
+  log_ok "Bundle identifier is consistent across all Runner configs: $bundle_id"
 else
-  log_err "Inconsistent PRODUCT_BUNDLE_IDENTIFIER across build configurations. All Runner configs must use the same bundle ID."
+  log_err "Inconsistent PRODUCT_BUNDLE_IDENTIFIER across the Runner app's build configurations ($bundle_ids_count distinct values: $(tr '\n' ' ' <<<"$bundle_id")). Every Runner config must use the same bundle ID."
 fi
 
 # ── 7. Development team must be set ─────────────────────────────────────────
@@ -284,12 +324,12 @@ else
   log_err "CFBundleDisplayName is not 'OmniTrain'. This is the name under the icon on every home screen."
 fi
 
-# 11f. iPhone-only: no build config may target iPad (one-way door once shipped)
-bad_family=$(grep 'TARGETED_DEVICE_FAMILY' "$PBXPROJ" | grep -vE '= *"?1"? *;' || true)
+# 11f. iPhone-only: no Runner config may target iPad (one-way door once shipped)
+bad_family=$(grep 'TARGETED_DEVICE_FAMILY' <<<"$RUNNER_SETTINGS" | grep -vE '= *"?1"? *;' || true)
 if [[ -n "$bad_family" ]]; then
-  log_err "A build configuration targets iPad (TARGETED_DEVICE_FAMILY != 1). v1 ships iPhone-only; iPad support cannot be removed after shipping."
+  log_err "The Runner app targets iPad (TARGETED_DEVICE_FAMILY != 1): $(tr '\n' ' ' <<<"$bad_family"). v1 ships iPhone-only; iPad support cannot be removed after shipping."
 else
-  log_ok "All build configurations are iPhone-only"
+  log_ok "Every Runner build configuration is iPhone-only"
 fi
 
 # 11g. Retired SQLite runtime must not return to dependencies
@@ -865,6 +905,31 @@ else
     else
       log_err "flutter test failed. A red suite never ships."
     fi
+  fi
+fi
+
+# ── 14. The watchOS package's suite (swift test) ─────────────────────────────
+# The watch engine, its append-only store, its sensors and the capture
+# contract's wrist half are proven by `swift test` in watch/watchos, which
+# `flutter test` never runs (Stats PR 2, D-144). A red suite blocks exactly as
+# a red `flutter test` does.
+#
+# The package imports Apple frameworks (Combine, SwiftUI), so it builds only on
+# macOS. A host that is not a Mac, or has no usable Swift toolchain (`swift
+# --version` fails — the /usr/bin/swift stub of a Mac without Xcode tools
+# does), cannot run it: that is reported as a warning, never passed silently
+# and never failed, because that host cannot build the watch app either.
+echo ""
+if [[ $SKIP_HEAVY -eq 1 ]]; then
+  log_warn "Skipping swift test for watch/watchos (--fast). Do NOT archive from a --fast run."
+elif [[ "$(uname -s)" != "Darwin" ]] || ! swift --version >/dev/null 2>&1; then
+  log_warn "swift test for watch/watchos SKIPPED: this host has no usable Swift toolchain for the watchOS package (it needs macOS with Xcode). Run the gate on a Mac before shipping the watch app."
+else
+  echo "  — swift test (watch/watchos) —"
+  if (cd watch/watchos && swift test); then
+    log_ok "watchOS package suite passed (swift test in watch/watchos)"
+  else
+    log_err "swift test failed in watch/watchos. The watch engine's suite is red, and a red suite never ships."
   fi
 fi
 

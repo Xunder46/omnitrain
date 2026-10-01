@@ -13,7 +13,7 @@ import '../../widgets/layout/omni_gradient_background.dart';
 ///
 /// Copy is deliberately free of developer terminology — no "console",
 /// no "log", no "error", no raw exception text. See
-/// `.github/agents/plans/startup-failure-screen-plan.md` (S-001) for
+/// `docs/plans/startup-failure-screen-plan.md` (S-001) for
 /// the full copy contract and the test that enforces it.
 class StartupFailureScreen extends StatelessWidget {
   /// Called when the user taps Retry. The owning root uses this to

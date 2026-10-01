@@ -14,12 +14,14 @@ class RoutineSessionService {
   RoutineSessionService(this._repository);
 
   /// Build a complete session manifest from a template
-  /// 
+  ///
   /// Loads the template, all segments, efforts, targets, and exercises,
   /// then returns a structured manifest ready for WorkoutState to consume.
-  /// 
+  ///
   /// Throws if template not found or has no exercises.
-  Future<RoutineSessionManifest> buildSessionFromTemplate(String templateId) async {
+  Future<RoutineSessionManifest> buildSessionFromTemplate(
+    String templateId,
+  ) async {
     // Load template
     final template = await _repository.getTemplateById(templateId);
     if (template == null) {
@@ -41,7 +43,8 @@ class RoutineSessionService {
 
     // Process each segment and build exercise entries
     final List<SessionSegmentEntry> segmentEntries = [];
-    final orderedSegments = [...segments]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    final orderedSegments = [...segments]
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
 
     for (final segment in orderedSegments) {
       // Load efforts for this segment
@@ -63,21 +66,22 @@ class RoutineSessionService {
         final setCount = _calculateSetCount(targets);
 
         // Create session exercise entry
-        exerciseEntries.add(SessionExerciseEntry(
-          exercise: exercise,
-          effortKind: effort.effortKind,
-          setCount: setCount,
-          targets: targets,
-          restSeconds: effort.restSeconds,
-          restType: effort.restType,
-        ));
+        exerciseEntries.add(
+          SessionExerciseEntry(
+            exercise: exercise,
+            effortKind: effort.effortKind,
+            setCount: setCount,
+            targets: targets,
+            restSeconds: effort.restSeconds,
+            restType: effort.restType,
+          ),
+        );
       }
 
       if (exerciseEntries.isNotEmpty) {
-        segmentEntries.add(SessionSegmentEntry(
-          segment: segment,
-          exercises: exerciseEntries,
-        ));
+        segmentEntries.add(
+          SessionSegmentEntry(segment: segment, exercises: exerciseEntries),
+        );
       }
     }
 
@@ -85,10 +89,7 @@ class RoutineSessionService {
       throw Exception('Template has no exercises: $templateId');
     }
 
-    return RoutineSessionManifest(
-      template: template,
-      segments: segmentEntries,
-    );
+    return RoutineSessionManifest(template: template, segments: segmentEntries);
   }
 
   /// Calculate the number of sets from targets

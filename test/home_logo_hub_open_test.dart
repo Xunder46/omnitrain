@@ -358,8 +358,7 @@ void main() {
           'Settings',
           'Exercise Library',
         ],
-        reason:
-            'Maintenance tile order must match _buildMaintenanceGrid.',
+        reason: 'Maintenance tile order must match _buildMaintenanceGrid.',
       );
     });
 
@@ -390,8 +389,11 @@ void main() {
       ];
       // All tiles must be the same size (grid delegate enforces it).
       for (final s in sizes) {
-        expect(s, sizes.first,
-            reason: 'All Hub tiles must have identical dimensions.');
+        expect(
+          s,
+          sizes.first,
+          reason: 'All Hub tiles must have identical dimensions.',
+        );
       }
 
       // Derive the expected tile dimensions from the grid delegate
@@ -415,11 +417,10 @@ void main() {
         childAspectRatio: 1.1,
         horizontalPadding: 32, // 16 on each side of the grid
       );
-      final gridWidth =
-          surfaceSize.width - gridDelegate.horizontalPadding;
+      final gridWidth = surfaceSize.width - gridDelegate.horizontalPadding;
       final expectedTileWidth =
           (gridWidth - gridDelegate.crossAxisSpacing) /
-              gridDelegate.crossAxisCount;
+          gridDelegate.crossAxisCount;
       final expectedTileHeight =
           expectedTileWidth / gridDelegate.childAspectRatio;
 
@@ -447,9 +448,7 @@ void main() {
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
         final screen = await buildHomeScreen(repo);
-        await tester.pumpWidget(
-          MediaAppWithScale(scale: 1.6, child: screen),
-        );
+        await tester.pumpWidget(MediaAppWithScale(scale: 1.6, child: screen));
         await tester.pumpAndSettle();
 
         await tester.tap(find.byType(Image));
@@ -484,8 +483,7 @@ void main() {
             final b = rects[j];
             final overlapsX =
                 a.left < b.right && b.left < a.right; // shared x-band
-            final overlapsY =
-                a.top < b.bottom && b.top < a.bottom;
+            final overlapsY = a.top < b.bottom && b.top < a.bottom;
             expect(
               !(overlapsX && overlapsY),
               isTrue,
@@ -518,17 +516,23 @@ void main() {
       );
       expect(sheet.minChildSize, 0.0);
       expect(sheet.maxChildSize, greaterThanOrEqualTo(0.5));
-      expect(sheet.maxChildSize, lessThanOrEqualTo(0.95),
-          reason:
-              'Sheet max extent is clamped to 0.95 by '
-              '`hubSheetMaxExtent` so the sheet opens close to the '
-              'screen bottom (natural extent ≈ 0.88) and is never '
-              'capped shorter by the clamp.');
+      expect(
+        sheet.maxChildSize,
+        lessThanOrEqualTo(0.95),
+        reason:
+            'Sheet max extent is clamped to 0.95 by '
+            '`hubSheetMaxExtent` so the sheet opens close to the '
+            'screen bottom (natural extent ≈ 0.88) and is never '
+            'capped shorter by the clamp.',
+      );
       expect(sheet.snap, isTrue);
-      expect(sheet.snapSizes, hasLength(2),
-          reason:
-              'Hub sheet must expose exactly two snap positions '
-              '(collapsed + expanded); no half-open intermediate snap.');
+      expect(
+        sheet.snapSizes,
+        hasLength(2),
+        reason:
+            'Hub sheet must expose exactly two snap positions '
+            '(collapsed + expanded); no half-open intermediate snap.',
+      );
       final snapSizes = sheet.snapSizes!;
       expect(snapSizes[0], 0.0);
       expect(snapSizes[1], sheet.maxChildSize);
@@ -603,53 +607,52 @@ void main() {
       },
     );
 
-    testWidgets(
-      'HUB-to-grid gap stays in range across screen heights',
-      (WidgetTester tester) async {
-        // Two viewports: the minimum supported (360 × 640) and a tall
-        // phone-class surface. The gap should be the SAME constant
-        // (the SizedBox is height-agnostic) on both surfaces — proves
-        // the content does not drift with screen height.
-        const viewports = <Size>[
-          Size(360, 640), // minimum supported
-          Size(432, 900), // tall phone-class
-        ];
+    testWidgets('HUB-to-grid gap stays in range across screen heights', (
+      WidgetTester tester,
+    ) async {
+      // Two viewports: the minimum supported (360 × 640) and a tall
+      // phone-class surface. The gap should be the SAME constant
+      // (the SizedBox is height-agnostic) on both surfaces — proves
+      // the content does not drift with screen height.
+      const viewports = <Size>[
+        Size(360, 640), // minimum supported
+        Size(432, 900), // tall phone-class
+      ];
 
-        for (final size in viewports) {
-          await tester.binding.setSurfaceSize(size);
-          addTearDown(() => tester.binding.setSurfaceSize(null));
+      for (final size in viewports) {
+        await tester.binding.setSurfaceSize(size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
 
-          final screen = await buildHomeScreen(repo);
-          await tester.pumpWidget(MaterialApp(home: screen));
-          await tester.pumpAndSettle();
+        final screen = await buildHomeScreen(repo);
+        await tester.pumpWidget(MaterialApp(home: screen));
+        await tester.pumpAndSettle();
 
-          await tester.tap(find.byType(Image));
-          await tester.pumpAndSettle();
+        await tester.tap(find.byType(Image));
+        await tester.pumpAndSettle();
 
-          const gapMinPx = 50.0;
-          const gapMaxPx = 70.0;
-          final hubRect = tester.getRect(find.text('HUB'));
-          final firstTileRect = tester.getRect(
-            find.byType(MaintenanceTile).first,
-          );
-          final gap = firstTileRect.top - hubRect.bottom;
-          expect(
-            gap,
-            inInclusiveRange(gapMinPx, gapMaxPx),
-            reason:
-                'At ${size.width.toInt()}×${size.height.toInt()} px, '
-                'the HUB-to-grid gap must stay in '
-                '[$gapMinPx, $gapMaxPx] px — was '
-                '${gap.toStringAsFixed(2)} px. The SizedBox is '
-                'height-agnostic so the gap must not drift with '
-                'screen height.',
-          );
+        const gapMinPx = 50.0;
+        const gapMaxPx = 70.0;
+        final hubRect = tester.getRect(find.text('HUB'));
+        final firstTileRect = tester.getRect(
+          find.byType(MaintenanceTile).first,
+        );
+        final gap = firstTileRect.top - hubRect.bottom;
+        expect(
+          gap,
+          inInclusiveRange(gapMinPx, gapMaxPx),
+          reason:
+              'At ${size.width.toInt()}×${size.height.toInt()} px, '
+              'the HUB-to-grid gap must stay in '
+              '[$gapMinPx, $gapMaxPx] px — was '
+              '${gap.toStringAsFixed(2)} px. The SizedBox is '
+              'height-agnostic so the gap must not drift with '
+              'screen height.',
+        );
 
-          // Reset surface between iterations.
-          await tester.binding.setSurfaceSize(null);
-        }
-      },
-    );
+        // Reset surface between iterations.
+        await tester.binding.setSurfaceSize(null);
+      }
+    });
 
     testWidgets(
       'last tile row sits above the sheet content bottom (leftover space below)',
@@ -688,14 +691,13 @@ void main() {
         expect(
           sheetContainer,
           findsOneWidget,
-          reason: 'The sheet container (24 px top-only border radius) '
+          reason:
+              'The sheet container (24 px top-only border radius) '
               'must be present once the sheet is open.',
         );
         final sheetRect = tester.getRect(sheetContainer);
 
-        final lastTileRect = tester.getRect(
-          find.byType(MaintenanceTile).last,
-        );
+        final lastTileRect = tester.getRect(find.byType(MaintenanceTile).last);
         expect(
           lastTileRect.bottom,
           lessThanOrEqualTo(sheetRect.bottom + 0.5),
@@ -726,8 +728,9 @@ class MediaAppWithScale extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MediaQuery(
-      data: MediaQuery.of(context)
-          .copyWith(textScaler: TextScaler.linear(scale)),
+      data: MediaQuery.of(
+        context,
+      ).copyWith(textScaler: TextScaler.linear(scale)),
       child: MaterialApp(home: child),
     );
   }

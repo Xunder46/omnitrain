@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────────────────────────
 // OmniTrain crash-reporting integration
 //
-// ADR — see `.github/agents/plans/crash-reporting-plan.md` for the
+// ADR — see `docs/plans/crash-reporting-plan.md` for the
 // rationale for choosing `sentry_flutter` over Firebase Crashlytics.
 // Summary:
 //   • Flutter-native error capture (FlutterError.onError,
@@ -87,10 +87,10 @@ class CrashReportingService {
     required bool enabled,
     required Map<String, String> Function() buildMetadata,
     required CrashReportThrottleConfig throttleConfig,
-  })  : _reporter = reporter,
-        _enabled = enabled,
-        _buildMetadata = buildMetadata,
-        _rateLimiter = _CrashReportRateLimiter(config: throttleConfig);
+  }) : _reporter = reporter,
+       _enabled = enabled,
+       _buildMetadata = buildMetadata,
+       _rateLimiter = _CrashReportRateLimiter(config: throttleConfig);
 
   static CrashReportingService? _instance;
 
@@ -203,15 +203,11 @@ class CrashReportingService {
     if (decision.suppressedSinceLast > 0) {
       cleaned = <String, String>{
         ...cleaned,
-        'suppressedOccurrences':
-            decision.suppressedSinceLast.toString(),
+        'suppressedOccurrences': decision.suppressedSinceLast.toString(),
       };
     }
     if (errorContext != null && errorContext.isNotEmpty) {
-      cleaned = <String, String>{
-        ...cleaned,
-        'errorContext': errorContext,
-      };
+      cleaned = <String, String>{...cleaned, 'errorContext': errorContext};
     }
 
     await svc._reporter.recordError(
@@ -343,34 +339,32 @@ class SentryCrashReporter implements CrashReporter {
     }
 
     try {
-      await SentryFlutter.init(
-        (SentryFlutterOptions options) {
-          options.dsn = dsn;
-          options.environment = _environmentLabel();
-          options.release = metadata?['appVersion'] ?? 'unknown@unknown';
-          // Privacy defaults — see header comment for the contract.
-          options.sendDefaultPii = false;
-          options.attachStacktrace = true;
-          options.tracesSampleRate = 0.0;
-          // Strip anything not in the allow-list before transport.
-          // Note: SentryEvent.user is immutable; our discipline is to
-          // never call `Sentry.setUser(...)` and the SDK never sets a
-          // user when sendDefaultPii is false. The remaining surface
-          // (tags / breadcrumbs) is what we police here.
-          options.beforeSend = (SentryEvent event, Hint hint) {
-            event.tags?.removeWhere(
-              (String key, dynamic _) => !_allowedTagKeys.contains(key),
-            );
-            return event;
-          };
-          // Strip native + Flutter breadcrumb tracking: the privacy
-          // contract forbids behavioural breadcrumbs.
-          options.enableAutoNativeBreadcrumbs = false;
-          // Disable session telemetry — we route through Flutter
-          // sinks exclusively.
-          options.enableAutoSessionTracking = false;
-        },
-      );
+      await SentryFlutter.init((SentryFlutterOptions options) {
+        options.dsn = dsn;
+        options.environment = _environmentLabel();
+        options.release = metadata?['appVersion'] ?? 'unknown@unknown';
+        // Privacy defaults — see header comment for the contract.
+        options.sendDefaultPii = false;
+        options.attachStacktrace = true;
+        options.tracesSampleRate = 0.0;
+        // Strip anything not in the allow-list before transport.
+        // Note: SentryEvent.user is immutable; our discipline is to
+        // never call `Sentry.setUser(...)` and the SDK never sets a
+        // user when sendDefaultPii is false. The remaining surface
+        // (tags / breadcrumbs) is what we police here.
+        options.beforeSend = (SentryEvent event, Hint hint) {
+          event.tags?.removeWhere(
+            (String key, dynamic _) => !_allowedTagKeys.contains(key),
+          );
+          return event;
+        };
+        // Strip native + Flutter breadcrumb tracking: the privacy
+        // contract forbids behavioural breadcrumbs.
+        options.enableAutoNativeBreadcrumbs = false;
+        // Disable session telemetry — we route through Flutter
+        // sinks exclusively.
+        options.enableAutoSessionTracking = false;
+      });
       _enabled = true;
 
       // Set identity tags at the SDK scope level so every event —
@@ -494,7 +488,7 @@ const Set<String> _allowedTagKeys = <String>{
 ///
 /// The budget-tier rationale and the tradeoff between exact event
 /// counts and budget survival are documented in
-/// `.github/agents/plans/crash-reporting-rate-limit-plan.md`. A single
+/// `docs/plans/crash-reporting-rate-limit-plan.md`. A single
 /// noisy failure must never exhaust the monthly reporting budget; the
 /// dashboard's raw count for a throttled signature becomes an undercount
 /// corrected by the `suppressedOccurrences` tag on each transmitted
@@ -539,7 +533,7 @@ class CrashReportThrottleConfig {
 /// across app launches" requirement).
 class _CrashReportRateLimiter {
   _CrashReportRateLimiter({required CrashReportThrottleConfig config})
-      : _config = config;
+    : _config = config;
 
   final CrashReportThrottleConfig _config;
   final Map<String, _SignatureThrottleState> _states =

@@ -69,10 +69,7 @@ Future<_Deps> _buildDeps({String? modality, bool rolling = false}) async {
   final sessionSummaryService = SessionSummaryService(repo);
   final settingsState = SettingsState(repo, fakePreferencesService());
   await settingsState.initialize();
-  await workoutState.createNewSession(
-    modality: modality,
-    isRolling: rolling,
-  );
+  await workoutState.createNewSession(modality: modality, isRolling: rolling);
   return (
     workoutState: workoutState,
     routineState: routineState,
@@ -187,7 +184,10 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(360, 640));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps = await _buildDeps(modality: 'resistance_lifting', rolling: true);
+        final deps = await _buildDeps(
+          modality: 'resistance_lifting',
+          rolling: true,
+        );
         await _addSetExerciseWithOpenRest(deps);
 
         await tester.pumpWidget(_buildSessionScreen(deps));
@@ -290,7 +290,8 @@ void main() {
 
         final stripRect = tester.getRect(_strip());
         final addBar = find.byWidgetPredicate(
-          (w) => w is Padding &&
+          (w) =>
+              w is Padding &&
               w.child is Row &&
               // _buildAddExerciseAndBlockBar builds a Row with text
               // labels including "Add Exercise" / "Add Block".
@@ -301,8 +302,7 @@ void main() {
                   )
                   .evaluate()
                   .any(
-                    (e) =>
-                        (e.widget as Text).data?.contains('Add ') ?? false,
+                    (e) => (e.widget as Text).data?.contains('Add ') ?? false,
                   ),
         );
         if (addBar.evaluate().isNotEmpty) {
@@ -322,42 +322,36 @@ void main() {
   // ── S-005 / S-006 / S-007: tap behaviour ─────────────────────────────────
 
   group('Docked strip — tap behaviour', () {
-    testWidgets(
-      'S-005: tap on the strip\'s empty area does nothing',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets('S-005: tap on the strip\'s empty area does nothing', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps = await _buildDeps(modality: 'resistance_lifting');
-        await _addSetExerciseWithOpenRest(deps);
+      final deps = await _buildDeps(modality: 'resistance_lifting');
+      await _addSetExerciseWithOpenRest(deps);
 
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _dismissPickerIfOpen(tester);
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _dismissPickerIfOpen(tester);
 
-        final stripRect = tester.getRect(_strip());
-        // Tap on the strip itself (centre), but the chip is centered,
-        // so tap just to the side so we hit the empty padding around
-        // the chip.
-        await tester.tapAt(
-          Offset(stripRect.left + 20, stripRect.center.dy),
-        );
-        await tester.pumpAndSettle();
+      final stripRect = tester.getRect(_strip());
+      // Tap on the strip itself (centre), but the chip is centered,
+      // so tap just to the side so we hit the empty padding around
+      // the chip.
+      await tester.tapAt(Offset(stripRect.left + 20, stripRect.center.dy));
+      await tester.pumpAndSettle();
 
-        // The chip must still be present, the rest must still be open.
-        expect(
-          find.byKey(const Key('rest-overlay-chip')),
-          findsOneWidget,
-        );
-        final restKey = deps.workoutState.getEntryRests;
-        final openAfter = deps.workoutState
-            .getEntryRests(_dummyFirstEffort(deps))
-            .where((r) => r.restEndMs == null);
-        expect(openAfter, isNotEmpty);
+      // The chip must still be present, the rest must still be open.
+      expect(find.byKey(const Key('rest-overlay-chip')), findsOneWidget);
+      final restKey = deps.workoutState.getEntryRests;
+      final openAfter = deps.workoutState
+          .getEntryRests(_dummyFirstEffort(deps))
+          .where((r) => r.restEndMs == null);
+      expect(openAfter, isNotEmpty);
 
-        // Suppress unused-reference warning.
-        expect(restKey, isNotNull);
-      },
-    );
+      // Suppress unused-reference warning.
+      expect(restKey, isNotNull);
+    });
 
     testWidgets(
       'S-006: tap on the chip itself keeps the existing pause/resume behaviour',
@@ -417,9 +411,7 @@ void main() {
         expect(ctaFinder, findsOneWidget);
         final ctaRect = tester.getRect(ctaFinder);
 
-        await tester.tapAt(
-          Offset(ctaRect.center.dx, ctaRect.center.dy),
-        );
+        await tester.tapAt(Offset(ctaRect.center.dx, ctaRect.center.dy));
         await tester.pumpAndSettle();
 
         // The Finish Workout dialog must be on screen — the tap
@@ -440,36 +432,35 @@ void main() {
   // ── S-008 / S-009 / S-010: collapse + scroll offset ──────────────────────
 
   group('Docked strip — height collapse + scroll stability', () {
-    testWidgets(
-      'S-008: no open rest → strip height is zero',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(360, 640));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets('S-008: no open rest → strip height is zero', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(360, 640));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps = await _buildDeps(modality: 'resistance_lifting');
-        // Add an exercise but DO NOT open a rest.
-        final exercises = await deps.repo.getExercises();
-        final setExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('reps'),
-        );
-        await deps.workoutState.addExerciseToSession(
-          setExercise,
-          chosenMetric: 'reps',
-        );
+      final deps = await _buildDeps(modality: 'resistance_lifting');
+      // Add an exercise but DO NOT open a rest.
+      final exercises = await deps.repo.getExercises();
+      final setExercise = exercises.firstWhere(
+        (e) => e.capabilities.contains('reps'),
+      );
+      await deps.workoutState.addExerciseToSession(
+        setExercise,
+        chosenMetric: 'reps',
+      );
 
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _dismissPickerIfOpen(tester);
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _dismissPickerIfOpen(tester);
 
-        // The strip widget itself may be in the tree (with size 0)
-        // or absent; either way its rendered height must be 0.
-        final stripFinder = _strip();
-        if (stripFinder.evaluate().isNotEmpty) {
-          final stripRect = tester.getRect(stripFinder);
-          expect(stripRect.height, 0.0);
-        }
-        expect(find.byKey(const Key('rest-overlay-chip')), findsNothing);
-      },
-    );
+      // The strip widget itself may be in the tree (with size 0)
+      // or absent; either way its rendered height must be 0.
+      final stripFinder = _strip();
+      if (stripFinder.evaluate().isNotEmpty) {
+        final stripRect = tester.getRect(stripFinder);
+        expect(stripRect.height, 0.0);
+      }
+      expect(find.byKey(const Key('rest-overlay-chip')), findsNothing);
+    });
 
     testWidgets(
       'S-009: scroll offset is identical before and after the strip appears',
@@ -495,8 +486,9 @@ void main() {
         await _dismissPickerIfOpen(tester);
 
         // Scroll part-way down.
-        final listState =
-            tester.state<ScrollableState>(find.byType(Scrollable));
+        final listState = tester.state<ScrollableState>(
+          find.byType(Scrollable),
+        );
         listState.position.jumpTo(120.0);
         await tester.pumpAndSettle();
         final offsetBefore = listState.position.pixels;
@@ -504,8 +496,9 @@ void main() {
         // Open a rest now — the strip should appear without
         // disturbing the scroll offset.
         final firstSegment = deps.workoutState.segments.first;
-        final firstEffort =
-            deps.workoutState.getEffortsForSegment(firstSegment.id).first;
+        final firstEffort = deps.workoutState
+            .getEffortsForSegment(firstSegment.id)
+            .first;
         await deps.workoutState.addEntry(firstEffort.id);
         await deps.workoutState.recordRestStart(firstEffort.id, 1);
         await tester.pumpAndSettle();
@@ -551,8 +544,9 @@ void main() {
         await tester.pumpWidget(_buildSessionScreen(deps));
         await _dismissPickerIfOpen(tester);
 
-        final listState =
-            tester.state<ScrollableState>(find.byType(Scrollable));
+        final listState = tester.state<ScrollableState>(
+          find.byType(Scrollable),
+        );
         listState.position.jumpTo(120.0);
         await tester.pumpAndSettle();
         final offsetBefore = listState.position.pixels;

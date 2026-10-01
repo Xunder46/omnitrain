@@ -68,10 +68,7 @@ void main() {
         await routineState.deleteRoutine(demo.id);
 
         expect(
-          await repo.isSeedEntryTouched(
-            SeedEntryType.routineTemplate,
-            demo.id,
-          ),
+          await repo.isSeedEntryTouched(SeedEntryType.routineTemplate, demo.id),
           isTrue,
           reason:
               'the state must tombstone a user-deleted demo so the refresh '
@@ -109,8 +106,7 @@ void main() {
             userTemplateId,
           ),
           isFalse,
-          reason:
-              'user-created routines must never be tombstoned by the state',
+          reason: 'user-created routines must never be tombstoned by the state',
         );
       },
     );
@@ -134,10 +130,7 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 800));
 
         expect(
-          await repo.isSeedEntryTouched(
-            SeedEntryType.routineTemplate,
-            demo.id,
-          ),
+          await repo.isSeedEntryTouched(SeedEntryType.routineTemplate, demo.id),
           isTrue,
           reason:
               'editing a demo via the editor must mark the demo as touched so '

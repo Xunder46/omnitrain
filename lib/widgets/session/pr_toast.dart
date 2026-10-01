@@ -14,14 +14,14 @@
 ///     `buildPRSnackBar` is the SnackBar factory.
 ///   - **Reps axis** (bodyweight) — added with the bodyweight
 ///     inclusion in
-///     `.github/agents/plans/stats-summary-fix-pack-plan.md`
+///     `docs/plans/stats-summary-fix-pack-plan.md`
 ///     (Item 2). `buildRepPRSnackBar` is the reps-axis
 ///     counterpart; it shares the same trophy + minimal-copy
 ///     treatment as `buildPRSnackBar` so the celebration reads
 ///     identically regardless of which axis fired.
 ///
 /// The contract is pinned in
-/// `.github/agents/plans/in-session-pr-toast-plan.md` (Decision Ledger
+/// `docs/plans/in-session-pr-toast-plan.md` (Decision Ledger
 /// D-9, D-10, D-11, D-12). The PR definition itself is the source of
 /// truth in `StatsProgressService.epley1RM` + `getAllTimeBestE1RM` for
 /// the weight axis and `StatsProgressService.getAllTimeBestReps` for

@@ -88,54 +88,60 @@ void main() {
   });
 
   group('Bundled catalog — muscle group refresh', () {
-    test('R-005: groups added after first launch still reach the device', () async {
-      final repo = MockWorkoutRepository();
-      await repo.initialize();
+    test(
+      'R-005: groups added after first launch still reach the device',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
 
-      // Simulate a device seeded before the taxonomy was completed: drop the
-      // groups added in catalog version 9 and rewind the stored version.
-      const addedInV9 = [
-        'muscle-arms',
-        'muscle-legs',
-        'muscle-traps',
-        'muscle-forearms',
-        'muscle-adductors',
-        'muscle-calves',
-        'muscle-neck',
-      ];
-      await repo.setCatalogVersion(bundledCatalogVersion - 1);
+        // Simulate a device seeded before the taxonomy was completed: drop the
+        // groups added in catalog version 9 and rewind the stored version.
+        const addedInV9 = [
+          'muscle-arms',
+          'muscle-legs',
+          'muscle-traps',
+          'muscle-forearms',
+          'muscle-adductors',
+          'muscle-calves',
+          'muscle-neck',
+        ];
+        await repo.setCatalogVersion(bundledCatalogVersion - 1);
 
-      final before = (await repo.getMuscleGroups()).map((g) => g.id).toSet();
-      expect(
-        before,
-        containsAll(addedInV9),
-        reason:
-            'fixture assumption: a freshly seeded repo already carries the '
-            'full group list, so the refresh below is what must re-supply '
-            'them on an older device',
-      );
-
-      await CatalogRefreshService(repo, const BundledCatalogSource()).refresh();
-
-      final after = (await repo.getMuscleGroups()).map((g) => g.id).toSet();
-      for (final id in addedInV9) {
+        final before = (await repo.getMuscleGroups()).map((g) => g.id).toSet();
         expect(
-          after,
-          contains(id),
-          reason: '$id must survive / be restored by the catalog refresh',
+          before,
+          containsAll(addedInV9),
+          reason:
+              'fixture assumption: a freshly seeded repo already carries the '
+              'full group list, so the refresh below is what must re-supply '
+              'them on an older device',
         );
-      }
 
-      // Every mapping must still resolve after the refresh.
-      for (final entry in SeedData.exerciseMuscleGroupRelationships.entries) {
-        for (final groupId in entry.value) {
+        await CatalogRefreshService(
+          repo,
+          const BundledCatalogSource(),
+        ).refresh();
+
+        final after = (await repo.getMuscleGroups()).map((g) => g.id).toSet();
+        for (final id in addedInV9) {
           expect(
             after,
-            contains(groupId),
-            reason: '${entry.key} points at $groupId, absent post-refresh',
+            contains(id),
+            reason: '$id must survive / be restored by the catalog refresh',
           );
         }
-      }
-    });
+
+        // Every mapping must still resolve after the refresh.
+        for (final entry in SeedData.exerciseMuscleGroupRelationships.entries) {
+          for (final groupId in entry.value) {
+            expect(
+              after,
+              contains(groupId),
+              reason: '${entry.key} points at $groupId, absent post-refresh',
+            );
+          }
+        }
+      },
+    );
   });
 }

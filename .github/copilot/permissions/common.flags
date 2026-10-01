@@ -1,0 +1,15 @@
+# Tool permissions shared by every Copilot agent run by .claude/scripts/macos/run-agent.sh.
+# One flag per line. The runner refuses --allow-all*, interpreters (bash, sh, perl, python, node, env…)
+# and anything that is not a flag. Unlisted shell commands are denied (runs are non-interactive).
+# The only shell command an agent may run is the gateway (.github/copilot/gateway.conf): analyze, test,
+# format, pub get and read-only git. Reading and searching use Copilot's built-in tools, not the shell.
+# The governor (Claude) never commits for the owner and agents never touch git history either.
+--allow-tool=shell(.github/copilot/scripts/macos/gateway.sh:*)
+--deny-tool=shell(git:*)
+--deny-tool=shell(gh:*)
+--deny-tool=shell(rm -rf:*)
+--deny-tool=shell(rm -r:*)
+# Pipeline, agent and project-instruction files are the owner's, never an agent's.
+--deny-tool=write(.claude/**)
+--deny-tool=write(.github/**)
+--deny-tool=write(CLAUDE.md)

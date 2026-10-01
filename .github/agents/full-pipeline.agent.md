@@ -19,7 +19,7 @@ narrative); keep every load-bearing rule.
 
 ## Plan File Protocol (applies in every phase)
 
-The shared plan file at `.github/agents/plans/[feature]-plan.md` is
+The shared plan file at `docs/plans/[feature]-plan/[feature]-plan.md` is
 the single source of truth for the current feature. **You own it** for
 the lifetime of this feature.
 
@@ -34,7 +34,7 @@ the lifetime of this feature.
   **Blocked**, and stop. Notify the user with:
   > "I was unable to complete [task] as planned. I've marked Phase
   > N as **Blocked** and added a `## Feedback` note to
-  > `.github/agents/plans/[feature]-plan.md`. Please open a fresh
+  > `docs/plans/[feature]-plan/[feature]-plan.md`. Please open a fresh
   > chat with the Coordinator agent to re-plan."
 
 If `## Feedback` already exists from a prior session, fold its
@@ -42,6 +42,22 @@ contents into a new `## Iteration N` block (increment N from the last
 iteration) and clear the Feedback body (keep the header).
 
 ---
+
+## PR Scope Budget (applies in every phase)
+
+The budget and the split procedure are in `.github/agents/pr_scope_budget.md`.
+
+- **Phase 0:** if the plan is over budget, write a PR series: a short index plan plus a full plan
+  for the first PR only.
+- **Implementation phases:**
+  - Implement only the plan's scope.
+  - Substantial unplanned work (a missing prerequisite, a defect that needs its own design, a new
+    model, message, screen or migration) is not absorbed. Reach a stopping point, add at most 5
+    lines to Open Items, mark the phase **Blocked (scope)**, and stop.
+  - Write evidence to `<plan>.evidence.md` in the plan's folder, not into the plan.
+- **Review:** write findings to `<plan>.review.md`. With more than 6 substantive findings, fix only
+  CRITICAL and cheap MECHANICAL ones in one round, and move the rest to a follow-up PR plan.
+  Never loop review → fix → review.
 
 ## Phase Match Strategy
 
@@ -74,7 +90,7 @@ the user is asked to confirm the plan.
 
 ### Step 0.1: Author the plan
 
-- Read `.github/agents/plans/[feature]-plan.md` first; create it if
+- Read `docs/plans/[feature]-plan/[feature]-plan.md` first; create it if
   missing.
 - For the matching feature doc, read exactly the one that applies
   (use `docs/README.md` as the index). Do not read unrelated feature
@@ -306,7 +322,7 @@ Only run checklist sections for in-scope layers.
 ### Step 3.2: Acceptance Criteria verification
 
 For each item in `## Acceptance Criteria` (and in
-`.github/agents/plans/[feature]-copilot-prompts.md` if it exists),
+`docs/plans/[feature]-copilot-prompts.md` if it exists),
 locate the implementation and confirm it satisfies the criterion.
 Flag missing criteria as **CRITICAL**.
 
@@ -326,7 +342,7 @@ reproduces the bug it exists to catch.
 
 **Deriving scope — start from the code, not the handoff.** List the
 files Phases 1 and 2 touched. Read the scope declaration at the top of
-each document under `.github/agents/docs/`; a document is *implicated*
+each document under `docs/`; a document is *implicated*
 when any changed file falls inside its declared scope. **A document
 with no scope declaration, or one you cannot parse, covers everything
 and is implicated by every change** — read it. A declaration that
@@ -378,7 +394,7 @@ Runs when the change touches documentation. Distinct from Step 3.4:
 document the change made *false*.** A document can be fully
 standard-conformant and still be false. Do not merge the two.
 
-`.github/agents/docs/documentation_standard.md` is the authority.
+`docs/documentation_standard.md` is the authority.
 Reject as ❌ CRITICAL any change that adds, to a reference document,
 content in these seven classes — regardless of how accurate it is,
 because accuracy decays silently:
@@ -451,7 +467,7 @@ FAIL: [rule name] — file.dart:line — [one-sentence fix] → @agent
 - `lib/features/` and `lib/widgets/` — unreferenced screen/widget:
   **WARNING**.
 - `lib/core/services/` — unreferenced service: **WARNING**.
-- `.github/agents/docs/` — stale doc reference: **WARNING**.
+- `docs/` — stale doc reference: **WARNING**.
 - Known current issue: `AppState` (`lib/state/app_state.dart`) is
   flagged on the first adjacent review and handed back to the
   Developer pass for removal or proper wiring.

@@ -63,7 +63,10 @@ void main() {
           routineState: deps.routineState,
           sessionSummaryService: deps.sessionSummaryService,
           timerAlertService: FakeTimerAlertService(),
-          settingsState: SettingsState(deps.repository, fakePreferencesService()),
+          settingsState: SettingsState(
+            deps.repository,
+            fakePreferencesService(),
+          ),
           restNotificationService: restService,
         ),
       ),
@@ -102,7 +105,10 @@ void main() {
           routineState: deps.routineState,
           sessionSummaryService: deps.sessionSummaryService,
           timerAlertService: FakeTimerAlertService(),
-          settingsState: SettingsState(deps.repository, fakePreferencesService()),
+          settingsState: SettingsState(
+            deps.repository,
+            fakePreferencesService(),
+          ),
         ),
       ),
     );
@@ -147,7 +153,10 @@ void main() {
                         routineState: deps.routineState,
                         sessionSummaryService: deps.sessionSummaryService,
                         timerAlertService: FakeTimerAlertService(),
-                        settingsState: SettingsState(deps.repository, fakePreferencesService()),
+                        settingsState: SettingsState(
+                          deps.repository,
+                          fakePreferencesService(),
+                        ),
                       ),
                     ),
                   );
@@ -171,9 +180,9 @@ void main() {
 
     expect(find.byType(SessionSummaryScreen), findsOneWidget);
 
-    // The summary screen shows a non-dismissible "How did it feel?" sheet.
+    // The summary screen shows a non-dismissible "How hard was this session?" sheet.
     // Select a feeling to dismiss it before navigating back.
-    if (find.text('How did it feel?').evaluate().isNotEmpty) {
+    if (find.text('How hard was this session?').evaluate().isNotEmpty) {
       // Tap the "3" tile in the feeling sheet (last occurrence to avoid ambiguity)
       await tester.tap(find.text('3').last);
       await tester.pumpAndSettle();
@@ -212,7 +221,10 @@ void main() {
           routineState: deps.routineState,
           sessionSummaryService: deps.sessionSummaryService,
           timerAlertService: FakeTimerAlertService(),
-          settingsState: SettingsState(deps.repository, fakePreferencesService()),
+          settingsState: SettingsState(
+            deps.repository,
+            fakePreferencesService(),
+          ),
         ),
       ),
     );
@@ -251,7 +263,10 @@ void main() {
           routineState: deps.routineState,
           sessionSummaryService: deps.sessionSummaryService,
           timerAlertService: FakeTimerAlertService(),
-          settingsState: SettingsState(deps.repository, fakePreferencesService()),
+          settingsState: SettingsState(
+            deps.repository,
+            fakePreferencesService(),
+          ),
         ),
       ),
     );
@@ -265,8 +280,8 @@ void main() {
 
     expect(find.byType(SessionSummaryScreen), findsOneWidget);
 
-    // Dismiss the "How did it feel?" rating sheet if present.
-    if (find.text('How did it feel?').evaluate().isNotEmpty) {
+    // Dismiss the "How hard was this session?" rating sheet if present.
+    if (find.text('How hard was this session?').evaluate().isNotEmpty) {
       await tester.tap(find.text('3').last);
       await tester.pumpAndSettle();
     }
@@ -308,34 +323,36 @@ void main() {
     expect(rests.first.restEndMs, lessThanOrEqualTo(endedAtMs!));
   });
 
-  test('rest time shown on summary is non-zero after a single set with rest',
-      () async {
-    final deps = await setupStates();
-    final exercises = await deps.repository.getExercises();
-    final exercise = exercises.firstWhere(
-      (e) => e.capabilities.contains('set'),
-      orElse: () => exercises.first,
-    );
+  test(
+    'rest time shown on summary is non-zero after a single set with rest',
+    () async {
+      final deps = await setupStates();
+      final exercises = await deps.repository.getExercises();
+      final exercise = exercises.firstWhere(
+        (e) => e.capabilities.contains('set'),
+        orElse: () => exercises.first,
+      );
 
-    final effortId = await deps.workoutState.addExerciseToSession(exercise);
+      final effortId = await deps.workoutState.addExerciseToSession(exercise);
 
-    // Simulate a rest that started at least 1 ms ago.
-    await deps.workoutState.recordRestStart(effortId, 0);
+      // Simulate a rest that started at least 1 ms ago.
+      await deps.workoutState.recordRestStart(effortId, 0);
 
-    // Ensure endSession closes the open rest at a later timestamp.
-    await Future<void>.delayed(const Duration(milliseconds: 5));
+      // Ensure endSession closes the open rest at a later timestamp.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
 
-    await deps.workoutState.endSession();
+      await deps.workoutState.endSession();
 
-    final restMs = await deps.sessionSummaryService.computeSessionRestTimeMs(
-      deps.workoutState.currentSession!.id,
-    );
+      final restMs = await deps.sessionSummaryService.computeSessionRestTimeMs(
+        deps.workoutState.currentSession!.id,
+      );
 
-    // Rest time should be at least 1 ms (a non-zero rest was recorded).
-    expect(restMs, greaterThan(0));
-    // And must not exceed the session duration.
-    final session = deps.workoutState.currentSession!;
-    final duration = session.endedAtMs! - session.startedAtMs;
-    expect(restMs, lessThanOrEqualTo(duration));
-  });
+      // Rest time should be at least 1 ms (a non-zero rest was recorded).
+      expect(restMs, greaterThan(0));
+      // And must not exceed the session duration.
+      final session = deps.workoutState.currentSession!;
+      final duration = session.endedAtMs! - session.startedAtMs;
+      expect(restMs, lessThanOrEqualTo(duration));
+    },
+  );
 }

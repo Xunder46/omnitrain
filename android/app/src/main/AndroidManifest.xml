@@ -20,6 +20,22 @@
       declaration lets devices that DO grant it get precise pings.
     -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!--
+      Health Connect (platform health store on Android 14+, and the app on
+      earlier versions). WRITE_EXERCISE covers the finished-workout
+      write-back; READ_WEIGHT covers the body-weight import. Both toggles
+      are off by default and prompt at runtime only when the user enables
+      them. The <queries> entry is required so the app can see whether
+      Health Connect is installed.
+    -->
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+        </intent>
+    </queries>
     <application
         android:label="OmniTrain"
         android:name="${applicationName}"
@@ -47,6 +63,22 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!--
+          Health Connect permission-rationale route. Health Connect links
+          back to the app's privacy policy from its permission screen;
+          the alias must target an activity that can present it (this app
+          routes to the main activity, which owns the policy route).
+        -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -1,7 +1,7 @@
 // filepath: lib/state/nutrition/nutrition_primer_state.dart
 //
 // State for the one-time Daily Nutrition page primer (see
-// `.github/agents/plans/nutrition-page-primer-plan.md`).
+// `docs/plans/nutrition-page-primer-plan.md`).
 //
 // The Daily Nutrition page inverts the usual food-logging model:
 // users curate a "Foods I Eat" list once from the global library,
@@ -85,8 +85,7 @@ class NutritionPrimerState extends ChangeNotifier {
   /// gets the primer at least once.
   Future<void> init() async {
     try {
-      final persisted =
-          await _repository.getPreferenceBool(preferenceKey);
+      final persisted = await _repository.getPreferenceBool(preferenceKey);
       _seen = persisted;
     } catch (_) {
       // Leave `_seen = false` (the safer default — show the

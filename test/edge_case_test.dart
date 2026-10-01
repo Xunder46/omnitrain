@@ -242,9 +242,11 @@ void main() {
         chosenMetric: 'reps',
       );
 
-      final before = (state.getExercisesWithEntries().first['entries'] as List).length;
+      final before =
+          (state.getExercisesWithEntries().first['entries'] as List).length;
       await state.addEntry(effortId);
-      final after = (state.getExercisesWithEntries().first['entries'] as List).length;
+      final after =
+          (state.getExercisesWithEntries().first['entries'] as List).length;
 
       expect(after, before + 1);
     });
@@ -266,22 +268,26 @@ void main() {
       expect(entries.first['reps'], 15);
     });
 
-    test('markSetSkipped marks entry as skipped (uses skipped key, not valueBool)', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession();
+    test(
+      'markSetSkipped marks entry as skipped (uses skipped key, not valueBool)',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
 
-      final exercises = await repo.getExercises();
-      final effortId = await state.addExerciseToSession(
-        exercises.first,
-        chosenMetric: 'reps',
-      );
+        final exercises = await repo.getExercises();
+        final effortId = await state.addExerciseToSession(
+          exercises.first,
+          chosenMetric: 'reps',
+        );
 
-      await state.markSetSkipped(effortId, 0);
+        await state.markSetSkipped(effortId, 0);
 
-      final entries = state.getExercisesWithEntries().first['entries'] as List;
-      expect(entries.first['skipped'], true);
-    });
+        final entries =
+            state.getExercisesWithEntries().first['entries'] as List;
+        expect(entries.first['skipped'], true);
+      },
+    );
 
     test('deleteEntry reduces entry count', () async {
       final repo = await _freshRepo();
@@ -308,20 +314,23 @@ void main() {
       );
     });
 
-    test('removeExerciseFromSession removes the effort from the list', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession();
+    test(
+      'removeExerciseFromSession removes the effort from the list',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
 
-      final exercises = await repo.getExercises();
-      final effortId = await state.addExerciseToSession(exercises.first);
+        final exercises = await repo.getExercises();
+        final effortId = await state.addExerciseToSession(exercises.first);
 
-      expect(state.getExercisesWithEntries(), isNotEmpty);
+        expect(state.getExercisesWithEntries(), isNotEmpty);
 
-      await state.removeExerciseFromSession(effortId);
+        await state.removeExerciseFromSession(effortId);
 
-      expect(state.getExercisesWithEntries(), isEmpty);
-    });
+        expect(state.getExercisesWithEntries(), isEmpty);
+      },
+    );
 
     test('updateSessionNote persists note on current session', () async {
       final repo = await _freshRepo();
@@ -333,21 +342,24 @@ void main() {
       expect(state.currentSession!.note, 'Felt strong today');
     });
 
-    test('discardCurrentSession clears hasSession and removes from repo', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession();
+    test(
+      'discardCurrentSession clears hasSession and removes from repo',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
 
-      final sessionId = state.currentSession!.id;
+        final sessionId = state.currentSession!.id;
 
-      await state.discardCurrentSession();
+        await state.discardCurrentSession();
 
-      expect(state.hasSession, isFalse);
+        expect(state.hasSession, isFalse);
 
-      // Confirm removed from repository
-      final all = await repo.getSessionsByDateRange(0, 9999999999999);
-      expect(all.any((s) => s.id == sessionId), isFalse);
-    });
+        // Confirm removed from repository
+        final all = await repo.getSessionsByDateRange(0, 9999999999999);
+        expect(all.any((s) => s.id == sessionId), isFalse);
+      },
+    );
 
     group('timed entry pause/resume', () {
       test('pauseTimedEntry transitions active → paused', () async {
@@ -370,27 +382,33 @@ void main() {
         expect(instances.first.pausedAtMs, isNotNull);
       });
 
-      test('resumeTimedEntry transitions paused → active and accumulates pause duration', () async {
-        final repo = await _freshRepo();
-        final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'cardio_endurance');
+      test(
+        'resumeTimedEntry transitions paused → active and accumulates pause duration',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'cardio_endurance');
 
-        final exercises = await repo.getExercises();
-        final timedEx = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-          orElse: () => exercises.first,
-        );
-        final effortId = await state.addExerciseToSession(timedEx);
+          final exercises = await repo.getExercises();
+          final timedEx = exercises.firstWhere(
+            (e) => e.capabilities.contains('time'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(timedEx);
 
-        await state.startTimedEntry(effortId, 0);
-        await state.pauseTimedEntry(effortId, 0);
-        await state.resumeTimedEntry(effortId, 0);
+          await state.startTimedEntry(effortId, 0);
+          await state.pauseTimedEntry(effortId, 0);
+          await state.resumeTimedEntry(effortId, 0);
 
-        final instances = state.getTimedInstancesForEffort(effortId);
-        expect(instances.first.state, TimedState.active);
-        expect(instances.first.pausedAtMs, isNull);
-        expect(instances.first.totalPausedDurationMs, greaterThanOrEqualTo(0));
-      });
+          final instances = state.getTimedInstancesForEffort(effortId);
+          expect(instances.first.state, TimedState.active);
+          expect(instances.first.pausedAtMs, isNull);
+          expect(
+            instances.first.totalPausedDurationMs,
+            greaterThanOrEqualTo(0),
+          );
+        },
+      );
     });
   });
 
@@ -399,70 +417,88 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('CalendarState', () {
-    test('totalTrainingMs sums durations of non-rolling completed sessions this month', () async {
-      final repo = await _freshRepo();
-      final now = DateTime.now();
+    test(
+      'totalTrainingMs sums durations of non-rolling completed sessions this month',
+      () async {
+        final repo = await _freshRepo();
+        final now = DateTime.now();
 
-      await _seedCompletedSession(
-        repo,
-        id: 's1',
-        day: DateTime(now.year, now.month, 3),
-        durationMs: 3600000, // 1 hour
-      );
-      await _seedCompletedSession(
-        repo,
-        id: 's2',
-        day: DateTime(now.year, now.month, 4),
-        durationMs: 1800000, // 30 min
-      );
+        await _seedCompletedSession(
+          repo,
+          id: 's1',
+          day: DateTime(now.year, now.month, 3),
+          durationMs: 3600000, // 1 hour
+        );
+        await _seedCompletedSession(
+          repo,
+          id: 's2',
+          day: DateTime(now.year, now.month, 4),
+          durationMs: 1800000, // 30 min
+        );
 
-      // Rolling session — wall-clock is 8 h but must NOT be counted.
-      final rollingStart = DateTime(now.year, now.month, 5).millisecondsSinceEpoch;
-      await repo.createSession(TrainingSession(
-        id: 's-rolling',
-        ownerUserId: 'u-1',
-        startedAtMs: rollingStart,
-        endedAtMs: rollingStart + 28800000, // 8 hours
-        isRolling: true,
-        createdAtMs: rollingStart,
-        updatedAtMs: rollingStart,
-      ));
+        // Rolling session — wall-clock is 8 h but must NOT be counted.
+        final rollingStart = DateTime(
+          now.year,
+          now.month,
+          5,
+        ).millisecondsSinceEpoch;
+        await repo.createSession(
+          TrainingSession(
+            id: 's-rolling',
+            ownerUserId: 'u-1',
+            startedAtMs: rollingStart,
+            endedAtMs: rollingStart + 28800000, // 8 hours
+            isRolling: true,
+            createdAtMs: rollingStart,
+            updatedAtMs: rollingStart,
+          ),
+        );
 
-      final state = CalendarState(repo);
-      await state.init();
+        final state = CalendarState(repo);
+        await state.init();
 
-      expect(state.totalTrainingMs, 5400000); // 1h30m — rolling excluded
-    });
+        expect(state.totalTrainingMs, 5400000); // 1h30m — rolling excluded
+      },
+    );
 
-    test('totalTrainingMs — mixed month: only non-rolling duration counts', () async {
-      final repo = await _freshRepo();
-      final now = DateTime.now();
+    test(
+      'totalTrainingMs — mixed month: only non-rolling duration counts',
+      () async {
+        final repo = await _freshRepo();
+        final now = DateTime.now();
 
-      // 1 non-rolling session: 1 hour
-      await _seedCompletedSession(
-        repo,
-        id: 's-nonrolling',
-        day: DateTime(now.year, now.month, 10),
-        durationMs: 3600000,
-      );
+        // 1 non-rolling session: 1 hour
+        await _seedCompletedSession(
+          repo,
+          id: 's-nonrolling',
+          day: DateTime(now.year, now.month, 10),
+          durationMs: 3600000,
+        );
 
-      // 1 rolling session: 8 hours wall-clock
-      final rollingStart = DateTime(now.year, now.month, 11).millisecondsSinceEpoch;
-      await repo.createSession(TrainingSession(
-        id: 's-rolling',
-        ownerUserId: 'u-1',
-        startedAtMs: rollingStart,
-        endedAtMs: rollingStart + 28800000,
-        isRolling: true,
-        createdAtMs: rollingStart,
-        updatedAtMs: rollingStart,
-      ));
+        // 1 rolling session: 8 hours wall-clock
+        final rollingStart = DateTime(
+          now.year,
+          now.month,
+          11,
+        ).millisecondsSinceEpoch;
+        await repo.createSession(
+          TrainingSession(
+            id: 's-rolling',
+            ownerUserId: 'u-1',
+            startedAtMs: rollingStart,
+            endedAtMs: rollingStart + 28800000,
+            isRolling: true,
+            createdAtMs: rollingStart,
+            updatedAtMs: rollingStart,
+          ),
+        );
 
-      final state = CalendarState(repo);
-      await state.init();
+        final state = CalendarState(repo);
+        await state.init();
 
-      expect(state.totalTrainingMs, 3600000); // 1 h only
-    });
+        expect(state.totalTrainingMs, 3600000); // 1 h only
+      },
+    );
 
     test('totalTrainingMs — all-rolling month equals zero', () async {
       final repo = await _freshRepo();
@@ -471,24 +507,28 @@ void main() {
       final s1Start = DateTime(now.year, now.month, 6).millisecondsSinceEpoch;
       final s2Start = DateTime(now.year, now.month, 7).millisecondsSinceEpoch;
 
-      await repo.createSession(TrainingSession(
-        id: 'r1',
-        ownerUserId: 'u-1',
-        startedAtMs: s1Start,
-        endedAtMs: s1Start + 36000000, // 10 h
-        isRolling: true,
-        createdAtMs: s1Start,
-        updatedAtMs: s1Start,
-      ));
-      await repo.createSession(TrainingSession(
-        id: 'r2',
-        ownerUserId: 'u-1',
-        startedAtMs: s2Start,
-        endedAtMs: s2Start + 43200000, // 12 h
-        isRolling: true,
-        createdAtMs: s2Start,
-        updatedAtMs: s2Start,
-      ));
+      await repo.createSession(
+        TrainingSession(
+          id: 'r1',
+          ownerUserId: 'u-1',
+          startedAtMs: s1Start,
+          endedAtMs: s1Start + 36000000, // 10 h
+          isRolling: true,
+          createdAtMs: s1Start,
+          updatedAtMs: s1Start,
+        ),
+      );
+      await repo.createSession(
+        TrainingSession(
+          id: 'r2',
+          ownerUserId: 'u-1',
+          startedAtMs: s2Start,
+          endedAtMs: s2Start + 43200000, // 12 h
+          isRolling: true,
+          createdAtMs: s2Start,
+          updatedAtMs: s2Start,
+        ),
+      );
 
       final state = CalendarState(repo);
       await state.init();
@@ -496,109 +536,132 @@ void main() {
       expect(state.totalTrainingMs, 0);
     });
 
-    test('completedSessionCount includes rolling sessions even when duration is excluded', () async {
-      final repo = await _freshRepo();
-      final now = DateTime.now();
+    test(
+      'completedSessionCount includes rolling sessions even when duration is excluded',
+      () async {
+        final repo = await _freshRepo();
+        final now = DateTime.now();
 
-      // 1 non-rolling: 1 h
-      await _seedCompletedSession(
-        repo,
-        id: 's-nonrolling',
-        day: DateTime(now.year, now.month, 12),
-        durationMs: 3600000,
-      );
+        // 1 non-rolling: 1 h
+        await _seedCompletedSession(
+          repo,
+          id: 's-nonrolling',
+          day: DateTime(now.year, now.month, 12),
+          durationMs: 3600000,
+        );
 
-      // 1 rolling: 8 h wall-clock
-      final rollingStart = DateTime(now.year, now.month, 13).millisecondsSinceEpoch;
-      await repo.createSession(TrainingSession(
-        id: 's-rolling',
-        ownerUserId: 'u-1',
-        startedAtMs: rollingStart,
-        endedAtMs: rollingStart + 28800000,
-        isRolling: true,
-        createdAtMs: rollingStart,
-        updatedAtMs: rollingStart,
-      ));
+        // 1 rolling: 8 h wall-clock
+        final rollingStart = DateTime(
+          now.year,
+          now.month,
+          13,
+        ).millisecondsSinceEpoch;
+        await repo.createSession(
+          TrainingSession(
+            id: 's-rolling',
+            ownerUserId: 'u-1',
+            startedAtMs: rollingStart,
+            endedAtMs: rollingStart + 28800000,
+            isRolling: true,
+            createdAtMs: rollingStart,
+            updatedAtMs: rollingStart,
+          ),
+        );
 
-      final state = CalendarState(repo);
-      await state.init();
+        final state = CalendarState(repo);
+        await state.init();
 
-      // Both sessions count as completed for the session count …
-      expect(state.completedSessionCount, 2);
-      // … but only the non-rolling one contributes to training time.
-      expect(state.totalTrainingMs, 3600000);
-    });
+        // Both sessions count as completed for the session count …
+        expect(state.completedSessionCount, 2);
+        // … but only the non-rolling one contributes to training time.
+        expect(state.totalTrainingMs, 3600000);
+      },
+    );
 
-    test('modalityBreakdown groups completed sessions by modality key', () async {
-      final repo = await _freshRepo();
-      final now = DateTime.now();
+    test(
+      'modalityBreakdown groups completed sessions by modality key',
+      () async {
+        final repo = await _freshRepo();
+        final now = DateTime.now();
 
-      await _seedCompletedSession(
-        repo,
-        id: 's1',
-        day: DateTime(now.year, now.month, 3),
-        modality: 'strength',
-      );
-      await _seedCompletedSession(
-        repo,
-        id: 's2',
-        day: DateTime(now.year, now.month, 4),
-        modality: 'strength',
-      );
-      await _seedCompletedSession(
-        repo,
-        id: 's3',
-        day: DateTime(now.year, now.month, 5),
-        modality: 'cardio_endurance',
-      );
+        await _seedCompletedSession(
+          repo,
+          id: 's1',
+          day: DateTime(now.year, now.month, 3),
+          modality: 'strength',
+        );
+        await _seedCompletedSession(
+          repo,
+          id: 's2',
+          day: DateTime(now.year, now.month, 4),
+          modality: 'strength',
+        );
+        await _seedCompletedSession(
+          repo,
+          id: 's3',
+          day: DateTime(now.year, now.month, 5),
+          modality: 'cardio_endurance',
+        );
 
-      final state = CalendarState(repo);
-      await state.init();
+        final state = CalendarState(repo);
+        await state.init();
 
-      final breakdown = state.modalityBreakdown;
-      expect(breakdown['strength'], 2);
-      expect(breakdown['cardio_endurance'], 1);
-    });
+        final breakdown = state.modalityBreakdown;
+        expect(breakdown['strength'], 2);
+        expect(breakdown['cardio_endurance'], 1);
+      },
+    );
 
-    test('streakDays is > 0 when today and yesterday both have completed sessions', () async {
-      final repo = await _freshRepo();
-      final today = DateTime.now();
-      final yesterday = today.subtract(const Duration(days: 1));
+    test(
+      'streakDays is > 0 when today and yesterday both have completed sessions',
+      () async {
+        final repo = await _freshRepo();
+        final today = DateTime.now();
+        final yesterday = today.subtract(const Duration(days: 1));
 
-      await _seedCompletedSession(repo, id: 'today', day: today);
-      await _seedCompletedSession(repo, id: 'yesterday', day: yesterday);
+        await _seedCompletedSession(repo, id: 'today', day: today);
+        await _seedCompletedSession(repo, id: 'yesterday', day: yesterday);
 
-      final state = CalendarState(repo);
-      await state.init();
+        final state = CalendarState(repo);
+        await state.init();
 
-      expect(state.streakDays, greaterThanOrEqualTo(2));
-    });
+        expect(state.streakDays, greaterThanOrEqualTo(2));
+      },
+    );
 
-    test('entriesForDay returns all entries on the same calendar day', () async {
-      final repo = await _freshRepo();
-      final now = DateTime.now();
-      final targetDay = DateTime(now.year, now.month, 8);
+    test(
+      'entriesForDay returns all entries on the same calendar day',
+      () async {
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+        final targetDay = DateTime(now.year, now.month, 8);
 
-      // Two completed sessions on the same day (different start times)
-      await _seedCompletedSession(repo, id: 's-am', day: targetDay, durationMs: 3600000);
-      // A second session starting 2 hours after midnight the same day
-      final s2Start = targetDay.millisecondsSinceEpoch + 7200000;
-      final s2 = TrainingSession(
-        id: 's-pm',
-        ownerUserId: 'u-1',
-        startedAtMs: s2Start,
-        endedAtMs: s2Start + 1800000,
-        createdAtMs: s2Start,
-        updatedAtMs: s2Start,
-      );
-      await repo.createSession(s2);
+        // Two completed sessions on the same day (different start times)
+        await _seedCompletedSession(
+          repo,
+          id: 's-am',
+          day: targetDay,
+          durationMs: 3600000,
+        );
+        // A second session starting 2 hours after midnight the same day
+        final s2Start = targetDay.millisecondsSinceEpoch + 7200000;
+        final s2 = TrainingSession(
+          id: 's-pm',
+          ownerUserId: 'u-1',
+          startedAtMs: s2Start,
+          endedAtMs: s2Start + 1800000,
+          createdAtMs: s2Start,
+          updatedAtMs: s2Start,
+        );
+        await repo.createSession(s2);
 
-      final state = CalendarState(repo);
-      await state.init();
+        final state = CalendarState(repo);
+        await state.init();
 
-      final entries = state.entriesForDay(targetDay);
-      expect(entries.length, 2);
-    });
+        final entries = state.entriesForDay(targetDay);
+        expect(entries.length, 2);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -606,21 +669,24 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('PeriodState', () {
-    test('createPeriod succeeds when startMs equals endMs (single-day period)', () async {
-      final repo = await _freshRepo();
-      final state = PeriodState(repo);
+    test(
+      'createPeriod succeeds when startMs equals endMs (single-day period)',
+      () async {
+        final repo = await _freshRepo();
+        final state = PeriodState(repo);
 
-      final dayMs = DateTime(2026, 6, 15).millisecondsSinceEpoch;
-      final ok = await state.createPeriod(
-        name: 'Single Day',
-        startMs: dayMs,
-        endMs: dayMs,
-      );
+        final dayMs = DateTime(2026, 6, 15).millisecondsSinceEpoch;
+        final ok = await state.createPeriod(
+          name: 'Single Day',
+          startMs: dayMs,
+          endMs: dayMs,
+        );
 
-      expect(ok, isTrue);
-      await state.load();
-      expect(state.periods.any((p) => p.name == 'Single Day'), isTrue);
-    });
+        expect(ok, isTrue);
+        await state.load();
+        expect(state.periods.any((p) => p.name == 'Single Day'), isTrue);
+      },
+    );
 
     test('colorHex is preserved through createPeriod and load', () async {
       final repo = await _freshRepo();
@@ -678,108 +744,130 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('RoutineState', () {
-    test('countPlannedSessionsForTemplate returns 0 for unknown template', () async {
-      final repo = await _freshRepo();
-      final state = RoutineState(repo);
+    test(
+      'countPlannedSessionsForTemplate returns 0 for unknown template',
+      () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
 
-      final count = await state.countPlannedSessionsForTemplate('no-such-template');
-      expect(count, 0);
-    });
+        final count = await state.countPlannedSessionsForTemplate(
+          'no-such-template',
+        );
+        expect(count, 0);
+      },
+    );
 
-    test('countPlannedSessionsForTemplate reflects linked planned sessions', () async {
-      final repo = await _freshRepo();
-      final state = RoutineState(repo);
-      state.setAutosaveEnabled(false);
+    test(
+      'countPlannedSessionsForTemplate reflects linked planned sessions',
+      () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
 
-      await state.createNewRoutine('Pull Day');
-      await state.saveRoutine();
-      final templateId = state.currentTemplate!.id;
+        await state.createNewRoutine('Pull Day');
+        await state.saveRoutine();
+        final templateId = state.currentTemplate!.id;
 
-      // Seed two planned sessions linked to template
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await repo.createPlannedSession(PlannedSession(
-        id: 'ps-1',
-        ownerUserId: 'u-1',
-        scheduledDateMs: now + 86400000,
-        routineTemplateId: templateId,
-        isCompleted: false,
-        createdAtMs: now,
-        updatedAtMs: now,
-      ));
-      await repo.createPlannedSession(PlannedSession(
-        id: 'ps-2',
-        ownerUserId: 'u-1',
-        scheduledDateMs: now + 172800000,
-        routineTemplateId: templateId,
-        isCompleted: false,
-        createdAtMs: now,
-        updatedAtMs: now,
-      ));
+        // Seed two planned sessions linked to template
+        final now = DateTime.now().millisecondsSinceEpoch;
+        await repo.createPlannedSession(
+          PlannedSession(
+            id: 'ps-1',
+            ownerUserId: 'u-1',
+            scheduledDateMs: now + 86400000,
+            routineTemplateId: templateId,
+            isCompleted: false,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+        await repo.createPlannedSession(
+          PlannedSession(
+            id: 'ps-2',
+            ownerUserId: 'u-1',
+            scheduledDateMs: now + 172800000,
+            routineTemplateId: templateId,
+            isCompleted: false,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
 
-      final count = await state.countPlannedSessionsForTemplate(templateId);
-      expect(count, 2);
-    });
+        final count = await state.countPlannedSessionsForTemplate(templateId);
+        expect(count, 2);
+      },
+    );
 
-    test('setTargetValue stores targetMin and targetMax for a range target', () async {
-      final repo = await _freshRepo();
-      final state = RoutineState(repo);
-      state.setAutosaveEnabled(false);
+    test(
+      'setTargetValue stores targetMin and targetMax for a range target',
+      () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
 
-      final exercises = await repo.getExercises();
-      await state.createNewRoutine('Hypertrophy');
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
+        final exercises = await repo.getExercises();
+        await state.createNewRoutine('Hypertrophy');
+        final effortId = await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+        );
 
-      await state.setTargetValue(
-        effortId,
-        'metric-reps',
-        'unit-reps',
-        setIndex: 0,
-        targetMin: 8.0,
-        targetMax: 12.0,
-      );
+        await state.setTargetValue(
+          effortId,
+          'metric-reps',
+          'unit-reps',
+          setIndex: 0,
+          targetMin: 8.0,
+          targetMax: 12.0,
+        );
 
-      final targets = state.getEffortTargets(effortId);
-      expect(targets, hasLength(1));
-      expect(targets.first.targetMin, 8.0);
-      expect(targets.first.targetMax, 12.0);
-    });
+        final targets = state.getEffortTargets(effortId);
+        expect(targets, hasLength(1));
+        expect(targets.first.targetMin, 8.0);
+        expect(targets.first.targetMax, 12.0);
+      },
+    );
 
-    test('setTargetValue with different setIndex values creates independent per-set targets', () async {
-      final repo = await _freshRepo();
-      final state = RoutineState(repo);
-      state.setAutosaveEnabled(false);
+    test(
+      'setTargetValue with different setIndex values creates independent per-set targets',
+      () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
 
-      final exercises = await repo.getExercises();
-      await state.createNewRoutine('Strength');
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
+        final exercises = await repo.getExercises();
+        await state.createNewRoutine('Strength');
+        final effortId = await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+        );
 
-      await state.setTargetValue(
-        effortId,
-        'metric-reps',
-        'unit-reps',
-        setIndex: 1,
-        targetInt: 5,
-      );
-      await state.setTargetValue(
-        effortId,
-        'metric-reps',
-        'unit-reps',
-        setIndex: 2,
-        targetInt: 3,
-      );
+        await state.setTargetValue(
+          effortId,
+          'metric-reps',
+          'unit-reps',
+          setIndex: 1,
+          targetInt: 5,
+        );
+        await state.setTargetValue(
+          effortId,
+          'metric-reps',
+          'unit-reps',
+          setIndex: 2,
+          targetInt: 3,
+        );
 
-      final t1 = state.getEffortTargetsForSet(effortId, 1);
-      final t2 = state.getEffortTargetsForSet(effortId, 2);
-      final t3 = state.getEffortTargetsForSet(effortId, 0);
+        final t1 = state.getEffortTargetsForSet(effortId, 1);
+        final t2 = state.getEffortTargetsForSet(effortId, 2);
+        final t3 = state.getEffortTargetsForSet(effortId, 0);
 
-      expect(t1, hasLength(1));
-      expect(t1.first.targetInt, 5);
-      expect(t2, hasLength(1));
-      expect(t2.first.targetInt, 3);
-      expect(t3, isEmpty); // setIndex 0 not set
-    });
+        expect(t1, hasLength(1));
+        expect(t1.first.targetInt, 5);
+        expect(t2, hasLength(1));
+        expect(t2.first.targetInt, 3);
+        expect(t3, isEmpty); // setIndex 0 not set
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -794,14 +882,16 @@ void main() {
       required int startMs,
       required int endMs,
     }) async {
-      await repo.createPeriod(TrainingPeriod(
-        id: id,
-        name: 'Period $id',
-        startDateMs: startMs,
-        endDateMs: endMs,
-        createdAtMs: 0,
-        updatedAtMs: 0,
-      ));
+      await repo.createPeriod(
+        TrainingPeriod(
+          id: id,
+          name: 'Period $id',
+          startDateMs: startMs,
+          endDateMs: endMs,
+          createdAtMs: 0,
+          updatedAtMs: 0,
+        ),
+      );
     }
 
     test('returns false when no periods exist', () async {
@@ -886,73 +976,75 @@ void main() {
       expect(await repo.getNutritionTargetForDate(farFuture), isNull);
     });
 
-    test('backward-walk finds the nearest ancestor (not the earliest)',
-        () async {
-      final repo = await _freshRepo();
-      final threeDaysAgo = OmniDateUtils.startOfDayMs(
-        DateTime.now().subtract(const Duration(days: 3)),
-      );
-      final oneDayAgo = OmniDateUtils.startOfDayMs(
-        DateTime.now().subtract(const Duration(days: 1)),
-      );
-      await repo.saveNutritionTargetForDate(
-        threeDaysAgo,
-        NutritionTarget(calories: 1500),
-      );
-      await repo.saveNutritionTargetForDate(
-        oneDayAgo,
-        NutritionTarget(calories: 2400),
-      );
+    test(
+      'backward-walk finds the nearest ancestor (not the earliest)',
+      () async {
+        final repo = await _freshRepo();
+        final threeDaysAgo = OmniDateUtils.startOfDayMs(
+          DateTime.now().subtract(const Duration(days: 3)),
+        );
+        final oneDayAgo = OmniDateUtils.startOfDayMs(
+          DateTime.now().subtract(const Duration(days: 1)),
+        );
+        await repo.saveNutritionTargetForDate(
+          threeDaysAgo,
+          NutritionTarget(calories: 1500),
+        );
+        await repo.saveNutritionTargetForDate(
+          oneDayAgo,
+          NutritionTarget(calories: 2400),
+        );
 
-      final today = OmniDateUtils.todayMidnightMs();
-      // The two-days-ago slot is empty; the walk should land on the most
-      // recent ancestor (yesterday) and ignore the three-days-ago value.
-      final result = await repo.getNutritionTargetForDate(today);
-      expect(result?.calories, 2400);
-    });
+        final today = OmniDateUtils.todayMidnightMs();
+        // The two-days-ago slot is empty; the walk should land on the most
+        // recent ancestor (yesterday) and ignore the three-days-ago value.
+        final result = await repo.getNutritionTargetForDate(today);
+        expect(result?.calories, 2400);
+      },
+    );
 
     test(
-        'forward-propagation updates future targets that match the OLD values',
-        () async {
-      final repo = await _freshRepo();
-      final today = OmniDateUtils.todayMidnightMs();
-      final tomorrow = OmniDateUtils.startOfDayMs(
-        DateTime.now().add(const Duration(days: 1)),
-      );
-      final dayAfter = OmniDateUtils.startOfDayMs(
-        DateTime.now().add(const Duration(days: 2)),
-      );
+      'forward-propagation updates future targets that match the OLD values',
+      () async {
+        final repo = await _freshRepo();
+        final today = OmniDateUtils.todayMidnightMs();
+        final tomorrow = OmniDateUtils.startOfDayMs(
+          DateTime.now().add(const Duration(days: 1)),
+        );
+        final dayAfter = OmniDateUtils.startOfDayMs(
+          DateTime.now().add(const Duration(days: 2)),
+        );
 
-      // Seed today + tomorrow + day-after with the SAME values.
-      final shared = NutritionTarget(
-        calories: 2000,
-        protein: 120,
-        carbs: 250,
-        fat: 70,
-      );
-      await repo.saveNutritionTargetForDate(today, shared);
-      await repo.saveNutritionTargetForDate(tomorrow, shared);
-      await repo.saveNutritionTargetForDate(dayAfter, shared);
+        // Seed today + tomorrow + day-after with the SAME values.
+        final shared = NutritionTarget(
+          calories: 2000,
+          protein: 120,
+          carbs: 250,
+          fat: 70,
+        );
+        await repo.saveNutritionTargetForDate(today, shared);
+        await repo.saveNutritionTargetForDate(tomorrow, shared);
+        await repo.saveNutritionTargetForDate(dayAfter, shared);
 
-      // Edit today's values.
-      await repo.saveNutritionTargetForDate(
-        today,
-        NutritionTarget(calories: 2500, protein: 150, carbs: 300, fat: 80),
-      );
+        // Edit today's values.
+        await repo.saveNutritionTargetForDate(
+          today,
+          NutritionTarget(calories: 2500, protein: 150, carbs: 300, fat: 80),
+        );
 
-      // Tomorrow should propagate.
-      final tomorrowTarget = await repo.getNutritionTargetForDate(tomorrow);
-      expect(tomorrowTarget?.calories, 2500);
-      expect(tomorrowTarget?.protein, 150);
+        // Tomorrow should propagate.
+        final tomorrowTarget = await repo.getNutritionTargetForDate(tomorrow);
+        expect(tomorrowTarget?.calories, 2500);
+        expect(tomorrowTarget?.protein, 150);
 
-      // Day-after should also propagate.
-      final dayAfterTarget = await repo.getNutritionTargetForDate(dayAfter);
-      expect(dayAfterTarget?.calories, 2500);
-      expect(dayAfterTarget?.protein, 150);
-    });
+        // Day-after should also propagate.
+        final dayAfterTarget = await repo.getNutritionTargetForDate(dayAfter);
+        expect(dayAfterTarget?.calories, 2500);
+        expect(dayAfterTarget?.protein, 150);
+      },
+    );
 
-    test(
-        'forward-propagation does NOT touch future targets that already '
+    test('forward-propagation does NOT touch future targets that already '
         'differed from the old values', () async {
       final repo = await _freshRepo();
       final today = OmniDateUtils.todayMidnightMs();

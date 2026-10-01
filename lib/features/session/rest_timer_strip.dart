@@ -73,11 +73,7 @@ class RestTimerStrip extends StatelessWidget {
   /// appearance / disappearance so the content does not jolt.
   static const Duration animationDuration = Duration(milliseconds: 200);
 
-  const RestTimerStrip({
-    super.key,
-    required this.visible,
-    required this.child,
-  });
+  const RestTimerStrip({super.key, required this.visible, required this.child});
 
   /// Stable key for the strip widget, used by tests to locate the
   /// strip regardless of which surface is foregrounded. Callers
@@ -119,8 +115,7 @@ class RestTimerStrip extends StatelessWidget {
                   Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal:
-                            OmniTheme.restStripHorizontalPadding,
+                        horizontal: OmniTheme.restStripHorizontalPadding,
                       ),
                       child: child,
                     ),

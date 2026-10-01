@@ -18,30 +18,27 @@ import 'package:omnitrain/state/food_library_state.dart';
 
 void main() {
   group('Default category seeding: collision-skip (S-010)', () {
-    test(
-      'a fresh mock repo seeds all 9 default groups; no foods reference '
-      'a category that does not exist',
-      () async {
-        final repo = MockWorkoutRepository();
-        await repo.initialize();
-        final groups = await repo.getFoodGroups();
+    test('a fresh mock repo seeds all 9 default groups; no foods reference '
+        'a category that does not exist', () async {
+      final repo = MockWorkoutRepository();
+      await repo.initialize();
+      final groups = await repo.getFoodGroups();
+      expect(
+        groups.length,
+        SeedData.defaultFoodGroups.length,
+        reason: 'mock seeds every default group on initialize',
+      );
+      final groupIds = {for (final g in groups) g.id};
+      final catalog = await repo.getCatalogFoods();
+      for (final f in catalog) {
+        if (f.groupId == null) continue;
         expect(
-          groups.length,
-          SeedData.defaultFoodGroups.length,
-          reason: 'mock seeds every default group on initialize',
+          groupIds.contains(f.groupId),
+          isTrue,
+          reason: 'every catalog food points at a group that exists',
         );
-        final groupIds = {for (final g in groups) g.id};
-        final catalog = await repo.getCatalogFoods();
-        for (final f in catalog) {
-          if (f.groupId == null) continue;
-          expect(
-            groupIds.contains(f.groupId),
-            isTrue,
-            reason: 'every catalog food points at a group that exists',
-          );
-        }
-      },
-    );
+      }
+    });
   });
 
   group('Catalog refresh: bundled food categories (S-009)', () {
@@ -65,10 +62,7 @@ void main() {
         // trying and catching.
         var refused = false;
         try {
-          await state.deleteFoodGroupReassigningFoods(
-            'food-group-dairy',
-            null,
-          );
+          await state.deleteFoodGroupReassigningFoods('food-group-dairy', null);
         } on FoodGroupHasBundledFoodsError {
           refused = true;
         }
@@ -95,8 +89,7 @@ void main() {
         await state.loadCatalogFoods();
         for (final f in state.catalogFoods) {
           if (!state.isBundledCatalogFood(f.id)) continue;
-          final bundled = source.foodCatalog
-              .firstWhere((b) => b.id == f.id);
+          final bundled = source.foodCatalog.firstWhere((b) => b.id == f.id);
           expect(
             f.groupId,
             bundled.groupId,
@@ -146,9 +139,7 @@ void main() {
           isTrue,
         );
         expect(
-          state.activeFoodGroups.any(
-            (g) => g.id == 'food-group-doesnt-exist',
-          ),
+          state.activeFoodGroups.any((g) => g.id == 'food-group-doesnt-exist'),
           isFalse,
         );
 
@@ -165,11 +156,7 @@ void main() {
           title: const Text('Orphan'),
           subtitle: const Text('group=food-group-doesnt-exist'),
         );
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(body: orphanRow),
-          ),
-        );
+        await tester.pumpWidget(MaterialApp(home: Scaffold(body: orphanRow)));
         await tester.pumpAndSettle();
 
         expect(find.byKey(const Key('food-orphan-state')), findsOneWidget);
@@ -179,4 +166,3 @@ void main() {
 }
 
 /// (no helpers)
-

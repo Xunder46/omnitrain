@@ -1,0 +1,24 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-ds-bad",
+  "sessionId": "s-ds",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-09-27T11:00:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "e-ds-bad",
+        "entryId": "e-ds-bad",
+        "kind": "timed",
+        "loggedAt": "2026-09-27T10:30:00Z",
+        "sessionExerciseId": "sx-run",
+        "exerciseId": "ex-run",
+        "startedAt": "2026-09-27T10:10:00Z",
+        "endedAt": "2026-09-27T10:30:00Z",
+        "distanceMeters": 3000,
+        "distanceSource": "pedometer"
+      }
+    ]
+  }
+}

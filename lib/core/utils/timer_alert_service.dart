@@ -68,11 +68,7 @@ class TimerAlertService {
   }
 
   Future<void> fireRestPingAlert(String soundId) async {
-    await _playSound(
-      soundId,
-      fallback: 'soft_chime',
-      alertType: 'rest_ping',
-    );
+    await _playSound(soundId, fallback: 'soft_chime', alertType: 'rest_ping');
     if (!_isWeb) await HapticFeedback.lightImpact();
   }
 

@@ -1,0 +1,38 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-timers-1",
+  "sessionId": "s-2026-07-13-1",
+  "type": "timer_state",
+  "origin": "watch",
+  "sentAt": "2026-07-13T17:33:00Z",
+  "payload": {
+    "timers": {
+      "rest": {
+        "kind": "rest",
+        "state": "paused",
+        "startedAt": "2026-07-13T17:32:00Z",
+        "pausedAt": "2026-07-13T17:32:45Z",
+        "accumulatedPauseMs": 45000,
+        "plannedDurationMs": 90000
+      },
+      "round": {
+        "kind": "round",
+        "state": "stopped",
+        "startedAt": "2026-07-13T17:24:00Z",
+        "stoppedAt": "2026-07-13T17:26:00Z"
+      },
+      "hold": {
+        "kind": "hold",
+        "state": "running",
+        "startedAt": "2026-07-13T17:29:00Z",
+        "accumulatedPauseMs": 0
+      },
+      "elapsed": {
+        "kind": "elapsed",
+        "state": "running",
+        "startedAt": "2026-07-13T17:05:00Z",
+        "accumulatedPauseMs": 0
+      }
+    }
+  }
+}

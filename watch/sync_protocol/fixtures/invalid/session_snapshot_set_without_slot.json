@@ -1,0 +1,27 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-bad-noslot",
+  "sessionId": "s-cap-bad",
+  "type": "session_snapshot",
+  "origin": "watch",
+  "sentAt": "2026-09-25T11:00:00Z",
+  "payload": {
+    "sessionId": "s-cap-bad",
+    "revision": 0,
+    "status": "completed",
+    "currentExerciseIndex": 0,
+    "exercises": [],
+    "entries": [
+      {
+        "entryId": "e-snap-noslot",
+        "eventId": "e-snap-noslot",
+        "kind": "set",
+        "loggedAt": "2026-09-25T10:45:00Z",
+        "exerciseId": "ex-bench",
+        "reps": 5,
+        "loadKg": 80
+      }
+    ],
+    "timers": {}
+  }
+}

@@ -48,8 +48,9 @@ import 'package:path/path.dart' as p;
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/test_image_storage.dart';
 
-Future<({ProfileState profileState, MockWorkoutRepository repo})>
-    _seededState(TestImageStorage imageStorage) async {
+Future<({ProfileState profileState, MockWorkoutRepository repo})> _seededState(
+  TestImageStorage imageStorage,
+) async {
   final repo = MockWorkoutRepository();
   await repo.initialize();
   final state = ProfileState(repo, imageStorage: imageStorage.service);
@@ -111,8 +112,7 @@ void main() {
 
   // ─── S-001: tapping the avatar opens the options sheet ──────────────────
 
-  group('S-001: avatar options sheet includes camera + gallery + remove',
-      () {
+  group('S-001: avatar options sheet includes camera + gallery + remove', () {
     testWidgets(
       'tapping the avatar opens the options sheet with all three entries '
       'and the crop step is wired between the picker and the save',
@@ -142,11 +142,18 @@ void main() {
         // is exercised by S-003 below.
         await tester.tap(find.text('Take Photo'));
         await tester.pumpAndSettle();
-        expect(find.text('Take Photo'), findsNothing,
-            reason: 'options sheet must dismiss after tapping Take Photo');
-        expect(find.byType(AvatarCropSheet), findsNothing,
-            reason: 'crop step is gated behind the OS picker; '
-                'no crop step without a successful pick');
+        expect(
+          find.text('Take Photo'),
+          findsNothing,
+          reason: 'options sheet must dismiss after tapping Take Photo',
+        );
+        expect(
+          find.byType(AvatarCropSheet),
+          findsNothing,
+          reason:
+              'crop step is gated behind the OS picker; '
+              'no crop step without a successful pick',
+        );
       },
     );
   });
@@ -154,94 +161,91 @@ void main() {
   // ─── S-002: gallery option also routes through the crop step ────────────
 
   group('S-002: gallery option also routes through the crop step', () {
-    testWidgets(
-      'tapping Choose from Gallery dismisses the options sheet',
-      (tester) async {
-        final imageStorage = TestImageStorage.create();
-        addTearDown(imageStorage.dispose);
-        final seeded = await _seededState(imageStorage);
-        final settingsState = await _settings();
-        await _pumpProfileScreen(
-          tester,
-          profileState: seeded.profileState,
-          settingsState: settingsState,
-        );
+    testWidgets('tapping Choose from Gallery dismisses the options sheet', (
+      tester,
+    ) async {
+      final imageStorage = TestImageStorage.create();
+      addTearDown(imageStorage.dispose);
+      final seeded = await _seededState(imageStorage);
+      final settingsState = await _settings();
+      await _pumpProfileScreen(
+        tester,
+        profileState: seeded.profileState,
+        settingsState: settingsState,
+      );
 
-        await tester.tap(find.byKey(const Key('profile_identity_avatar')));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('profile_identity_avatar')));
+      await tester.pumpAndSettle();
 
-        expect(find.text('Choose from Gallery'), findsOneWidget);
+      expect(find.text('Choose from Gallery'), findsOneWidget);
 
-        await tester.tap(find.text('Choose from Gallery'));
-        await tester.pumpAndSettle();
-        expect(find.text('Choose from Gallery'), findsNothing);
-      },
-    );
+      await tester.tap(find.text('Choose from Gallery'));
+      await tester.pumpAndSettle();
+      expect(find.text('Choose from Gallery'), findsNothing);
+    });
   });
 
   // ─── S-003: confirming the crop persists cropped bytes ───────────────────
 
   group('S-003: confirming the crop persists cropped bytes', () {
-    testWidgets(
-      'handlePickedBytes lands PNG bytes in the managed dir, updates '
-      'profile.avatarPath, and the stored basename is a fresh UUID-v4',
-      (tester) async {
-        final imageStorage = TestImageStorage.create();
-        addTearDown(imageStorage.dispose);
-        final seeded = await _seededState(imageStorage);
-        final settingsState = await _settings();
-        await _pumpProfileScreen(
-          tester,
-          profileState: seeded.profileState,
-          settingsState: settingsState,
-        );
+    testWidgets('handlePickedBytes lands PNG bytes in the managed dir, updates '
+        'profile.avatarPath, and the stored basename is a fresh UUID-v4', (
+      tester,
+    ) async {
+      final imageStorage = TestImageStorage.create();
+      addTearDown(imageStorage.dispose);
+      final seeded = await _seededState(imageStorage);
+      final settingsState = await _settings();
+      await _pumpProfileScreen(
+        tester,
+        profileState: seeded.profileState,
+        settingsState: settingsState,
+      );
 
-        final croppedBytes = _minimalPngBytes();
+      final croppedBytes = _minimalPngBytes();
 
-        // Drive the persist path directly via the
-        // @visibleForTesting `handleCroppedBytes` entry point
-        // (which is exactly what the production
-        // `handlePickedBytes` calls after the crop sheet pops
-        // with bytes). Running inside `tester.runAsync` lets
-        // the `writeAsBytes` real I/O actually complete.
-        await tester.runAsync(() async {
-          // ignore: avoid-dynamic
-          final screenState =
-              tester.state(find.byType(ProfileScreen)) as dynamic;
-          await screenState.handleCroppedBytes(croppedBytes);
-        });
-        await _drainMicrotasks(tester);
+      // Drive the persist path directly via the
+      // @visibleForTesting `handleCroppedBytes` entry point
+      // (which is exactly what the production
+      // `handlePickedBytes` calls after the crop sheet pops
+      // with bytes). Running inside `tester.runAsync` lets
+      // the `writeAsBytes` real I/O actually complete.
+      await tester.runAsync(() async {
+        // ignore: avoid-dynamic
+        final screenState = tester.state(find.byType(ProfileScreen)) as dynamic;
+        await screenState.handleCroppedBytes(croppedBytes);
+      });
+      await _drainMicrotasks(tester);
 
-        // Avatar path is now the new basename.
-        expect(seeded.profileState.profile?.avatarPath, isNotNull);
-        expect(seeded.profileState.profile!.avatarPath, isNot(isEmpty));
+      // Avatar path is now the new basename.
+      expect(seeded.profileState.profile?.avatarPath, isNotNull);
+      expect(seeded.profileState.profile!.avatarPath, isNot(isEmpty));
 
-        final basename = seeded.profileState.profile!.avatarPath!;
-        // The basename is a fresh UUID-v4 .png, not anything
-        // resembling a raw-pick filename.
-        expect(p.extension(basename), '.png');
-        expect(
-          RegExp(
-            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$',
-          ).hasMatch(basename),
-          isTrue,
-          reason: 'basename must be <uuid-v4>.png',
-        );
-        expect(basename, isNot(equals('camera_pick.jpg')));
-        expect(basename, isNot(equals('gallery_pick.png')));
+      final basename = seeded.profileState.profile!.avatarPath!;
+      // The basename is a fresh UUID-v4 .png, not anything
+      // resembling a raw-pick filename.
+      expect(p.extension(basename), '.png');
+      expect(
+        RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$',
+        ).hasMatch(basename),
+        isTrue,
+        reason: 'basename must be <uuid-v4>.png',
+      );
+      expect(basename, isNot(equals('camera_pick.jpg')));
+      expect(basename, isNot(equals('gallery_pick.png')));
 
-        // The file exists at managed dir + basename; bytes match.
-        final managedFile = File(
-          p.join(imageStorage.service.managedDirectoryPath, basename),
-        );
-        expect(managedFile.existsSync(), isTrue);
-        expect(managedFile.readAsBytesSync(), equals(croppedBytes));
+      // The file exists at managed dir + basename; bytes match.
+      final managedFile = File(
+        p.join(imageStorage.service.managedDirectoryPath, basename),
+      );
+      expect(managedFile.existsSync(), isTrue);
+      expect(managedFile.readAsBytesSync(), equals(croppedBytes));
 
-        // The repo row matches the state.
-        final fromRepo = await seeded.repo.getProfile();
-        expect(fromRepo?.avatarPath, basename);
-      },
-    );
+      // The repo row matches the state.
+      final fromRepo = await seeded.repo.getProfile();
+      expect(fromRepo?.avatarPath, basename);
+    });
 
     testWidgets(
       'round-trip: a fresh state loaded from the same repo + imageStorage '
@@ -294,170 +298,168 @@ void main() {
 
   group('S-004: canceling the crop leaves the existing avatar unchanged '
       'and discards the pick', () {
-    testWidgets(
-      'cancel → avatar path unchanged, no new file in managed dir',
-      (tester) async {
-        final imageStorage = TestImageStorage.create();
-        addTearDown(imageStorage.dispose);
+    testWidgets('cancel → avatar path unchanged, no new file in managed dir', (
+      tester,
+    ) async {
+      final imageStorage = TestImageStorage.create();
+      addTearDown(imageStorage.dispose);
 
-        // Seed: an existing avatar under the managed dir.
-        late String existingBasename;
-        late File existingManagedFile;
-        await tester.runAsync(() async {
-          existingBasename = await imageStorage.service.persistImageBytes(
-            Uint8List.fromList([0xAA, 0xBB, 0xCC]),
-          );
-          existingManagedFile = File(
-            p.join(
-              imageStorage.service.managedDirectoryPath,
-              existingBasename,
-            ),
-          );
-        });
-        expect(existingManagedFile.existsSync(), isTrue);
-        final filesBeforePick =
-            Directory(imageStorage.service.managedDirectoryPath)
-                .listSync()
-                .length;
-
-        final seeded = await _seededState(imageStorage);
-        // Manually set the avatar to the existing basename so we
-        // exercise the "existing avatar preserved on cancel" path.
-        await tester.runAsync(() async {
-          await seeded.profileState.updateAvatarPath(existingBasename);
-        });
-        final settingsState = await _settings();
-        await _pumpProfileScreen(
-          tester,
-          profileState: seeded.profileState,
-          settingsState: settingsState,
+      // Seed: an existing avatar under the managed dir.
+      late String existingBasename;
+      late File existingManagedFile;
+      await tester.runAsync(() async {
+        existingBasename = await imageStorage.service.persistImageBytes(
+          Uint8List.fromList([0xAA, 0xBB, 0xCC]),
         );
+        existingManagedFile = File(
+          p.join(imageStorage.service.managedDirectoryPath, existingBasename),
+        );
+      });
+      expect(existingManagedFile.existsSync(), isTrue);
+      final filesBeforePick = Directory(
+        imageStorage.service.managedDirectoryPath,
+      ).listSync().length;
 
-        expect(seeded.profileState.profile?.avatarPath, existingBasename);
+      final seeded = await _seededState(imageStorage);
+      // Manually set the avatar to the existing basename so we
+      // exercise the "existing avatar preserved on cancel" path.
+      await tester.runAsync(() async {
+        await seeded.profileState.updateAvatarPath(existingBasename);
+      });
+      final settingsState = await _settings();
+      await _pumpProfileScreen(
+        tester,
+        profileState: seeded.profileState,
+        settingsState: settingsState,
+      );
 
-        // Push the crop sheet directly via Navigator (bypassing
-        // the OS picker and the screen state's picker wrapping).
-        // We tap Cancel and verify the avatar path is unchanged
-        // AND no new file appears in the managed dir. Pushing
-        // from a button onPressed keeps the await in the test
-        // zone so we can tap Cancel synchronously and let
-        // pumpAndSettle drain the pop microtasks. Use
-        // `OmniNavigator.push` so the test exercises the same
-        // route the production wiring uses — this catches any
-        // future regression where the production path drifts
-        // from the navigation contract.
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Builder(
-              builder: (context) => Scaffold(
-                body: Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      OmniNavigator.push<Uint8List>(
-                        context,
-                        (_) => AvatarCropSheet(
-                          imageBytes: _minimalPngBytes(),
-                        ),
-                        fullscreenDialog: true,
-                      );
-                    },
-                    child: const Text('Open'),
-                  ),
+      expect(seeded.profileState.profile?.avatarPath, existingBasename);
+
+      // Push the crop sheet directly via Navigator (bypassing
+      // the OS picker and the screen state's picker wrapping).
+      // We tap Cancel and verify the avatar path is unchanged
+      // AND no new file appears in the managed dir. Pushing
+      // from a button onPressed keeps the await in the test
+      // zone so we can tap Cancel synchronously and let
+      // pumpAndSettle drain the pop microtasks. Use
+      // `OmniNavigator.push` so the test exercises the same
+      // route the production wiring uses — this catches any
+      // future regression where the production path drifts
+      // from the navigation contract.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  onPressed: () {
+                    OmniNavigator.push<Uint8List>(
+                      context,
+                      (_) => AvatarCropSheet(imageBytes: _minimalPngBytes()),
+                      fullscreenDialog: true,
+                    );
+                  },
+                  child: const Text('Open'),
                 ),
               ),
             ),
           ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
-        expect(find.byType(AvatarCropSheet), findsOneWidget);
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AvatarCropSheet), findsOneWidget);
 
-        await tester.tap(find.text('Cancel'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
 
-        // Avatar path unchanged.
-        expect(seeded.profileState.profile?.avatarPath, existingBasename);
-        // Crop sheet popped.
-        expect(find.byType(AvatarCropSheet), findsNothing);
+      // Avatar path unchanged.
+      expect(seeded.profileState.profile?.avatarPath, existingBasename);
+      // Crop sheet popped.
+      expect(find.byType(AvatarCropSheet), findsNothing);
 
-        // No new files written to the managed dir.
-        final filesAfterCancel =
-            Directory(imageStorage.service.managedDirectoryPath)
-                .listSync()
-                .length;
-        expect(filesAfterCancel, filesBeforePick,
-            reason: 'cancel must not write any new file under the managed dir');
-      },
-    );
+      // No new files written to the managed dir.
+      final filesAfterCancel = Directory(
+        imageStorage.service.managedDirectoryPath,
+      ).listSync().length;
+      expect(
+        filesAfterCancel,
+        filesBeforePick,
+        reason: 'cancel must not write any new file under the managed dir',
+      );
+    });
   });
 
   // ─── S-005: "Remove Photo" path is unaffected by the new flow ────────────
 
   group('S-005: "Remove Photo" path is unaffected', () {
-    testWidgets(
-      'Remove Photo deletes the managed file and clears avatarPath '
-      'without routing through the crop step',
-      (tester) async {
-        final imageStorage = TestImageStorage.create();
-        addTearDown(imageStorage.dispose);
+    testWidgets('Remove Photo deletes the managed file and clears avatarPath '
+        'without routing through the crop step', (tester) async {
+      final imageStorage = TestImageStorage.create();
+      addTearDown(imageStorage.dispose);
 
-        // Seed the managed file inside `runAsync` so the real
-        // `writeAsBytes` I/O actually completes (the test zone's
-        // fake async clock cannot drive `writeAsBytes`).
-        late String existingBasename;
-        late File existingManagedFile;
-        await tester.runAsync(() async {
-          existingBasename = await imageStorage.service.persistImageBytes(
-            Uint8List.fromList([0x01, 0x02, 0x03]),
-          );
-          existingManagedFile = File(
-            p.join(
-              imageStorage.service.managedDirectoryPath,
-              existingBasename,
-            ),
-          );
-        });
-        expect(existingManagedFile.existsSync(), isTrue);
-
-        final seeded = await _seededState(imageStorage);
-        await tester.runAsync(() async {
-          await seeded.profileState.updateAvatarPath(existingBasename);
-        });
-        expect(seeded.profileState.profile?.avatarPath, existingBasename);
-
-        // The avatar options sheet does not route through the
-        // crop step — its `Remove Photo` action calls
-        // `state.updateAvatarPath(null)` directly. We verify the
-        // contract at the state level (the wired `Remove Photo`
-        // tap is exercised at the integration level by
-        // `image_persistence_round_trip_test.dart`). Doing the
-        // assertion via the state avoids the
-        // `await File.delete` real-I/O hang inside the test
-        // zone's fake async clock.
-        await tester.runAsync(() async {
-          await seeded.profileState.updateAvatarPath(null);
-          expect(seeded.profileState.profile?.avatarPath, isNull,
-              reason: 'Remove Photo must clear the avatar path');
-          expect(existingManagedFile.existsSync(), isFalse,
-              reason: 'Remove Photo must delete the managed file');
-        });
-
-        // The wiring-side assertion: the existing avatar
-        // options sheet has Remove Photo as an option, and the
-        // crop step is not present.
-        final settingsState = await _settings();
-        await _pumpProfileScreen(
-          tester,
-          profileState: seeded.profileState,
-          settingsState: settingsState,
+      // Seed the managed file inside `runAsync` so the real
+      // `writeAsBytes` I/O actually completes (the test zone's
+      // fake async clock cannot drive `writeAsBytes`).
+      late String existingBasename;
+      late File existingManagedFile;
+      await tester.runAsync(() async {
+        existingBasename = await imageStorage.service.persistImageBytes(
+          Uint8List.fromList([0x01, 0x02, 0x03]),
         );
-        await tester.tap(find.byKey(const Key('profile_identity_avatar')));
-        await tester.pumpAndSettle();
-        expect(find.text('Remove Photo'), findsOneWidget);
-        expect(find.byType(AvatarCropSheet), findsNothing,
-            reason: 'Remove Photo must not route through the crop step');
-      },
-    );
+        existingManagedFile = File(
+          p.join(imageStorage.service.managedDirectoryPath, existingBasename),
+        );
+      });
+      expect(existingManagedFile.existsSync(), isTrue);
+
+      final seeded = await _seededState(imageStorage);
+      await tester.runAsync(() async {
+        await seeded.profileState.updateAvatarPath(existingBasename);
+      });
+      expect(seeded.profileState.profile?.avatarPath, existingBasename);
+
+      // The avatar options sheet does not route through the
+      // crop step — its `Remove Photo` action calls
+      // `state.updateAvatarPath(null)` directly. We verify the
+      // contract at the state level (the wired `Remove Photo`
+      // tap is exercised at the integration level by
+      // `image_persistence_round_trip_test.dart`). Doing the
+      // assertion via the state avoids the
+      // `await File.delete` real-I/O hang inside the test
+      // zone's fake async clock.
+      await tester.runAsync(() async {
+        await seeded.profileState.updateAvatarPath(null);
+        expect(
+          seeded.profileState.profile?.avatarPath,
+          isNull,
+          reason: 'Remove Photo must clear the avatar path',
+        );
+        expect(
+          existingManagedFile.existsSync(),
+          isFalse,
+          reason: 'Remove Photo must delete the managed file',
+        );
+      });
+
+      // The wiring-side assertion: the existing avatar
+      // options sheet has Remove Photo as an option, and the
+      // crop step is not present.
+      final settingsState = await _settings();
+      await _pumpProfileScreen(
+        tester,
+        profileState: seeded.profileState,
+        settingsState: settingsState,
+      );
+      await tester.tap(find.byKey(const Key('profile_identity_avatar')));
+      await tester.pumpAndSettle();
+      expect(find.text('Remove Photo'), findsOneWidget);
+      expect(
+        find.byType(AvatarCropSheet),
+        findsNothing,
+        reason: 'Remove Photo must not route through the crop step',
+      );
+    });
   });
 }

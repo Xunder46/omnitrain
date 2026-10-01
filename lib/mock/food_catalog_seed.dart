@@ -2729,4 +2729,3 @@ class FoodCatalogSeed {
     ];
   }
 }
-

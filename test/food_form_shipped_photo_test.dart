@@ -103,7 +103,8 @@ void main() {
       expect(
         find.byType(FoodThumbnail),
         findsOneWidget,
-        reason: 'image body must delegate to FoodThumbnail to reach '
+        reason:
+            'image body must delegate to FoodThumbnail to reach '
             'the bundled-photo tier',
       );
       // The "Add photo" placeholder text must NOT appear when
@@ -120,8 +121,11 @@ void main() {
           break;
         }
       }
-      expect(foundAsset, isTrue,
-          reason: 'FoodThumbnail bundled tier renders Image.asset');
+      expect(
+        foundAsset,
+        isTrue,
+        reason: 'FoodThumbnail bundled tier renders Image.asset',
+      );
 
       // Strengthened assertions: the photo must actually *display*
       // (render to a non-zero size), and the fallback icon-only
@@ -132,55 +136,66 @@ void main() {
       // render path is exercised end-to-end.
       final imageFinder = find.byType(Image);
       final imageRenderBox = tester.renderObject<RenderBox>(imageFinder);
-      expect(imageRenderBox.size.width, greaterThan(0),
-          reason: 'bundled photo must render with non-zero width');
-      expect(imageRenderBox.size.height, greaterThan(0),
-          reason: 'bundled photo must render with non-zero height');
-      expect(find.byIcon(Icons.restaurant_outlined), findsNothing,
-          reason: 'no icon-only fallback should be visible when the '
-              'bundled photo rendered');
+      expect(
+        imageRenderBox.size.width,
+        greaterThan(0),
+        reason: 'bundled photo must render with non-zero width',
+      );
+      expect(
+        imageRenderBox.size.height,
+        greaterThan(0),
+        reason: 'bundled photo must render with non-zero height',
+      );
+      expect(
+        find.byIcon(Icons.restaurant_outlined),
+        findsNothing,
+        reason:
+            'no icon-only fallback should be visible when the '
+            'bundled photo rendered',
+      );
     },
   );
 
   // ─── S-002: user photo wins over bundled photo ─────────────────────────
-  testWidgets(
-    'S-002: user photo takes precedence over the shipped photo',
-    (WidgetTester tester) async {
-      if (kIsWeb) {
-        return; // web stub ignores user photo
-      }
-      // Even though the bundle has the bundled asset, the
-      // user's `imagePath` (a non-empty string) must win.
-      final fakeBundle = FakeAssetBundle({
-        'assets/images/food_chicken_breast.webp':
-            TestImageHelper.testWebp1x1Red,
-      });
-      await tester.pumpWidget(
-        pumpTile(
-          imagePath: '/managed/user_picked.jpg',
-          foodId: 'chicken_breast',
-          catalogId: null,
-          bundle: fakeBundle,
-        ),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('S-002: user photo takes precedence over the shipped photo', (
+    WidgetTester tester,
+  ) async {
+    if (kIsWeb) {
+      return; // web stub ignores user photo
+    }
+    // Even though the bundle has the bundled asset, the
+    // user's `imagePath` (a non-empty string) must win.
+    final fakeBundle = FakeAssetBundle({
+      'assets/images/food_chicken_breast.webp': TestImageHelper.testWebp1x1Red,
+    });
+    await tester.pumpWidget(
+      pumpTile(
+        imagePath: '/managed/user_picked.jpg',
+        foodId: 'chicken_breast',
+        catalogId: null,
+        bundle: fakeBundle,
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      // Tier 1 (FoodThumbnailImage, the IO renderer for the
-      // user's photo) is reached, not the bundled tier.
-      expect(find.byType(FoodThumbnailImage), findsOneWidget,
-          reason: 'tier-1 (user photo) must be selected over tier-2');
-      // No AssetImage must be rendered (bundled tier skipped).
-      final imageWidgets = find.byType(Image);
-      for (int i = 0; i < imageWidgets.evaluate().length; i++) {
-        final w = imageWidgets.evaluate().elementAt(i).widget as Image;
-        expect(
-          w.image is! AssetImage && w.image is! ExactAssetImage,
-          isTrue,
-          reason: 'bundled Image.asset must not run when user photo is set',
-        );
-      }
-    },
-  );
+    // Tier 1 (FoodThumbnailImage, the IO renderer for the
+    // user's photo) is reached, not the bundled tier.
+    expect(
+      find.byType(FoodThumbnailImage),
+      findsOneWidget,
+      reason: 'tier-1 (user photo) must be selected over tier-2',
+    );
+    // No AssetImage must be rendered (bundled tier skipped).
+    final imageWidgets = find.byType(Image);
+    for (int i = 0; i < imageWidgets.evaluate().length; i++) {
+      final w = imageWidgets.evaluate().elementAt(i).widget as Image;
+      expect(
+        w.image is! AssetImage && w.image is! ExactAssetImage,
+        isTrue,
+        reason: 'bundled Image.asset must not run when user photo is set',
+      );
+    }
+  });
 
   // ─── S-003: no shipped asset, no user photo → placeholder ──────────────
   testWidgets(
@@ -205,8 +220,11 @@ void main() {
       // `errorBuilder` of `Image.asset` when the bundled file
       // is missing), so the placeholder icon is the visible
       // surface.
-      expect(find.byIcon(Icons.restaurant_outlined), findsOneWidget,
-          reason: 'placeholder icon is rendered when no source has a photo');
+      expect(
+        find.byIcon(Icons.restaurant_outlined),
+        findsOneWidget,
+        reason: 'placeholder icon is rendered when no source has a photo',
+      );
       // The clear (×) overlay is hidden (no user photo).
       expect(find.byIcon(Icons.close), findsNothing);
     },
@@ -222,11 +240,7 @@ void main() {
             TestImageHelper.testWebp1x1Red,
       });
       await tester.pumpWidget(
-        pumpTile(
-          imagePath: null,
-          foodId: 'chicken_breast',
-          bundle: fakeBundle,
-        ),
+        pumpTile(imagePath: null, foodId: 'chicken_breast', bundle: fakeBundle),
       );
       await tester.pumpAndSettle();
 
@@ -292,11 +306,7 @@ void main() {
       // shipped photo (tier 2) rather than the placeholder
       // (tier 3).
       await tester.pumpWidget(
-        pumpTile(
-          imagePath: null,
-          foodId: 'chicken_breast',
-          bundle: fakeBundle,
-        ),
+        pumpTile(imagePath: null, foodId: 'chicken_breast', bundle: fakeBundle),
       );
       await tester.pumpAndSettle();
 
@@ -306,22 +316,38 @@ void main() {
       // Image.asset resolves the declared bytes, so the
       // RenderBox size is non-zero.
       final bundledImageFinder = find.byType(Image);
-      expect(bundledImageFinder, findsOneWidget,
-          reason: 'shipped-photo Image must be in the tree');
-      final bundledRenderBox =
-          tester.renderObject<RenderBox>(bundledImageFinder);
-      expect(bundledRenderBox.size.width, greaterThan(0),
-          reason: 'shipped photo must render with non-zero width '
-                'after clearing the user photo');
-      expect(bundledRenderBox.size.height, greaterThan(0),
-          reason: 'shipped photo must render with non-zero height '
-                'after clearing the user photo');
+      expect(
+        bundledImageFinder,
+        findsOneWidget,
+        reason: 'shipped-photo Image must be in the tree',
+      );
+      final bundledRenderBox = tester.renderObject<RenderBox>(
+        bundledImageFinder,
+      );
+      expect(
+        bundledRenderBox.size.width,
+        greaterThan(0),
+        reason:
+            'shipped photo must render with non-zero width '
+            'after clearing the user photo',
+      );
+      expect(
+        bundledRenderBox.size.height,
+        greaterThan(0),
+        reason:
+            'shipped photo must render with non-zero height '
+            'after clearing the user photo',
+      );
       // No icon-only placeholder should be visible — clearing
       // must fall back to the bundled photo, not the empty
       // placeholder.
-      expect(find.byIcon(Icons.restaurant_outlined), findsNothing,
-          reason: 'icon-only placeholder must NOT be visible when '
-                'the bundled photo rendered');
+      expect(
+        find.byIcon(Icons.restaurant_outlined),
+        findsNothing,
+        reason:
+            'icon-only placeholder must NOT be visible when '
+            'the bundled photo rendered',
+      );
       // No "Add photo" caption either — clearing must not land on
       // tier 3.
       expect(find.text('Add photo'), findsNothing);
@@ -361,26 +387,43 @@ void main() {
       // resolves via catalogId, and the RenderBox has non-zero
       // size.
       final imageFinder = find.byType(Image);
-      expect(imageFinder, findsOneWidget,
-          reason: 'shipped-photo Image must be in the tree');
-      final imageRenderBox =
-          tester.renderObject<RenderBox>(imageFinder);
-      expect(imageRenderBox.size.width, greaterThan(0),
-          reason: 'shipped photo must render with non-zero width '
-                'when resolved via catalogId');
-      expect(imageRenderBox.size.height, greaterThan(0),
-          reason: 'shipped photo must render with non-zero height '
-                'when resolved via catalogId');
+      expect(
+        imageFinder,
+        findsOneWidget,
+        reason: 'shipped-photo Image must be in the tree',
+      );
+      final imageRenderBox = tester.renderObject<RenderBox>(imageFinder);
+      expect(
+        imageRenderBox.size.width,
+        greaterThan(0),
+        reason:
+            'shipped photo must render with non-zero width '
+            'when resolved via catalogId',
+      );
+      expect(
+        imageRenderBox.size.height,
+        greaterThan(0),
+        reason:
+            'shipped photo must render with non-zero height '
+            'when resolved via catalogId',
+      );
       // The bundled tier rendered an Image.asset — assert that
       // it is an AssetImage-backed Image widget, not the icon-only
       // placeholder.
       final imageWidget = tester.widget<Image>(imageFinder);
-      expect(imageWidget.image, anyOf(isA<AssetImage>(), isA<ExactAssetImage>()),
-          reason: 'library copy must resolve bundled photo via catalogId');
+      expect(
+        imageWidget.image,
+        anyOf(isA<AssetImage>(), isA<ExactAssetImage>()),
+        reason: 'library copy must resolve bundled photo via catalogId',
+      );
       // No icon-only placeholder should be visible.
-      expect(find.byIcon(Icons.restaurant_outlined), findsNothing,
-          reason: 'icon-only placeholder must NOT be visible when '
-                'the shipped photo rendered via catalogId');
+      expect(
+        find.byIcon(Icons.restaurant_outlined),
+        findsNothing,
+        reason:
+            'icon-only placeholder must NOT be visible when '
+            'the shipped photo rendered via catalogId',
+      );
       // No "Add photo" caption — tier 3 must not be reached.
       expect(find.text('Add photo'), findsNothing);
     },

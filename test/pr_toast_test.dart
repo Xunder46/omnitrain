@@ -1,6 +1,6 @@
 // Unit tests for the extracted `PRToast.buildPRSnackBar` factory.
 //
-// Plan: .github/agents/plans/in-session-pr-toast-plan.md
+// Plan: docs/plans/in-session-pr-toast-plan.md
 // Widget under test: lib/widgets/session/pr_toast.dart
 //
 // These tests pin the static builder's output (duration, behavior,
@@ -17,10 +17,13 @@ void main() {
     final lightTheme = ThemeData.light();
     final darkTheme = ThemeData.dark();
 
-    test('duration is 4.0 s (long enough to read, never blocks the next set)', () {
-      final bar = PRToast.buildPRSnackBar(lightTheme);
-      expect(bar.duration, const Duration(milliseconds: 4000));
-    });
+    test(
+      'duration is 4.0 s (long enough to read, never blocks the next set)',
+      () {
+        final bar = PRToast.buildPRSnackBar(lightTheme);
+        expect(bar.duration, const Duration(milliseconds: 4000));
+      },
+    );
 
     test('behavior is floating (does not push the bottom controls up)', () {
       final bar = PRToast.buildPRSnackBar(lightTheme);

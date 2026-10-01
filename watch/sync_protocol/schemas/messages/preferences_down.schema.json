@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/preferences_down.schema.json",
+  "title": "preferences_down",
+  "description": "Phone → watch. The phone's settings the wrist honours. Not session-scoped: it describes the user, not a workout. The wrist keeps the copy with the latest generatedAt — a tie goes to the later-received copy — so an older copy that arrives late never replaces a newer one.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "properties": {
+        "type": { "const": "preferences_down" },
+        "origin": { "const": "phone" },
+        "payload": {
+          "type": "object",
+          "required": ["generatedAt", "effortRatingPrompt"],
+          "additionalProperties": false,
+          "properties": {
+            "generatedAt": {
+              "$ref": "envelope.schema.json#/$defs/timestamp"
+            },
+            "effortRatingPrompt": {
+              "type": "boolean",
+              "description": "Whether a session the wrist ends asks for the session effort rating. The phone's effort-rating setting, as it stood when generatedAt was written."
+            }
+          }
+        }
+      }
+    }
+  ]
+}

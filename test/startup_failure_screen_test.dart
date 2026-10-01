@@ -1,6 +1,6 @@
 // Tests for the startup-failure screen and the retry path that
 // re-runs the entire `main()` initialization sequence. The
-// scenarios in `.github/agents/plans/startup-failure-screen-plan.md`
+// scenarios in `docs/plans/startup-failure-screen-plan.md`
 // (S-001..S-004) map 1:1 to the four tests below.
 
 import 'dart:async';
@@ -26,8 +26,8 @@ class _CapturedStartupFailure {
   final StackTrace stackTrace;
 }
 
-Future<void> _noopPersist(Object _, StackTrace __) async {}
-void _noopLog(Object _, StackTrace __) {}
+Future<void> _noopPersist(Object _, StackTrace _) async {}
+void _noopLog(Object _, StackTrace _) {}
 
 class _FakePreferencesService implements PreferencesService {
   int _hubOpenCount = 0;
@@ -75,9 +75,7 @@ void main() {
       'S-001 — copy has no developer terminology and the Retry control is present',
       (WidgetTester tester) async {
         await tester.pumpWidget(
-          MaterialApp(
-            home: StartupFailureScreen(onRetry: () {}),
-          ),
+          MaterialApp(home: StartupFailureScreen(onRetry: () {})),
         );
         await tester.pumpAndSettle();
 
@@ -310,16 +308,14 @@ void main() {
         var reportCalls = 0;
 
         Future<Widget> succeedImmediately() async {
-          return const MaterialApp(
-            home: Scaffold(body: Text('SUCCESS-ONLY')),
-          );
+          return const MaterialApp(home: Scaffold(body: Text('SUCCESS-ONLY')));
         }
 
         await tester.pumpWidget(
           StartupRoot(
             startupRunner: succeedImmediately,
-            onStartupFailureLogged: (_, __) => logCalls += 1,
-            onStartupFailureReported: (_, __) async => reportCalls += 1,
+            onStartupFailureLogged: (_, _) => logCalls += 1,
+            onStartupFailureReported: (_, _) async => reportCalls += 1,
             onStartupFailurePersisted: _noopPersist,
           ),
         );
@@ -343,7 +339,8 @@ void main() {
         final app = await app_main.runStartup(
           createRepository: () async => MockWorkoutRepository(),
           createPreferencesService: () => _FakePreferencesService(),
-          createTimerAlertService: () => TimerAlertService.forTesting(isWeb: true),
+          createTimerAlertService: () =>
+              TimerAlertService.forTesting(isWeb: true),
           createRestNotificationService: () =>
               _FailingRestNotificationService(initError, initStack),
           createImageStorageService: () async => null,
@@ -360,14 +357,14 @@ void main() {
           startupIssue.single.error.toString(),
           contains('Non-fatal startup notification initialization failure'),
         );
-        expect(
-          startupIssue.single.error.toString(),
-          contains('invalid_icon'),
-        );
+        expect(startupIssue.single.error.toString(), contains('invalid_icon'));
         expect(identical(startupIssue.single.stackTrace, initStack), isTrue);
 
         final myApp = app as MyApp;
-        expect(myApp.restNotificationService, isNot(isA<_FailingRestNotificationService>()));
+        expect(
+          myApp.restNotificationService,
+          isNot(isA<_FailingRestNotificationService>()),
+        );
       },
     );
 
@@ -389,7 +386,7 @@ void main() {
               createImageStorageService: () async => null,
               loadAppVersionInfo: () async =>
                   const AppVersionInfo(version: '1.0.0', build: '1'),
-              onNonFatalStartupIssue: (_, __) async {},
+              onNonFatalStartupIssue: (_, _) async {},
             ),
             onStartupFailurePersisted: _noopPersist,
           ),
@@ -411,12 +408,13 @@ void main() {
         final app = await app_main.runStartup(
           createRepository: () async => MockWorkoutRepository(),
           createPreferencesService: () => _FakePreferencesService(),
-          createTimerAlertService: () => TimerAlertService.forTesting(isWeb: true),
+          createTimerAlertService: () =>
+              TimerAlertService.forTesting(isWeb: true),
           createRestNotificationService: () => notificationService,
           createImageStorageService: () async => null,
           loadAppVersionInfo: () async =>
               const AppVersionInfo(version: '1.0.0', build: '1'),
-          onNonFatalStartupIssue: (_, __) async => nonFatalCalls += 1,
+          onNonFatalStartupIssue: (_, _) async => nonFatalCalls += 1,
         );
 
         expect(app, isA<MyApp>());
@@ -539,7 +537,7 @@ void main() {
           stackTrace: StackTrace.current,
           onStartupFailureLogged: _noopLog,
           onStartupFailureReported: _noopPersist,
-          onStartupFailurePersisted: (Object _, StackTrace __) async {
+          onStartupFailurePersisted: (Object _, StackTrace _) async {
             throw FileSystemException('simulated diagnostic write failure');
           },
         );

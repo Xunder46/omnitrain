@@ -195,8 +195,7 @@ void main() {
                             builder: (_) => SessionSummaryScreen(
                               workoutState: workoutState,
                               routineState: routineState,
-                              sessionSummaryService:
-                                  sessionSummaryService,
+                              sessionSummaryService: sessionSummaryService,
                               settingsState: settingsState,
                               timerAlertService: FakeTimerAlertService(),
                               openedFromCalendar: true,
@@ -259,7 +258,9 @@ void main() {
       (WidgetTester tester) async {
         final repo = await _freshRepo();
         final workoutState = WorkoutState(repo);
-        await workoutState.createNewSession(modality: Modality.resistanceLifting);
+        await workoutState.createNewSession(
+          modality: Modality.resistanceLifting,
+        );
 
         final routineState = RoutineState(repo);
         final sessionSummaryService = SessionSummaryService(repo);
@@ -342,8 +343,7 @@ void main() {
                             builder: (_) => SessionSummaryScreen(
                               workoutState: workoutState,
                               routineState: routineState,
-                              sessionSummaryService:
-                                  sessionSummaryService,
+                              sessionSummaryService: sessionSummaryService,
                               settingsState: settingsState,
                               timerAlertService: FakeTimerAlertService(),
                               openedFromCalendar: true,
@@ -408,7 +408,9 @@ void main() {
       (WidgetTester tester) async {
         final repo = await _freshRepo();
         final workoutState = WorkoutState(repo);
-        await workoutState.createNewSession(modality: Modality.resistanceLifting);
+        await workoutState.createNewSession(
+          modality: Modality.resistanceLifting,
+        );
 
         final routineState = RoutineState(repo);
         final sessionSummaryService = SessionSummaryService(repo);
@@ -429,8 +431,7 @@ void main() {
                             builder: (_) => SessionSummaryScreen(
                               workoutState: workoutState,
                               routineState: routineState,
-                              sessionSummaryService:
-                                  sessionSummaryService,
+                              sessionSummaryService: sessionSummaryService,
                               settingsState: settingsState,
                               timerAlertService: FakeTimerAlertService(),
                             ),
@@ -479,4 +480,3 @@ void main() {
     );
   });
 }
-

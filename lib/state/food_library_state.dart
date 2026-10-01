@@ -20,7 +20,7 @@ import '../data/repositories/workout_repository.dart';
 /// still has `groupId` equal to the category being deleted.
 ///
 /// The constraint (see
-/// `.github/agents/plans/2026-08-08-food-edit-orphan-category-plan.md`):
+/// `docs/plans/2026-08-08-food-edit-orphan-category-plan.md`):
 /// we cannot rewrite a bundled catalog food's `groupId` to "fix" the
 /// stranded-ness, because the catalog refresh restores the bundled
 /// food's category on every launch — so any such rewrite would
@@ -52,9 +52,9 @@ class FoodGroupHasBundledFoodsError extends StateError {
     required this.groupName,
     required this.bundledFoodIds,
   }) : super(
-          'Cannot delete category "$groupName" ($groupId): ${bundledFoodIds.length} '
-          'bundled catalog food(s) still reference it.',
-        );
+         'Cannot delete category "$groupName" ($groupId): ${bundledFoodIds.length} '
+         'bundled catalog food(s) still reference it.',
+       );
 }
 
 class FoodLibraryState extends ChangeNotifier {
@@ -107,7 +107,7 @@ class FoodLibraryState extends ChangeNotifier {
   // ─── Constructor ──────────────────────────────────────────────────────────
 
   FoodLibraryState(this._repository, {ImageStorageService? imageStorage})
-      : _imageStorage = imageStorage;
+    : _imageStorage = imageStorage;
 
   /// Non-null accessor for the image storage helper. Screens that
   /// host the food-photo picker (`FoodForm`) read this to perform
@@ -122,7 +122,7 @@ class FoodLibraryState extends ChangeNotifier {
         'FoodLibraryState.imageStorage was read but no service was '
         'injected. main.dart must construct an ImageStorageService '
         'and pass it to FoodLibraryState. See '
-        '.github/agents/plans/image-persistence-fix-plan.md (D-8).',
+        'docs/plans/image-persistence-fix-plan.md (D-8).',
       );
     }
     return svc;
@@ -374,12 +374,7 @@ class FoodLibraryState extends ChangeNotifier {
     }
     // Reassign library foods first (existing behaviour).
     final foodIds = _foods.values
-        .where(
-          (f) =>
-              !f.isCatalog &&
-              !f.isArchived &&
-              f.groupId == id,
-        )
+        .where((f) => !f.isCatalog && !f.isArchived && f.groupId == id)
         .map((f) => f.id)
         .toList();
     if (foodIds.isNotEmpty) {
@@ -405,9 +400,7 @@ class FoodLibraryState extends ChangeNotifier {
     final userCatalogIds = _catalogFoods.values
         .where(
           (f) =>
-              !f.isArchived &&
-              f.groupId == id &&
-              !isBundledCatalogFood(f.id),
+              !f.isArchived && f.groupId == id && !isBundledCatalogFood(f.id),
         )
         .map((f) => f.id)
         .toList();
@@ -725,34 +718,34 @@ class FoodLibraryState extends ChangeNotifier {
   /// Called after [updateCatalogFood] saves the catalog change.
   ///
   /// This ensures that when a user edits a catalog food (name, macros,
-/// image, group, etc.), the linked "Foods I Eat" entries automatically
-/// reflect the updated values.
-///
-/// Uses durable `catalogId` linkage first, then falls back to
-/// identity matching against [oldCatalogFood] (the values BEFORE
-/// the edit) for legacy library foods (those without `catalogId`
-/// set). When a legacy library food is found via identity match, it
-/// is upgraded to use `catalogId` so future propagations work
-/// without identity matching.
-///
-/// Per-field invariants:
-///   * Every catalog field the user can edit — name, groupId,
-///     unitType, referenceAmount, referenceLabel, macros (protein,
-///     carbs, fiber, fat, sodium), notes, imagePath — propagates
-///     to the linked library row. The library food's `groupId`
-///     is NOT treated as user-customizable for catalog copies; the
-///     catalog's choice wins.
-///   * `id`, `isCatalog = false`, `catalogId`, and `createdAtMs`
-///     are preserved from the existing library row so the durable
-///     link stays intact.
-///   * `lastAmountConsumed` (per-user remembered portion from
-///     `NutritionState`, food-last-amount plan) is preserved from
-///     the existing library row. Catalog rows are always `null`
-///     for this field, so the propagation must explicitly carry
-///     the library value forward — otherwise the write-through
-///     amount the user just logged would be silently wiped.
-///   * `updatedAtMs` is bumped so the next `notifyListeners()`
-///     cycle reflects the propagation timestamp.
+  /// image, group, etc.), the linked "Foods I Eat" entries automatically
+  /// reflect the updated values.
+  ///
+  /// Uses durable `catalogId` linkage first, then falls back to
+  /// identity matching against [oldCatalogFood] (the values BEFORE
+  /// the edit) for legacy library foods (those without `catalogId`
+  /// set). When a legacy library food is found via identity match, it
+  /// is upgraded to use `catalogId` so future propagations work
+  /// without identity matching.
+  ///
+  /// Per-field invariants:
+  ///   * Every catalog field the user can edit — name, groupId,
+  ///     unitType, referenceAmount, referenceLabel, macros (protein,
+  ///     carbs, fiber, fat, sodium), notes, imagePath — propagates
+  ///     to the linked library row. The library food's `groupId`
+  ///     is NOT treated as user-customizable for catalog copies; the
+  ///     catalog's choice wins.
+  ///   * `id`, `isCatalog = false`, `catalogId`, and `createdAtMs`
+  ///     are preserved from the existing library row so the durable
+  ///     link stays intact.
+  ///   * `lastAmountConsumed` (per-user remembered portion from
+  ///     `NutritionState`, food-last-amount plan) is preserved from
+  ///     the existing library row. Catalog rows are always `null`
+  ///     for this field, so the propagation must explicitly carry
+  ///     the library value forward — otherwise the write-through
+  ///     amount the user just logged would be silently wiped.
+  ///   * `updatedAtMs` is bumped so the next `notifyListeners()`
+  ///     cycle reflects the propagation timestamp.
   Future<void> _propagateCatalogEditToLinkedFoods(
     String catalogFoodId,
     Food oldCatalogFood,
@@ -934,10 +927,7 @@ class FoodLibraryState extends ChangeNotifier {
   /// time, and the snapshot model does not include the image.
   ///
   /// Throws if [existing.id] is not in the catalog cache.
-  Future<void> updateCatalogFood(
-    Food existing,
-    FoodDraft draft,
-  ) async {
+  Future<void> updateCatalogFood(Food existing, FoodDraft draft) async {
     if (existing.isCatalog != true) {
       throw StateError(
         'updateCatalogFood: existing.isCatalog must be true (got '
@@ -1267,7 +1257,6 @@ class FoodLibraryState extends ChangeNotifier {
     final counter = _idCounter++;
     return '$prefix-$timestamp-$counter';
   }
-
 
   /// Known IDs of bundled catalog foods (from assets/data/food_catalog.json).
   /// These foods cannot be hard-deleted - only removed from user's library.

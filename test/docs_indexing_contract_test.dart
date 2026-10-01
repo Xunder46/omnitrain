@@ -1,7 +1,7 @@
 // filepath: test/docs_indexing_contract_test.dart
 //
 // Automated validation of the agent documentation set in
-// `.github/agents/docs/`.
+// `docs/`.
 //
 // Why this exists
 // ---------------
@@ -32,7 +32,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Root of the agent documentation set.
-const String _docsRoot = '.github/agents/docs';
+const String _docsRoot = 'docs';
 
 /// Hard per-file ceiling, in bytes, for any Markdown file under [_docsRoot].
 ///
@@ -53,11 +53,29 @@ const int _maxDocBytes = 64 * 1024;
 /// separate, softer signal so the build does not break on a near-miss.
 const double _warnFraction = 0.80;
 
+/// Subfolders of [_docsRoot] that hold working records rather than the
+/// documentation set: plans (with their evidence and review files), release
+/// notes and agent memories. They are not indexed, size-limited or held to
+/// the content prohibitions.
+const List<String> _recordFolders = ['plans', 'releases', 'memories'];
+
+/// Owner-facing files in [_docsRoot] that are not part of the indexed
+/// documentation set: the unbuilt-ideas list and the manual watch setup guide.
+const List<String> _recordFiles = ['future-work.md', 'watch-app-setup-and-qa.md'];
+
+bool _isRecord(File file) =>
+    _recordFolders.any(
+      (folder) => file.path.startsWith('$_docsRoot/$folder/'),
+    ) ||
+    _recordFiles.any((name) => file.path == '$_docsRoot/$name');
+
 Iterable<File> _markdownFiles() sync* {
   final dir = Directory(_docsRoot);
   if (!dir.existsSync()) return;
   for (final entity in dir.listSync(recursive: true, followLinks: false)) {
-    if (entity is File && entity.path.endsWith('.md')) yield entity;
+    if (entity is File && entity.path.endsWith('.md') && !_isRecord(entity)) {
+      yield entity;
+    }
   }
 }
 
@@ -178,7 +196,9 @@ void main() {
             continue;
           }
           final resolved = File(Uri.file('$baseDir/$target').toFilePath());
-          final resolvedPath = resolved.absolute.uri.normalizePath().toFilePath();
+          final resolvedPath = resolved.absolute.uri
+              .normalizePath()
+              .toFilePath();
           if (!File(resolvedPath).existsSync() &&
               !Directory(resolvedPath).existsSync()) {
             broken.add('${file.path} -> $target');
@@ -208,11 +228,9 @@ void main() {
         for (final match in linkPattern.allMatches(content)) {
           final target = match.group(1)!.trim();
           if (target.startsWith('http')) continue;
-          final resolvedPath = File(Uri.file('$baseDir/$target').toFilePath())
-              .absolute
-              .uri
-              .normalizePath()
-              .toFilePath();
+          final resolvedPath = File(
+            Uri.file('$baseDir/$target').toFilePath(),
+          ).absolute.uri.normalizePath().toFilePath();
           linkedTargets.add(resolvedPath);
         }
       }
@@ -327,7 +345,9 @@ void main() {
         for (var i = 0; i < lines.length; i++) {
           final line = lines[i];
           if (flowHeading.hasMatch(line)) {
-            offenders.add('${file.path}:${i + 1}: flow heading — ${line.trim()}');
+            offenders.add(
+              '${file.path}:${i + 1}: flow heading — ${line.trim()}',
+            );
           } else if (arrowChain.hasMatch(line) && userAction.hasMatch(line)) {
             offenders.add(
               '${file.path}:${i + 1}: user-action arrow chain — ${line.trim()}',
@@ -384,7 +404,7 @@ void main() {
             'Roadmap or scheduled-change content found in documentation. '
             'Every such annotation in this repository has eventually inverted, '
             'labelling shipped behaviour as upcoming and removed behaviour as '
-            'current. Unbuilt ideas belong in .github/agents/plans/.\n'
+            'current. Unbuilt ideas belong in docs/plans/.\n'
             '${offenders.join('\n')}',
       );
     });

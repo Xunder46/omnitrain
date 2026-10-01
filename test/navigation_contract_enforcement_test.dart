@@ -2,7 +2,7 @@
 //
 // Automated enforcement of OmniTrain's navigation contract.
 //
-// Rule (see `.github/agents/docs/navigation_contract.md`):
+// Rule (see `docs/navigation_contract.md`):
 //   Any `MaterialPageRoute` or `PageRouteBuilder` constructed outside
 //   `lib/core/navigation/` is a code-review blocker. All screen-level
 //   navigation in OmniTrain must go through `OmniNavigator`
@@ -33,62 +33,64 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Navigation contract enforcement', () {
-    test(
-      'no MaterialPageRoute or PageRouteBuilder construction outside '
-      'lib/core/navigation/',
-      () async {
-        final violations = <String>[];
-        final libDir = Directory('lib');
+    test('no MaterialPageRoute or PageRouteBuilder construction outside '
+        'lib/core/navigation/', () async {
+      final violations = <String>[];
+      final libDir = Directory('lib');
 
-        await for (final entity
-            in libDir.list(recursive: true, followLinks: false)) {
-          if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      await for (final entity in libDir.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
 
-          // Skip the navigation module itself — it is the sole legitimate
-          // owner of route construction.
-          if (entity.path.startsWith('lib/core/navigation/')) continue;
+        // Skip the navigation module itself — it is the sole legitimate
+        // owner of route construction.
+        if (entity.path.startsWith('lib/core/navigation/')) continue;
 
-          final content = await entity.readAsString();
+        final content = await entity.readAsString();
 
-          // Strip comments so doc comments cannot trip the matcher.
-          // The contract (per the file-level comment above) is that
-          // bare type references in doc comments must not be flagged;
-          // strip them here so the matcher actually enforces the
-          // contract it claims to enforce. A `//` line comment runs to
-          // the next newline; a `/* … */` block comment can span lines
-          // and must be stripped before line-by-line processing.
-          var stripped = content.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
-          stripped = stripped.split('\n').map((line) {
-            final i = line.indexOf('//');
-            return i < 0 ? line : line.substring(0, i);
-          }).join('\n');
+        // Strip comments so doc comments cannot trip the matcher.
+        // The contract (per the file-level comment above) is that
+        // bare type references in doc comments must not be flagged;
+        // strip them here so the matcher actually enforces the
+        // contract it claims to enforce. A `//` line comment runs to
+        // the next newline; a `/* … */` block comment can span lines
+        // and must be stripped before line-by-line processing.
+        var stripped = content.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
+        stripped = stripped
+            .split('\n')
+            .map((line) {
+              final i = line.indexOf('//');
+              return i < 0 ? line : line.substring(0, i);
+            })
+            .join('\n');
 
-          // Match construction sites only — the open paren after the type
-          // name. Bare type references in code (e.g. an `isA<...>()` check)
-          // do not contain `(` immediately after the type name, so they
-          // are not flagged. Doc comments are stripped above.
-          if (stripped.contains('MaterialPageRoute(')) {
-            violations.add('${entity.path}: MaterialPageRoute(');
-          }
-          if (stripped.contains('PageRouteBuilder(')) {
-            violations.add('${entity.path}: PageRouteBuilder(');
-          }
+        // Match construction sites only — the open paren after the type
+        // name. Bare type references in code (e.g. an `isA<...>()` check)
+        // do not contain `(` immediately after the type name, so they
+        // are not flagged. Doc comments are stripped above.
+        if (stripped.contains('MaterialPageRoute(')) {
+          violations.add('${entity.path}: MaterialPageRoute(');
         }
+        if (stripped.contains('PageRouteBuilder(')) {
+          violations.add('${entity.path}: PageRouteBuilder(');
+        }
+      }
 
-        expect(
-          violations,
-          isEmpty,
-          reason: violations.isEmpty
-              ? null
-              : 'Navigation contract violation: raw route construction '
-                    'outside lib/core/navigation/ is not allowed. '
-                    'Use OmniNavigator (in '
-                    'lib/core/navigation/omni_navigator.dart) for every '
-                    'screen-level push / pushReplacement. '
-                    'See .github/agents/docs/navigation_contract.md.\n'
-                    'Offending files:\n${violations.join('\n')}',
-        );
-      },
-    );
+      expect(
+        violations,
+        isEmpty,
+        reason: violations.isEmpty
+            ? null
+            : 'Navigation contract violation: raw route construction '
+                  'outside lib/core/navigation/ is not allowed. '
+                  'Use OmniNavigator (in '
+                  'lib/core/navigation/omni_navigator.dart) for every '
+                  'screen-level push / pushReplacement. '
+                  'See docs/navigation_contract.md.\n'
+                  'Offending files:\n${violations.join('\n')}',
+      );
+    });
   });
 }

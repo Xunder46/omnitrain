@@ -1,0 +1,64 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-capture-1",
+  "sessionId": "s-cap-snap",
+  "type": "session_snapshot",
+  "origin": "watch",
+  "sentAt": "2026-09-25T11:00:00Z",
+  "payload": {
+    "sessionId": "s-cap-snap",
+    "revision": 0,
+    "status": "completed",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-bench",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-snap-set1",
+        "eventId": "e-snap-set1",
+        "kind": "set",
+        "loggedAt": "2026-09-25T10:45:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-bench",
+        "reps": 5,
+        "loadKg": 80
+      },
+      {
+        "entryId": "end-s-cap-snap",
+        "eventId": "end-s-cap-snap",
+        "kind": "session_end",
+        "loggedAt": "2026-09-25T10:50:00Z",
+        "startedAt": "2026-09-25T10:40:00Z",
+        "endedAt": "2026-09-25T10:50:00Z",
+        "status": "completed",
+        "modality": "resistance_lifting",
+        "avgHeartRateBpm": 118,
+        "maxHeartRateBpm": 142,
+        "setBlockHeartRates": [
+          {
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-bench",
+            "startedAt": "2026-09-25T10:40:00Z",
+            "endedAt": "2026-09-25T10:45:00Z",
+            "avgHeartRateBpm": 121,
+            "maxHeartRateBpm": 142
+          }
+        ]
+      },
+      {
+        "entryId": "rating-s-cap-snap",
+        "eventId": "rating-s-cap-snap",
+        "kind": "effort_rating",
+        "loggedAt": "2026-09-25T10:50:30Z",
+        "rating": 3
+      }
+    ],
+    "timers": {}
+  }
+}

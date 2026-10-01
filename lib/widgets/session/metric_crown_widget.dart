@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../inputs/numeric_field_with_done_bar.dart';
@@ -8,6 +7,9 @@ import '../inputs/numeric_field_with_done_bar.dart';
 /// Static helper that parses and clamps a typed metric value.
 class MetricStepCalc {
   MetricStepCalc._();
+
+  /// The largest distance the dialog accepts, in display units.
+  static const double maxDistanceUnits = 999.99;
 
   /// Parse a string as a double and clamp to the metric's valid range.
   /// Returns `null` if the text is empty or cannot be parsed.
@@ -38,6 +40,10 @@ class MetricStepCalc {
         return parsed.round().clamp(1, 10);
       case 'extra-weight':
         return double.parse(parsed.clamp(-100.0, 200.0).toStringAsFixed(1));
+      case 'distance':
+        return double.parse(
+          parsed.clamp(0.0, maxDistanceUnits).toStringAsFixed(2),
+        );
       default:
         return parsed;
     }
@@ -58,6 +64,8 @@ String _titleForMetric(String metricType) {
       return 'RPE';
     case 'extra-weight':
       return 'Extra Weight';
+    case 'distance':
+      return 'Distance';
     default:
       return metricType;
   }
@@ -77,6 +85,8 @@ String _formatCurrentValue(String metricType, dynamic currentValue) {
     case 'extra-weight':
       final ew = (currentValue as double?) ?? 0.0;
       return ew.toStringAsFixed(1);
+    case 'distance':
+      return ((currentValue as num?)?.toDouble() ?? 0.0).toStringAsFixed(2);
     default:
       return currentValue.toString();
   }
@@ -157,14 +167,15 @@ class _MetricEditDialogState extends State<_MetricEditDialog> {
       content: NumericFieldWithDoneBar(
         controller: _controller,
         keyboardType: TextInputType.numberWithOptions(
-          signed: widget.metricType == 'weight' ||
+          signed:
+              widget.metricType == 'weight' ||
               widget.metricType == 'extra-weight',
-          decimal: widget.metricType == 'weight' ||
-              widget.metricType == 'extra-weight',
+          decimal:
+              widget.metricType == 'weight' ||
+              widget.metricType == 'extra-weight' ||
+              widget.metricType == 'distance',
         ),
-        decoration: InputDecoration(
-          labelText: widget.unitLabel,
-        ),
+        decoration: InputDecoration(labelText: widget.unitLabel),
         textAlign: TextAlign.center,
         autofocus: true,
         onChanged: (_) {},

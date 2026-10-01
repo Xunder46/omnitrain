@@ -1,0 +1,2 @@
+# Developer: edits lib/, test/, docs/ and the plan's progress; runs checks through the gateway.
+--allow-tool=write

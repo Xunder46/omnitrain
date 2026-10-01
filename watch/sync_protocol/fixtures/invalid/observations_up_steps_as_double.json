@@ -1,0 +1,23 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-steps-double",
+  "sessionId": "s-cap-bad",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-09-25T11:00:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "e-steps-double",
+        "entryId": "e-steps-double",
+        "kind": "timed",
+        "loggedAt": "2026-09-25T10:20:00Z",
+        "sessionExerciseId": "sx-run",
+        "exerciseId": "ex-run",
+        "startedAt": "2026-09-25T10:00:00Z",
+        "endedAt": "2026-09-25T10:20:00Z",
+        "steps": 3200.0
+      }
+    ]
+  }
+}

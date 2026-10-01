@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../core/constants/workout_constants.dart';
+import '../../core/utils/entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 
@@ -13,6 +14,11 @@ class TimerManager {
   final void Function() _clearErrorCallback;
   Map<String, List<EffortObservation>>? _observations;
 
+  /// The clock behind a new timed instance's id and stamps. A test that must
+  /// repeat a millisecond — the collision D-338 guards against — passes one
+  /// that stands still.
+  final DateTime Function() _clock;
+
   final Map<String, List<RoundInstance>> _roundInstances = {};
   final Map<String, List<TimedInstance>> _timedInstances = {};
   final Map<String, List<EntryRest>> _entryRests = {};
@@ -22,9 +28,11 @@ class TimerManager {
     required void Function() notify,
     required void Function(String) setError,
     required void Function() clearError,
+    DateTime Function()? clock,
   }) : _notify = notify,
        _setErrorCallback = setError,
-       _clearErrorCallback = clearError;
+       _clearErrorCallback = clearError,
+       _clock = clock ?? DateTime.now;
 
   void bindObservations(Map<String, List<EffortObservation>> observations) {
     _observations = observations;
@@ -373,6 +381,28 @@ class TimerManager {
     }
   }
 
+  /// A timed instance's id, unique among [existingIds] (D-338).
+  ///
+  /// The shape `timed-<effortId>-<entryIndex>-<ms>` is kept, so an add after
+  /// a delete in the same millisecond does not name an instance that is
+  /// already held: the ms part is raised until the id is free. Imported
+  /// instances (`timed-<sessionId>-<entryId>`) are never passed here.
+  static String uniqueTimedInstanceId({
+    required Iterable<String> existingIds,
+    required String effortId,
+    required int entryIndex,
+    required int nowMs,
+  }) {
+    final held = existingIds.toSet();
+    var uniqueMs = nowMs;
+    var id = 'timed-$effortId-$entryIndex-$uniqueMs';
+    while (held.contains(id)) {
+      uniqueMs++;
+      id = 'timed-$effortId-$entryIndex-$uniqueMs';
+    }
+    return id;
+  }
+
   Future<void> addTimedEntry(
     String effortId, {
     int targetDurationSecs = 0,
@@ -381,9 +411,14 @@ class TimerManager {
     try {
       final existing = _timedInstances[effortId] ?? [];
       final entryIndex = existing.length;
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final instance = TimedInstance(
-        id: 'timed-$effortId-$entryIndex-$now',
+        id: uniqueTimedInstanceId(
+          existingIds: [for (final held in existing) held.id],
+          effortId: effortId,
+          entryIndex: entryIndex,
+          nowMs: now,
+        ),
         effortId: effortId,
         entryIndex: entryIndex,
         targetDurationSecs: targetDurationSecs,
@@ -550,7 +585,12 @@ class TimerManager {
     _clearError();
     try {
       final list = _timedInstances[effortId];
-      if (list == null || entryIndex >= list.length) return;
+      if (list == null || entryIndex < 0 || entryIndex >= list.length) return;
+
+      // D-326: the entry's own rows are found before the instance goes, since
+      // the rule pairs them against the positions the instances hold now.
+      final doomed = _rowsOfTimedEntry(effortId, entryIndex, list.length);
+
       await _repository.deleteTimedInstance(list[entryIndex].id);
       list.removeAt(entryIndex);
 
@@ -564,20 +604,39 @@ class TimerManager {
 
       final observations = _observations?[effortId];
       if (observations != null) {
-        final idPrefix = 'obs-$effortId-$entryIndex-';
-        final toDelete = observations
-            .where((o) => o.id.startsWith(idPrefix))
-            .toList();
-        for (final obs in toDelete) {
-          await _repository.deleteObservation(obs.id);
+        for (final id in doomed) {
+          await _repository.deleteObservation(id);
         }
-        observations.removeWhere((o) => o.id.startsWith(idPrefix));
+        observations.removeWhere((row) => doomed.contains(row.id));
       }
 
       _notify();
     } catch (e) {
       _setError('Failed to delete timed entry: $e');
     }
+  }
+
+  /// The ids of the rows entry [entryIndex] owns among [entryCount] instances
+  /// (D-324): its own row of every companion metric the effort holds.
+  Set<String> _rowsOfTimedEntry(
+    String effortId,
+    int entryIndex,
+    int entryCount,
+  ) {
+    final rows = _observations?[effortId];
+    if (rows == null) return const {};
+
+    final doomed = <String>{};
+    for (final metricId in {for (final row in rows) row.metricId}) {
+      final paired = EntryRows.companions(
+        rows: rows,
+        metricId: metricId,
+        entryCount: entryCount,
+      );
+      final row = entryIndex < paired.length ? paired[entryIndex] : null;
+      if (row != null) doomed.add(row.id);
+    }
+    return doomed;
   }
 
   Future<void> updateTimedTargetDuration(

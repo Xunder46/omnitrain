@@ -1,0 +1,368 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/envelope.schema.json",
+  "title": "SyncEnvelope",
+  "description": "Fields every sync message carries, plus the payload fragments shared by more than one message type.",
+  "type": "object",
+  "required": ["protocolVersion", "messageId", "type", "origin", "sentAt", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "messageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "enum": [
+        "routines_down",
+        "foods_down",
+        "preferences_down",
+        "exercise_push",
+        "structure_change",
+        "observations_up",
+        "receipt",
+        "session_lifecycle",
+        "session_snapshot",
+        "timer_state"
+      ]
+    },
+    "origin": {
+      "enum": ["watch", "phone"]
+    },
+    "sentAt": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$",
+      "description": "Wall-clock instant in UTC. Local counters are never part of a message."
+    },
+    "capability": {
+      "enum": [
+        "time",
+        "hold",
+        "reps",
+        "sets",
+        "load",
+        "bilateral",
+        "distance",
+        "rounds"
+      ]
+    },
+    "effortKind": {
+      "enum": ["set", "timed", "round", "drill"]
+    },
+    "catalogExercise": {
+      "type": "object",
+      "description": "A catalog exercise: what it is, not where it sits in a session.",
+      "required": ["exerciseId", "name", "capabilities"],
+      "additionalProperties": false,
+      "properties": {
+        "exerciseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/capability"
+          }
+        }
+      }
+    },
+    "sessionExercise": {
+      "type": "object",
+      "description": "A catalog exercise occupying a slot in the live session. sessionExerciseId names the slot — unique within the session, stable across reorder, preserved across swap — so the same exerciseId may appear in several slots.",
+      "required": [
+        "sessionExerciseId",
+        "exerciseId",
+        "name",
+        "capabilities"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sessionExerciseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exerciseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/capability"
+          }
+        },
+        "effortKind": {
+          "$ref": "#/$defs/effortKind",
+          "description": "The effort kind the routine that produced this slot declared. Omitted where no routine declared one — a free workout, or a slot the phone pushed — and the receiver resolves the kind from the capabilities instead."
+        }
+      }
+    },
+    "metricTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sets": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "loadKg": {
+          "type": "number",
+          "minimum": 0
+        },
+        "holdMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "distanceMeters": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rounds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": ["entryId", "eventId", "kind", "loggedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "entryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "set",
+            "timed",
+            "round",
+            "hold",
+            "nutrition_quick_log",
+            "effort_rating",
+            "session_end"
+          ]
+        },
+        "loggedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "sessionExerciseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exerciseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "loadKg": {
+          "type": "number",
+          "minimum": 0
+        },
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "endedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "roundNumber": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "distanceMeters": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Distance covered, entered by hand when there is no fix. GPS is never a precondition for an entry."
+        },
+        "distanceSource": {
+          "enum": ["gps", "entered", "estimated"],
+          "description": "Where a timed entry's distance came from, sent only with it."
+        },
+        "extraLoadKg": {
+          "type": "number",
+          "description": "Load added to or assisting a hold. Negative is band assist, which is why this is not loadKg."
+        },
+        "foodId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "servings": {
+          "type": "number",
+          "minimum": 0
+        },
+        "calories": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rating": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "The session effort rating, on an effort_rating entry only."
+        },
+        "status": {
+          "enum": ["completed", "abandoned"],
+          "description": "How the session ended, on a session_end entry only."
+        },
+        "modality": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The session's modality, on a session_end entry only. Omitted when the session has none."
+        },
+        "avgHeartRateBpm": {
+          "$ref": "#/$defs/heartRateBpm",
+          "description": "Mean heart rate over the entry's active window, computed on the wrist from its own readings. Travels with maxHeartRateBpm or not at all; absent means not measured, never zero."
+        },
+        "maxHeartRateBpm": {
+          "$ref": "#/$defs/heartRateBpm",
+          "description": "Maximum heart rate over the entry's active window. Travels with avgHeartRateBpm or not at all."
+        },
+        "steps": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Steps taken inside a timed entry's window, from the wrist's step counter. A measured zero is sent; absent means not measured."
+        },
+        "pausedMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "A round's accumulated pause, excluded from its active window."
+        },
+        "setBlockHeartRates": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/setBlockHeartRate" },
+          "description": "On a session_end entry only: one heart-rate summary per set block — the sets logged for one sessionExerciseId and exerciseId pair."
+        }
+      }
+    },
+    "heartRateBpm": {
+      "type": "number",
+      "minimum": 1,
+      "description": "Beats per minute, summarised on the wrist. The minimum makes a zero-filled summary unsendable."
+    },
+    "setBlockHeartRate": {
+      "type": "object",
+      "description": "One set block's heart-rate summary: the span it covers and the pair measured over it.",
+      "required": [
+        "sessionExerciseId",
+        "exerciseId",
+        "startedAt",
+        "endedAt",
+        "avgHeartRateBpm",
+        "maxHeartRateBpm"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sessionExerciseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exerciseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "endedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "avgHeartRateBpm": {
+          "$ref": "#/$defs/heartRateBpm"
+        },
+        "maxHeartRateBpm": {
+          "$ref": "#/$defs/heartRateBpm"
+        }
+      }
+    },
+    "timer": {
+      "type": "object",
+      "required": ["kind", "state", "startedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["rest", "round", "hold", "elapsed"]
+        },
+        "state": {
+          "enum": ["running", "paused", "stopped"]
+        },
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "pausedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "stoppedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "accumulatedPauseMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "plannedDurationMs": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "timers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rest": {
+          "oneOf": [{ "$ref": "#/$defs/timer" }, { "type": "null" }]
+        },
+        "round": {
+          "oneOf": [{ "$ref": "#/$defs/timer" }, { "type": "null" }]
+        },
+        "hold": {
+          "oneOf": [{ "$ref": "#/$defs/timer" }, { "type": "null" }]
+        },
+        "elapsed": {
+          "oneOf": [{ "$ref": "#/$defs/timer" }, { "type": "null" }]
+        }
+      }
+    }
+  }
+}

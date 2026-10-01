@@ -100,22 +100,25 @@ void main() {
     // ─────────────────────────────────────────────────────────────────────
     // S-001: version gating — no refresh when versions match
     // ─────────────────────────────────────────────────────────────────────
-    test('S-001: no refresh when stored version equals bundled version', () async {
-      final repo = MockWorkoutRepository();
-      await repo.initialize();
+    test(
+      'S-001: no refresh when stored version equals bundled version',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
 
-      await repo.setCatalogVersion(bundledCatalogVersion);
+        await repo.setCatalogVersion(bundledCatalogVersion);
 
-      final service = CatalogRefreshService(repo, _bundledSource());
-      final didRefresh = await service.refresh();
+        final service = CatalogRefreshService(repo, _bundledSource());
+        final didRefresh = await service.refresh();
 
-      expect(didRefresh, isFalse);
-      expect(
-        await repo.getCatalogVersion(),
-        equals(bundledCatalogVersion),
-        reason: 'stored version must not change when no refresh runs',
-      );
-    });
+        expect(didRefresh, isFalse);
+        expect(
+          await repo.getCatalogVersion(),
+          equals(bundledCatalogVersion),
+          reason: 'stored version must not change when no refresh runs',
+        );
+      },
+    );
 
     test(
       'S-001b: stored version above bundled version is treated as no-op',
@@ -189,38 +192,41 @@ void main() {
     // ─────────────────────────────────────────────────────────────────────
     // S-003: user-created entry is preserved
     // ─────────────────────────────────────────────────────────────────────
-    test('S-003: a user-created exercise is not touched by the refresh', () async {
-      final repo = MockWorkoutRepository();
-      await repo.initialize();
-      await repo.setCatalogVersion(bundledCatalogVersion - 1);
+    test(
+      'S-003: a user-created exercise is not touched by the refresh',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        await repo.setCatalogVersion(bundledCatalogVersion - 1);
 
-      final now = DateTime.now().millisecondsSinceEpoch;
-      const userId = 'exercise-user-custom-squat';
-      await repo.createExercise(
-        Exercise(
-          id: userId,
-          name: 'My Custom Squat',
-          createdAtMs: now,
-          updatedAtMs: now,
-        ),
-      );
-      await repo.setExerciseCapabilities(userId, const ['reps', 'sets']);
-      final before = await repo.getExerciseById(userId);
+        final now = DateTime.now().millisecondsSinceEpoch;
+        const userId = 'exercise-user-custom-squat';
+        await repo.createExercise(
+          Exercise(
+            id: userId,
+            name: 'My Custom Squat',
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+        await repo.setExerciseCapabilities(userId, const ['reps', 'sets']);
+        final before = await repo.getExerciseById(userId);
 
-      final service = CatalogRefreshService(repo, _bundledSource());
-      await service.refresh();
+        final service = CatalogRefreshService(repo, _bundledSource());
+        await service.refresh();
 
-      final after = await repo.getExerciseById(userId);
-      expect(after, isNotNull);
-      expect(after!.name, equals('My Custom Squat'));
-      expect(after.capabilities, equals(const ['reps', 'sets']));
-      expect(after.createdAtMs, equals(before!.createdAtMs));
-      expect(
-        await repo.isSeedEntryTouched(SeedEntryType.exercise, userId),
-        isFalse,
-        reason: 'a user-created entry must never be tombstoned by refresh',
-      );
-    });
+        final after = await repo.getExerciseById(userId);
+        expect(after, isNotNull);
+        expect(after!.name, equals('My Custom Squat'));
+        expect(after.capabilities, equals(const ['reps', 'sets']));
+        expect(after.createdAtMs, equals(before!.createdAtMs));
+        expect(
+          await repo.isSeedEntryTouched(SeedEntryType.exercise, userId),
+          isFalse,
+          reason: 'a user-created entry must never be tombstoned by refresh',
+        );
+      },
+    );
 
     test('S-003b: a user-created food is not touched by the refresh', () async {
       final repo = MockWorkoutRepository();
@@ -267,13 +273,8 @@ void main() {
         const dumbbellCurlId = 'exercise-dumbbell-curl';
         final original = await repo.getExerciseById(dumbbellCurlId);
         expect(original, isNotNull);
-        await repo.updateExercise(
-          original!.copyWith(name: 'DB Curl (mine)'),
-        );
-        await repo.markSeedEntryTouched(
-          SeedEntryType.exercise,
-          dumbbellCurlId,
-        );
+        await repo.updateExercise(original!.copyWith(name: 'DB Curl (mine)'));
+        await repo.markSeedEntryTouched(SeedEntryType.exercise, dumbbellCurlId);
 
         final service = CatalogRefreshService(repo, _bundledSource());
         await service.refresh();
@@ -301,10 +302,7 @@ void main() {
         await repo.updateCatalogFood(
           original!.copyWith(name: 'My Eggs', protein: 7),
         );
-        await repo.markSeedEntryTouched(
-          SeedEntryType.foodCatalog,
-          eggId,
-        );
+        await repo.markSeedEntryTouched(SeedEntryType.foodCatalog, eggId);
 
         final service = CatalogRefreshService(repo, _bundledSource());
         await service.refresh();
@@ -338,7 +336,8 @@ void main() {
         expect(
           exercisesAfterFirst.length,
           equals(exercisesBefore.length),
-          reason: 'no exercise ids should be added beyond what was already '
+          reason:
+              'no exercise ids should be added beyond what was already '
               'on the device',
         );
         expect(catalogAfterFirst.length, equals(catalogFoodsBefore.length));
@@ -390,16 +389,20 @@ void main() {
         final service = CatalogRefreshService(repo, _bundledSource());
         final didRefresh = await service.refresh();
 
-        expect(didRefresh, isTrue,
-            reason: 'refresh must report work when stored version is behind');
+        expect(
+          didRefresh,
+          isTrue,
+          reason: 'refresh must report work when stored version is behind',
+        );
         expect(
           await repo.getCatalogVersion(),
           equals(bundledCatalogVersion),
           reason: 'stored version must advance to bundled on success',
         );
 
-        final afterIds =
-            (await repo.getCatalogFoods()).map((f) => f.id).toSet();
+        final afterIds = (await repo.getCatalogFoods())
+            .map((f) => f.id)
+            .toSet();
         const expectedNewIds = {
           'chicken_wing',
           'ground_chicken',
@@ -446,10 +449,7 @@ void main() {
         await repo.updateCatalogFood(
           original!.copyWith(name: 'My Chicken', protein: 40),
         );
-        await repo.markSeedEntryTouched(
-          SeedEntryType.foodCatalog,
-          eggId,
-        );
+        await repo.markSeedEntryTouched(SeedEntryType.foodCatalog, eggId);
 
         final service = CatalogRefreshService(repo, _bundledSource());
         await service.refresh();
@@ -475,16 +475,21 @@ void main() {
 
         final service = CatalogRefreshService(repo, _bundledSource());
         final first = await service.refresh();
-        final firstIds =
-            (await repo.getCatalogFoods()).map((f) => f.id).toSet();
+        final firstIds = (await repo.getCatalogFoods())
+            .map((f) => f.id)
+            .toSet();
 
         final second = await service.refresh();
-        final secondIds =
-            (await repo.getCatalogFoods()).map((f) => f.id).toSet();
+        final secondIds = (await repo.getCatalogFoods())
+            .map((f) => f.id)
+            .toSet();
 
         expect(first, isTrue);
-        expect(second, isFalse,
-            reason: 'second refresh at matching versions is a no-op');
+        expect(
+          second,
+          isFalse,
+          reason: 'second refresh at matching versions is a no-op',
+        );
         expect(secondIds, equals(firstIds));
       },
     );
@@ -532,118 +537,139 @@ void main() {
           await repo.updateCatalogFood(pre);
         }
 
-        await preBump('chia_seeds', const Food(
-          id: 'chia_seeds',
-          name: 'Chia seeds',
-          groupId: 'food-group-nuts-seeds-fats',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          isCatalog: true,
-          protein: 2,
-          carbs: 5,
-          fiber: 10, // pre-correction: 10
-          fat: 4,
-          sodium: 2,
-          createdAtMs: 1700000000000,
-          updatedAtMs: 1700000000000,
-        ));
-        await preBump('flax_seeds', const Food(
-          id: 'flax_seeds',
-          name: 'Flax seeds',
-          groupId: 'food-group-nuts-seeds-fats',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          isCatalog: true,
-          protein: 1.3,
-          carbs: 2,
-          fiber: 8, // pre-correction: 8
-          fat: 3,
-          sodium: 3,
-          createdAtMs: 1700000000000,
-          updatedAtMs: 1700000000000,
-        ));
-        await preBump('mustard', const Food(
-          id: 'mustard',
-          name: 'Mustard',
-          groupId: 'food-group-condiments',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          isCatalog: true,
-          protein: 4,
-          carbs: 0.6, // pre-correction: 0.6
-          fiber: 1, // pre-correction: 1
-          fat: 4,
-          sodium: 56,
-          createdAtMs: 1700000000000,
-          updatedAtMs: 1700000000000,
-        ));
-        await preBump('sports_drink', const Food(
-          id: 'sports_drink',
-          name: 'Sports drink',
-          groupId: 'food-group-drinks',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'ml',
-          isCatalog: true,
-          protein: 0,
-          carbs: 10.6, // pre-correction: 10.6
-          fat: 0,
-          sodium: 110, // pre-correction: 110
-          createdAtMs: 1700000000000,
-          updatedAtMs: 1700000000000,
-        ));
-        await preBump('sourdough_bread', const Food(
-          id: 'sourdough_bread',
-          name: 'Sourdough bread',
-          groupId: 'food-group-grains-starches',
-          unitType: FoodUnitType.grams, // pre-correction: grams (per 100 g)
-          referenceAmount: 100, // pre-correction: 100
-          referenceLabel: 'g',
-          isCatalog: true,
-          protein: 11,
-          carbs: 49,
-          fiber: 2.4,
-          fat: 1.6,
-          sodium: 590,
-          createdAtMs: 1700000000000,
-          updatedAtMs: 1700000000000,
-        ));
-        await preBump('mango', const Food(
-          id: 'mango',
-          name: 'Mango, medium', // pre-correction: per-fruit
-          groupId: 'food-group-fruits',
-          unitType: FoodUnitType.count, // pre-correction: count (1 fruit)
-          referenceAmount: 1, // pre-correction: 1 fruit
-          referenceLabel: 'fruit',
-          isCatalog: true,
-          protein: 1.4,
-          carbs: 25,
-          fiber: 2.6,
-          fat: 0.6,
-          sodium: 2,
-          createdAtMs: 1700000000000,
-          updatedAtMs: 1700000000000,
-        ));
+        await preBump(
+          'chia_seeds',
+          const Food(
+            id: 'chia_seeds',
+            name: 'Chia seeds',
+            groupId: 'food-group-nuts-seeds-fats',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            isCatalog: true,
+            protein: 2,
+            carbs: 5,
+            fiber: 10, // pre-correction: 10
+            fat: 4,
+            sodium: 2,
+            createdAtMs: 1700000000000,
+            updatedAtMs: 1700000000000,
+          ),
+        );
+        await preBump(
+          'flax_seeds',
+          const Food(
+            id: 'flax_seeds',
+            name: 'Flax seeds',
+            groupId: 'food-group-nuts-seeds-fats',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            isCatalog: true,
+            protein: 1.3,
+            carbs: 2,
+            fiber: 8, // pre-correction: 8
+            fat: 3,
+            sodium: 3,
+            createdAtMs: 1700000000000,
+            updatedAtMs: 1700000000000,
+          ),
+        );
+        await preBump(
+          'mustard',
+          const Food(
+            id: 'mustard',
+            name: 'Mustard',
+            groupId: 'food-group-condiments',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            isCatalog: true,
+            protein: 4,
+            carbs: 0.6, // pre-correction: 0.6
+            fiber: 1, // pre-correction: 1
+            fat: 4,
+            sodium: 56,
+            createdAtMs: 1700000000000,
+            updatedAtMs: 1700000000000,
+          ),
+        );
+        await preBump(
+          'sports_drink',
+          const Food(
+            id: 'sports_drink',
+            name: 'Sports drink',
+            groupId: 'food-group-drinks',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'ml',
+            isCatalog: true,
+            protein: 0,
+            carbs: 10.6, // pre-correction: 10.6
+            fat: 0,
+            sodium: 110, // pre-correction: 110
+            createdAtMs: 1700000000000,
+            updatedAtMs: 1700000000000,
+          ),
+        );
+        await preBump(
+          'sourdough_bread',
+          const Food(
+            id: 'sourdough_bread',
+            name: 'Sourdough bread',
+            groupId: 'food-group-grains-starches',
+            unitType: FoodUnitType.grams, // pre-correction: grams (per 100 g)
+            referenceAmount: 100, // pre-correction: 100
+            referenceLabel: 'g',
+            isCatalog: true,
+            protein: 11,
+            carbs: 49,
+            fiber: 2.4,
+            fat: 1.6,
+            sodium: 590,
+            createdAtMs: 1700000000000,
+            updatedAtMs: 1700000000000,
+          ),
+        );
+        await preBump(
+          'mango',
+          const Food(
+            id: 'mango',
+            name: 'Mango, medium', // pre-correction: per-fruit
+            groupId: 'food-group-fruits',
+            unitType: FoodUnitType.count, // pre-correction: count (1 fruit)
+            referenceAmount: 1, // pre-correction: 1 fruit
+            referenceLabel: 'fruit',
+            isCatalog: true,
+            protein: 1.4,
+            carbs: 25,
+            fiber: 2.6,
+            fat: 0.6,
+            sodium: 2,
+            createdAtMs: 1700000000000,
+            updatedAtMs: 1700000000000,
+          ),
+        );
         // Tier 2: whey_protein in Drinks (pre-correction).
-        await preBump('whey_protein', const Food(
-          id: 'whey_protein',
-          name: 'Whey protein',
-          groupId: 'food-group-drinks', // pre-correction: Drinks
-          unitType: FoodUnitType.count,
-          referenceAmount: 1,
-          referenceLabel: 'scoop',
-          isCatalog: true,
-          protein: 24,
-          carbs: 3,
-          fiber: 1,
-          fat: 1.5,
-          sodium: 50,
-          createdAtMs: 1700000000000,
-          updatedAtMs: 1700000000000,
-        ));
+        await preBump(
+          'whey_protein',
+          const Food(
+            id: 'whey_protein',
+            name: 'Whey protein',
+            groupId: 'food-group-drinks', // pre-correction: Drinks
+            unitType: FoodUnitType.count,
+            referenceAmount: 1,
+            referenceLabel: 'scoop',
+            isCatalog: true,
+            protein: 24,
+            carbs: 3,
+            fiber: 1,
+            fat: 1.5,
+            sodium: 50,
+            createdAtMs: 1700000000000,
+            updatedAtMs: 1700000000000,
+          ),
+        );
 
         final service = CatalogRefreshService(repo, _bundledSource());
         final didRefresh = await service.refresh();
@@ -652,12 +678,12 @@ void main() {
         expect(await repo.getCatalogVersion(), equals(bundledCatalogVersion));
 
         // Every food in the current bundle is present on the device.
-        final deviceIds =
-            (await repo.getCatalogFoods(includeArchived: true))
-                .map((f) => f.id)
-                .toSet();
-        final bundledIds =
-            FoodCatalogSeed.sampleCatalogFoods.map((f) => f.id).toSet();
+        final deviceIds = (await repo.getCatalogFoods(
+          includeArchived: true,
+        )).map((f) => f.id).toSet();
+        final bundledIds = FoodCatalogSeed.sampleCatalogFoods
+            .map((f) => f.id)
+            .toSet();
         final missing = bundledIds.difference(deviceIds);
         expect(
           missing,
@@ -679,10 +705,7 @@ void main() {
         expect((await load('sports_drink')).calories, 24);
         expect((await load('sports_drink')).carbs, 6.0);
         expect((await load('sports_drink')).sodium, 45);
-        expect(
-          (await load('sourdough_bread')).unitType,
-          FoodUnitType.count,
-        );
+        expect((await load('sourdough_bread')).unitType, FoodUnitType.count);
         expect((await load('sourdough_bread')).referenceAmount, 1);
         expect((await load('sourdough_bread')).referenceLabel, 'slice');
         expect((await load('sourdough_bread')).calories, 141);
@@ -725,47 +748,41 @@ void main() {
       },
     );
 
-    test(
-      'S-008: refresh respects the user-edit tombstone (does not overwrite '
-      'a user-edited catalog food)',
-      () async {
-        final repo = MockWorkoutRepository();
-        await repo.initialize();
-        await repo.setCatalogVersion(bundledCatalogVersion - 1);
+    test('S-008: refresh respects the user-edit tombstone (does not overwrite '
+        'a user-edited catalog food)', () async {
+      final repo = MockWorkoutRepository();
+      await repo.initialize();
+      await repo.setCatalogVersion(bundledCatalogVersion - 1);
 
-        // The user has personally edited chia_seeds (a Tier 1
-        // correction target) — fiber back to the pre-correction 10.
-        // The tombstone marker is what blocks the refresh.
-        const chiaSeedsId = 'chia_seeds';
-        final original = await repo.getCatalogFoodById(chiaSeedsId);
-        expect(original, isNotNull);
-        await repo.updateCatalogFood(
-          original!.copyWith(fiber: 10, name: 'Chia (mine)'),
-        );
-        await repo.markSeedEntryTouched(
-          SeedEntryType.foodCatalog,
-          chiaSeedsId,
-        );
+      // The user has personally edited chia_seeds (a Tier 1
+      // correction target) — fiber back to the pre-correction 10.
+      // The tombstone marker is what blocks the refresh.
+      const chiaSeedsId = 'chia_seeds';
+      final original = await repo.getCatalogFoodById(chiaSeedsId);
+      expect(original, isNotNull);
+      await repo.updateCatalogFood(
+        original!.copyWith(fiber: 10, name: 'Chia (mine)'),
+      );
+      await repo.markSeedEntryTouched(SeedEntryType.foodCatalog, chiaSeedsId);
 
-        final service = CatalogRefreshService(repo, _bundledSource());
-        await service.refresh();
+      final service = CatalogRefreshService(repo, _bundledSource());
+      await service.refresh();
 
-        final after = await repo.getCatalogFoodById(chiaSeedsId);
-        expect(after, isNotNull);
-        expect(
-          after!.fiber,
-          10,
-          reason:
-              'tombstoned row must keep its user-set fiber; the published '
-              'Tier 1 correction (4.1) must not overwrite it',
-        );
-        expect(
-          after.name,
-          'Chia (mine)',
-          reason: 'tombstoned row must keep its user-set name',
-        );
-      },
-    );
+      final after = await repo.getCatalogFoodById(chiaSeedsId);
+      expect(after, isNotNull);
+      expect(
+        after!.fiber,
+        10,
+        reason:
+            'tombstoned row must keep its user-set fiber; the published '
+            'Tier 1 correction (4.1) must not overwrite it',
+      );
+      expect(
+        after.name,
+        'Chia (mine)',
+        reason: 'tombstoned row must keep its user-set name',
+      );
+    });
 
     // ─────────────────────────────────────────────────────────────────────
     // S-007/S-008/S-009 (refresh-side, beer/wine retirement)
@@ -773,7 +790,7 @@ void main() {
     // The 2026-08-08 bump publishes `beer_regular` and `red_wine`
     // with `hidden: true` (because the calorie model cannot
     // represent alcohol-derived energy — see
-    // `.github/agents/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`).
+    // `docs/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`).
     // The existing `CatalogRefreshService._foodDiffers` already
     // compares `isArchived`, so the published hidden state arrives
     // on every existing device through the same per-row diff path
@@ -837,59 +854,54 @@ void main() {
       },
     );
 
-    test(
-      'S-008: refresh reverses a hidden state when the bundle flips the row '
-      'visible again',
-      () async {
-        final repo = MockWorkoutRepository();
-        await repo.initialize();
-        await repo.setCatalogVersion(bundledCatalogVersion - 1);
+    test('S-008: refresh reverses a hidden state when the bundle flips the row '
+        'visible again', () async {
+      final repo = MockWorkoutRepository();
+      await repo.initialize();
+      await repo.setCatalogVersion(bundledCatalogVersion - 1);
 
-        // Device is currently on the pre-retirement bundle: both
-        // rows present and archived (because the v8 mock already
-        // seeded them as hidden). Reset to that state explicitly
-        // so the test stays robust to the bundled seed changing.
-        const beerId = 'beer_regular';
-        await repo.updateCatalogFood(
-          (await repo.getCatalogFoodById(beerId))!.copyWith(isArchived: true),
-        );
+      // Device is currently on the pre-retirement bundle: both
+      // rows present and archived (because the v8 mock already
+      // seeded them as hidden). Reset to that state explicitly
+      // so the test stays robust to the bundled seed changing.
+      const beerId = 'beer_regular';
+      await repo.updateCatalogFood(
+        (await repo.getCatalogFoodById(beerId))!.copyWith(isArchived: true),
+      );
 
-        // Bundle now publishes beer_regular as visible. Bump the
-        // source version so the refresh actually runs.
-        final visibleBeer = (await repo.getCatalogFoodById(beerId))!
-            .copyWith(isArchived: false);
-        final source = _FakeCatalogSource(
-          version: bundledCatalogVersion + 1,
-          exercises: SeedData.sampleExercises,
-          exerciseCapabilities: SeedData.exerciseCapabilityRelationships,
-          exerciseMuscleGroups: SeedData.exerciseMuscleGroupRelationships,
-          foodCatalog: [
-            for (final f in FoodCatalogSeed.sampleCatalogFoods)
-              if (f.id == beerId) visibleBeer else f,
-          ],
-        );
+      // Bundle now publishes beer_regular as visible. Bump the
+      // source version so the refresh actually runs.
+      final visibleBeer = (await repo.getCatalogFoodById(
+        beerId,
+      ))!.copyWith(isArchived: false);
+      final source = _FakeCatalogSource(
+        version: bundledCatalogVersion + 1,
+        exercises: SeedData.sampleExercises,
+        exerciseCapabilities: SeedData.exerciseCapabilityRelationships,
+        exerciseMuscleGroups: SeedData.exerciseMuscleGroupRelationships,
+        foodCatalog: [
+          for (final f in FoodCatalogSeed.sampleCatalogFoods)
+            if (f.id == beerId) visibleBeer else f,
+        ],
+      );
 
-        final service = CatalogRefreshService(repo, source);
-        final didRefresh = await service.refresh();
+      final service = CatalogRefreshService(repo, source);
+      final didRefresh = await service.refresh();
 
-        expect(didRefresh, isTrue);
-        expect(
-          await repo.getCatalogVersion(),
-          equals(bundledCatalogVersion + 1),
-        );
-        final after = (await repo.getCatalogFoodById(beerId))!;
-        expect(
-          after.isArchived,
-          isFalse,
-          reason:
-              'a freshly-published visible state must overwrite a stored '
-              'hidden state for an untouched row',
-        );
-        // Every other field is preserved across the reversal.
-        expect(after.name, 'Beer, regular');
-        expect(after.protein, 0.5);
-      },
-    );
+      expect(didRefresh, isTrue);
+      expect(await repo.getCatalogVersion(), equals(bundledCatalogVersion + 1));
+      final after = (await repo.getCatalogFoodById(beerId))!;
+      expect(
+        after.isArchived,
+        isFalse,
+        reason:
+            'a freshly-published visible state must overwrite a stored '
+            'hidden state for an untouched row',
+      );
+      // Every other field is preserved across the reversal.
+      expect(after.name, 'Beer, regular');
+      expect(after.protein, 0.5);
+    });
 
     test(
       'S-009: refresh skips a user-touched row and leaves its hidden state alone',
@@ -906,10 +918,7 @@ void main() {
         await repo.updateCatalogFood(
           original!.copyWith(isArchived: false, name: 'Beer (mine)'),
         );
-        await repo.markSeedEntryTouched(
-          SeedEntryType.foodCatalog,
-          beerId,
-        );
+        await repo.markSeedEntryTouched(SeedEntryType.foodCatalog, beerId);
 
         // Bundle still publishes it hidden.
         final service = CatalogRefreshService(repo, _bundledSource());
@@ -935,49 +944,46 @@ void main() {
     // ─────────────────────────────────────────────────────────────────────
     // S-006: interruption safety
     // ─────────────────────────────────────────────────────────────────────
-    test(
-      'S-006: a mid-refresh failure leaves prior data intact and the stored '
-      'version is not advanced',
-      () async {
-        final repo = _OnceThrowingRepo();
-        await repo.initialize();
-        await repo.setCatalogVersion(bundledCatalogVersion - 1);
+    test('S-006: a mid-refresh failure leaves prior data intact and the stored '
+        'version is not advanced', () async {
+      final repo = _OnceThrowingRepo();
+      await repo.initialize();
+      await repo.setCatalogVersion(bundledCatalogVersion - 1);
 
-        const dumbbellCurlId = 'exercise-dumbbell-curl';
-        final preCaps = await repo.getExerciseCapabilities(dumbbellCurlId);
-        await repo.setExerciseCapabilities(
-          dumbbellCurlId,
-          preCaps.where((c) => c != ExerciseCapability.bilateral).toList(),
-        );
-        final storedVersionBefore = await repo.getCatalogVersion();
+      const dumbbellCurlId = 'exercise-dumbbell-curl';
+      final preCaps = await repo.getExerciseCapabilities(dumbbellCurlId);
+      await repo.setExerciseCapabilities(
+        dumbbellCurlId,
+        preCaps.where((c) => c != ExerciseCapability.bilateral).toList(),
+      );
+      final storedVersionBefore = await repo.getCatalogVersion();
 
-        final service = CatalogRefreshService(repo, _bundledSource());
+      final service = CatalogRefreshService(repo, _bundledSource());
 
-        Object? caughtError;
-        try {
-          await service.refresh();
-        } catch (e) {
-          caughtError = e;
-        }
-        expect(
-          caughtError,
-          isNotNull,
-          reason: 'refresh must propagate the simulated failure',
-        );
+      Object? caughtError;
+      try {
+        await service.refresh();
+      } catch (e) {
+        caughtError = e;
+      }
+      expect(
+        caughtError,
+        isNotNull,
+        reason: 'refresh must propagate the simulated failure',
+      );
 
-        expect(
-          await repo.getCatalogVersion(),
-          equals(storedVersionBefore),
-          reason: 'on failure the stored version must stay at the old value',
-        );
-        final postCaps = await repo.getExerciseCapabilities(dumbbellCurlId);
-        expect(
-          postCaps,
-          isNot(contains(ExerciseCapability.bilateral)),
-          reason: 'failed refresh must not leave partial state behind',
-        );
-      },
-    );
+      expect(
+        await repo.getCatalogVersion(),
+        equals(storedVersionBefore),
+        reason: 'on failure the stored version must stay at the old value',
+      );
+      final postCaps = await repo.getExerciseCapabilities(dumbbellCurlId);
+      expect(
+        postCaps,
+        isNot(contains(ExerciseCapability.bilateral)),
+        reason: 'failed refresh must not leave partial state behind',
+      );
+    });
 
     test(
       'S-006b: after a failed refresh the next launch retries from scratch',
@@ -1013,64 +1019,58 @@ void main() {
   // ────────────────────────────────────────────────────────────────────────
   // S-007: real catalog-loading path delivers the change (masking test)
   // ────────────────────────────────────────────────────────────────────────
-  testWidgets(
-    'S-007: bilateral note visible through the real startup path',
-    (WidgetTester tester) async {
-      final repository = MockWorkoutRepository();
-      await repository.initialize();
-      await repository.setCatalogVersion(bundledCatalogVersion - 1);
-      const dumbbellCurlId = 'exercise-dumbbell-curl';
-      final preCaps = await repository.getExerciseCapabilities(dumbbellCurlId);
-      await repository.setExerciseCapabilities(
-        dumbbellCurlId,
-        preCaps.where((c) => c != ExerciseCapability.bilateral).toList(),
-      );
+  testWidgets('S-007: bilateral note visible through the real startup path', (
+    WidgetTester tester,
+  ) async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    await repository.setCatalogVersion(bundledCatalogVersion - 1);
+    const dumbbellCurlId = 'exercise-dumbbell-curl';
+    final preCaps = await repository.getExerciseCapabilities(dumbbellCurlId);
+    await repository.setExerciseCapabilities(
+      dumbbellCurlId,
+      preCaps.where((c) => c != ExerciseCapability.bilateral).toList(),
+    );
 
-      final refresh = CatalogRefreshService(repository, _bundledSource());
-      await refresh.refresh();
+    final refresh = CatalogRefreshService(repository, _bundledSource());
+    await refresh.refresh();
 
-      await repository.setPreferenceBool('hint_seen_exercise_info', true);
-      await repository.setPreferenceBool('hint_seen_exercise_notes', true);
-      final workoutState = WorkoutState(repository);
-      final routineState = RoutineState(repository);
-      final sessionSummaryService = SessionSummaryService(repository);
-      await workoutState.createNewSession(modality: 'resistance_lifting');
+    await repository.setPreferenceBool('hint_seen_exercise_info', true);
+    await repository.setPreferenceBool('hint_seen_exercise_notes', true);
+    final workoutState = WorkoutState(repository);
+    final routineState = RoutineState(repository);
+    final sessionSummaryService = SessionSummaryService(repository);
+    await workoutState.createNewSession(modality: 'resistance_lifting');
 
-      final bilateralExercise = (await workoutState
-          .getExercisesRankedForModality(modality: 'resistance_lifting'))
-          .firstWhere(
-        (e) => e.capabilities.contains(ExerciseCapability.bilateral),
-      );
-      await workoutState.addExerciseToSession(
-        bilateralExercise,
-        chosenMetric: 'reps',
-      );
+    final bilateralExercise = (await workoutState.getExercisesRankedForModality(
+      modality: 'resistance_lifting',
+    )).firstWhere((e) => e.capabilities.contains(ExerciseCapability.bilateral));
+    await workoutState.addExerciseToSession(
+      bilateralExercise,
+      chosenMetric: 'reps',
+    );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: WorkoutSessionScreen(
-            workoutState: workoutState,
-            routineState: routineState,
-            sessionSummaryService: sessionSummaryService,
-            timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(
-              repository,
-              fakePreferencesService(),
-            ),
-          ),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WorkoutSessionScreen(
+          workoutState: workoutState,
+          routineState: routineState,
+          sessionSummaryService: sessionSummaryService,
+          timerAlertService: FakeTimerAlertService(),
+          settingsState: SettingsState(repository, fakePreferencesService()),
         ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(bilateralExercise.name));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('exercise-info-button')));
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(bilateralExercise.name));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('exercise-info-button')));
+    await tester.pumpAndSettle();
 
-      expect(find.text('LOGGING NOTE'), findsOneWidget);
-      expect(
-        find.textContaining('Log both sides as a single combined set'),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(find.text('LOGGING NOTE'), findsOneWidget);
+    expect(
+      find.textContaining('Log both sides as a single combined set'),
+      findsOneWidget,
+    );
+  });
 }

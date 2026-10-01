@@ -45,9 +45,9 @@ class DataMigrationService {
     required WorkoutRepository repository,
     required int targetVersion,
     required List<DataMigrationStep> steps,
-  })  : _repository = repository,
-        _targetVersion = targetVersion,
-        _steps = List.unmodifiable(steps);
+  }) : _repository = repository,
+       _targetVersion = targetVersion,
+       _steps = List.unmodifiable(steps);
 
   final WorkoutRepository _repository;
   final int _targetVersion;

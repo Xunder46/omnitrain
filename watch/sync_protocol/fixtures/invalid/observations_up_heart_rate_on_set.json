@@ -1,0 +1,24 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-bad-hr-set",
+  "sessionId": "s-cap-bad",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-09-25T11:00:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "e-bad-hr-set",
+        "entryId": "e-bad-hr-set",
+        "kind": "set",
+        "loggedAt": "2026-09-25T10:45:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-bench",
+        "reps": 5,
+        "loadKg": 80,
+        "avgHeartRateBpm": 120,
+        "maxHeartRateBpm": 130
+      }
+    ]
+  }
+}

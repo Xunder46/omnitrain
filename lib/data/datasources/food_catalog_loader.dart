@@ -74,7 +74,7 @@ class FoodCatalogLoader {
     final hidden = map['hidden'] == true;
 
     // Macro values are stored as `double` on Food (S-001 — see
-    // `.github/agents/plans/food-form-decimals-and-autofocus-plan.md`).
+    // `docs/plans/food-form-decimals-and-autofocus-plan.md`).
     // The catalog JSON's `protein` / `carbs` / `fat` values are integers
     // in the bundled v1 dataset; we pass them through without
     // rounding so the underlying precision is preserved if a future

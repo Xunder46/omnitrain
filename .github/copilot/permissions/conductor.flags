@@ -1,0 +1,2 @@
+# Planner: writes plan files only.
+--allow-tool=write(docs/plans/**)

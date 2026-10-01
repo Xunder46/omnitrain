@@ -19,7 +19,7 @@ class ProfileState extends ChangeNotifier {
   final ImageStorageService? _imageStorage;
 
   ProfileState(this._repository, {ImageStorageService? imageStorage})
-      : _imageStorage = imageStorage;
+    : _imageStorage = imageStorage;
 
   /// Non-null accessor for the image storage helper. Screens that
   /// host the avatar picker (`ProfileScreen`) read this to perform
@@ -33,7 +33,7 @@ class ProfileState extends ChangeNotifier {
         'ProfileState.imageStorage was read but no service was injected. '
         'main.dart must construct an ImageStorageService and pass it '
         'to ProfileState. See '
-        '.github/agents/plans/image-persistence-fix-plan.md (D-8).',
+        'docs/plans/image-persistence-fix-plan.md (D-8).',
       );
     }
     return svc;
@@ -71,12 +71,10 @@ class ProfileState extends ChangeNotifier {
   double? get latestHeightCm => _latestMeasurements['height']?.value;
 
   /// Latest body weight in canonical kilograms.
-  double? get latestBodyWeightKg =>
-      _latestMeasurements['bodyweight']?.value;
+  double? get latestBodyWeightKg => _latestMeasurements['bodyweight']?.value;
 
   /// Latest body fat percentage (canonical unit is `unit-pct`).
-  double? get latestBodyFatPct =>
-      _latestMeasurements['body_fat_pct']?.value;
+  double? get latestBodyFatPct => _latestMeasurements['body_fat_pct']?.value;
 
   /// Computed lean mass in canonical kilograms:
   ///

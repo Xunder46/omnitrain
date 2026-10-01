@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/constants/health_constants.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/services/health_platform_service.dart';
 import '../../core/services/preferences_service.dart';
 import '../../data/repositories/workout_repository.dart';
 
@@ -48,7 +50,17 @@ class SettingsState extends ChangeNotifier {
 
   final WorkoutRepository _repository;
 
-  SettingsState(this._repository, this._preferencesService);
+  /// Platform health gateway used to resolve permission prompts when the
+  /// user flips a health toggle. Null (tests, unsupported platforms)
+  /// resolves every enable attempt to the denied state, which is the
+  /// honest answer when no health store is reachable.
+  final HealthPlatformService? _healthPlatform;
+
+  SettingsState(
+    this._repository,
+    this._preferencesService, {
+    HealthPlatformService? healthPlatform,
+  }) : _healthPlatform = healthPlatform;
 
   AppTheme _appTheme = AppTheme.abyssalNeon;
   String _preferredWeightUnit = 'kg';
@@ -60,6 +72,8 @@ class SettingsState extends ChangeNotifier {
   int _restPingInterval = 0;
   String _restPingSound = 'soft_chime';
   bool _notificationPermissionAsked = false;
+  HealthToggleState _healthWriteWorkouts = HealthToggleState.off;
+  HealthToggleState _healthReadBodyWeight = HealthToggleState.off;
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
@@ -71,6 +85,8 @@ class SettingsState extends ChangeNotifier {
   int get restPingInterval => _restPingInterval;
   String get restPingSound => _restPingSound;
   bool get notificationPermissionAsked => _notificationPermissionAsked;
+  HealthToggleState get healthWriteWorkouts => _healthWriteWorkouts;
+  HealthToggleState get healthReadBodyWeight => _healthReadBodyWeight;
   bool get showHubLabel => _hubOpenCount < 2;
 
   Future<void> initialize() async {
@@ -190,6 +206,45 @@ class SettingsState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Enables or disables writing completed workouts to the platform
+  /// health store. Enabling asks the OS for permission: a denial is
+  /// persisted as [HealthToggleState.permissionDenied] so the toggle can
+  /// show the denied state and re-prompt on the next attempt (S-005).
+  Future<void> setHealthWriteWorkoutsEnabled(bool enabled) async {
+    _healthWriteWorkouts = await _resolveHealthToggle(
+      enabled,
+      () => _healthPlatform?.requestWritePermission() ?? Future.value(false),
+    );
+    await _repository.setPreferenceString(
+      HealthPrefs.writeWorkoutsKey,
+      healthToggleStateValue(_healthWriteWorkouts),
+    );
+    notifyListeners();
+  }
+
+  /// Enables or disables reading body weight from the platform health
+  /// store. Same permission contract as [setHealthWriteWorkoutsEnabled].
+  Future<void> setHealthReadBodyWeightEnabled(bool enabled) async {
+    _healthReadBodyWeight = await _resolveHealthToggle(
+      enabled,
+      () => _healthPlatform?.requestReadPermission() ?? Future.value(false),
+    );
+    await _repository.setPreferenceString(
+      HealthPrefs.readBodyWeightKey,
+      healthToggleStateValue(_healthReadBodyWeight),
+    );
+    notifyListeners();
+  }
+
+  Future<HealthToggleState> _resolveHealthToggle(
+    bool enabled,
+    Future<bool> Function() requestPermission,
+  ) async {
+    if (!enabled) return HealthToggleState.off;
+    final granted = await requestPermission();
+    return granted ? HealthToggleState.on : HealthToggleState.permissionDenied;
+  }
+
   /// Resolves a persisted theme name to an [AppTheme], falling back to the
   /// canonical theme for a missing or unrecognised value.
   static AppTheme _parseTheme(String? savedTheme) {
@@ -208,14 +263,14 @@ class SettingsState extends ChangeNotifier {
   /// refresh, which can hit the network) — so the preparing screen renders
   /// in their palette instead of flashing the default. It shares the key
   /// and the parsing with [_loadFromPrefs] so the two cannot drift.
-  static Future<AppTheme> readPersistedTheme(WorkoutRepository repository) async {
+  static Future<AppTheme> readPersistedTheme(
+    WorkoutRepository repository,
+  ) async {
     return _parseTheme(await repository.getPreferenceString(_themeKey));
   }
 
   Future<void> _loadFromPrefs() async {
-    _appTheme = _parseTheme(
-      await _repository.getPreferenceString(_themeKey),
-    );
+    _appTheme = _parseTheme(await _repository.getPreferenceString(_themeKey));
 
     final savedWeightUnit = await _repository.getPreferenceString(
       _preferredWeightUnitKey,
@@ -300,6 +355,15 @@ class SettingsState extends ChangeNotifier {
       defaultValue: 'false',
     );
     _notificationPermissionAsked = savedPermissionAsked == 'true';
+
+    // Health toggles default to off. They live in the same store as every
+    // other setting, so a reinstall wipes them (S-006).
+    _healthWriteWorkouts = parseHealthToggleState(
+      await _repository.getPreferenceString(HealthPrefs.writeWorkoutsKey),
+    );
+    _healthReadBodyWeight = parseHealthToggleState(
+      await _repository.getPreferenceString(HealthPrefs.readBodyWeightKey),
+    );
 
     notifyListeners();
   }

@@ -1,0 +1,39 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-change-1",
+  "sessionId": "s-2026-07-13-1",
+  "type": "structure_change",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:42:00Z",
+  "payload": {
+    "changeId": "chg-1",
+    "changes": [
+      {
+        "kind": "add_exercise",
+        "exercise": {
+          "sessionExerciseId": "sx-pullup",
+          "exerciseId": "ex-pull-up",
+          "name": "Pull-Up",
+          "capabilities": ["sets", "reps", "load"]
+        },
+        "atIndex": 3
+      },
+      { "kind": "remove_exercise", "sessionExerciseId": "sx-plank" },
+      {
+        "kind": "reorder_exercises",
+        "order": ["sx-squat", "sx-pullup", "sx-bench"]
+      },
+      {
+        "kind": "swap_exercise",
+        "sessionExerciseId": "sx-bench",
+        "exercise": {
+          "exerciseId": "ex-dumbbell-bench-press",
+          "name": "Dumbbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      },
+      { "kind": "correct_entry", "entryId": "e-1", "correction": { "reps": 6 } },
+      { "kind": "delete_entry", "entryId": "e-9" }
+    ]
+  }
+}

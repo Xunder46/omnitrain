@@ -2,7 +2,7 @@
 //
 // Automated enforcement of confirmation dialog consolidation.
 //
-// Rule (see `.github/agents/plans/confirmation-dialog-consolidation-plan.md`):
+// Rule (see `docs/plans/confirmation-dialog-consolidation-plan.md`):
 //   All confirmation dialogs (two-choice, three-choice) must use the shared
 //   ConfirmationDialog component. Raw AlertDialog confirmations outside the
 //   allowlist are not permitted.
@@ -41,8 +41,10 @@ void main() {
         final violations = <String>[];
         final featuresDir = Directory('lib/features');
 
-        await for (final entity
-            in featuresDir.list(recursive: true, followLinks: false)) {
+        await for (final entity in featuresDir.list(
+          recursive: true,
+          followLinks: false,
+        )) {
           if (entity is! File || !entity.path.endsWith('.dart')) continue;
 
           // Skip allowlisted files — they have been manually reviewed
@@ -53,10 +55,13 @@ void main() {
 
           // Strip comments so they do not trigger false positives.
           var stripped = content.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
-          stripped = stripped.split('\n').map((line) {
-            final i = line.indexOf('//');
-            return i < 0 ? line : line.substring(0, i);
-          }).join('\n');
+          stripped = stripped
+              .split('\n')
+              .map((line) {
+                final i = line.indexOf('//');
+                return i < 0 ? line : line.substring(0, i);
+              })
+              .join('\n');
 
           // Match AlertDialog construction. This catches any new
           // confirmation dialogs that should be using ConfirmationDialog.
@@ -75,7 +80,7 @@ void main() {
                     'Use ConfirmationDialog '
                     '(lib/widgets/dialogs/confirmation_dialog.dart) for all '
                     'confirmation prompts (two-choice, three-choice). '
-                    'See .github/agents/plans/confirmation-dialog-consolidation-plan.md.\n'
+                    'See docs/plans/confirmation-dialog-consolidation-plan.md.\n'
                     'Offending files:\n${violations.map((f) => '  $f').join('\n')}',
         );
       },

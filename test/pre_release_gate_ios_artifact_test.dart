@@ -1,5 +1,5 @@
 // Tests for the iOS reporting-destination pre-release gate check added
-// in `.github/agents/plans/crash-reporting-three-defects-plan.md`.
+// in `docs/plans/crash-reporting-three-defects-plan.md`.
 //
 // The previous gate (§11p / §11q in older revisions of
 // `scripts/pre_release_check.sh`) inspected the workflow file —
@@ -68,8 +68,11 @@ class _TempRepo {
   /// invariants under test.
   ///
   /// The copy uses `rsync` when available so we can exclude
-  /// `.dart_tool/`, `build/`, `ios/Pods/`, and other generated
-  /// directories that the gate does not inspect. `cp -R` would
+  /// `.dart_tool/`, `build/`, `.build/`, `ios/Pods/`, and other generated
+  /// directories that the gate does not inspect. `build` does not match
+  /// `.build`, and the watchOS package's build output is large enough that
+  /// copying it per test approaches the 30-second test-framework timeout.
+  /// `cp -R` would
   /// copy the entire `.dart_tool` cache (hundreds of MB), pushing
   /// each test setup past the 30-second test-framework timeout.
   /// The gate's checks read `.github/workflows/release.yml`,
@@ -80,25 +83,41 @@ class _TempRepo {
   static Future<_TempRepo> create(String src) async {
     final parent = Directory.systemTemp.createTempSync('omnitrain_gate_ios_');
     final dst = '${parent.path}/repo';
-    final hasRsync = await Process.run('which', <String>['rsync'])
-            .then((r) => r.exitCode == 0);
+    final hasRsync = await Process.run('which', <String>[
+      'rsync',
+    ]).then((r) => r.exitCode == 0);
     ProcessResult result;
     if (hasRsync) {
       result = await Process.run('rsync', <String>[
         '-a',
-        '--exclude', '.git',
-        '--exclude', '.dart_tool',
-        '--exclude', 'build',
-        '--exclude', 'ios/Pods',
-        '--exclude', 'ios/.symlinks',
-        '--exclude', 'ios/Flutter/Flutter.framework',
-        '--exclude', 'ios/Flutter/ephemeral',
-        '--exclude', 'macos/Pods',
-        '--exclude', 'macos/Flutter/Flutter.framework',
-        '--exclude', 'macos/Flutter/ephemeral',
-        '--exclude', '.venv',
-        '--exclude', '.claude',
-        '--exclude', '.idea',
+        '--exclude',
+        '.git',
+        '--exclude',
+        '.dart_tool',
+        '--exclude',
+        'build',
+        '--exclude',
+        '.build',
+        '--exclude',
+        'ios/Pods',
+        '--exclude',
+        'ios/.symlinks',
+        '--exclude',
+        'ios/Flutter/Flutter.framework',
+        '--exclude',
+        'ios/Flutter/ephemeral',
+        '--exclude',
+        'macos/Pods',
+        '--exclude',
+        'macos/Flutter/Flutter.framework',
+        '--exclude',
+        'macos/Flutter/ephemeral',
+        '--exclude',
+        '.venv',
+        '--exclude',
+        '.claude',
+        '--exclude',
+        '.idea',
         '$src/',
         dst,
       ]);
@@ -112,26 +131,23 @@ class _TempRepo {
     final repo = _TempRepo._(dst);
     // Use a per-repo identity so the synthetic commit has an author.
     await Process.run('git', <String>['init', '-q', dst]);
-    await Process.run(
-      'git',
-      <String>['config', 'user.email', 'gate-test@omnitrain'],
-      workingDirectory: dst,
-    );
-    await Process.run(
-      'git',
-      <String>['config', 'user.name', 'Gate Test'],
-      workingDirectory: dst,
-    );
-    await Process.run(
-      'git',
-      <String>['add', '-A'],
-      workingDirectory: dst,
-    );
-    await Process.run(
-      'git',
-      <String>['commit', '-q', '-m', 'gate test seed'],
-      workingDirectory: dst,
-    );
+    await Process.run('git', <String>[
+      'config',
+      'user.email',
+      'gate-test@omnitrain',
+    ], workingDirectory: dst);
+    await Process.run('git', <String>[
+      'config',
+      'user.name',
+      'Gate Test',
+    ], workingDirectory: dst);
+    await Process.run('git', <String>['add', '-A'], workingDirectory: dst);
+    await Process.run('git', <String>[
+      'commit',
+      '-q',
+      '-m',
+      'gate test seed',
+    ], workingDirectory: dst);
     // Truncate the .last-released-build file inside the temp copy
     // so the existing repo's old "last released" build number does
     // not interact with the current pubspec version. Set it to 0 —
@@ -176,16 +192,14 @@ com.google.gson.reflect.TypeToken: pi:com.google.gson.reflect.TypeToken
   /// Writes the minimum valid AAB that satisfies the §11r resource
   /// check. A two-file AAB with AndroidManifest + the kept raw
   /// resources is sufficient and parses cleanly.
-  Future<void> writeFakeAabWith(
-      {required Iterable<String> keptRawResources}) async {
+  Future<void> writeFakeAabWith({
+    required Iterable<String> keptRawResources,
+  }) async {
     final outDir = Directory('$path/build/app/outputs/bundle/release');
     outDir.createSync(recursive: true);
     final aabPath = '${outDir.path}/app-release.aab';
     await _writeZip(aabPath, <_ZipEntry>[
-      _ZipEntry(
-        'AndroidManifest.xml',
-        <int>[0x03, 0x00, 0x08, 0x00],
-      ),
+      _ZipEntry('AndroidManifest.xml', <int>[0x03, 0x00, 0x08, 0x00]),
       for (final name in keptRawResources)
         _ZipEntry('res/raw/$name', <int>[0x01, 0x02, 0x03]),
     ]);
@@ -202,9 +216,7 @@ com.google.gson.reflect.TypeToken: pi:com.google.gson.reflect.TypeToken
   ///   - `Runner.app/Runner` (the binary; the gate greps this)
   ///   - `Runner.app/Info.plist` (so the central directory looks
   ///      like a real app bundle)
-  Future<void> writeFakeIpaWithDsn({
-    required String dsn,
-  }) async {
+  Future<void> writeFakeIpaWithDsn({required String dsn}) async {
     final outDir = Directory('$path/build/ios/ipa');
     outDir.createSync(recursive: true);
     final ipaPath = '${outDir.path}/Runner.ipa';
@@ -224,10 +236,7 @@ com.google.gson.reflect.TypeToken: pi:com.google.gson.reflect.TypeToken
           ...List<int>.filled(64, 0x20),
         ],
       ),
-      _ZipEntry(
-        'Runner.app/Info.plist',
-        <int>[0x3C, 0x3F, 0x78, 0x6D, 0x6C],
-      ),
+      _ZipEntry('Runner.app/Info.plist', <int>[0x3C, 0x3F, 0x78, 0x6D, 0x6C]),
     ]);
   }
 
@@ -252,10 +261,7 @@ com.google.gson.reflect.TypeToken: pi:com.google.gson.reflect.TypeToken
           ...List<int>.filled(64, 0x20),
         ],
       ),
-      _ZipEntry(
-        'Runner.app/Info.plist',
-        <int>[0x3C, 0x3F, 0x78, 0x6D, 0x6C],
-      ),
+      _ZipEntry('Runner.app/Info.plist', <int>[0x3C, 0x3F, 0x78, 0x6D, 0x6C]),
     ]);
   }
 
@@ -321,8 +327,12 @@ Future<void> _writeZip(String path, List<_ZipEntry> entries) async {
   }
   // -X strips extra filesystem metadata so the zip is deterministic
   // across runs.
-  final result = await Process.run(
-      'zip', <String>['-qX', '-r', path, '.'], workingDirectory: tmp.path);
+  final result = await Process.run('zip', <String>[
+    '-qX',
+    '-r',
+    path,
+    '.',
+  ], workingDirectory: tmp.path);
   if (result.exitCode != 0) {
     throw StateError('zip failed: ${result.stderr}');
   }
@@ -360,8 +370,10 @@ void main() {
     canRun = hasZip && hasUnzip;
     if (!canRun) {
       // ignore: avoid_print
-      print('SKIP: zip and/or unzip not on PATH — required for the '
-          'iOS artifact gate tests.');
+      print(
+        'SKIP: zip and/or unzip not on PATH — required for the '
+        'iOS artifact gate tests.',
+      );
     }
   });
 
@@ -377,124 +389,145 @@ void main() {
       await repo.dispose();
     });
 
-    test(
-      'GREEN: iOS IPA contains the DSN string — §11q passes',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // Write an IPA whose binary contains the literal DSN. The
-        // gate must extract the IPA, grep the binary, and find
-        // the DSN.
-        await repo.writeFakeIpaWithDsn(
-          dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
-        );
+    test('GREEN: iOS IPA contains the DSN string — §11q passes', () async {
+      if (!canRun) {
+        return;
+      }
+      // Write an IPA whose binary contains the literal DSN. The
+      // gate must extract the IPA, grep the binary, and find
+      // the DSN.
+      await repo.writeFakeIpaWithDsn(
+        dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      );
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 0,
-            reason: 'Gate must pass when the produced IPA '
-                'contains the SENTRY_DSN value');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(
-          output,
-          isNot(contains('iOS reporting destination is absent')),
-          reason: 'No reporting-destination failure should fire',
-        );
-        // The OK path must announce which check it ran.
-        expect(output, contains('iOS reporting destination'),
-            reason: '§11q must announce which check it verified');
-      },
-    );
+      expect(
+        result.exitCode,
+        0,
+        reason:
+            'Gate must pass when the produced IPA '
+            'contains the SENTRY_DSN value',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        isNot(contains('iOS reporting destination is absent')),
+        reason: 'No reporting-destination failure should fire',
+      );
+      // The OK path must announce which check it ran.
+      expect(
+        output,
+        contains('iOS reporting destination'),
+        reason: '§11q must announce which check it verified',
+      );
+    });
 
-    test(
-      'RED: iOS IPA does NOT contain the DSN string — §11q fails '
-      '(the original bug, reproduced)',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // Write an IPA whose binary omits any DSN. This mirrors
-        // the regression where the workflow claims the DSN is
-        // injected but the build did not inject it. The gate
-        // must detect this by inspecting the artifact, not the
-        // workflow file.
-        await repo.writeFakeIpaWithoutDsn();
+    test('RED: iOS IPA does NOT contain the DSN string — §11q fails '
+        '(the original bug, reproduced)', () async {
+      if (!canRun) {
+        return;
+      }
+      // Write an IPA whose binary omits any DSN. This mirrors
+      // the regression where the workflow claims the DSN is
+      // injected but the build did not inject it. The gate
+      // must detect this by inspecting the artifact, not the
+      // workflow file.
+      await repo.writeFakeIpaWithoutDsn();
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when the produced iOS '
-                'artifact lacks a working reporting destination');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('iOS'),
-            reason: 'Failure message must name the platform');
-        expect(output, contains('SENTRY_DSN'),
-            reason: 'Failure message must name the missing env var');
-        expect(output, contains('silently never'),
-            reason: 'Failure message must name the user-facing '
-                'consequence — iOS would appear monitored but '
-                'produce nothing');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'Gate must fail when the produced iOS '
+            'artifact lacks a working reporting destination',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        contains('iOS'),
+        reason: 'Failure message must name the platform',
+      );
+      expect(
+        output,
+        contains('SENTRY_DSN'),
+        reason: 'Failure message must name the missing env var',
+      );
+      expect(
+        output,
+        contains('silently never'),
+        reason:
+            'Failure message must name the user-facing '
+            'consequence — iOS would appear monitored but '
+            'produce nothing',
+      );
+    });
 
-    test(
-      'RED: iOS artifact is absent — §11q fails rather than '
-      'silently passing (PASS-BY-DEFAULT IS REJECTED)',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // No IPA produced. The fake-build hook is set to `ok`
-        // for the Android build (§11s succeeds), isolating §11q.
-        // Per the acceptance criterion: missing output must fail,
-        // never pass by default.
-        final result = await repo.runGate();
+    test('RED: iOS artifact is absent — §11q fails rather than '
+        'silently passing (PASS-BY-DEFAULT IS REJECTED)', () async {
+      if (!canRun) {
+        return;
+      }
+      // No IPA produced. The fake-build hook is set to `ok`
+      // for the Android build (§11s succeeds), isolating §11q.
+      // Per the acceptance criterion: missing output must fail,
+      // never pass by default.
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when the expected iOS '
-                'artifact is absent (acceptance criterion: '
-                '"fails rather than passing by default when '
-                'expected build output is missing entirely")');
-        final output = '${result.stdout}\n${result.stderr}';
-        // The failure message must name the missing artifact so
-        // the reader knows §11q has nothing to inspect, rather
-        // than discovering it via the "blocking error" summary
-        // alone.
-        final tellsCause =
-            output.contains('iOS artifact') ||
-                output.contains('iOS build did not produce') ||
-                output.contains('Runner.ipa') ||
-                output.contains('build/ios/ipa');
-        expect(tellsCause, isTrue,
-            reason: 'Failure message must name the missing iOS '
-                'artifact so the reader knows §11q produced '
-                'nothing usable');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'Gate must fail when the expected iOS '
+            'artifact is absent (acceptance criterion: '
+            '"fails rather than passing by default when '
+            'expected build output is missing entirely")',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      // The failure message must name the missing artifact so
+      // the reader knows §11q has nothing to inspect, rather
+      // than discovering it via the "blocking error" summary
+      // alone.
+      final tellsCause =
+          output.contains('iOS artifact') ||
+          output.contains('iOS build did not produce') ||
+          output.contains('Runner.ipa') ||
+          output.contains('build/ios/ipa');
+      expect(
+        tellsCause,
+        isTrue,
+        reason:
+            'Failure message must name the missing iOS '
+            'artifact so the reader knows §11q produced '
+            'nothing usable',
+      );
+    });
 
-    test(
-      'GREEN: §11q is satisfied for both DSN shapes — the DSN '
-      'value, however it was configured, must appear in the '
-      'binary',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // The DSN check should be string-content based, not
-        // shape-based. A different DSN value still satisfies
-        // the check.
-        await repo.writeFakeIpaWithDsn(
-          dsn: 'https://otherKey@o123.ingest.sentry.io/456',
-        );
+    test('GREEN: §11q is satisfied for both DSN shapes — the DSN '
+        'value, however it was configured, must appear in the '
+        'binary', () async {
+      if (!canRun) {
+        return;
+      }
+      // The DSN check should be string-content based, not
+      // shape-based. A different DSN value still satisfies
+      // the check.
+      await repo.writeFakeIpaWithDsn(
+        dsn: 'https://otherKey@o123.ingest.sentry.io/456',
+      );
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 0,
-            reason: 'Gate must pass for any non-empty DSN value '
-                'present in the IPA binary');
-      },
-    );
+      expect(
+        result.exitCode,
+        0,
+        reason:
+            'Gate must pass for any non-empty DSN value '
+            'present in the IPA binary',
+      );
+    });
   });
 
   group('pre-release gate — §11p iOS build invocation shape', () {
@@ -508,82 +541,97 @@ void main() {
       await repo.dispose();
     });
 
-    test(
-      'GREEN: workflow uses `flutter build ipa` — §11p passes',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // Sanity: the unmodified workflow must use
-        // `flutter build ipa`. If this assertion ever fires,
-        // the workflow shape was reverted and the test is
-        // testing the wrong thing.
-        final preOriginal = await repo.workflow().readAsString();
-        expect(
-          preOriginal,
-          contains('flutter build ipa'),
-          reason: 'Test setup invariant violated: the repo must '
-              'already use flutter build ipa. If this fires, '
-              'the workflow shape was reverted.',
-        );
-        await repo.writeFakeIpaWithDsn(
-          dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
-        );
+    test('GREEN: workflow uses `flutter build ipa` — §11p passes', () async {
+      if (!canRun) {
+        return;
+      }
+      // Sanity: the unmodified workflow must use
+      // `flutter build ipa`. If this assertion ever fires,
+      // the workflow shape was reverted and the test is
+      // testing the wrong thing.
+      final preOriginal = await repo.workflow().readAsString();
+      expect(
+        preOriginal,
+        contains('flutter build ipa'),
+        reason:
+            'Test setup invariant violated: the repo must '
+            'already use flutter build ipa. If this fires, '
+            'the workflow shape was reverted.',
+      );
+      await repo.writeFakeIpaWithDsn(
+        dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      );
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 0,
-            reason: 'Gate must pass for the post-fix workflow');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(
-          output,
-          isNot(contains('iOS build must use')),
-          reason: '§11p failure message must not fire against '
-              'the post-fix workflow',
-        );
-      },
-    );
+      expect(
+        result.exitCode,
+        0,
+        reason: 'Gate must pass for the post-fix workflow',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        isNot(contains('iOS build must use')),
+        reason:
+            '§11p failure message must not fire against '
+            'the post-fix workflow',
+      );
+    });
 
-    test(
-      'RED: workflow reverts from `flutter build ipa` to '
-      'bespoke xcodebuild — §11p fails',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        final preOriginal = await repo.workflow().readAsString();
-        expect(preOriginal, contains('flutter build ipa'),
-            reason: 'Sanity: the unmodified workflow must use '
-                'flutter build ipa');
+    test('RED: workflow reverts from `flutter build ipa` to '
+        'bespoke xcodebuild — §11p fails', () async {
+      if (!canRun) {
+        return;
+      }
+      final preOriginal = await repo.workflow().readAsString();
+      expect(
+        preOriginal,
+        contains('flutter build ipa'),
+        reason:
+            'Sanity: the unmodified workflow must use '
+            'flutter build ipa',
+      );
 
-        // Replace `flutter build ipa ...` with the old bespoke
-        // xcodebuild invocation. The gate must catch the
-        // reversion.
-        final mutated = preOriginal.replaceFirst(
-          RegExp(r'flutter build ipa[^\n]*\n'),
-          '          xcodebuild -workspace ios/Runner.xcworkspace '
-              '-scheme Runner -configuration Release archive\n',
-        );
-        expect(mutated, isNot(equals(preOriginal)),
-            reason: 'Test setup failed: could not replace '
-                'flutter build ipa with xcodebuild');
-        await repo.workflow().writeAsString(mutated);
-        // The bespoke xcodebuild invocation does not have a
-        // verified DSN-forwarding path; the IPA must therefore
-        // lack the DSN to mirror the regression.
-        await repo.writeFakeIpaWithoutDsn();
+      // Replace `flutter build ipa ...` with the old bespoke
+      // xcodebuild invocation. The gate must catch the
+      // reversion.
+      final mutated = preOriginal.replaceFirst(
+        RegExp(r'flutter build ipa[^\n]*\n'),
+        '          xcodebuild -workspace ios/Runner.xcworkspace '
+        '-scheme Runner -configuration Release archive\n',
+      );
+      expect(
+        mutated,
+        isNot(equals(preOriginal)),
+        reason:
+            'Test setup failed: could not replace '
+            'flutter build ipa with xcodebuild',
+      );
+      await repo.workflow().writeAsString(mutated);
+      // The bespoke xcodebuild invocation does not have a
+      // verified DSN-forwarding path; the IPA must therefore
+      // lack the DSN to mirror the regression.
+      await repo.writeFakeIpaWithoutDsn();
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when the iOS build is '
-                'reverted to bespoke xcodebuild');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('flutter build ipa'),
-            reason: 'Failure message must name the missing '
-                'invocation shape');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'Gate must fail when the iOS build is '
+            'reverted to bespoke xcodebuild',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        contains('flutter build ipa'),
+        reason:
+            'Failure message must name the missing '
+            'invocation shape',
+      );
+    });
   });
 
   group('pre-release gate — §11n / §11o upload destination '
@@ -598,176 +646,209 @@ void main() {
       await repo.dispose();
     });
 
-    test(
-      'GREEN: Android SENTRY_PROJECT == omnitrain — §11n passes',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // Sanity: the unmodified workflow has the post-fix value.
-        //
-        // The block is delimited by the JOB key, not by the build step.
-        // SENTRY_PROJECT is declared once at job level so every step
-        // inherits it; anchoring this assertion on the build step (as it
-        // once did) would miss a correct job-level declaration and fail
-        // for the wrong reason. This mirrors how the gate itself parses
-        // the workflow — see `extract_workflow_job_block` in
-        // `scripts/pre_release_check.sh`.
-        final preOriginal = await repo.workflow().readAsString();
-        final androidBlockStart = preOriginal.indexOf('\n  android:');
-        expect(androidBlockStart, isNonNegative,
-            reason: 'Sanity: Android job must exist');
-        final androidBlock = preOriginal.substring(androidBlockStart);
-        expect(
-          androidBlock,
-          contains('SENTRY_PROJECT: omnitrain'),
-          reason: 'Test setup invariant violated: the Android '
-              'job must already use SENTRY_PROJECT: omnitrain. '
-              'If this fires, the fix was reverted.',
-        );
-        expect(
-          androidBlock,
-          isNot(contains('SENTRY_PROJECT: omnitrain-android')),
-          reason: 'Test setup invariant violated: the Android '
-              'job must not name a per-platform destination.',
-        );
-        await repo.writeFakeIpaWithDsn(
-          dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
-        );
+    test('GREEN: Android SENTRY_PROJECT == omnitrain — §11n passes', () async {
+      if (!canRun) {
+        return;
+      }
+      // Sanity: the unmodified workflow has the post-fix value.
+      //
+      // The block is delimited by the JOB key, not by the build step.
+      // SENTRY_PROJECT is declared once at job level so every step
+      // inherits it; anchoring this assertion on the build step (as it
+      // once did) would miss a correct job-level declaration and fail
+      // for the wrong reason. This mirrors how the gate itself parses
+      // the workflow — see `extract_workflow_job_block` in
+      // `scripts/pre_release_check.sh`.
+      final preOriginal = await repo.workflow().readAsString();
+      final androidBlockStart = preOriginal.indexOf('\n  android:');
+      expect(
+        androidBlockStart,
+        isNonNegative,
+        reason: 'Sanity: Android job must exist',
+      );
+      final androidBlock = preOriginal.substring(androidBlockStart);
+      expect(
+        androidBlock,
+        contains('SENTRY_PROJECT: omnitrain'),
+        reason:
+            'Test setup invariant violated: the Android '
+            'job must already use SENTRY_PROJECT: omnitrain. '
+            'If this fires, the fix was reverted.',
+      );
+      expect(
+        androidBlock,
+        isNot(contains('SENTRY_PROJECT: omnitrain-android')),
+        reason:
+            'Test setup invariant violated: the Android '
+            'job must not name a per-platform destination.',
+      );
+      await repo.writeFakeIpaWithDsn(
+        dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      );
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 0,
-            reason: 'Gate must pass when SENTRY_PROJECT is '
-                'exactly omnitrain on Android');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(
-          output,
-          isNot(contains('Android upload destination is wrong')),
-          reason: 'No Android upload-destination WRONG failure should fire',
-        );
-        expect(
-          output,
-          contains("Android upload destination is 'omnitrain'"),
-          reason: '§11n OK message should announce omnitrain',
-        );
-      },
-    );
+      expect(
+        result.exitCode,
+        0,
+        reason:
+            'Gate must pass when SENTRY_PROJECT is '
+            'exactly omnitrain on Android',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        isNot(contains('Android upload destination is wrong')),
+        reason: 'No Android upload-destination WRONG failure should fire',
+      );
+      expect(
+        output,
+        contains("Android upload destination is 'omnitrain'"),
+        reason: '§11n OK message should announce omnitrain',
+      );
+    });
 
-    test(
-      'RED: Android SENTRY_PROJECT is renamed to omnitrain-android — '
-      '§11n fails (the per-platform regression cannot reappear)',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        final preOriginal = await repo.workflow().readAsString();
-        final mutated = preOriginal.replaceFirst(
-          'SENTRY_PROJECT: omnitrain',
-          'SENTRY_PROJECT: omnitrain-android',
-        );
-        expect(mutated, isNot(equals(preOriginal)),
-            reason: 'Test setup failed: could not reintroduce '
-                'the per-platform destination');
-        await repo.workflow().writeAsString(mutated);
-        await repo.writeFakeIpaWithDsn(
-          dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
-        );
+    test('RED: Android SENTRY_PROJECT is renamed to omnitrain-android — '
+        '§11n fails (the per-platform regression cannot reappear)', () async {
+      if (!canRun) {
+        return;
+      }
+      final preOriginal = await repo.workflow().readAsString();
+      final mutated = preOriginal.replaceFirst(
+        'SENTRY_PROJECT: omnitrain',
+        'SENTRY_PROJECT: omnitrain-android',
+      );
+      expect(
+        mutated,
+        isNot(equals(preOriginal)),
+        reason:
+            'Test setup failed: could not reintroduce '
+            'the per-platform destination',
+      );
+      await repo.workflow().writeAsString(mutated);
+      await repo.writeFakeIpaWithDsn(
+        dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      );
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when Android SENTRY_PROJECT '
-                'names anything other than omnitrain');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('Android upload destination'),
-            reason: 'Failure message must name the platform');
-        expect(output, contains('omnitrain'),
-            reason: 'Failure message must name the correct value '
-                'so the reader knows what to type');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'Gate must fail when Android SENTRY_PROJECT '
+            'names anything other than omnitrain',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        contains('Android upload destination'),
+        reason: 'Failure message must name the platform',
+      );
+      expect(
+        output,
+        contains('omnitrain'),
+        reason:
+            'Failure message must name the correct value '
+            'so the reader knows what to type',
+      );
+    });
 
-    test(
-      'RED: iOS SENTRY_PROJECT is renamed to omnitrain-ios — '
-      '§11o fails (the per-platform regression cannot reappear)',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        final preOriginal = await repo.workflow().readAsString();
-        // The post-fix workflow has SENTRY_PROJECT: omnitrain
-        // in both jobs. Replace ONLY the iOS job's value.
-        final iosBlockStart =
-            preOriginal.indexOf('name: Build IPA');
-        expect(iosBlockStart, isNonNegative,
-            reason: 'Sanity: iOS step must exist');
-        final iosBlockEnd = preOriginal.indexOf(
-          'name: Build AAB',
-          iosBlockStart,
-        );
-        final iosBlock = preOriginal.substring(
-          iosBlockStart,
-          iosBlockEnd == -1 ? preOriginal.length : iosBlockEnd,
-        );
-        final iosBlockMutated = iosBlock.replaceFirst(
-          'SENTRY_PROJECT: omnitrain',
-          'SENTRY_PROJECT: omnitrain-ios',
-        );
-        final mutated = preOriginal.replaceRange(
-          iosBlockStart,
-          iosBlockEnd == -1 ? preOriginal.length : iosBlockEnd,
-          iosBlockMutated,
-        );
-        expect(mutated, isNot(equals(preOriginal)),
-            reason: 'Test setup failed: could not reintroduce '
-                'the per-platform destination for iOS');
-        await repo.workflow().writeAsString(mutated);
-        await repo.writeFakeIpaWithDsn(
-          dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
-        );
+    test('RED: iOS SENTRY_PROJECT is renamed to omnitrain-ios — '
+        '§11o fails (the per-platform regression cannot reappear)', () async {
+      if (!canRun) {
+        return;
+      }
+      final preOriginal = await repo.workflow().readAsString();
+      // The post-fix workflow has SENTRY_PROJECT: omnitrain
+      // in both jobs. Replace ONLY the iOS job's value.
+      final iosBlockStart = preOriginal.indexOf('name: Build IPA');
+      expect(
+        iosBlockStart,
+        isNonNegative,
+        reason: 'Sanity: iOS step must exist',
+      );
+      final iosBlockEnd = preOriginal.indexOf('name: Build AAB', iosBlockStart);
+      final iosBlock = preOriginal.substring(
+        iosBlockStart,
+        iosBlockEnd == -1 ? preOriginal.length : iosBlockEnd,
+      );
+      final iosBlockMutated = iosBlock.replaceFirst(
+        'SENTRY_PROJECT: omnitrain',
+        'SENTRY_PROJECT: omnitrain-ios',
+      );
+      final mutated = preOriginal.replaceRange(
+        iosBlockStart,
+        iosBlockEnd == -1 ? preOriginal.length : iosBlockEnd,
+        iosBlockMutated,
+      );
+      expect(
+        mutated,
+        isNot(equals(preOriginal)),
+        reason:
+            'Test setup failed: could not reintroduce '
+            'the per-platform destination for iOS',
+      );
+      await repo.workflow().writeAsString(mutated);
+      await repo.writeFakeIpaWithDsn(
+        dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      );
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when iOS SENTRY_PROJECT '
-                'names anything other than omnitrain');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('iOS upload destination'),
-            reason: 'Failure message must name the platform');
-        expect(output, contains('omnitrain'),
-            reason: 'Failure message must name the correct value');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'Gate must fail when iOS SENTRY_PROJECT '
+            'names anything other than omnitrain',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        contains('iOS upload destination'),
+        reason: 'Failure message must name the platform',
+      );
+      expect(
+        output,
+        contains('omnitrain'),
+        reason: 'Failure message must name the correct value',
+      );
+    });
 
-    test(
-      'RED: iOS SENTRY_PROJECT is blank — §11o fails',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        final preOriginal = await repo.workflow().readAsString();
-        final mutated = preOriginal.replaceFirst(
-          'SENTRY_PROJECT: omnitrain',
-          'SENTRY_PROJECT: ',
-        );
-        expect(mutated, isNot(equals(preOriginal)),
-            reason: 'Test setup failed: could not blank '
-                'SENTRY_PROJECT');
-        await repo.workflow().writeAsString(mutated);
-        await repo.writeFakeIpaWithDsn(
-          dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
-        );
+    test('RED: iOS SENTRY_PROJECT is blank — §11o fails', () async {
+      if (!canRun) {
+        return;
+      }
+      final preOriginal = await repo.workflow().readAsString();
+      final mutated = preOriginal.replaceFirst(
+        'SENTRY_PROJECT: omnitrain',
+        'SENTRY_PROJECT: ',
+      );
+      expect(
+        mutated,
+        isNot(equals(preOriginal)),
+        reason:
+            'Test setup failed: could not blank '
+            'SENTRY_PROJECT',
+      );
+      await repo.workflow().writeAsString(mutated);
+      await repo.writeFakeIpaWithDsn(
+        dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      );
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when iOS SENTRY_PROJECT is '
-                'blank');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('iOS upload destination'));
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'Gate must fail when iOS SENTRY_PROJECT is '
+            'blank',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(output, contains('iOS upload destination'));
+    });
   });
 
   group('pre-release gate — combined crash-reporting section '
@@ -782,67 +863,69 @@ void main() {
       await repo.dispose();
     });
 
-    test(
-      'a single failing subcheck fails the gate as a whole '
-      '(pre-existing pattern from §11k–§11q)',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // Single defect: iOS IPA lacks the DSN. Every other
-        // check passes. The whole gate must fail and the
-        // summary must list the failure.
-        await repo.writeFakeIpaWithoutDsn();
+    test('a single failing subcheck fails the gate as a whole '
+        '(pre-existing pattern from §11k–§11q)', () async {
+      if (!canRun) {
+        return;
+      }
+      // Single defect: iOS IPA lacks the DSN. Every other
+      // check passes. The whole gate must fail and the
+      // summary must list the failure.
+      await repo.writeFakeIpaWithoutDsn();
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        expect(result.exitCode, 1,
-            reason: 'A single failing subcheck must fail the '
-                'gate as a whole, matching the §11k–§11q '
-                '"single blocking error blocks release" '
-                'convention');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('blocking error'),
-            reason: 'Summary must surface that the gate has at '
-                'least one blocking error');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'A single failing subcheck must fail the '
+            'gate as a whole, matching the §11k–§11q '
+            '"single blocking error blocks release" '
+            'convention',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        contains('blocking error'),
+        reason:
+            'Summary must surface that the gate has at '
+            'least one blocking error',
+      );
+    });
 
-    test(
-      'happy path — gate does not fire the new iOS artifact '
-      'checks against the post-fix repo',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        await repo.writeFakeIpaWithDsn(
-          dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
-        );
+    test('happy path — gate does not fire the new iOS artifact '
+        'checks against the post-fix repo', () async {
+      if (!canRun) {
+        return;
+      }
+      await repo.writeFakeIpaWithDsn(
+        dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      );
 
-        final result = await repo.runGate();
+      final result = await repo.runGate();
 
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(
-          output,
-          isNot(contains('iOS reporting destination is absent')),
-          reason: 'No iOS reporting-destination failure should fire',
-        );
-        expect(
-          output,
-          isNot(contains('iOS build must use')),
-          reason: 'No build-invocation-shape failure should fire',
-        );
-        expect(
-          output,
-          isNot(contains('Android upload destination is unresolvable')),
-          reason: 'No Android upload-destination failure should fire',
-        );
-        expect(
-          output,
-          isNot(contains('iOS upload destination is unresolvable')),
-          reason: 'No iOS upload-destination failure should fire',
-        );
-      },
-    );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        isNot(contains('iOS reporting destination is absent')),
+        reason: 'No iOS reporting-destination failure should fire',
+      );
+      expect(
+        output,
+        isNot(contains('iOS build must use')),
+        reason: 'No build-invocation-shape failure should fire',
+      );
+      expect(
+        output,
+        isNot(contains('Android upload destination is unresolvable')),
+        reason: 'No Android upload-destination failure should fire',
+      );
+      expect(
+        output,
+        isNot(contains('iOS upload destination is unresolvable')),
+        reason: 'No iOS upload-destination failure should fire',
+      );
+    });
   });
 }

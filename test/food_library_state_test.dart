@@ -1297,9 +1297,7 @@ void main() {
           final libId = await state.addCatalogFoodToLibrary(
             'catalog-edit-test-id',
           );
-          final originalLibFood = state.foods.firstWhere(
-            (f) => f.id == libId,
-          );
+          final originalLibFood = state.foods.firstWhere((f) => f.id == libId);
           expect(originalLibFood.catalogId, 'catalog-edit-test-id');
 
           // Edit the catalog food
@@ -1320,9 +1318,7 @@ void main() {
           await state.updateCatalogFood(catalogSource, draft);
 
           // Verify library food was updated with new values
-          final updatedLibFood = state.foods.firstWhere(
-            (f) => f.id == libId,
-          );
+          final updatedLibFood = state.foods.firstWhere((f) => f.id == libId);
           expect(updatedLibFood.name, 'Renamed Food');
           expect(updatedLibFood.protein, 25);
           expect(updatedLibFood.carbs, 35);

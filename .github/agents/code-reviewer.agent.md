@@ -1,7 +1,7 @@
 ---
 description: 'Reviews completed work for code quality, DRY compliance, clean code principles, and architecture adherence. Assesses and plans refactoring - does not edit code directly.'
-tools: [execute/runNotebookCell, execute/getTerminalOutput, execute/killTerminal, execute/sendToTerminal, execute/createAndRunTask, execute/runInTerminal, execute/runTests, execute/testFailure, read/getNotebookSummary, read/problems, read/readFile, read/terminalSelection, read/terminalLastCommand, edit/editFiles, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/textSearch, search/usages, dart-code.dart-code/get_dtd_uri, dart-code.dart-code/dart_format, dart-code.dart-code/dart_fix, todo]
-model: Mini Max M2 (MiniMax) (customendpoint)
+tools: [execute/runNotebookCell, execute/getTerminalOutput, execute/killTerminal, execute/sendToTerminal, execute/createAndRunTask, execute/runInTerminal, execute/runTests, execute/testFailure, read/getNotebookSummary, read/problems, read/readFile, read/terminalSelection, read/terminalLastCommand, edit/createFile, edit/editFiles, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/textSearch, search/usages, dart-code.dart-code/get_dtd_uri, dart-code.dart-code/dart_format, dart-code.dart-code/dart_fix, todo]
+model: go/DeepSeek V4.1 Flash (opencode)
 disable-model-invocation: false
 handoffs:
   - label: Hand off to DBA for fixes
@@ -10,7 +10,7 @@ handoffs:
     send: false
   - label: Hand off to Developer for fixes
     agent: developer
-    prompt: Please address the implementation, test, and doc issues outlined above, and re-check every applicable rule in docs/global_conventions.md before handing back.
+    prompt: Please address the issues outlined above, and re-check every applicable rule in docs/global_conventions.md before handing back.
     send: false
   - label: Approve and close
     agent: conductor
@@ -47,13 +47,28 @@ Your output is fed back to the user and costs tokens. Follow these rules uncondi
 
 ## Plan File Protocol
 
-The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single source of truth for the current feature.
+The shared plan file at `docs/plans/[feature]-plan/[feature]-plan.md` is the single source of truth for the current feature.
 
-**Always begin by reading `.github/agents/plans/[feature]-plan.md`** before reviewing any code. Use it to understand the original intent, requirements, and the iteration being reviewed, so you can assess whether the implementation matches the plan.
+**Always begin by reading `docs/plans/[feature]-plan/[feature]-plan.md`** before reviewing any code. Use it to understand the original intent, requirements, and the iteration being reviewed, so you can assess whether the implementation matches the plan.
 
 **If the implementation does not meet the plan**, add a `## Feedback` section to the plan file describing exactly what needs to change and why, then present the findings to the user and wait for their decision.
 
 **If the review passes**, no changes to the plan file are required — present the approval to the user and wait for confirmation.
+
+## PR Scope Budget
+
+Write findings to `<plan>.review.md`, in the plan's folder (`docs/plans/<plan>/`), not into the plan. The plan's
+`## Feedback` gets only a pointer to that file and a fix checklist. This replaces the instruction
+above to add a `## Feedback` section describing exactly what needs to change.
+
+Triage against `.github/agents/pr_scope_budget.md` §1 "At review". Recommend a split when there
+are more than 6 substantive findings, a DESIGN finding spans layers, or a second review round would
+be needed:
+
+- list what to fix in this PR: CRITICAL findings and cheap MECHANICAL ones, in one round;
+- list what goes to a follow-up PR plan through conductor-v2.
+
+Never propose a review → fix → review loop.
 
 ## Your Role
 
@@ -115,7 +130,7 @@ Only run checklist sections for in-scope layers. Skip others without comment.
 Before reviewing code quality, verify the implementation does what was asked.
 
 **Check in this order**:
-1. If a prompt file exists at `.github/agents/plans/[feature]-copilot-prompts.md`, read its Acceptance Criteria sections
+1. If a prompt file exists at `docs/plans/[feature]-copilot-prompts.md`, read its Acceptance Criteria sections
 2. If the plan file has a `## Acceptance Criteria` section, read it
 3. If both exist, check against both
 
@@ -142,7 +157,7 @@ If no `## Scenarios` section exists, note as **WARNING** and flag to Developer t
 **Run this on every change, including changes that touch no documentation at
 all.** A code-only change is the *normal* way documentation becomes false: the
 code moves and the prose stays behind. Every false claim in
-`.github/agents/docs-standard-audit-2026-07-30.md` was produced by a change that
+`docs/plans/docs-standard-audit-2026-07-30.md` was produced by a change that
 added nothing to any document and was approved for exactly that reason. If you
 skip this step because there is no documentation diff, you have reproduced the
 bug this step exists to catch.
@@ -164,7 +179,7 @@ rejection, not a 5c-2 one.
 
 1. List the files the change actually touched.
 2. Read the **scope declaration** at the top of each document under
-   `.github/agents/docs/`. Every document states which parts of the codebase it
+   `docs/`. Every document states which parts of the codebase it
    covers. That declaration is your mapping.
 3. A document is **implicated** when any changed file falls inside its declared
    scope.
@@ -258,10 +273,10 @@ Do not print a row for a document that is not implicated.
 ### Step 5c-2 — Documentation Standard Enforcement (HARD REJECTION)
 
 **This is a rejection criterion, not a suggestion.** Any change that adds
-prohibited content to a document under `.github/agents/docs/` **MUST be rejected
+prohibited content to a document under `docs/` **MUST be rejected
 as ❌ Critical**, regardless of how accurate the added content is. Accuracy is
 not the test — accuracy decays silently, which is the entire reason these
-classes are banned. `.github/agents/docs/documentation_standard.md` is the
+classes are banned. `docs/documentation_standard.md` is the
 authority; read it before reviewing any documentation diff.
 
 Reject the change if it adds, to any reference document, content in any of these
@@ -365,7 +380,7 @@ FAIL: [rule name] — file.dart:line — [one-sentence fix] → @agent
 - [ ] `lib/state/` — any state class not imported by any screen or service is dead
 - [ ] `lib/features/` and `lib/widgets/` — any class not referenced by a route, parent widget, or another widget is a candidate for removal
 - [ ] `lib/core/services/` — any service not injected in main.dart or used by a state class is dead
-- [ ] `.github/agents/docs/` — any doc that references a class or file that no longer exists flags a stale doc
+- [ ] `docs/` — any doc that references a class or file that no longer exists flags a stale doc
 
 **Known current issue**: `AppState` (`lib/state/app_state.dart`) is documented as not used by any screen. Flag as **WARNING** on first adjacent review and hand off to Developer for removal or proper wiring.
 
@@ -500,7 +515,7 @@ mixin LoadingStateMixin on ChangeNotifier {
 Before reading any file, identify and state which layers are in scope.
 
 ### Step 1: Read the Plan File
-Read `.github/agents/plans/[feature]-plan.md` for original intent, acceptance criteria, and scenarios.
+Read `docs/plans/[feature]-plan/[feature]-plan.md` for original intent, acceptance criteria, and scenarios.
 
 ### Step 2: Read Changed Files
 Read only files in touched layers and their corresponding test files.

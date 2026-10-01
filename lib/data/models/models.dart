@@ -140,8 +140,8 @@ class Exercise {
     relevanceScore: m['relevance_score'] as double?,
     defaultRoundDurationSecs: m['default_round_duration_secs'] as int?,
     howToSteps: m['how_to_steps'] != null
-      ? List<String>.from(jsonDecode(m['how_to_steps'] as String) as List)
-      : null,
+        ? List<String>.from(jsonDecode(m['how_to_steps'] as String) as List)
+        : null,
     imageAssetPath: m['image_asset_path'] as String?,
   );
 
@@ -198,7 +198,8 @@ class TrainingSession {
   final String? modality;
   final String? intent;
   final double? perceivedSessionRpe;
-  final int? sessionFeeling; // 1-5 scale: 1=Rough, 5=Great
+  final int?
+  sessionFeeling; // Session effort rating, 1-5: 1=Very easy, 5=Max effort
   final int? qualityRating; // Reserved for future computed session quality
   final bool isRolling;
   final int createdAtMs;
@@ -444,10 +445,10 @@ class SegmentEffort {
     segmentId: m['segment_id'] as String,
     orderIndex: m['order_index'] as int,
     topLevelOrderIndex:
-      (m['top_level_order_index'] as int?) ?? (m['order_index'] as int),
+        (m['top_level_order_index'] as int?) ?? (m['order_index'] as int),
     blockOrderIndex:
-      (m['block_order_index'] as int?) ??
-      ((m['block_id'] as String?) != null ? m['order_index'] as int : null),
+        (m['block_order_index'] as int?) ??
+        ((m['block_id'] as String?) != null ? m['order_index'] as int : null),
     effortKind: m['effort_kind'] as String,
     exerciseId: m['exercise_id'] as String?,
     note: m['note'] as String?,
@@ -547,7 +548,34 @@ class MetricDefinition {
   };
 }
 
+/// One logged value on an effort: the reps of a set, the distance of a timed
+/// entry, and so on.
+///
+/// [valueSource] records where a distance came from (D-301, D-311). It is set
+/// only on a `metric-distance` row, and only to one of [valueSources];
+/// anything else throws [ArgumentError] at construction, mirroring the CHECK
+/// on `app_effort_observation` in `scripts/sqlite_schema.sql`. A row stored
+/// without the key reads as null, which callers resolve as
+/// [sourceEntered] — every distance written before the field existed was
+/// typed or dialled by a person. Pairing a row with its entry and resolving
+/// the source is `DistancePairing`'s job (`lib/core/utils/distance_source.dart`).
 class EffortObservation {
+  /// Measured by the watch's GPS.
+  static const String sourceGps = 'gps';
+
+  /// Typed or dialled by a person.
+  static const String sourceEntered = 'entered';
+
+  /// The watch platform's estimate. The only source that is marked.
+  static const String sourceEstimated = 'estimated';
+
+  /// Every source a distance row may carry.
+  static const List<String> valueSources = [
+    sourceGps,
+    sourceEntered,
+    sourceEstimated,
+  ];
+
   final String id;
   final String effortId;
   final String metricId;
@@ -556,6 +584,10 @@ class EffortObservation {
   final double? valueReal;
   final String? valueText;
   final bool? valueBool;
+
+  /// Where this row's distance came from, on a `metric-distance` row only.
+  /// Null on every other row, and on a distance with no recorded source.
+  final String? valueSource;
   final int? rpeRating; // RPE 1-10 scale, nullable, reserved for future use
   final int? restDurationMs; // Actual rest taken before this set, in ms
   final int createdAtMs;
@@ -570,11 +602,27 @@ class EffortObservation {
     this.valueReal,
     this.valueText,
     this.valueBool,
+    this.valueSource,
     this.rpeRating,
     this.restDurationMs,
     required this.createdAtMs,
     required this.updatedAtMs,
-  });
+  }) {
+    _checkValueSource();
+  }
+
+  void _checkValueSource() {
+    final source = valueSource;
+    if (source == null) return;
+    if (metricId != 'metric-distance' || !valueSources.contains(source)) {
+      throw ArgumentError.value(
+        source,
+        'valueSource',
+        'D-311: a source belongs to a metric-distance row and is one of '
+            '$valueSources',
+      );
+    }
+  }
 
   factory EffortObservation.fromMap(Map<String, dynamic> m) =>
       EffortObservation(
@@ -586,6 +634,7 @@ class EffortObservation {
         valueReal: (m['value_real'] as num?)?.toDouble(),
         valueText: m['value_text'] as String?,
         valueBool: (m['value_bool'] as int?) == 1,
+        valueSource: m['value_source'] as String?,
         rpeRating: m['rpe_rating'] as int?,
         restDurationMs: m['rest_duration_ms'] as int?,
         createdAtMs: m['created_at_ms'] as int,
@@ -601,6 +650,7 @@ class EffortObservation {
     'value_real': valueReal,
     'value_text': valueText,
     'value_bool': valueBool == true ? 1 : 0,
+    'value_source': valueSource,
     'rpe_rating': rpeRating,
     'rest_duration_ms': restDurationMs,
     'created_at_ms': createdAtMs,
@@ -616,6 +666,7 @@ class WorkoutTemplate {
   final String? focusModality;
   final String? primaryDisciplineId;
   final String? note;
+
   /// `true` when this template shipped as a built-in demo via the versioned
   /// catalog refresh pipeline. The flag is informational only — the refresh
   /// still gates writes on the per-entry tombstone returned by
@@ -1547,18 +1598,21 @@ class TrainingPeriod {
 ///
 /// Pure Dart — no Flutter imports.
 class EntryRest {
-  final String id;         // 'rest-{effortId}-{entryIndex}'
+  final String id; // 'rest-{effortId}-{entryIndex}'
   final String effortId;
-  final int entryIndex;    // 0-based; this rest precedes this set/round
-  final int restStartMs;  // wall-clock epoch ms when previous set was logged
-  final int? restEndMs;   // wall-clock epoch ms when this set/round began; null = still resting
+  final int entryIndex; // 0-based; this rest precedes this set/round
+  final int restStartMs; // wall-clock epoch ms when previous set was logged
+  final int?
+  restEndMs; // wall-clock epoch ms when this set/round began; null = still resting
   /// `true` when the user has tapped the rest tile to stop the counted
   /// time. While `true`, [restPausedAtMs] holds the wall-clock
   /// moment the rest was paused (used to freeze the elapsed display).
   final bool restIsPaused;
+
   /// Wall-clock epoch ms when the rest was paused; `null` while not
   /// paused. Persisted so the pause state survives reloads.
   final int? restPausedAtMs;
+
   /// Accumulated duration the rest spent in the paused state, in
   /// milliseconds. Excluded from the recorded rest duration on
   /// close/finish. The field is the single source of truth for
@@ -1584,8 +1638,8 @@ class EntryRest {
   /// Elapsed rest in whole seconds, excluding any paused interval.
   /// Live (unbounded) while [restEndMs] is null.
   int elapsedSeconds(int nowMs) {
-    final effectiveEndMs = restEndMs ??
-        (restIsPaused ? (restPausedAtMs ?? nowMs) : nowMs);
+    final effectiveEndMs =
+        restEndMs ?? (restIsPaused ? (restPausedAtMs ?? nowMs) : nowMs);
     return ((effectiveEndMs - restStartMs - restPausedDurationMs) / 1000)
         .round()
         .clamp(0, 99999);
@@ -1711,7 +1765,8 @@ class NutritionTarget {
   final double protein;
   final double carbs;
   final double fat;
-  final int? dateMs; // Optional date (ms since epoch); null for legacy global targets
+  final int?
+  dateMs; // Optional date (ms since epoch); null for legacy global targets
 
   NutritionTarget({
     this.calories = 0.0,
@@ -1726,20 +1781,20 @@ class NutritionTarget {
       calories == 0.0 && protein == 0.0 && carbs == 0.0 && fat == 0.0;
 
   factory NutritionTarget.fromMap(Map<String, dynamic> m) => NutritionTarget(
-        calories: ((m['calories'] as num?) ?? 0.0).toDouble(),
-        protein: ((m['protein'] as num?) ?? 0.0).toDouble(),
-        carbs: ((m['carbs'] as num?) ?? 0.0).toDouble(),
-        fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
-        dateMs: m['date_ms'] as int?,
-      );
+    calories: ((m['calories'] as num?) ?? 0.0).toDouble(),
+    protein: ((m['protein'] as num?) ?? 0.0).toDouble(),
+    carbs: ((m['carbs'] as num?) ?? 0.0).toDouble(),
+    fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
+    dateMs: m['date_ms'] as int?,
+  );
 
   Map<String, dynamic> toMap() => {
-        'calories': calories,
-        'protein': protein,
-        'carbs': carbs,
-        'fat': fat,
-        'date_ms': dateMs,
-      };
+    'calories': calories,
+    'protein': protein,
+    'carbs': carbs,
+    'fat': fat,
+    'date_ms': dateMs,
+  };
 
   NutritionTarget copyWith({
     double? calories,
@@ -1929,8 +1984,7 @@ class Food {
   /// Macros are stored as `double` to support fractional grams
   /// (e.g. `0.5` g of fat); the calorie count is rounded to `int`
   /// at the display boundary because the UI shows whole kcal.
-  int get calories =>
-      (protein * 4 + carbs * 4 + fat * 9).round();
+  int get calories => (protein * 4 + carbs * 4 + fat * 9).round();
 
   /// Computed net carbs: carbs - (fiber ?? 0).
   /// Rounded to `int` for parity with the existing
@@ -1940,7 +1994,8 @@ class Food {
 
   factory Food.fromMap(Map<String, dynamic> m) {
     // Handle legacy rows: if new fields are missing, fall back to serving fields
-    final hasNewFields = m['unit_type'] != null || m['reference_amount'] != null;
+    final hasNewFields =
+        m['unit_type'] != null || m['reference_amount'] != null;
 
     return Food(
       id: m['id'] as String,
@@ -2073,8 +2128,8 @@ const Object _foodCopyWithUnset = Object();
 
 class ConsumedFood {
   final String id;
-  final int loggedAtMs;     // when the user logged this (wall clock)
-  final int dateMs;         // day key (local midnight ms) this counts toward
+  final int loggedAtMs; // when the user logged this (wall clock)
+  final int dateMs; // day key (local midnight ms) this counts toward
 
   // Source reference — nullable if the original food was deleted
   final String? sourceFoodId;
@@ -2298,20 +2353,20 @@ class WaterLogEntry {
   static String idForDate(int dateMs) => 'water-$dateMs';
 
   factory WaterLogEntry.fromMap(Map<String, dynamic> m) => WaterLogEntry(
-        id: m['id'] as String,
-        dateMs: m['date_ms'] as int,
-        volumeMl: m['volume_ml'] as int,
-        createdAtMs: m['created_at_ms'] as int,
-        updatedAtMs: m['updated_at_ms'] as int,
-      );
+    id: m['id'] as String,
+    dateMs: m['date_ms'] as int,
+    volumeMl: m['volume_ml'] as int,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'date_ms': dateMs,
-        'volume_ml': volumeMl,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs,
-      };
+    'id': id,
+    'date_ms': dateMs,
+    'volume_ml': volumeMl,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 
   WaterLogEntry copyWith({
     String? id,
@@ -2328,4 +2383,403 @@ class WaterLogEntry {
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Watch capture — wrist-measured summaries and the watch session inbox
+// (Stats PR 2, D-131 / D-132)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A heart-rate and step summary the wrist measured over one window of a
+/// wrist session. It attaches to exactly one target: the session itself, a
+/// set block ([SegmentEffort]), a timed or hold entry ([TimedInstance]) or a
+/// round ([RoundInstance]).
+///
+/// It is measured, never entered, so it is not an [EffortObservation] and is
+/// never read or edited as a manual metric (`metric-heart-rate` stays
+/// unused). It is a separate row rather than new columns on its targets
+/// because those rows are rebuilt field by field in several places, where a
+/// new field would be silently dropped.
+///
+/// Invariants, enforced here at construction (a violation throws
+/// [ArgumentError]) and mirrored by CHECK constraints on `app_sensor_summary`
+/// in `scripts/sqlite_schema.sql`:
+///   - [scope] is one of [scopes]; a `session` summary targets its own session.
+///   - One row per (scope, target): [id] is derived from both, so the
+///     repository's put-if-absent keeps the pair unique.
+///   - The heart-rate pair travels together, both or neither, with
+///     1 ≤ average ≤ maximum. A missing reading is absence, never zero.
+///   - [steps] is ≥ 0 and appears only on a `timed_instance`. A measured 0 is
+///     a value.
+///   - At least one measured value: an empty summary cannot exist.
+///   - The window is ordered, and [source] is `watch`.
+///
+/// A summary is deleted together with its target, and every summary carries
+/// the [sessionId] it belongs to so deleting the session removes all of them.
+/// Verified by `test/watch_capture_repository_parity_test.dart`.
+class SensorSummary {
+  static const String scopeSession = 'session';
+  static const String scopeEffort = 'effort';
+  static const String scopeTimedInstance = 'timed_instance';
+  static const String scopeRoundInstance = 'round_instance';
+
+  /// Every scope, in the order a session's summaries are listed.
+  static const List<String> scopes = [
+    scopeSession,
+    scopeEffort,
+    scopeTimedInstance,
+    scopeRoundInstance,
+  ];
+
+  static const String sourceWatch = 'watch';
+
+  /// Every source a summary may come from.
+  static const List<String> sources = [sourceWatch];
+
+  /// Deterministic storage key: one row per (scope, target).
+  static String idFor(String scope, String targetId) =>
+      'sensor-$scope-$targetId';
+
+  final String id;
+
+  /// The [TrainingSession] this summary belongs to, whatever its scope.
+  final String sessionId;
+  final String scope;
+
+  /// The id of the row the summary attaches to: the session, the
+  /// [SegmentEffort], the [TimedInstance] or the [RoundInstance].
+  final String targetId;
+
+  /// The window the summary covers, wall-clock epoch ms, both ends inclusive.
+  final int windowStartMs;
+  final int windowEndMs;
+
+  /// Unrounded arithmetic mean of the qualifying heart-rate samples.
+  final double? avgHeartRateBpm;
+  final double? maxHeartRateBpm;
+
+  /// Steps taken inside the window (timed entries only).
+  final int? steps;
+  final String source;
+  final int createdAtMs;
+
+  SensorSummary({
+    required this.sessionId,
+    required this.scope,
+    required this.targetId,
+    required this.windowStartMs,
+    required this.windowEndMs,
+    this.avgHeartRateBpm,
+    this.maxHeartRateBpm,
+    this.steps,
+    this.source = sourceWatch,
+    required this.createdAtMs,
+  }) : id = idFor(scope, targetId) {
+    _checkInvariants();
+  }
+
+  void _checkInvariants() {
+    if (!scopes.contains(scope)) {
+      throw ArgumentError.value(scope, 'scope', 'D-131: unknown summary scope');
+    }
+    if (sessionId.isEmpty || targetId.isEmpty) {
+      throw ArgumentError('D-131: a summary names its session and its target');
+    }
+    if (scope == scopeSession && targetId != sessionId) {
+      throw ArgumentError.value(
+        targetId,
+        'targetId',
+        'D-131: a session summary targets its own session ($sessionId)',
+      );
+    }
+    final avg = avgHeartRateBpm;
+    final max = maxHeartRateBpm;
+    if ((avg == null) != (max == null)) {
+      throw ArgumentError(
+        'D-131: the heart-rate average and maximum are both present or both '
+        'absent',
+      );
+    }
+    if (avg != null && max != null) {
+      if (!avg.isFinite || !max.isFinite) {
+        throw ArgumentError('D-131: heart rate must be a finite number');
+      }
+      if (avg < 1) {
+        throw ArgumentError.value(
+          avg,
+          'avgHeartRateBpm',
+          'D-131: a missing heart rate is absent, never zero; 1 ≤ average',
+        );
+      }
+      if (avg > max) {
+        throw ArgumentError.value(
+          avg,
+          'avgHeartRateBpm',
+          'D-131: the heart-rate average cannot exceed the maximum ($max)',
+        );
+      }
+    }
+    final stepCount = steps;
+    if (stepCount != null) {
+      if (stepCount < 0) {
+        throw ArgumentError.value(stepCount, 'steps', 'D-131: steps ≥ 0');
+      }
+      if (scope != scopeTimedInstance) {
+        throw ArgumentError.value(
+          scope,
+          'scope',
+          'D-131: steps are recorded only on a timed_instance summary',
+        );
+      }
+    }
+    if (avg == null && stepCount == null) {
+      throw ArgumentError(
+        'D-131: a summary holds at least one measured value; an empty '
+        'summary is never stored',
+      );
+    }
+    if (windowEndMs < windowStartMs) {
+      throw ArgumentError.value(
+        windowEndMs,
+        'windowEndMs',
+        'D-131: the window ends at or after it starts ($windowStartMs)',
+      );
+    }
+    if (!sources.contains(source)) {
+      throw ArgumentError.value(source, 'source', 'D-131: unknown source');
+    }
+  }
+
+  factory SensorSummary.fromMap(Map<String, dynamic> m) {
+    final summary = SensorSummary(
+      sessionId: m['session_id'] as String,
+      scope: m['scope'] as String,
+      targetId: m['target_id'] as String,
+      windowStartMs: m['window_start_ms'] as int,
+      windowEndMs: m['window_end_ms'] as int,
+      avgHeartRateBpm: (m['avg_heart_rate_bpm'] as num?)?.toDouble(),
+      maxHeartRateBpm: (m['max_heart_rate_bpm'] as num?)?.toDouble(),
+      steps: m['steps'] as int?,
+      source: m['source'] as String,
+      createdAtMs: m['created_at_ms'] as int,
+    );
+    final storedId = m['id'] as String?;
+    if (storedId != null && storedId != summary.id) {
+      throw ArgumentError.value(
+        storedId,
+        'id',
+        'D-131: a stored summary id must be ${summary.id}',
+      );
+    }
+    return summary;
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'session_id': sessionId,
+    'scope': scope,
+    'target_id': targetId,
+    'window_start_ms': windowStartMs,
+    'window_end_ms': windowEndMs,
+    'avg_heart_rate_bpm': avgHeartRateBpm,
+    'max_heart_rate_bpm': maxHeartRateBpm,
+    'steps': steps,
+    'source': source,
+    'created_at_ms': createdAtMs,
+  };
+}
+
+/// One thing the phone learned about a wrist session before it became
+/// history: a wrist event, or one of the phone's own annotations on that
+/// session.
+///
+/// Wrist kinds are the protocol's `set`, `timed`, `round`, `hold`,
+/// `effort_rating` and `session_end` events. Phone kinds are the phone's own
+/// rating (`phone_rating`), and the live corrections and deletions it sent
+/// for a wrist entry (`phone_correction`, `phone_deletion`). The phone mints
+/// the annotation ids deterministically ([phoneRatingId], [phoneChangeId]),
+/// so a phone annotation is staged at most once too.
+///
+/// The repository stages rows put-if-absent by [entryId]: the first copy is
+/// the record, and a redelivered or altered copy never replaces it. Rows are
+/// never deleted, and no history delete cascades into the inbox: once
+/// [appliedAtMs] is set, a row is the tombstone that stops a later sync from
+/// re-creating history the user deleted.
+///
+/// [payload] is the event object as it arrived, or the phone's annotation.
+/// It is held as its JSON encoding, so the map a caller reads is a fresh copy
+/// and a staged row cannot be changed through it.
+///
+/// Verified by `test/watch_capture_repository_parity_test.dart`.
+class WatchInboxEntry {
+  static const String originWatch = 'watch';
+  static const String originPhone = 'phone';
+
+  static const String kindSet = 'set';
+  static const String kindTimed = 'timed';
+  static const String kindRound = 'round';
+  static const String kindHold = 'hold';
+  static const String kindEffortRating = 'effort_rating';
+  static const String kindSessionEnd = 'session_end';
+  static const String kindPhoneRating = 'phone_rating';
+  static const String kindPhoneCorrection = 'phone_correction';
+  static const String kindPhoneDeletion = 'phone_deletion';
+
+  /// The wrist event kinds the inbox stages (origin `watch`).
+  static const List<String> watchKinds = [
+    kindSet,
+    kindTimed,
+    kindRound,
+    kindHold,
+    kindEffortRating,
+    kindSessionEnd,
+  ];
+
+  /// The phone's own annotation kinds (origin `phone`).
+  static const List<String> phoneKinds = [
+    kindPhoneRating,
+    kindPhoneCorrection,
+    kindPhoneDeletion,
+  ];
+
+  static const String _phoneChangeIdPrefix = 'phone-change-';
+
+  /// The id of the phone's own rating for [watchSessionId]: one per session.
+  static String phoneRatingId(String watchSessionId) =>
+      'phone-rating-$watchSessionId';
+
+  /// The id of the [index]th change of the phone's structure change
+  /// [changeId] (a `correct_entry` or `delete_entry`).
+  static String phoneChangeId(String changeId, int index) =>
+      '$_phoneChangeIdPrefix$changeId-$index';
+
+  final String entryId;
+  final String watchSessionId;
+  final String kind;
+  final String origin;
+
+  /// The JSON encoding of [payload], exactly as stored.
+  final String payloadJson;
+
+  /// Wall-clock epoch ms when the phone staged the row.
+  final int receivedAtMs;
+
+  /// Wall-clock epoch ms when the row was applied (materialised into
+  /// history, or deliberately discarded); `null` while it waits.
+  final int? appliedAtMs;
+
+  WatchInboxEntry({
+    required String entryId,
+    required String watchSessionId,
+    required String kind,
+    required String origin,
+    required Map<String, dynamic> payload,
+    required int receivedAtMs,
+    int? appliedAtMs,
+  }) : this._(
+         entryId: entryId,
+         watchSessionId: watchSessionId,
+         kind: kind,
+         origin: origin,
+         payloadJson: _encodePayload(payload),
+         receivedAtMs: receivedAtMs,
+         appliedAtMs: appliedAtMs,
+       );
+
+  WatchInboxEntry._({
+    required this.entryId,
+    required this.watchSessionId,
+    required this.kind,
+    required this.origin,
+    required this.payloadJson,
+    required this.receivedAtMs,
+    this.appliedAtMs,
+  }) {
+    _checkInvariants();
+  }
+
+  static String _encodePayload(Map<String, dynamic> payload) {
+    try {
+      return jsonEncode(payload);
+    } on JsonUnsupportedObjectError catch (e) {
+      throw ArgumentError.value(
+        payload,
+        'payload',
+        'D-132: a staged payload must be JSON (${e.unsupportedObject})',
+      );
+    }
+  }
+
+  void _checkInvariants() {
+    if (entryId.isEmpty || watchSessionId.isEmpty) {
+      throw ArgumentError('D-132: a staged row names its entry and session');
+    }
+    final List<String> allowedKinds;
+    if (origin == originWatch) {
+      allowedKinds = watchKinds;
+    } else if (origin == originPhone) {
+      allowedKinds = phoneKinds;
+    } else {
+      throw ArgumentError.value(origin, 'origin', 'D-132: watch or phone');
+    }
+    if (!allowedKinds.contains(kind)) {
+      throw ArgumentError.value(
+        kind,
+        'kind',
+        'D-132: not a kind the inbox stages for origin $origin',
+      );
+    }
+    if (kind == kindPhoneRating && entryId != phoneRatingId(watchSessionId)) {
+      throw ArgumentError.value(
+        entryId,
+        'entryId',
+        'D-132: the phone rating id is ${phoneRatingId(watchSessionId)}',
+      );
+    }
+    if ((kind == kindPhoneCorrection || kind == kindPhoneDeletion) &&
+        !entryId.startsWith(_phoneChangeIdPrefix)) {
+      throw ArgumentError.value(
+        entryId,
+        'entryId',
+        'D-132: a phone change id comes from phoneChangeId',
+      );
+    }
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(payloadJson);
+    } on FormatException {
+      throw ArgumentError.value(payloadJson, 'payloadJson', 'D-132: not JSON');
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw ArgumentError.value(
+        payloadJson,
+        'payloadJson',
+        'D-132: a staged payload is a JSON object',
+      );
+    }
+  }
+
+  /// A fresh copy of the staged payload.
+  Map<String, dynamic> get payload =>
+      jsonDecode(payloadJson) as Map<String, dynamic>;
+
+  factory WatchInboxEntry.fromMap(Map<String, dynamic> m) => WatchInboxEntry._(
+    entryId: m['entry_id'] as String,
+    watchSessionId: m['watch_session_id'] as String,
+    kind: m['kind'] as String,
+    origin: m['origin'] as String,
+    payloadJson: m['payload_json'] as String,
+    receivedAtMs: m['received_at_ms'] as int,
+    appliedAtMs: m['applied_at_ms'] as int?,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'entry_id': entryId,
+    'watch_session_id': watchSessionId,
+    'kind': kind,
+    'origin': origin,
+    'payload_json': payloadJson,
+    'received_at_ms': receivedAtMs,
+    'applied_at_ms': appliedAtMs,
+  };
 }

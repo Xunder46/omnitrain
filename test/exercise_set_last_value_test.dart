@@ -42,15 +42,16 @@ SettingsState _buildSettings(MockWorkoutRepository repo) {
   return SettingsState(repo, FakePreferencesService());
 }
 
-Future<({
-  WorkoutState workoutState,
-  RoutineState routineState,
-  SessionSummaryService sessionSummaryService,
-  SettingsState settingsState,
-  String exerciseName,
-})> _buildSessionDeps({
-  required String effortKind,
-}) async {
+Future<
+  ({
+    WorkoutState workoutState,
+    RoutineState routineState,
+    SessionSummaryService sessionSummaryService,
+    SettingsState settingsState,
+    String exerciseName,
+  })
+>
+_buildSessionDeps({required String effortKind}) async {
   final repo = await _freshRepo();
   final workoutState = WorkoutState(repo);
   final routineState = RoutineState(repo);
@@ -112,8 +113,11 @@ Future<void> _tapAddSet(WidgetTester tester) async {
   );
   expect(inkWellFinder, findsOneWidget);
   final inkWell = tester.widget<InkWell>(inkWellFinder);
-  expect(inkWell.onTap, isNotNull,
-      reason: 'Add-set InkWell must have an onTap');
+  expect(
+    inkWell.onTap,
+    isNotNull,
+    reason: 'Add-set InkWell must have an onTap',
+  );
   inkWell.onTap!.call();
   await tester.pumpAndSettle();
 }
@@ -179,12 +183,16 @@ void main() {
                   as List;
           expect(entriesAfter, hasLength(2));
           final entry1 = entriesAfter[1] as Map<String, dynamic>;
-          expect(entry1['reps'], 8,
-              reason:
-                  'S-001: second set reps must carry forward from set 1');
-          expect(entry1['weight'], 80.0,
-              reason:
-                  'S-001: second set weight must carry forward from set 1');
+          expect(
+            entry1['reps'],
+            8,
+            reason: 'S-001: second set reps must carry forward from set 1',
+          );
+          expect(
+            entry1['weight'],
+            80.0,
+            reason: 'S-001: second set weight must carry forward from set 1',
+          );
         },
       );
 
@@ -242,16 +250,20 @@ void main() {
           final entriesAfterEdit =
               deps.workoutState.getExercisesWithEntries().first['entries']
                   as List;
-          final entry0AfterEdit =
-              entriesAfterEdit[0] as Map<String, dynamic>;
-          expect(entry0AfterEdit['reps'], 10,
-              reason: 'S-003: prior set\'s reps must not change on unsaved edit');
-          expect(entry0AfterEdit['weight'], 60.0,
-              reason:
-                  'S-003: prior set\'s weight must not change on unsaved edit');
+          final entry0AfterEdit = entriesAfterEdit[0] as Map<String, dynamic>;
+          expect(
+            entry0AfterEdit['reps'],
+            10,
+            reason: 'S-003: prior set\'s reps must not change on unsaved edit',
+          );
+          expect(
+            entry0AfterEdit['weight'],
+            60.0,
+            reason:
+                'S-003: prior set\'s weight must not change on unsaved edit',
+          );
           // And entry 1 reflects the unsaved edit.
-          final entry1AfterEdit =
-              entriesAfterEdit[1] as Map<String, dynamic>;
+          final entry1AfterEdit = entriesAfterEdit[1] as Map<String, dynamic>;
           expect(entry1AfterEdit['reps'], 8);
           expect(entry1AfterEdit['weight'], 80.0);
         },

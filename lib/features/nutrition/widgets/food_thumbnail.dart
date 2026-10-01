@@ -10,8 +10,7 @@ import '../../../core/services/image_storage_service.dart';
 // `lib/features/profile/widgets/`. The IO variant uses
 // `Image.file` to render the local photo with an `errorBuilder`
 // fallback to a placeholder.
-import 'food_thumbnail_stub.dart'
-    if (dart.library.io) 'food_thumbnail_io.dart';
+import 'food_thumbnail_stub.dart' if (dart.library.io) 'food_thumbnail_io.dart';
 
 /// 40×40 rounded thumbnail for a food item, with a placeholder when
 /// no image is set. Mirrors the contract of
@@ -31,7 +30,7 @@ class FoodThumbnail extends StatelessWidget {
   /// Optional stored food photo reference. `null` or an empty
   /// string falls back to the placeholder. Under the
   /// post-relocation-fix contract this is a **basename** (D-1 in
-  /// `.github/agents/plans/image-persistence-relocation-fix-plan.md`),
+  /// `docs/plans/image-persistence-relocation-fix-plan.md`),
   /// not an absolute path; the [imageStorage] service resolves it
   /// to the current managed dir on render.
   final String? imagePath;

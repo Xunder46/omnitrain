@@ -1,7 +1,7 @@
 // Exercise Details — Capability grouping (tracking vs movement properties).
 //
 // Acceptance scenarios from
-// .github/agents/plans/exercise-details-tracking-vs-movement-classification-plan.md:
+// docs/plans/exercise-details-tracking-vs-movement-classification-plan.md:
 //
 //   S-001  Bilateral exercise separates `bilateral` from tracking.
 //   S-002  Tracking-only exercise shows only Tracking Methods.

@@ -8,7 +8,7 @@ import '../../core/constants/omni_theme.dart';
 /// **Single source of truth for primary bottom CTA placement and
 /// width.** Every screen that exposes a primary bottom action must
 /// use this widget — see
-/// `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`.
+/// `docs/plans/primary-bottom-cta-anchor-width-plan.md`.
 ///
 /// The widget enforces a shared contract:
 ///
@@ -124,10 +124,7 @@ class OmniBottomCTA extends StatelessWidget {
                     ),
                   ),
                 ),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(label),
-                ),
+                child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
               ),
             ),
           ),

@@ -1,0 +1,65 @@
+{
+  "protocolVersion": 1,
+  "name": "Version mismatch behaviour",
+  "description": "A receiver at protocol version 1 rejects any message that advertises a different version — older or newer — without interpreting the payload, and answers with a session_snapshot so the peer can converge from authoritative state. The pair then stays in snapshot-only exchange until both devices advertise the same version.",
+  "cases": [
+    {
+      "name": "watch speaks an older protocol version",
+      "receiverVersion": 1,
+      "message": {
+        "protocolVersion": 0,
+        "messageId": "msg-v0-obs",
+        "sessionId": "s-2026-07-13-4",
+        "type": "observations_up",
+        "origin": "watch",
+        "sentAt": "2026-07-13T17:15:00Z",
+        "payload": {
+          "events": [
+            {
+              "eventId": "evt-v0-1",
+              "entryId": "e-v0-1",
+              "kind": "set",
+              "loggedAt": "2026-07-13T17:14:00Z",
+              "exerciseId": "ex-barbell-bench-press",
+              "reps": 5
+            }
+          ]
+        }
+      },
+      "expected": {
+        "decision": "reject_and_resync",
+        "respondWithSnapshot": true,
+        "reasonCode": "unsupported_protocol_version"
+      }
+    },
+    {
+      "name": "watch speaks a newer protocol version",
+      "receiverVersion": 1,
+      "message": {
+        "protocolVersion": 2,
+        "messageId": "msg-v2-obs",
+        "sessionId": "s-2026-07-13-4",
+        "type": "observations_up",
+        "origin": "watch",
+        "sentAt": "2026-07-13T17:15:00Z",
+        "payload": {
+          "events": [
+            {
+              "eventId": "evt-v2-1",
+              "entryId": "e-v2-1",
+              "kind": "set",
+              "loggedAt": "2026-07-13T17:14:00Z",
+              "exerciseId": "ex-barbell-bench-press",
+              "reps": 5
+            }
+          ]
+        }
+      },
+      "expected": {
+        "decision": "reject_and_resync",
+        "respondWithSnapshot": true,
+        "reasonCode": "unsupported_protocol_version"
+      }
+    }
+  ]
+}

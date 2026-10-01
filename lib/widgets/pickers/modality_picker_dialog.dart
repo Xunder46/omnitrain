@@ -8,10 +8,7 @@ import 'package:omnitrain/core/constants/omni_theme.dart';
 class ModalityPickerDialog extends StatelessWidget {
   final String? initialModality;
 
-  const ModalityPickerDialog({
-    super.key,
-    this.initialModality,
-  });
+  const ModalityPickerDialog({super.key, this.initialModality});
 
   @override
   Widget build(BuildContext context) {
@@ -93,15 +90,13 @@ class ModalityPickerDialog extends StatelessWidget {
                   color: isSelected ? Colors.blue : Colors.grey[700]!,
                   width: isSelected ? 2 : 1,
                 ),
-                color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent,
+                color: isSelected
+                    ? Colors.blue.withOpacity(0.1)
+                    : Colors.transparent,
               ),
               child: Row(
                 children: [
-                  Icon(
-                    icon,
-                    color: Colors.blue,
-                    size: 24,
-                  ),
+                  Icon(icon, color: Colors.blue, size: 24),
                   SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -109,17 +104,17 @@ class ModalityPickerDialog extends StatelessWidget {
                       children: [
                         Text(
                           displayName,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
                         ),
                         SizedBox(height: 4),
                         Text(
                           _getModalityDescription(modality),
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: Colors.grey[400],
-                        ),
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(color: Colors.grey[400]),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),

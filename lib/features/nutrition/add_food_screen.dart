@@ -101,8 +101,8 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   // bottom action (New Food / + New Category). Both are routed
   // through the shared `OmniBottomCTA` on the host's
   // `Scaffold.bottomNavigationBar` (see
-  // `.github/agents/plans/add-food-screen-bottom-cta-plan.md` and
-  // `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`)
+  // `docs/plans/add-food-screen-bottom-cta-plan.md` and
+  // `docs/plans/primary-bottom-cta-anchor-width-plan.md`)
   // so they sit at the same width, height, and vertical anchor as
   // every other primary bottom CTA in the app. The Library tab is
   // browse-only and renders no bottom CTA.
@@ -129,9 +129,8 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   void _openNewFoodForm(BuildContext context) {
     OmniNavigator.push<void>(
       context,
-      (context) => _NewFoodFormScreen(
-        foodLibraryState: widget.foodLibraryState,
-      ),
+      (context) =>
+          _NewFoodFormScreen(foodLibraryState: widget.foodLibraryState),
     );
   }
 
@@ -141,7 +140,9 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   Future<void> _createGroup() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final newId = await widget.foodLibraryState.createFoodGroup('New Category');
+      final newId = await widget.foodLibraryState.createFoodGroup(
+        'New Category',
+      );
       // Track this as the newly created category and focus it
       setState(() {
         _newlyCreatedGroupId = newId;
@@ -215,7 +216,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
       // Tab-aware primary bottom CTA. The host owns the bottom CTA
       // (not the individual tabs) so the shared placement + width
       // apply uniformly across tabs. See
-      // `.github/agents/plans/add-food-screen-bottom-cta-plan.md`.
+      // `docs/plans/add-food-screen-bottom-cta-plan.md`.
       bottomNavigationBar: _buildBottomCTA(context),
     );
   }
@@ -371,7 +372,10 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([widget.foodLibraryState, widget.nutritionState]),
+      listenable: Listenable.merge([
+        widget.foodLibraryState,
+        widget.nutritionState,
+      ]),
       builder: (context, _) {
         if (widget.foodLibraryState.isLoadingCatalogFoods) {
           return const Center(child: CircularProgressIndicator());
@@ -522,16 +526,16 @@ class _FoodIdentity {
   });
 
   factory _FoodIdentity.fromFood(Food f) => _FoodIdentity(
-        nameLower: f.name.toLowerCase(),
-        unitType: f.unitType,
-        referenceAmount: f.referenceAmount,
-        referenceLabel: f.referenceLabel,
-        protein: f.protein,
-        carbs: f.carbs,
-        fiber: f.fiber,
-        fat: f.fat,
-        sodium: f.sodium,
-      );
+    nameLower: f.name.toLowerCase(),
+    unitType: f.unitType,
+    referenceAmount: f.referenceAmount,
+    referenceLabel: f.referenceLabel,
+    protein: f.protein,
+    carbs: f.carbs,
+    fiber: f.fiber,
+    fat: f.fat,
+    sodium: f.sodium,
+  );
 
   @override
   bool operator ==(Object other) {
@@ -550,16 +554,16 @@ class _FoodIdentity {
 
   @override
   int get hashCode => Object.hash(
-        nameLower,
-        unitType,
-        referenceAmount,
-        referenceLabel,
-        protein,
-        carbs,
-        fiber,
-        fat,
-        sodium,
-      );
+    nameLower,
+    unitType,
+    referenceAmount,
+    referenceLabel,
+    protein,
+    carbs,
+    fiber,
+    fat,
+    sodium,
+  );
 }
 
 /// Row tap opens the **Edit Food** screen (D-2 / S-034). Tapping the
@@ -749,9 +753,7 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('New Food'),
-      ),
+      appBar: AppBar(title: const Text('New Food')),
       body: FoodForm(
         initial: null,
         foodLibraryState: widget.foodLibraryState,
@@ -761,8 +763,7 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
           final messenger = ScaffoldMessenger.of(context);
           String? catalogId;
           try {
-            catalogId =
-                await widget.foodLibraryState.createCatalogFood(draft);
+            catalogId = await widget.foodLibraryState.createCatalogFood(draft);
           } catch (_) {
             messenger.showSnackBar(
               const SnackBar(content: Text('Could not create food')),
@@ -890,12 +891,15 @@ class _UserFoodRowState extends State<_UserFoodRow> {
                   foregroundColor: theme.colorScheme.onError,
                   padding: EdgeInsets.zero,
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(OmniTheme.buttonIconRadius),
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonIconRadius,
+                    ),
                   ),
                 ),
-                child:
-                    Icon(Icons.delete_outline, color: theme.colorScheme.onError),
+                child: Icon(
+                  Icons.delete_outline,
+                  color: theme.colorScheme.onError,
+                ),
               ),
             ),
           ],
@@ -946,7 +950,9 @@ class _UserFoodRowState extends State<_UserFoodRow> {
     // a child of the navigation stack and a delete can rebuild the
     // tree).
     final messenger = ScaffoldMessenger.of(context);
-    final isBundled = widget.foodLibraryState.isBundledCatalogFood(widget.food.id);
+    final isBundled = widget.foodLibraryState.isBundledCatalogFood(
+      widget.food.id,
+    );
 
     if (isBundled) {
       // Show warning dialog for bundled foods - shouldn't happen for user-created foods
@@ -1007,9 +1013,7 @@ class _UserFoodRowState extends State<_UserFoodRow> {
         //    `libraryIdFor(catalogId)`.
         // 3. Hard-delete the catalog row. Past ConsumedFood
         //    snapshots are byte-identical (frozen at log time).
-        final libraryId = widget.foodLibraryState.libraryIdFor(
-          widget.food.id,
-        );
+        final libraryId = widget.foodLibraryState.libraryIdFor(widget.food.id);
         if (libraryId != null &&
             widget.nutritionState.isFoodLoggedToday(libraryId)) {
           await widget.nutritionState.unlogFoodToday(libraryId);
@@ -1321,8 +1325,6 @@ class _GroupsTabState extends State<_GroupsTab> {
   /// Used to maintain focus after auto-save.
   final Map<String, FocusNode> _focusNodes = {};
 
-
-
   TextEditingController _controllerFor(String groupId, String name) {
     final existing = _controllers[groupId];
     if (existing != null) return existing;
@@ -1473,9 +1475,7 @@ class _GroupsTabState extends State<_GroupsTab> {
         );
       } on FoodGroupHasBundledFoodsError catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          _bundledSnackbar(e),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(_bundledSnackbar(e));
       } catch (_) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1722,10 +1722,7 @@ class _DeleteGroupDialogState extends State<_DeleteGroupDialog> {
                 child: Text('Uncategorized'),
               ),
               for (final g in widget.otherGroups)
-                DropdownMenuItem<String?>(
-                  value: g.id,
-                  child: Text(g.name),
-                ),
+                DropdownMenuItem<String?>(value: g.id, child: Text(g.name)),
             ],
             onChanged: (v) => setState(() => _destination = v),
           ),
@@ -1743,7 +1740,9 @@ class _DeleteGroupDialogState extends State<_DeleteGroupDialog> {
             backgroundColor: Theme.of(context).colorScheme.error,
             foregroundColor: Theme.of(context).colorScheme.onError,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+              borderRadius: BorderRadius.circular(
+                OmniTheme.buttonUtilityRadius,
+              ),
             ),
           ),
           child: const Text('Delete'),

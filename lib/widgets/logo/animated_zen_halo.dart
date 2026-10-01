@@ -64,13 +64,9 @@ class _AnimatedZenHaloState extends State<AnimatedZenHalo>
       duration: OmniTheme.breathingDuration,
     );
 
-    _breathingAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.04,
-    ).animate(CurvedAnimation(
-      parent: _breathingController,
-      curve: Curves.easeInOut,
-    ));
+    _breathingAnimation = Tween<double>(begin: 1.0, end: 1.04).animate(
+      CurvedAnimation(parent: _breathingController, curve: Curves.easeInOut),
+    );
 
     // Start animations
     if (widget.animateStroke) {
@@ -134,7 +130,9 @@ class _AnimatedZenHaloState extends State<AnimatedZenHalo>
                           color: Colors.black,
                           boxShadow: [
                             BoxShadow(
-                              color: OmniTheme.zenCoreGlowColor.withOpacity(0.25),
+                              color: OmniTheme.zenCoreGlowColor.withOpacity(
+                                0.25,
+                              ),
                               blurRadius: 20.0,
                               spreadRadius: 0,
                             ),

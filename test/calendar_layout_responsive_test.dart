@@ -35,7 +35,10 @@ class _BlockingRepo extends MockWorkoutRepository {
   void release() => _gate.complete();
 
   @override
-  Future<List<TrainingSession>> getSessionsByDateRange(int fromMs, int toMs) async {
+  Future<List<TrainingSession>> getSessionsByDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
     await _gate.future;
     return super.getSessionsByDateRange(fromMs, toMs);
   }
@@ -96,7 +99,12 @@ void main() {
     required int count,
   }) async {
     for (var i = 0; i < count; i++) {
-      final start = DateTime(calendarState.year, calendarState.month, day, 9 + i);
+      final start = DateTime(
+        calendarState.year,
+        calendarState.month,
+        day,
+        9 + i,
+      );
       await repo.createSession(
         TrainingSession(
           id: 'seed-$day-$i',
@@ -137,12 +145,7 @@ void main() {
     await tester.pumpAndSettle();
     await goToSixRowMonth(tester, calendarState);
     if (sessionsOnDayOne > 0) {
-      await seedSessions(
-        repo,
-        calendarState,
-        day: 1,
-        count: sessionsOnDayOne,
-      );
+      await seedSessions(repo, calendarState, day: 1, count: sessionsOnDayOne);
     }
 
     final errors = <String>[];
@@ -236,31 +239,34 @@ void main() {
       );
     });
 
-    testWidgets('compressed landscape cell shows fewer dots than uncapped phone cell',
-        (tester) async {
-      // At the floor (52pt), landscape cells show ~3 rows of indicators.
-      // On uncapped phone, more rows fit, so more dots are visible.
-      // This test verifies that dot adaptivity is still observable at the floor.
-      expect(
-        await render(tester, size: const Size(844, 390), sessionsOnDayOne: 5),
-        isEmpty,
-      );
-      final compressedCellDots = dotFinder.evaluate().length;
+    testWidgets(
+      'compressed landscape cell shows fewer dots than uncapped phone cell',
+      (tester) async {
+        // At the floor (52pt), landscape cells show ~3 rows of indicators.
+        // On uncapped phone, more rows fit, so more dots are visible.
+        // This test verifies that dot adaptivity is still observable at the floor.
+        expect(
+          await render(tester, size: const Size(844, 390), sessionsOnDayOne: 5),
+          isEmpty,
+        );
+        final compressedCellDots = dotFinder.evaluate().length;
 
-      expect(
-        await render(tester, size: const Size(390, 844), sessionsOnDayOne: 5),
-        isEmpty,
-      );
-      final uncappedPhoneCellDots = dotFinder.evaluate().length;
+        expect(
+          await render(tester, size: const Size(390, 844), sessionsOnDayOne: 5),
+          isEmpty,
+        );
+        final uncappedPhoneCellDots = dotFinder.evaluate().length;
 
-      // Compressed landscape should show fewer or equal dots than uncapped phone
-      // (Compressed cell is restricted to floor, phone cell has more room)
-      expect(
-        compressedCellDots,
-        lessThanOrEqualTo(uncappedPhoneCellDots),
-        reason: 'compressed landscape should show ≤ dots than uncapped phone (dot adaptivity observable at floor)',
-      );
-    });
+        // Compressed landscape should show fewer or equal dots than uncapped phone
+        // (Compressed cell is restricted to floor, phone cell has more room)
+        expect(
+          compressedCellDots,
+          lessThanOrEqualTo(uncappedPhoneCellDots),
+          reason:
+              'compressed landscape should show ≤ dots than uncapped phone (dot adaptivity observable at floor)',
+        );
+      },
+    );
   });
 
   group('cell height capping', () {
@@ -372,8 +378,9 @@ void main() {
   });
 
   group('stats strip placement', () {
-    testWidgets('S-2: Stats strip sits directly below grid, not at screen bottom',
-        (tester) async {
+    testWidgets('S-2: Stats strip sits directly below grid, not at screen bottom', (
+      tester,
+    ) async {
       // iPhone SE: 375x667pt, 5-row month with 0 sessions
       const size = Size(375, 667);
       expect(await render(tester, size: size), isEmpty);
@@ -400,7 +407,8 @@ void main() {
       expect(
         statsTop - gridBottom,
         lessThanOrEqualTo(30), // Padding + tolerance
-        reason: 'S-2: Stats strip should sit below grid; gap is ${statsTop - gridBottom}pt',
+        reason:
+            'S-2: Stats strip should sit below grid; gap is ${statsTop - gridBottom}pt',
       );
 
       // Stats should be fully on screen (check divider bottom)
@@ -411,8 +419,9 @@ void main() {
       );
     });
 
-    testWidgets('S-3: Short screen with few-row month: dead space below stats',
-        (tester) async {
+    testWidgets('S-3: Short screen with few-row month: dead space below stats', (
+      tester,
+    ) async {
       // iPhone SE landscape: narrow space, grid should not expand to fill
       // We'll test this by checking that the grid + stats don't fill the entire screen
       const size = Size(375, 667);
@@ -434,15 +443,18 @@ void main() {
       // Stats height is roughly from the top of the section to the bottom
       // For this test, we just verify that grid + stats is less than screen height
       final gridTop = gridRect.top;
-      final statsBottom = timeLabelRect.bottom + 20; // Add some margin for wrap content
+      final statsBottom =
+          timeLabelRect.bottom + 20; // Add some margin for wrap content
 
-      final totalHeight = gridTop + gridHeight + (statsBottom - statsLabelRect.top);
+      final totalHeight =
+          gridTop + gridHeight + (statsBottom - statsLabelRect.top);
 
       // There should be some dead space at the bottom
       expect(
         totalHeight,
         lessThan(size.height),
-        reason: 'S-3: Grid + stats should not fill entire screen, leaving dead space',
+        reason:
+            'S-3: Grid + stats should not fill entire screen, leaving dead space',
       );
     });
   });
@@ -531,22 +543,21 @@ void main() {
       (w) => w.runtimeType.toString() == '_Dot',
     );
 
-    testWidgets('S-6: Five sessions show all 5 dots at capped iPhone height',
-        (tester) async {
+    testWidgets('S-6: Five sessions show all 5 dots at capped iPhone height', (
+      tester,
+    ) async {
       // iPhone 14: 390x844pt, with 5 sessions on day 1
       // At capped height (~75pt), 3 rows fit, so 6-dot capacity
       // All 5 should be visible, no badge
       const size = Size(390, 844);
-      expect(
-        await render(tester, size: size, sessionsOnDayOne: 5),
-        isEmpty,
-      );
+      expect(await render(tester, size: size, sessionsOnDayOne: 5), isEmpty);
 
       final dots = dotFinder.evaluate().toList();
       expect(
         dots.length,
         equals(5),
-        reason: 'S-6: All 5 sessions should show as dots at capped iPhone height',
+        reason:
+            'S-6: All 5 sessions should show as dots at capped iPhone height',
       );
 
       // Verify no "+N" badge appears (look for _OverflowBadge specifically)
@@ -561,40 +572,39 @@ void main() {
       );
     });
 
-    testWidgets('S-7: Seven sessions show 5 dots + "+2" badge at capped height',
-        (tester) async {
-      // iPhone 14 with 7 sessions
-      // Capacity is 6 (3 rows × 2), but badge takes a slot
-      // So 5 dots + "+2" badge
-      const size = Size(390, 844);
-      expect(
-        await render(tester, size: size, sessionsOnDayOne: 7),
-        isEmpty,
-      );
+    testWidgets(
+      'S-7: Seven sessions show 5 dots + "+2" badge at capped height',
+      (tester) async {
+        // iPhone 14 with 7 sessions
+        // Capacity is 6 (3 rows × 2), but badge takes a slot
+        // So 5 dots + "+2" badge
+        const size = Size(390, 844);
+        expect(await render(tester, size: size, sessionsOnDayOne: 7), isEmpty);
 
-      final dots = dotFinder.evaluate().toList();
-      expect(
-        dots.length,
-        equals(5),
-        reason: 'S-7: 5 dots should show when 7 sessions exceed capacity',
-      );
+        final dots = dotFinder.evaluate().toList();
+        expect(
+          dots.length,
+          equals(5),
+          reason: 'S-7: 5 dots should show when 7 sessions exceed capacity',
+        );
 
-      // Find the badge (_OverflowBadge)
-      final badgeFinder = find.byWidgetPredicate(
-        (w) => w.runtimeType.toString() == '_OverflowBadge',
-      );
-      expect(
-        badgeFinder,
-        findsWidgets,
-        reason: 'S-7: "+N" badge should appear (7 sessions − 5 visible = 2)',
-      );
+        // Find the badge (_OverflowBadge)
+        final badgeFinder = find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_OverflowBadge',
+        );
+        expect(
+          badgeFinder,
+          findsWidgets,
+          reason: 'S-7: "+N" badge should appear (7 sessions − 5 visible = 2)',
+        );
 
-      // Verify the badge text is "+2"
-      expect(
-        find.text('+2'),
-        findsWidgets,
-        reason: 'S-7: Badge should show "+2"',
-      );
-    });
+        // Verify the badge text is "+2"
+        expect(
+          find.text('+2'),
+          findsWidgets,
+          reason: 'S-7: Badge should show "+2"',
+        );
+      },
+    );
   });
 }

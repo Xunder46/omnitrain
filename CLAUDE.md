@@ -19,14 +19,14 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
 
 ## Authoritative Rules and Docs
 
-> **Doc freshness.** The docs in `.github/agents/docs/` are derived from source, not hand-maintained. If a claim there disagrees with `lib/`, `lib/` wins. Past snapshots / superseded audits live under `.github/agents/docs/history/` and under `docs/releases/` — they are clearly labeled `HISTORY` and must not be treated as current state.
+> **Doc freshness.** The docs in `docs/` are derived from source, not hand-maintained. If a claim there disagrees with `lib/`, `lib/` wins. Past snapshots / superseded audits live under `docs/history/` and under `docs/releases/` — they are clearly labeled `HISTORY` and must not be treated as current state.
 >
-> **Audit — 2026-07-26.** A full audit against `lib/` corrected drift across the set: nutrition tracking was still listed as an explicit non-goal, six screens were missing from the inventory, four data models were undocumented, and the SQLite runtime was documented as live after being retired. Two oversized docs were split so the whole set is indexable. Read `.github/agents/docs/docs-audit-2026-07-26.md` for what changed and, more importantly, **what is still unresolved** — including two conflicting hub implementations and the absence of any way to identify a custom exercise.
+> **Audit — 2026-07-26.** A full audit against `lib/` corrected drift across the set: nutrition tracking was still listed as an explicit non-goal, six screens were missing from the inventory, four data models were undocumented, and the SQLite runtime was documented as live after being retired. Two oversized docs were split so the whole set is indexable. Read `docs/docs-audit-2026-07-26.md` for what changed and, more importantly, **what is still unresolved** — including two conflicting hub implementations and the absence of any way to identify a custom exercise.
 >
-> **Size ceiling.** No file in `.github/agents/docs/` may exceed 64 KiB; larger files are silently skipped by the tools that index them. Enforced by `test/docs_indexing_contract_test.dart`. Split oversized docs into part pages and keep the original path as an index so inbound links keep resolving.
+> **Size ceiling.** No file in `docs/` may exceed 64 KiB; larger files are silently skipped by the tools that index them. Enforced by `test/docs_indexing_contract_test.dart`. Split oversized docs into part pages and keep the original path as an index so inbound links keep resolving.
 
-- Start with `.github/agents/docs/global_conventions.md` (authoritative cross-cutting rules).
-- Then use `.github/agents/docs/README.md` for the index and relevant feature/architecture docs:
+- Start with `docs/global_conventions.md` (authoritative cross-cutting rules).
+- Then use `docs/README.md` for the index and relevant feature/architecture docs:
   - `app_philosophy.md` — product goals, entity model, home screen layout
   - `modality_tracking.md` — exercise capabilities, modalities, effort kinds
   - `modality_based_exercise_ui.md` — adaptive workout session screen
@@ -36,10 +36,10 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
   - `my_routines.md` — reusable workout templates (CRUD + template-to-session)
   - `calendar_periods.md` — month calendar, day-session list, training periods
   - `rolling_sessions.md` — rolling/continuous free session format, `isRolling` flag
-  - `session_summary.md` — post-workout analytics, per-group deltas, feeling-survey capture
+  - `session_summary.md` — post-workout analytics, per-group deltas, session effort rating capture
   - `stats_screen.md` — all-time aggregates, scrollable strength + cardio trends, Recent PRs, NUTRITION card
   - `profile_and_measurements.md` — identity, avatar, body measurement logging, history chart
-  - `theme_and_settings.md` — theme grid, units, timer alerts, Feeling Survey toggle
+  - `theme_and_settings.md` — theme grid, units, timer alerts, Effort Rating toggle
   - `state_management.md` — index for `ChangeNotifier` classes, service classes, dependency graph (split into `state_management/`)
   - `data_models.md` — all domain models (sessions, exercises, templates, measurements, etc.)
   - `constants_reference.md` — modalities, capabilities, metrics, effort kinds, intents, design tokens
@@ -69,7 +69,7 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
 - `lib/features/`: screen-level features (home, session, exercise, routine, calendar, period, nutrition, profile, settings, stats, onboarding, splash, startup).
 - `lib/widgets/`: reusable presentation widgets.
 - `lib/core/`: shared constants, services, and utilities.
-- `.github/agents/docs/`: architecture and behavior source of truth.
+- `docs/`: architecture and behavior source of truth.
 - `test/`: layer and feature tests; update alongside behavior changes.
 
 ## Working Rules for Claude Code
@@ -77,6 +77,19 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
 - Keep edits minimal and architecture-consistent.
 - Never bypass repository interfaces from state/features.
 - Follow conventions/tokens from docs and constants; do not invent parallel patterns.
+
+### PR scope budget
+
+A plan that runs past a few hundred lines is several PRs in one file, or a feedback loop.
+
+- **The budget and the split procedure** are in `.github/agents/pr_scope_budget.md`.
+- **Checkpoints.** Run the `pr-scope-guard` skill when a plan is written, after each implementation
+  phase, and after a code review.
+- **Never grow a plan** to absorb new scope or another round of review feedback. Reach a stopping
+  point where every item is done or not started and the suites are green, then plan the rest as a
+  separate PR with conductor-v2.
+- **Evidence stays out of the plan.** It goes in `<plan>.evidence.md`, and review findings go in
+  `<plan>.review.md`.
 
 ### Decision ownership
 

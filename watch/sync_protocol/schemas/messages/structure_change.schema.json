@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/structure_change.schema.json",
+  "title": "structure_change",
+  "description": "Phone → watch. Phone-originated edits to the live session: add, remove, reorder, swap, and corrections to already-logged entries. Exercises are addressed by sessionExerciseId, never by exerciseId — the same exercise may occupy more than one slot. Deduplicated by changeId.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    { "required": ["sessionId"] },
+    {
+      "properties": {
+        "type": { "const": "structure_change" },
+        "origin": { "const": "phone" },
+        "payload": {
+          "type": "object",
+          "required": ["changeId", "changes"],
+          "additionalProperties": false,
+          "properties": {
+            "changeId": { "type": "string", "minLength": 1 },
+            "changes": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/change" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "correction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reps": { "type": "integer", "minimum": 1 },
+        "loadKg": { "type": "number", "minimum": 0 },
+        "startedAt": { "$ref": "envelope.schema.json#/$defs/timestamp" },
+        "endedAt": { "$ref": "envelope.schema.json#/$defs/timestamp" },
+        "roundNumber": { "type": "integer", "minimum": 1 },
+        "servings": { "type": "number", "minimum": 0 },
+        "calories": { "type": "number", "minimum": 0 }
+      }
+    },
+    "change": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "add_exercise",
+            "remove_exercise",
+            "reorder_exercises",
+            "swap_exercise",
+            "correct_entry",
+            "delete_entry"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "required": ["kind", "exercise", "atIndex"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "add_exercise" },
+                "exercise": {
+                  "$ref": "envelope.schema.json#/$defs/sessionExercise"
+                },
+                "atIndex": { "type": "integer", "minimum": 0 }
+              }
+            },
+            {
+              "required": ["kind", "sessionExerciseId"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "remove_exercise" },
+                "sessionExerciseId": { "type": "string", "minLength": 1 }
+              }
+            },
+            {
+              "required": ["kind", "order"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "reorder_exercises" },
+                "order": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              }
+            },
+            {
+              "required": ["kind", "sessionExerciseId", "exercise"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "swap_exercise" },
+                "sessionExerciseId": { "type": "string", "minLength": 1 },
+                "exercise": {
+                  "$ref": "envelope.schema.json#/$defs/catalogExercise"
+                }
+              }
+            },
+            {
+              "required": ["kind", "entryId", "correction"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "correct_entry" },
+                "entryId": { "type": "string", "minLength": 1 },
+                "correction": { "$ref": "#/$defs/correction" }
+              }
+            },
+            {
+              "required": ["kind", "entryId"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "delete_entry" },
+                "entryId": { "type": "string", "minLength": 1 }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-foods-1",
+  "type": "foods_down",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-07-13T17:00:00Z",
+    "categories": [
+      { "categoryId": "foodcat-protein", "name": "Protein" },
+      { "categoryId": "foodcat-carbs", "name": "Carbs" },
+      { "categoryId": "foodcat-fruit", "name": "Fruit" }
+    ],
+    "foods": [
+      {
+        "foodId": "food-greek-yogurt",
+        "name": "Greek Yogurt",
+        "categoryId": "foodcat-protein",
+        "referenceAmount": 1,
+        "referenceLabel": "cup",
+        "caloriesPerServing": 130,
+        "defaultServings": 1
+      },
+      {
+        "foodId": "food-almonds",
+        "name": "Almonds",
+        "categoryId": null,
+        "referenceAmount": 30,
+        "referenceLabel": "g",
+        "caloriesPerServing": 170,
+        "defaultServings": 1
+      },
+      {
+        "foodId": "food-oatmeal",
+        "name": "Oatmeal",
+        "categoryId": "foodcat-carbs",
+        "referenceAmount": 100,
+        "referenceLabel": "g",
+        "caloriesPerServing": 190,
+        "defaultServings": 1.5
+      },
+      {
+        "foodId": "food-egg",
+        "name": "Egg",
+        "categoryId": "foodcat-protein",
+        "referenceAmount": 1,
+        "referenceLabel": "egg",
+        "caloriesPerServing": 78,
+        "defaultServings": 2
+      },
+      {
+        "foodId": "food-banana",
+        "name": "Banana",
+        "categoryId": "foodcat-fruit",
+        "referenceAmount": 1,
+        "referenceLabel": "banana",
+        "caloriesPerServing": 105,
+        "defaultServings": 1
+      }
+    ]
+  }
+}

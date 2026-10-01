@@ -38,14 +38,21 @@ class CardioTrendPoint {
   /// Total distance in metres for the training day. Null if no distance was logged.
   final double? distanceM;
 
-  /// Pace in seconds per kilometre. Null if no distance was logged or distanceM == 0.
+  /// Pace in seconds per kilometre, counted over the finished entries that
+  /// have a distance. Null if none of them does.
   final double? paceSecPerKm;
+
+  /// True when any distance counted in [distanceM] came from the watch
+  /// platform's estimate rather than from a measurement or an entry. Marks
+  /// both this point's distance and its pace.
+  final bool distanceEstimated;
 
   const CardioTrendPoint({
     required this.date,
     required this.durationSecs,
     this.distanceM,
     this.paceSecPerKm,
+    this.distanceEstimated = false,
   });
 }
 
@@ -70,7 +77,7 @@ class LiftProgress {
   /// (some sets with added weight, some without) the reps axis is
   /// still used because the added-weight sets stay on the reps
   /// axis as annotations only (see the bodyweight-inclusion plan
-  /// in `.github/agents/plans/stats-summary-fix-pack-plan.md`,
+  /// in `docs/plans/stats-summary-fix-pack-plan.md`,
   /// Item 2). Empty for exercises that have only weighted sets.
   final List<TrendPoint> repsTrend;
 
@@ -137,25 +144,9 @@ class StatsPR {
     this.e1Rm,
     this.reps,
   }) : assert(
-          (e1Rm != null) ^ (reps != null),
-          'Exactly one of e1Rm or reps must be non-null on a StatsPR',
-        );
-}
-
-/// A single chronological data point in the Stats-screen feeling
-/// trend. The feeling value is the post-session self-report captured
-/// by the session summary sheet (1–5; 1 = Rough, 5 = Great). Only
-/// sessions that have a recorded feeling produce a point — sessions
-/// without a feeling are omitted from the series entirely (no
-/// zero-fill, no synthetic flat line).
-class FeelingTrendPoint {
-  /// Local-midnight `DateTime` for the day this point represents.
-  final DateTime date;
-
-  /// Post-session feeling, 1..5 inclusive.
-  final int feeling;
-
-  const FeelingTrendPoint({required this.date, required this.feeling});
+         (e1Rm != null) ^ (reps != null),
+         'Exactly one of e1Rm or reps must be non-null on a StatsPR',
+       );
 }
 
 /// A single chronological data point in the Stats-screen nutrition
@@ -220,14 +211,6 @@ class StatsProgressData {
   /// window; the card hides itself in that case.
   final List<NutritionTrendPoint> nutritionTrend;
 
-  /// Per-session feeling trend for the HOW DID IT FEEL card on the Stats
-  /// screen, sorted ascending by date. Only completed sessions that
-  /// have a recorded `sessionFeeling` (1..5) appear; sessions without
-  /// a feeling are omitted entirely (no zero-fill). Empty list = no
-  /// feeling logged in the current window; the card renders an
-  /// explicit empty state in that case.
-  final List<FeelingTrendPoint> feelingTrend;
-
   /// The "current window" that decided which exercises were eligible
   /// for [topLifts] and [topCardio]. The window is a date range plus
   /// a human-readable label so the UI can explain its selection.
@@ -243,7 +226,6 @@ class StatsProgressData {
     this.topSports = const [],
     required this.recentPRs,
     this.nutritionTrend = const [],
-    this.feelingTrend = const [],
     required this.window,
   });
 
@@ -318,9 +300,8 @@ class StatsWindow {
   /// sessions. A recent-days window with zero training days returns
   /// false (and the Stats screen renders its existing empty states
   /// for both sections).
-  bool get hasData => !isPeriodScoped
-      ? (recentDays != null && recentDays! > 0)
-      : true;
+  bool get hasData =>
+      !isPeriodScoped ? (recentDays != null && recentDays! > 0) : true;
 
   /// Sentinel empty window used by [StatsProgressData.empty].
   /// Not user-visible; the screen never reaches this state because
@@ -334,7 +315,6 @@ class StatsWindow {
     recentDays: 0,
   );
 }
-
 
 // ── Nutrition adherence (PR 2b nutrition adherence section) ───────────────
 
@@ -372,8 +352,5 @@ class NutritionAdherence {
   final List<NutritionTrendPoint> actuals;
   final List<NutritionAdherenceTargetPoint> targetLine;
 
-  const NutritionAdherence({
-    required this.actuals,
-    required this.targetLine,
-  });
+  const NutritionAdherence({required this.actuals, required this.targetLine});
 }

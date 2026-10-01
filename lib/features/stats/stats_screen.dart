@@ -6,8 +6,8 @@ import '../../core/models/stats_progress.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../core/utils/chart_axis_helper.dart';
 import '../../core/utils/date_utils.dart';
-import '../../core/utils/session_feeling_utils.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../../core/navigation/omni_navigator.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -15,7 +15,10 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/chart/edge_aware_date_label.dart';
+import 'records_and_trends_screen.dart';
+import 'widgets/recent_pr_list.dart';
 import 'widgets/scrollable_trend_chart.dart';
+import 'widgets/stats_pill.dart';
 
 /// Segmented toggle state for the NUTRITION card. Local widget
 /// state only — not persisted across sessions. The two views
@@ -58,21 +61,6 @@ class _StatsScreenState extends State<StatsScreen> {
 
   Future<void> _loadData() async {
     try {
-      final allSessions = await widget.workoutState.getAllSessions();
-
-      // Compute all-time aggregates from completed sessions only.
-      // Rolling sessions still count as completed sessions, but they do not
-      // contribute to total duration to stay aligned with session-summary logic.
-      int totalCount = 0;
-      int totalMs = 0;
-      for (final s in allSessions) {
-        if (s.endedAtMs == null) continue;
-        totalCount++;
-        if (!s.isRolling) {
-          totalMs += s.endedAtMs! - s.startedAtMs;
-        }
-      }
-
       // Reuse CalendarState streak logic — do not re-implement the calculation.
       final calendarState = CalendarState(widget.workoutState.repository);
       await calendarState.init();
@@ -84,6 +72,10 @@ class _StatsScreenState extends State<StatsScreen> {
       // instance here would silently double that cost.
       final service = StatsProgressService(widget.workoutState.repository);
 
+      // All-time aggregates (completed sessions and their duration) come from
+      // the service, so the screen and Records & Trends agree on the figures.
+      final totals = await service.computeTotals();
+
       // Compute progress data (e1RM trends, cardio trends, isometric trends,
       // sports trends, PRs, and the nutrition trend — all in one call so we don't
       // double-walk the repository for the same screen).
@@ -94,8 +86,8 @@ class _StatsScreenState extends State<StatsScreen> {
       if (!mounted) return;
 
       setState(() {
-        _totalSessions = totalCount;
-        _totalDurationMs = totalMs;
+        _totalSessions = totals.completedSessions;
+        _totalDurationMs = totals.durationMs;
         _streakDays = streak;
         _progressData = progressData;
         _nutritionAdherence = adherence;
@@ -120,7 +112,27 @@ class _StatsScreenState extends State<StatsScreen> {
           backgroundColor: Colors.transparent,
           extendBody: true,
           extendBodyBehindAppBar: true,
-          appBar: const OmniBackHeader(title: 'Stats'),
+          appBar: OmniBackHeader(
+            title: 'Stats',
+            actions: [
+              Semantics(
+                label: 'Records & Trends',
+                button: true,
+                child: IconButton(
+                  icon: const Icon(Icons.show_chart),
+                  color: OmniTheme.colors.textDominant,
+                  tooltip: 'Records & Trends',
+                  onPressed: () => OmniNavigator.push(
+                    context,
+                    (_) => RecordsAndTrendsScreen(
+                      workoutState: widget.workoutState,
+                      settingsState: widget.settingsState,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
           body: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -139,8 +151,6 @@ class _StatsScreenState extends State<StatsScreen> {
                             ..._buildIsometricSection(context, themeColors),
                             const SizedBox(height: 24),
                             ..._buildSportsSection(context, themeColors),
-                            const SizedBox(height: 24),
-                            ..._buildFeelingSection(context, themeColors),
                             const SizedBox(height: 24),
                             ..._buildNutritionSection(context, themeColors),
                           ],
@@ -188,7 +198,7 @@ class _StatsScreenState extends State<StatsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: _StatsPill(
+            child: StatsPill(
               label: 'Sessions',
               value: _totalSessions.toString(),
               themeColors: themeColors,
@@ -197,7 +207,7 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: _StatsPill(
+            child: StatsPill(
               label: 'Time',
               value: _formatDuration(_totalDurationMs),
               themeColors: themeColors,
@@ -206,7 +216,7 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: _StatsPill(
+            child: StatsPill(
               label: 'Streak',
               value: '$_streakDays d',
               themeColors: themeColors,
@@ -236,8 +246,7 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'STRENGTH',
         actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
+          if (data != null) _buildWindowChip(context, themeColors, data.window),
         ],
       ),
     ];
@@ -259,7 +268,9 @@ class _StatsScreenState extends State<StatsScreen> {
     }
 
     if (data.recentPRs.isNotEmpty) {
-      widgets.add(_buildPRList(context, themeColors, data.recentPRs));
+      widgets.add(
+        RecentPRList(prs: data.recentPRs, settingsState: widget.settingsState),
+      );
     }
 
     return widgets;
@@ -295,11 +306,12 @@ class _StatsScreenState extends State<StatsScreen> {
     // and single-point card so the user sees a "+10 kg" marker
     // on the day that used added weight. This is annotation only
     // — the reps trend never produces a kg-derived figure on a
-    // reps-axis exercise (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+    // reps-axis exercise (`docs/plans/stats-summary-fix-pack-plan.md`,
     // Push-Up mixed-axis bug fix).
     final repsDisplay = lift.repsTrend.toList();
-    final repsHasAddedWeight =
-        repsDisplay.any((p) => (p.extraWeightKg ?? 0) > 0);
+    final repsHasAddedWeight = repsDisplay.any(
+      (p) => (p.extraWeightKg ?? 0) > 0,
+    );
 
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
@@ -407,11 +419,7 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget _buildAddedWeightNote(ThemeData theme, OmniThemeColors themeColors) {
     return Row(
       children: [
-        Icon(
-          Icons.info_outline,
-          size: 14,
-          color: themeColors.textMuted,
-        ),
+        Icon(Icons.info_outline, size: 14, color: themeColors.textMuted),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
@@ -454,10 +462,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -531,89 +536,6 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  Widget _buildPRList(
-    BuildContext context,
-    OmniThemeColors themeColors,
-    List<StatsPR> prs,
-  ) {
-    final theme = Theme.of(context);
-    final weightLabel = UnitFormatter.weightLabel(widget.settingsState);
-
-    return OmniSurface(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Recent PRs',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: OmniTheme.colors.textDominant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...prs.map((pr) {
-            final dateStr =
-                '${OmniDateUtils.shortMonthName(pr.date.month)} ${pr.date.day},'
-                ' ${pr.date.year}';
-            // Reps-axis PR (bodyweight) and weight-axis PR
-            // (e1RM) render differently on the right side:
-            //   - `pr.reps != null` → `${reps} reps`
-            //   - `pr.e1Rm != null` → `${displayE1Rm} $weightLabel`
-            // Exactly one of the two is non-null on any given PR
-            // (asserted in `StatsPR`).
-            final String valueText;
-            if (pr.reps != null) {
-              valueText = '${pr.reps} reps';
-            } else {
-              final displayE1Rm = UnitFormatter.convertWeight(
-                pr.e1Rm!,
-                widget.settingsState,
-              );
-              valueText = '${displayE1Rm.toStringAsFixed(1)} $weightLabel';
-            }
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.emoji_events_outlined,
-                    size: 16,
-                    color: themeColors.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      pr.exerciseName,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.colors.textDominant,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    valueText,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: themeColors.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    dateStr,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: themeColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
   // ── Cardio section ────────────────────────────────────────────────────────
 
   List<Widget> _buildCardioSection(
@@ -625,8 +547,7 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'CARDIO',
         actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
+          if (data != null) _buildWindowChip(context, themeColors, data.window),
         ],
       ),
     ];
@@ -661,8 +582,7 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'ISOMETRIC',
         actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
+          if (data != null) _buildWindowChip(context, themeColors, data.window),
         ],
       ),
     ];
@@ -765,10 +685,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -887,8 +804,7 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'SPORTS',
         actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
+          if (data != null) _buildWindowChip(context, themeColors, data.window),
         ],
       ),
     ];
@@ -959,214 +875,6 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-
-
-  // ── Feeling section ───────────────────────────────────────────────────────
-
-  /// The HOW DID IT FEEL section surfaces the post-session feeling
-  /// (1..5) as a trend so the user can read its drift against
-  /// the training-time trend on the same time window. Universal
-  /// across modalities — built from `TrainingSession.sessionFeeling`
-  /// only, never gated on strength / cardio / effort data.
-  ///
-  /// Deliberate non-features:
-  ///   - No stat tile, no average-feeling scalar, no Feeling pill
-  ///     in the ALL TIME row.
-  ///   - No rest / deload / recovery suggestion.
-  ///   - Sessions without a feeling are omitted (no zero-fill,
-  ///     no interpolated dip).
-  ///   - When zero sessions in the window have a feeling, an
-  ///     explicit empty state renders — not a chart, not a flat
-  ///     line at zero.
-  List<Widget> _buildFeelingSection(
-    BuildContext context,
-    OmniThemeColors themeColors,
-  ) {
-    final data = _progressData;
-    final trend = data?.feelingTrend ?? const <FeelingTrendPoint>[];
-    final widgets = <Widget>[
-      OmniCardHeader(
-        title: 'HOW DID IT FEEL',
-        actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
-        ],
-      ),
-    ];
-
-    // Empty-state path: sessions exist but none in the window
-    // have a feeling logged. Render an explicit message rather
-    // than a chart that would either be blank or fabricate a
-    // misleading flat line at the floor.
-    if (trend.isEmpty) {
-      widgets.add(
-        _buildSectionEmptyState(
-          context,
-          themeColors,
-          'No feeling logged in this window yet',
-        ),
-      );
-      return widgets;
-    }
-
-    widgets.add(_buildFeelingCard(context, themeColors, trend));
-    return widgets;
-  }
-
-  Widget _buildFeelingCard(
-    BuildContext context,
-    OmniThemeColors themeColors,
-    List<FeelingTrendPoint> trend,
-  ) {
-    // Fixed 1..5 semantic range with integer ticks (1, 2, 3, 4,
-    // 5). Feeling is ordinal, not continuous — never let the
-    // y-axis auto-scale to a flat line at a single value (which
-    // would read as zero context), never let it stretch below
-    // 1 or above 5, and never pad above the max with a 6th tick.
-    // The pinned y-axis labels are bare integers (no unit
-    // suffix).
-    const feelingBounds = ChartAxisBounds(min: 1, max: 5, interval: 1);
-
-    // The connecting line is ONE fixed color — `themeColors.primary`
-    // — independent of any session's rating. Every other chart on
-    // the screen already uses this single-color convention, and it
-    // guarantees the line is always legible against the chart
-    // background regardless of which rating was most recently
-    // logged. (Previously this took `feelingColor(latest, context)`,
-    // which made the line vanish when the latest rating mapped to a
-    // color close to the background — e.g. feeling=5 resolved to
-    // `Theme.of(context).primaryColor`, which on some themes is
-    // the same hue as the chart background.)
-    //
-    // The points carry the meaning instead. Each point is painted in
-    // its own session's feeling color via `feelingColor(...)` — the
-    // same shared source the post-workout survey tile and the
-    // day-session-list border already use. Three surfaces, one
-    // palette source, no extra tile, no stat number.
-    //
-    // Each point also keeps the surface-color halo stroke so it
-    // stays visible when its feeling color is close to the
-    // background or sits exactly on a horizontal gridline — a flat
-    // series still reads as a row of distinct points.
-    final lineColor = themeColors.primary;
-    final pointColors = List<Color>.generate(
-      trend.length,
-      (i) => feelingColor(trend[i].feeling, themeColors),
-    );
-    final spots = List.generate(
-      trend.length,
-      (i) => FlSpot(i.toDouble(), trend[i].feeling.toDouble()),
-    );
-
-    return OmniSurface(
-      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
-      child: ScrollableTrendChart(
-            themeColors: themeColors,
-            bounds: feelingBounds,
-            unitLabel: '',
-            pointCount: trend.length,
-            chartBuilder: (plotWidth) {
-              return LineChart(
-                LineChartData(
-                  minX: 0,
-                  maxX: (trend.length - 1).toDouble(),
-                  minY: feelingBounds.min,
-                  maxY: feelingBounds.max,
-                  lineTouchData: const LineTouchData(enabled: false),
-                  titlesData: FlTitlesData(
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: false,
-                        reservedSize: 0,
-                      ),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: _kBottomAxisReservedSize,
-                        interval: 1,
-                        getTitlesWidget: (value, meta) {
-                          final idx = value.round();
-                          if (idx < 0 || idx >= trend.length) {
-                            return const SizedBox.shrink();
-                          }
-                          if (!ChartAxisHelper.shouldShowDateLabel(
-                            idx,
-                            trend.length,
-                          )) {
-                            return const SizedBox.shrink();
-                          }
-                          return buildEdgeAwareDateLabel(
-                            meta: meta,
-                            text: ChartAxisHelper.formatDateLabel(
-                              trend[idx].date,
-                            ),
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: themeColors.textMuted,
-                            ),
-                            isFirst: idx == 0,
-                            isLast: idx == trend.length - 1,
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    getDrawingHorizontalLine: (_) => FlLine(
-                      color: themeColors.divider,
-                      strokeWidth: 1,
-                    ),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: spots,
-                      color: lineColor,
-                      // Straight segments (no curve) so the line
-                      // reads unambiguously on a 120dp-tall
-                      // chart. Curved segments with sparse data
-                      // can pull control points off-grid and
-                      // render the line as a smear.
-                      isCurved: false,
-                      // 2dp line + 3dp dots — the same conventions every other
-                      // chart on this screen (e1RM, volume, cardio
-                      // pace + distance, cardio duration, nutrition
-                      // calories, nutrition macros) already uses.
-                      // Heavier weights and a glow shadow were tried
-                      // here earlier but made the feeling chart
-                      // visually louder than every other trend on
-                      // the screen; the standard 2dp / 3dp / 1.5dp
-                      // triple reads correctly against the chart
-                      // background on every theme without any
-                      // extra contrast tooling.
-                      barWidth: 2,
-                      isStrokeCapRound: true,
-                      dotData: FlDotData(
-                        show: true,
-                        getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                          radius: 3,
-                          color: pointColors[i],
-                          strokeWidth: 1.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-    );
-  }
-
   // ── Nutrition section (last 10-day kcal + macros trend) ──────────────────
 
   /// Returns the widgets for the NUTRITION section. Returns an
@@ -1225,19 +933,19 @@ class _StatsScreenState extends State<StatsScreen> {
               child: _buildNutritionLegend(theme, themeColors),
             ),
           ] else
-            // S-004: exactly 1 logged day → inline single-point card.
-            if (_nutritionView == _NutritionView.calories)
-              _buildSingleNutritionCaloriesPoint(
-                theme: theme,
-                themeColors: themeColors,
-                point: trend.first,
-              )
-            else
-              _buildSingleNutritionMacrosPoint(
-                theme: theme,
-                themeColors: themeColors,
-                point: trend.first,
-              ),
+          // S-004: exactly 1 logged day → inline single-point card.
+          if (_nutritionView == _NutritionView.calories)
+            _buildSingleNutritionCaloriesPoint(
+              theme: theme,
+              themeColors: themeColors,
+              point: trend.first,
+            )
+          else
+            _buildSingleNutritionMacrosPoint(
+              theme: theme,
+              themeColors: themeColors,
+              point: trend.first,
+            ),
         ],
       ),
     );
@@ -1249,14 +957,8 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget _buildNutritionToggle(ThemeData theme, OmniThemeColors themeColors) {
     return SegmentedButton<_NutritionView>(
       segments: const [
-        ButtonSegment(
-          value: _NutritionView.calories,
-          label: Text('Calories'),
-        ),
-        ButtonSegment(
-          value: _NutritionView.macros,
-          label: Text('Macros'),
-        ),
+        ButtonSegment(value: _NutritionView.calories, label: Text('Calories')),
+        ButtonSegment(value: _NutritionView.macros, label: Text('Macros')),
       ],
       selected: {_nutritionView},
       onSelectionChanged: (selection) {
@@ -1322,10 +1024,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -1466,24 +1165,12 @@ class _StatsScreenState extends State<StatsScreen> {
         }
         spots.add(FlSpot(i.toDouble(), value(currentTarget)));
       }
-      series.add(_MacroTargetSeries(
-        color: color,
-        spots: spots,
-      ));
+      series.add(_MacroTargetSeries(color: color, spots: spots));
     }
 
-    seriesFor(
-      color: macroColors.protein,
-      value: (t) => t.protein,
-    );
-    seriesFor(
-      color: macroColors.carbs,
-      value: (t) => t.carbs,
-    );
-    seriesFor(
-      color: macroColors.fat,
-      value: (t) => t.fat,
-    );
+    seriesFor(color: macroColors.protein, value: (t) => t.protein);
+    seriesFor(color: macroColors.carbs, value: (t) => t.carbs);
+    seriesFor(color: macroColors.fat, value: (t) => t.fat);
     return [
       for (final s in series)
         LineChartBarData(
@@ -1525,10 +1212,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -1542,7 +1226,8 @@ class _StatsScreenState extends State<StatsScreen> {
                   reservedSize: _kBottomAxisReservedSize,
                   interval: 1,
                   getTitlesWidget: (value, meta) {
-                    if (value == 0 || value == (emptyPointCount - 1).toDouble()) {
+                    if (value == 0 ||
+                        value == (emptyPointCount - 1).toDouble()) {
                       return buildEdgeAwareDateLabel(
                         meta: meta,
                         // Calendar arithmetic, not `subtract(Duration(...))`
@@ -1550,16 +1235,14 @@ class _StatsScreenState extends State<StatsScreen> {
                         // wrong wall-clock day. Cosmetic here (empty-state
                         // axis) but kept consistent with the service so the
                         // pattern does not get copied back out.
-                        text: ChartAxisHelper.formatDateLabel(
-                          () {
-                            final now = DateTime.now();
-                            return DateTime(
-                              now.year,
-                              now.month,
-                              now.day - ((emptyPointCount - 1) - value).toInt(),
-                            );
-                          }(),
-                        ),
+                        text: ChartAxisHelper.formatDateLabel(() {
+                          final now = DateTime.now();
+                          return DateTime(
+                            now.year,
+                            now.month,
+                            now.day - ((emptyPointCount - 1) - value).toInt(),
+                          );
+                        }()),
                         style: TextStyle(
                           fontSize: 9,
                           color: themeColors.textMuted,
@@ -1606,42 +1289,47 @@ class _StatsScreenState extends State<StatsScreen> {
                     color: themeColors.primary.withAlpha(25),
                   ),
                 )
-              else
-                ...[
-                  LineChartBarData(
-                    spots:
-                        List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
-                    color: macroColors.protein,
-                    isCurved: true,
-                    curveSmoothness: 0.3,
-                    barWidth: 2,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
-                    belowBarData: BarAreaData(show: false),
+              else ...[
+                LineChartBarData(
+                  spots: List.generate(
+                    emptyPointCount,
+                    (i) => FlSpot(i.toDouble(), 0),
                   ),
-                  LineChartBarData(
-                    spots:
-                        List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
-                    color: macroColors.carbs,
-                    isCurved: true,
-                    curveSmoothness: 0.3,
-                    barWidth: 2,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
-                    belowBarData: BarAreaData(show: false),
+                  color: macroColors.protein,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(show: false),
+                  belowBarData: BarAreaData(show: false),
+                ),
+                LineChartBarData(
+                  spots: List.generate(
+                    emptyPointCount,
+                    (i) => FlSpot(i.toDouble(), 0),
                   ),
-                  LineChartBarData(
-                    spots:
-                        List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
-                    color: macroColors.fat,
-                    isCurved: true,
-                    curveSmoothness: 0.3,
-                    barWidth: 2,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
-                    belowBarData: BarAreaData(show: false),
+                  color: macroColors.carbs,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(show: false),
+                  belowBarData: BarAreaData(show: false),
+                ),
+                LineChartBarData(
+                  spots: List.generate(
+                    emptyPointCount,
+                    (i) => FlSpot(i.toDouble(), 0),
                   ),
-                ],
+                  color: macroColors.fat,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(show: false),
+                  belowBarData: BarAreaData(show: false),
+                ),
+              ],
             ],
           ),
         );
@@ -1713,10 +1401,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -1879,6 +1564,14 @@ class _StatsScreenState extends State<StatsScreen> {
                     'Distance ($distUnit)',
                     themeColors,
                   ),
+                  if (_hasEstimatedDay(cardio.trend))
+                    _buildLegendItem(
+                      theme,
+                      themeColors.surface,
+                      'est.',
+                      themeColors,
+                      outline: themeColors.textMuted,
+                    ),
                 ],
               ),
             ],
@@ -1973,10 +1666,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -2031,11 +1721,11 @@ class _StatsScreenState extends State<StatsScreen> {
                 isStrokeCapRound: true,
                 dotData: FlDotData(
                   show: true,
-                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                    radius: 3,
-                    color: themeColors.secondary,
-                    strokeWidth: 1.5,
-                    strokeColor: themeColors.surface,
+                  getDotPainter: (p, x, data, i) => _cardioDotPainter(
+                    points,
+                    p,
+                    themeColors.secondary,
+                    themeColors,
                   ),
                 ),
                 belowBarData: BarAreaData(
@@ -2053,11 +1743,11 @@ class _StatsScreenState extends State<StatsScreen> {
                   isStrokeCapRound: true,
                   dotData: FlDotData(
                     show: true,
-                    getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                      radius: 3,
-                      color: themeColors.primary,
-                      strokeWidth: 1.5,
-                      strokeColor: themeColors.surface,
+                    getDotPainter: (p, x, data, i) => _cardioDotPainter(
+                      points,
+                      p,
+                      themeColors.primary,
+                      themeColors,
                     ),
                   ),
                   belowBarData: BarAreaData(show: false),
@@ -2069,12 +1759,41 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
+  /// True when any day in [trend] carries a distance the watch estimated, so
+  /// the card needs the `est.` legend item (D-317).
+  bool _hasEstimatedDay(List<CardioTrendPoint> trend) =>
+      trend.any((point) => point.distanceEstimated);
+
+  /// The dot for one cardio spot: an estimated day is drawn hollow — the
+  /// series colour on the stroke, the surface on the fill — and every other
+  /// day keeps the filled dot it always had.
+  ///
+  /// The estimate flag is looked up through the spot's `x`, its trend index,
+  /// because a series may hold fewer spots than the trend has days.
+  FlDotPainter _cardioDotPainter(
+    List<CardioTrendPoint> trend,
+    FlSpot spot,
+    Color seriesColor,
+    OmniThemeColors themeColors,
+  ) {
+    final index = spot.x.round();
+    final estimated =
+        index >= 0 && index < trend.length && trend[index].distanceEstimated;
+    return FlDotCirclePainter(
+      radius: 3,
+      color: estimated ? themeColors.surface : seriesColor,
+      strokeWidth: 1.5,
+      strokeColor: estimated ? seriesColor : themeColors.surface,
+    );
+  }
+
   Widget _buildLegendItem(
     ThemeData theme,
     Color color,
     String label,
-    OmniThemeColors themeColors,
-  ) {
+    OmniThemeColors themeColors, {
+    Color? outline,
+  }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2084,6 +1803,7 @@ class _StatsScreenState extends State<StatsScreen> {
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(4),
+            border: outline == null ? null : Border.all(color: outline),
           ),
         ),
         const SizedBox(width: 6),
@@ -2096,7 +1816,6 @@ class _StatsScreenState extends State<StatsScreen> {
       ],
     );
   }
-
 
   /// Deliberate single-point card for a lift metric (e1RM or volume).
   Widget _buildSinglePointCard({
@@ -2146,15 +1865,18 @@ class _StatsScreenState extends State<StatsScreen> {
     final durStr = '$mins:${secs.toString().padLeft(2, '0')}';
 
     final parts = <String>['Duration: $durStr'];
+    final estimateSuffix = point.distanceEstimated ? ' est.' : '';
     if (point.distanceM != null) {
-      final km = point.distanceM! / 1000.0;
-      final isKm = distUnit == 'km';
-      final val = isKm ? km : km * 0.621371;
-      parts.add('Distance: ${val.toStringAsFixed(2)} $distUnit');
+      final value = _distanceForDisplay(point.distanceM!, distUnit);
+      parts.add(
+        'Distance: ${value.toStringAsFixed(2)} $distUnit$estimateSuffix',
+      );
     }
     if (point.paceSecPerKm != null) {
       final displayPace = _paceForDisplay(point.paceSecPerKm!, distUnit);
-      parts.add('Pace: ${displayPace.toStringAsFixed(0)} s/$distUnit');
+      parts.add(
+        'Pace: ${displayPace.toStringAsFixed(0)} s/$distUnit$estimateSuffix',
+      );
     }
 
     return Container(
@@ -2256,17 +1978,16 @@ class _StatsScreenState extends State<StatsScreen> {
     return value.toStringAsFixed(1);
   }
 
+  /// Seconds per display unit of distance — the pace a stored sec/km figure
+  /// reads as in the preferred unit. The conversion is
+  /// [UnitFormatter.metresPerUnit]'s, so no km↔mi constant is repeated here.
   double _paceForDisplay(double paceSecPerKm, String distUnit) {
-    if (distUnit == 'mi') {
-      // Convert sec/km to sec/mi for display when miles are preferred.
-      return paceSecPerKm * 1.609344;
-    }
-    return paceSecPerKm;
+    return paceSecPerKm * UnitFormatter.metresPerUnit(distUnit) / 1000.0;
   }
 
+  /// Metres as the display value of [distUnit].
   double _distanceForDisplay(double distanceM, String distUnit) {
-    final km = distanceM / 1000.0;
-    return distUnit == 'mi' ? km * 0.621371 : km;
+    return distanceM / UnitFormatter.metresPerUnit(distUnit);
   }
 
   /// Build the NUTRITION card's legend row. Carries the
@@ -2275,10 +1996,7 @@ class _StatsScreenState extends State<StatsScreen> {
   /// line. The dashed line is rendered with a 2-pixel solid
   /// swatch followed by a 2-pixel gap so the legend swatch
   /// matches the on-chart dash pattern.
-  Widget _buildNutritionLegend(
-    ThemeData theme,
-    OmniThemeColors themeColors,
-  ) {
+  Widget _buildNutritionLegend(ThemeData theme, OmniThemeColors themeColors) {
     final macroColors = themeColors.macroChart;
     final hasTarget = (_nutritionAdherence?.targetLine.isNotEmpty ?? false);
     if (_nutritionView == _NutritionView.calories) {
@@ -2312,18 +2030,8 @@ class _StatsScreenState extends State<StatsScreen> {
           'Protein (g)',
           themeColors,
         ),
-        _buildLegendItem(
-          theme,
-          macroColors.carbs,
-          'Carbs (g)',
-          themeColors,
-        ),
-        _buildLegendItem(
-          theme,
-          macroColors.fat,
-          'Fat (g)',
-          themeColors,
-        ),
+        _buildLegendItem(theme, macroColors.carbs, 'Carbs (g)', themeColors),
+        _buildLegendItem(theme, macroColors.fat, 'Fat (g)', themeColors),
         if (hasTarget)
           _buildDashedLegendItem(
             theme,
@@ -2460,56 +2168,5 @@ class _LinearScale {
     }
     final t = (targetValue - targetMin) / targetRange;
     return sourceMin + t * (sourceMax - sourceMin);
-  }
-}
-
-class _StatsPill extends StatelessWidget {
-  final String label;
-  final String value;
-  final OmniThemeColors themeColors;
-  final ThemeData theme;
-  final Widget? trailingIcon;
-
-  const _StatsPill({
-    required this.label,
-    required this.value,
-    required this.themeColors,
-    required this.theme,
-    this.trailingIcon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: theme.textTheme.labelSmall?.copyWith(
-            letterSpacing: 0.5,
-            color: themeColors.textMuted,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Text(
-                value,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: themeColors.primary,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (trailingIcon != null) ...[
-              const SizedBox(width: 4),
-              trailingIcon!,
-            ],
-          ],
-        ),
-      ],
-    );
   }
 }
