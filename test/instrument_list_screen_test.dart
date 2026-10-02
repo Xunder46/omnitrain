@@ -557,10 +557,10 @@ void main() {
           expect(_instrumentRowKeys(), ['instrument_row_ex-in']);
           expect(find.text('Deadlift'), findsNothing);
 
-          // Five chips: four legacy headers plus the Instruments header, and
-          // the Instruments one is the first, on the Resistance header.
+          // One chip: the Instruments list's first header carries the window
+          // chip, and it is the only header on the screen.
           final chips = find.byKey(const Key('stats_window_chip'));
-          expect(chips, findsNWidgets(5));
+          expect(chips, findsOneWidget);
           expect(_textsUnder(chips), everyElement('· ${window.label}'));
           final instrumentsHeader = find.ancestor(
             of: chips.first,
@@ -582,8 +582,8 @@ void main() {
           await readModel();
         });
 
-        testWidgets('no Instruments content renders and the legacy layout is '
-            'untouched', (tester) async {
+        testWidgets('no Instruments content renders and no legacy section '
+            'appears', (tester) async {
           await pumpStats(tester);
 
           // Nothing is logged, so nothing is selectable.
@@ -599,17 +599,14 @@ void main() {
           );
           expect(_instrumentRowKeys(), isEmpty);
 
-          // The legacy layout renders exactly as it does without the list.
-          expect(
-            find.byKey(const Key('stats_legacy_sections')),
-            findsOneWidget,
-          );
+          // The legacy layout is gone; the screen keeps only its live chrome.
+          expect(find.byKey(const Key('stats_legacy_sections')), findsNothing);
           expect(find.text('ALL TIME'), findsOneWidget);
-          expect(find.text('STRENGTH'), findsOneWidget);
-          expect(find.text('CARDIO'), findsOneWidget);
-          expect(find.text('ISOMETRIC'), findsOneWidget);
-          expect(find.text('SPORTS'), findsOneWidget);
-          expect(find.text('NUTRITION'), findsOneWidget);
+          expect(find.text('STRENGTH'), findsNothing);
+          expect(find.text('CARDIO'), findsNothing);
+          expect(find.text('ISOMETRIC'), findsNothing);
+          expect(find.text('SPORTS'), findsNothing);
+          expect(find.text('NUTRITION'), findsNothing);
           expect(tester.takeException(), isNull);
         });
       });
@@ -671,7 +668,7 @@ void main() {
         });
       });
 
-      // ─── S-1015: both layouts on screen at once ───────────────────────────
+      // ─── S-1015: the Instruments list is the screen's only section list ───
 
       group('S-1015', () {
         setUp(() async {
@@ -679,29 +676,26 @@ void main() {
           await readModel();
         });
 
-        testWidgets('the Instruments list sits above the untouched legacy '
-            'sections', (tester) async {
+        testWidgets('the Instruments list follows ALL TIME and no legacy '
+            'section is present', (tester) async {
           await pumpStats(tester);
 
           expect(find.text('Resistance'), findsOneWidget);
+          expect(find.byKey(const Key('stats_legacy_sections')), findsNothing);
+          // The live order: the `ALL TIME` eyebrow, then the list.
           expect(
-            find.byKey(const Key('stats_legacy_sections')),
-            findsOneWidget,
+            tester.getTopLeft(find.text('ALL TIME')).dy,
+            lessThan(tester.getTopLeft(find.text('Resistance')).dy),
           );
-          expect(
-            tester.getTopLeft(find.text('Resistance')).dy,
-            lessThan(tester.getTopLeft(find.text('STRENGTH')).dy),
-          );
-          // Every legacy header is still there, in its old order.
+          // No legacy header survives anywhere on the screen.
           for (final title in const [
-            'ALL TIME',
             'STRENGTH',
             'CARDIO',
             'ISOMETRIC',
             'SPORTS',
             'NUTRITION',
           ]) {
-            expect(find.text(title), findsOneWidget);
+            expect(find.text(title), findsNothing);
           }
         });
       });

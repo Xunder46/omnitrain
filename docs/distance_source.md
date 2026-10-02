@@ -32,9 +32,9 @@ Invariants below.
 `DistanceSource` is the only place that says what a stored source means:
 `resolve` maps a missing source to `entered`, and `isEstimated` answers whether
 a value is an estimate. Verified by `test/distance_source_test.dart` (`S-801`).
-`StatsProgressService` marks a training day as estimated when any distance
-counted in that day's total is one, and the Stats card renders that mark.
-Verified by `test/stats_distance_estimate_test.dart` (`S-832`–`S-835`).
+`StatsProgressService` marks an exercise's value as estimated when any distance
+behind it is one, and the Instruments list renders that mark. Verified by
+`test/instrument_list_screen_test.dart` (`S-1001`).
 
 `DistancePairing` is how the source-aware code decides which distance row
 belongs to which entry. It delegates to `EntryRows` in
@@ -138,13 +138,12 @@ zero distance is absence, not a value. Verified by `test/distance_source_test.da
   `S-805`) and `test/session_summary_distance_test.dart` (`S-821`).
 - A reader of a distance resolves its source through `DistanceSource` rather
   than testing the stored string, so a legacy row marks nothing and a reader
-  cannot invent a fourth meaning. Stats' estimate marking is
-  `test/stats_distance_estimate_test.dart` (`S-832`–`S-835`).
+  cannot invent a fourth meaning. The Instruments list's estimate marking is
+  `test/instrument_list_screen_test.dart` (`S-1001`).
 - A distance row belongs to the entry the number in its id names, in any order
   a store returns rows in, and the Summary's write and the Stats reader agree
-  on that pairing. Verified by `test/distance_source_test.dart` (`S-808`),
-  `test/entry_rows_test.dart` (`S-844`) and
-  `test/stats_distance_estimate_test.dart` (`S-831`).
+  on that pairing. Verified by `test/distance_source_test.dart` (`S-808`) and
+  `test/entry_rows_test.dart` (`S-844`).
 - A row past the last entry is a leftover: it pairs with no entry, counts in no
   total, and stays stored. Verified by `test/entry_identity_test.dart`
   (`S-858`).

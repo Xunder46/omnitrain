@@ -405,17 +405,21 @@ void main() {
           expect(statsPills, contains('TIME'));
           expect(statsPills, contains('STREAK'));
 
-          // The Stats screen's PR list, scrolled into view.
-          await tester.dragUntilVisible(
-            find.byType(RecentPRList),
-            find.byType(Scrollable).first,
-            const Offset(0, -200),
-          );
+          // The PR list is not on this screen: it lives in Records & Trends.
+          expect(find.byType(RecentPRList), findsNothing);
+
+          // Tapping through lands on Records & Trends with the same figures.
+          await tester.tap(find.byTooltip('Records & Trends'));
           await tester.pumpAndSettle();
-          final statsPrs = _textsUnder(find.byType(RecentPRList));
-          expect(statsPrs, contains('Recent PRs'));
-          expect(statsPrs, contains('Back Squat'));
-          expect(statsPrs, contains('Bench Press'));
+
+          expect(find.text('Records & Trends'), findsOneWidget);
+          expect(_textsUnder(find.byType(OmniSurface).first), statsPills);
+
+          // The PR list Records & Trends renders, in the same order.
+          final trendPrs = _textsUnder(find.byType(RecentPRList));
+          expect(trendPrs, contains('Recent PRs'));
+          expect(trendPrs, contains('Back Squat'));
+          expect(trendPrs, contains('Bench Press'));
           expect(
             tester
                 .getTopLeft(
@@ -436,14 +440,54 @@ void main() {
                   .dy,
             ),
           );
+        });
+      });
 
-          // Tapping through lands on Records & Trends with the same figures.
-          await tester.tap(find.byTooltip('Records & Trends'));
-          await tester.pumpAndSettle();
+      // ─── the Recent PRs weight unit ───────────────────────────────────────
+      //
+      // Records & Trends is the PR list's only host since Stats PR 4c removed
+      // the legacy sections, so the unit conversion the retired Stats-screen
+      // test guarded is asserted here.
 
-          expect(find.text('Records & Trends'), findsOneWidget);
-          expect(_textsUnder(find.byType(OmniSurface).first), statsPills);
-          expect(_textsUnder(find.byType(RecentPRList)), statsPrs);
+      group('Recent PRs weight unit', () {
+        setUp(() async {
+          await seedExercise(
+            repo,
+            id: 'ex-bench',
+            name: 'Bench Press',
+            capabilities: const ['load', 'reps'],
+          );
+          await _seedSetSession(
+            repo,
+            sessionId: 's-lbs',
+            daysAgo: 2,
+            exerciseId: 'ex-bench',
+            weightKg: 100,
+            reps: 5,
+          );
+          await settingsState.setPreferredWeightUnit('lbs');
+        });
+
+        testWidgets('a PR row reads the record in pounds when the weight unit '
+            'preference is pounds', (tester) async {
+          await pump(tester, recordsScreen());
+
+          final expected = _e1RmLabel(100, 5, settingsState);
+          expect(
+            expected,
+            endsWith('lbs'),
+            reason: 'the fixture must exercise the pounds preference',
+          );
+
+          final prTexts = _textsUnder(find.byType(RecentPRList));
+          expect(prTexts, contains('Recent PRs'));
+          expect(prTexts, contains('Bench Press'));
+          expect(prTexts, contains(expected));
+          expect(
+            prTexts.where((text) => text.endsWith('kg')),
+            isEmpty,
+            reason: 'the row must not read the stored kilograms',
+          );
         });
       });
 

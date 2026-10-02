@@ -1131,12 +1131,21 @@ void main() {
         // a rating of 1 / 5.
         expect(find.text('DURATION'), findsNothing);
         expect(find.text('REST TIME'), findsNothing);
-        expect(find.text('EFFORT'), findsOneWidget,
-            reason: 'EFFORT row must be visible for rolling sessions');
-        expect(find.text('1 / 5'), findsOneWidget,
-            reason: 'EFFORT value must show the rating for rolling sessions');
-        expect(find.text('Change'), findsOneWidget,
-            reason: 'Change button must be visible when a rating exists');
+        expect(
+          find.text('EFFORT'),
+          findsOneWidget,
+          reason: 'EFFORT row must be visible for rolling sessions',
+        );
+        expect(
+          find.text('1 / 5'),
+          findsOneWidget,
+          reason: 'EFFORT value must show the rating for rolling sessions',
+        );
+        expect(
+          find.text('Change'),
+          findsOneWidget,
+          reason: 'Change button must be visible when a rating exists',
+        );
 
         // The combined info card is still rendered (3 OmniSurface: info + note + calendar)
         expect(find.byType(OmniSurface), findsNWidgets(3));
@@ -1156,8 +1165,7 @@ void main() {
         expect(
           find.byKey(const Key('omni_session_summary_modality_chip')),
           findsOneWidget,
-          reason:
-              'The modality chip must remain visible with the date header.',
+          reason: 'The modality chip must remain visible with the date header.',
         );
 
         // Three OmniCardHeaders are rendered for a rolling session:
@@ -2641,76 +2649,21 @@ void main() {
     );
 
     testWidgets(
-      'S-005: STRENGTH OmniCardHeader renders the window chip in its actions slot',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 900));
-        await pumpStatsScreen(
-          tester,
-          seed: (repo) => seedCompletedStrengthSession(repo),
-        );
-
-        // The STRENGTH [OmniCardHeader] is the ancestor of the
-        // `STRENGTH` title Text. We locate it via `find.ancestor` so
-        // we descend from the header widget itself, not from the
-        // title Text alone.
-        final strengthHeader = find.ancestor(
-          of: find.text('STRENGTH'),
-          matching: find.byType(OmniCardHeader),
-        );
-        expect(strengthHeader, findsOneWidget);
-
-        // The window chip (key `stats_window_chip`) is rendered inside
-        // the STRENGTH header's actions cluster. The same chip key is
-        // also used by the CARDIO header, so the global count is 2,
-        // but exactly one of those is a descendant of STRENGTH's actions
-        // row.
-        final strengthActions = find.descendant(
-          of: strengthHeader,
-          matching: find.byKey(const Key('omniCardHeader_actions')),
-        );
-        expect(
-          strengthActions,
-          findsOneWidget,
-          reason: 'STRENGTH header must have an actions cluster.',
-        );
-        expect(
-          find.descendant(
-            of: strengthActions,
-            matching: find.byKey(const Key('stats_window_chip')),
-          ),
-          findsOneWidget,
-          reason:
-              'The window chip must live in the STRENGTH header actions '
-              'slot, not in the card body or elsewhere.',
-        );
-      },
-    );
-
-    testWidgets(
       'S-018: every Stats section eyebrow uses D-1 typography (labelSmall + w600 + 2.0 + textMuted)',
       (WidgetTester tester) async {
-        // Tall viewport so every section header — including the
-        // NUTRITION card at the bottom — is mounted. PR 2b added
-        // RECORDS / VOLUME TRENDS / CONSISTENCY between the
-        // existing sections, so the total content height grew;
-        // a phone-class 900-tall viewport now hides NUTRITION
-        // offscreen. The header itself is mounted in the
-        // widget tree, but `find.text` only matches widgets that
-        // are currently in the visible viewport for the test
-        // surface. Bumping to 1800 keeps every section visible.
+        // A tall viewport keeps the whole body laid out, so an eyebrow is
+        // never just an off-screen miss.
         await tester.binding.setSurfaceSize(const Size(400, 1800));
         await pumpStatsScreen(
           tester,
           seed: (repo) => seedCompletedStrengthSession(repo),
         );
 
-        // Four section headers: ALL TIME, STRENGTH, CARDIO, NUTRITION.
-        for (final label in const [
-          'ALL TIME',
-          'STRENGTH',
-          'CARDIO',
-          'NUTRITION',
-        ]) {
+        // The fixture logs no effort, so the Instruments list has no section
+        // to draw and the screen's only eyebrow is `ALL TIME`. Every section
+        // the list does render is an `OmniCardHeader(title: section.label)`
+        // (S-1208 covers the list's own state).
+        for (final label in const ['ALL TIME']) {
           final titleFinder = find.descendant(
             of: find.byType(OmniCardHeader),
             matching: find.text(label),

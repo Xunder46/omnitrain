@@ -23,14 +23,14 @@ Note on resume dialog:
 - It is intentionally not promoted into `lib/widgets/` because it is feature-specific and not reused across screens.
 
 Note on the Stats screen's Instruments widgets:
-- The Stats screen's Instruments list is built from four feature-local widgets: `InstrumentList` in `lib/features/stats/widgets/instrument_list.dart` (the sections, the row cap and the expand control), `InstrumentRowTile` and `InstrumentChangeChip` in `lib/features/stats/widgets/instrument_row.dart` (one exercise's figure and its movement against the previous window), `InstrumentSparkline` in `lib/features/stats/widgets/instrument_sparkline.dart` (that exercise's trend line), and `StatsWindowChip` in `lib/features/stats/widgets/window_chip.dart` (the header chip naming the resolved window, shared with the legacy section headers).
+- The Stats screen's Instruments list is built from four feature-local widgets: `InstrumentList` in `lib/features/stats/widgets/instrument_list.dart` (the sections, the row cap and the expand control), `InstrumentRowTile` and `InstrumentChangeChip` in `lib/features/stats/widgets/instrument_row.dart` (one exercise's figure and its movement against the previous window), `InstrumentSparkline` in `lib/features/stats/widgets/instrument_sparkline.dart` (that exercise's trend line), and `StatsWindowChip` in `lib/features/stats/widgets/window_chip.dart` (the header chip naming the resolved window, carried by the first section header).
 - They are feature-scoped rather than `lib/widgets/` material, but they are presentation-only and theme-reactive in the same sense as the catalogued widgets. Their behaviour is owned by [Stats Screen](stats_screen.md) and verified by `test/instrument_list_screen_test.dart`.
 
-Note on the Stats screen's nutrition trend card:
-- `NutritionTrendCard` in `lib/features/nutrition/widgets/nutrition_trend_card.dart` is the NUTRITION card's body — the Calories / Macros toggle, both charts, the empty chart, the single-point fallbacks and the legend.
-- It is feature-scoped rather than `lib/widgets/` material, but it is presentation-only and theme-reactive in the same sense as the catalogued widgets. Both hosts render the same widget from the same inputs: the Stats screen's NUTRITION section and the full-history nutrition trend screen (`lib/features/nutrition/nutrition_trend_screen.dart`). Its behaviour is owned by [Stats Screen](stats_screen.md) and verified by `test/nutrition_trend_screen_test.dart`.
+Note on the nutrition trend card:
+- `NutritionTrendCard` in `lib/features/nutrition/widgets/nutrition_trend_card.dart` is the nutrition trend's body — the Calories / Macros toggle, both charts, the empty chart, the single-point fallbacks and the legend.
+- It is feature-scoped rather than `lib/widgets/` material, but it is presentation-only and theme-reactive in the same sense as the catalogued widgets. Its only host is the full-history nutrition trend screen (`lib/features/nutrition/nutrition_trend_screen.dart`), reached from the Stats screen's Fuel row. Its behaviour is owned by [Navigation & Screens](navigation_and_screens.md) and verified by `test/nutrition_trend_screen_test.dart`.
 
-Note on the Stats screen's Fuel section:
+Note on the Stats screen's Fuel row:
 - `FuelSection` in `lib/features/stats/widgets/fuel_section.dart` is the Fuel row's body: the logged-days indicator, the calories and protein figures with their comparison readouts, and the training / rest split. Its inputs are a `FuelSummary` (from `StatsProgressService.computeFuelSummary()`), the theme colours and the tap callback; it reads no repository.
 - It is feature-scoped rather than `lib/widgets/` material, but it is presentation-only and theme-reactive in the same sense as the catalogued widgets. The section root and the row's tap target carry keys (`fuel_section`, `fuel_row`); every other key the row's tests address is declared in the same file. Its behaviour is owned by [Stats Screen](stats_screen.md) and verified by `test/fuel_row_screen_test.dart`.
 
@@ -109,7 +109,7 @@ so the gap is visible rather than silent.
 | Widget | File | Note |
 |--------|------|------|
 | `InteractiveLogo` | `lib/widgets/common/interactive_logo.dart` | Undocumented. |
-| `ScrollableTrendChart` | `lib/features/stats/widgets/scrollable_trend_chart.dart` | Behavior is documented in [Stats Screen](stats_screen.md) and [Profile & Measurements](profile_and_measurements.md), but it has no catalog entry. |
+| `ScrollableTrendChart` | `lib/features/stats/widgets/scrollable_trend_chart.dart` | Behavior is documented in [Profile & Measurements](profile_and_measurements.md), but it has no catalog entry. |
 | `FoodThumbnailImage` | `lib/features/nutrition/widgets/food_thumbnail_io.dart` | Platform-conditional implementation behind `FoodThumbnail`. |
 
 ---

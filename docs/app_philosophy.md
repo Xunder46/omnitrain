@@ -20,8 +20,8 @@
 > The app now has a full nutrition feature: `NutritionScreen`,
 > `NutritionTargetScreen`, `AddFoodScreen`, `EditFoodScreen`, the
 > `NutritionState` / `FoodLibraryState` / `NutritionPrimerState` state classes,
-> the home-screen `NutritionSummaryCard`, a NUTRITION card on the Stats screen,
-> water tracking, and backing repository APIs plus SQLite tables. See
+> the home-screen `NutritionSummaryCard`, the Stats screen's Fuel row,
+> water tracking, and backing repository APIs. See
 > [Navigation & Screens](navigation_and_screens.md) and
 > [Nutrition State](state_management/nutrition_state.md).
 

@@ -1,11 +1,11 @@
-// The full-history nutrition trend screen and the NUTRITION card it shares
-// with the Stats screen — Stats PR 4b3, Phase 1.
+// The full-history nutrition trend screen — Stats PR 4b3, Phase 1. It is the
+// only home of the nutrition trend now that Stats PR 4c removed the Stats
+// NUTRITION card.
 //
-// Scenarios S-1109 (the Calories / Macros toggle swaps the plotted datasets)
-// and S-1110(a) (the extracted screen's figures equal the Stats NUTRITION
-// card's for the same repository — the move, not a rewrite), plus S-1110(b)
-// (the zero-session empty state wins over the Fuel row) and the empty-chart
-// path.
+// Scenarios S-1109 (the Calories / Macros toggle swaps the plotted datasets),
+// S-1110(a) (the extracted screen plots the repository's full food history)
+// and S-1110(b) (the zero-session empty state wins over the Fuel row), plus
+// the empty-chart path.
 //
 // Plan: `docs/plans/2026-10-01-04b3-stats-pr4b3-fuel-row-plan/`.
 //
@@ -28,11 +28,37 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/repository_harness.dart';
 
-/// Tall enough that the NUTRITION card, which sits below every legacy section,
-/// is laid out — an assertion on a chart is then never just an off-screen miss.
+/// Tall enough that the whole trend card is laid out — an assertion on a chart
+/// is then never just an off-screen miss.
 const Size _kTallViewport = Size(400, 3000);
 
+/// The largest text scale iOS offers through Accessibility settings.
+const double _kMaxTextScale = 5.0;
+
+/// Wide enough that the toggle's two labels have room for a full line each at
+/// [_kMaxTextScale]. `flutter test` renders with a placeholder font whose
+/// glyphs are a full em wide, so the labels measure far wider here than they
+/// do on a device: this viewport is a measuring instrument, not a device size.
+const Size _kWideViewport = Size(1400, 3000);
+
 // ─── finders and readers ────────────────────────────────────────────────────
+
+/// The size [label] takes on one unbounded line at [scale], in the style the
+/// card renders it in.
+///
+/// A label that wrapped is taller than this.
+Size _oneLineSize(WidgetTester tester, String label, double scale) {
+  final finder = find.text(label);
+  final style =
+      tester.widget<Text>(finder).style ??
+      DefaultTextStyle.of(tester.element(finder)).style;
+  final painter = TextPainter(
+    text: TextSpan(text: label, style: style),
+    textDirection: TextDirection.ltr,
+    textScaler: TextScaler.linear(scale),
+  )..layout();
+  return painter.size;
+}
 
 Finder _scrollable(String unitLabel) => find.byWidgetPredicate(
   (widget) => widget is ScrollableTrendChart && widget.unitLabel == unitLabel,
@@ -40,8 +66,8 @@ Finder _scrollable(String unitLabel) => find.byWidgetPredicate(
 
 /// The `LineChartData` of the one scrollable chart labelled [unitLabel].
 ///
-/// The NUTRITION calories chart is the only `'kcal'` chart on either screen,
-/// and the trend screen renders only that card, so the label identifies it.
+/// The trend screen renders a single card, so the unit label identifies its
+/// chart.
 LineChartData _chartData(WidgetTester tester, String unitLabel) {
   final finder = _scrollable(unitLabel);
   expect(finder, findsOneWidget);
@@ -51,11 +77,6 @@ LineChartData _chartData(WidgetTester tester, String unitLabel) {
       )
       .data;
 }
-
-/// The plotted actuals — the last series, since the dashed target line is
-/// drawn first — as `(x, y)` pairs.
-List<(double, double)> _actuals(LineChartData data) =>
-    data.lineBarsData.last.spots.map((spot) => (spot.x, spot.y)).toList();
 
 // ─── fixtures ───────────────────────────────────────────────────────────────
 
@@ -184,21 +205,28 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      Future<void> pumpTrend(WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(_kTallViewport);
+      Future<void> pumpTrend(
+        WidgetTester tester, {
+        Size surface = _kTallViewport,
+        double textScale = 1.0,
+      }) async {
+        await tester.binding.setSurfaceSize(surface);
         addTearDown(() => tester.binding.setSurfaceSize(null));
         await tester.pumpWidget(
           MaterialApp(
-            home: NutritionTrendScreen(
-              workoutState: workoutState,
-              settingsState: settingsState,
+            home: MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+              child: NutritionTrendScreen(
+                workoutState: workoutState,
+                settingsState: settingsState,
+              ),
             ),
           ),
         );
         await tester.pumpAndSettle();
       }
 
-      // ─── S-1110(a): the move, not a rewrite ───────────────────────────────
+      // ─── S-1110(a): the trend screen plots the full history ───────────────
 
       group('S-1110(a)', () {
         setUp(() async {
@@ -206,30 +234,14 @@ void main() {
           await _seedNutrition(repo);
         });
 
-        testWidgets('the trend screen plots the same calories actuals as the '
-            'Stats NUTRITION card', (tester) async {
-          await pumpStats(tester);
-          final statsActuals = _actuals(_chartData(tester, 'kcal'));
-
+        testWidgets('the trend screen plots the seeded calories actuals under '
+            'the target line', (tester) async {
           await pumpTrend(tester);
-          final trendActuals = _actuals(_chartData(tester, 'kcal'));
 
-          expect(trendActuals, isNotEmpty);
-          expect(trendActuals, statsActuals);
-        });
-
-        testWidgets('both hosts draw the target line over the same actuals', (
-          tester,
-        ) async {
-          await pumpStats(tester);
-          final statsData = _chartData(tester, 'kcal');
-          expect(statsData.lineBarsData, hasLength(2));
+          final data = _chartData(tester, 'kcal');
+          expect(data.lineBarsData, hasLength(2));
+          expect(data.lineBarsData.last.spots, isNotEmpty);
           expect(find.text('Target (kcal)'), findsOneWidget);
-
-          await pumpTrend(tester);
-          final trendData = _chartData(tester, 'kcal');
-          expect(trendData.lineBarsData, hasLength(2));
-          expect(_actuals(trendData), _actuals(statsData));
         });
       });
 
@@ -302,6 +314,48 @@ void main() {
             expect(find.text('Fat (g)'), findsOneWidget);
           },
         );
+      });
+
+      // ─── the toggle's labels at the largest text scale ────────────────────
+
+      group('Calories / Macros labels at max text scale', () {
+        setUp(() async {
+          await _clearConsumedFoods(repo);
+          await _seedNutrition(repo);
+        });
+
+        testWidgets('both labels lay out on one line at $_kMaxTextScale x text', (
+          tester,
+        ) async {
+          // The chart's pinned y-axis is a fixed-height band holding 9px tick
+          // labels, so at 5.0x text those labels are five times taller than the
+          // band and overflow it. That is the chart's geometry, not the
+          // toggle's, and this guard measures the toggle's labels.
+          final previous = FlutterError.onError;
+          FlutterError.onError = (details) {
+            if (!details.exceptionAsString().contains('overflowed')) {
+              previous?.call(details);
+            }
+          };
+          try {
+            await pumpTrend(
+              tester,
+              surface: _kWideViewport,
+              textScale: _kMaxTextScale,
+            );
+          } finally {
+            FlutterError.onError = previous;
+          }
+
+          for (final label in ['Calories', 'Macros']) {
+            final oneLine = _oneLineSize(tester, label, _kMaxTextScale);
+            expect(
+              tester.getSize(find.text(label)).height,
+              closeTo(oneLine.height, 1),
+              reason: '$label wrapped onto more than one line',
+            );
+          }
+        });
       });
 
       // ─── the empty-chart path ─────────────────────────────────────────────

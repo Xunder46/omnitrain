@@ -1,5 +1,6 @@
-// Stats PR 3a2, Phase 2 — the Session Summary's DISTANCE rows, and the Stats
-// card, read the same entries the writes address.
+// Stats PR 3a2, Phase 2 — the Session Summary's DISTANCE rows read the same
+// entries the writes address. Stats PR 4c removed the Stats screen's distance
+// card, so S-858's Stats half asserts the readout is gone.
 //
 // The rows the section lists and the rows a distance write reaches are one list
 // (D-328), so a row that reads "· 4" is the fourth entry the write numbers 4. A
@@ -325,7 +326,7 @@ void main() {
 
   // ─── S-858: a leftover never shows and never counts ──────────────────────
 
-  testWidgets('S-858 the Summary shows one row and Stats one distance', (
+  testWidgets('S-858 the Summary shows one row and Stats no distance', (
     tester,
   ) async {
     final repo = await _freshRepo();
@@ -368,8 +369,9 @@ void main() {
     ], reason: 'D-328: a lone entry carries no "· n"');
 
     await _pumpStats(tester, repo, settings);
-    expect(find.textContaining('Distance: 5.50 km'), findsOneWidget);
-    expect(find.textContaining('Pace: 327 s/km'), findsOneWidget);
+    // 4c: the cardio card that read these entries is gone from the screen.
+    expect(find.textContaining('Distance: 5.50 km'), findsNothing);
+    expect(find.textContaining('Pace: 327 s/km'), findsNothing);
 
     final leftover = (await repo.getEffortObservations(
       'e-lo',

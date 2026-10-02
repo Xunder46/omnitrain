@@ -19,8 +19,7 @@ Both screens read one `StatsProgressService.computeExerciseMetrics()` result and
 format values through the same shared formatters, so a best shown in the index and
 the same best shown on the detail page cannot disagree. The service only reads: an
 all-time best describes what is already stored, creates no PR event and writes
-nothing. The PR list Records & Trends renders is the service's own `recentPRs` —
-the same list, in the same order, as the Stats screen's.
+nothing. The PR list Records & Trends renders is the service's own `recentPRs`.
 
 Verified by `test/records_and_trends_screen_test.dart` (`S-913` for the totals and
 the PR list, `S-914` for the shared best) and
@@ -91,7 +90,7 @@ reps with no load, so the axis is a property of the exercise's history rather th
 of the range being read. An isometric value also carries the added weight of the
 entry the holding effort belongs to; that annotation never decides the metric. A
 cardio value is marked `est.` when any distance behind its pace came from an
-estimated source — the same marker rule the Stats screen's CARDIO section uses.
+estimated source.
 
 An exercise with no usable data reports a zero on the metric its section uses
 instead of being dropped, so no entry can appear without a value.

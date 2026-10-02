@@ -539,8 +539,9 @@ void main() {
             // The screen is not empty: it is the row that is absent.
             expect(
               find.byKey(const Key('stats_legacy_sections')),
-              findsOneWidget,
+              findsNothing,
             );
+            expect(find.text('ALL TIME'), findsOneWidget);
           });
         });
 
@@ -558,8 +559,9 @@ void main() {
             expect(_fuelSection, findsNothing);
             expect(
               find.byKey(const Key('stats_legacy_sections')),
-              findsOneWidget,
+              findsNothing,
             );
+            expect(find.text('ALL TIME'), findsOneWidget);
           });
         });
       });
@@ -742,7 +744,7 @@ void main() {
             await pumpStats(tester);
 
             final chips = find.byKey(const Key('stats_window_chip'));
-            expect(chips, findsNWidgets(5));
+            expect(chips, findsOneWidget);
             final instrumentsHeader = find.ancestor(
               of: chips.first,
               matching: find.byType(OmniCardHeader),

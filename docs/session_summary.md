@@ -233,7 +233,7 @@ File: lib/core/services/session_summary_service.dart
 Key public methods:
 
 - compareGroupsToPreviousSession
-- computePRs — records PRs using the **Epley e1RM** formula (`StatsProgressService.epley1RM = weight × (1 + reps / 30)`), the same definition the in-workout toast and the Stats screen use. The screen passes its own session id so the just-finished workout's PRs are not compared against themselves. See `docs/plans/summary-pr-parity-plan.md`.
+- computePRs — records PRs using the **Epley e1RM** formula (`StatsProgressService.epley1RM = weight × (1 + reps / 30)`), the same definition the in-workout toast uses. The screen passes its own session id so the just-finished workout's PRs are not compared against themselves. See `docs/plans/summary-pr-parity-plan.md`.
 
   The returned list is collapsed to at most one `PRAchievement` per
   exercise — when the same exercise appears in more than one block
@@ -246,8 +246,8 @@ Key public methods:
 
   A parallel **reps-axis** pass emits bodyweight PRs
   (`metricLabel: 'reps'`) using `StatsProgressService.getAllTimeBestReps`
-  — the same source-of-truth query the in-session reps-PR toast and
-  the Stats screen use. The two passes cannot collide because an
+  — the same source-of-truth query the in-session reps-PR toast uses.
+  The two passes cannot collide because an
   exercise on the e1RM axis never has a non-null `bestReps` and vice
   versa. See `docs/plans/stats-summary-fix-pack-plan.md`
   Item 2 (rep-based record parity).
