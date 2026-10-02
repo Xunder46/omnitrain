@@ -21,7 +21,7 @@ import 'package:omnitrain/features/stats/exercise_progress_screen.dart';
 import 'package:omnitrain/features/stats/records_and_trends_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/features/stats/widgets/recent_pr_list.dart';
-import 'package:omnitrain/features/stats/widgets/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';

@@ -1,5 +1,12 @@
 # Documentation Audit — 2026-07-26
 
+> **HISTORY — frozen record.** This audit describes the `docs/` tree as it stood on
+> 2026-07-26 and is not maintained. Several of the gaps it lists have since been closed
+> (Nutrition now has [its own document](nutrition.md)) and several surfaces it describes
+> have since been removed (the Stats NUTRITION card). For current behavior read the
+> feature docs indexed in [the docs index](README.md). Retained because the
+> "still unresolved" list it ends with is still accurate for the items it names.
+
 A full audit of `docs/` against the `lib/` source tree.
 
 **Scope:** documentation only. No application source file was modified. The

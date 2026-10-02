@@ -9,6 +9,9 @@
 // S-836 (D-610) is transcribed here verbatim: the km↔mi conversion goes
 // through `UnitFormatter`, never through a literal in the screen.
 //
+// S-1263 (D-666) closes the series: the service and the model hold no reader of
+// a cardio/drill/round projection name.
+//
 // Plan: `docs/plans/2026-10-01-04c-stats-pr4c-remove-legacy-sections-plan/`.
 //
 // The behavioural half runs on both repository implementations. The harness is
@@ -23,7 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
-import 'package:omnitrain/features/stats/widgets/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
@@ -67,6 +70,39 @@ const List<String> _kInstrumentSections = <String>[
 /// Tall enough that the whole screen is laid out, so an assertion on a widget's
 /// absence is never just an off-screen miss.
 const Size _kTallViewport = Size(400, 2400);
+
+/// The two sources 4c2 emptied of the cardio/drill/round projections.
+const List<String> _kRetiredSources = <String>[
+  'lib/core/services/stats_progress_service.dart',
+  'lib/core/models/stats_progress.dart',
+];
+
+/// Every name D-666 forbids in `lib/`: the removed constants, passes, builders,
+/// day types, projections, model types and `StatsProgressData` fields.
+const List<String> _kRetiredNames = <String>[
+  'kTopCardioCount',
+  'kTopIsometricCount',
+  'kTopSportsCount',
+  '_processTimedEffort',
+  '_processDrillEffort',
+  '_processRoundEffort',
+  '_buildFullCardioForExercises',
+  '_buildFullDrillForExercises',
+  '_buildFullRoundForExercises',
+  '_CardioDay',
+  '_DrillDay',
+  '_RoundDay',
+  'CardioTrendPoint',
+  'CardioProgress',
+  'DrillProgress',
+  'RoundProgress',
+  'topCardio',
+  'topIsometric',
+  'topSports',
+  'nutritionTrend',
+  'StatsWindow.empty',
+  'hasData',
+];
 
 // ─── readers ────────────────────────────────────────────────────────────────
 
@@ -462,4 +498,25 @@ void main() {
       });
     });
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // S-1263 — the residue sweep (structural, D-666)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('S-1263 residue sweep', () {
+    test('no lib reader of a removed projection name survives', () {
+      for (final path in _kRetiredSources) {
+        final source = File(path).readAsStringSync();
+        for (final name in _kRetiredNames) {
+          expect(
+            source.contains(name),
+            isFalse,
+            reason:
+                'D-666: `$name` was deleted by 4c2 and must not come back to '
+                '$path',
+          );
+        }
+      }
+    });
+  });
 }

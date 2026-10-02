@@ -1,8 +1,8 @@
-// filepath: lib/features/stats/widgets/scrollable_trend_chart.dart
+// filepath: lib/widgets/chart/scrollable_trend_chart.dart
 import 'package:flutter/material.dart';
 
-import '../../../core/constants/omni_theme.dart';
-import '../../../core/utils/chart_axis_helper.dart';
+import '../../core/constants/omni_theme.dart';
+import '../../core/utils/chart_axis_helper.dart';
 
 /// Default number of data points visible in the scrollable plot
 /// before horizontal scroll engages. The plot width is

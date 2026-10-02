@@ -2,9 +2,10 @@
 // training/rest split, the target comparison, the visibility rule and the
 // entry point into the full-history nutrition trend.
 //
-// Scenarios S-1101…S-1108, S-1111, S-1112, and the entry-point half of S-1109
+// Scenarios S-1101…S-1108, S-1111, S-1112, the entry-point half of S-1109
 // (the toggle half lives in `nutrition_trend_screen_test.dart`, which pumps the
-// screen directly).
+// screen directly), and S-1259/S-1260/S-1261 (narrow width, large text, the
+// accessibility label).
 //
 // Every scenario runs on both repositories: the Mock harness opens with
 // `SeedData.sampleConsumedFoods()` already written, so each one clears the food
@@ -793,6 +794,103 @@ void main() {
             expect(_fuelText('fuel_protein'), '92 g');
             expect(_fuelText('fuel_logged_days'), '3/7 days logged');
           });
+        });
+      });
+
+      // ─── S-1259/S-1260/S-1261: narrow width, large text, the label ────────
+
+      group('S-1259/S-1260/S-1261', () {
+        setUp(() async {
+          await seedSession(repo, sessionId: 's-fuel', daysAgo: 2);
+          await _seedDay(
+            repo,
+            id: 'food-today',
+            daysAgo: 0,
+            protein: 100,
+            calories: 2000,
+          );
+          await _seedTarget(repo, calories: 2000, protein: 100);
+        });
+
+        /// Pumps the Stats screen at [size] dp with [scale] text, then brings
+        /// the Fuel row into the viewport — the list builds its children
+        /// lazily, so the row is only laid out once it is scrolled to.
+        Future<void> pumpAt(
+          WidgetTester tester,
+          Size size,
+          double scale,
+        ) async {
+          await tester.binding.setSurfaceSize(size);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          await tester.pumpWidget(
+            MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: MaterialApp(
+                home: StatsScreen(
+                  workoutState: workoutState,
+                  settingsState: settingsState,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('fuel_row')),
+            200,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.ensureVisible(find.byKey(const Key('fuel_row')));
+          await tester.pumpAndSettle();
+        }
+
+        testWidgets('renders at 320x568 dp without overflowing', (
+          tester,
+        ) async {
+          await pumpAt(tester, const Size(320, 568), 1.0);
+
+          expect(tester.takeException(), isNull);
+          expect(_fuelSection, findsOneWidget);
+          expect(_fuelText('fuel_calories'), '2000 kcal');
+          expect(_fuelText('fuel_protein'), '100 g');
+          expect(_fuelText('fuel_logged_days'), '1/7 days logged');
+          expect(
+            find.byWidgetPredicate(
+              (w) => w is Semantics && w.properties.label == 'Nutrition trend',
+            ),
+            findsOneWidget,
+          );
+        });
+
+        testWidgets('renders at 390x844 dp and 2.0 text scale without '
+            'overflowing', (tester) async {
+          await pumpAt(tester, const Size(390, 844), 2.0);
+
+          expect(tester.takeException(), isNull);
+          expect(_fuelSection, findsOneWidget);
+          expect(_fuelText('fuel_calories'), '2000 kcal');
+          expect(_fuelText('fuel_protein'), '100 g');
+          expect(
+            tester.getSize(find.byKey(const Key('fuel_row'))).height,
+            greaterThanOrEqualTo(44),
+            reason: 'the row must stay a tappable target at large text',
+          );
+        });
+
+        testWidgets('exposes its label and still opens the trend screen', (
+          tester,
+        ) async {
+          await pumpAt(tester, const Size(320, 568), 1.0);
+
+          final label = find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.label == 'Nutrition trend',
+          );
+          expect(label, findsOneWidget);
+          expect(tester.widget<Semantics>(label).properties.button, isTrue);
+
+          await tester.tap(find.byKey(const Key('fuel_row')));
+          await tester.pumpAndSettle();
+
+          expect(find.byType(NutritionTrendScreen), findsOneWidget);
         });
       });
     });

@@ -83,90 +83,94 @@ class FuelSection extends StatelessWidget {
         const OmniCardHeader(title: 'Fuel'),
         OmniSurface(
           padding: EdgeInsets.zero,
-          child: InkWell(
-            key: const Key('fuel_row'),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _metric(
-                          theme,
-                          valueKey: const Key('fuel_calories'),
-                          changeKey: const Key('fuel_calories_change'),
-                          targetKey: const Key('fuel_calories_target'),
-                          value: _figure(summary.caloriesAverage, 'kcal'),
-                          change: _change(
-                            summary.caloriesAverage,
-                            _reference(
-                              summary.hasCalorieTarget,
-                              summary.targetCalories,
-                              summary.previousCaloriesAverage,
+          child: Semantics(
+            label: 'Nutrition trend',
+            button: true,
+            child: InkWell(
+              key: const Key('fuel_row'),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _metric(
+                            theme,
+                            valueKey: const Key('fuel_calories'),
+                            changeKey: const Key('fuel_calories_change'),
+                            targetKey: const Key('fuel_calories_target'),
+                            value: _figure(summary.caloriesAverage, 'kcal'),
+                            change: _change(
+                              summary.caloriesAverage,
+                              _reference(
+                                summary.hasCalorieTarget,
+                                summary.targetCalories,
+                                summary.previousCaloriesAverage,
+                              ),
+                              'kcal',
                             ),
-                            'kcal',
+                            target: summary.hasCalorieTarget
+                                ? 'of ${_whole(summary.targetCalories)} kcal '
+                                      'target'
+                                : null,
                           ),
-                          target: summary.hasCalorieTarget
-                              ? 'of ${_whole(summary.targetCalories)} kcal '
-                                    'target'
-                              : null,
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _metric(
-                          theme,
-                          valueKey: const Key('fuel_protein'),
-                          changeKey: const Key('fuel_protein_change'),
-                          targetKey: const Key('fuel_protein_target'),
-                          value: _figure(summary.proteinAverage, 'g'),
-                          change: _change(
-                            summary.proteinAverage,
-                            _reference(
-                              summary.hasProteinTarget,
-                              summary.targetProtein,
-                              summary.previousProteinAverage,
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _metric(
+                            theme,
+                            valueKey: const Key('fuel_protein'),
+                            changeKey: const Key('fuel_protein_change'),
+                            targetKey: const Key('fuel_protein_target'),
+                            value: _figure(summary.proteinAverage, 'g'),
+                            change: _change(
+                              summary.proteinAverage,
+                              _reference(
+                                summary.hasProteinTarget,
+                                summary.targetProtein,
+                                summary.previousProteinAverage,
+                              ),
+                              'g',
                             ),
-                            'g',
+                            target: summary.hasProteinTarget
+                                ? 'of ${_whole(summary.targetProtein)} g target'
+                                : null,
                           ),
-                          target: summary.hasProteinTarget
-                              ? 'of ${_whole(summary.targetProtein)} g target'
-                              : null,
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _caption(
+                      theme,
+                      key: const Key('fuel_logged_days'),
+                      text:
+                          '${summary.loggedDays}/'
+                          '${StatsProgressService.kFuelWindowDays} days logged',
+                    ),
+                    _caption(
+                      theme,
+                      key: const Key('fuel_split_training'),
+                      text: _split(
+                        kFuelTrainingLabel,
+                        summary.trainingCaloriesAverage,
+                        summary.trainingProteinAverage,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _caption(
-                    theme,
-                    key: const Key('fuel_logged_days'),
-                    text:
-                        '${summary.loggedDays}/'
-                        '${StatsProgressService.kFuelWindowDays} days logged',
-                  ),
-                  _caption(
-                    theme,
-                    key: const Key('fuel_split_training'),
-                    text: _split(
-                      kFuelTrainingLabel,
-                      summary.trainingCaloriesAverage,
-                      summary.trainingProteinAverage,
                     ),
-                  ),
-                  _caption(
-                    theme,
-                    key: const Key('fuel_split_rest'),
-                    text: _split(
-                      kFuelRestLabel,
-                      summary.restCaloriesAverage,
-                      summary.restProteinAverage,
+                    _caption(
+                      theme,
+                      key: const Key('fuel_split_rest'),
+                      text: _split(
+                        kFuelRestLabel,
+                        summary.restCaloriesAverage,
+                        summary.restProteinAverage,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

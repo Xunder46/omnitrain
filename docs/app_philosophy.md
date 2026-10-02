@@ -22,8 +22,9 @@
 > `NutritionState` / `FoodLibraryState` / `NutritionPrimerState` state classes,
 > the home-screen `NutritionSummaryCard`, the Stats screen's Fuel row,
 > water tracking, and backing repository APIs. See
-> [Navigation & Screens](navigation_and_screens.md) and
-> [Nutrition State](state_management/nutrition_state.md).
+> [Nutrition](nutrition.md) for the feature's behaviour,
+> [Navigation & Screens](navigation_and_screens.md) for where the screens sit, and
+> [Nutrition State](state_management/nutrition_state.md) for its state contract.
 
 ---
 

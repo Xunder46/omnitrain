@@ -10,11 +10,11 @@ import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/chart/chart_primitives.dart';
 import '../../widgets/chart/edge_aware_date_label.dart';
+import '../../widgets/chart/scrollable_trend_chart.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
 import 'widgets/native_value_format.dart';
-import 'widgets/scrollable_trend_chart.dart';
 import 'widgets/stats_pill.dart';
 
 /// How many of the most recent training days the history list shows. The chart

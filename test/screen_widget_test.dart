@@ -34,7 +34,7 @@ import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/features/splash/omni_splash_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
-import 'package:omnitrain/features/stats/widgets/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:omnitrain/core/utils/chart_axis_helper.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';

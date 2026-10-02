@@ -6,8 +6,8 @@ import '../../../core/models/stats_progress.dart';
 import '../../../core/utils/chart_axis_helper.dart';
 import '../../../widgets/chart/chart_primitives.dart';
 import '../../../widgets/chart/edge_aware_date_label.dart';
+import '../../../widgets/chart/scrollable_trend_chart.dart';
 import '../../../widgets/layout/omni_surface.dart';
-import '../../stats/widgets/scrollable_trend_chart.dart';
 
 /// Segmented toggle state for the NUTRITION card. Local widget
 /// state only — not persisted across sessions. The two views

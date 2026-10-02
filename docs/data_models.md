@@ -372,6 +372,32 @@ Derived getters:
 
 Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
 
+### FuelSummary
+
+`FuelSummary` (`lib/core/models/fuel_summary.dart`) is a **derived, never
+persisted** plain-Dart value type: no box, schema file or seed file holds one. It
+is built by `StatsProgressService.computeFuelSummary()` for the Stats screen's
+Fuel row and discarded with it. Verified by `test/fuel_row_screen_test.dart`.
+
+Its defining invariant is that every figure is an average over **logged days
+only** — a window with three logged days is a three-day mean, not a window-length
+one — and that absence is never zero. A window with nothing logged inside the
+service's visibility floor yields `null` from the service rather than a summary of
+zeros, and any individual figure with no data reads the Fuel row's absent marker
+instead of `0`.
+
+Logged days are split by whether a completed session started that day: the
+training side and the rest side are each averaged over their own days, so the
+split covers the same logged days the overall average does.
+
+The summary carries the window's logged-day count; the window's calories and
+protein averages and the preceding range's; the training and rest split of each;
+and the day's calorie and protein targets, with `hasCalorieTarget` /
+`hasProteinTarget` reporting which are set. The row compares
+an average against the target where one is set and against the previous range
+otherwise. The window it averages over is the service's own (`kFuelWindowDays`),
+not the Stats screen's selected training period.
+
 ---
 
 ## Consumed-Food State Cache (`NutritionState`)
@@ -593,6 +619,7 @@ WatchInboxEntry  (keyed by entry id; references no history row, never cascaded)
 | Routine manifest models | `lib/core/models/routine_session_manifest.dart` |
 | Exercise metric and totals value types | `lib/core/models/exercise_metric.dart` |
 | Instruments list value types | `lib/core/models/instrument_list.dart` |
+| Fuel summary value type | `lib/core/models/fuel_summary.dart` |
 | Exercise extensions | `lib/core/utils/exercise_helpers.dart` |
 | SQLite schema | `scripts/sqlite_schema.sql` |
 

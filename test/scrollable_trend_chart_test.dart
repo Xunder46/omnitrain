@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/utils/chart_axis_helper.dart';
-import 'package:omnitrain/features/stats/widgets/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
 
 void main() {
   // The wrapper only needs an OmniThemeColors instance to render

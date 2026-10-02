@@ -3,6 +3,10 @@
 > **Status: investigation only.** No application code, test, or model was changed by this
 > work. This document does not propose a fix or a design.
 >
+> **HISTORY — frozen record.** Superseded in part. The Records section this finding
+> analyses has since been deleted, so the surfaces it names no longer all exist; where it
+> disagrees with `lib/`, `lib/` wins. The analysis itself is unchanged.
+>
 > **Phase F** of `docs/plans/stats-screen-remediation-plan.md` (Decision Ledger
 > **D-9**, Scenario **S-701**).
 >
