@@ -330,7 +330,6 @@ Future<Widget> runStartup({
     profileState,
   );
 
-  final workoutState = WorkoutState(repository, healthSync: healthSyncService);
   final routineState = RoutineState(repository);
   final calendarState = CalendarState(repository);
   final periodState = PeriodState(repository);
@@ -357,10 +356,6 @@ Future<Widget> runStartup({
   final routineSessionService = RoutineSessionService(repository);
   final sessionSummaryService = SessionSummaryService(repository);
   final exerciseLibraryService = ExerciseLibraryService(repository);
-  final exerciseLibraryState = ExerciseLibraryState(
-    service: exerciseLibraryService,
-    workoutState: workoutState,
-  );
 
   // The watch graph, when this platform has a watch to talk to. Null on web,
   // desktop, and Android (the Wear OS client is a later plan), and null when the
@@ -377,6 +372,19 @@ Future<Widget> runStartup({
       debugPrint('Watch transport unavailable: $error');
       debugPrintStack(stackTrace: stackTrace);
     },
+  );
+
+  // Built after the watch graph: the graph's recovery handle is what lets an
+  // Edit Session Discard keep a watch entry that arrived while the screen was
+  // open (D-811).
+  final workoutState = WorkoutState(
+    repository,
+    healthSync: healthSyncService,
+    watchLateEntryRecovery: watchSync?.lateEntryRecovery,
+  );
+  final exerciseLibraryState = ExerciseLibraryState(
+    service: exerciseLibraryService,
+    workoutState: workoutState,
   );
 
   // Build-metadata for the Settings footer.

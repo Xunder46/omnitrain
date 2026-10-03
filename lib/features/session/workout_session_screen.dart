@@ -418,6 +418,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       int? initialDetailIndex;
       int initialDetailSet = 1;
 
+      // The watermark is read before the rows below, so it can only ever
+      // under-name what the snapshot's rows reflect; over-recovery is
+      // idempotent (D-801).
+      final captureWatermark = widget.editMode && _editSnapshot == null;
+      final watermark = captureWatermark
+          ? await widget.workoutState.appliedWatchEntryIds()
+          : null;
+
       if (!widget.workoutState.hasSession) {
         await widget.workoutState.createNewSession();
       }
@@ -480,7 +488,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       // overwrite it — the null-check guard ensures the snapshot always
       // reflects the state the user started editing from, not a mid-edit reload.
       if (widget.editMode && _editSnapshot == null) {
-        _editSnapshot = widget.workoutState.snapshotSessionState();
+        _editSnapshot = widget.workoutState.snapshotSessionState(
+          watchEntryIdsAppliedAtSnapshot: watermark,
+        );
       }
 
       if (initialDetailIndex != null) {

@@ -58,7 +58,11 @@ const Map<String, Object?> watchSessionPlaceholder = {
 
 /// What the app holds on to of the watch graph [createWatchSync] built.
 class WatchSyncGraph {
-  const WatchSyncGraph({required this.mirror, required this.ratings});
+  const WatchSyncGraph({
+    required this.mirror,
+    required this.ratings,
+    required this.lateEntryRecovery,
+  });
 
   /// The session running on the wrist, as the phone mirrors it — what the
   /// home panel and the Watch Session screen show.
@@ -68,6 +72,11 @@ class WatchSyncGraph {
   /// graph's [WatchSessionInbox], behind the one capability a screen needs
   /// (D-139).
   final WatchSessionRatings ratings;
+
+  /// Where an Edit Session Discard recovers the entries that arrived while
+  /// the screen was open: the same [WatchSessionInbox], behind the one
+  /// capability the restore needs (D-811).
+  final WatchLateEntryRecovery lateEntryRecovery;
 }
 
 /// Builds the phone's watch graph and answers the handles the app keeps on it,
@@ -135,5 +144,9 @@ Future<WatchSyncGraph?> createWatchSync({
   });
 
   await inbox.resume();
-  return WatchSyncGraph(mirror: mirror, ratings: inbox);
+  return WatchSyncGraph(
+    mirror: mirror,
+    ratings: inbox,
+    lateEntryRecovery: inbox,
+  );
 }

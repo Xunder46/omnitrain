@@ -335,6 +335,12 @@ In edit mode (`editMode: true`) the session duration becomes editable.
 - On **Save**: `workoutState.updateSessionEndTime(_pendingDurationSecs!)` writes `endedAtMs = startedAtMs + durationSecs × 1000`.
 - On **Discard**: `_pendingDurationSecs` is reset to `_originalDurationSecs`; no repository write occurs.
 
+Discard throws away the user's own edits but never a wrist entry that arrived
+while the screen was open: the restore un-marks exactly the entries applied
+after the snapshot's watermark and runs one import pass, so a set the user
+logged on the wrist is still in the session after Discard. Verified by
+`test/watch_session_edit_restore_late_entry_test.dart` (`S-1401` to `S-1410`).
+
 ### Unsaved Changes Dialog
 
 Leaving edit mode with pending changes must prompt before discarding them. Pending state covers inline metric edits, structural changes (add/remove exercise or set), and a session duration edit.

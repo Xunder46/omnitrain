@@ -518,10 +518,16 @@ independent of arrival order, and durable.
 Invariants:
 - **Put-if-absent by entry id.** The first copy is the record; a redelivered
   or altered copy never replaces it (`D-132 stages put-if-absent: …`).
-- **Applied once, never deleted.** A row keeps its first applied stamp
-  (`D-132 marks rows applied in one batch; …`). Applied rows are the tombstones
-  that keep history the user deleted from being re-created, so no history
-  delete cascades into the inbox (`D-132 the inbox survives deleteSession: …`).
+- **Applied once, never deleted, with one exception.** A row keeps its first
+  applied stamp (`D-132 marks rows applied in one batch; …`). Applied rows are
+  the tombstones that keep history the user deleted from being re-created, so
+  no history delete cascades into the inbox
+  (`D-132 the inbox survives deleteSession: …`). The exception is a Discard
+  that has to recover an entry which arrived while the Edit Session screen was
+  open: the stamp is unset on exactly that entry, so the next import pass
+  re-materialises it. The repository half is `clearWatchInboxApplied`
+  (`test/watch_capture_repository_parity_test.dart`, `S-1412`); the Discard is
+  `test/watch_session_edit_restore_late_entry_test.dart` (S-1401).
 - **The payload is frozen.** The event is held as its JSON encoding; the map a
   caller reads is a fresh copy, and a payload that is not a JSON object is
   refused (`D-132 a staged payload is JSON, …`).

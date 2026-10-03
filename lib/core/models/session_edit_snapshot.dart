@@ -50,6 +50,20 @@ class SessionEditSnapshot {
   /// copy.
   final List<SensorSummary> sensorSummaries;
 
+  /// The `entryId` of every applied inbox row of the session, read from the
+  /// repository *before* the session's rows are loaded (D-801).
+  ///
+  /// The restore uses it to tell a watch entry that was already in history
+  /// when the snapshot was taken from one that arrived while the screen was
+  /// open: the latter is not named here and is recovered (D-802).
+  ///
+  /// `null` means the caller recorded no watermark, and `null` means no
+  /// recovery — the restore then behaves exactly as it did before the field
+  /// existed (D-803). Reading it before the rows keeps the watermark a subset
+  /// of what the snapshot's rows reflect, so it can only ever under-name, and
+  /// over-recovery is idempotent (D-806).
+  final Set<String>? watchEntryIdsAppliedAtSnapshot;
+
   // NOTE: EntryRest records are intentionally NOT included in the snapshot.
   // Rest records are never structurally mutated during edit mode — no new rests
   // are created, and add/remove set operations do not touch them. There is
@@ -64,5 +78,6 @@ class SessionEditSnapshot {
     required this.timedInstances,
     required this.exerciseCache,
     required this.sensorSummaries,
+    this.watchEntryIdsAppliedAtSnapshot,
   });
 }

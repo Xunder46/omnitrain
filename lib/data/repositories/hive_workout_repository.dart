@@ -3128,6 +3128,23 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<void> clearWatchInboxApplied(Iterable<String> entryIds) async {
+    for (final entryId in entryIds.toSet()) {
+      final raw = _watchInboxBox.get(entryId);
+      if (raw == null) continue;
+      final staged = WatchInboxEntry.fromMap(_asStringMap(raw));
+      if (staged.appliedAtMs == null) continue;
+      await _watchInboxBox.put(
+        entryId,
+        WatchInboxEntry.fromMap({
+          ...staged.toMap(),
+          'applied_at_ms': null,
+        }).toMap(),
+      );
+    }
+  }
+
+  @override
   Future<List<String>> getWatchSessionIdsWithUnappliedEnd() async {
     final ends = _watchInboxBox.values
         .map(_asStringMap)

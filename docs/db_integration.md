@@ -658,6 +658,15 @@ Invariants:
   which is also why `app_watch_inbox_entry` has no foreign key. A summary's
   target is polymorphic, so its SQL table can only hold a foreign key to the
   owning session; the repository enforces the rest.
+- **One write unsets a stamp; nothing deletes.** `clearWatchInboxApplied`
+  unsets `appliedAtMs` on the named rows and only on them: an id that names no
+  row, and a row that is not applied, are skipped, and no row is created. It is
+  the one write that ever removes an applied stamp, and it exists for the Edit
+  Session Discard that has to recover an entry which arrived after the
+  snapshot (D-804). `test/watch_capture_repository_parity_test.dart` (`S-1412`)
+  runs it against both stores. No inbox row is ever deleted, and the schema is
+  unchanged: `applied_at_ms` is already nullable, and `test/db_seed_test.dart`
+  proves the tables.
 - **Parity.** Hive and Mock agree value for value, ordering included.
   `test/watch_capture_repository_parity_test.dart` runs one test body against
   both, and compares one scripted sequence row by row by `toMap()`.

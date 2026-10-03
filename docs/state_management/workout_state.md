@@ -20,8 +20,19 @@ _sessionCore     = SessionCore(
   notify: notifyListeners,
   timerManager: _timerManager,
   exerciseLibrary: _exerciseLibrary,
+  lateEntryRecovery: watchLateEntryRecovery,
 );
 ```
+
+The constructor also takes an optional `watchLateEntryRecovery`, the watch
+graph's `WatchLateEntryRecovery` handle, which the session core's restore calls
+on Discard so a wrist entry that arrived while the screen was open is not lost.
+It is null when the platform has no watch, and a null handle leaves the restore
+behaving exactly as it did before. Because the handle comes from the watch
+graph, `lib/main.dart` builds `WorkoutState` after `createWatchSync` and builds
+`ExerciseLibraryState` after both. Verified by
+`test/watch_session_edit_restore_late_entry_test.dart` (`S-1401` to `S-1410`,
+`S-1414`).
 
 Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListeners()` calls still fire once from the single `ChangeNotifier` that consumers subscribe to. No consumer screen or test changes are required.
 

@@ -580,6 +580,13 @@ needs, `WatchSessionRatings` — or null when the platform has no watch, which i
 what keeps the environment contract intact: `main.dart` passes `liveSession` and
 `watchSessionRatings` to `MyApp` only when this answered.
 
+The graph carries a second handle, `WatchLateEntryRecovery`, which is the same
+inbox behind a narrower capability: recovering the entries that arrived while an
+Edit Session was open, so a Discard does not lose a set the user logged on the
+wrist. `main.dart` hands it to `WorkoutState`, which passes it to the session
+core's restore. Verified by `test/watch_session_edit_restore_late_entry_test.dart`
+(`S-1401` to `S-1410`).
+
 Two construction details are load-bearing:
 
 - The mirror starts from `watchSessionPlaceholder` — a **valid but unheld**

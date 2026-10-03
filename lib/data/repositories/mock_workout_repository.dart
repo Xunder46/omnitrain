@@ -2280,6 +2280,18 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<void> clearWatchInboxApplied(Iterable<String> entryIds) async {
+    for (final entryId in entryIds.toSet()) {
+      final staged = _watchInbox[entryId];
+      if (staged == null || staged.appliedAtMs == null) continue;
+      _watchInbox[entryId] = WatchInboxEntry.fromMap({
+        ...staged.toMap(),
+        'applied_at_ms': null,
+      });
+    }
+  }
+
+  @override
   Future<List<String>> getWatchSessionIdsWithUnappliedEnd() async {
     final ends = _watchInbox.values
         .where(

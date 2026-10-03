@@ -521,6 +521,76 @@ void _parityTests(_Harness Function() makeHarness) {
       );
     });
 
+    test('S-1412 D-132 unsets the applied stamp on the named rows only: an '
+        'unapplied row and an unknown id are skipped, and nothing is created '
+        'or deleted', () async {
+      final appliedA = _wristRow(
+        'e-a',
+        WatchInboxEntry.kindSet,
+        receivedAtMs: 100,
+      );
+      final appliedB = _wristRow(
+        'e-b',
+        WatchInboxEntry.kindSet,
+        receivedAtMs: 200,
+      );
+      final unappliedC = _wristRow(
+        'e-c',
+        WatchInboxEntry.kindSet,
+        receivedAtMs: 300,
+      );
+      for (final row in [
+        appliedA,
+        appliedB,
+        unappliedC,
+        _wristRow(
+          'end-s-cap-1',
+          WatchInboxEntry.kindSessionEnd,
+          receivedAtMs: 400,
+        ),
+      ]) {
+        expect(await repo.stageWatchInboxEntry(row), isTrue);
+      }
+      await repo.markWatchInboxEntriesApplied(['e-a', 'e-b'], 5000);
+
+      final unappliedBefore = (await repo.getWatchInboxEntry('e-c'))!.toMap();
+      final endsBefore = await repo.getWatchSessionIdsWithUnappliedEnd();
+
+      await repo.clearWatchInboxApplied(['e-a', 'e-b', 'e-never-staged']);
+
+      repo = await harness.restart();
+      expect(
+        (await repo.getWatchInboxEntry('e-a'))!.toMap(),
+        {...appliedA.toMap(), 'applied_at_ms': null},
+        reason: 'D-132: a named applied row is un-stamped, its payload intact',
+      );
+      expect(
+        (await repo.getWatchInboxEntry('e-b'))!.appliedAtMs,
+        isNull,
+        reason: 'D-132: every named applied row is un-stamped',
+      );
+      expect(
+        (await repo.getWatchInboxEntry('e-c'))!.toMap(),
+        unappliedBefore,
+        reason: 'D-132: an unapplied row is skipped, not rewritten',
+      );
+      expect(
+        await repo.getWatchInboxEntry('e-never-staged'),
+        isNull,
+        reason: 'D-132: unsetting a stamp never creates a row',
+      );
+      expect(
+        await repo.getWatchSessionIdsWithUnappliedEnd(),
+        endsBefore,
+        reason: 'D-132: the unapplied-end list is unchanged',
+      );
+      expect(
+        (await repo.getWatchInboxEntriesForSession(_session)),
+        hasLength(4),
+        reason: 'D-132: no row is deleted',
+      );
+    });
+
     test('D-132 lists the sessions whose session_end is staged but not '
         'applied, oldest first, without repeats', () async {
       for (final row in [
@@ -1027,6 +1097,7 @@ Future<void> _script(WorkoutRepository repo) async {
   );
   await repo.markWatchInboxEntriesApplied(['end-s-cap-1', 'e-run'], 5000);
   await repo.markWatchInboxEntriesApplied(['e-run'], 6000);
+  await repo.clearWatchInboxApplied(['e-run']);
   await repo.createSensorSummary(
     _summary(
       SensorSummary.scopeRoundInstance,
@@ -1084,6 +1155,15 @@ void main() {
           reason: 'the script leaves the session, both set blocks and ti-run-b',
         );
         expect(mockRows['unapplied ends'], [_otherSession]);
+        final inboxRows = (mockRows['inbox $_session']! as List)
+            .cast<Map<String, Object?>>();
+        expect(
+          inboxRows.firstWhere(
+            (r) => r['entry_id'] == 'e-run',
+          )['applied_at_ms'],
+          isNull,
+          reason: 'the script unsets one applied stamp and both stores agree',
+        );
       } finally {
         await mockHarness.close();
         await hiveHarness.close();
