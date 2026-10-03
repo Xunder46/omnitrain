@@ -244,6 +244,47 @@ Verified by `test/training_load_test.dart` (the constants group).
 
 ---
 
+## Signals Constants
+
+**File**: `lib/core/models/signals.dart`
+
+The framework's caps and the keys its store persists under. Named here so a
+reader can find the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kSignalMaxCards` | How many cards one load may yield |
+| `kSignalDismissalDays` | How many local calendar days a dismissal hides its signal |
+| `kSignalDismissalsKey` | The repository preference key the dismissal store persists under |
+| `kSignalQuietLine` | The sentence a gate-met load reports when no card qualifies |
+| `kSignalPositiveLabel` / `kSignalCautionLabel` | The two kind labels, resolved by `signalKindLabel` |
+
+Verified by `test/signals_framework_test.dart` (the selection group, the kind
+vocabulary group and the dismissal-window group) and `test/signals_service_test.dart`
+(the dismissal-store key group).
+
+---
+
+## Progression Rate Constants
+
+**File**: `lib/core/models/progression_rate.dart`
+
+The two windows, the three thresholds the card needs and the signal's priority.
+Named here so a reader can find the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kProgressionRateWindowDays` | The span of each of the two windows the rate compares |
+| `kProgressionRateMinCounted` | How many counted exercise-sessions each window needs before the card may appear |
+| `kProgressionRateMinRate` | The recent rate the card needs |
+| `kProgressionRateMinImprovement` | How far the recent rate must exceed the prior rate |
+| `kProgressionRatePriority` | The signal's priority, the highest among positives |
+
+Verified by `test/progression_rate_test.dart` (the two windows and the
+qualification test group).
+
+---
+
 ## Home Tile Configuration
 
 **File**: `lib/core/constants/home_tiles.dart`

@@ -29,17 +29,19 @@ that constructs `RecordsAndTrendsScreen`. Verified by
 ## What the Screen Displays
 
 With no completed session in the repository the body is the empty-state card
-alone — no Mix layer, no ALL TIME card, no Instruments list and no Fuel row,
-whatever the food log holds. Otherwise it is four blocks in a fixed order:
-the [Mix layer](#mix-layer) when the window holds measurable time, the
+alone — no Mix layer, no Signals layer, no ALL TIME card, no Instruments list
+and no Fuel row, whatever the food log holds. Otherwise it is five blocks in a
+fixed order: the [Mix layer](#mix-layer) when the window holds measurable time,
+the [Signals layer](#signals-layer) when its gate is met, the
 [ALL TIME card](#all-time-card), the [Instruments list](#instruments-list)
 when the window holds work, and the [Fuel row](#fuel-row) when recent food
 exists. Verified by `test/stats_legacy_removal_test.dart` (`S-1208`),
-`test/fuel_row_screen_test.dart` (`S-1112`) and
-`test/mix_layer_screen_test.dart` (`S-1601`, `S-1610`).
+`test/fuel_row_screen_test.dart` (`S-1112`),
+`test/mix_layer_screen_test.dart` (`S-1601`, `S-1610`) and
+`test/signals_layer_screen_test.dart` (`S-1701`, `S-1702`).
 
 Nothing else is rendered. The screen holds no chart section, no segmented
-control and no block beyond those four: `test/stats_legacy_removal_test.dart`
+control and no block beyond those five: `test/stats_legacy_removal_test.dart`
 fails if a removed section's identifier returns to the file (`S-1209`) or if a
 chart widget does (`S-1210`), and `test/screen_widget_test.dart` fails if the
 Calories / Macros toggle returns. Recent PRs are not among them either: they live
@@ -49,9 +51,11 @@ in [Records & Trends](records_and_trends.md), verified by
 ### Mix layer
 
 The Mix layer is the first block in the body, above the ALL TIME card, and there
-is exactly one of it. It is presentation only: every figure it draws is one
-`MixLayerData` supplies, and it computes nothing itself. Verified by
-`test/mix_layer_screen_test.dart` (`S-1601`).
+is exactly one of it. Every figure it draws is one `MixLayerData` supplies; the
+arithmetic the layer does itself is presentation only — the flex that turns a
+measure into a share of the bar, and the tallest week that sets one scale for
+all eight strip columns. Verified by `test/mix_layer_screen_test.dart`
+(`S-1601`, `S-1602`, `S-1609`).
 
 **The bar.** One horizontal bar split by modality, largest share first, with a
 legend reading each modality's rounded share. The shares are the window's own
@@ -92,6 +96,67 @@ draws wider than the card that holds it. Verified by the same file (`S-1615`).
 
 **Freshness.** The layer is refreshed by the screen's one load pass, so it is
 never stale relative to the other blocks. Verified by the same file (`S-1616`).
+
+### Signals layer
+
+The Signals layer is the second block in the body, directly under the Mix layer
+and above the ALL TIME card, and there is exactly one of it. It renders only
+when its gate is met — `signalsGateMet(mix)`, the Mix layer's rated baseline
+(`ratedBaselineWeeks`) against `kTrainingLoadMinRatedWeeks` — so a user without
+a rated baseline sees the screen without it, and when the gate is unmet the
+screen evaluates no signal at all. Verified by `test/signals_layer_screen_test.dart`
+(`S-1701`, `S-1702`) and `test/signals_framework_test.dart`
+(`D-1006 the quiet-line gate`).
+
+**The cards.** A load shows at most `kSignalMaxCards` cards: one caution above
+one positive when both kinds qualify, otherwise the top cards of the surviving
+kind. A card is a neutral surface carrying its kind's label and icon, the
+observation and, when the signal supplies one, a suggestion. Kind is carried by
+the label and the icon, never by a colour, and the layer adds no theme token.
+Verified by `test/signals_layer_screen_test.dart` (`S-1704`–`S-1708`) and
+`test/signals_framework_test.dart` (`D-1004 at most two cards`,
+`D-1005 priority order within a kind`).
+
+**The quiet line.** When the gate is met and no card qualifies, the layer shows
+its header and `kSignalQuietLine` and nothing else. The layer is never hidden
+once the gate is met, because "nothing to say" is a state the user can see.
+Verified by `test/signals_layer_screen_test.dart` (`S-1703`, `S-1708`).
+
+**Dismissing a card.** A card's dismiss control removes the card in the frame of
+the tap: the screen resolves the held candidates against the new store with
+`signalDismissalsWith`, updates the view, and only then writes the store through
+`persistDismissals`, with no reload and no second walk of history. Verified by
+`test/signals_layer_screen_test.dart` (`S-1709`) and, for the store write on
+both repositories, `test/signals_service_test.dart` (`S-1712 Mock and Hive
+parity`).
+
+**The dismissal window.** A dismissal hides its signal for
+`kSignalDismissalDays` **local calendar days**, with the dismissal day counted
+as day 1; the signal is eligible again the day after the window. Verified by
+`test/signals_framework_test.dart` (`S-1710 the 14-day window`, `S-1711 the
+daylight-saving boundary`) and `test/signals_layer_screen_test.dart` (`S-1710`,
+`S-1711`).
+
+**Not coaching.** A signal is a rule-based observation against the user's own
+history, never a rest, deload or recovery instruction, and every observation
+carries its own time span. An earlier revision of this document recorded "no
+rest / deload / recovery suggestion" as a deliberate non-feature; this section
+deliberately replaces that, limited to these signal rules, rather than leaving
+it as a gap. Verified by `test/signals_layer_screen_test.dart` (`S-1716`) and
+`test/stats_legacy_removal_test.dart` (`S-1210`, no chart primitive).
+
+**The registered signal.** The first signal in `buildSignalRegistry()` is the
+Progression Rate: it compares each exercise's own metric across two adjacent
+windows and proposes a positive card only when the recent window improves on the
+prior one. Its rules — the two windows, what a sample is, the zero fallback, the
+three thresholds, the kind and the priority — live in
+[Signals](signals.md#registered-signals) and are not restated here. The card's
+copy and its suggestion are built by `progressionRateCopy`
+(`lib/core/models/progression_rate.dart`) so that the copy and the qualification
+test cannot disagree. Verified by `test/progression_rate_signal_screen_test.dart`
+(`S-1801` the card end to end, `S-1812` its disappearance when the condition
+clears, `S-1813` its dismissal) and, for the definition itself,
+`test/progression_rate_test.dart`.
 
 ### ALL TIME card
 
@@ -269,6 +334,7 @@ part of the screen shares the one window it returns.
 | Surface | Windowed? | Notes |
 |---------|-----------|-------|
 | Mix layer | **Yes** | The bar, the measure, the usual bar, the note, the unrated line and the strip all describe the window — see [Mix layer](#mix-layer) |
+| Signals layer | **Yes** | The registered signals are evaluated against the same resolved window and the same load as the Mix layer — see [Signals layer](#signals-layer) |
 | Instruments sections and their rows | **Yes** | One row per exercise the window holds work for |
 | Each row's figure and change readout | **Yes** | The figure is the window's; the change compares it with the previous window of the same calendar length |
 | Each row's trend line | **Yes** | Built from the window's own points |
@@ -303,6 +369,15 @@ scoped to the window the screen is showing, and the Mix layer reads the same
 resolved window — verified by `test/mix_layer_screen_test.dart` (`S-1613`,
 `S-1616`).
 
+The [Signals layer](#signals-layer) is evaluated in the same pass, against the
+same window and the same `now` and over the same `StatsProgressService`
+instance, so opening Stats adds no second walk of history. The screen holds the
+load's candidates and its dismissal store, so a dismissal re-resolves the held
+candidates in memory instead of reloading — verified by
+`test/signals_layer_screen_test.dart` (`S-1702`, `S-1709`) and
+`test/signals_service_test.dart` (`S-1702 an unmet gate returns nothing and
+evaluates nothing`).
+
 `StatsProgressService` is a pure-Dart service — it depends on the
 `WorkoutRepository` interface only, not on any concrete implementation.
 
@@ -321,6 +396,8 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `kMixStripWeeks` | How many weeks the Mix layer's strip covers; declared in `lib/core/models/training_load.dart` |
 | `kTrainingLoadMinRatedWeeks` | Rated baseline weeks the Mix layer needs before it reports load rather than time; declared in `lib/core/models/training_load.dart` |
 | `kTrainingLoadMaxUnratedShare` | Largest unrated share of the window's time the Mix layer tolerates before it reports time rather than load; declared in `lib/core/models/training_load.dart` |
+| `kSignalMaxCards` | Most cards the Signals layer shows at once; declared in `lib/core/models/signals.dart` |
+| `kSignalDismissalDays` | Local calendar days a dismissal hides its signal, the dismissal day counted as day 1; declared in `lib/core/models/signals.dart` |
 
 ---
 
@@ -331,6 +408,9 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
 | `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, shared with Records & Trends |
 | `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the modality bar, the measure and its label, the usual bar, the note, the unrated line and the week strip |
+| `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards and the quiet line |
+| `lib/core/models/signals.dart` | The Signals value types (`SignalKind`, `SignalCard`, `SignalsData`), the selection, the gate and the dismissal maths; declares `kSignalMaxCards` and `kSignalDismissalDays` |
+| `lib/core/services/signals_service.dart` | `SignalsService` — loads the dismissal store, evaluates the registered signals for one load and writes a dismissal back |
 | `lib/features/stats/widgets/instrument_list.dart` | The Instruments list: one section per kind of work, capped rows, the expand control; declares `kInstrumentRowCap` |
 | `lib/features/stats/widgets/instrument_row.dart` | One Instruments row (name, figure, change chip, trend line) and `InstrumentChangeChip` |
 | `lib/features/stats/widgets/instrument_sparkline.dart` | The row's trend line, drawn only when the window holds at least two points |

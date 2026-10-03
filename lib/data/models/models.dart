@@ -2773,6 +2773,20 @@ class WatchInboxEntry {
     appliedAtMs: m['applied_at_ms'] as int?,
   );
 
+  /// A copy of this row with no applied stamp — the state it held before the
+  /// import applied it.
+  ///
+  /// Every other field is carried over verbatim, and calling this on a row
+  /// that already has no stamp returns an equal row.
+  WatchInboxEntry unapplied() => WatchInboxEntry._(
+    entryId: entryId,
+    watchSessionId: watchSessionId,
+    kind: kind,
+    origin: origin,
+    payloadJson: payloadJson,
+    receivedAtMs: receivedAtMs,
+  );
+
   Map<String, dynamic> toMap() => {
     'entry_id': entryId,
     'watch_session_id': watchSessionId,

@@ -1,10 +1,11 @@
 // The Mix layer (Stats PR 5b, Phase 1) — the window's training mix, drawn.
 //
-// The layer renders and computes nothing: every figure it shows is one
-// `MixLayerData` already carries, so the widget is a pure function of the
-// model. The measure decides the vocabulary — `by time` reads minutes, `by
-// load` reads load — and the model decides which of the two the window
-// supports (D-920, D-921).
+// The layer renders the model: every figure it shows is one `MixLayerData`
+// already carries. The arithmetic it does itself is presentation only — the
+// flex that turns a measure into a share of the bar, and the tallest week that
+// sets one scale for all eight strip columns. The measure decides the
+// vocabulary — `by time` reads minutes, `by load` reads load — and the model
+// decides which of the two the window supports (D-920, D-921).
 //
 // The usual bar and the baseline note are mutually exclusive by construction:
 // the usual bar needs a load baseline, and the note exists only to explain why
@@ -148,6 +149,8 @@ class MixLayerSection extends StatelessWidget {
               'Load baseline: '
               '${layer.ratedBaselineWeeks.clamp(0, kTrainingLoadMinRatedWeeks)}'
               ' of $kTrainingLoadMinRatedWeeks weeks rated',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: themeColors.textMuted,
               ),
@@ -159,6 +162,8 @@ class MixLayerSection extends StatelessWidget {
               layer.unratedSessionCount == 1
                   ? '1 unrated session'
                   : '${layer.unratedSessionCount} unrated sessions',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: themeColors.textMuted,
               ),
@@ -175,6 +180,8 @@ class MixLayerSection extends StatelessWidget {
 
   Widget _measureText(ThemeData theme) => Text(
     _measureLabel,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
     style: theme.textTheme.labelSmall?.copyWith(color: themeColors.textMuted),
   );
 

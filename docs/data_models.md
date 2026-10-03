@@ -625,6 +625,28 @@ arithmetic that builds them, so no caller restates the rule. Verified by
 
 ---
 
+### The Signals value types
+
+`SignalKind`, `SignalCard` and `SignalsData` (`lib/core/models/signals.dart`) are
+**derived, never persisted**: no box, schema file or seed file holds them. A
+`SignalKind` is the one classification a card carries; a `SignalCard` is one
+signal's proposal — its kind, its rank within that kind, and the copy it
+contributes; a `SignalsData` is the framework's answer for one load, holding the
+selected cards or the quiet-line state when none qualified. The only part of a
+signal that outlives a load is its dismissal, which is keyed by the signal's id
+in the repository preference store rather than by any of these types. Verified by
+`test/signals_framework_test.dart`.
+
+`ProgressionSample` and `ProgressionRate` (`lib/core/models/progression_rate.dart`)
+are **derived, never persisted** in the same way: a `ProgressionSample` is one
+exercise's best on its own metric in one completed session, and a `ProgressionRate`
+is the two windows' counts, exact rates and display percentages. The module also
+owns the two windows, the qualification test and the card's copy builder; it takes
+`now` as an argument, so it reads no clock and no repository. Verified by
+`test/progression_rate_test.dart` and `test/progression_samples_service_test.dart`.
+
+---
+
 ## Code References
 
 | Concern | File |
@@ -635,6 +657,8 @@ arithmetic that builds them, so no caller restates the rule. Verified by
 | Exercise metric and totals value types | `lib/core/models/exercise_metric.dart` |
 | Instruments list value types | `lib/core/models/instrument_list.dart` |
 | Training-load value types | `lib/core/models/training_load.dart` |
+| Signals value types | `lib/core/models/signals.dart` |
+| Progression Rate value types | `lib/core/models/progression_rate.dart` |
 | Fuel summary value type | `lib/core/models/fuel_summary.dart` |
 | Exercise extensions | `lib/core/utils/exercise_helpers.dart` |
 | SQLite schema | `scripts/sqlite_schema.sql` |

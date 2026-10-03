@@ -10,6 +10,7 @@ import '../constants/metric_ids.dart';
 import '../models/exercise_metric.dart';
 import '../models/fuel_summary.dart';
 import '../models/instrument_list.dart';
+import '../models/progression_rate.dart';
 import '../models/stats_progress.dart';
 import '../models/training_load.dart';
 import '../utils/date_utils.dart';
@@ -827,6 +828,74 @@ class StatsProgressService {
       return byName != 0 ? byName : a.exerciseId.compareTo(b.exerciseId);
     });
     return summaries;
+  }
+
+  // ── The Progression Rate's samples ─────────────────────────────────────────
+
+  /// Every exercise-session the Progression Rate compares: one sample per
+  /// completed session and exercise that logged a `set` effort in it, whatever
+  /// the session's modality, ordered by exercise and then by session start.
+  ///
+  /// The value is the exercise's own metric read over that session's set
+  /// efforts alone, by the same native-value rule and the same axis
+  /// classification the Instruments rows and the progress series use — no
+  /// second value rule. The read rides the cached history index, so a load
+  /// pays for no extra repository read.
+  Future<List<ProgressionSample>> progressionSamples() async {
+    final history = await _loadHistory();
+
+    final groupsByExercise = <String, Map<String, _ProgressionGroup>>{};
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final dayMs = OmniDateUtils.startOfDayMs(
+        DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+      );
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null || effort.effortKind != 'set') continue;
+          final bySession =
+              groupsByExercise[exerciseId] ??= <String, _ProgressionGroup>{};
+          (bySession[session.id] ??= _ProgressionGroup(
+            exerciseId: exerciseId,
+            sessionStartMs: session.startedAtMs,
+          )).logs.add(
+            _ExerciseLog(session: session, effort: effort, dayMs: dayMs),
+          );
+        }
+      }
+    }
+    if (groupsByExercise.isEmpty) return const <ProgressionSample>[];
+
+    final repsAxis = await _repsAxisExercises(groupsByExercise.keys.toSet());
+
+    final groups = <_ProgressionGroup>[];
+    for (final entry in groupsByExercise.entries) {
+      final sessions = entry.value.values.toList()
+        ..sort((a, b) => a.sessionStartMs.compareTo(b.sessionStartMs));
+      groups.addAll(sessions);
+    }
+    groups.sort((a, b) {
+      final byExercise = a.exerciseId.compareTo(b.exerciseId);
+      return byExercise != 0
+          ? byExercise
+          : a.sessionStartMs.compareTo(b.sessionStartMs);
+    });
+
+    // Independent reads, issued together rather than one per session.
+    final values = await Future.wait([
+      for (final group in groups)
+        _resistanceValue(group.logs, repsAxis.contains(group.exerciseId)),
+    ]);
+
+    return [
+      for (var i = 0; i < groups.length; i++)
+        ProgressionSample(
+          exerciseId: groups[i].exerciseId,
+          sessionStartMs: groups[i].sessionStartMs,
+          value: values[i].value,
+        ),
+    ];
   }
 
   // ── The Instruments list ───────────────────────────────────────────────────
@@ -2152,6 +2221,16 @@ class _ExerciseLog {
     required this.effort,
     required this.dayMs,
   });
+}
+
+/// One exercise's `set` efforts inside one completed session, with the
+/// session's start — the unit the Progression Rate compares.
+class _ProgressionGroup {
+  _ProgressionGroup({required this.exerciseId, required this.sessionStartMs});
+
+  final String exerciseId;
+  final int sessionStartMs;
+  final List<_ExerciseLog> logs = <_ExerciseLog>[];
 }
 
 /// Per-day reps-axis accumulator for a single exercise. Carries

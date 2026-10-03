@@ -18,10 +18,10 @@ it finishes a wrist session (`lib/features/session/live_session_screen.dart`,
 `lib/widgets/session/effort_rating_sheet.dart`). The stored models (`WatchInboxEntry`,
 `SensorSummary`) belong to [Data Models](data_models.md); the wire format is
 `watch/sync_protocol/PROTOCOL.md` ("Session capture"); the live mirror is in
-[Services & Utilities](state_management/services_and_utils.md). "The wrist half"
+[The Watch Surface](state_management/watch_surface.md). "The wrist half"
 covers what the watchOS package (`watch/watchos/Sources/WatchSessionEngine/`)
 sends for the import; its sensors and the summaries computed from them are in
-[Services & Utilities](state_management/services_and_utils.md) ("Watch Sensors
+[The Watch Surface](state_management/watch_surface.md) ("Watch Sensors
 and the Platform Workout").
 
 ---
@@ -37,7 +37,7 @@ and the Platform Workout").
 | Turning staged rows into history | `WatchSessionImporter.apply`, a service over `WorkoutRepository` only |
 | Keeping the rows the user added to an imported effort | `WatchSessionImporter`, which tells its own rows from the user's by the stamp every imported row carries |
 | The measured heart rate and steps, once imported | `SensorSummary` rows, one per target; why they are not `metric-heart-rate` observations is [Data Models](data_models.md)'s |
-| The phone's settings the wrist asks by | `WatchSyncRequestHandler`, which answers every wrist sync with `preferences_down` built by `WatchReferenceSync` from `SettingsState` — see [Services & Utilities](state_management/services_and_utils.md) |
+| The phone's settings the wrist asks by | `WatchSyncRequestHandler`, which answers every wrist sync with `preferences_down` built by `WatchReferenceSync` from `SettingsState` — see [The Watch Surface](state_management/watch_surface.md) |
 | The rows one logged entry becomes | `LoggedEntryRows`, shared with the phone's own logging in `SessionCore` |
 | Acknowledging what was applied | `WatchSessionInbox`, through the one receipt builder, `WatchNutritionLogBridge.receiptFor` |
 | Finishing an import the phone had not run when it stopped | `WatchSessionInbox.resume`, called once by `createWatchSync` |
@@ -76,7 +76,7 @@ receipt names them, and their ids derive from the session (PROTOCOL.md,
 **Where the measurements travel.** Each timed, round and hold entry carries its
 own heart rate, and a timed entry its steps; the session's heart rate and each
 set block's travel in the `session_end`. Why they are computed on the wrist, and
-when, is [Services & Utilities](state_management/services_and_utils.md)'s
+when, is [The Watch Surface](state_management/watch_surface.md)'s
 ("Watch Sensors and the Platform Workout").
 
 **Why the rows a user added to an imported effort are never touched.** An

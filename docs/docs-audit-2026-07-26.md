@@ -239,7 +239,7 @@ Untouched by this audit and still open — see
 [`docs/releases/2026-06-27-pr-surface-verification.md`](releases/2026-06-27-pr-surface-verification.md).
 
 ### 8.6 The watch sensor seams have no platform implementation
-*Flagged in `state_management/services_and_utils.md` under "Watch Sensors and the
+*Flagged in `state_management/watch_surface.md` under "Watch Sensors and the
 Platform Workout".*
 
 `WatchSensorSource` and `WatchPlatformWorkoutStore` (see

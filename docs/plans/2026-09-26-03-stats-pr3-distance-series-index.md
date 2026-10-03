@@ -1,15 +1,13 @@
 # Stats PR 3 series — Distance source and correction (index)
 
-> Status (2026-10-02):
+> Status (2026-10-03):
 > - **3a** is DONE and committed: commit 4bb4afb on `develop`, which the owner may re-title.
 > - **3a2** is DONE and committed.
 > - **3b** is DONE and committed.
 > - **PR 4** is DONE and committed (4a–4c2).
-> - **3a3** is in progress:
->   `docs/plans/2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan/2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan.md`.
-> - **3d** (the former O-17 PR) is PLANNED (plan READY, not implemented):
->   `docs/plans/2026-10-02-03d-stats-pr3d-late-watch-entry-plan/2026-10-02-03d-stats-pr3d-late-watch-entry-plan.md`.
->   **3c** is not planned yet. Plan each when its turn comes, against the code as it is then
+> - **3a3** is DONE and committed: `c25617a9` on `develop`.
+> - **3d** (the former O-17 PR) is DONE and committed: `8be0918` on `develop`.
+>   **3c** is not planned yet. Plan it when its turn comes, against the code as it is then
 >   (`.github/agents/pr_scope_budget.md` §3).
 >
 > Source: `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md` item 4 and PR 2 Open
@@ -31,8 +29,8 @@
 | **3a** (done) | Phone: each distance stores its source; the Session Summary's DISTANCE list; "est." marking on the Summary and the Stats cardio card; pace counts only entries with a distance. | — | `2026-09-26-03a-stats-pr3a-phone-distance-plan.md` |
 | **3a2** | Phone: entry identity. Every edit, delete and distance lands on the chosen entry, live and reopened, on Hive and Mock. | 3a | `2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md` |
 | **3b** | Phone plus the sync contract:<br>• the `distanceSource` wire field, on timed entries only and only with a distance, on both validators;<br>• the import stores the source (absent means `entered`);<br>• a sync never rewrites a phone-written distance;<br>• the row guard closes 3a2's F-6 and F-7;<br>• the import uses the shared id parser;<br>• instance ids are unique. | 3a2 | `2026-09-27-03b-stats-pr3b-distance-source-import-plan.md` |
-| **3a3** | Phone cleanup, with no visible change. Removes the old-data handling made dead by the owner's single-release decision and proven dead by 3b's guard:<br>• the missing-source-reads-`entered` rule;<br>• non-timed distance rows (3a I-3);<br>• 3a-style suffixed ids, including the 3a2 review's F-8;<br>• the sequential grouping fallback;<br>• "leftover" wording.<br>It also fixes the save-as-routine defaults, which read the first raw row (3a2 O-7). | 3b | `2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan/2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan.md` |
-| **3d** | Phone: a late watch entry that arrives while its session is open in Edit Session is no longer lost when the user discards (PR 2 O-17; the owner's Q1: fix before release). | 3b | `2026-10-02-03d-stats-pr3d-late-watch-entry-plan/2026-10-02-03d-stats-pr3d-late-watch-entry-plan.md` |
+| **3a3** (done) | Phone cleanup, with no visible change. Removes the old-data handling made dead by the owner's single-release decision and proven dead by 3b's guard:<br>• the missing-source-reads-`entered` rule;<br>• non-timed distance rows (3a I-3);<br>• 3a-style suffixed ids, including the 3a2 review's F-8;<br>• the sequential grouping fallback;<br>• "leftover" wording.<br>It also fixes the save-as-routine defaults, which read the first raw row (3a2 O-7). | 3b | `2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan/2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan.md` |
+| **3d** (done) | Phone: a late watch entry that arrives while its session is open in Edit Session is no longer lost when the user discards (PR 2 O-17; the owner's Q1: fix before release). | 3b | `2026-10-02-03d-stats-pr3d-late-watch-entry-plan/2026-10-02-03d-stats-pr3d-late-watch-entry-plan.md` |
 | **3c** | watchOS:<br>• the watch sends `distanceSource` (GPS, dialled or estimated) and the field becomes required, removing 3b's "absent means `entered`" rule;<br>• GPS for outdoor wrist sessions (PR 2 O-8);<br>• the platform estimate indoors, or when there is no fix;<br>• the crown wrap on the logging dial (PR 2 O-20).<br>On-device checks need shipping-plan Phases 7–8. | 3b | not planned |
 | then **PR 4** | The new Stats structure (pack items 5 and 6). Cadence arrives here. | — | — |
 
@@ -79,7 +77,8 @@ The earlier question 4 ("send a corrected distance back to the watch?") is close
 - **Small-model implementer.** Every plan must keep its rules inline and its steps mechanical. The last two
   reviews each found CRITICAL doc issues.
 
-## Scope check (2026-10-02)
+## Scope check (2026-10-03)
 
-3a, 3a2, 3b and PR 4 are done and committed. 3a3 is in progress against the code as it is now; its plan
-is the path in the table above. 3d is planned (plan READY, not implemented); 3c is still unplanned.
+3a, 3a2, 3b, 3a3, 3d and PR 4 are done and committed. 3c is the only PR left in this series and is
+still unplanned; plan it against the code as it is then, and expect its on-device checks to need
+shipping-plan Phases 7–8.

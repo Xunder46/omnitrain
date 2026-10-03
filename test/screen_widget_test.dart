@@ -2338,6 +2338,58 @@ void main() {
         expect(find.text('181 cm'), findsOneWidget);
       },
     );
+
+    // S-1714 — the Signals layer is a Stats surface only (D-1003). A Home
+    // build renders no signal content even with a gate-met history, and Home
+    // registers no signal seam. The cards themselves are proven on Stats
+    // (`test/signals_layer_screen_test.dart`, S-1701…S-1713) through the
+    // `StatsScreen(signals: […])` seam.
+    testWidgets('S-1714 renders no signal content', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      // Fixture R's shape: a rated history, the baseline Stats needs before it
+      // evaluates any signal at all.
+      for (var week = 1; week <= 4; week++) {
+        final startMs = now
+            .subtract(Duration(days: week * 7))
+            .millisecondsSinceEpoch;
+        final endMs = startMs + const Duration(minutes: 60).inMilliseconds;
+        await repo.createSession(
+          TrainingSession(
+            id: 'home-signal-$week',
+            ownerUserId: 'user-1',
+            modality: 'resistance_lifting',
+            startedAtMs: startMs,
+            endedAtMs: endMs,
+            sessionFeeling: 4,
+            createdAtMs: startMs,
+            updatedAtMs: endMs,
+          ),
+        );
+      }
+
+      final screen = await buildHomeScreen(repo);
+      await tester.pumpWidget(MaterialApp(home: screen));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('signals_layer')), findsNothing);
+      expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
+      expect(find.text('SIGNALS'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget.key is ValueKey<String> &&
+              (widget.key! as ValueKey<String>).value.startsWith(
+                'signal_card_',
+              ),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -70,6 +70,7 @@ non-overlapping training periods).
 | [Records & Trends](records_and_trends.md) | Per-exercise all-time bests, grouped by effort kind, with a search field and one exercise's progress page (best, series, recent training days). Reached from the Stats header's chart icon. |
 | [Stats Best-Load Investigation](stats_best_load_investigation.md) | Investigation finding (2026-08-16), not a feature doc. Traces every computation that produces a per-exercise best/heaviest-load figure and every surface that displays one. Records what the deleted Records section's "Heaviest load" actually computed (one set's `weight × reps`), which mislabeled figures are still live (Recent PRs and the session-summary PR line show an *estimated* 1RM as a bare weight), and why rep records came out uniformly `10` (a persisted default, not a cap). |
 | [Training Load & Mix](training_load.md) | The pure definitions behind the training-load figures — session load, the effort-to-modality rule, the per-modality time and load splits, the segment rounding and order, the baseline period's calendar blocks, and the week-start helper. The single home for the arithmetic a caller imports rather than restates. |
+| [Signals](signals.md) | The pure Signals framework (`lib/core/models/signals.dart`, `lib/core/services/signals/`) and `SignalsService`: the rated-baseline gate, the card cap and priority rule, the quiet line, the kind vocabulary, the `Signal` contract, and the repository-backed dismissal store with its local-calendar-day window and pruning. |
 | [Nutrition](nutrition.md) | Daily food and water logging, the food library and the shipped catalog, nutrition targets, the full-history trend with its target line, and the first-run primer. Behaviour owner for the nutrition screens. |
 
 ### Release & Operations
@@ -83,7 +84,7 @@ non-overlapping training periods).
 | Document | Description |
 |----------|-------------|
 | [Navigation & Screens](navigation_and_screens.md) | Complete screen map, navigation flow, dependency injection pattern |
-| [State Management & Services](state_management.md) | **Index** — ChangeNotifier classes, service classes, dependency graph. Split into [Workout](state_management/workout_state.md), [Nutrition](state_management/nutrition_state.md), [Routine/Calendar/Home/Profile/Settings](state_management/app_state.md), and [Services & Utilities](state_management/services_and_utils.md) |
+| [State Management & Services](state_management.md) | **Index** — ChangeNotifier classes, service classes, dependency graph. Split into [Workout](state_management/workout_state.md), [Nutrition](state_management/nutrition_state.md), [Routine/Calendar/Home/Profile/Settings](state_management/app_state.md), [Services & Utilities](state_management/services_and_utils.md), and [The Watch Surface](state_management/watch_surface.md) |
 | [Data Models](data_models.md) | All domain models — sessions, exercises, templates, measurements, relationships |
 | [Constants & Configuration](constants_reference.md) | Modalities, capabilities, metrics, effort kinds, intents, design tokens |
 | [DB Integration](db_integration.md) | Database setup, schema, seed data, dual-backend strategy |

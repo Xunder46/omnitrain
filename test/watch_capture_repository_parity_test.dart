@@ -1319,5 +1319,33 @@ void main() {
         reason: 'D-132: a stored payload that is not JSON is refused',
       );
     });
+
+    test('D-132 unapplied() clears only the stamp, and is idempotent', () {
+      final applied = WatchInboxEntry(
+        entryId: 'e-run',
+        watchSessionId: _session,
+        kind: WatchInboxEntry.kindTimed,
+        origin: WatchInboxEntry.originWatch,
+        payload: _runEvent(),
+        receivedAtMs: 1000,
+        appliedAtMs: 5000,
+      );
+
+      final cleared = applied.unapplied();
+      expect(
+        cleared.appliedAtMs,
+        isNull,
+        reason: 'D-132: the stamp is cleared',
+      );
+      expect(cleared.toMap(), {
+        ...applied.toMap(),
+        'applied_at_ms': null,
+      }, reason: 'D-132: only the stamp changes');
+      expect(
+        cleared.unapplied().toMap(),
+        cleared.toMap(),
+        reason: 'D-132: unapplied() is idempotent',
+      );
+    });
   });
 }

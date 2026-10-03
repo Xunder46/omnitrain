@@ -2284,10 +2284,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     for (final entryId in entryIds.toSet()) {
       final staged = _watchInbox[entryId];
       if (staged == null || staged.appliedAtMs == null) continue;
-      _watchInbox[entryId] = WatchInboxEntry.fromMap({
-        ...staged.toMap(),
-        'applied_at_ms': null,
-      });
+      _watchInbox[entryId] = staged.unapplied();
     }
   }
 

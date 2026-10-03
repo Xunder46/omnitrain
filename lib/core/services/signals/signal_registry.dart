@@ -1,0 +1,8 @@
+import 'progression_rate_signal.dart';
+import 'signal.dart';
+
+/// The signals the Stats screen evaluates, in evaluation order (D-1016).
+///
+/// This is the only place a signal is registered. The layer, the service and
+/// the screen never name a concrete signal; a new signal is one line here.
+List<Signal> buildSignalRegistry() => const <Signal>[ProgressionRateSignal()];

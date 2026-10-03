@@ -15,6 +15,13 @@
 - Social network features
 - Advanced predictive analytics
 
+> **Signals (2026-10-03).** The Stats screen's Signals layer adds rule-based
+> observations against the user's own history — what their logged work says
+> about them, never what they should do about it. It does not narrow either
+> standing non-goal above: a coaching-first experience and advanced predictive
+> analytics remain out of scope. See [Signals](signals.md) for the framework
+> and [Stats Screen](stats_screen.md) for the surface.
+
 > **Corrected 2026-07-26 (docs audit).** "Nutrition tracking" was listed here
 > as an explicit non-goal. It has since shipped and is no longer out of scope.
 > The app now has a full nutrition feature: `NutritionScreen`,

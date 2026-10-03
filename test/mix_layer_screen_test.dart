@@ -862,6 +862,26 @@ void main() {
           expect(find.text('1 unrated session'), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
+
+        testWidgets('the measure label, the baseline note and the unrated '
+            'line each cap to one line and ellipsize', (tester) async {
+          await pumpStats(tester);
+
+          for (final label in const [
+            'by time',
+            'Load baseline: 3 of 4 weeks rated',
+            '1 unrated session',
+          ]) {
+            final text = tester.widget<Text>(find.text(label).first);
+            expect(text.maxLines, 1, reason: 'D-933: $label caps to one line');
+            expect(
+              text.overflow,
+              TextOverflow.ellipsis,
+              reason: 'D-933: $label ellipsizes',
+            );
+          }
+          expect(tester.takeException(), isNull);
+        });
       });
 
       // ─── S-1606 ──────────────────────────────────────────────────────────

@@ -182,8 +182,8 @@ Every section / card header in the app routes through `OmniCardHeader`. The widg
 | **Settings** | `PREFERENCES`, `SOUNDS & ALERTS`, `WORKOUT`, `APPEARANCE` |
 | **Session Summary** | Date (with the modality chip in actions), `DISTANCE`, `SESSION NOTE` (note card), month label (with `Open Calendar` in actions) |
 | **Daily Nutrition** | `Today` (with `nutrition_target_button` labelled `OutlinedButton.icon` in actions — PR 3 / S-002), `Foods I Eat` (with `food_library_manage_pencil` in actions) |
-| **Profile** | One header per measurement definition (label + `+` add button in actions) |
-| **Stats** | `TRAINING MIX` (carrying the window chip in actions); `ALL TIME`; the Instruments list's four title-case headers, `Resistance`, `Cardio`, `Isometric`, `Sports`, the first of them carrying the window chip in actions; and the Fuel row's `Fuel`. Verified by `test/mix_layer_screen_test.dart` (`S-1601`, `S-1612`), `test/instrument_list_screen_test.dart` (`S-1001`, `S-1011`, `S-1015`) and `test/fuel_row_screen_test.dart`. |
+| **Profile** | One title-only header per measurement definition; the `+` add button lives in the card body. Verified by `test/header_standardization_test.dart` (`S-011`). |
+| **Stats** | `TRAINING MIX` (carrying the window chip in actions); `SIGNALS`; `ALL TIME`; the Instruments list's four title-case headers, `Resistance`, `Cardio`, `Isometric`, `Sports`, the first of them carrying the window chip in actions; and the Fuel row's `Fuel`. Verified by `test/mix_layer_screen_test.dart` (`S-1601`, `S-1612`), `test/signals_layer_screen_test.dart` (`S-1701`), `test/instrument_list_screen_test.dart` (`S-1001`, `S-1011`, `S-1015`) and `test/fuel_row_screen_test.dart`. |
 
 ### Intentional exceptions (D-10 — sheet / title chrome, not card headers)
 
@@ -456,6 +456,22 @@ GestureDetector (press tracking)
        └── Container (gradient surface + shadows)
             └── EnergyCore (icon) + Label
 ```
+
+### Signal Card Pattern
+```
+OmniSurface (neutral — one surface for both kinds)
+  ├── kind row: kind icon + kind label, both textSecondary
+  ├── observation (textDominant)
+  ├── suggestion (textSecondary, only when the signal supplies one)
+  └── dismiss control (accessibility touch-target minimum, semantic label "Dismiss signal")
+```
+
+A signal card is read, not tapped: the surface carries no tap callback and only the
+dismiss control is interactive. Kind is carried by the label and the icon, never by a
+colour, so both kinds draw on the same neutral `OmniSurface` and the pattern adds no
+theme token. The dismiss control meets the touch-target minimum in
+[Accessibility Requirements](#accessibility-requirements). Verified by
+`test/signals_layer_screen_test.dart` (`S-1704`, `S-1716`).
 
 ### Key Patterns
 1. **Composable, not inherited** — primitives are combined, not subclassed

@@ -3134,13 +3134,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
       if (raw == null) continue;
       final staged = WatchInboxEntry.fromMap(_asStringMap(raw));
       if (staged.appliedAtMs == null) continue;
-      await _watchInboxBox.put(
-        entryId,
-        WatchInboxEntry.fromMap({
-          ...staged.toMap(),
-          'applied_at_ms': null,
-        }).toMap(),
-      );
+      await _watchInboxBox.put(entryId, staged.unapplied().toMap());
     }
   }
 

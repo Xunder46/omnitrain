@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/models/fuel_summary.dart';
 import '../../core/models/instrument_list.dart';
+import '../../core/models/signals.dart';
 import '../../core/models/stats_progress.dart';
 import '../../core/models/training_load.dart';
+import '../../core/services/signals/signal.dart';
+import '../../core/services/signals_service.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/navigation/omni_navigator.dart';
@@ -19,16 +22,24 @@ import 'records_and_trends_screen.dart';
 import 'widgets/fuel_section.dart';
 import 'widgets/instrument_list.dart';
 import 'widgets/mix_layer.dart';
+import 'widgets/signals_layer.dart';
 import 'widgets/stats_pill.dart';
 
 class StatsScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final SettingsState settingsState;
 
+  /// The signals the layer evaluates, or `null` for the app's registry.
+  ///
+  /// A seam for tests only: the shipped screen passes nothing and gets
+  /// `buildSignalRegistry()` (D-1016).
+  final List<Signal>? signals;
+
   const StatsScreen({
     super.key,
     required this.workoutState,
     required this.settingsState,
+    this.signals,
   });
 
   @override
@@ -47,6 +58,18 @@ class _StatsScreenState extends State<StatsScreen> {
   FuelSummary? _fuelSummary;
 
   MixLayerData? _mixLayer;
+
+  SignalsData? _signalsData;
+  List<SignalCard> _signalsCandidates = const [];
+  Map<String, int> _signalsDismissedAtMs = const {};
+  SignalsService? _signalsService;
+
+  /// The tail of the dismissal-write chain.
+  ///
+  /// Every dismissal appends its write to this future, so two rapid taps
+  /// cannot race: the later store is written only after the earlier one, and
+  /// the last write wins (S-1709, D-1010).
+  Future<void> _signalsWriteTail = Future<void>.value();
 
   @override
   void initState() {
@@ -86,13 +109,47 @@ class _StatsScreenState extends State<StatsScreen> {
         window: progressData.window,
       );
 
+      // One load reads one "now": the Mix layer and the signals are evaluated
+      // against the same instant, so a card can never disagree with the layer
+      // it sits under.
+      final now = DateTime.now();
+
       // The Mix layer reads the same window as the Instruments list, so it
       // resolves nothing of its own.
       final mixLayer = await service.computeMixLayer(
         window: progressData.window,
-        now: DateTime.now(),
+        now: now,
         startOfWeek: widget.settingsState.startOfWeek,
       );
+
+      // The signals share this load: the same service instance, so no second
+      // walk of history, and the same `now` (D-1014). When the gate is unmet
+      // nothing is evaluated and the layer is absent (D-1006).
+      final signalsService = SignalsService(
+        repository: widget.workoutState.repository,
+        progressService: service,
+        signals: widget.signals,
+      );
+      final gateMet = signalsGateMet(mixLayer);
+      final signalsDismissedAtMs = gateMet
+          ? await signalsService.loadDismissals()
+          : const <String, int>{};
+      final signalsCandidates = gateMet
+          ? await signalsService.evaluateCandidates(
+              now: now,
+              window: progressData.window,
+              mix: mixLayer,
+              dismissedAtMs: signalsDismissedAtMs,
+            )
+          : const <SignalCard>[];
+      final signalsData = gateMet
+          ? resolveSignals(
+              candidates: signalsCandidates,
+              dismissedAtMs: signalsDismissedAtMs,
+              now: now,
+              gateMet: true,
+            )
+          : null;
 
       if (!mounted) return;
 
@@ -104,11 +161,58 @@ class _StatsScreenState extends State<StatsScreen> {
         _instrumentSections = instrumentSections;
         _fuelSummary = fuelSummary;
         _mixLayer = mixLayer;
+        _signalsService = signalsService;
+        _signalsCandidates = signalsCandidates;
+        _signalsDismissedAtMs = signalsDismissedAtMs;
+        _signalsData = signalsData;
         _isLoading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() => _isLoading = false);
+    }
+  }
+
+  /// Records a dismissal and re-resolves the held candidates — no reload, no
+  /// second walk of history (D-1010, D-1014).
+  ///
+  /// The view moves first, in the tap's own frame; the write is chained and
+  /// forgotten, so a store that is slow (or fails) cannot hold the card on
+  /// screen and cannot reorder a later dismissal's write.
+  void _dismissSignal(String id) {
+    final service = _signalsService;
+    if (service == null) return;
+
+    final now = DateTime.now();
+    final next = signalDismissalsWith(_signalsDismissedAtMs, id, now);
+    if (!mounted) return;
+
+    setState(() {
+      _signalsDismissedAtMs = next;
+      _signalsData = resolveSignals(
+        candidates: _signalsCandidates,
+        dismissedAtMs: next,
+        now: now,
+        gateMet: signalsGateMet(_mixLayer),
+      );
+    });
+
+    final store = next;
+    _signalsWriteTail = _signalsWriteTail.then(
+      (_) => _persistSignalDismissals(service, store),
+    );
+  }
+
+  /// Writes [store], never throwing: a dismissal whose write fails is simply
+  /// not remembered, and the caller has already moved the view on (D-1010).
+  Future<void> _persistSignalDismissals(
+    SignalsService service,
+    Map<String, int> store,
+  ) async {
+    try {
+      await service.persistDismissals(store);
+    } catch (_) {
+      // Not remembered; nothing else changes.
     }
   }
 
@@ -160,6 +264,14 @@ class _StatsScreenState extends State<StatsScreen> {
                                 layer: _mixLayer!,
                                 window: window,
                                 themeColors: themeColors,
+                              ),
+                              const SizedBox(height: 24),
+                            ],
+                            if (_signalsData != null) ...[
+                              SignalsLayerSection(
+                                data: _signalsData!,
+                                themeColors: themeColors,
+                                onDismiss: _dismissSignal,
                               ),
                               const SizedBox(height: 24),
                             ],

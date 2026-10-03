@@ -1598,7 +1598,7 @@ CREATE TABLE IF NOT EXISTS app_watch_inbox_entry (
   origin           TEXT    NOT NULL CHECK (origin IN ('watch', 'phone')),
   payload_json     TEXT    NOT NULL,                -- the event or annotation, JSON-encoded
   received_at_ms   INTEGER NOT NULL,                -- when the phone staged the row
-  applied_at_ms    INTEGER,                         -- NULL = waiting; set once, never cleared
+  applied_at_ms    INTEGER,                         -- NULL = waiting; stamped once on apply, unset only by clearWatchInboxApplied
   CHECK ((origin = 'phone') =
          (kind IN ('phone_rating', 'phone_correction', 'phone_deletion'))),
   CHECK (kind <> 'phone_rating' OR entry_id = 'phone-rating-' || watch_session_id),
