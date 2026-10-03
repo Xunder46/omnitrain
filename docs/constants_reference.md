@@ -226,6 +226,24 @@ plugin types so the mapping logic is testable everywhere; the native gateway tra
 
 ---
 
+## Training Load Constants
+
+**File**: `lib/core/models/training_load.dart`
+
+The figures behind the training-load mix. Named here so a reader can find the
+owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kMixStripWeeks` | How many weeks a weekly strip holds |
+| `kTrainingLoadBaselineWeeks` | How many 7-calendar-day blocks the baseline spans |
+| `kTrainingLoadMinRatedWeeks` | How many rated baseline weeks the load measure needs before it is shown |
+| `kTrainingLoadMaxUnratedShare` | The largest share of a window's time that may be unrated for the load measure to be shown; the boundary is inclusive |
+
+Verified by `test/training_load_test.dart` (the constants group).
+
+---
+
 ## Home Tile Configuration
 
 **File**: `lib/core/constants/home_tiles.dart`

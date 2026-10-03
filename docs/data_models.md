@@ -610,6 +610,21 @@ WatchInboxEntry  (keyed by entry id; references no history row, never cascaded)
 
 ---
 
+### The training-load value types
+
+`MixMeasure`, `MixSegment`, `MixWeek` and `MixLayerData`
+(`lib/core/models/training_load.dart`) are **derived, never persisted**: no box,
+schema file or seed file holds them. `MixLayerData` owns one read's whole
+payload — the measure its figures are in, the window's segments, its baseline's
+segments, the two counts a surface reports, and the weekly strip. A `MixWeek`
+owns one week of that strip, and a `MixSegment` owns one modality's share of a
+bar: its exact measure and its rounded percentage, which are separate values so
+a width is never drawn from a rounded figure. The file also owns the pure
+arithmetic that builds them, so no caller restates the rule. Verified by
+`test/training_load_test.dart`.
+
+---
+
 ## Code References
 
 | Concern | File |
@@ -619,6 +634,7 @@ WatchInboxEntry  (keyed by entry id; references no history row, never cascaded)
 | Routine manifest models | `lib/core/models/routine_session_manifest.dart` |
 | Exercise metric and totals value types | `lib/core/models/exercise_metric.dart` |
 | Instruments list value types | `lib/core/models/instrument_list.dart` |
+| Training-load value types | `lib/core/models/training_load.dart` |
 | Fuel summary value type | `lib/core/models/fuel_summary.dart` |
 | Exercise extensions | `lib/core/utils/exercise_helpers.dart` |
 | SQLite schema | `scripts/sqlite_schema.sql` |

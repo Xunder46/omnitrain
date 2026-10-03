@@ -307,6 +307,37 @@ a secondary figure's name, so it cannot read two ways.
 Verified by `test/instrument_list_service_test.dart` (S-1005, S-1007, S-1008,
 S-1009, S-1010) and `test/instrument_change_format_test.dart`.
 
+`computeMixLayer({required StatsWindow window, required DateTime now, required
+String startOfWeek})` returns the Mix layer's whole payload — the measure, the
+window's bar, the baseline's segments, the two counts and the weekly strip — or
+`null` when the window holds no time at all. It is the only history walk behind
+those figures: the window, the baseline and the strip are all served from the
+one cached snapshot, so the surface pays for no extra repository read.
+
+- **The measure is load only when the baseline is rated enough and the window is
+  rated enough**; otherwise it is time. The baseline's segments are built in the
+  load measure only, and only when the baseline's total load is above zero.
+- **The baseline is the 12 calendar blocks before the window's start day** and
+  never uses the start-of-week setting; that setting moves the strip's weeks and
+  nothing else. The blocks are calendar arithmetic, so a DST transition cannot
+  shift a boundary.
+- **The strip is the 8 weeks ending with the week containing `now`**, oldest
+  first, with the last week marked in progress. An empty week is present with a
+  zero measure rather than dropped, a session belongs to the week it started in,
+  and the strip is selected against each week's own bounds rather than the
+  window, so changing the window moves the bar and leaves the strip alone.
+- **The effort-to-modality mapping is the service's own** — the same
+  `_sectionForKind` the Instruments list uses — so the two reads can never
+  disagree about which modality an effort belongs to.
+
+The rules themselves live in `lib/core/models/training_load.dart` and are
+documented in [Training Load & Mix Definitions](../training_load.md).
+
+Verified by `test/mix_layer_service_test.dart` (S-1501, S-1502, S-1503, S-1505,
+S-1509, S-1510 A–E, S-1511 and its start-of-week twin, S-1513 and its
+Sunday-start twin, S-1514, S-1515, S-1516, S-1517, and the Mock/Hive
+value-for-value parity group).
+
 ---
 
 ## Watch ↔ Phone Live Session Mirroring

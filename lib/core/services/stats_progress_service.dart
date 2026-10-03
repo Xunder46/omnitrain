@@ -11,6 +11,7 @@ import '../models/exercise_metric.dart';
 import '../models/fuel_summary.dart';
 import '../models/instrument_list.dart';
 import '../models/stats_progress.dart';
+import '../models/training_load.dart';
 import '../utils/date_utils.dart';
 import '../utils/distance_source.dart';
 import '../utils/entry_rows.dart';
@@ -460,6 +461,270 @@ class StatsProgressService {
       completedSessions: completedSessions,
       durationMs: durationMs,
     );
+  }
+
+  /// The Mix layer's whole payload: the window's bar, the user's usual split,
+  /// the two counts and the weekly strip (D-916, D-917).
+  ///
+  /// One walk of the cached history snapshot serves all three reads — the
+  /// window's sessions, the baseline's and the strip's — so the screen pays for
+  /// no extra repository read (D-919). Null when the window holds no time at
+  /// all: there is nothing to split, and a bar of nothing is not a bar (D-914).
+  ///
+  /// The measure is load only when the baseline is rated enough and the window
+  /// is rated enough; otherwise it is time (D-908). The baseline is the 12
+  /// calendar blocks before the window's start day and never uses
+  /// [startOfWeek]; that setting moves the strip's weeks and nothing else
+  /// (D-934, D-935).
+  Future<MixLayerData?> computeMixLayer({
+    required StatsWindow window,
+    required DateTime now,
+    required String startOfWeek,
+  }) async {
+    final history = await _loadHistory();
+
+    final fromDay = localMidnightDay(window.fromMs);
+    final baselineStarts = baselineBlockStarts(fromDay);
+    final baselineEndMs = fromDay.millisecondsSinceEpoch;
+
+    final windowTime = <ExerciseSection, double>{};
+    final windowLoad = <ExerciseSection, double>{};
+    var windowTimeSeconds = 0.0;
+    var unratedTimeSeconds = 0.0;
+    var unratedSessionCount = 0;
+
+    final baselineLoad = <ExerciseSection, double>{};
+    final ratedBaselineBlocks = <int>{};
+
+    final currentWeekStart = OmniDateUtils.startOfWeek(
+      now,
+      startOfWeek: startOfWeek,
+    );
+    final weekStarts = [
+      for (var i = kMixStripWeeks - 1; i >= 0; i--)
+        DateTime(
+          currentWeekStart.year,
+          currentWeekStart.month,
+          currentWeekStart.day - i * 7,
+        ),
+    ];
+    final weekTime = <int, Map<ExerciseSection, double>>{};
+    final weekLoad = <int, Map<ExerciseSection, double>>{};
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final startMs = session.startedAtMs;
+
+      final measured = _measuredSecsFor(history, session);
+      final dominant = _dominantSectionFor(history, session);
+      final durationSecs = session.isRolling
+          ? 0
+          : ((session.endedAtMs! - startMs) / 1000).round();
+      final timeBySection = sessionTimeByModality(
+        durationSecs: durationSecs,
+        isRolling: session.isRolling,
+        measuredSecs: measured,
+        dominantSection: dominant,
+      );
+      final loadBySection = sessionLoadByModality(
+        timeByModality: timeBySection,
+        rating: session.sessionFeeling,
+      );
+      final sessionTimeSeconds = timeBySection.values.fold<double>(
+        0,
+        (a, b) => a + b,
+      );
+
+      if (_sessionInWindow(session, window)) {
+        _addAll(windowTime, timeBySection);
+        _addAll(windowLoad, loadBySection);
+        windowTimeSeconds += sessionTimeSeconds;
+        if (session.sessionFeeling == null) {
+          unratedSessionCount++;
+          unratedTimeSeconds += sessionTimeSeconds;
+        }
+      }
+
+      if (startMs < baselineEndMs) {
+        final block = _baselineBlockFor(baselineStarts, startMs);
+        if (block != null) {
+          _addAll(baselineLoad, loadBySection);
+          if (session.sessionFeeling != null) ratedBaselineBlocks.add(block);
+        }
+      }
+
+      final weekIndex = _weekIndexFor(weekStarts, startMs, startOfWeek);
+      if (weekIndex != null) {
+        _addAll(weekTime[weekIndex] ??= <ExerciseSection, double>{}, timeBySection);
+        _addAll(weekLoad[weekIndex] ??= <ExerciseSection, double>{}, loadBySection);
+      }
+    }
+
+    if (windowTimeSeconds <= 0) return null;
+
+    final ratedBaselineWeeks = ratedBaselineBlocks.length;
+    final measure =
+        ratedBaselineWeeks >= kTrainingLoadMinRatedWeeks &&
+            unratedTimeSeconds / windowTimeSeconds <=
+                kTrainingLoadMaxUnratedShare
+        ? MixMeasure.load
+        : MixMeasure.time;
+
+    final measureBySection = measure == MixMeasure.load
+        ? windowLoad
+        : _minutesBySection(windowTime);
+    final baselineTotal = baselineLoad.values.fold<double>(0, (a, b) => a + b);
+
+    return MixLayerData(
+      measure: measure,
+      segments: mixSegments(measureBySection),
+      baselineSegments: measure == MixMeasure.load && baselineTotal > 0
+          ? mixSegments(baselineLoad)
+          : const [],
+      unratedSessionCount: unratedSessionCount,
+      ratedBaselineWeeks: ratedBaselineWeeks,
+      weeks: [
+        for (var i = 0; i < weekStarts.length; i++)
+          _mixWeek(
+            weekStart: weekStarts[i],
+            measure: measure,
+            timeBySection: weekTime[i] ?? const {},
+            loadBySection: weekLoad[i] ?? const {},
+            inProgress: i == weekStarts.length - 1,
+          ),
+      ],
+    );
+  }
+
+  /// One strip week, in the measure the bar uses (D-917).
+  static MixWeek _mixWeek({
+    required DateTime weekStart,
+    required MixMeasure measure,
+    required Map<ExerciseSection, double> timeBySection,
+    required Map<ExerciseSection, double> loadBySection,
+    required bool inProgress,
+  }) {
+    final bySection = measure == MixMeasure.load
+        ? loadBySection
+        : _minutesBySection(timeBySection);
+    return MixWeek(
+      weekStart: weekStart,
+      segments: mixSegments(bySection),
+      measure: bySection.values.fold<double>(0, (a, b) => a + b),
+      inProgress: inProgress,
+    );
+  }
+
+  /// The same split in minutes, so the time measure reads in the unit the
+  /// surface labels it with (D-916).
+  static Map<ExerciseSection, double> _minutesBySection(
+    Map<ExerciseSection, double> secondsBySection,
+  ) => {
+    for (final entry in secondsBySection.entries) entry.key: entry.value / 60.0,
+  };
+
+  /// The measured active seconds of [session] per modality (D-903).
+  ///
+  /// The effort's kind decides which instance store to read — never a literal
+  /// kind string, always [_sectionForKind] (D-902). A `set` effort measures
+  /// nothing: its time is the session's remainder.
+  Map<ExerciseSection, double> _measuredSecsFor(
+    _HistoryIndex history,
+    TrainingSession session,
+  ) {
+    final measured = <ExerciseSection, double>{};
+    for (final segment in history.segmentsOf(session.id)) {
+      for (final effort in history.effortsOf(segment.id)) {
+        final section = _sectionForKind(effort.effortKind);
+        if (section == null) continue;
+        switch (section) {
+          case ExerciseSection.cardio:
+          case ExerciseSection.isometric:
+            for (final instance in history.timedInstancesOf(effort.id)) {
+              if (instance.state != TimedState.finished) continue;
+              measured[section] =
+                  (measured[section] ?? 0) + instance.actualDurationSecs;
+            }
+          case ExerciseSection.sports:
+            for (final instance in history.roundInstancesOf(effort.id)) {
+              if (instance.state != RoundState.finished) continue;
+              if (instance.startedAtMs <= 0) continue;
+              if (instance.finishedAtMs == null) continue;
+              measured[section] =
+                  (measured[section] ?? 0) + instance.actualDurationSecs;
+            }
+          case ExerciseSection.resistance:
+            break;
+        }
+      }
+    }
+    return measured;
+  }
+
+  /// The section [session]'s efforts most often belong to, ties resolving in
+  /// [ExerciseSection] declaration order (D-905).
+  ///
+  /// An effort with no exercise still counts: the mapping is by kind, and the
+  /// session's own shape is what the remainder falls back to.
+  ExerciseSection? _dominantSectionFor(
+    _HistoryIndex history,
+    TrainingSession session,
+  ) {
+    final counts = <ExerciseSection, int>{};
+    for (final segment in history.segmentsOf(session.id)) {
+      for (final effort in history.effortsOf(segment.id)) {
+        final section = _sectionForKind(effort.effortKind);
+        if (section == null) continue;
+        counts[section] = (counts[section] ?? 0) + 1;
+      }
+    }
+
+    ExerciseSection? winner;
+    var winnerCount = 0;
+    for (final section in ExerciseSection.values) {
+      final count = counts[section] ?? 0;
+      if (count > winnerCount) {
+        winner = section;
+        winnerCount = count;
+      }
+    }
+    return winner;
+  }
+
+  /// The index of the baseline block holding [startMs], or null when it falls
+  /// outside every block (D-934).
+  static int? _baselineBlockFor(List<DateTime> starts, int startMs) {
+    for (var i = starts.length - 1; i >= 0; i--) {
+      if (starts[i].millisecondsSinceEpoch <= startMs) return i;
+    }
+    return null;
+  }
+
+  /// The index of the strip week holding [startMs], or null when the session
+  /// started before the strip's first week (D-917).
+  static int? _weekIndexFor(
+    List<DateTime> weekStarts,
+    int startMs,
+    String startOfWeek,
+  ) {
+    final weekStart = OmniDateUtils.startOfWeek(
+      DateTime.fromMillisecondsSinceEpoch(startMs),
+      startOfWeek: startOfWeek,
+    );
+    final weekStartMs = weekStart.millisecondsSinceEpoch;
+    for (var i = weekStarts.length - 1; i >= 0; i--) {
+      if (weekStarts[i].millisecondsSinceEpoch == weekStartMs) return i;
+    }
+    return null;
+  }
+
+  static void _addAll(
+    Map<ExerciseSection, double> target,
+    Map<ExerciseSection, double> source,
+  ) {
+    for (final entry in source.entries) {
+      target[entry.key] = (target[entry.key] ?? 0) + entry.value;
+    }
   }
 
   /// One summary per exercise logged in at least one completed session that
