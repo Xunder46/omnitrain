@@ -11,9 +11,9 @@ import '../models/models.dart';
 /// library, but they cannot edit or delete catalog foods themselves.
 ///
 /// This loader is the single point of truth for converting the JSON asset into
-/// [Food] models. Both the Hive-backed production repository and the in-memory
-/// Mock repository go through this loader (Mock uses a hardcoded list generated
-/// from the same JSON data to avoid asset I/O in unit tests).
+/// [Food] models. The Hive-backed repository loads the asset through
+/// [loadFromAsset]; the Mock repository reads the generated
+/// `lib/mock/food_catalog_seed.dart`.
 class FoodCatalogLoader {
   /// Path to the catalog asset.
   static const String assetPath = 'assets/data/food_catalog.json';
@@ -31,7 +31,7 @@ class FoodCatalogLoader {
 
   /// Parse a catalog JSON string into a list of [Food] models.
   ///
-  /// Exposed for testing and for the Mock repository's hardcoded list generator.
+  /// Exposed for tests (`test/food_catalog_load_test.dart`).
   /// All loaded foods are marked with `isCatalog = true`.
   static List<Food> parseCatalogJson(String jsonString) {
     final decoded = jsonDecode(jsonString) as Map<String, dynamic>;

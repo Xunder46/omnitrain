@@ -125,11 +125,6 @@ the answer goes through `WorkoutState.setEntryDistance` or
   session: a Cardio session, a routine, Free Training, a rolling session, a
   watch-started session. Anything tracked through another modality is not
   listed.
-- **A stored distance is never hidden.** An entry of any other kind that still
-  holds a distance greater than zero is listed too, so no distance the app ever
-  wrote becomes unreachable. Setting it to zero removes its row. A row no entry
-  owns — one placed past the last entry — is not one of them: it belongs to no
-  entry, so it is listed nowhere and nothing deletes it (D-321, D-322).
 - **A Cardio-tracked entry keeps its row even with no distance**, reading as
   absence rather than zero, because the field has to exist somewhere to be
   filled in.
@@ -154,16 +149,15 @@ Verified by:
   an outside tap and by cleared text (`S-816`), filling an empty entry
   (`S-817`); which sessions list what — Free Training (`S-818a`), a resistance
   session with no section (`S-818b`), a watch-imported session (`S-818c`), a
-  non-Cardio entry with a stored distance (`S-818d`), removing that distance
-  (`S-819`); the post-workout summary's write on Done (`S-820`); an Edit
+  distance row stored on a non-timed effort shows nothing (`S-1303`); the
+  post-workout summary's write on Done (`S-820`); an Edit
   Session discard (`S-821`); a routine (`S-822`); a plank tracked through
   Cardio (`S-823`).
 - `test/crown_control_tap_to_edit_test.dart`: the dialog's parse, clamp and
   rounding for the `distance` type, and its title.
 - `test/entry_identity_summary_test.dart`: the rows the section lists after a
   delete (`S-855`), the entry that holds a value typed after an add (`S-856`),
-  a leftover row that shows nowhere (`S-858`) and a lone legacy row that
-  carries no number (`S-859`).
+  and a row that belongs to no entry (`S-858`).
 
 ---
 
@@ -295,6 +289,11 @@ Important SessionSummary fields used by the current UI:
 
 Available from the summary's overflow menu. The draft is editable — name, exercise order,
 additions and removals — before it is persisted through `saveRoutineFromDraft`.
+
+Each target's value comes from the entry's own row, read through `EntryRows` — never from the row a
+store happens to return first. A `timed` or `drill` template carries no distance target, and its
+extra-weight target is the first entry's own row. Verified by `S-1311`–`S-1315` in
+`test/state_test.dart` and `S-1317` in `test/session_summary_distance_test.dart`.
 
 ---
 

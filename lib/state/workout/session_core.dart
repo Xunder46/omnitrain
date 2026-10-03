@@ -202,21 +202,6 @@ class SessionCore {
     return null;
   }
 
-  int _getMetricsPerEntry(String effortKind) {
-    switch (effortKind) {
-      case 'set':
-        return 2;
-      case 'timed':
-        return 2;
-      case 'round':
-        return 0;
-      case 'drill':
-        return 1;
-      default:
-        return 2;
-    }
-  }
-
   void _setLoading(bool value) {
     _isLoading = value;
     _notify();

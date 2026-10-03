@@ -7,7 +7,9 @@
 // read the same, and a Hive restart must not change the answer.
 //
 // Scenarios S-841–S-847 of
-// `docs/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
+// `docs/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`, and S-1305
+// and S-1306 of
+// `docs/plans/2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan.md`.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
@@ -47,8 +49,9 @@ void main() {
       expect(EntryRows.numberInId('obs-e1-3-extra-weight'), 3);
       expect(EntryRows.numberInId('obs-e1-3-round-duration'), 3);
       expect(EntryRows.numberInId('obs-effort-1727000000000-0-11-weight'), 11);
-      // A 3a write's `-<ms>` suffix: the row still sits at its own number.
-      expect(EntryRows.numberInId('obs-e1-4-distance-1727000000123'), 4);
+      // A suffixed id carries no number: the suffix is not part of the shape
+      // the rule reads (D-704, S-1305).
+      expect(EntryRows.numberInId('obs-e1-4-distance-1727000000123'), isNull);
       expect(EntryRows.numberInId('obs-e1-x-reps'), isNull);
       expect(
         EntryRows.numberInId('9f1c8a44-3b2e-4c0d-8f6a-1d2e3f4a5b6c'),
@@ -213,14 +216,6 @@ void main() {
           distanceRow('e-f5', 1, 0.0, atMs: fixtureRowAt(0)),
           distanceRow('e-f5', 2, 0.0, atMs: fixtureRowAt(1)),
           distanceRow('e-f5', 3, 0.0, atMs: fixtureRowAt(2)),
-          distanceRow(
-            'e-f5',
-            3,
-            2000.0,
-            atMs: fixtureRowAt(3),
-            source: EffortObservation.sourceEntered,
-            id: 'obs-e-f5-3-distance-9000',
-          ),
           distanceRow('e-f5', 4, 0.0, atMs: fixtureRowAt(4)),
         ]) {
           await repo.createObservation(row);
@@ -229,7 +224,7 @@ void main() {
         repo = await harness.restart();
         final state = await loadState(repo, 's-846');
 
-        expect(_distances(state, 'e-f5'), [0.0, 0.0, 0.0, 2000.0, 0.0]);
+        expect(_distances(state, 'e-f5'), [0.0, 0.0, 0.0, 0.0, 0.0]);
       });
 
       // Red before the fix: the copied rows were given random UUIDs (G9).
@@ -261,8 +256,8 @@ void main() {
           weightFactor: 0.0,
           repsBase: 5,
         );
-        // The timed effort holds S-846's own shape — numbers 1, 2, 3, a second
-        // row at 3 (3a's suffix) and 4 — across five instances.
+        // The timed effort holds S-846's own shape — numbers 1, 2, 3 and 4 —
+        // across five instances.
         await seedExercise(repo, id: 'ex-run-row', name: 'Easy Run');
         await seedHoldEffort(
           repo,
@@ -275,13 +270,6 @@ void main() {
             distanceRow('e-d', 1, 0.0, atMs: fixtureRowAt(0)),
             distanceRow('e-d', 2, 0.0, atMs: fixtureRowAt(1)),
             distanceRow('e-d', 3, 0.0, atMs: fixtureRowAt(2)),
-            distanceRow(
-              'e-d',
-              3,
-              2000.0,
-              atMs: fixtureRowAt(3),
-              id: 'obs-e-d-3-distance-9000',
-            ),
             distanceRow('e-d', 4, 0.0, atMs: fixtureRowAt(4)),
           ],
         );
@@ -335,8 +323,8 @@ void main() {
           copiedRows.firstWhere((row) => row.id.endsWith('-2-reps')).valueInt,
           7,
         );
-        // The copy holds one row per source row, suffix and all, so nothing is
-        // merged and its entries pair the way the source's do (F-8).
+        // The copy holds one row per source row, so nothing is merged and its
+        // entries pair the way the source's do.
         expect(
           (await repo.getEffortObservations(
             cloneTimed,
@@ -345,7 +333,6 @@ void main() {
             'obs-$cloneTimed-1-distance',
             'obs-$cloneTimed-2-distance',
             'obs-$cloneTimed-3-distance',
-            'obs-$cloneTimed-3-distance-9000',
             'obs-$cloneTimed-4-distance',
           },
         );
@@ -360,8 +347,188 @@ void main() {
           [5, 6, 7],
           reason: 'the source block is untouched',
         );
-        expect(_distances(state, 'e-d'), [0.0, 0.0, 0.0, 2000.0, 0.0]);
-        expect(_distances(state, cloneTimed), [0.0, 0.0, 0.0, 2000.0, 0.0]);
+        expect(_distances(state, 'e-d'), [0.0, 0.0, 0.0, 0.0, 0.0]);
+        expect(_distances(state, cloneTimed), [0.0, 0.0, 0.0, 0.0, 0.0]);
+      });
+
+      // ─── S-1305 / S-1306: a row with no number pairs with nothing ────────
+
+      test(
+        'S-1305 a suffixed row pairs with nothing and stays stored',
+        () async {
+          await seedSession(repo, sessionId: 's-1305');
+          await seedExercise(repo, id: 'ex-1305', name: 'Easy Run');
+          await repo.createEffort(
+            SegmentEffort(
+              id: 'e-1305',
+              segmentId: 'seg-s-1305',
+              orderIndex: 0,
+              effortKind: 'timed',
+              exerciseId: 'ex-1305',
+              createdAtMs: fixtureStart,
+              updatedAtMs: fixtureStart,
+            ),
+          );
+          for (var i = 0; i < 2; i++) {
+            await repo.createTimedInstance(
+              timedInstance('e-1305', i, durationSecs: 60, entryIndex: i),
+            );
+          }
+          await repo.createObservation(
+            distanceRow('e-1305', 0, 0.0, atMs: fixtureRowAt(0)),
+          );
+          await repo.createObservation(
+            distanceRow(
+              'e-1305',
+              1,
+              2000.0,
+              atMs: fixtureRowAt(1),
+              source: EffortObservation.sourceEntered,
+              id: 'obs-e-1305-1-distance-9000',
+            ),
+          );
+
+          repo = await harness.restart();
+          final state = await loadState(repo, 's-1305');
+
+          expect(EntryRows.numberInId('obs-e-1305-1-distance-9000'), isNull);
+          expect(_distances(state, 'e-1305'), [0.0, 0.0]);
+          expect(
+            state.getEffortDistanceEntries('e-1305')[1].row,
+            isNull,
+            reason: 'S-1305 the suffixed row belongs to no entry',
+          );
+
+          // Every read leaves it stored.
+          final stored = await storedRows(repo, 'e-1305', MetricIds.distance);
+          expect(stored.map((row) => row.id).toSet(), {
+            'obs-e-1305-0-distance',
+            'obs-e-1305-1-distance-9000',
+          });
+          expect(
+            stored.firstWhere((row) => row.id.endsWith('-9000')).valueReal,
+            2000.0,
+          );
+        },
+      );
+
+      test('S-1306 a copied suffixed row gets a fresh id', () async {
+        await seedSession(repo, sessionId: 's-1306', isRolling: true);
+        await seedExercise(
+          repo,
+          id: 'ex-1306',
+          name: 'Row',
+          capabilities: ['load'],
+        );
+        await repo.createSessionBlock(
+          SessionBlock(
+            id: 'b-1306',
+            sessionId: 's-1306',
+            name: 'Block',
+            orderIndex: 0,
+            createdAtMs: fixtureStart,
+            updatedAtMs: fixtureStart,
+          ),
+        );
+        await seedSetEffort(
+          repo,
+          segmentId: 'seg-s-1306',
+          effortId: 'e-1306-s',
+          exerciseId: 'ex-1306',
+          entryCount: 2,
+          hasExtraWeight: false,
+          weightFactor: 0.0,
+          repsBase: 5,
+        );
+        await seedExercise(repo, id: 'ex-1306-run', name: 'Easy Run');
+        await seedHoldEffort(
+          repo,
+          segmentId: 'seg-s-1306',
+          effortId: 'e-1306-d',
+          exerciseId: 'ex-1306-run',
+          entryCount: 2,
+          effortKind: 'timed',
+          rows: [
+            distanceRow('e-1306-d', 0, 0.0, atMs: fixtureRowAt(0)),
+            distanceRow(
+              'e-1306-d',
+              1,
+              2000.0,
+              atMs: fixtureRowAt(1),
+              source: EffortObservation.sourceEntered,
+              id: 'obs-e-1306-d-1-distance-9000',
+            ),
+          ],
+        );
+        for (final effortId in ['e-1306-s', 'e-1306-d']) {
+          final effort = (await repo.getSegmentEfforts(
+            'seg-s-1306',
+          )).firstWhere((e) => e.id == effortId);
+          await repo.updateEffort(
+            SegmentEffort(
+              id: effort.id,
+              segmentId: effort.segmentId,
+              orderIndex: effort.orderIndex,
+              effortKind: effort.effortKind,
+              exerciseId: effort.exerciseId,
+              blockId: 'b-1306',
+              createdAtMs: effort.createdAtMs,
+              updatedAtMs: effort.updatedAtMs,
+            ),
+          );
+        }
+
+        final cloneBlockId = await repo.cloneSessionBlock('b-1306');
+        expect(cloneBlockId, isNotEmpty);
+        final clones = {
+          for (final effort in (await repo.getSegmentEfforts(
+            'seg-s-1306',
+          )).where((e) => e.blockId == cloneBlockId))
+            effort.id: effort.effortKind,
+        };
+        final cloneSets = clones.entries
+            .firstWhere((e) => e.value == 'set')
+            .key;
+        final cloneTimed = clones.entries
+            .firstWhere((e) => e.value == 'timed')
+            .key;
+
+        // The numbered rows keep the source's number and metric key.
+        expect(
+          (await repo.getEffortObservations(
+            cloneSets,
+          )).map((row) => row.id).toSet(),
+          {
+            'obs-$cloneSets-0-reps',
+            'obs-$cloneSets-0-weight',
+            'obs-$cloneSets-1-reps',
+            'obs-$cloneSets-1-weight',
+          },
+        );
+
+        // The suffixed row is copied under a fresh unique id, so it pairs with
+        // no entry in the copy either.
+        final copiedTimed = await repo.getEffortObservations(cloneTimed);
+        expect(copiedTimed, hasLength(2));
+        final copiedSuffixed = copiedTimed.firstWhere(
+          (row) => row.valueReal == 2000.0,
+        );
+        expect(copiedSuffixed.id, isNot('obs-$cloneTimed-1-distance-9000'));
+        expect(EntryRows.numberInId(copiedSuffixed.id), isNull);
+        expect(copiedSuffixed.valueSource, EffortObservation.sourceEntered);
+
+        final state = await loadState(repo, 's-1306');
+        expect(_distances(state, cloneTimed), [0.0, 0.0]);
+        expect(_distances(state, 'e-1306-d'), [0.0, 0.0]);
+        expect(
+          (await storedRows(
+            repo,
+            'e-1306-d',
+            MetricIds.distance,
+          )).map((row) => row.id).toSet(),
+          {'obs-e-1306-d-0-distance', 'obs-e-1306-d-1-distance-9000'},
+          reason: 'S-1306 the source stays readable',
+        );
       });
     });
   }

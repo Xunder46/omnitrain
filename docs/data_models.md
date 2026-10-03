@@ -62,13 +62,13 @@ Ordering contract:
 
 **`valueSource`.** A distance observation records where its value came from:
 `gps`, `entered` or `estimated`, or nothing at all. It is the only field of its
-kind — no other metric may carry a source — and an absent source means the row
-was written by a path that did not record one, which reads as `entered`. The
-model refuses a source on any other metric and a value outside that
-vocabulary, and the schema's CHECK mirrors it. Which entry a distance belongs
-to and who may change it are the subject of
-[Distance Source & Pairing](distance_source.md). Verified by
-`test/distance_source_test.dart` and `test/db_seed_test.dart`.
+kind — no other metric may carry a source. A distance that holds a value always
+carries a source; a zero distance carries none, because zero is absence, and
+nothing reads an absent source as `entered`. The model refuses a source on any
+other metric and a value outside that vocabulary, and the schema's CHECK
+mirrors it. Which entry a distance belongs to and who may change it are the
+subject of [Distance Source & Pairing](distance_source.md). Verified by
+`test/distance_source_test.dart` (`S-1301`) and `test/db_seed_test.dart`.
 
 **Observation Layout by Effort Kind:**
 
@@ -540,30 +540,21 @@ Ids are never renumbered, so an id built from an entry's current display positio
 entry's rows. `EntryRows` in `lib/core/utils/entry_rows.dart` holds that rule for the phone's own
 readers and writers. One path builds its own ids instead: the watch import (below).
 
-**The routine-template defaults read rows without the rule.** Saving a session as a routine
-(`SessionSummaryBuilder.buildTemplateDraftExercises` in `lib/state/workout/session_summary_builder.dart`)
-drafts a timed or drill entry's extra-weight target from `_observations[effort.id].first`, and a set
-effort's targets from its rows sorted by `createdAtMs`, not by the number in each row's id. A row a
-store returns out of entry order, or a companion row created after the one it pairs with, can draft a
-template from the wrong entry's value. Exercised, but not pinned against reordering, by
-`test/state_test.dart` (`buildTemplateDraftExercises includes extra-weight target for timed`) and
-`test/services_test.dart` (`saveRoutineFromDraft`).
-
-
-**The rule.** An id is `obs-<effortId>-<n>-<metricKey>`, optionally followed by `-<digits>`. The
-metric keys are the values of `MetricIds.metricIdToKey`; an effort id may itself contain dashes, so
-only the number-key suffix is matched. Rows are ordered by number, then `createdAtMs`, then id; rows
-with no number follow in the store's own order. `set` entries are the groups of rows sharing a
-number, in ascending number; on an effort any of whose rows has no number, the sequential grouping
-of the legacy data applies instead. `timed` and `drill` entries are their `TimedInstance` records,
+**The rule.** An id is `obs-<effortId>-<n>-<metricKey>`. The metric keys are the values of
+`MetricIds.metricIdToKey`; an effort id may itself contain dashes, so
+only the number-key suffix is matched. Rows are ordered by number, then `createdAtMs`, then id; a
+row with no number belongs to no entry and sorts last, in the store's own order, so the order stays
+total. `set` entries are the groups of rows sharing a number, in ascending number; a row with no
+number is in no group, is ignored by every reader and stays stored — there is no sequential
+grouping of unnumbered rows. `timed` and `drill` entries are their `TimedInstance` records,
 and entry *k*'s row of each companion metric is the *k*-th row of that metric. A row placed past the
-last entry is a **leftover**: it belongs to no entry, it is ignored by every reader, and nothing
+last entry belongs to no entry: it is ignored by every reader, and nothing
 deletes it.
 
 **Numbering new rows.** A new row takes 1 + the highest number the effort holds, or 0 when it holds
-none. That covers each new set, timed or hold entry, and every row a distance write creates. No
-suffix is ever minted; an existing suffixed id reads as its number. A copied block's rows are named
-for the effort they were copied into, keeping the source's own number and metric key.
+none. That covers each new set, timed or hold entry, and every row a distance write creates. A
+copied block's rows are named for the effort they were copied into, keeping the source's own number
+and metric key.
 
 **The watch import is separate.** `WatchSessionImporter` numbers its own rows densely by entry
 position and reads ids with `EntryRows.parseId`; the phone's rule and the import's numbering are
@@ -572,7 +563,10 @@ compatible (the import appends at the highest number plus 1). Verified by
 own rows in an imported effort, and by `test/row_invariants_guard_test.dart` (S-887).
 
 The phone's own rule is verified by `test/entry_rows_test.dart` (`S-841`–`S-847`) and
-`test/entry_identity_test.dart` (`S-851`–`S-860`, `S-862`–`S-864`); the distance half is
+`test/entry_identity_test.dart` (`S-851`–`S-858`, `S-860`, `S-862`–`S-864`); an unnumbered row is in
+no entry and no delete reaches it (`S-1307` in `test/utils_test.dart`, `S-1308` in
+`test/entry_identity_test.dart`); a routine draft reads each entry's own row (`S-1311`–`S-1313` in
+`test/state_test.dart`); the distance half is
 [Distance Source & Pairing](distance_source.md)'s.
 
 ---

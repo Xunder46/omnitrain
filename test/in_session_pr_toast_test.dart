@@ -87,7 +87,7 @@ Future<TrainingSession> _seedCompletedSetSession(
 
   await repo.createObservation(
     EffortObservation(
-      id: 'obs-reps-$sessionId',
+      id: 'obs-$effortId-0-reps',
       effortId: effortId,
       metricId: 'metric-reps',
       valueInt: reps,
@@ -97,7 +97,7 @@ Future<TrainingSession> _seedCompletedSetSession(
   );
   await repo.createObservation(
     EffortObservation(
-      id: 'obs-weight-$sessionId',
+      id: 'obs-$effortId-0-weight',
       effortId: effortId,
       metricId: 'metric-weight',
       valueReal: weight,
@@ -159,7 +159,7 @@ Future<TrainingSession> _seedInProgressSetSession(
 
   await repo.createObservation(
     EffortObservation(
-      id: 'obs-reps-$sessionId',
+      id: 'obs-$effortId-0-reps',
       effortId: effortId,
       metricId: 'metric-reps',
       valueInt: reps,
@@ -169,7 +169,7 @@ Future<TrainingSession> _seedInProgressSetSession(
   );
   await repo.createObservation(
     EffortObservation(
-      id: 'obs-weight-$sessionId',
+      id: 'obs-$effortId-0-weight',
       effortId: effortId,
       metricId: 'metric-weight',
       valueReal: weight,
@@ -342,7 +342,7 @@ void main() {
           );
           await repo.createObservation(
             EffortObservation(
-              id: 'obs-reps-$effortId',
+              id: 'obs-$effortId-0-reps',
               effortId: effortId,
               metricId: 'metric-reps',
               valueInt: entry.reps,
@@ -352,7 +352,7 @@ void main() {
           );
           await repo.createObservation(
             EffortObservation(
-              id: 'obs-weight-$effortId',
+              id: 'obs-$effortId-0-weight',
               effortId: effortId,
               metricId: 'metric-weight',
               valueReal: entry.weight,
@@ -479,7 +479,7 @@ void main() {
       );
       await repo.createObservation(
         EffortObservation(
-          id: 'obs-weight-round',
+          id: 'obs-$effortId-0-weight',
           effortId: effortId,
           metricId: 'metric-weight',
           valueReal: 200.0, // huge — would be a fake PR if not filtered
@@ -523,7 +523,7 @@ void main() {
       );
       await repo.createObservation(
         EffortObservation(
-          id: 'obs-weight-cardio',
+          id: 'obs-$cardioEffortId-0-weight',
           effortId: cardioEffortId,
           metricId: 'metric-weight',
           valueReal: 300.0, // also huge
@@ -578,7 +578,7 @@ void main() {
         );
         await repo.createObservation(
           EffortObservation(
-            id: 'obs-reps-empty',
+            id: 'obs-$effortId-0-reps',
             effortId: effortId,
             metricId: 'metric-reps',
             valueInt: 5,
@@ -588,7 +588,7 @@ void main() {
         );
         await repo.createObservation(
           EffortObservation(
-            id: 'obs-weight-empty',
+            id: 'obs-$effortId-0-weight',
             effortId: effortId,
             metricId: 'metric-weight',
             valueReal: 0.0,

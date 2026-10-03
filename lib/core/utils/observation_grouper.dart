@@ -40,17 +40,19 @@ class ObservationGrouper {
       case 'drill':
         return _groupDrillObservations(observations);
       default:
-        return _groupSetObservations(observations); // Fallback
+        // A `switch` on a String needs a total branch: an effort kind outside
+        // the vocabulary is grouped as a set (D-711).
+        return _groupSetObservations(observations);
     }
   }
 
   /// Group set observations into the entry each row belongs to (D-324).
   ///
-  /// The rule and the legacy fallback both live in [EntryRows], so a reader
-  /// here and a write in `WorkoutState` cannot disagree about which set a row
-  /// belongs to. Note this reads `…-extra-weight` rows too: an id the old
-  /// pattern here could not parse made every bodyweight effort fall back to
-  /// the store's own order (G3).
+  /// The rule lives in [EntryRows], so a reader here and a write in
+  /// `WorkoutState` cannot disagree about which set a row belongs to. Note this
+  /// reads `…-extra-weight` rows too: an id the old pattern here could not
+  /// parse made every bodyweight effort fall back to the store's own order
+  /// (G3).
   static List<Map<String, dynamic>> _groupSetObservations(
     List<dynamic> observations,
   ) => EntryRows.setEntries(_asRows(observations));

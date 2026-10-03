@@ -28,10 +28,8 @@ const double kScrollableTrendMinPerPointWidth = 28.0;
 const double kScrollableTrendHorizontalMargin = 12.0;
 
 /// A horizontally scrollable trend chart with a pinned y-axis
-/// label column. Replaces the fixed-width rendering for every
-/// stats chart on [StatsScreen] (strength e1RM, strength volume,
-/// cardio pace, cardio duration, nutrition calories, nutrition
-/// macros) and the profile measurement history sheet.
+/// label column. Used by `measurement_history_chart_sheet.dart`,
+/// `nutrition_trend_card.dart` and `exercise_progress_screen.dart`.
 ///
 /// ## Layout
 ///

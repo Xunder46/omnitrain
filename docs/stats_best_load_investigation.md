@@ -589,8 +589,8 @@ Stated separately so nothing above is read as more settled than it is.
 4. **Whether §2.5/§2.7's estimate-as-weight presentation has actually misled anyone.** NOT
    DETERMINED — no report, no telemetry. The finding is structural.
 5. **`ObservationGrouper` entry-index parsing.** RESOLVED — the grouper delegates set grouping to
-   `EntryRows`, which reads the number in the id (a 3a suffix included), so the sequential path is
-   left to rows that genuinely carry no number. Verified by `test/entry_rows_test.dart` (`S-843`).
+   `EntryRows`, which reads the number in the id, so a row with no number is in no entry.
+   Verified by `test/entry_rows_test.dart` (`S-843`).
 
 ---
 

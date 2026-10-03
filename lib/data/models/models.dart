@@ -555,10 +555,10 @@ class MetricDefinition {
 /// only on a `metric-distance` row, and only to one of [valueSources];
 /// anything else throws [ArgumentError] at construction, mirroring the CHECK
 /// on `app_effort_observation` in `scripts/sqlite_schema.sql`. A row stored
-/// without the key reads as null, which callers resolve as
-/// [sourceEntered] — every distance written before the field existed was
-/// typed or dialled by a person. Pairing a row with its entry and resolving
-/// the source is `DistancePairing`'s job (`lib/core/utils/distance_source.dart`).
+/// without the key reads as null, and null means no source: a distance that
+/// holds a value always carries a source (D-701). Pairing a row
+/// with its entry is `DistancePairing`'s job
+/// (`lib/core/utils/distance_source.dart`).
 class EffortObservation {
   /// Measured by the watch's GPS.
   static const String sourceGps = 'gps';

@@ -2107,10 +2107,9 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   /// A copied row's id (D-329): its source id with the effort id replaced, so
-  /// the copy's entries stay addressable like any other. Nothing else about the
-  /// id changes — a 3a suffix stays, because dropping it would put two copied
-  /// rows on one id and merge them (F-8). A source row that carries no entry
-  /// number, or belongs to another effort, keeps a fresh unique id.
+  /// the copy's entries stay addressable like any other. A source row that
+  /// carries no entry number, or belongs to another effort, keeps a fresh
+  /// unique id.
   String _clonedRowId(
     String sourceId, {
     required String sourceEffortId,

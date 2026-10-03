@@ -4,16 +4,14 @@
 //
 // The rows the section lists and the rows a distance write reaches are one list
 // (D-328), so a row that reads "· 4" is the fourth entry the write numbers 4. A
-// leftover row appears in no row and no total, and a lone legacy row carries no
-// number.
+// leftover row appears in no row and no total.
 //
-// Scenarios S-855, S-856, S-858 and S-859 of
+// Scenarios S-855, S-856 and S-858 of
 // `docs/plans/2026-09-27-03a2-stats-pr3a2-entry-identity-plan.md`.
 // The state half of S-858 is `test/entry_identity_test.dart`'s.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/constants/modality.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -32,7 +30,6 @@ import 'helpers/repository_harness.dart';
 // ─── Fixture ────────────────────────────────────────────────────────────────
 
 const _easyRun = 'Easy Run';
-const _plank = 'Plank';
 
 /// 09:00 on the day [daysAgo] days ago, so the Summary opens as a historical
 /// one and Stats buckets the session by the same day.
@@ -188,9 +185,6 @@ Future<void> _pumpStats(
   await tester.pumpAndSettle();
 }
 
-/// The DISTANCE card, or null when the section is hidden.
-Finder get _distanceCard => find.byKey(const Key('omni_session_distance_card'));
-
 /// The full text of the Distance section, in render order.
 List<String> _sectionTexts(WidgetTester tester) => tester
     .widgetList<Text>(
@@ -201,24 +195,6 @@ List<String> _sectionTexts(WidgetTester tester) => tester
     )
     .map((text) => text.data ?? '')
     .toList();
-
-Future<void> _tapRow(WidgetTester tester, String label) async {
-  await tester.ensureVisible(find.text(label));
-  await tester.tap(find.text(label));
-  await tester.pumpAndSettle();
-}
-
-Future<void> _enterInDialog(WidgetTester tester, String text) async {
-  await tester.enterText(
-    find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(TextField),
-    ),
-    text,
-  );
-  await tester.tap(find.text('Ok'));
-  await tester.pumpAndSettle();
-}
 
 void main() {
   // ─── S-855: deleting two timed entries keeps each distance with its entry ──
@@ -377,87 +353,5 @@ void main() {
       'e-lo',
     )).firstWhere((row) => row.id == 'obs-e-lo-7-distance');
     expect(leftover.valueReal, 1000.0);
-  });
-
-  // ─── S-859: a lone legacy row carries no number ──────────────────────────
-
-  testWidgets('S-859 the Summary names a lone legacy row without a number', (
-    tester,
-  ) async {
-    final repo = await _freshRepo();
-    await seedExercise(repo, id: 'ex-pl', name: _plank);
-    await _seedSession(
-      repo,
-      sessionId: 's-859',
-      daysAgo: 1,
-      modality: Modality.isometricStretching,
-    );
-
-    final start = _dayStart(1);
-    await repo.createEffort(
-      SegmentEffort(
-        id: 'e-pl',
-        segmentId: 'seg-s-859',
-        orderIndex: 0,
-        topLevelOrderIndex: 0,
-        effortKind: 'drill',
-        exerciseId: 'ex-pl',
-        createdAtMs: start,
-        updatedAtMs: start,
-      ),
-    );
-    for (var i = 0; i < 2; i++) {
-      await repo.createTimedInstance(
-        TimedInstance(
-          id: 'ti-e-pl-$i',
-          effortId: 'e-pl',
-          entryIndex: i,
-          targetDurationSecs: 60,
-          actualDurationSecs: 60,
-          startedAtMs: start,
-          finishedAtMs: start + 60000,
-          state: TimedState.finished,
-          createdAtMs: start,
-          updatedAtMs: start,
-        ),
-      );
-      await repo.createObservation(
-        extraWeightRow('e-pl', i, 0.0, atMs: start + i),
-      );
-    }
-    // Two legacy distance rows, only the second holding a distance.
-    await repo.createObservation(distanceRow('e-pl', 0, 0.0, atMs: start));
-    await repo.createObservation(
-      distanceRow('e-pl', 1, 400.0, atMs: start + 1),
-    );
-
-    final state = WorkoutState(repo);
-    await state.loadHistoricalSession('s-859');
-
-    await _pumpSummary(
-      tester,
-      repo,
-      sessionId: 's-859',
-      settings: await _settings(repo),
-      workoutState: state,
-    );
-
-    expect(_sectionTexts(tester), [
-      _plank,
-      '0.40',
-      'KM',
-    ], reason: 'D-328: one row, so no "· 2"');
-
-    await _tapRow(tester, _plank);
-    await _enterInDialog(tester, '0');
-
-    final rows = {
-      for (final row in await repo.getEffortObservations('e-pl'))
-        if (row.metricId == MetricIds.distance) row.id: row,
-    };
-    expect(rows['obs-e-pl-1-distance']!.valueReal, 0.0);
-    expect(rows['obs-e-pl-1-distance']!.valueSource, isNull);
-    expect(rows['obs-e-pl-0-distance']!.valueReal, 0.0);
-    expect(_distanceCard, findsNothing, reason: 'no distance is left to show');
   });
 }
