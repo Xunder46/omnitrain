@@ -2665,7 +2665,7 @@ void main() {
     testWidgets('aggregate totals reflect seeded completed sessions', (
       WidgetTester tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
       final repo = await _freshRepo();
       final now = DateTime.now();
 
@@ -2693,7 +2693,7 @@ void main() {
 
       await pumpStatsScreen(tester, repo);
 
-      final aggregateCard = find.byType(OmniSurface).first;
+      final aggregateCard = find.byKey(const Key('all_time_card'));
       expect(
         find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
         findsOneWidget,
@@ -2711,7 +2711,7 @@ void main() {
     testWidgets('rolling sessions are excluded from duration aggregates', (
       WidgetTester tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
       final repo = await _freshRepo();
       final now = DateTime.now();
 
@@ -2732,7 +2732,7 @@ void main() {
 
       await pumpStatsScreen(tester, repo);
 
-      final aggregateCard = find.byType(OmniSurface).first;
+      final aggregateCard = find.byKey(const Key('all_time_card'));
       expect(
         find.descendant(of: aggregateCard, matching: find.text('2')),
         findsOneWidget,
@@ -2779,7 +2779,7 @@ void main() {
 
     testWidgets('S-005 guard: no feeling scalar / pill / tile appears in the '
         'ALL TIME summary stat row', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
       final repo = await _freshRepo();
       final now = DateTime.now();
       await seedFeelingSession(
@@ -2792,11 +2792,11 @@ void main() {
 
       await pumpStatsScreen(tester, repo);
 
-      // The ALL TIME row renders inside the first OmniSurface
-      // (the aggregate card). It must NOT contain any "Feeling"
+      // The ALL TIME row renders inside the all_time_card surface.
+      // It must NOT contain any "Feeling"
       // label, no "average feeling" scalar, no pill of any kind
       // referencing feeling.
-      final aggregateCard = find.byType(OmniSurface).first;
+      final aggregateCard = find.byKey(const Key('all_time_card'));
       expect(
         find.descendant(
           of: aggregateCard,

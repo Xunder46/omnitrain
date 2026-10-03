@@ -167,6 +167,12 @@ Every section eyebrow and per-card title in the app uses the **canonical D-1 typ
 | Color | `OmniTheme.colors.textMuted` | Quiet, secondary hierarchy; never louder than the card body. |
 | Overflow | `maxLines: 1, overflow: TextOverflow.ellipsis` | Long titles (e.g. month labels, dates) truncate gracefully rather than wrap. |
 
+The `actions` cluster takes at most half the header's width: a long action
+label ellipsizes instead of overflowing the header row at a narrow width, a
+short action keeps its natural size, and the title keeps the rest — at least
+the other half. Verified by `test/header_standardization_test.dart` (`S-001c`
+and its title-side and real-action cases).
+
 ### Where the canonical header is used
 
 Every section / card header in the app routes through `OmniCardHeader`. The widget enforces the contract above; raw `Text` widgets above outlined cards are **not permitted** (see `docs/global_conventions.md`).
@@ -177,7 +183,7 @@ Every section / card header in the app routes through `OmniCardHeader`. The widg
 | **Session Summary** | Date (with the modality chip in actions), `DISTANCE`, `SESSION NOTE` (note card), month label (with `Open Calendar` in actions) |
 | **Daily Nutrition** | `Today` (with `nutrition_target_button` labelled `OutlinedButton.icon` in actions — PR 3 / S-002), `Foods I Eat` (with `food_library_manage_pencil` in actions) |
 | **Profile** | One header per measurement definition (label + `+` add button in actions) |
-| **Stats** | `ALL TIME`; the Instruments list's four title-case headers, `Resistance`, `Cardio`, `Isometric`, `Sports`, the first of them carrying the window chip in actions; and the Fuel row's `Fuel`. Verified by `test/instrument_list_screen_test.dart` (`S-1001`, `S-1011`, `S-1015`) and `test/fuel_row_screen_test.dart`. |
+| **Stats** | `TRAINING MIX` (carrying the window chip in actions); `ALL TIME`; the Instruments list's four title-case headers, `Resistance`, `Cardio`, `Isometric`, `Sports`, the first of them carrying the window chip in actions; and the Fuel row's `Fuel`. Verified by `test/mix_layer_screen_test.dart` (`S-1601`, `S-1612`), `test/instrument_list_screen_test.dart` (`S-1001`, `S-1011`, `S-1015`) and `test/fuel_row_screen_test.dart`. |
 
 ### Intentional exceptions (D-10 — sheet / title chrome, not card headers)
 

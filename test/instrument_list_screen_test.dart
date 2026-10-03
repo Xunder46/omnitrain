@@ -557,18 +557,22 @@ void main() {
           expect(_instrumentRowKeys(), ['instrument_row_ex-in']);
           expect(find.text('Deadlift'), findsNothing);
 
-          // One chip: the Instruments list's first header carries the window
-          // chip, and it is the only header on the screen.
+          // Two chips: the Mix header's and the Instruments list's first
+          // header — both naming the same window.
           final chips = find.byKey(const Key('stats_window_chip'));
-          expect(chips, findsOneWidget);
+          expect(chips, findsNWidgets(2));
           expect(_textsUnder(chips), everyElement('· ${window.label}'));
-          final instrumentsHeader = find.ancestor(
-            of: chips.first,
-            matching: find.byType(OmniCardHeader),
-          );
           expect(
-            tester.widget<OmniCardHeader>(instrumentsHeader).title,
-            'Resistance',
+            tester
+                .widgetList<OmniCardHeader>(
+                  find.ancestor(
+                    of: chips,
+                    matching: find.byType(OmniCardHeader),
+                  ),
+                )
+                .map((header) => header.title)
+                .toSet(),
+            {'TRAINING MIX', 'Resistance'},
           );
         });
       });

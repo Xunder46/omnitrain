@@ -921,6 +921,207 @@ void main() {
       expect(find.text('Empty'), findsOneWidget);
       expect(find.byKey(const Key('omniCardHeader_actions')), findsNothing);
     });
+
+    testWidgets('S-001c: a long action label ellipsizes at a narrow width '
+        'without overflowing, and a short action keeps its natural size', (
+      WidgetTester tester,
+    ) async {
+      // The Mix header carries a `StatsWindowChip` whose label is a period
+      // name, so at the narrowest phone width the cluster has to shrink below
+      // its intrinsic width rather than overflow the row. The screen half is
+      // `test/mix_layer_screen_test.dart` S-1615; this is the header's own
+      // contract.
+      const longLabel = '· A period name far too long to fit this row';
+      const shortLabel = '· 4 wk';
+      // The narrowest viewport `test/screen_overflow_contract_test.dart` uses.
+      const narrow = 320.0;
+      const wide = 2000.0;
+
+      Future<void> pump(String label, {required double width}) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: width,
+                  child: OmniCardHeader(
+                    title: 'TRAINING MIX',
+                    actions: <Widget>[
+                      Text(
+                        label,
+                        key: const Key('action'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      Future<double> actionWidth(String label, double width) async {
+        await pump(label, width: width);
+        return tester.getSize(find.byKey(const Key('action'))).width;
+      }
+
+      final overflows = <String>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = (details) {
+        final text = details.exceptionAsString();
+        if (text.contains('overflowed')) {
+          overflows.add(text.split('\n').first);
+        } else {
+          previous?.call(details);
+        }
+      };
+      try {
+        await pump(longLabel, width: narrow);
+      } finally {
+        FlutterError.onError = previous;
+      }
+
+      expect(
+        overflows.toSet(),
+        isEmpty,
+        reason:
+            'the actions cluster overflows at $narrow: '
+            '${overflows.toSet().join(" | ")}',
+      );
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getSize(find.byType(OmniCardHeader)).width,
+        lessThanOrEqualTo(narrow),
+      );
+
+      // The long action was bounded — it ellipsized — where the same label at
+      // an unconstrained width renders in full.
+      expect(
+        await actionWidth(longLabel, narrow),
+        lessThan(await actionWidth(longLabel, wide)),
+      );
+
+      // A short action is untouched by the bound: it renders at its natural
+      // size at both widths.
+      expect(
+        await actionWidth(shortLabel, narrow),
+        await actionWidth(shortLabel, wide),
+      );
+    });
+
+    testWidgets('S-001c (title): with a short action the title keeps every '
+        'pixel the cluster did not take', (WidgetTester tester) async {
+      const headerWidth = 320.0;
+      const actionLabel = '· 4 wk';
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: headerWidth,
+                child: OmniCardHeader(
+                  title: 'TRAINING MIX',
+                  actions: <Widget>[
+                    const Text(actionLabel, key: Key('action'), maxLines: 1),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final actionWidth = tester.getSize(find.byKey(const Key('action'))).width;
+      final titleWidth = tester
+          .getSize(find.byKey(const Key('omniCardHeader_title')))
+          .width;
+
+      // The default padding adds no horizontal inset, so the title's
+      // `Expanded` budget is the header width minus the cluster's natural
+      // width — the arithmetic the pre-PR structure produced. The cluster is
+      // bounded, not a flex sibling of the title, so it never halves that
+      // budget.
+      expect(titleWidth, closeTo(headerWidth - actionWidth, 0.5));
+      expect(titleWidth, greaterThan(headerWidth / 2));
+    });
+
+    testWidgets('S-001c (real action): a long button label at 320 dp and '
+        '1.3× text does not overflow and the title keeps half', (
+      WidgetTester tester,
+    ) async {
+      const headerWidth = 320.0;
+      const longLabel = 'Open Calendar and choose a training period';
+
+      await tester.binding.setSurfaceSize(const Size(headerWidth, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final overflows = <String>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = (details) {
+        final text = details.exceptionAsString();
+        if (text.contains('overflowed')) {
+          overflows.add(text.split('\n').first);
+        } else {
+          previous?.call(details);
+        }
+      };
+      try {
+        await tester.pumpWidget(
+          MediaQuery(
+            data: const MediaQueryData(
+              textScaler: TextScaler.linear(1.3),
+            ),
+            child: MaterialApp(
+              home: Scaffold(
+                body: Center(
+                  child: SizedBox(
+                    width: headerWidth,
+                    child: OmniCardHeader(
+                      title: 'TRAINING MIX',
+                      actions: <Widget>[
+                        OutlinedButton.icon(
+                          key: const Key('action'),
+                          onPressed: () {},
+                          icon: const Icon(Icons.calendar_month),
+                          label: const Text(longLabel),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      } finally {
+        FlutterError.onError = previous;
+      }
+
+      expect(
+        overflows.toSet(),
+        isEmpty,
+        reason: 'the action overflows at $headerWidth: '
+            '${overflows.toSet().join(" | ")}',
+      );
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getSize(find.byType(OmniCardHeader)).width,
+        lessThanOrEqualTo(headerWidth),
+      );
+      // The cluster is capped at half the header, so the action can never
+      // take more than half and the title can never drop below half.
+      expect(
+        tester.getSize(find.byKey(const Key('action'))).width,
+        lessThanOrEqualTo(headerWidth / 2),
+      );
+      expect(
+        tester.getSize(find.byKey(const Key('omniCardHeader_title'))).width,
+        greaterThanOrEqualTo(headerWidth / 2),
+      );
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════

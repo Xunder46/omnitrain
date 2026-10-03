@@ -400,7 +400,9 @@ void main() {
           );
 
           // The all-time figures the Stats screen already shows.
-          final statsPills = _textsUnder(find.byType(OmniSurface).first);
+          final statsPills = _textsUnder(
+            find.byKey(const Key('all_time_card')),
+          );
           expect(statsPills, contains('SESSIONS'));
           expect(statsPills, contains('TIME'));
           expect(statsPills, contains('STREAK'));

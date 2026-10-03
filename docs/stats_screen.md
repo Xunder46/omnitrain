@@ -29,20 +29,69 @@ that constructs `RecordsAndTrendsScreen`. Verified by
 ## What the Screen Displays
 
 With no completed session in the repository the body is the empty-state card
-alone — no ALL TIME card, no Instruments list and no Fuel row, whatever the food
-log holds. Otherwise it is three blocks in a fixed order:
-the [ALL TIME card](#all-time-card), the [Instruments list](#instruments-list)
+alone — no Mix layer, no ALL TIME card, no Instruments list and no Fuel row,
+whatever the food log holds. Otherwise it is four blocks in a fixed order:
+the [Mix layer](#mix-layer) when the window holds measurable time, the
+[ALL TIME card](#all-time-card), the [Instruments list](#instruments-list)
 when the window holds work, and the [Fuel row](#fuel-row) when recent food
-exists. Verified by `test/stats_legacy_removal_test.dart` (`S-1208`) and
-`test/fuel_row_screen_test.dart` (`S-1112`).
+exists. Verified by `test/stats_legacy_removal_test.dart` (`S-1208`),
+`test/fuel_row_screen_test.dart` (`S-1112`) and
+`test/mix_layer_screen_test.dart` (`S-1601`, `S-1610`).
 
 Nothing else is rendered. The screen holds no chart section, no segmented
-control and no block beyond those three: `test/stats_legacy_removal_test.dart`
+control and no block beyond those four: `test/stats_legacy_removal_test.dart`
 fails if a removed section's identifier returns to the file (`S-1209`) or if a
 chart widget does (`S-1210`), and `test/screen_widget_test.dart` fails if the
 Calories / Macros toggle returns. Recent PRs are not among them either: they live
 in [Records & Trends](records_and_trends.md), verified by
 `test/records_and_trends_screen_test.dart` (`S-913`).
+
+### Mix layer
+
+The Mix layer is the first block in the body, above the ALL TIME card, and there
+is exactly one of it. It is presentation only: every figure it draws is one
+`MixLayerData` supplies, and it computes nothing itself. Verified by
+`test/mix_layer_screen_test.dart` (`S-1601`).
+
+**The bar.** One horizontal bar split by modality, largest share first, with a
+legend reading each modality's rounded share. The shares are the window's own
+measure by modality — its measured time in the time measure, its load in the
+load measure. Verified by the same file (`S-1602`, `S-1609`).
+
+**The measure.** The layer reports either the window's training load or its
+time, and labels which one it is reporting. Load is shown only when the rated
+baseline behind the window is at least `kTrainingLoadMinRatedWeeks` weeks and
+the window's unrated share of time is at most `kTrainingLoadMaxUnratedShare`;
+otherwise the layer reports time. Verified by the same file (`S-1603`,
+`S-1605`, `S-1611`).
+
+**The usual bar.** When the measure is load, a second bar shows the usual mix
+the rated baseline establishes, labelled `usual`. Verified by the same file
+(`S-1606`, `S-1611`).
+
+**The note and the unrated line.** A note states the baseline the measure rests
+on, and an unrated line states how much of the window carried no rating. Both
+are absent when they have nothing to report. Verified by the same file
+(`S-1605`, `S-1606`, `S-1607`).
+
+**The strip.** Eight weeks of modality-stacked columns, oldest first, with the
+current week marked. A week with no work draws its column with no stack segment
+in it. Verified by the same file (`S-1608`, `S-1609`).
+
+**The window.** The layer reads the same resolved window as the Instruments
+list, and carries its own `StatsWindowChip` naming it — the second of the
+screen's two chips. Verified by the same file (`S-1612`, `S-1613`).
+
+**Copy.** The layer renders figures and modality names only: no chart
+primitive, no legacy section title, and no estimating or coaching copy.
+Verified by the same file (`S-1614`).
+
+**Fit.** The layer fits the narrowest viewport at the largest
+non-accessibility text scale and the tallest at the default, with nothing it
+draws wider than the card that holds it. Verified by the same file (`S-1615`).
+
+**Freshness.** The layer is refreshed by the screen's one load pass, so it is
+never stale relative to the other blocks. Verified by the same file (`S-1616`).
 
 ### ALL TIME card
 
@@ -219,6 +268,7 @@ part of the screen shares the one window it returns.
 
 | Surface | Windowed? | Notes |
 |---------|-----------|-------|
+| Mix layer | **Yes** | The bar, the measure, the usual bar, the note, the unrated line and the strip all describe the window — see [Mix layer](#mix-layer) |
 | Instruments sections and their rows | **Yes** | One row per exercise the window holds work for |
 | Each row's figure and change readout | **Yes** | The figure is the window's; the change compares it with the previous window of the same calendar length |
 | Each row's trend line | **Yes** | Built from the window's own points |
@@ -228,12 +278,14 @@ part of the screen shares the one window it returns.
 
 ### On-screen Window Label
 
-The first Instruments header carries an inline chip naming the resolved window —
-the training period's name when one is active, otherwise the recent-training-days
-fallback. The chip exists so the scope of the readout is never ambiguous, and the
-Instruments list is its only host on this screen: it is one widget,
-`StatsWindowChip` in `lib/features/stats/widgets/window_chip.dart`. Verified by
-`test/instrument_list_screen_test.dart` (`S-1011`).
+The [Mix layer](#mix-layer) and the first Instruments header each carry an
+inline chip naming the resolved window — the training period's name when one is
+active, otherwise the recent-training-days fallback. The chip exists so the
+scope of the readout is never ambiguous, and those two are its only hosts on
+this screen: it is one widget, `StatsWindowChip` in
+`lib/features/stats/widgets/window_chip.dart`. Verified by
+`test/instrument_list_screen_test.dart` (`S-1011`) and
+`test/mix_layer_screen_test.dart` (`S-1612`).
 
 ---
 
@@ -243,10 +295,13 @@ All data is loaded in `_loadData()`, called once on first frame via
 `addPostFrameCallback`. The screen builds one `CalendarState` and one
 `StatsProgressService` over `widget.workoutState.repository`, then asks it for
 the all-time totals (`computeTotals()`), the windowed progress data
-(`computeProgressData()`), the Fuel summary (`computeFuelSummary()`) and the
-Instruments list, which it builds from the window `computeProgressData()`
-resolved (`computeInstrumentSections(window: ...)`). The list is therefore always
-scoped to the window the screen is showing.
+(`computeProgressData()`), the Fuel summary (`computeFuelSummary()`), the Mix
+layer (`computeMixLayer()`) and the Instruments list, which it builds from the
+window `computeProgressData()` resolved
+(`computeInstrumentSections(window: ...)`). The list is therefore always
+scoped to the window the screen is showing, and the Mix layer reads the same
+resolved window — verified by `test/mix_layer_screen_test.dart` (`S-1613`,
+`S-1616`).
 
 `StatsProgressService` is a pure-Dart service — it depends on the
 `WorkoutRepository` interface only, not on any concrete implementation.
@@ -263,6 +318,9 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `kFuelWindowDays` | The Fuel row's window: the calendar days ending today that its averages cover, and the length of the range it compares against |
 | `kFuelVisibilityDays` | How many recent days the Fuel row looks at before it renders at all; wider than the window, so a window with no logged day still shows the row |
 | `kInstrumentRowCap` | Max rows an Instruments section shows before offering the rest; declared in `lib/features/stats/widgets/instrument_list.dart` |
+| `kMixStripWeeks` | How many weeks the Mix layer's strip covers; declared in `lib/core/models/training_load.dart` |
+| `kTrainingLoadMinRatedWeeks` | Rated baseline weeks the Mix layer needs before it reports load rather than time; declared in `lib/core/models/training_load.dart` |
+| `kTrainingLoadMaxUnratedShare` | Largest unrated share of the window's time the Mix layer tolerates before it reports time rather than load; declared in `lib/core/models/training_load.dart` |
 
 ---
 
@@ -272,6 +330,7 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 |------|------|
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
 | `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, shared with Records & Trends |
+| `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the modality bar, the measure and its label, the usual bar, the note, the unrated line and the week strip |
 | `lib/features/stats/widgets/instrument_list.dart` | The Instruments list: one section per kind of work, capped rows, the expand control; declares `kInstrumentRowCap` |
 | `lib/features/stats/widgets/instrument_row.dart` | One Instruments row (name, figure, change chip, trend line) and `InstrumentChangeChip` |
 | `lib/features/stats/widgets/instrument_sparkline.dart` | The row's trend line, drawn only when the window holds at least two points |
@@ -283,7 +342,8 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/core/models/exercise_metric.dart` | `ExerciseSection` and the native-value types a row's figure is built from: `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
 | `lib/core/models/instrument_list.dart` | Value types behind the Instruments list: `InstrumentRow`, `InstrumentSectionData` |
 | `lib/core/models/fuel_summary.dart` | `FuelSummary` — the Fuel row's value type: the window's logged-day averages, the previous range's, the training / rest split and the targets |
-| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service: `computeTotals()`, `computeProgressData()` (and the `resolveWindow()` it calls), `computeFuelSummary()` and `computeInstrumentSections({required StatsWindow window})` |
+| `lib/core/models/training_load.dart` | `MixLayerData` — the Mix layer's value type: the modality shares, the measure and its label, the usual mix, the baseline note, the unrated line and the strip's weeks; declares `kMixStripWeeks`, `kTrainingLoadMinRatedWeeks` and `kTrainingLoadMaxUnratedShare` |
+| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service: `computeTotals()`, `computeProgressData()` (and the `resolveWindow()` it calls), `computeFuelSummary()`, `computeMixLayer()` and `computeInstrumentSections({required StatsWindow window})` |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
 | `lib/state/settings/settings_state.dart` | Theme colors, weight/distance unit preferences |
@@ -300,8 +360,8 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 
 ---
 
-**Document Version**: 3.0
-**Last Updated**: October 1, 2026
+**Document Version**: 3.1
+**Last Updated**: October 2, 2026
 
 ---
 

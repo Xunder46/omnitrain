@@ -4,6 +4,7 @@ import '../../core/constants/omni_theme.dart';
 import '../../core/models/fuel_summary.dart';
 import '../../core/models/instrument_list.dart';
 import '../../core/models/stats_progress.dart';
+import '../../core/models/training_load.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/navigation/omni_navigator.dart';
@@ -17,6 +18,7 @@ import '../nutrition/nutrition_trend_screen.dart';
 import 'records_and_trends_screen.dart';
 import 'widgets/fuel_section.dart';
 import 'widgets/instrument_list.dart';
+import 'widgets/mix_layer.dart';
 import 'widgets/stats_pill.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -43,6 +45,8 @@ class _StatsScreenState extends State<StatsScreen> {
   List<InstrumentSectionData> _instrumentSections = const [];
 
   FuelSummary? _fuelSummary;
+
+  MixLayerData? _mixLayer;
 
   @override
   void initState() {
@@ -82,6 +86,14 @@ class _StatsScreenState extends State<StatsScreen> {
         window: progressData.window,
       );
 
+      // The Mix layer reads the same window as the Instruments list, so it
+      // resolves nothing of its own.
+      final mixLayer = await service.computeMixLayer(
+        window: progressData.window,
+        now: DateTime.now(),
+        startOfWeek: widget.settingsState.startOfWeek,
+      );
+
       if (!mounted) return;
 
       setState(() {
@@ -91,6 +103,7 @@ class _StatsScreenState extends State<StatsScreen> {
         _window = progressData.window;
         _instrumentSections = instrumentSections;
         _fuelSummary = fuelSummary;
+        _mixLayer = mixLayer;
         _isLoading = false;
       });
     } catch (_) {
@@ -142,6 +155,14 @@ class _StatsScreenState extends State<StatsScreen> {
                     children: _totalSessions == 0
                         ? [_buildEmptyState(context, themeColors)]
                         : [
+                            if (_mixLayer != null && window != null) ...[
+                              MixLayerSection(
+                                layer: _mixLayer!,
+                                window: window,
+                                themeColors: themeColors,
+                              ),
+                              const SizedBox(height: 24),
+                            ],
                             const OmniCardHeader(title: 'ALL TIME'),
                             _buildAggregateCard(context, themeColors),
                             const SizedBox(height: 24),
@@ -186,6 +207,7 @@ class _StatsScreenState extends State<StatsScreen> {
     final theme = Theme.of(context);
 
     return OmniSurface(
+      key: const Key('all_time_card'),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

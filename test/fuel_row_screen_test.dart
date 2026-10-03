@@ -740,19 +740,29 @@ void main() {
             await seedPeriod();
           });
 
-          testWidgets('the Fuel header carries no chip and the first chip '
-              'belongs to the Instruments list', (tester) async {
+          testWidgets('the Fuel header carries no chip and the chip-carrying '
+              'headers are the Mix layer and the Instruments list', (
+            tester,
+          ) async {
             await pumpStats(tester);
 
             final chips = find.byKey(const Key('stats_window_chip'));
-            expect(chips, findsOneWidget);
-            final instrumentsHeader = find.ancestor(
-              of: chips.first,
-              matching: find.byType(OmniCardHeader),
+            expect(chips, findsNWidgets(2));
+            expect(
+              _textsUnder(chips),
+              everyElement('· Block A'),
             );
             expect(
-              tester.widget<OmniCardHeader>(instrumentsHeader).title,
-              'Resistance',
+              tester
+                  .widgetList<OmniCardHeader>(
+                    find.ancestor(
+                      of: chips,
+                      matching: find.byType(OmniCardHeader),
+                    ),
+                  )
+                  .map((header) => header.title)
+                  .toSet(),
+              {'TRAINING MIX', 'Resistance'},
             );
             expect(
               find.descendant(
