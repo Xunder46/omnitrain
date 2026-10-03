@@ -346,6 +346,23 @@ S-1509, S-1510 A–E, S-1511 and its start-of-week twin, S-1513 and its
 Sunday-start twin, S-1514, S-1515, S-1516, S-1517, and the Mock/Hive
 value-for-value parity group).
 
+`computeMixPeriod({required DateTime fromMs, required DateTime toMs})` returns
+the same payload shape for an arbitrary period rather than a `StatsWindow`, and
+is the entry point the Modality Mix Shift rule reads. It shares the one history
+walk with `computeMixLayer` — the period, its baseline and the strip are served
+from the same cached snapshot — and it carries no weekly strip, because the
+period is not anchored to a week.
+
+- **The period's bounds are the two instants it is given**, and its baseline is
+  the `kTrainingLoadBaselineWeeks` calendar blocks before the period's start
+  day, exactly as the window's is. The two reads therefore agree about the
+  measure, the bar and the baseline for the same range.
+- **The measure gate is the same one** — load only when the baseline is rated
+  enough and the period is rated enough, otherwise time.
+
+Verified by `test/modality_mix_period_service_test.dart` (S-1904a, S-1907,
+S-1913, over both repository implementations).
+
 ---
 
 ### `SignalsService`

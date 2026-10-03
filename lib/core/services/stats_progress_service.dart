@@ -219,7 +219,7 @@ class StatsProgressService {
     final repsByExercise = <String, Map<DateTime, _RepsDay>>{};
 
     for (final session in completed) {
-      if (!_sessionInWindow(session, window)) continue;
+      if (!_sessionInWindow(session, window.fromMs, window.toMs)) continue;
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(
         session.startedAtMs,
       );
@@ -488,15 +488,6 @@ class StatsProgressService {
     final baselineStarts = baselineBlockStarts(fromDay);
     final baselineEndMs = fromDay.millisecondsSinceEpoch;
 
-    final windowTime = <ExerciseSection, double>{};
-    final windowLoad = <ExerciseSection, double>{};
-    var windowTimeSeconds = 0.0;
-    var unratedTimeSeconds = 0.0;
-    var unratedSessionCount = 0;
-
-    final baselineLoad = <ExerciseSection, double>{};
-    final ratedBaselineBlocks = <int>{};
-
     final currentWeekStart = OmniDateUtils.startOfWeek(
       now,
       startOfWeek: startOfWeek,
@@ -509,6 +500,67 @@ class StatsProgressService {
           currentWeekStart.day - i * 7,
         ),
     ];
+
+    return _mixPayload(
+      history: history,
+      fromMs: window.fromMs,
+      toMs: window.toMs,
+      baselineStarts: baselineStarts,
+      baselineEndMs: baselineEndMs,
+      weekStarts: weekStarts,
+      startOfWeek: startOfWeek,
+    );
+  }
+
+  /// The Mix payload for the period `[fromMs, toMs]` — the same figures the Mix
+  /// layer shows for the equivalent window, with no weekly strip (D-1204).
+  ///
+  /// The period is the last [kModalityMixShiftPeriodDays] days, so its baseline
+  /// is the 12 calendar blocks before its own start day and its measure gate is
+  /// the same one the layer applies (D-1203). The strip is the layer's alone:
+  /// the period has no `now` to anchor it to, so [MixLayerData.weeks] is empty.
+  Future<MixLayerData?> computeMixPeriod({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) async {
+    final history = await _loadHistory();
+
+    final fromDay = localMidnightDay(fromMs);
+    return _mixPayload(
+      history: history,
+      fromMs: fromMs,
+      toMs: toMs,
+      baselineStarts: baselineBlockStarts(fromDay),
+      baselineEndMs: fromDay.millisecondsSinceEpoch,
+      weekStarts: const [],
+      startOfWeek: 'monday',
+    );
+  }
+
+  /// One walk of [history] serving the window's bar, the baseline's and the
+  /// strip's (D-916, D-917, D-919).
+  ///
+  /// [weekStarts] is the strip's own week starts, oldest first; an empty list
+  /// means no strip at all. Null when the window holds no time at all: there is
+  /// nothing to split, and a bar of nothing is not a bar (D-914).
+  MixLayerData? _mixPayload({
+    required _HistoryIndex history,
+    required DateTime fromMs,
+    required DateTime toMs,
+    required List<DateTime> baselineStarts,
+    required int baselineEndMs,
+    required List<DateTime> weekStarts,
+    required String startOfWeek,
+  }) {
+    final windowTime = <ExerciseSection, double>{};
+    final windowLoad = <ExerciseSection, double>{};
+    var windowTimeSeconds = 0.0;
+    var unratedTimeSeconds = 0.0;
+    var unratedSessionCount = 0;
+
+    final baselineLoad = <ExerciseSection, double>{};
+    final ratedBaselineBlocks = <int>{};
+
     final weekTime = <int, Map<ExerciseSection, double>>{};
     final weekLoad = <int, Map<ExerciseSection, double>>{};
 
@@ -536,7 +588,7 @@ class StatsProgressService {
         (a, b) => a + b,
       );
 
-      if (_sessionInWindow(session, window)) {
+      if (_sessionInWindow(session, fromMs, toMs)) {
         _addAll(windowTime, timeBySection);
         _addAll(windowLoad, loadBySection);
         windowTimeSeconds += sessionTimeSeconds;
@@ -556,8 +608,14 @@ class StatsProgressService {
 
       final weekIndex = _weekIndexFor(weekStarts, startMs, startOfWeek);
       if (weekIndex != null) {
-        _addAll(weekTime[weekIndex] ??= <ExerciseSection, double>{}, timeBySection);
-        _addAll(weekLoad[weekIndex] ??= <ExerciseSection, double>{}, loadBySection);
+        _addAll(
+          weekTime[weekIndex] ??= <ExerciseSection, double>{},
+          timeBySection,
+        );
+        _addAll(
+          weekLoad[weekIndex] ??= <ExerciseSection, double>{},
+          loadBySection,
+        );
       }
     }
 
@@ -854,8 +912,8 @@ class StatsProgressService {
         for (final effort in history.effortsOf(segment.id)) {
           final exerciseId = effort.exerciseId;
           if (exerciseId == null || effort.effortKind != 'set') continue;
-          final bySession =
-              groupsByExercise[exerciseId] ??= <String, _ProgressionGroup>{};
+          final bySession = groupsByExercise[exerciseId] ??=
+              <String, _ProgressionGroup>{};
           (bySession[session.id] ??= _ProgressionGroup(
             exerciseId: exerciseId,
             sessionStartMs: session.startedAtMs,
@@ -2017,13 +2075,16 @@ class StatsProgressService {
     );
   }
 
-  /// True when [session]'s `startedAtMs` falls within the
-  /// [StatsWindow] date range. The window is inclusive on both
-  /// ends; the helper centralizes the boundary check so the
-  /// selection iteration and the future consumers all agree.
-  static bool _sessionInWindow(TrainingSession session, StatsWindow window) {
-    return session.startedAtMs >= window.fromMs.millisecondsSinceEpoch &&
-        session.startedAtMs <= window.toMs.millisecondsSinceEpoch;
+  /// True when [session]'s `startedAtMs` falls within `[fromMs, toMs]`. The
+  /// range is inclusive on both ends; the helper centralizes the boundary check
+  /// so the selection iteration and the future consumers all agree.
+  static bool _sessionInWindow(
+    TrainingSession session,
+    DateTime fromMs,
+    DateTime toMs,
+  ) {
+    return session.startedAtMs >= fromMs.millisecondsSinceEpoch &&
+        session.startedAtMs <= toMs.millisecondsSinceEpoch;
   }
 
   /// Builds a per-selected-exercise full-history set trend map.

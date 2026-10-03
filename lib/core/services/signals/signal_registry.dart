@@ -1,3 +1,4 @@
+import 'modality_mix_shift_signal.dart';
 import 'progression_rate_signal.dart';
 import 'signal.dart';
 
@@ -5,4 +6,5 @@ import 'signal.dart';
 ///
 /// This is the only place a signal is registered. The layer, the service and
 /// the screen never name a concrete signal; a new signal is one line here.
-List<Signal> buildSignalRegistry() => const <Signal>[ProgressionRateSignal()];
+List<Signal> buildSignalRegistry() =>
+    const <Signal>[ProgressionRateSignal(), ModalityMixShiftSignal()];

@@ -189,6 +189,17 @@ Verified by `test/mix_layer_service_test.dart` (`S-1501`, `S-1502`, `S-1503`,
 `S-1513` and its Sunday-start twin, `S-1514`, `S-1515`, `S-1516`, `S-1517`,
 and the Mock/Hive value-for-value parity group).
 
+`StatsProgressService.computeMixPeriod` is the second entry point over the same
+walk. It takes a period's two instants instead of a `StatsWindow` and returns
+the same payload shape, so a rule that compares an arbitrary period against its
+baseline reads the same measure, bar and baseline the Mix layer does. It
+carries no weekly strip, because a period is not anchored to a week; its
+baseline is the same `kTrainingLoadBaselineWeeks` calendar blocks before the
+period's start day, and the measure gate is the same one.
+
+Verified by `test/modality_mix_period_service_test.dart` (`S-1904a`, `S-1907`,
+`S-1913`, over both repository implementations).
+
 ---
 
 ## Related Documentation

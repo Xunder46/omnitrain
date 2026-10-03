@@ -145,7 +145,7 @@ deliberately replaces that, limited to these signal rules, rather than leaving
 it as a gap. Verified by `test/signals_layer_screen_test.dart` (`S-1716`) and
 `test/stats_legacy_removal_test.dart` (`S-1210`, no chart primitive).
 
-**The registered signal.** The first signal in `buildSignalRegistry()` is the
+**The registered signals.** `buildSignalRegistry()` lists two. The first is the
 Progression Rate: it compares each exercise's own metric across two adjacent
 windows and proposes a positive card only when the recent window improves on the
 prior one. Its rules — the two windows, what a sample is, the zero fallback, the
@@ -157,6 +157,19 @@ test cannot disagree. Verified by `test/progression_rate_signal_screen_test.dart
 (`S-1801` the card end to end, `S-1812` its disappearance when the condition
 clears, `S-1813` its dismissal) and, for the definition itself,
 `test/progression_rate_test.dart`.
+
+The second is the Modality Mix Shift: it reports a modality the user regularly
+trains whose share of their load has fallen to less than half its usual share
+over its own `kModalityMixShiftPeriodDays`-day period, and proposes a caution
+card. Its rules — the period, the
+baseline, the measure gate, the two thresholds, the two sentences and the
+suggestion — live in [Signals](signals.md#registered-signals) and are not
+restated here. The card's copy is built by `modalityMixShiftCopy`
+(`lib/core/models/modality_mix_shift.dart`) so that the copy and the fire test
+cannot disagree. Verified by `test/modality_mix_shift_signal_screen_test.dart`
+(`S-1909` the card on the layer and its dismissal, `S-1904b` its absence while
+the period measures time) and, for the definition itself,
+`test/modality_mix_shift_test.dart`.
 
 ### ALL TIME card
 

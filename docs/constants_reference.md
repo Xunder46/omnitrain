@@ -244,6 +244,23 @@ Verified by `test/training_load_test.dart` (the constants group).
 
 ---
 
+## Modality Mix Shift Constants
+
+**File**: `lib/core/models/modality_mix_shift.dart`
+
+The figures behind the Modality Mix Shift rule. Named here so a reader can find
+the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kModalityMixShiftPeriodDays` | The span of the period the rule compares against its baseline |
+| `kModalityMixShiftMinBaselineShare` | The smallest baseline share a modality needs before it can be reported |
+| `kModalityMixShiftPriority` | The signal's priority |
+
+Verified by `test/modality_mix_shift_test.dart` (the constant contracts).
+
+---
+
 ## Signals Constants
 
 **File**: `lib/core/models/signals.dart`

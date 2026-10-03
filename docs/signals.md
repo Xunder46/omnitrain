@@ -59,6 +59,14 @@ conversations: "this is working" and "this is worth a look". A second card of a
 kind adds nothing the first did not say, and the cap also bounds how much of the
 Stats body a signal can displace.
 
+**The caution order.** Within a kind, a signal's place in the order is carried
+by its own `k…Priority` constant rather than by the selection rule, so the order
+is a property of the signals. The only caution registered today is Modality Mix
+Shift, whose priority is `kModalityMixShiftPriority`; the registered positive is
+Progression Rate, whose priority is `kProgressionRatePriority`. Verified by
+`test/modality_mix_shift_test.dart` (the constant contracts) for the Modality
+Mix Shift entry.
+
 ## Abstention
 
 A signal returns null when its own data-sufficiency conditions are unmet. An
@@ -187,6 +195,66 @@ samples are arguments. It becomes a card once `signal_registry.dart` lists it.
 Verified by `test/progression_rate_test.dart` (`the structural guards`), which
 scans both new files for a local 1RM formula and for a personal-record API call,
 so the definition cannot drift back onto either.
+
+`modalityMixShift({required measure, required recent, required baseline})` in
+`lib/core/models/modality_mix_shift.dart` is the Modality Mix Shift signal's
+definition, and `ModalityMixShiftSignal` in
+`lib/core/services/signals/modality_mix_shift_signal.dart` is its adapter. The
+signal reports a modality the user regularly trains whose share of their load
+has fallen to less than half its usual share.
+
+- **The period.** The recent period is the `kModalityMixShiftPeriodDays` local
+  calendar days ending with today, built from calendar components rather than a
+  `Duration` so a daylight-saving transition cannot shift a boundary. The period
+  never follows the Stats window chip. Verified by
+  `test/modality_mix_period_service_test.dart` (`S-1913`) and
+  `test/modality_mix_shift_signal_screen_test.dart` (`S-1909 the period does not
+  follow the window chip`).
+- **The baseline.** The baseline is `baselineBlockStarts(localMidnightDay(fromMs))`
+  — the `kTrainingLoadBaselineWeeks` consecutive 7-calendar-day blocks
+  immediately before the period's start day, abutting it with no gap and no
+  overlap. The signal defines no second baseline. Verified by
+  `test/modality_mix_period_service_test.dart` (`S-1913`).
+- **The measure gate.** The signal shows only when the period's own payload
+  measures load: `ratedBaselineWeeks >= kTrainingLoadMinRatedWeeks` and the
+  unrated time share at or below `kTrainingLoadMaxUnratedShare`, read exactly as
+  the Mix layer reads them. Otherwise it abstains. Verified by
+  `test/modality_mix_period_service_test.dart` (`S-1904a`) and
+  `test/modality_mix_shift_signal_screen_test.dart` (`S-1904b`).
+- **Regularly trained.** A modality is regularly trained when its baseline share
+  is at least `kModalityMixShiftMinBaselineShare`, inclusive; a modality absent
+  from the baseline bar is not. Verified by `test/modality_mix_shift_test.dart`
+  (`S-1903`, `S-1906`).
+- **Fires.** A regularly trained modality fires when its recent share is strictly
+  less than half its baseline share. Exactly half does not fire, and the
+  comparison is on exact fractions rather than the two rounded percentages. A
+  modality absent from the recent bar reads zero and can still fire. Verified by
+  `test/modality_mix_shift_test.dart` (`S-1902`, `S-1908`).
+- **Which modality is reported.** Among the firing modalities the reported one
+  has the largest relative drop; an exact tie resolves in `ExerciseSection`
+  declaration order. Verified by `test/modality_mix_shift_test.dart` (`S-1905`,
+  `S-1911`).
+- **Kind and priority.** The kind is caution; the priority is
+  `kModalityMixShiftPriority`, its place in the caution order above. Verified by
+  `test/modality_mix_shift_test.dart` (the constant contracts) and
+  `test/modality_mix_shift_signal_screen_test.dart` (`S-1909`).
+- **Copy.** `modalityMixShiftCopy` builds the observation from the period's own
+  rounded percentages and names the span ("over the last 4 weeks") because the
+  period is fixed and not the window's. The second sentence is appended only when
+  the largest recent share belongs to a modality other than the reported one.
+  Every fired card also carries the suggestion `'<article> <noun> session this
+  week would bring your mix back toward usual.'`, whose article and noun are the
+  reported modality's, from `modalityMixShiftArticle` and
+  `modalityMixShiftNoun`. Verified by `test/modality_mix_shift_test.dart`
+  (`S-1901`, `S-1910`) and `test/modality_mix_shift_signal_screen_test.dart`
+  (`S-1909`).
+
+The definition reads no clock, no repository and no service — the measure and the
+two segment lists are arguments. The adapter derives the period from
+`context.now`, asks `StatsProgressService.computeMixPeriod` for that period's
+payload and hands the payload's own segments to the rule, so it walks no history
+of its own. Verified by `test/modality_mix_period_service_test.dart` (`S-1907`,
+the period payload is the Mix layer's own figures).
 
 ## One evaluation per load
 
