@@ -84,6 +84,22 @@ class OmniDateUtils {
     });
   }
 
+  /// Returns the local-midnight start of the week containing [date], for the
+  /// saved start-of-week setting.
+  ///
+  /// `'sunday'` starts the week on Sunday; any other value starts it on Monday.
+  /// The result is built from calendar components, never a [Duration], so a DST
+  /// transition cannot shift a boundary. This serves the Mix layer's weekly
+  /// strip only (D-910, D-935); the load baseline uses fixed 7-calendar-day
+  /// blocks anchored at the window's start day.
+  static DateTime startOfWeek(DateTime date, {String startOfWeek = 'monday'}) {
+    final day = DateTime(date.year, date.month, date.day);
+    final daysSinceStart = startOfWeek == 'sunday'
+        ? day.weekday % 7
+        : day.weekday - 1;
+    return DateTime(day.year, day.month, day.day - daysSinceStart);
+  }
+
   /// Short month name (e.g. "Mar").
   static String shortMonthName(int month) {
     const names = [

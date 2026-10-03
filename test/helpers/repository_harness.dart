@@ -363,6 +363,37 @@ Future<void> seedSetEffort(
   }
 }
 
+/// One sensor summary on [sessionId] for [scope] and [targetId], written the
+/// way the watch capture flow writes one.
+///
+/// A fixture that names only an average gets the same maximum: the model holds
+/// both or neither.
+SensorSummary sensorSummary({
+  required String sessionId,
+  required String scope,
+  required String targetId,
+  required int windowStartMs,
+  required int windowEndMs,
+  double? avgHeartRateBpm,
+  double? maxHeartRateBpm,
+  int? steps,
+}) => SensorSummary(
+  sessionId: sessionId,
+  scope: scope,
+  targetId: targetId,
+  windowStartMs: windowStartMs,
+  windowEndMs: windowEndMs,
+  avgHeartRateBpm: avgHeartRateBpm,
+  maxHeartRateBpm: maxHeartRateBpm ?? avgHeartRateBpm,
+  steps: steps,
+  source: SensorSummary.sourceWatch,
+  createdAtMs: fixtureStart,
+);
+
+/// Stores [summary] through the repository.
+Future<void> seedSensorSummary(WorkoutRepository repo, SensorSummary summary) =>
+    repo.createSensorSummary(summary);
+
 // ─── Rows and instances ─────────────────────────────────────────────────────
 
 EffortObservation distanceRow(

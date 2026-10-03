@@ -80,7 +80,26 @@ abstract interface class WatchSessionRatings {
   Future<bool> recordPhoneRating(String watchSessionId, int rating);
 }
 
-class WatchSessionInbox implements WatchSessionRatings {
+/// What an Edit Session Discard may do to a wrist session's inbox: recover
+/// the entries that arrived while the screen was open (D-802, D-804).
+///
+/// [WatchSessionInbox] is the one implementation. The restore receives this
+/// narrow type rather than the inbox, so nothing else about staging and
+/// applying what the wrist sends is in its reach.
+abstract interface class WatchLateEntryRecovery {
+  /// Recovers the session's inbox rows that were applied after
+  /// [appliedAtSnapshot] was read: un-marks exactly those rows and runs one
+  /// ordinary import pass, which re-materialises them (D-802, D-804).
+  ///
+  /// Writes nothing else — no row is created, deleted or edited by the
+  /// recovery itself. A session with no such row is left untouched.
+  Future<void> recoverEntriesAppliedSince(
+    String watchSessionId,
+    Set<String> appliedAtSnapshot,
+  );
+}
+
+class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
   WatchSessionInbox({
     required WorkoutRepository repository,
     WatchMirrorTransport? transport,
@@ -303,6 +322,41 @@ class WatchSessionInbox implements WatchSessionRatings {
       }
       // A change to a session already in history edits it now.
       if (stagedAny) await _settle({sessionId});
+    } catch (error, stack) {
+      _onFailure(error, stack);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recovering what arrived during an Edit Session
+  // ---------------------------------------------------------------------------
+
+  /// Un-marks the session's late rows and runs one ordinary import pass
+  /// (D-802, D-804).
+  ///
+  /// The late rows are the applied ones whose `entryId` is not in
+  /// [appliedAtSnapshot] — the watermark the edit snapshot recorded. One
+  /// rule, no origin or kind filter: a late wrist entry, a late phone
+  /// correction and a late phone deletion are all recovered the same way.
+  /// Nothing is written when there is no late row.
+  @override
+  Future<void> recoverEntriesAppliedSince(
+    String watchSessionId,
+    Set<String> appliedAtSnapshot,
+  ) async {
+    try {
+      final rows = await _repository.getWatchInboxEntriesForSession(
+        watchSessionId,
+      );
+      final late = [
+        for (final row in rows)
+          if (row.appliedAtMs != null && !appliedAtSnapshot.contains(row.entryId))
+            row.entryId,
+      ];
+      if (late.isEmpty) return;
+
+      await _repository.clearWatchInboxApplied(late);
+      await _settle({watchSessionId});
     } catch (error, stack) {
       _onFailure(error, stack);
     }

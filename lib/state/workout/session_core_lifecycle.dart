@@ -243,11 +243,31 @@ extension SessionCoreLifecycleMethods on SessionCore {
     }
   }
 
-  SessionEditSnapshot? snapshotSessionState() {
+  /// The `entryId` of every applied inbox row of the current session: the
+  /// watermark an edit snapshot taken now would carry (D-801).
+  ///
+  /// Read before the session's rows are loaded, so the watermark can only be
+  /// a subset of what the snapshot's rows reflect. An empty set when there is
+  /// no current session.
+  Future<Set<String>> appliedWatchEntryIds() async {
+    final session = _currentSession;
+    if (session == null) return <String>{};
+
+    final rows = await _repository.getWatchInboxEntriesForSession(session.id);
+    return {
+      for (final row in rows)
+        if (row.appliedAtMs != null) row.entryId,
+    };
+  }
+
+  SessionEditSnapshot? snapshotSessionState({
+    Set<String>? watchEntryIdsAppliedAtSnapshot,
+  }) {
     if (_currentSession == null) return null;
 
     return SessionEditSnapshot(
       sessionId: _currentSession!.id,
+      watchEntryIdsAppliedAtSnapshot: watchEntryIdsAppliedAtSnapshot,
       segments: List<SessionSegment>.from(_segments),
       efforts: {
         for (final entry in _efforts.entries)
@@ -336,6 +356,17 @@ extension SessionCoreLifecycleMethods on SessionCore {
       // Put-if-absent leaves every summary that survived untouched.
       for (final summary in snapshot.sensorSummaries) {
         await _repository.createSensorSummary(summary);
+      }
+
+      // A watch entry that arrived while the screen was open is not in the
+      // snapshot's rows, so the loops above just deleted it. Un-mark it and
+      // run one ordinary import pass to bring it back (D-802, D-804, D-805).
+      // After the loops, so they cannot delete what the pass re-creates, and
+      // before the reload, so the screen shows the recovered rows.
+      final watermark = snapshot.watchEntryIdsAppliedAtSnapshot;
+      final recovery = _lateEntryRecovery;
+      if (watermark != null && recovery != null) {
+        await recovery.recoverEntriesAppliedSince(snapshot.sessionId, watermark);
       }
 
       _exerciseCache

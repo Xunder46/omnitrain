@@ -2,11 +2,11 @@
 
 ## Overview
 
-`StatsScreen` is a read-only analytics screen that surfaces aggregate training
-data and progress trends for the current user. It is accessible from the
-maintenance sheet on the home screen. Its sections have no interactive controls
-or filters; the one control it does carry is the header icon that opens
-[Records & Trends](records_and_trends.md).
+`StatsScreen` is a read-only analytics screen: the all-time totals, the work the
+current window contains, and how eating is going. It is reached from the
+maintenance sheet on the home screen and carries no filters; its controls are
+the header icon that opens [Records & Trends](records_and_trends.md) and the
+Instruments rows, each an entry point to Exercise Progress.
 
 ---
 
@@ -21,422 +21,231 @@ HomeScreen
 
 The chart icon in the screen's header is the only way into
 [Records & Trends](records_and_trends.md): this file is the only place in `lib/`
-that constructs `RecordsAndTrendsScreen`. The sections described below are still
-what `StatsScreen` itself renders — the per-exercise structure added alongside
-them lives on its own screens and removes nothing here.
-
-Verified by `test/records_and_trends_screen_test.dart` (the single-entry-point
-case).
+that constructs `RecordsAndTrendsScreen`. Verified by
+`test/records_and_trends_screen_test.dart` (the single-entry-point case).
 
 ---
 
 ## What the Screen Displays
 
-The screen renders an empty-state card when no completed sessions exist;
-otherwise it shows the sections below. The exact count of sections on
-screen is verified by `test/screen_widget_test.dart` (every
-`OmniCardHeader` is a section) and the per-section contracts are
-verified by `test/stats_progress_test.dart` (the underlying
-`StatsProgressService` tests) and the screen widget tests in
-`test/screen_widget_test.dart`. Every on-card chart is a horizontally
-scrollable `ScrollableTrendChart` (pinned y-axis, full history, opens
-scrolled to the newest point). See [Scrollable Charts](#scrollable-charts) below.
+With no completed session in the repository the body is the empty-state card
+alone — no Mix layer, no ALL TIME card, no Instruments list and no Fuel row,
+whatever the food log holds. Otherwise it is four blocks in a fixed order:
+the [Mix layer](#mix-layer) when the window holds measurable time, the
+[ALL TIME card](#all-time-card), the [Instruments list](#instruments-list)
+when the window holds work, and the [Fuel row](#fuel-row) when recent food
+exists. Verified by `test/stats_legacy_removal_test.dart` (`S-1208`),
+`test/fuel_row_screen_test.dart` (`S-1112`) and
+`test/mix_layer_screen_test.dart` (`S-1601`, `S-1610`).
 
-### ALL TIME
-A row of three stat pills (unchanged from v1):
+Nothing else is rendered. The screen holds no chart section, no segmented
+control and no block beyond those four: `test/stats_legacy_removal_test.dart`
+fails if a removed section's identifier returns to the file (`S-1209`) or if a
+chart widget does (`S-1210`), and `test/screen_widget_test.dart` fails if the
+Calories / Macros toggle returns. Recent PRs are not among them either: they live
+in [Records & Trends](records_and_trends.md), verified by
+`test/records_and_trends_screen_test.dart` (`S-913`).
 
-| Stat | Source |
+### Mix layer
+
+The Mix layer is the first block in the body, above the ALL TIME card, and there
+is exactly one of it. It is presentation only: every figure it draws is one
+`MixLayerData` supplies, and it computes nothing itself. Verified by
+`test/mix_layer_screen_test.dart` (`S-1601`).
+
+**The bar.** One horizontal bar split by modality, largest share first, with a
+legend reading each modality's rounded share. The shares are the window's own
+measure by modality — its measured time in the time measure, its load in the
+load measure. Verified by the same file (`S-1602`, `S-1609`).
+
+**The measure.** The layer reports either the window's training load or its
+time, and labels which one it is reporting. Load is shown only when the rated
+baseline behind the window is at least `kTrainingLoadMinRatedWeeks` weeks and
+the window's unrated share of time is at most `kTrainingLoadMaxUnratedShare`;
+otherwise the layer reports time. Verified by the same file (`S-1603`,
+`S-1605`, `S-1611`).
+
+**The usual bar.** When the measure is load, a second bar shows the usual mix
+the rated baseline establishes, labelled `usual`. Verified by the same file
+(`S-1606`, `S-1611`).
+
+**The note and the unrated line.** A note states the baseline the measure rests
+on, and an unrated line states how much of the window carried no rating. Both
+are absent when they have nothing to report. Verified by the same file
+(`S-1605`, `S-1606`, `S-1607`).
+
+**The strip.** Eight weeks of modality-stacked columns, oldest first, with the
+current week marked. A week with no work draws its column with no stack segment
+in it. Verified by the same file (`S-1608`, `S-1609`).
+
+**The window.** The layer reads the same resolved window as the Instruments
+list, and carries its own `StatsWindowChip` naming it — the second of the
+screen's two chips. Verified by the same file (`S-1612`, `S-1613`).
+
+**Copy.** The layer renders figures and modality names only: no chart
+primitive, no legacy section title, and no estimating or coaching copy.
+Verified by the same file (`S-1614`).
+
+**Fit.** The layer fits the narrowest viewport at the largest
+non-accessibility text scale and the tallest at the default, with nothing it
+draws wider than the card that holds it. Verified by the same file (`S-1615`).
+
+**Freshness.** The layer is refreshed by the screen's one load pass, so it is
+never stale relative to the other blocks. Verified by the same file (`S-1616`).
+
+### ALL TIME card
+
+One surface holding three pills:
+
+| Pill | Source |
 |------|--------|
 | **Sessions** | Count of completed sessions across all time |
-| **Total Time** | Sum of `endedAtMs − startedAtMs`, formatted as h:mm |
-| **Streak** | Current consecutive-day streak via `CalendarState.streakDays`; flame icon at ≥ 3 days |
+| **Time** | Total training time, formatted by `OmniDateUtils.formatDurationHoursMins` |
+| **Streak** | Current consecutive-day streak via `CalendarState.streakDays` |
 
-### STRENGTH
-Auto-detects the top-3 most-frequently-trained exercises with at least one
-`set`-kind effort, ranked by distinct training days then alphabetically.
+The pills and their figures are verified by `test/screen_widget_test.dart`, which
+asserts the `STREAK` pill inside the `ALL TIME` card; the `ALL TIME` header is
+verified by `test/stats_legacy_removal_test.dart` (`S-1208`).
 
-Selection is gated by two filters:
+### Instruments list
 
-1. **Current-state window** (see [Selection Window](#selection-window-current-state-window))
-   — an exercise must have a training day inside the resolved window to
-   be eligible. The window is shared between Strength and Cardio and is
-   surfaced on-screen.
-2. **Recency floor** (`StatsProgressService.kTopExerciseRecencyDays`,
-   default **30** calendar days) — an exercise whose most-recent
-   training day is older than the threshold drops out of the displayed
-   top slots, freeing space for exercises the user is currently training.
-   The threshold is generous enough that a weekly / biweekly rotation
-   does not flicker a lift in and out between sessions; dropping out
-   signals genuine abandonment, not normal spacing. Trend charts and PR
-   lists for exercises that DO appear are unaffected — only which
-   exercises fill the top-N slots is filtered. See
-   `docs/plans/stats-summary-fix-pack-plan.md` Item 3.
+The counterpart to the [Selection Window](#selection-window-current-state-window).
+It enumerates everything the window contains and shows the figure the window
+itself produced: one section per kind of work, and one row per exercise trained
+in that window. Sections lead with the biggest block of work — ranked by the days
+the window logged of that kind, with `ExerciseSection`'s declared order as the
+tiebreak; the rule lives in `computeInstrumentSections`, verified by
+`test/instrument_list_service_test.dart` (`S-1006`).
 
-#### Per-exercise axes
+The section headers are `Resistance`, `Cardio`, `Isometric` and `Sports` — the
+first of them carries the window chip, so the scope of the readout is never
+ambiguous. Verified by `test/instrument_list_screen_test.dart` (`S-1011`).
 
-Each lift has up to three trend axes. They render independently based on
-whether the user has logged data on each axis:
+The list is data-driven rather than fixed. A kind of work with nothing in the
+window is absent instead of empty, and the whole list is absent when the window
+has no work at all. Verified by `test/instrument_list_screen_test.dart`
+(`S-1001`, `S-1012`).
 
-- **e1RM trend** — estimated 1-rep-max per training day (Epley:
-  `w × (1 + r/30)`), max across weighted sets in that day. Populated
-  only when the exercise has at least one weighted set (`weight > 0`).
-  Converted to the user's preferred weight unit
-  (`UnitFormatter.convertWeight`). Drives the PR record on the
-  weight axis.
-- **Volume trend** — total `weight × reps` per training day. Populated
-  only when the exercise is on the **weight axis** (see the axis
-  rule below); empty for reps-axis exercises. Bodyweight sets
-  contribute zero to the kilogram Total Volume — that figure stays
-  load-only.
-- **Reps trend** — max reps per training day across bodyweight sets
-  (`weight == 0`). Populated only when the exercise is on the
-  **reps axis**. Each trend point carries an optional
-  `extraWeightKg` annotation: the day's max added weight when at
-  least one set used a `metric-extra-weight` observation (e.g. a
-  dip belt). The annotation is rendered as `"+X kg"` on the
-  single-point card and as an inline note beneath the multi-point
-  chart; it is **never** summed into the Total Volume figure and
-  **never** flips the exercise onto a weight axis.
-- Single-point fallback: inline text (no chart, no scroll).
+Each row is one exercise: its name, the value the window produced, how that
+value moved against the previous window of the same length, and the trend line
+behind it. The row's own composition — the value strings, the secondary line and
+what it carries — belongs to the widget catalog
+([Widget Catalog](widget_catalog.md)); verified by
+`test/instrument_list_screen_test.dart` (`S-1001`).
 
-#### Per-exercise axis rule
+The change readout compares the window's value with the previous window of the
+same length. With nothing comparable it reads the no-change dash rather than a
+number, and its arrow follows the direction of the raw numeric change — so a
+*slower* pace reads as an increase, because pace is stored as time per distance.
+A value the service derived from an estimated distance carries the `est.` mark.
+Verified by the same file (`S-1001`).
 
-Each lift is classified as either **reps-axis** or **weight-axis**
-based on its full history, not per-set:
+A section past the row cap offers to show the rest; the cap is per section, so a
+busy kind of work never hides a quiet one. Verified by the same file (`S-1016`).
+The trend line is drawn only when the exercise has at least two points in the
+window and takes no space otherwise, verified by the same file (`S-1017`). A row
+whose window produced nothing readable still appears, with no trend line at all —
+verified by `test/instrument_list_service_test.dart` (`S-1018`).
 
-- **Reps-axis** — the exercise has at least one logged set with
-  `weight == 0` (bodyweight). Its Stats card is reps-only: a reps
-  trend and a max-reps PR. e1RM and kg Volume sections are not
-  rendered, even when some of its sets carried added weight.
-  This is the rule that fixed the "Push-Up mixed-axis" bug —
-  Push-Up now renders reps-only even when one session was logged
-  with a weighted belt.
-- **Weight-axis** — every set has `weight > 0`. Its Stats card is
-  weight-based: an Estimated 1RM trend and a kg Volume trend.
-  Reps-axis sections are not rendered.
+A row is an entry point to Exercise Progress, the second one in `lib/` alongside
+Records & Trends. Verified by `S-1014` in that file and by the entry-point guard
+in `test/records_and_trends_screen_test.dart`.
 
-The rule is per-exercise, applied by `StatsProgressService.computeProgressData`
-via `isRepsAxis = repsDayMap.isNotEmpty`. A weighted set on a
-reps-axis exercise contributes its reps to the day's max and its
-added weight to the `extraWeightKg` annotation — that is the entire
-contribution. It does **not** create a separate weight record, does
-**not** switch the exercise onto a weight axis, and does **not**
-contribute to the kilogram Total Volume.
+### Fuel row
 
-#### Bodyweight inclusion rule
+The Fuel row reports how eating is going over a fixed recent window, and tapping
+it opens the full-history nutrition trend screen (see
+[Navigation & Screens](navigation_and_screens.md)); verified by
+`test/fuel_row_screen_test.dart` (`S-1109`). It is the one block on this screen
+whose window is **not** the screen's selected window, so it carries no
+`StatsWindowChip` — a chip names the window the user selected for the
+Instruments list, and a chip here would tell the user the figures were scoped to
+a period they are not. Verified by the same file (`S-1112`).
 
-Inclusion is purely "the set was performed without added external
-weight" (`weight == 0`). The exercise's category or equipment label
-is NOT consulted — pull-ups and chin-ups in particular are NOT
-labelled as bodyweight in the seed data and must NOT be excluded by
-any label technicality. When a bodyweight exercise is occasionally
-performed with added weight (e.g. a dip belt), the added weight is
-recorded as a `metric-extra-weight` annotation on the observation
-only; it does NOT create a separate weight record, does NOT switch
-the exercise onto a weight axis, and does NOT contribute to the
-kilogram Total Volume. The exercise stays on its reps axis so a
-single exercise never splits across two units. See
-`docs/plans/stats-summary-fix-pack-plan.md` Item 2.
+**Window.** `StatsProgressService.kFuelWindowDays` calendar days ending today,
+by calendar arithmetic rather than elapsed hours; the previous range is the same
+number of days immediately before it. Verified by the same file (`S-1101`,
+`S-1107`).
 
-#### Recent PRs
+**Averages divide by logged days.** A logged day is a calendar day with at least
+one `ConsumedFood` row. The row averages over the window's logged days only,
+and states how many of the window's days were logged, so a day with no food
+never reads as a zero and never dilutes the average. Verified by the same file
+(`S-1101`, `S-1102`).
 
-A **Recent PRs** card follows, listing up to 5 exercises where the
-all-time high on the exercise's axis (reps or weight, per the
-per-exercise axis rule) was set or exceeded (first-ever session
-counts as a PR on the chosen axis). PRs are deduplicated to one
-entry per exercise name; the highest verdict wins:
+**Comparison.** A figure is compared with the user's target for that field when
+the target is set, and with the previous range otherwise. A field with no target
+is never compared against zero, and a previous range with no food is not a
+comparison either. Verified by the same file (`S-1103`, `S-1104`, `S-1108`).
 
-- `StatsPR.reps != null` → rendered as `"<n> reps"`.
-- `StatsPR.e1Rm != null` → rendered as `"<value> <unit>"` in the
-  user's preferred weight unit.
+**Training / rest split.** The window's logged days are partitioned into days
+with a finished session and days without one — each logged day counts on exactly
+one side, and a day that is both is a training day. A session that is still
+running does not make its day a training day. A side with no logged day reads a
+dash rather than a zero. Verified by the same file (`S-1105`, `S-1106`).
 
-Loaded exercises emit weight-axis PRs; bodyweight exercises emit
-reps-axis PRs. The same rep-based verdict also surfaces on the
-in-session toast (when wired through the reps-axis variant of
-`_maybeShowPRToast`) and the post-workout Session Summary (through
-the reps-axis pass in `SessionSummaryService.computePRs`).
+**Absent values.** A figure with nothing to report — no logged day, no previous
+range, no target — reads the same no-change dash the Instruments rows use, never
+a zero and never a division by zero. The test reads each figure from the value
+type and from the rendered row, so the two cannot disagree. Verified by the same
+file (`S-1106`, `S-1108`, `S-1111`).
 
-Empty state: "No strength history yet." when `topLifts` is empty.
+**Visibility.** The row is absent when the last
+`StatsProgressService.kFuelVisibilityDays` days hold no logged food, and the
+screen's zero-session empty state wins over it: a repository with no completed
+session shows the empty state and no Fuel row, whatever the food log holds.
+Verified by `test/fuel_row_screen_test.dart` (`S-1107`) and
+`test/nutrition_trend_screen_test.dart` (`S-1110(b)`).
 
-#### Source of truth (Stats screen ↔ in-session toast ↔ Session Summary)
+**Placement.** The row renders last, below the Instruments list, so the readout
+that is not the window's own sits at the bottom of the screen. Verified by the
+same file (`S-1112`).
 
-The in-session "Congrats! New PR" toast, this Stats screen's PR
-detection, and the post-workout Session Summary's
-`SessionSummaryService.computePRs` all use the **same** Epley e1RM
-formula and **same** all-time-best query, so the same set produces
-the same record verdict in every surface:
-
-- **Formula** — `StatsProgressService.epley1RM(weight, reps)` returns
-  `weight × (1 + reps / 30)` (returns `null` when weight or reps is
-  non-positive). The Stats PR detection loop in
-  `computeProgressData`, the in-session check, and the Session
-  Summary's `computePRs` all call this static helper. There is
-  exactly one PR formula in the codebase.
-- **Standing-best query** —
-  `StatsProgressService.getAllTimeBestE1RM(exerciseId,
-  {excludeSessionId})` walks all **completed** sessions (in-progress
-  sessions are excluded so the in-session toast and the Stats screen
-  agree on the standing best at the moment of a new set). The
-  Session Summary passes `currentSession.id` as
-  `excludeSessionId` so the just-finished workout's PRs are not
-  compared against themselves. Only `effortKind == 'set'` efforts
-  contribute, matching the "Effort-Type Keying" rule below.
-- **Strict comparison** — every surface fires when
-  `newE1rm > standingBest` (D-3 in the plan); the Stats PR detector
-  uses the same strict `>` comparison when walking the per-day e1RM
-  trend, and the Session Summary compares
-  `ExerciseSummary.bestE1RM > previousBest`. A set equal to the
-  standing best is **not** a PR on any surface.
-- **Cross-surface parity guard** — `S-T-001` in
-  `docs/plans/summary-pr-parity-plan.md` exercises the
-  same seed through all three surfaces and asserts they agree.
-  `S-009` in `docs/plans/in-session-pr-toast-plan.md` is
-  the toast ↔ Stats structural guard; both tests must pass
-  unchanged.
-
-If you change the PR formula, the standing-best query, or the
-comparison operator on any of the three surfaces, the structural
-guards will fail loudly. Do not introduce a second e1RM helper or a
-second standing-best query — the three surfaces must continue to
-share a single source of truth.
-
-### CARDIO
-Auto-detects the top-2 most-frequently-performed exercises with at least one
-`timed`-kind effort with `TimedState.finished`, ranked by distinct training days.
-
-For each activity:
-- **Pace chart** — a day's pace counts only the finished entries that have a
-  distance, so a day's walk-breaks and its untimed entries do not dilute it;
-  if no entry qualifies the day has no pace. Shown
-  when at least one day has a distance measurement and ≥ 2 data points.
-  Distance is rendered as a secondary overlaid trend (converted to preferred
-  distance units) so pace and distance direction can be compared in one card.
-  Multi-line — pace and distance scroll together on a shared x-domain.
-- **Duration chart** — total session minutes per training day; fallback when no
-  distance data or only 1 data point.
-- Single-point fallback: inline text.
-- **Estimates are marked, not converted.** A day whose total counts a distance
-  the watch platform estimated carries the marker on both its distance and its
-  pace, in the single-point text and on the chart, and the legend gains one
-  `est.` item only when the card has such a day. An estimated day's dot is
-  found by the day it belongs to rather than by its position in a series, since
-  a series may hold fewer spots than the trend has days (S-835). The duration
-  and distance totals themselves are unchanged by the marker. A day counts only
-  distances that belong to an entry: a row no entry owns counts in no total
-  (D-321). Which entry a distance belongs to, and what a source means, is
-  [Distance Source & Pairing](distance_source.md).
-
-Empty state: "No cardio history yet." when `topCardio` is empty.
-
-Verified by `test/stats_distance_estimate_test.dart` (`S-831` for the pace
-inputs, `S-832` for the per-day flag, `S-833`/`S-834` for the single-point
-marker in both units and its absence on a measured day, `S-835` for the dots
-and the legend, `S-836` for the conversions, `S-837` for a Summary correction),
-`test/entry_identity_summary_test.dart` (`S-858` for a leftover row that counts
-nowhere) and `test/stats_progress_test.dart` (the `Cardio trend` group).
-
-### ISOMETRIC
-Auto-detects the top-`StatsProgressService.kTopIsometricCount`
-most-frequently-performed exercises with at least one `drill`-kind effort,
-ranked by distinct training days on the same rule as Strength and Cardio. Each
-selected exercise gets a card holding one point per training day — the sum of
-that day's finished hold time in seconds — and falls back to inline text when
-there is only one point. An unfinished hold counts in no total, so an abandoned
-hold cannot inflate its day.
-
-Empty state: "No isometric history yet. Log hold exercises to see trends here."
-
-Verified by `test/stats_progress_test.dart` (`Isometric drill aggregation (Phase
-D)` and `Exercise selection: isometric and sports (Phase D)`) and
-`test/screen_widget_test.dart` (the `ISOMETRIC` header and empty-state
-assertions).
-
-### SPORTS
-Auto-detects the top-`StatsProgressService.kTopSportsCount`
-most-frequently-performed exercises with at least one `round`-kind effort, on
-the same selection rule, and gives each one a card of the same shape — one point
-per training day, the sum of that day's round times in seconds.
-
-Each day's point sums the durations of that day's finished timed instances
-behind the round effort — the sports pass adds their `actualDurationSecs` and
-never reads a `RoundInstance`. The round-counting rule the per-exercise screens
-use is in [Records & Trends](records_and_trends.md).
-
-Empty state: "No sports history yet. Log sports rounds to see trends here."
-
-Verified by `test/stats_progress_test.dart` (`Sports round aggregation (Phase D)`
-and `Exercise selection: isometric and sports (Phase D)`) and
-`test/screen_widget_test.dart` (the `SPORTS` header and empty-state assertions).
-
-### Effort rating (no section)
-The Stats screen has no effort-rating chart, scalar or pill: the rating
-is captured and edited on the Session Summary (see
-[Session Summary](session_summary.md)) and shown as the calendar
-day-list tint. The former feeling-trend section was removed when the
-post-session survey was redefined as the effort rating (rationale:
-`docs/plans/2026-09-24-01-stats-pr1-effort-rating-plan.md`).
-Verified by `test/screen_widget_test.dart` (`HOW DID IT FEEL section is
-removed (Phase 4)`).
-
-#### Deliberate non-features
-
-- No stat tile, average-rating scalar or rating pill in the ALL TIME
-  row (`test/screen_widget_test.dart`, `S-005 guard: no feeling scalar /
-  pill / tile appears in the ALL TIME summary stat row`).
-- No rest / deload / recovery suggestion, banner, nudge, or
-  call-to-action.
-
-### NUTRITION
-A **full-history** nutrition trend computed from every logged `ConsumedFood`
-row in the repository (no 10-day cap). The card carries a segmented pill
-toggle over the same plotted-day set:
-
-- **Calories view (default)** — single line in `themeColors.primary`,
-  one point per logged day with kcal/day. Y-axis labels use `ChartAxisHelper`
-  with `' kcal'` units; tooltip shows `"<n> kcal"`.
-- **Macros view** — three lines (protein, carbs, fat) on a shared grams
-  scale, each in its `OmniTheme.colors.macroChart` slot:
-  protein → `.protein`, carbs → `.netCarbs` (the carbs/blue slot), fat
-  → `.fat`. Tooltip shows grams per series; legend rendered below the
-  chart.
-
-Both views share the same plotted-day set — any logged food makes the
-day present for all series — so toggling never changes the x-domain.
-
-- **Window** — full history (`StatsProgressService.computeNutritionTrend(days: null)`).
-  A soft `kNutritionTrendDays = 10` constant remains as a default for
-  callers that want a fixed window; the card itself never caps the
-  range.
-- **Empty days are skipped** — only logged days are plotted, sorted
-  ascending by date. Matches the strength/cardio trend behavior.
-- **Single-point fallback** — when exactly 1 day in history has logged
-  food, the card renders an inline single-point summary instead of a
-  chart (Calories view: `"<n> kcal — 1 day, log more to see a trend"`;
-  Macros view: per-macro summary).
-- **Hide when empty** — when 0 days have logged food, the card is
-  omitted from the list entirely.
-- **No-sessions branch** — when `_totalSessions == 0`, the global
-  empty-state card is shown and the nutrition trend is not loaded.
-
-#### Per-day aggregation
-
-Computed by `StatsProgressService.computeNutritionTrend({int? days})`. The carbs line plots **total** carbs grams, not net carbs — the colour token is named `netCarbs` because the donut reuses that slot, but the plotted value is total carbs. The aggregation depends only on `WorkoutRepository.getConsumedFoodsInRange` and the `ConsumedFood` model, so it is environment-agnostic.
-
-#### Target-line overlay
-
-The Calories / Macros views overlay a piecewise **target line** on top
-of the actuals so the user can see their consumption against the
-configured macro targets. Aggregated by
-`StatsProgressService.computeNutritionAdherence()`, which walks
-`WorkoutRepository.getNutritionTargetForDate` for every saved target
-change and projects the resulting step line onto the actuals'
-x-axis. The dashed line uses `dashArray: [4, 4]` in `themeColors.primary`
-at half opacity on the calories view and the matching
-`macroChart.<slot>` color on the macros view. When no target has
-ever been saved, the dashed line is omitted entirely. Historical
-actuals are never rewritten — the target line steps at every
-saved target change and extends the new value forward only.
-
-- **Step at the change date** — the target line carries the
-  post-change value from the saved date onward, so a save on day 10
-  steps the line at day 10; historical days keep their earlier
-  target value.
-- **Empty adherence** — when no target has ever been saved, the
-  target line is empty (no defaults inferred from absent data).
-- **No actuals** — when no food has been logged, both actuals and
-  the target line are empty and the NUTRITION card hides itself,
-  matching the existing "no food logged" rule.
-- **Legend** — the macros chart's legend adds a "Target" entry
-  (rendered as a dashed swatch) when the target line is present;
-  the calories chart's legend adds a "Target (kcal)" entry.
-
----
-
-## Scrollable Charts
-
-Every on-card line chart on this screen — strength e1RM, strength volume,
-cardio pace + distance, cardio duration, nutrition calories, nutrition
-macros, volume trends (tonnage / time / distance), consistency
-(week / month), and the target-line overlay on the nutrition card —
-renders inside a `ScrollableTrendChart` wrapper
-([`lib/features/stats/widgets/scrollable_trend_chart.dart`](../lib/features/stats/widgets/scrollable_trend_chart.dart))
-that combines:
-
-- A **pinned y-axis label column** on the left (static; never moves
-  when the user drags the plot). The column renders the same
-  `min / min+interval / … / max` values the chart uses, so the labels
-  stay aligned with the plot as it scrolls.
-- A **horizontally scrollable plot** on the right, where `fl_chart`'s
-  own `leftTitles` is hidden (the pinned column replaces it).
-- A **dynamic per-point slot width** of
-  `viewportWidth / maxVisiblePoints` (default `maxVisiblePoints = 8`,
-  floored at `kScrollableTrendMinPerPointWidth = 28 dp` for
-  readability on narrow phones). The plot's intrinsic width is
-  `max(viewportWidth, points × perPointWidth)` — sparse data fills
-  the card with no scroll, dense data scrolls.
-- A `ScrollController` that **jumps to `maxScrollExtent`** after first
-  layout so the card opens scrolled to the newest point on the right.
-  `reverse: true` was rejected because it would also flip the plot's
-  content direction. The jump reschedules itself on every post-frame
-  pass until the controller has content dimensions, so the wrapper
-  works regardless of layout timing in tests.
-- **No on-card popups.** `lineTouchData` is disabled on every stats
-  chart — exact values are read from the pinned y-axis labels and
-  (for nutrition) the on-card legend. No GestureDetector, modal, or
-  sheet widget.
-- **No top headroom.** `topTitles.sideTitles.reservedSize` is `0`
-  everywhere; the chart no longer reserves space above the plot for
-  a popup-tooltip that no longer exists. The highest data point is
-  still fully visible because `ChartAxisHelper.computeBounds` pads
-  above the max by `range × 0.15 + 1.0` (≥ 2 dp on any range ≥ 7,
-  ≥ 3 dp on any range ≥ 13).
-
-### Nested scrolling
-
-A horizontal `SingleChildScrollView` inside the screen's vertical
-`ListView` is safe: the two scroll axes do not conflict. The vertical
-page scroll still works while the user drags the chart.
-
-### Why not fl_chart's built-in scroll?
-
-`fl_chart` has no native pinned axis. The supported pattern for
-"scrollable chart with labels that don't move" is a static label
-column + a scrollable plot sharing the same `ChartAxisBounds` — the
-exact pattern this wrapper implements.
+**Formatting.** A kcal or gram figure has no `NativeMetric`, so the row formats
+its own strings rather than borrowing `formatNativeChange`'s metric path; it
+follows the conventions that formatter sets — whole units, the no-change dash,
+and an arrow carrying the raw sign of the change. Verified by the same
+file (`S-1101`, `S-1103`).
 
 ---
 
 ## Effort-Type Keying (Critical Rule)
 
-Effort classification uses `SegmentEffort.effortKind`, **not** the session
-`modality`:
+Which [Instruments](#instruments-list) section an exercise lands in is decided
+by `SegmentEffort.effortKind`, **not** by the session's `modality`:
 
-- `effortKind == 'set'` → contributes to **Strength** charts, regardless of session modality.
-- `effortKind == 'timed'` → contributes to **Cardio** charts, regardless of session modality.
+| `effortKind` | Section | The figure its rows carry |
+|--------------|---------|---------------------------|
+| `set` | Resistance | estimated one-rep max, or reps |
+| `timed` | Cardio | pace, or duration |
+| `drill` | Isometric | hold |
+| `round` | Sports | rounds |
 
-This means:
-- A `set` effort in a null-modality (Free Training) session → Strength.
-- A `timed` effort in a `resistance_lifting` session → Cardio.
-- A lifting session with no `set` efforts → contributes nothing to Strength charts.
+So a `set` effort in a null-modality (Free Training) session is Resistance work,
+a `timed` effort inside a `resistance_lifting` session is Cardio work, and a
+lifting session with no `set` efforts contributes nothing to Resistance. The
+section decides the metric its rows carry, so a row is read without asking what
+kind of effort produced it (`ExerciseSection` in
+`lib/core/models/exercise_metric.dart`). Verified by
+`test/instrument_list_service_test.dart` (`S-1006`, the section contents and
+their order) and `test/instrument_list_screen_test.dart` (`S-1001`, the figures
+the rows read).
 
 ---
 
 ## Selection Window (Current-State Window)
 
-The Strength and Cardio sections **select** their top exercises from a
-"current window" rather than all-time, so a lift trained heavily long
-ago can't occupy a card while the user's current focus never appears.
-**Only the selection is windowed**: every selected exercise's trend
-chart continues to use that exercise's FULL history, and the Recent
-PRs card stays all-time (a PR's whole point is being a lifetime high).
-The ALL TIME pills and the Streak are unaffected.
+The Instruments list **selects** from a current window rather than from all
+time, so a lift trained heavily long ago cannot occupy a row while the user's
+current focus never appears. **Only the selection and what follows from it is
+windowed** — the ALL TIME card and the [Fuel row](#fuel-row) sit outside the
+window and read the same figures whatever it is.
 
 ### Resolution Rule
 
 `StatsProgressService.resolveWindow(periods, completedSessions, now?)`
-runs once per `computeProgressData()` call and returns a
-`StatsWindow` value. The Strength and Cardio sections always share
-one window in a given load.
+runs once per load and returns a `StatsWindow` value. Every windowed
+part of the screen shares the one window it returns.
 
 1. **Active training period.** If today is inside any
    `TrainingPeriod` that contains at least one completed session,
@@ -444,7 +253,7 @@ one window in a given load.
    qualify, the one with the latest `startDateMs` wins
    (deterministic tiebreak by id ascending).
 2. **Recent training days (fallback).** Otherwise, take the
-   `kRecentTrainingDaysWindow` (default **14**) most-recent
+   `kRecentTrainingDaysWindow` most-recent
    *training days*. A training day is a calendar day with at
    least one completed session; rest days and breaks do not
    shrink the data. The window's `fromMs` is the start-of-day of
@@ -452,40 +261,47 @@ one window in a given load.
 3. **No history at all.** When the repository has no completed
    sessions, the recent-days window reports `recentDays: 0`;
    `fromMs`/`toMs` collapse to today, the filter cleanly yields
-   zero sessions, and the screen renders its existing Strength /
-   Cardio empty states (the service does NOT silently widen to
-   all-time).
+   zero sessions, and the screen renders its empty state (the
+   service does NOT silently widen to all-time).
 
 ### What Is (and Isn't) Windowed
 
 | Surface | Windowed? | Notes |
 |---------|-----------|-------|
-| Strength card exercise list (top-N) | **Yes** | Same `kTopLiftCount` cap and alphabetical tiebreak; only the session set selection runs over changes |
-| Cardio card exercise list (top-N) | **Yes** | Same `kTopCardioCount` cap and alphabetical tiebreak; same window as Strength |
-| Strength `e1RmTrend` / `volumeTrend` | No | Always full history for the selected exercise |
-| Cardio pace / distance / duration trend | No | Always full history for the selected exercise |
-| Recent PRs | No | Always all-time (Epley, `effortKind == 'set'`) |
-| ALL TIME pills (Sessions / Time / Streak) | No | Unchanged |
-| NUTRITION card | No | Always full history (`days: null`) |
+| Mix layer | **Yes** | The bar, the measure, the usual bar, the note, the unrated line and the strip all describe the window — see [Mix layer](#mix-layer) |
+| Instruments sections and their rows | **Yes** | One row per exercise the window holds work for |
+| Each row's figure and change readout | **Yes** | The figure is the window's; the change compares it with the previous window of the same calendar length |
+| Each row's trend line | **Yes** | Built from the window's own points |
+| ALL TIME card (Sessions / Time / Streak) | No | All-time |
+| Fuel row | No | Today-anchored over `kFuelWindowDays`, never the screen's selected window — see [Fuel row](#fuel-row) |
+| Exercise Progress (what a row opens) | No | Reads the exercise's full history — see [Records & Trends](records_and_trends.md) |
 
 ### On-screen Window Label
 
-Each section header carries an inline chip naming the resolved window — the training period's name when one is active, otherwise the recent-training-days fallback. The chip exists so the scope of the readout is never ambiguous.
+The [Mix layer](#mix-layer) and the first Instruments header each carry an
+inline chip naming the resolved window — the training period's name when one is
+active, otherwise the recent-training-days fallback. The chip exists so the
+scope of the readout is never ambiguous, and those two are its only hosts on
+this screen: it is one widget, `StatsWindowChip` in
+`lib/features/stats/widgets/window_chip.dart`. Verified by
+`test/instrument_list_screen_test.dart` (`S-1011`) and
+`test/mix_layer_screen_test.dart` (`S-1612`).
 
 ---
 
 ## Data Loading
 
 All data is loaded in `_loadData()`, called once on first frame via
-`addPostFrameCallback`. The all-time aggregates (sessions / duration / streak)
-come directly from `WorkoutState`. Progress data (trends, PRs) is computed by
-`StatsProgressService`:
-
-```dart
-final data = await StatsProgressService(
-  widget.workoutState.repository,
-).computeProgressData();
-```
+`addPostFrameCallback`. The screen builds one `CalendarState` and one
+`StatsProgressService` over `widget.workoutState.repository`, then asks it for
+the all-time totals (`computeTotals()`), the windowed progress data
+(`computeProgressData()`), the Fuel summary (`computeFuelSummary()`), the Mix
+layer (`computeMixLayer()`) and the Instruments list, which it builds from the
+window `computeProgressData()` resolved
+(`computeInstrumentSections(window: ...)`). The list is therefore always
+scoped to the window the screen is showing, and the Mix layer reads the same
+resolved window — verified by `test/mix_layer_screen_test.dart` (`S-1613`,
+`S-1616`).
 
 `StatsProgressService` is a pure-Dart service — it depends on the
 `WorkoutRepository` interface only, not on any concrete implementation.
@@ -494,16 +310,17 @@ final data = await StatsProgressService(
 
 ## Key Constants (StatsProgressService)
 
-Values live in `lib/core/services/stats_progress_service.dart`; this document names them and says what each governs.
+Values live in `lib/core/services/stats_progress_service.dart` unless the row names another file; this document names them and says what each governs.
 
 | Constant | Meaning |
 |----------|---------|
-| `kTopLiftCount` | Max lifts shown in the Strength section |
-| `kTopCardioCount` | Max cardio activities shown |
-| `kRecentPRCount` | Max PR rows in the Recent PRs card |
-| `kRecentTrainingDaysWindow` | Number of recent training days used for the Strength/Cardio selection window when no period qualifies |
-| `kTopExerciseRecencyDays` | Recency floor for top-slot selection; an exercise whose most-recent training day is older than this drops out regardless of historical frequency. Applied symmetrically to Strength and Cardio |
-| `kNutritionTrendDays` | Soft default-window hint; the NUTRITION card passes `days: null` for full history |
+| `kRecentTrainingDaysWindow` | Number of recent training days used for the selection window when no period qualifies |
+| `kFuelWindowDays` | The Fuel row's window: the calendar days ending today that its averages cover, and the length of the range it compares against |
+| `kFuelVisibilityDays` | How many recent days the Fuel row looks at before it renders at all; wider than the window, so a window with no logged day still shows the row |
+| `kInstrumentRowCap` | Max rows an Instruments section shows before offering the rest; declared in `lib/features/stats/widgets/instrument_list.dart` |
+| `kMixStripWeeks` | How many weeks the Mix layer's strip covers; declared in `lib/core/models/training_load.dart` |
+| `kTrainingLoadMinRatedWeeks` | Rated baseline weeks the Mix layer needs before it reports load rather than time; declared in `lib/core/models/training_load.dart` |
+| `kTrainingLoadMaxUnratedShare` | Largest unrated share of the window's time the Mix layer tolerates before it reports time rather than load; declared in `lib/core/models/training_load.dart` |
 
 ---
 
@@ -512,18 +329,25 @@ Values live in `lib/core/services/stats_progress_service.dart`; this document na
 | File | Role |
 |------|------|
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
-| `lib/features/stats/widgets/scrollable_trend_chart.dart` | Scrollable chart wrapper (pinned y-axis, horizontal scroll, newest-first jump) |
 | `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, shared with Records & Trends |
-| `lib/features/stats/widgets/recent_pr_list.dart` | The Recent PRs card, shared with Records & Trends |
-| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `DrillProgress`, `RoundProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint`, `NutritionAdherence`, `StatsWindow` |
-| `lib/core/models/exercise_metric.dart` | Value types behind the per-exercise screens: `ExerciseSection`, `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
-| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the nutrition adherence via `computeNutritionAdherence()`, the all-time totals via `computeTotals()`, and the per-exercise all-time values via `computeExerciseMetrics()`) |
+| `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the modality bar, the measure and its label, the usual bar, the note, the unrated line and the week strip |
+| `lib/features/stats/widgets/instrument_list.dart` | The Instruments list: one section per kind of work, capped rows, the expand control; declares `kInstrumentRowCap` |
+| `lib/features/stats/widgets/instrument_row.dart` | One Instruments row (name, figure, change chip, trend line) and `InstrumentChangeChip` |
+| `lib/features/stats/widgets/instrument_sparkline.dart` | The row's trend line, drawn only when the window holds at least two points |
+| `lib/features/stats/widgets/native_value_format.dart` | `formatNativeValue`, `formatNativeChange` and `nativeSecondaryLabel` — the strings a row reads |
+| `lib/features/stats/widgets/fuel_section.dart` | `FuelSection` — the Fuel row: the logged-days indicator, the calories and protein figures with their comparison readouts, and the training / rest split |
+| `lib/features/stats/widgets/window_chip.dart` | `StatsWindowChip` — the header chip naming the resolved window |
+| `lib/features/nutrition/nutrition_trend_screen.dart` | The full-history nutrition trend screen, which the Fuel row opens |
+| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `StatsWindow`, the per-section progress types (`LiftProgress`, `StatsPR`, `TrendPoint`) and the nutrition trend / adherence types (`NutritionTrendPoint`, `NutritionAdherenceTargetPoint`, `NutritionAdherence`) |
+| `lib/core/models/exercise_metric.dart` | `ExerciseSection` and the native-value types a row's figure is built from: `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
+| `lib/core/models/instrument_list.dart` | Value types behind the Instruments list: `InstrumentRow`, `InstrumentSectionData` |
+| `lib/core/models/fuel_summary.dart` | `FuelSummary` — the Fuel row's value type: the window's logged-day averages, the previous range's, the training / rest split and the targets |
+| `lib/core/models/training_load.dart` | `MixLayerData` — the Mix layer's value type: the modality shares, the measure and its label, the usual mix, the baseline note, the unrated line and the strip's weeks; declares `kMixStripWeeks`, `kTrainingLoadMinRatedWeeks` and `kTrainingLoadMaxUnratedShare` |
+| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service: `computeTotals()`, `computeProgressData()` (and the `resolveWindow()` it calls), `computeFuelSummary()`, `computeMixLayer()` and `computeInstrumentSections({required StatsWindow window})` |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
 | `lib/state/settings/settings_state.dart` | Theme colors, weight/distance unit preferences |
-| `lib/core/utils/unit_formatter.dart` | `weightLabel(settings)` → `'kg'`/`'lbs'`; `convertWeight(kg, settings)` → display value; `distanceLabel(settings)` → `'km'`/`'mi'` |
-| `lib/core/utils/date_utils.dart` | `todayMidnightMs()`, `endOfDayMs()` — anchor the nutrition window |
-| `lib/core/utils/chart_axis_helper.dart` | `computeBounds()`, `formatYAxisValue()`, `formatDateLabel()` — shared by the chart builders and the pinned y-axis column |
+| `lib/core/utils/date_utils.dart` | `formatDurationHoursMins()` — formats the ALL TIME Time pill |
 
 ---
 
@@ -536,9 +360,8 @@ Values live in `lib/core/services/stats_progress_service.dart`; this document na
 
 ---
 
-**Document Version**: 2.5
-**Last Updated**: October 1, 2026
-
+**Document Version**: 3.1
+**Last Updated**: October 2, 2026
 
 ---
 

@@ -9,6 +9,7 @@ import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
+import '../watch/watch_session_inbox.dart';
 import 'exercise_library.dart';
 import 'session_block_manager.dart';
 import 'session_summary_builder.dart';
@@ -57,6 +58,11 @@ class SessionCore {
   /// after a session has been persisted.
   final HealthSyncService? _healthSync;
 
+  /// Optional recovery of watch entries that arrived while an Edit Session
+  /// was open. Null in tests and in builds without a watch; the restore then
+  /// behaves exactly as it did before the recovery existed (D-803, D-811).
+  final WatchLateEntryRecovery? _lateEntryRecovery;
+
   late final SessionBlockManager _blockManager;
   late final SessionSummaryBuilder _summaryBuilder;
 
@@ -85,12 +91,14 @@ class SessionCore {
     required TimerManager timerManager,
     required ExerciseLibrary exerciseLibrary,
     HealthSyncService? healthSync,
+    WatchLateEntryRecovery? lateEntryRecovery,
   }) : _notify = notify,
        _setErrorCallback = setError,
        _clearErrorCallback = clearError,
        _timerManager = timerManager,
        _exerciseLibrary = exerciseLibrary,
-       _healthSync = healthSync {
+       _healthSync = healthSync,
+       _lateEntryRecovery = lateEntryRecovery {
     _blockManager = SessionBlockManager(
       _repository,
       notify: _notify,
@@ -200,21 +208,6 @@ class SessionCore {
       }
     }
     return null;
-  }
-
-  int _getMetricsPerEntry(String effortKind) {
-    switch (effortKind) {
-      case 'set':
-        return 2;
-      case 'timed':
-        return 2;
-      case 'round':
-        return 0;
-      case 'drill':
-        return 1;
-      default:
-        return 2;
-    }
   }
 
   void _setLoading(bool value) {

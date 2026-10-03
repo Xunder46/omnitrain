@@ -22,11 +22,12 @@ import 'contrast_helpers.dart';
 
 EffortObservation _obs({
   required String metricId,
+  int entryIndex = 0,
   int? valueInt,
   double? valueReal,
   bool? valueBool,
 }) => EffortObservation(
-  id: 'obs-${metricId.hashCode}',
+  id: 'obs-e-1-$entryIndex-${MetricIds.metricIdToKey[metricId] ?? metricId}',
   effortId: 'e-1',
   metricId: metricId,
   valueInt: valueInt,
@@ -316,21 +317,33 @@ void main() {
         final result = ObservationGrouper.groupByEffortKind('set', [
           _obs(metricId: 'metric-reps', valueInt: 10),
           _obs(metricId: 'metric-weight', valueReal: 50.0),
-          _obs(metricId: 'metric-reps', valueInt: 8),
-          _obs(metricId: 'metric-weight', valueReal: 55.0),
+          _obs(metricId: 'metric-reps', entryIndex: 1, valueInt: 8),
+          _obs(metricId: 'metric-weight', entryIndex: 1, valueReal: 55.0),
         ]);
         expect(result, hasLength(2));
         expect(result[1]['reps'], 8);
         expect(result[1]['weight'], 55.0);
       });
 
-      test('odd number of observations drops the trailing one', () {
+      // S-1307: a row with no number belongs to no entry. The sequential rule
+      // this test used to assert is gone (D-705), so a lone reps row is now an
+      // entry of its own with weight 0.0 — and an unnumbered row is in none.
+      test('S-1307 an unnumbered row is in no entry', () {
         final result = ObservationGrouper.groupByEffortKind('set', [
           _obs(metricId: 'metric-reps', valueInt: 10),
           _obs(metricId: 'metric-weight', valueReal: 50.0),
-          _obs(metricId: 'metric-reps', valueInt: 8), // unpaired
+          EffortObservation(
+            id: '9f1c8a44-3b2e-4c0d-8f6a-1d2e3f4a5b6c',
+            effortId: 'e-1',
+            metricId: 'metric-reps',
+            valueInt: 8,
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
         ]);
         expect(result, hasLength(1));
+        expect(result[0]['reps'], 10);
+        expect(result[0]['weight'], 50.0);
       });
 
       test('empty observations returns empty list', () {
@@ -1423,53 +1436,70 @@ void main() {
             (ch(atK.b) - ch(step1.b)).abs(),
           ].every((delta) => delta <= 1),
           isTrue,
-          reason: '${theme.name}: step 1 must be primary over surface at '
+          reason:
+              '${theme.name}: step 1 must be primary over surface at '
               'alpha ${k / 100}',
         );
 
         final c1 = contrastRatio(step1, surface);
-        expect(c1, greaterThanOrEqualTo(1.8),
-            reason: '${theme.name}: step 1 ($c1:1) must reach 1.8:1');
-        final below = contrastRatio(over(primary, surface, (k - 1) / 100),
-            surface);
-        expect(below, lessThan(1.8),
-            reason: '${theme.name}: alpha ${(k - 1) / 100} already reaches '
-                '$below:1, so step 1 (alpha ${k / 100}) is not the lowest');
-      }
-    });
-
-    test('Cached ramps: two calls for the same theme return identical results', () {
-      for (final theme in AppTheme.values) {
-        // Get the ramp twice
-        final colors1 = OmniTheme.colorsForTheme(theme);
-        final ramp1 = colors1.intensityRamp;
-
-        final colors2 = OmniTheme.colorsForTheme(theme);
-        final ramp2 = colors2.intensityRamp;
-
-        // They should be the exact same object: same (primary, surface)
-        // pair, same cache entry.
-        expect(identical(ramp1, ramp2), true,
-            reason:
-                'Theme ${theme.name}: ramps should be identical (cached) but were different objects');
         expect(
-          identical(
-            OmniTheme.intensityRampFor(colors1.primary, colors1.surface),
-            ramp1,
-          ),
-          isTrue,
-          reason: 'Theme ${theme.name}: the cache is keyed on the '
-              '(primary, surface) pair',
+          c1,
+          greaterThanOrEqualTo(1.8),
+          reason: '${theme.name}: step 1 ($c1:1) must reach 1.8:1',
         );
-
-        // And all steps should have the same color values
-        expect(ramp1.step1, ramp2.step1);
-        expect(ramp1.step2, ramp2.step2);
-        expect(ramp1.step3, ramp2.step3);
-        expect(ramp1.step4, ramp2.step4);
-        expect(ramp1.step5, ramp2.step5);
+        final below = contrastRatio(
+          over(primary, surface, (k - 1) / 100),
+          surface,
+        );
+        expect(
+          below,
+          lessThan(1.8),
+          reason:
+              '${theme.name}: alpha ${(k - 1) / 100} already reaches '
+              '$below:1, so step 1 (alpha ${k / 100}) is not the lowest',
+        );
       }
     });
+
+    test(
+      'Cached ramps: two calls for the same theme return identical results',
+      () {
+        for (final theme in AppTheme.values) {
+          // Get the ramp twice
+          final colors1 = OmniTheme.colorsForTheme(theme);
+          final ramp1 = colors1.intensityRamp;
+
+          final colors2 = OmniTheme.colorsForTheme(theme);
+          final ramp2 = colors2.intensityRamp;
+
+          // They should be the exact same object: same (primary, surface)
+          // pair, same cache entry.
+          expect(
+            identical(ramp1, ramp2),
+            true,
+            reason:
+                'Theme ${theme.name}: ramps should be identical (cached) but were different objects',
+          );
+          expect(
+            identical(
+              OmniTheme.intensityRampFor(colors1.primary, colors1.surface),
+              ramp1,
+            ),
+            isTrue,
+            reason:
+                'Theme ${theme.name}: the cache is keyed on the '
+                '(primary, surface) pair',
+          );
+
+          // And all steps should have the same color values
+          expect(ramp1.step1, ramp2.step1);
+          expect(ramp1.step2, ramp2.step2);
+          expect(ramp1.step3, ramp2.step3);
+          expect(ramp1.step4, ramp2.step4);
+          expect(ramp1.step5, ramp2.step5);
+        }
+      },
+    );
 
     test('Ramp cache never serves a stale ramp after a palette edit '
         '(new primary or new surface → fresh ramp)', () {
@@ -1485,10 +1515,15 @@ void main() {
           (colors.primary.g * 255).round(),
           (colors.primary.b * 255).round(),
         );
-        final fromPrimary =
-            OmniTheme.intensityRampFor(editedPrimary, colors.surface);
-        expect(fromPrimary.step5, editedPrimary,
-            reason: '${theme.name}: step 5 must follow the edited primary');
+        final fromPrimary = OmniTheme.intensityRampFor(
+          editedPrimary,
+          colors.surface,
+        );
+        expect(
+          fromPrimary.step5,
+          editedPrimary,
+          reason: '${theme.name}: step 5 must follow the edited primary',
+        );
         expect(identical(fromPrimary, cached), isFalse);
 
         // Same theme, edited surface.
@@ -1498,11 +1533,17 @@ void main() {
           (colors.surface.g * 255).round() ^ 0x04,
           (colors.surface.b * 255).round(),
         );
-        final fromSurface =
-            OmniTheme.intensityRampFor(colors.primary, editedSurface);
-        expect(identical(fromSurface, cached), isFalse,
-            reason: '${theme.name}: an edited surface must not reuse the '
-                'cached ramp');
+        final fromSurface = OmniTheme.intensityRampFor(
+          colors.primary,
+          editedSurface,
+        );
+        expect(
+          identical(fromSurface, cached),
+          isFalse,
+          reason:
+              '${theme.name}: an edited surface must not reuse the '
+              'cached ramp',
+        );
         expect(fromSurface.step1, isNot(cached.step1));
       }
     });

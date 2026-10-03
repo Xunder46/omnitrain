@@ -13,7 +13,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/services/watch_session_importer.dart';
-import 'package:omnitrain/core/utils/distance_source.dart';
 import 'package:omnitrain/core/utils/entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -119,11 +118,11 @@ Future<List<(double, String?)>> _storedDistances(
     ((row.valueReal ?? 0.0), row.valueSource),
 ];
 
-/// What the phone reads for the run's distances: metres and the source the
-/// reader resolves, in entry order.
-List<(double, String)> _readDistances(WorkoutState workout) => [
+/// What the phone reads for the run's distances: metres and the raw stored
+/// source, in entry order (S-1301: a reader never substitutes one).
+List<(double, String?)> _readDistances(WorkoutState workout) => [
   for (final entry in workout.getEffortDistanceEntries(_run))
-    (entry.metres, DistanceSource.resolve(entry.row?.valueSource)),
+    (entry.metres, entry.row?.valueSource),
 ];
 
 void main() {

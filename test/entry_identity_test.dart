@@ -322,6 +322,152 @@ void main() {
         expect(entries[1]['extra-weight'], 5.0);
       });
 
+      // S-1308: deleting a set deletes its own rows only (D-706).
+      test('S-1308 deleting a set deletes its own rows only', () async {
+        await seedSession(repo, sessionId: 's-1308');
+        await seedExercise(
+          repo,
+          id: 'ex-bench-1308',
+          name: 'Bench Press',
+          capabilities: ['load'],
+        );
+        await seedSetEffort(
+          repo,
+          segmentId: 'seg-s-1308',
+          effortId: 'e-1308',
+          exerciseId: 'ex-bench-1308',
+          entryCount: 3,
+          hasExtraWeight: false,
+          repsBase: 5,
+        );
+
+        repo = await harness.restart();
+        var state = await loadState(repo, 's-1308');
+        expect(_setValues(state, 'e-1308'), [
+          (5, false),
+          (6, false),
+          (7, false),
+        ]);
+
+        await state.deleteEntry('e-1308', 1);
+
+        repo = await harness.restart();
+        state = await loadState(repo, 's-1308');
+        expect(_setValues(state, 'e-1308'), [(5, false), (7, false)]);
+        expect(
+          (await storedRowIds(repo, 'e-1308')).toSet(),
+          {
+            'obs-e-1308-0-reps',
+            'obs-e-1308-0-weight',
+            'obs-e-1308-2-reps',
+            'obs-e-1308-2-weight',
+          },
+          reason: 'only number 1\'s rows are gone',
+        );
+      });
+
+      // S-1308 (unnumbered): the same delete on an effort whose rows carry no
+      // number. The rows belong to no entry, so the delete removes nothing —
+      // there is no positional fallback to guess a set from (D-706).
+      test('S-1308 an unnumbered set effort has no entry to delete', () async {
+        await seedSession(repo, sessionId: 's-1308u');
+        await seedExercise(
+          repo,
+          id: 'ex-bench-1308u',
+          name: 'Bench Press',
+          capabilities: ['load'],
+        );
+        await seedSetEffort(
+          repo,
+          segmentId: 'seg-s-1308u',
+          effortId: 'e-1308u',
+          exerciseId: 'ex-bench-1308u',
+          entryCount: 3,
+          hasExtraWeight: false,
+          repsBase: 5,
+        );
+
+        final rows = await repo.getEffortObservations('e-1308u');
+        for (final row in rows) {
+          await repo.deleteObservation(row.id);
+        }
+        var n = 0;
+        for (final row in rows) {
+          await repo.createObservation(
+            EffortObservation(
+              id: 'obs-${row.metricId}-${n++}',
+              effortId: row.effortId,
+              metricId: row.metricId,
+              valueInt: row.valueInt,
+              valueReal: row.valueReal,
+              valueBool: row.valueBool,
+              createdAtMs: row.createdAtMs,
+              updatedAtMs: row.updatedAtMs,
+            ),
+          );
+        }
+
+        repo = await harness.restart();
+        final state = await loadState(repo, 's-1308u');
+        expect(_setValues(state, 'e-1308u'), isEmpty);
+
+        await state.deleteEntry('e-1308u', 1);
+
+        repo = await harness.restart();
+        expect(
+          (await storedRowIds(repo, 'e-1308u')).toSet(),
+          {
+            'obs-metric-reps-0',
+            'obs-metric-weight-1',
+            'obs-metric-reps-2',
+            'obs-metric-weight-3',
+            'obs-metric-reps-4',
+            'obs-metric-weight-5',
+          },
+          reason: 'an unnumbered row is in no entry, so nothing is deleted',
+        );
+      });
+
+      // S-1309: deleting a timed entry leaves nothing for the next entry to
+      // adopt (D-706).
+      test('S-1309 deleting a timed entry leaves nothing to adopt', () async {
+        await seedSession(
+          repo,
+          sessionId: 's-1309',
+          modality: 'cardio_endurance',
+        );
+        await seedTimedEntries(
+          repo,
+          segmentId: 'seg-s-1309',
+          effortId: 'e-1309',
+          entryCount: 2,
+          metresBase: 1000.0,
+        );
+
+        repo = await harness.restart();
+        var state = await loadState(repo, 's-1309');
+        expect(_distances(state, 'e-1309'), [1000.0, 2000.0]);
+
+        await state.deleteEntry('e-1309', 0);
+        await state.addEntry('e-1309');
+
+        repo = await harness.restart();
+        state = await loadState(repo, 's-1309');
+        expect(
+          _distances(state, 'e-1309'),
+          [2000.0, 0.0],
+          reason: 'the new entry is empty; entry 1 keeps its own 2000 m',
+        );
+        expect(
+          (await storedRows(
+            repo,
+            'e-1309',
+            MetricIds.distance,
+          )).map((row) => row.id).toSet(),
+          {'obs-e-1309-1-distance', 'obs-e-1309-2-distance'},
+        );
+      });
+
       // Green before and after: it pins D-321 and D-322.
       test('S-858 leftovers never show, never count and stay stored', () async {
         await seedSession(

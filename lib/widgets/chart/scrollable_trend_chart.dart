@@ -1,8 +1,8 @@
-// filepath: lib/features/stats/widgets/scrollable_trend_chart.dart
+// filepath: lib/widgets/chart/scrollable_trend_chart.dart
 import 'package:flutter/material.dart';
 
-import '../../../core/constants/omni_theme.dart';
-import '../../../core/utils/chart_axis_helper.dart';
+import '../../core/constants/omni_theme.dart';
+import '../../core/utils/chart_axis_helper.dart';
 
 /// Default number of data points visible in the scrollable plot
 /// before horizontal scroll engages. The plot width is
@@ -28,10 +28,8 @@ const double kScrollableTrendMinPerPointWidth = 28.0;
 const double kScrollableTrendHorizontalMargin = 12.0;
 
 /// A horizontally scrollable trend chart with a pinned y-axis
-/// label column. Replaces the fixed-width rendering for every
-/// stats chart on [StatsScreen] (strength e1RM, strength volume,
-/// cardio pace, cardio duration, nutrition calories, nutrition
-/// macros) and the profile measurement history sheet.
+/// label column. Used by `measurement_history_chart_sheet.dart`,
+/// `nutrition_trend_card.dart` and `exercise_progress_screen.dart`.
 ///
 /// ## Layout
 ///

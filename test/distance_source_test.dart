@@ -6,8 +6,9 @@
 // `HiveWorkoutRepository` and `MockWorkoutRepository` must agree value for
 // value, and a Hive restart must not change what a source or a pairing reads.
 //
-// Scenarios: S-801, S-802, S-803 (the model half), S-804–S-808 of
-// `docs/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`.
+// Scenarios: S-1301, S-1303, S-1310, S-1316 of
+// `docs/plans/2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan.md`, plus
+// S-802–S-808 of `docs/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`.
 // The SQL half of S-803 lives in `db_seed_test.dart`.
 
 import 'dart:io';
@@ -143,8 +144,8 @@ EffortObservation _distanceRow(
 );
 
 /// A distance row as this app stored one before the source existed: a raw map
-/// with no `value_source` key at all (S-801).
-EffortObservation _legacyDistanceRow(
+/// with no `value_source` key at all (S-1301).
+EffortObservation _sourcelessDistanceRow(
   String effortId,
   int entryIndex,
   double metres,
@@ -218,13 +219,14 @@ Future<void> _seedTimedEffort(
   List<EffortObservation> rows = const [],
   String? blockId,
   String? exerciseId,
+  String effortKind = 'timed',
 }) async {
   await repo.createEffort(
     SegmentEffort(
       id: effortId,
       segmentId: segmentId,
       orderIndex: orderIndex,
-      effortKind: 'timed',
+      effortKind: effortKind,
       exerciseId: exerciseId,
       blockId: blockId,
       createdAtMs: _start,
@@ -258,7 +260,7 @@ Future<void> _seedCardioSession(WorkoutRepository repo) async {
         4873.6,
         source: EffortObservation.sourceEstimated,
       ),
-      _legacyDistanceRow('e-tread', 1, 0.0),
+      _sourcelessDistanceRow('e-tread', 1, 0.0),
     ],
   );
   await _seedTimedEffort(
@@ -268,7 +270,7 @@ Future<void> _seedCardioSession(WorkoutRepository repo) async {
     orderIndex: 1,
     entryDurationSecs: 1800,
     exerciseId: 'ex-easy-run',
-    rows: [_legacyDistanceRow('e-easy', 0, 5000.0)],
+    rows: [_sourcelessDistanceRow('e-easy', 0, 5000.0)],
   );
 }
 
@@ -342,26 +344,33 @@ void _phaseOneTests(String name, _Harness Function() makeHarness) {
   /// The repository name, in every test's title.
   String titled(String base) => '$base ($name)';
 
-  test(titled('S-801 a legacy distance reads as entered'), () async {
-    await _seedSession(repo, sessionId: 's-legacy');
-    await _seedTimedEffort(
-      repo,
-      segmentId: 'seg-s-legacy',
-      effortId: 'e-legacy',
-      rows: [_legacyDistanceRow('e-legacy', 0, 5000.0)],
-    );
+  test(
+    titled('S-1301 a stored distance with no source reads with no source'),
+    () async {
+      await _seedSession(repo, sessionId: 's-legacy');
+      await _seedTimedEffort(
+        repo,
+        segmentId: 'seg-s-legacy',
+        effortId: 'e-legacy',
+        rows: [_sourcelessDistanceRow('e-legacy', 0, 5000.0)],
+      );
 
-    final rows = await repo.getEffortObservations('e-legacy');
-    expect(rows, hasLength(1));
-    final row = rows.single;
-    expect(row.valueSource, isNull);
-    expect(
-      DistanceSource.resolve(row.valueSource),
-      EffortObservation.sourceEntered,
-    );
-    expect(DistanceSource.isEstimated(row.valueSource), isFalse);
-    expect(row.toMap()['value_source'], isNull);
-  });
+      final rows = await repo.getEffortObservations('e-legacy');
+      expect(rows, hasLength(1));
+      final row = rows.single;
+      expect(row.valueReal, 5000.0);
+      expect(row.valueSource, isNull);
+      expect(DistanceSource.isEstimated(row.valueSource), isFalse);
+      expect(row.toMap()['value_source'], isNull);
+
+      // No reader substitutes `entered`: the pairing hands the stored row back
+      // with the source it actually carries.
+      final state = await _loadState(repo, 's-legacy');
+      final entry = state.getEffortDistanceEntries('e-legacy').single;
+      expect(entry.metres, 5000.0);
+      expect(entry.row?.valueSource, isNull);
+    },
+  );
 
   test(titled('S-802 each source round-trips a restart'), () async {
     await _seedSession(repo, sessionId: 's-sources');
@@ -538,6 +547,144 @@ void _phaseOneTests(String name, _Harness Function() makeHarness) {
     expect(paired[2]!.id, 'obs-e-gap-2-distance');
   });
 
+  test(titled('S-1303 a non-timed effort has no distance entries'), () async {
+    await _seedSession(repo, sessionId: 's-drill');
+    await _seedTimedEffort(
+      repo,
+      segmentId: 'seg-s-drill',
+      effortId: 'e-drill',
+      entryCount: 2,
+      effortKind: 'drill',
+      rows: [
+        EffortObservation(
+          id: 'obs-e-drill-0-extra-weight',
+          effortId: 'e-drill',
+          metricId: MetricIds.extraWeight,
+          unitId: MetricIds.unitKg,
+          valueReal: 0.0,
+          createdAtMs: _rowAt,
+          updatedAtMs: _rowAt,
+        ),
+        EffortObservation(
+          id: 'obs-e-drill-1-extra-weight',
+          effortId: 'e-drill',
+          metricId: MetricIds.extraWeight,
+          unitId: MetricIds.unitKg,
+          valueReal: 0.0,
+          createdAtMs: _rowAt,
+          updatedAtMs: _rowAt,
+        ),
+      ],
+    );
+    // The pre-3a3 shape: a `drill` effort that still carries a stored distance.
+    await repo.createObservation(_distanceRow('e-drill', 0, 400.0));
+
+    final state = await _loadState(repo, 's-drill');
+    expect(
+      state.getEffortDistanceEntries('e-drill'),
+      isEmpty,
+      reason: 'D-703: only a timed effort has distance entries',
+    );
+
+    // The adversarial row is untouched: nothing reads it and nothing deletes
+    // it.
+    final stored = _rowWithId(
+      _distanceRows(state, 'e-drill'),
+      'obs-e-drill-0-distance',
+    );
+    expect(stored.valueReal, 400.0);
+  });
+
+  test(titled('S-1316 confirming a distance twice is idempotent'), () async {
+    await _seedSession(repo, sessionId: 's-confirm');
+    await _seedTimedEffort(
+      repo,
+      segmentId: 'seg-s-confirm',
+      effortId: 'e-confirm',
+      rows: [
+        _distanceRow(
+          'e-confirm',
+          0,
+          3000.0,
+          source: EffortObservation.sourceEstimated,
+        ),
+      ],
+    );
+    final state = await _loadState(repo, 's-confirm');
+    final before = _distanceRows(state, 'e-confirm').single;
+
+    await state.confirmEntryDistance('e-confirm', 0);
+    final once = _distanceRows(state, 'e-confirm').single;
+    expect(once.valueReal, 3000.0);
+    expect(once.valueSource, EffortObservation.sourceEntered);
+    expect(once.id, before.id);
+    expect(once.createdAtMs, before.createdAtMs);
+    expect(once.updatedAtMs, greaterThanOrEqualTo(before.updatedAtMs));
+
+    await state.confirmEntryDistance('e-confirm', 0);
+    final twice = _distanceRows(state, 'e-confirm').single;
+    expect(twice.valueReal, 3000.0);
+    expect(twice.valueSource, EffortObservation.sourceEntered);
+    expect(twice.id, before.id);
+    expect(twice.createdAtMs, before.createdAtMs);
+    expect(twice.updatedAtMs, greaterThanOrEqualTo(once.updatedAtMs));
+
+    repo = await harness.restart();
+    final reloaded = await _loadState(repo, 's-confirm');
+    final rows = _distanceRows(reloaded, 'e-confirm');
+    expect(rows, hasLength(1));
+    expect(rows.single.valueReal, 3000.0);
+    expect(rows.single.valueSource, EffortObservation.sourceEntered);
+  });
+
+  // S-1310: a write on a later entry creates no earlier rows when every
+  // earlier entry already holds a distance row (D-706, D-712).
+  test(
+    titled('S-1310 a write on a later entry creates no earlier rows'),
+    () async {
+      await _seedSession(repo, sessionId: 's-1310');
+      await _seedTimedEffort(
+        repo,
+        segmentId: 'seg-s-1310',
+        effortId: 'e-1310',
+        entryCount: 3,
+        rows: [
+          _distanceRow('e-1310', 0, 0.0),
+          _distanceRow('e-1310', 1, 0.0),
+          _distanceRow('e-1310', 2, 0.0),
+        ],
+      );
+      final state = await _loadState(repo, 's-1310');
+      final rowsBefore = _distanceRows(state, 'e-1310').length;
+
+      await state.setEntryDistance('e-1310', 2, 1500.0);
+      await state.updateEntryValue('e-1310', 2, 'extra-weight', 8.0);
+
+      final rows = _distanceRows(state, 'e-1310');
+      expect(rows, hasLength(rowsBefore), reason: 'no earlier row is created');
+      expect(
+        {for (final row in rows) row.id: row.valueReal},
+        {
+          'obs-e-1310-0-distance': 0.0,
+          'obs-e-1310-1-distance': 0.0,
+          'obs-e-1310-2-distance': 1500.0,
+        },
+      );
+      expect(
+        rows.firstWhere((row) => row.id == 'obs-e-1310-2-distance').valueSource,
+        EffortObservation.sourceEntered,
+      );
+      expect(
+        rows.firstWhere((row) => row.id == 'obs-e-1310-0-distance').valueSource,
+        isNull,
+      );
+      expect(
+        rows.firstWhere((row) => row.id == 'obs-e-1310-1-distance').valueSource,
+        isNull,
+      );
+    },
+  );
+
   test(titled('S-808 pairing survives store order'), () async {
     await _seedSession(repo, sessionId: 's-12');
     await _seedTimedEffort(
@@ -622,6 +769,41 @@ void main() {
       );
       expect(row.valueSource, EffortObservation.sourceEstimated);
       expect(DistanceSource.isEstimated(row.valueSource), isTrue);
+    });
+  });
+
+  group('S-1301 no reader resolves a missing source', () {
+    test('nothing in lib/ calls DistanceSource.resolve', () {
+      final offenders = <String>[];
+      final dartFiles = Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.dart'));
+
+      for (final file in dartFiles) {
+        final source = file.readAsStringSync();
+        for (final marker in ['DistanceSource.resolve', 'resolve(']) {
+          var index = source.indexOf(marker);
+          while (index >= 0) {
+            if (marker == 'resolve(' &&
+                !source.substring(0, index).endsWith('DistanceSource.')) {
+              index = source.indexOf(marker, index + marker.length);
+              continue;
+            }
+            offenders.add('${file.path}:${_lineOf(source, index)}');
+            index = source.indexOf(marker, index + marker.length);
+          }
+        }
+      }
+
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'D-701: a distance with a value always carries a source, so no '
+            'reader substitutes one for a missing source:\n'
+            '${offenders.join('\n')}',
+      );
     });
   });
 

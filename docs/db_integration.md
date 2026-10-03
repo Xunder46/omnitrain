@@ -51,6 +51,20 @@ Bulk per-effort read:
   - An effort with no instances has no key, rather than an empty list.
   - Verified by `test/round_instances_by_effort_test.dart` (S-901, S-902).
 
+Bulk per-session read:
+
+- `getSensorSummariesBySession()`
+  - Every `SensorSummary` on the device, grouped by `sessionId`, each group in the same
+    order `getSensorSummariesForSession(sessionId)` returns: scope in
+    `SensorSummary.scopes` order, then `windowStartMs`, then `targetId`. Both reads sort
+    through one comparator per implementation, so the two orders cannot drift.
+  - A session with no summaries has no key, rather than an empty list.
+  - `MockWorkoutRepository` mirrors `HiveWorkoutRepository` value for value.
+  - The read adds no schema or seed requirement: it groups rows already stored, so
+    `scripts/sqlite_schema.sql` and `scripts/sqlite_seed.sql` need no change to
+    serve it, and `test/db_seed_test.dart` executes both as SQL.
+  - Verified by `test/sensor_summaries_by_session_test.dart` (S-1002, S-1003, S-1004).
+
 Any repository implementation must satisfy this full contract and remain compile-safe.
 
 Deterministic active-session ordering contract:
@@ -644,6 +658,15 @@ Invariants:
   which is also why `app_watch_inbox_entry` has no foreign key. A summary's
   target is polymorphic, so its SQL table can only hold a foreign key to the
   owning session; the repository enforces the rest.
+- **One write unsets a stamp; nothing deletes.** `clearWatchInboxApplied`
+  unsets `appliedAtMs` on the named rows and only on them: an id that names no
+  row, and a row that is not applied, are skipped, and no row is created. It is
+  the one write that ever removes an applied stamp, and it exists for the Edit
+  Session Discard that has to recover an entry which arrived after the
+  snapshot (D-804). `test/watch_capture_repository_parity_test.dart` (`S-1412`)
+  runs it against both stores. No inbox row is ever deleted, and the schema is
+  unchanged: `applied_at_ms` is already nullable, and `test/db_seed_test.dart`
+  proves the tables.
 - **Parity.** Hive and Mock agree value for value, ordering included.
   `test/watch_capture_repository_parity_test.dart` runs one test body against
   both, and compares one scripted sequence row by row by `toMap()`.

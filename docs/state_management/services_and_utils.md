@@ -2,7 +2,8 @@
 
 **Scope.** The service and utility classes that are neither session, nutrition,
 nor app state: `lib/core/services/`, `lib/core/utils/`, and the cross-cutting
-pieces those classes own. It also covers the watch↔phone live mirroring surface
+pieces those classes own, including the shared Stats formatters
+(`lib/features/stats/widgets/native_value_format.dart`). It also covers the watch↔phone live mirroring surface
 (`lib/state/watch/`, `lib/watch/start/watch_sync_orchestrator.dart`,
 `lib/core/sync_protocol/`), the platform transport that surface rides on
 (`lib/core/platform/`), and the watch's own runtime layer (`lib/watch/`,
@@ -266,6 +267,76 @@ they cannot drift:
   stopped early still happened.
 
 Verified by `test/exercise_metric_service_test.dart` (S-904 … S-911).
+
+`computeInstrumentSections({required StatsWindow window})` returns the window's
+sections and rows, built from two `computeExerciseMetrics` calls — the window
+itself, and the immediately preceding range of the same calendar length, so a
+row's change compares like with like. It is the window's sections-and-rows read,
+and nothing it produces is persisted.
+
+- **Section order is by work done, not by declaration.** A section's rank is the
+  number of distinct days in the window on which an effort of that kind was
+  logged, descending; ties keep `ExerciseSection`'s declaration order. This
+  supersedes `computeProgressData`'s fixed order for this list only.
+- **Row order** is the count of days carrying a readable value, descending, then
+  name, then id. A row appears for every exercise the window yields, including one
+  whose value is the zero fallback; that row carries no readable value, so its
+  rank is zero and it sorts last.
+- **The change indicator** is the difference against the same exercise's value in
+  the preceding range. It is absent when that range has no summary for the
+  exercise, or holds a different metric — an exercise whose value is read a
+  different way is not comparable. The preceding range is calendar arithmetic on
+  the window's own day count, never a duration, so a DST transition cannot change
+  its length.
+- **Cadence and heart rate** come from the window's `SensorSummary` rows. Cadence
+  is the summed steps over the timed instances that carry a step count, divided
+  by those instances' summed minutes (Cardio only). Heart rate is the mean over
+  the timed (Cardio) or round (Sports) instance summaries that carry a reading.
+  Neither figure is produced when no summary carries it, and Resistance and
+  Isometric rows never carry a heart rate.
+
+The change a row shows is rendered by
+`formatNativeChange(metric, delta, settings)` in
+`lib/features/stats/widgets/native_value_format.dart`: an arrow and the signed
+magnitude, or `'—'` when the delta is zero. The sign is the raw numeric sign of
+the delta, with no per-metric inversion, and the magnitude is formatted by the
+same per-metric rule as `formatNativeMetric`, so a change and the figure above it
+read in one unit. `nativeSecondaryLabel` in the same file is the single source of
+a secondary figure's name, so it cannot read two ways.
+
+Verified by `test/instrument_list_service_test.dart` (S-1005, S-1007, S-1008,
+S-1009, S-1010) and `test/instrument_change_format_test.dart`.
+
+`computeMixLayer({required StatsWindow window, required DateTime now, required
+String startOfWeek})` returns the Mix layer's whole payload — the measure, the
+window's bar, the baseline's segments, the two counts and the weekly strip — or
+`null` when the window holds no time at all. It is the only history walk behind
+those figures: the window, the baseline and the strip are all served from the
+one cached snapshot, so the surface pays for no extra repository read.
+
+- **The measure is load only when the baseline is rated enough and the window is
+  rated enough**; otherwise it is time. The baseline's segments are built in the
+  load measure only, and only when the baseline's total load is above zero.
+- **The baseline is the 12 calendar blocks before the window's start day** and
+  never uses the start-of-week setting; that setting moves the strip's weeks and
+  nothing else. The blocks are calendar arithmetic, so a DST transition cannot
+  shift a boundary.
+- **The strip is the 8 weeks ending with the week containing `now`**, oldest
+  first, with the last week marked in progress. An empty week is present with a
+  zero measure rather than dropped, a session belongs to the week it started in,
+  and the strip is selected against each week's own bounds rather than the
+  window, so changing the window moves the bar and leaves the strip alone.
+- **The effort-to-modality mapping is the service's own** — the same
+  `_sectionForKind` the Instruments list uses — so the two reads can never
+  disagree about which modality an effort belongs to.
+
+The rules themselves live in `lib/core/models/training_load.dart` and are
+documented in [Training Load & Mix Definitions](../training_load.md).
+
+Verified by `test/mix_layer_service_test.dart` (S-1501, S-1502, S-1503, S-1505,
+S-1509, S-1510 A–E, S-1511 and its start-of-week twin, S-1513 and its
+Sunday-start twin, S-1514, S-1515, S-1516, S-1517, and the Mock/Hive
+value-for-value parity group).
 
 ---
 
@@ -539,6 +610,13 @@ see [Watch Session Capture](../watch_session_capture.md). It returns a
 needs, `WatchSessionRatings` — or null when the platform has no watch, which is
 what keeps the environment contract intact: `main.dart` passes `liveSession` and
 `watchSessionRatings` to `MyApp` only when this answered.
+
+The graph carries a second handle, `WatchLateEntryRecovery`, which is the same
+inbox behind a narrower capability: recovering the entries that arrived while an
+Edit Session was open, so a Discard does not lose a set the user logged on the
+wrist. `main.dart` hands it to `WorkoutState`, which passes it to the session
+core's restore. Verified by `test/watch_session_edit_restore_late_entry_test.dart`
+(`S-1401` to `S-1410`).
 
 Two construction details are load-bearing:
 

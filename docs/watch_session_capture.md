@@ -9,7 +9,11 @@ liveness. It describes the phone half —
 (`WatchSessionImporter`), `lib/core/utils/logged_entry_rows.dart`
 (`LoggedEntryRows`) — their wiring in
 `lib/state/watch/watch_incoming_router.dart` and
-`lib/state/watch/watch_sync_wiring.dart`, and the phone's own question after
+`lib/state/watch/watch_sync_wiring.dart`, the Edit Session restore that brings
+back an entry which arrived while the screen was open
+(`lib/state/workout/session_core_lifecycle.dart`), the screen that captures the
+snapshot that restore reads (`lib/features/session/workout_session_screen.dart`),
+and the phone's own question after
 it finishes a wrist session (`lib/features/session/live_session_screen.dart`,
 `lib/widgets/session/effort_rating_sheet.dart`). The stored models (`WatchInboxEntry`,
 `SensorSummary`) belong to [Data Models](data_models.md); the wire format is
@@ -37,6 +41,7 @@ and the Platform Workout").
 | The rows one logged entry becomes | `LoggedEntryRows`, shared with the phone's own logging in `SessionCore` |
 | Acknowledging what was applied | `WatchSessionInbox`, through the one receipt builder, `WatchNutritionLogBridge.receiptFor` |
 | Finishing an import the phone had not run when it stopped | `WatchSessionInbox.resume`, called once by `createWatchSync` |
+| Recovering a wrist entry that arrived while an Edit Session was open | `WatchLateEntryRecovery`, the inbox capability `SessionCore.restoreSessionSnapshot` calls on Discard; `createWatchSync` returns it in `WatchSyncGraph` and `lib/main.dart` hands it to `WorkoutState` |
 | Keeping history surfaces current | `createWatchSync`'s `onHistoryChanged`, which `lib/main.dart` points at `CalendarState.refresh` |
 
 ## Rationale
@@ -91,7 +96,10 @@ import independent of arrival order.
 **Why applied rows are kept.** An applied staged row is never materialised
 again, so it is also the record that history the user deleted — a session, an
 effort or one entry — was once there. That is what stops a later sync from
-re-creating it. Nothing deletes a staged row.
+re-creating it. Nothing deletes a staged row. The one exception is an Edit
+Session Discard: an entry that arrived while the screen was open is not in the
+snapshot the Discard restores, so the restore un-marks exactly that entry and
+runs one ordinary import pass to bring it back; the pass re-stamps it applied.
 
 **Why receipts wait for application.** A receipt tells the wrist it may drop an
 observation. Sent on arrival, it would let the wrist prune an entry the phone
@@ -183,6 +191,16 @@ one the wrist asks, which the capture contract pins for both.
   only when they carry the fields their kind requires.** A nutrition quick-log
   stays with the nutrition bridge. Verified by the `what the inbox stages`
   group in `test/watch_session_import_test.dart`.
+- **A wrist entry that arrived while an Edit Session was open survives
+  Discard.** The restore un-marks exactly the entries applied after the
+  snapshot's watermark and runs one import pass, so the entry returns as the
+  wrist sent it while the user's own edits are still discarded; the un-mark is
+  durable, so a pass that does not complete leaves the row to the next pass for
+  that session — the wrist re-sending it, or the start-up pass for a session
+  whose end has not been applied. A snapshot taken with no watermark recovers
+  nothing, and a session with no late entry is left untouched. Verified by
+  `test/watch_session_edit_restore_late_entry_test.dart` (`S-1401` to `S-1410`,
+  `S-1413`, `S-1414`) and the screen's own watermark capture (`S-1415`).
 
 ## The wrist half
 

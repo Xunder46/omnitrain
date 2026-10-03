@@ -4,9 +4,11 @@ import '../../core/constants/omni_theme.dart';
 /// Standardized card-level header rendered above an outlined card.
 ///
 /// Wraps a title on the left and an optional `actions` cluster on the
-/// right in a `Row(MainAxisAlignment.spaceBetween)`. The default bottom
-/// padding is 8 dp — the gap that callers historically hand-rolled
-/// with a `SizedBox(height: 8)` between the header and the card below.
+/// right in a `Row(MainAxisAlignment.spaceBetween)`. The cluster takes
+/// at most half the header's width, so a long action ellipsizes rather
+/// than pushing the title below half. The default bottom padding is
+/// 8 dp — the gap that callers historically hand-rolled with a
+/// `SizedBox(height: 8)` between the header and the card below.
 ///
 /// Title typography follows the canonical section/card-header style
 /// (`labelSmall` + `w600` + `letterSpacing: 2.0` + `textMuted`) so every
@@ -50,30 +52,51 @@ class OmniCardHeader extends StatelessWidget {
 
     return Padding(
       padding: padding,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              key: const Key('omniCardHeader_title'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: OmniTheme.colors.textMuted,
-                letterSpacing: 2.0,
-                fontWeight: FontWeight.w600,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // The cluster takes at most half the header; the title stays
+          // `Expanded` and keeps the rest, so a long action ellipsizes at
+          // the cap instead of squeezing the title below half the header.
+          // Under an unbounded parent there is no cap to apply.
+          final maxActionsWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth * 0.5
+              : double.infinity;
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  key: const Key('omniCardHeader_title'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: OmniTheme.colors.textMuted,
+                    letterSpacing: 2.0,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-            ),
-          ),
-          if (hasActions)
-            Row(
-              key: const Key('omniCardHeader_actions'),
-              mainAxisSize: MainAxisSize.min,
-              children: effectiveActions,
-            ),
-        ],
+              if (hasActions)
+                // The cap bounds the cluster; the loose `Flexible`s pass that
+                // bound down to each action so a long label (the window chip)
+                // ellipsizes instead of overflowing the row at narrow widths
+                // and large text scales.
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxActionsWidth),
+                  child: Row(
+                    key: const Key('omniCardHeader_actions'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final action in effectiveActions)
+                        Flexible(fit: FlexFit.loose, child: action),
+                    ],
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

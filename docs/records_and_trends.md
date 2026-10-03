@@ -19,8 +19,7 @@ Both screens read one `StatsProgressService.computeExerciseMetrics()` result and
 format values through the same shared formatters, so a best shown in the index and
 the same best shown on the detail page cannot disagree. The service only reads: an
 all-time best describes what is already stored, creates no PR event and writes
-nothing. The PR list Records & Trends renders is the service's own `recentPRs` —
-the same list, in the same order, as the Stats screen's.
+nothing. The PR list Records & Trends renders is the service's own `recentPRs`.
 
 Verified by `test/records_and_trends_screen_test.dart` (`S-913` for the totals and
 the PR list, `S-914` for the shared best) and
@@ -32,18 +31,20 @@ the PR list, `S-914` for the shared best) and
 
 ```
 StatsScreen
-  └── header chart icon → RecordsAndTrendsScreen
-        └── entry → ExerciseProgressScreen
+  ├── header chart icon → RecordsAndTrendsScreen
+  │     └── entry → ExerciseProgressScreen
+  └── Instruments row → ExerciseProgressScreen
 ```
 
 `StatsScreen` is the only file in `lib/` that constructs
 `RecordsAndTrendsScreen`, so the header chart icon is the only entry point into
-Records & Trends. Exercise Progress has no single-entry rule: it is reached from
-an entry in Records & Trends. The detail screen is named exactly
-`Exercise Progress`.
+Records & Trends. Exercise Progress has two entry points — an entry in Records &
+Trends and a row of the Stats screen's Instruments list — and nothing else in
+`lib/` pushes it. The detail screen is named exactly `Exercise Progress`.
 
 Verified by `test/records_and_trends_screen_test.dart` (the single-entry-point
-case and `S-913`).
+case, the Exercise Progress entry-point guard, and `S-913`) and by
+`test/instrument_list_screen_test.dart` (`S-1014`).
 
 ---
 
@@ -89,7 +90,7 @@ reps with no load, so the axis is a property of the exercise's history rather th
 of the range being read. An isometric value also carries the added weight of the
 entry the holding effort belongs to; that annotation never decides the metric. A
 cardio value is marked `est.` when any distance behind its pace came from an
-estimated source — the same marker rule the Stats screen's CARDIO section uses.
+estimated source.
 
 An exercise with no usable data reports a zero on the metric its section uses
 instead of being dropped, so no entry can appear without a value.

@@ -765,6 +765,18 @@ abstract class WorkoutRepository {
     int appliedAtMs,
   );
 
+  /// Unset `appliedAtMs` on every staged row named in [entryIds].
+  ///
+  /// This is the one write that ever removes an applied stamp, and it exists
+  /// only for the Edit Session Discard that has to recover an entry which
+  /// arrived after its snapshot (D-804). An id that names no staged row is
+  /// skipped, and so is a row whose `appliedAtMs` is already `null`. The call
+  /// creates nothing, deletes nothing, and touches no row outside [entryIds];
+  /// every other field of a changed row is left as it was.
+  ///
+  /// Hive ↔ Mock parity: `test/watch_capture_repository_parity_test.dart`.
+  Future<void> clearWatchInboxApplied(Iterable<String> entryIds);
+
   /// The watch session ids whose `session_end` row is staged but not yet
   /// applied, without repeats, ordered by that row's `receivedAtMs`, then
   /// session id.
@@ -781,4 +793,11 @@ abstract class WorkoutRepository {
   /// by scope (in `SensorSummary.scopes` order), then `windowStartMs`, then
   /// `targetId`.
   Future<List<SensorSummary>> getSensorSummariesForSession(String sessionId);
+
+  /// Every sensor summary on the device, grouped by `sessionId`.
+  ///
+  /// Each group carries the same order [getSensorSummariesForSession] returns:
+  /// scope (in `SensorSummary.scopes` order), then `windowStartMs`, then
+  /// `targetId`. A session with no summaries has no key.
+  Future<Map<String, List<SensorSummary>>> getSensorSummariesBySession();
 }
