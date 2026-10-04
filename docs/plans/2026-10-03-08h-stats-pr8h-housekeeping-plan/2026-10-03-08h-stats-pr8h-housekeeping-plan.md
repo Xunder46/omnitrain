@@ -142,27 +142,27 @@ recorded in the evidence file as a baseline for 8a and 8b.
 
 ### Phase 1: derive the two windows, guard them, and update the four plan files (@developer)
 
-1. [ ] Read `lib/core/models/interference.dart` around line 376, `lib/core/models/modality_mix_shift.dart`
+1. [x] Read `lib/core/models/interference.dart` around line 376, `lib/core/models/modality_mix_shift.dart`
    around line 143, and `test/interference_test.dart`'s `_strippedSource` helper.
-2. [ ] Write the two guards first, in the suites that already own those files' copy tests
+2. [x] Write the two guards first, in the suites that already own those files' copy tests
    (`test/interference_test.dart`, `test/modality_mix_shift_test.dart`): S-2301's and S-2302's stripped-source
    scans, each asserting its file contains no `3 weeks` / `4 weeks` literal and does contain `~/ 7` on the
    owning constant. Run them and record the failure.
-3. [ ] Make the two derivations (D-1601, D-1602): one interpolation each, nothing else in either builder.
-4. [ ] Re-run step 2's suites to green, then
+3. [x] Make the two derivations (D-1601, D-1602): one interpolation each, nothing else in either builder.
+4. [x] Re-run step 2's suites to green, then
    `flutter test test/interference_test.dart test/modality_mix_shift_test.dart test/interference_signal_screen_test.dart test/modality_mix_shift_signal_screen_test.dart test/progression_rate_test.dart test/progression_samples_service_test.dart test/signals_layer_screen_test.dart`.
    Every `3 weeks` / `4 weeks` assertion must pass **unmodified** — a failure means the derivation is not
    byte-identical, a defect in step 3, not a test to update.
-5. [ ] Mutations, one at a time, each restored: **(a)** put the `3 weeks` literal back in
+5. [x] Mutations, one at a time, each restored: **(a)** put the `3 weeks` literal back in
    `lib/core/models/interference.dart` — S-2301's scan must fail; **(b)** change
    `kInterferenceSportsLoadWindowDays ~/ 7` to `~/ 14` — `test/interference_test.dart`'s existing
    `over the last 3 weeks.` assertion must fail; **(c)** put the `4 weeks` literal back in
    `lib/core/models/modality_mix_shift.dart` — S-2302's scan must fail. Record all three red→green pairs.
-6. [ ] Update the four plan files (D-1604), reading each before editing and changing only status lines and
+6. [x] Update the four plan files (D-1604), reading each before editing and changing only status lines and
    open-question statuses: `docs/plans/2026-10-03-07-stats-pr7-index.md` (status → DONE, both halves named
    with `b3b91fa` and `2b6e8e5`); the 7a and 7b plans (status → DONE); and the 6b plan (status → DONE, its
    suggestion-wording open question marked answered by the owner on 2026-10-03).
-7. [ ] Mark the owner's 2026-10-03 answers (all "keep as shipped"), changing no other row:
+7. [x] Mark the owner's 2026-10-03 answers (all "keep as shipped"), changing no other row:
    - 7a's Open questions **O-1** (modality nouns and suggestion wording) and **O-2** (statement vs option
      tone) → **Answered 2026-10-03: owner kept the shipped wording**.
    - 7b's Open questions **O-1** (a sports session's load is its Sports component) and **O-5** (a
@@ -174,7 +174,7 @@ recorded in the evidence file as a baseline for 8a and 8b.
    - 7b's third default (D-1321, exact-duration windows) has no open-question row: do not add one; append
      one line to this plan's Assumption Log stating the owner confirmed D-1321 on 2026-10-03.
    Do not answer a question the owner never answered.
-8. [ ] Record every `docs/` file's byte count and its share of the 64 KiB ceiling in the evidence file
+8. [x] Record every `docs/` file's byte count and its share of the 64 KiB ceiling in the evidence file
    (D-1605). No doc is edited.
 
 **Done Criteria** (run until green):
@@ -235,15 +235,17 @@ Nothing in `lib/features/`, `lib/data/`, `scripts/`, `watch/` or `docs/` outside
 
 | Item | Status | Evidence |
 |---|---|---|
-| Plan lines re-measured | not started | this file, read back after Phase 1 |
-| Phase 1 | not started | — |
+| Plan lines re-measured | done | 251 lines (read back from this file after Phase 1) |
+| Phase 1 | Complete | guards red→green in `test/interference_test.dart` + `test/modality_mix_shift_test.dart`; 7 neighbouring suites `+146: All tests passed!`; three mutation pairs red→green in the evidence file; four plan files updated; analyze + full-suite summary in the evidence file |
 
 ## Assumption Log
 
 _Executors append here: decision made, options considered, choice and why. The Conductor marks each
 RATIFIED (promoted to a D-x) or REVERT (remediation)._
 
-- **A-1 (Phase 1, step 1) —** _empty until the first run._
+- **A-1 (Phase 1, step 7) —** 7b's D-1321 (exact-duration windows) has no open-question row, and D-1604 forbids adding one, so the owner's 2026-10-03 confirmation of D-1321 is recorded here instead: the owner confirmed D-1321 as shipped.
+- **A-2 (Phase 1, step 7) —** 6b closes with "Open Items", not an "Open questions" table, and no row in it mentions the Progression Rate suggestion wording ("The current approach is working."). Per step 7's fallback, only 6b's status line changed; this note records why no row was marked.
+- **A-3 (Phase 1, step 8) —** the gateway exposes no byte-count command (`list` prints the check menu only), so the doc sizes were measured with a temporary probe test (`test/_doc_size_probe_test.dart`, `dart:io` `lengthSync` over `docs/**/*.md`) run once through `gateway.sh test` and deleted immediately after; the measured numbers are in the evidence file.
 
 ## Feedback
 

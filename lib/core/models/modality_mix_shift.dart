@@ -140,7 +140,8 @@ ModalityMixShift? modalityMixShift({
 ModalityMixShiftCopy modalityMixShiftCopy(ModalityMixShift shift) {
   final observation = StringBuffer(
     '${shift.section.label} is ${shift.recentPercent}% of your load over the '
-    'last 4 weeks, down from its usual ${shift.baselinePercent}%.',
+    'last ${kModalityMixShiftPeriodDays ~/ 7} weeks, down from its usual '
+    '${shift.baselinePercent}%.',
   );
   if (shift.grownSection != null) {
     observation.write(

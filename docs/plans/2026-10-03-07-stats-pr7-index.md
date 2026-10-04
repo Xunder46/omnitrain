@@ -1,6 +1,6 @@
 # Stats PR 7 — Mix Shift and Interference: PR series index
 
-> **Status:** READY (planner) — neither half started.
+> **Status:** DONE — 7a shipped as `b3b91fa`, 7b shipped as `2b6e8e5`.
 > **Source of scope:** `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md` items 10
 > (Modality Mix Shift) and 11 (Cross-Modality Interference After Hard Sports Sessions).
 > **Base:** `develop`, Stats PR 6 series DONE (`docs/plans/2026-10-03-06-stats-pr6-index.md`). The

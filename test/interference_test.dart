@@ -1220,5 +1220,33 @@ void main() {
         );
       }
     });
+
+    test('the sports-load window is derived from its constant', () {
+      // S-2301: the second sentence's span is `kInterferenceSportsLoadWindowDays`
+      // alone (D-1601). A `3 weeks` literal is a second definition of the same
+      // window and would keep rendering 3 weeks if the constant moved.
+      final source = _strippedSource('lib/core/models/interference.dart');
+      expect(
+        source.contains('3 weeks'),
+        isFalse,
+        reason: 'the sports-load span must be derived from '
+            'kInterferenceSportsLoadWindowDays, not written as a literal',
+      );
+      expect(
+        source.contains('kInterferenceSportsLoadWindowDays ~/ 7'),
+        isTrue,
+        reason: 'the observation must interpolate the owning constant',
+      );
+
+      final result = crossModalityInterference(
+        sessions: _f2007(now, prior: 100, recent: 130),
+        now: now,
+      );
+      expect(result, isNotNull);
+      expect(
+        crossModalityInterferenceCopy(result!).observation,
+        contains('over the last 3 weeks.'),
+      );
+    });
   });
 }

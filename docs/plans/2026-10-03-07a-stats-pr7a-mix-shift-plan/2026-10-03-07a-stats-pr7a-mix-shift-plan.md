@@ -1,6 +1,6 @@
 # Feature: Modality Mix Shift (Stats PR 7a — pack item 10)
 
-> **Status:** READY (planner) — not started.
+> **Status:** DONE — shipped as `b3b91fa`.
 > **Next handoff:** @dba (Phase 1)
 > **Source of scope:** `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md` item 10
 > ("Modality Mix Shift (Caution)"), and the series seam in
@@ -534,8 +534,8 @@ Signals layer.
 
 | # | Item | Owner | Status |
 |---|---|---|---|
-| O-1 | D-1213's modality nouns (`lifting`/`cardio`/`isometric`/`sports`) and the suggestion wording | Owner | Defaulted — **owner to confirm**; vetoable |
-| O-2 | D-1212's "statement vs option" tone — the second sentence is a statement, the suggestion is an option | Owner | Defaulted — **owner to confirm**; vetoable |
+| O-1 | D-1213's modality nouns (`lifting`/`cardio`/`isometric`/`sports`) and the suggestion wording | Owner | **Answered 2026-10-03: owner kept the shipped wording** |
+| O-2 | D-1212's "statement vs option" tone — the second sentence is a statement, the suggestion is an option | Owner | **Answered 2026-10-03: owner kept the shipped wording** |
 | O-3 | D-1214's caution order for items 12–15 (300/200/100/50) | Owner | Defaulted — **owner to confirm**; 7b's Interference is 500 and this PR's Mix Shift is 400 |
 | O-4 | Which PR writes the caution order into `docs/signals.md` | Planner | Decided here — this PR creates the order's second entry |
 | O-5 | Step 7(b)'s mutation produced no red: the rounded `percent` and the exact `measure` agree on every fixture in `test/modality_mix_shift_test.dart`, so no assertion separates them. A fixture whose exact share and floored share straddle the half-share boundary is the missing coverage. | Owner | **Closed in Phase 3** — the guard `D-1207 the half-share test compares exact fractions, not the two rounded percentages` adds that fixture (exact 5.3% / floored 5% against a baseline of 10.6% / 11%) and fails under the rounded-percent mutation |

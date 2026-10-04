@@ -1,6 +1,6 @@
 # Feature: Cross-Modality Interference After Hard Sports Sessions (Stats PR 7b — pack item 11)
 
-> **Status:** READY (planner) — not started.
+> **Status:** DONE — shipped as `2b6e8e5`.
 > **Next handoff:** @dba (Phase 1)
 > **Source of scope:** `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md` item 11
 > ("Cross-Modality Interference After Hard Sports Sessions (Caution)"), and the series seam in
@@ -664,11 +664,11 @@ Signals layer.
 
 | # | Item | Owner | Status |
 |---|---|---|---|
-| O-1 | D-1301's definition of a sports session and the load it is ranked by (the Sports component of the split, not the whole session load) | Owner | Defaulted — **owner to confirm**; vetoable |
+| O-1 | D-1301's definition of a sports session and the load it is ranked by (the Sports component of the split, not the whole session load) | Owner | **Answered 2026-10-03: owner confirmed the default** |
 | O-2 | D-1312's single-number collapse when `lo == hi` | Owner | Defaulted — **owner to confirm**; vetoable |
 | O-3 | D-1313's second sentence carries no explicit span on its own — the enclosing period is the 21-day comparison | Owner | Defaulted — **owner to confirm**; vetoable |
 | O-4 | D-1315's priority 500 as the top of the caution order | Owner | Defaulted — **owner to confirm**; matches 7a's D-1214 |
-| O-5 | Distinct follow-up counting: a follow-up session shared by two hard sessions counts once in `k` and in `n` (the pack's "dipped follow-up sessions"); D-1310's "number of hard sessions" is read this way | Owner | Defaulted — **owner to confirm**; vetoable |
+| O-5 | Distinct follow-up counting: a follow-up session shared by two hard sessions counts once in `k` and in `n` (the pack's "dipped follow-up sessions"); D-1310's "number of hard sessions" is read this way | Owner | **Answered 2026-10-03: owner confirmed the default** |
 
 ## Progress
 

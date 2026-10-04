@@ -373,7 +373,7 @@ InterferenceCopy crossModalityInterferenceCopy(Interference result) {
   if (result.hasSportsLoadRise) {
     observation.write(
       ' Sports load is up ${result.sportsLoadRisePercent}% over the last '
-      '3 weeks.',
+      '${kInterferenceSportsLoadWindowDays ~/ 7} weeks.',
     );
   }
   return InterferenceCopy(

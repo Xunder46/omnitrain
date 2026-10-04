@@ -425,5 +425,36 @@ void main() {
       expect(kModalityMixShiftMinBaselineShare, 0.10);
       expect(kModalityMixShiftPriority, 400);
     });
+
+    test('the Mix period is derived from its constant', () {
+      // S-2302: the observation's span is `kModalityMixShiftPeriodDays` alone
+      // (D-1602). A `4 weeks` literal is a second definition of the period and
+      // would keep rendering 4 weeks if the constant moved.
+      final source = _strippedSource('lib/core/models/modality_mix_shift.dart');
+      expect(
+        source.contains('4 weeks'),
+        isFalse,
+        reason: 'the Mix period must be derived from '
+            'kModalityMixShiftPeriodDays, not written as a literal',
+      );
+      expect(
+        source.contains('kModalityMixShiftPeriodDays ~/ 7'),
+        isTrue,
+        reason: 'the observation must interpolate the owning constant',
+      );
+
+      final shift = _shift(
+        recent: {ExerciseSection.resistance: 100},
+        baseline: {
+          ExerciseSection.resistance: 80,
+          ExerciseSection.isometric: 20,
+        },
+      );
+      expect(shift, isNotNull);
+      expect(
+        modalityMixShiftCopy(shift!).observation,
+        contains('over the last 4 weeks, down from its usual 20%.'),
+      );
+    });
   });
 }

@@ -1,6 +1,6 @@
 # Feature: Stats PR 6b — Progression Rate (the first signal)
 
-> **Status:** READY (planner) — not started; blocked on 6a
+> **Status:** DONE
 > **Next handoff:** @dba (Phase 1)
 > **Series:** `docs/plans/2026-10-03-06-stats-pr6-index.md` — 6b of 6a+6b. Phase 1 may be written against 6a's interface before 6a lands, but no phase of this plan may be merged before 6a's Phase 3 is green.
 > **Provenance:** owner decisions of 2026-10-03, `.work/stats-pr6/brief-plan.md`.
