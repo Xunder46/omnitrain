@@ -742,7 +742,7 @@ files.
 | Plan written | **Complete** | this file |
 | Phase 1 — `StatsPrimerState` + tests (@dba) | **Complete** | `.evidence.md` §2 → red compile failure, `+6` green (S-2705/2706 on Mock+Hive, S-2710, S-2711), mutations A/B red→restore→green, lint `196 issues`, full suite `+3858 ~1` |
 | Phase 2A — sheet + `showPrimerHelp` + "?" + first-use card (@developer) | **Complete** | `.evidence.md` §3 → red compile failure (`No named parameter 'showPrimerHelp'`), `+7` green (S-2703/2704×2/2707×2/2708/2714), mutation A red→restore→green, unaffected set `+525` with no edit, lint `196 issues`, full suite `+3865 ~1` |
-| Phase 2B — HomeScreen hosting + DI + home test (@developer) | not started | `.evidence.md` → red run, the four home cases, mutations A/B, lint line |
+| Phase 2B — HomeScreen hosting + DI + home test (@developer) | **Complete** | `.evidence.md` §3A → red compile failure (`No named parameter 'statsPrimerState'`), `+4` green (S-2701/2716/2717/2718), mutations A/B red→restore→green, targeted set `+108`, lint `196 issues`, full suite `+3869 ~1` |
 | Phase 3A — guards + residue sweep (@developer) | not started | `.evidence.md` → the four guards, the two mutations, the six-point residue sweep, lint line |
 | Phase 3B — docs (@developer) | not started | `.evidence.md` → docs-guard line, full-suite line, lint line |
 
@@ -803,6 +803,10 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
   filled in this run; section 3A (Phase 2B), 4 (Phase 3A) and 5's commands are left for their own runs.
   The section 5 table was run here (the unaffected set is 2A's obligation) and its observed line is
   recorded. Vetoable.
+- **A-13 (Phase 2B executor) —** The S-2717 case builds its `HomeScreen` through the same harness as
+  the other three, passing `statsPrimerState: null` rather than omitting the argument. The two are
+  identical for an optional nullable parameter, so the test still exercises the nine existing files'
+  construction shape; a separate no-argument builder was rejected as duplication. Vetoable.
 
 ## Feedback
 

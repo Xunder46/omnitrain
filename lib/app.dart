@@ -18,6 +18,7 @@ import 'core/utils/rest_notification_service.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
+import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
 
 import 'features/home/home_screen.dart';
@@ -39,6 +40,10 @@ class MyApp extends StatelessWidget {
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
   final NutritionPrimerState nutritionPrimerState;
+
+  /// Optional and nullable so only `lib/main.dart` has to pass it; every other
+  /// construction site keeps compiling unchanged (D-2020).
+  final StatsPrimerState? statsPrimerState;
   final ExerciseLibraryState exerciseLibraryState;
   final TimerAlertService timerAlertService;
   final RestNotificationService restNotificationService;
@@ -68,6 +73,7 @@ class MyApp extends StatelessWidget {
     required this.nutritionState,
     required this.foodLibraryState,
     required this.nutritionPrimerState,
+    this.statsPrimerState,
     required this.exerciseLibraryState,
     required this.timerAlertService,
     this.appVersionInfo,
@@ -143,6 +149,7 @@ class MyApp extends StatelessWidget {
                   nutritionState: nutritionState,
                   foodLibraryState: foodLibraryState,
                   nutritionPrimerState: nutritionPrimerState,
+                  statsPrimerState: statsPrimerState,
                   exerciseLibraryState: exerciseLibraryState,
                   restNotificationService: restNotificationService,
                   appVersionInfo: appVersionInfo,
@@ -162,6 +169,7 @@ class MyApp extends StatelessWidget {
                   nutritionState: nutritionState,
                   foodLibraryState: foodLibraryState,
                   nutritionPrimerState: nutritionPrimerState,
+                  statsPrimerState: statsPrimerState,
                   restNotificationService: restNotificationService,
                   appVersionInfo: appVersionInfo,
                   liveSession: liveSession,

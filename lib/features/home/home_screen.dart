@@ -31,6 +31,7 @@ import '../../state/nutrition_state.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
+import '../../state/stats/stats_primer_state.dart';
 import '../../state/exercise/exercise_library_state.dart';
 import '../../state/watch/live_session_mirror_state.dart';
 import '../../state/watch/watch_session_inbox.dart';
@@ -38,6 +39,7 @@ import '../../widgets/session/live_session_entry_point.dart';
 import '../session/live_session_screen.dart';
 import '../nutrition/nutrition_screen.dart';
 import '../nutrition/widgets/nutrition_primer_sheet.dart';
+import '../stats/widgets/stats_primer_sheet.dart';
 
 /// Hub-sheet layout constants used to size the destination grid against the
 /// sheet's fully-open height.
@@ -89,6 +91,13 @@ class HomeScreen extends StatefulWidget {
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
   final NutritionPrimerState nutritionPrimerState;
+
+  /// The one-shot Stats primer's seen state. Optional and nullable so every
+  /// existing construction site (app, onboarding, tests) keeps compiling; only
+  /// `lib/main.dart` passes it. With a null state the 'Stats' tile pushes the
+  /// page directly and the page's explanation surfaces stay off (D-2020).
+  final StatsPrimerState? statsPrimerState;
+
   final ExerciseLibraryState exerciseLibraryState;
   final AppVersionInfo? appVersionInfo;
 
@@ -117,6 +126,7 @@ class HomeScreen extends StatefulWidget {
     required this.nutritionState,
     required this.foodLibraryState,
     required this.nutritionPrimerState,
+    this.statsPrimerState,
     required this.exerciseLibraryState,
     this.appVersionInfo,
     this.liveSession,
@@ -418,6 +428,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         );
       },
     );
+  }
+
+  /// Open the Stats screen. The first Stats tap from Home auto-shows the
+  /// one-shot primer over Home (D-2021), marks it seen when the sheet's
+  /// future completes by any means (D-2022), then pushes the page. With no
+  /// injected state the tap pushes the page directly and the page's
+  /// explanation surfaces stay off.
+  Future<void> _openStatsScreen() async {
+    if (widget.statsPrimerState?.shouldShowPrimer == true) {
+      await _showStatsPrimer();
+    }
+    if (!mounted) return;
+    OmniNavigator.push(
+      context,
+      (_) => StatsScreen(
+        workoutState: widget.workoutState,
+        settingsState: widget.settingsState,
+        showPrimerHelp: widget.statsPrimerState != null,
+      ),
+    );
+  }
+
+  /// Show the [StatsPrimerSheet] over the home screen. Unlike the Nutrition
+  /// primer, the seen flag is marked when the `showModalBottomSheet` future
+  /// completes — the `Got it` CTA, a swipe-down and a barrier tap all count
+  /// (D-2022). The sheet is built with no `onDismiss`, so it never marks.
+  Future<void> _showStatsPrimer() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: const StatsPrimerSheet(),
+        );
+      },
+    );
+    unawaited(widget.statsPrimerState!.markSeen());
   }
 
   @override
@@ -1166,13 +1217,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Stats',
         icon: Icons.query_stats,
-        onTap: () => OmniNavigator.push(
-          context,
-          (_) => StatsScreen(
-            workoutState: widget.workoutState,
-            settingsState: widget.settingsState,
-          ),
-        ),
+        onTap: _openStatsScreen,
       ),
       _MaintenanceItem(
         title: 'Calendar',

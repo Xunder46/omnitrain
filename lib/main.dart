@@ -32,6 +32,7 @@ import 'state/settings/settings_state.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
+import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
 import 'state/watch/watch_sync_wiring.dart';
 import 'core/utils/timer_alert_service.dart';
@@ -344,6 +345,11 @@ Future<Widget> runStartup({
   // seen-flag from frame 1 (no flicker of the auto-show).
   final nutritionPrimerState = NutritionPrimerState(repository);
   await nutritionPrimerState.init();
+  // One-shot Stats primer state. Hydrated eagerly, exactly like the
+  // Nutrition primer, so the first Stats tap from Home consults the
+  // persisted seen-flag from frame 1.
+  final statsPrimerState = StatsPrimerState(repository);
+  await statsPrimerState.init();
   final timerAlertService = createTimerAlertService();
   await timerAlertService.initialize();
   final restNotificationService =
@@ -414,6 +420,7 @@ Future<Widget> runStartup({
     nutritionState: nutritionState,
     foodLibraryState: foodLibraryState,
     nutritionPrimerState: nutritionPrimerState,
+    statsPrimerState: statsPrimerState,
     exerciseLibraryState: exerciseLibraryState,
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,

@@ -240,17 +240,17 @@ PR adds or to user-facing strings only.
 
 | Command | Expected | Observed |
 |---|---|---|
-| `gateway.sh test test/stats_primer_home_test.dart` (before the Home changes exist) | compile failure — `Undefined name 'StatsPrimerState'` / no `statsPrimerState` parameter | _pending_ |
-| `gateway.sh test test/stats_primer_home_test.dart` (after) | `All tests passed!` | _pending_ |
+| `gateway.sh test test/stats_primer_home_test.dart` (before the Home changes exist) | compile failure — `Undefined name 'StatsPrimerState'` / no `statsPrimerState` parameter | `test/stats_primer_home_test.dart:93:5: Error: No named parameter with the name 'statsPrimerState'.` + `lib/features/home/home_screen.dart:105:3: Context: Found this candidate, but the arguments don't match.` → `00:00 +0 -1: Some tests failed.` |
+| `gateway.sh test test/stats_primer_home_test.dart` (after) | `All tests passed!` | `00:00 +4: All tests passed!` |
 
 ### 3A.2 Scenario coverage
 
 | Scenario | Test name | Result |
 |---|---|---|
-| S-2701 | `S-2701: the first Stats tap from Home shows the primer once` › `an unseen state shows the sheet on the first tap and marks it seen when the sheet closes` | _pending_ |
-| S-2716 | `S-2716: a second Stats tap pushes Stats directly` › `a seen state pushes Stats with no sheet` | _pending_ |
-| S-2717 | `S-2717: a Home with no state pushes Stats directly and Stats has no "?"` › `a null state pushes Stats with showPrimerHelp false` | _pending_ |
-| S-2718 | `S-2718: dismissing the auto-shown sheet by an outside tap still marks it seen` › `the flag is false while the sheet shows and true after an outside tap` | _pending_ |
+| S-2701 | `S-2701: the first Stats tap from Home shows the primer once` › `an unseen state shows the sheet on the first tap and marks it seen when the sheet closes` | green |
+| S-2716 | `S-2716: a second Stats tap pushes Stats directly` › `a seen state pushes Stats with no sheet` | green |
+| S-2717 | `S-2717: a Home with no state pushes Stats directly and Stats has no "?"` › `a null state pushes Stats with showPrimerHelp false` | green |
+| S-2718 | `S-2718: dismissing the auto-shown sheet by an outside tap still marks it seen` › `the flag is false while the sheet shows and true after an outside tap` | green |
 
 ### 3A.3 Mutation records
 
@@ -265,8 +265,8 @@ PR adds or to user-facing strings only.
   pump
 - **Command:** `gateway.sh test test/stats_primer_home_test.dart`
 - **Expected red:** a `StatsPrimerSheet` is on screen after the second tap
-- **Observed:** _pending_
-- **Restore → re-run:** _pending_
+- **Observed:** red — `Expected: no matching candidates / Actual: _TypeWidgetFinder:<Found 1 widget with type "StatsPrimerSheet">` at `test/stats_primer_home_test.dart:173` → `00:00 +0 -1: Some tests failed.`
+- **Restore → re-run:** `00:00 +4: All tests passed!`
 
 #### Mutation B — the auto-shown sheet marks when it closes
 
@@ -279,17 +279,17 @@ PR adds or to user-facing strings only.
   `marks it seen when the sheet closes`)
 - **Command:** `gateway.sh test test/stats_primer_home_test.dart`
 - **Expected red:** the flag stays `false` after the sheet closes
-- **Observed:** _pending_
-- **Restore → re-run:** _pending_
+- **Observed:** red — S-2701 `Expected: true / Actual: <false>` at `test/stats_primer_home_test.dart:151`, S-2718 the same at `:230` → `00:01 +2 -2: Some tests failed.`
+- **Restore → re-run:** `00:00 +4: All tests passed!`
 
 ### 3A.4 Phase 2B close
 
 | Check | Expected | Observed |
 |---|---|---|
-| `gateway.sh test test/stats_primer_home_test.dart test/stats_primer_screen_test.dart test/stats_primer_state_test.dart test/nutrition_primer_test.dart test/header_standardization_test.dart test/records_and_trends_screen_test.dart` | green | _pending_ |
-| `gateway.sh test` (full suite) | the re-measured baseline count, `All tests passed!` | _pending_ |
-| `gateway.sh lint` | baseline issue count, 0 errors | _pending_ |
-| `gateway.sh git-status` | exactly the six Predicted Files | _pending_ |
+| `gateway.sh test test/stats_primer_home_test.dart test/stats_primer_screen_test.dart test/stats_primer_state_test.dart test/nutrition_primer_test.dart test/header_standardization_test.dart test/records_and_trends_screen_test.dart` | green | `00:04 +108: All tests passed!` |
+| `gateway.sh test` (full suite) | the re-measured baseline count, `All tests passed!` | `01:43 +3869 ~1: All tests passed!` (baseline `+3865 ~1` + 4 new home cases) |
+| `gateway.sh lint` | baseline issue count, 0 errors | `196 issues found. (ran in 2.8s)` — 0 errors; the only `home_screen.dart` notices are pre-existing `withOpacity` deprecations, none in the added lines or the two new test files |
+| `gateway.sh git-status` | exactly the six Predicted Files | `M lib/app.dart`, `M lib/features/home/home_screen.dart`, `M lib/features/onboarding/onboarding_screen.dart`, `M lib/main.dart`, `?? test/helpers/test_stats_primer_state.dart`, `?? test/stats_primer_home_test.dart`; `git-diff --stat` = 4 files, 74 insertions(+), 7 deletions(-) |
 
 ---
 
