@@ -8,6 +8,16 @@ maintenance sheet on the home screen and carries no filters; its controls are
 the header icon that opens [Records & Trends](records_and_trends.md) and the
 Instruments rows, each an entry point to Exercise Progress.
 
+The screen takes one optional `bool showPrimerHelp` (default `false`) that turns
+on the first-use explanation surfaces — the header "?" and the empty card's
+`How Stats works` button. It deliberately holds no `StatsPrimerState`: both
+surfaces host the sheet with a null `onDismiss`, so the screen has no reference
+through which it could mark the seen flag. Verified by
+`test/stats_primer_screen_test.dart` (`S-2703: with showPrimerHelp omitted the
+Stats primer feature is off` › `no help action, no empty-state button and the
+chart action still renders`) and `test/stats_primer_contract_test.dart` (`the
+Stats screen holds no StatsPrimerState`).
+
 ---
 
 ## Navigation Entry Point
@@ -23,6 +33,59 @@ The chart icon in the screen's header is the only way into
 [Records & Trends](records_and_trends.md): this file is the only place in `lib/`
 that constructs `RecordsAndTrendsScreen`. Verified by
 `test/records_and_trends_screen_test.dart` (the single-entry-point case).
+
+When `showPrimerHelp` is true the header carries a second action, the "?"
+(tooltip `About Stats`), placed before the chart icon so the chart icon stays
+rightmost. It opens the [primer sheet](#primer-sheet) and never marks the seen
+flag. Verified by `test/stats_primer_screen_test.dart` (`S-2708: the "?" and the
+chart icon coexist` › `the chart icon stays the only way into Records & Trends`).
+
+---
+
+## First-Use Empty State
+
+With no completed session the body is the empty-state card. Its title
+`No sessions yet` and body `Complete your first session to see stats here.` are
+kept verbatim; when `showPrimerHelp` is true the card adds three short lines
+about what will appear and a `How Stats works` button that opens the
+[primer sheet](#primer-sheet) without marking the seen flag. Verified by
+`test/stats_primer_screen_test.dart` (`S-2707: the first-use card explains what
+will appear` › `the empty state keeps its title and body and adds the
+explanation and the button`; `the empty-state button opens the sheet without
+marking it seen`), and the taller card is asserted to fit a small viewport by
+`S-2714: the taller first-use card fits a small viewport` › `the card lays out
+at 320x568 without an overflow`.
+
+---
+
+## Primer Sheet
+
+`StatsPrimerSheet` (`lib/features/stats/widgets/stats_primer_sheet.dart`) is a
+presentation-only sheet: three labelled blocks — what the page shows, the
+Signals cards, and the chart icon — over one `Got it` CTA. It imports no state
+class and reads no repository; the host owns the seen flag.
+
+The sheet auto-opens once per install on the **first Stats tap from Home**,
+hosted by `HomeScreen` exactly as the Daily Nutrition primer is: the sheet is
+shown over Home, and Stats is pushed when it closes. The seen flag is marked
+when the sheet's `showModalBottomSheet` future completes — by the `Got it` CTA,
+a swipe-down, or a tap on the modal barrier — which is the one place Stats
+deliberately differs from the Nutrition primer, whose `onDismiss` fires only
+from its `Got it` button. The flag is persisted under
+`StatsPrimerState.preferenceKey` (`primer_seen_stats`), distinct from the
+Nutrition primer's key, and hydrated before the first frame. Reopening from the
+"?" or the empty-card button never marks it. Verified by
+`test/stats_primer_home_test.dart` (`S-2701: the first Stats tap from Home shows
+the primer once` › `an unseen state shows the sheet on the first tap and marks
+it seen when the sheet closes`; `S-2716: a second Stats tap pushes Stats
+directly` › `a seen state pushes Stats with no sheet`; `S-2718: dismissing the
+auto-shown sheet by an outside tap still marks it seen` › `the flag is false
+while the sheet shows and true after an outside tap`), by
+`test/stats_primer_state_test.dart` (`S-2705: the seen flag survives a restart` ›
+`a marked-seen Stats primer is seen again after a Hive restart`; `S-2706: the
+two primer keys are independent` › `marking the Stats primer seen leaves the
+Nutrition primer unseen`), and by `test/stats_primer_contract_test.dart` (`the
+Stats screen holds no StatsPrimerState`).
 
 ---
 
@@ -489,6 +552,8 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | File | Role |
 |------|------|
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
+| `lib/features/stats/widgets/stats_primer_sheet.dart` | `StatsPrimerSheet` — the one-shot explanation sheet: three labelled blocks and a `Got it` CTA; presentation only, the host owns the seen flag |
+| `lib/state/stats/stats_primer_state.dart` | `StatsPrimerState` — the `primer_seen_stats` seen flag over the repository preference API, hydrated before `runApp` |
 | `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, shared with Records & Trends |
 | `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the modality bar, the measure and its label, the usual bar, the note, the unrated line and the week strip |
 | `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards and the quiet line |
@@ -518,6 +583,7 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 
 - [Calendar & Periods](calendar_periods.md) — streak calculation details
 - [Records & Trends](records_and_trends.md) — the per-exercise screens the header icon opens
+- [Widget Catalog](widget_catalog.md) — the note on the Stats screen's primer sheet
 - [State Management & Services](state_management.md)
 - [Navigation & Screens](navigation_and_screens.md)
 

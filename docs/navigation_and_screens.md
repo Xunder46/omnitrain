@@ -248,16 +248,19 @@ main.dart
   → NutritionState(repository)
   → FoodLibraryState(repository)   ← groups + foods cache, powers the Food Library browse card on `NutritionScreen`
   → NutritionPrimerState(repository) ← once-per-install seen flag for the Daily Nutrition primer sheet; persisted via `primer_seen_nutrition`
+  → StatsPrimerState(repository) ← once-per-install seen flag for the Stats explanation sheet; persisted via `primer_seen_stats`
   → TimerAlertService()
   → RestNotificationService()
   → RoutineSessionService(repository)
   → SessionSummaryService(repository)
-  → MyApp(..., nutritionState: nutritionState, foodLibraryState: foodLibraryState, nutritionPrimerState: nutritionPrimerState)
-    → HomeScreen(..., nutritionState: nutritionState, foodLibraryState: foodLibraryState, nutritionPrimerState: nutritionPrimerState)
+  → MyApp(..., nutritionState: nutritionState, foodLibraryState: foodLibraryState, nutritionPrimerState: nutritionPrimerState, statsPrimerState: statsPrimerState)
+    → HomeScreen(..., nutritionState: nutritionState, foodLibraryState: foodLibraryState, nutritionPrimerState: nutritionPrimerState, statsPrimerState: statsPrimerState)
       → (passes relevant subset to child screens; `NutritionScreen` requires nutritionState + foodLibraryState + nutritionPrimerState)
 ```
 
 The Daily Nutrition primer (see [`widget_catalog/nutrition_widgets.md`](widget_catalog/nutrition_widgets.md) → `NutritionPrimerSheet`) auto-shows on the first-ever tap of the home `NutritionSummaryCard` via a `showModalBottomSheet` over the home screen; dismissal flips `NutritionPrimerState.shouldShowPrimer` to `false` and pushes `NutritionScreen`. The header "?" on `NutritionScreen` reopens the same sheet at any time without mutating the seen state.
+
+The Stats primer (see [`widget_catalog.md`](widget_catalog.md) → the note on the Stats screen's primer sheet) is threaded the same way and is **optional and nullable** at every hop — `MyApp`, `OnboardingScreen` and `HomeScreen` all take a `StatsPrimerState?`, and only `lib/main.dart` passes a non-null one. It auto-shows on the first Stats tap from Home via a `showModalBottomSheet` over the home screen, marks the seen flag when the sheet's future completes by any means, and then pushes `StatsScreen`. `StatsScreen` is not in the chain: it receives only `bool showPrimerHelp`, so it holds no primer state and cannot mark the flag. Verified by `test/stats_primer_home_test.dart` (`S-2717: a Home with no state pushes Stats directly and Stats has no "?"` › `a null state pushes Stats with showPrimerHelp false`) and `test/stats_primer_contract_test.dart` (`the Home screen's primer state stays optional and nullable`).
 
 The live watch session is threaded the same way and is **optional** at every level: `MyApp` and `HomeScreen` take a `LiveSessionMirrorState?`, and null means "this build has no watch sync", not "no session". Beside it they thread a `WatchSessionRatings?` from the same `createWatchSync` graph, null exactly when the mirror is, which `LiveSessionScreen` records the phone's own effort rating through (see [Watch Session Capture](watch_session_capture.md)). A consumer handed null shows nothing and reserves no space for it, which is why a watch-less build lays out identically. Verified by `test/screen_widget_test.dart` (`shows no entry point without a live watch session`).
 

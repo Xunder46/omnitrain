@@ -361,18 +361,34 @@ PR adds or to user-facing strings only.
 
 | Check | Expected | Observed |
 |---|---|---|
-| `gateway.sh test test/docs_indexing_contract_test.dart` | green; every touched doc under the 64 KiB ceiling | _pending_ |
-| `gateway.sh test` (other `test/docs_*_test.dart` files the gateway `list` shows) | green | _pending_ |
-| `gateway.sh git-status` on `docs/` | only the five Predicted Files; `docs/signals.md` untouched | _pending_ |
+| `gateway.sh test test/docs_indexing_contract_test.dart` | green; every touched doc under the 64 KiB ceiling | `00:00 +9: All tests passed!` (9 cases: root exists, ceiling, warning band, relative links, reachability, no hex literal, design_system hex-free, no step-by-step flow, no roadmap annotation) |
+| `gateway.sh test` (other `test/docs_*_test.dart` files the gateway `list` shows) | green | `test/docs_indexing_contract_test.dart` is the only `test/docs_*_test.dart` file in the tree |
+| `gateway.sh git-status` on `docs/` | only the five Predicted Files; `docs/signals.md` untouched | `M docs/README.md`, `M docs/navigation_and_screens.md`, `M docs/state_management.md`, `M docs/stats_screen.md`, `M docs/widget_catalog.md`; `docs/signals.md` not listed |
+
+### 4.4a Phase 3B — docs edited, byte sizes after the edit
+
+| Doc | Bytes after edit | Under 64 KiB |
+|---|---|---|
+| `docs/stats_screen.md` | 36431 | yes |
+| `docs/widget_catalog.md` | 15098 | yes |
+| `docs/state_management.md` | 9272 | yes |
+| `docs/navigation_and_screens.md` | 26323 | yes |
+| `docs/README.md` | 20168 | yes |
+
+`gateway.sh git-diff --stat -- docs/` → 5 files changed, 79 insertions(+), 3 deletions(-)
+(`stats_screen.md` +66, `navigation_and_screens.md` +7/-3, `widget_catalog.md` +4,
+`README.md` +3/-1, `state_management.md` +2). No `lib/` or `test/` file changed in this run.
+
+Follow-up (3B fix): the `docs/stats_screen.md` intro now cites `test/stats_primer_contract_test.dart` › `the Stats screen holds no StatsPrimerState` for the holds-no-state claim and drops the S-2704 `reopening with an unseen state leaves it unseen` citation (that test cannot fail from a screen change); docs guard re-run green (`00:00 +9: All tests passed!`).
 
 ### 4.5 Phase 3A / 3B close
 
 | Check | Expected | Observed |
 |---|---|---|
 | `gateway.sh test test/stats_primer_contract_test.dart test/stats_primer_screen_test.dart test/stats_primer_home_test.dart test/stats_primer_state_test.dart` | green | `00:01 +21: All tests passed!` (4 contract + 7 screen + 4 home + 6 state; the concurrent reporter's per-line labels are unreliable — the total is what counts) |
-| `gateway.sh test` (full suite) | the re-measured baseline count, `All tests passed!` | `01:42 +3873 ~1: All tests passed!` (baseline `+3869 ~1` + the 4 new guards) |
-| `gateway.sh lint` | the re-measured baseline issue count, 0 errors | `196 issues found. (ran in 3.2s)` — 0 errors; no notice in `test/stats_primer_contract_test.dart` |
-| `gateway.sh git-status` | exactly the seventeen Predicted Files across all five runs; nothing deleted | `M docs/plans/…-plan.evidence.md`, `M docs/plans/…-plan.md`, `?? test/stats_primer_contract_test.dart` — the Phase 3A files only; no `lib/` change |
+| `gateway.sh test` (full suite) | the re-measured baseline count, `All tests passed!` | `01:49 +3873 ~1: All tests passed!` (Phase 3B is docs-only, so the count is unchanged from the Phase 3A close) |
+| `gateway.sh lint` | the re-measured baseline issue count, 0 errors | `196 issues found. (ran in 3.1s)` — 0 errors; no notice in any of the five edited docs (docs are not analyzed) |
+| `gateway.sh git-status` | exactly the seventeen Predicted Files across all five runs; nothing deleted | Phase 3B adds `M docs/README.md`, `M docs/navigation_and_screens.md`, `M docs/state_management.md`, `M docs/stats_screen.md`, `M docs/widget_catalog.md`; no `lib/` or `test/` change |
 
 ---
 

@@ -92,6 +92,7 @@ State classes follow strict rules:
 | `SessionSummaryService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `SettingsState` | [App State](state_management/app_state.md) |
 | `StartupFailureDiagnosticWriter` | [Services & Utilities](state_management/services_and_utils.md) |
+| `StatsPrimerState` | [Stats Screen](stats_screen.md) |
 | `TimerAlertService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `TimerManager` | [Workout Session State](state_management/workout_state.md) |
 | `WorkoutSessionTimerMixin` | [Services & Utilities](state_management/services_and_utils.md) |
@@ -116,6 +117,7 @@ WorkoutRepository (interface, → HiveWorkoutRepository at runtime)
   ├─ NutritionState(repository)
   ├─ FoodLibraryState(repository, …)
   ├─ NutritionPrimerState(repository)
+  ├─ StatsPrimerState(repository)
   ├─ CatalogRefreshService(repository, …)
   ├─ RoutineSessionService(repository)
   └─ SessionSummaryService(repository)

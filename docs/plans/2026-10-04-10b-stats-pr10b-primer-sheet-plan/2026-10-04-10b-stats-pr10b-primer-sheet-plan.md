@@ -744,7 +744,7 @@ files.
 | Phase 2A — sheet + `showPrimerHelp` + "?" + first-use card (@developer) | **Complete** | `.evidence.md` §3 → red compile failure (`No named parameter 'showPrimerHelp'`), `+7` green (S-2703/2704×2/2707×2/2708/2714), mutation A red→restore→green, unaffected set `+525` with no edit, lint `196 issues`, full suite `+3865 ~1` |
 | Phase 2B — HomeScreen hosting + DI + home test (@developer) | **Complete** | `.evidence.md` §3A → red compile failure (`No named parameter 'statsPrimerState'`), `+4` green (S-2701/2716/2717/2718), mutations A/B red→restore→green, targeted set `+108`, lint `196 issues`, full suite `+3869 ~1` |
 | Phase 3A — guards + residue sweep (@developer) | **Complete** | `.evidence.md` §4 → four guards green (4 new), mutations A/B/C/D red→restore→green, six-point residue sweep empty, lint `196 issues`, full suite `+3873 ~1` |
-| Phase 3B — docs (@developer) | not started | `.evidence.md` → docs-guard line, full-suite line, lint line |
+| Phase 3B — docs (@developer) | **Complete** | `.evidence.md` §4.4/§4.4a/§4.5 → docs guard `+9` green, five docs edited (79 insertions, 3 deletions; all under 64 KiB), full suite `+3873 ~1`, lint `196 issues` |
 
 ## Assumption Log
 
@@ -807,6 +807,14 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
   the other three, passing `statsPrimerState: null` rather than omitting the argument. The two are
   identical for an optional nullable parameter, so the test still exercises the nine existing files'
   construction shape; a separate no-argument builder was rejected as duplication. Vetoable.
+- **A-14 (Phase 3B executor) —** The plan's step 1 asks for a `## First-Use Empty State` section and a
+  `## Primer Sheet` section in `docs/stats_screen.md`. Both were written to the documentation standard
+  (`docs/documentation_standard.md`): structure, rationale and invariants only, with every behaviour
+  sentence pointing at an existing test by exact group + test name, and no visual values, no gesture
+  inventory and no step-by-step flow. The three new empty-card lines and the sheet's block copy are
+  described by what they explain, not quoted, because the strings are values the source owns. The
+  `## Navigation Entry Point` section gained the "?" action and the `## Overview` gained the
+  `showPrimerHelp` contract. Vetoable.
 
 ## Feedback
 

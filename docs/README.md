@@ -131,7 +131,7 @@ lib/
 │   ├── settings/         # SettingsScreen
 │   ├── splash/           # OmniSplashScreen (disabled)
 │   ├── startup/          # StartupFailureScreen
-│   ├── stats/            # StatsScreen + widgets/ (ScrollableTrendChart)
+│   ├── stats/            # StatsScreen + widgets/ (ScrollableTrendChart, StatsPrimerSheet)
 │   └── workout/          # (empty — reserved)
 ├── mock/                 # SeedData for development
 ├── state/
@@ -142,6 +142,7 @@ lib/
 │   ├── profile/          # ProfileState (profile + measurement flows)
 │   ├── routine/          # RoutineState (template CRUD)
 │   ├── settings/         # SettingsState (theme, unit, and preference state)
+│   ├── stats/            # StatsPrimerState (one-shot primer seen-flag)
 │   ├── workout/          # WorkoutState (session lifecycle)
 │   ├── nutrition_state.dart     # NutritionState (targets, consumed log, water)
 │   └── food_library_state.dart  # FoodLibraryState (catalog + groups + personal library)
