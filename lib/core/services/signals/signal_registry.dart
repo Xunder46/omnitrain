@@ -1,3 +1,4 @@
+import 'cardio_efficiency_drift_signal.dart';
 import 'fuel_vs_load_signal.dart';
 import 'interference_signal.dart';
 import 'modality_mix_shift_signal.dart';
@@ -11,6 +12,7 @@ import 'sustained_high_load_signal.dart';
 /// This is the only place a signal is registered. The layer, the service and
 /// the screen never name a concrete signal; a new signal is one line here.
 List<Signal> buildSignalRegistry() => const <Signal>[
+  CardioEfficiencyDriftSignal(),
   SustainedHighLoadSignal(),
   ProteinConsistencySignal(),
   FuelVsLoadSignal(),

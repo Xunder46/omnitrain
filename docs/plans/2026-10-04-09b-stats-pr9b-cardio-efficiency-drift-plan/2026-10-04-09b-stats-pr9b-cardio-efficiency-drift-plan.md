@@ -692,12 +692,13 @@ One line per item, filled as it lands.
 | 2 | `cardioEfforts()` | done — one method; `_loadHistory` + `DistancePairing.forEntries` + instance-scope summary |
 | 2 | Phase 2 suites green, evidence pasted | done — new `+27`; neighbours `+128`; full run `+3816 ~1` |
 | 2 | Mutation checks 3–4 (estimates, sensor scope) | done — both caught (3: 6 failures; 4: all 27) |
-| 3A | Screen test written, red run recorded | not started |
-| 3A | The adapter | not started |
-| 3A | The registry line, first | not started |
-| 3A | Both registry guards extended | not started |
-| 3A | Phase 3A suites green, evidence pasted | not started |
-| 3A | Mutation checks 5–6 (registry order, the lift measure) | not started |
+| 3A | Screen test written, red run recorded | done — 13 tests; red run `+2 -5` (five card cases on the missing key, one on the fixture's own count) |
+| 3A | The adapter | done — one `evaluate`, one payload, two resistance sums; no repository, no PR API |
+| 3A | The registry line, first | done — one line plus its import, alphabetical |
+| 3A | Both registry guards extended | done — one id each, one name count raised to `seven` |
+| 3A | Phase 3A suites green, evidence pasted | done — new `+13`; guards `+45`; full run `+3829 ~1`; analyze 196, 0 errors |
+| 3A | Mutation checks 5–6 (registry order, the lift measure) | done — 5 caught by both guards; 6 not caught by the original fixtures, re-run and **caught** by the resume run's relabelled-payload case (evidence: Mutation check 6, re-run) |
+| 3A | Mutation check 6 re-run (resume run) | done — two new screen cases (an unrated history, and a real payload relabelled to `time`); Mock 7 → 9, file 13 → 17; the mutant now fails the second case; line restored |
 | 3B | Eligibility structural guard table | not started |
 | 3B | Copy structural guard | not started |
 | 3B | Residue sweep recorded | not started |
@@ -738,6 +739,22 @@ sub-phase. An empty log after Phase 3A or 3B is itself suspicious.
 6. **The "session in progress" variant re-seeds the session via `updateSession`, not `deleteSession`.**
    Deleting the session would also remove the effort, its distance and its summary, so the test would
    pass for the wrong reason. Choice: clear `endedAtMs` only, leaving the rest of the fixture intact.
+7. **S-2511's "ascending priority" is a plan defect; the layer renders descending.** `resolveSignals`
+   sorts a kind by `b.priority.compareTo(a.priority)`, so with Sustained High Load (100) and Cardio
+   Efficiency Drift (50) the higher-priority caution renders **first**. The plan's S-2511 wording
+   ("ascending priority (Cardio Efficiency Drift first)") is wrong; the test asserts the observed
+   order and the evidence file records the arithmetic. No code change.
+8. **Mutation check 6 is equivalent through the adapter, and is now killed from outside it.** Passing
+   `liftMeasure: MixMeasure.load` unconditionally left the suite green because `_mixPayload` returns
+   `const []` for `baselineSegments` whenever the measure is time (D-908), so `liftUsualLoad` is 0 and
+   the rule stops at its `liftUsualLoad <= 0` guard before it ever reads the measure. Choice: keep the
+   line, and add one screen case that hands the adapter a real payload relabelled to `time` with its
+   baseline intact — the one shape the service cannot emit and the only one that fails under the
+   mutant. Recorded in the evidence file.
+9. **The screen suite's service case asserts 8 efforts, not 12.** The four rated baseline sessions
+   are cardio but sit outside `day(42)`, so `cardioEfforts` returns the eight S-2501 efforts. The
+   case now also calls the rule directly and asserts `driftPercent == 7`, so it pins the arithmetic
+   rather than only the count.
 
 ## Feedback
 
@@ -768,3 +785,11 @@ Each is a defaulted choice, marked **owner to confirm**. None blocks Phase 1.
    share a group even through a chain of intermediate durations. **Owner to confirm.**
 7. **One card, not one per exercise**, with the largest drift reported (D-1806). **Owner to
    confirm.**
+8. **The lifting sentence's measure guard — closed in the resume run.** Mutation check 6 left the
+   suite green because the mutant is equivalent on every payload the shipped service can emit
+   (`baselineSegments` is `const []` in the time measure, so `liftUsualLoad` is 0 and the rule stops
+   before it reads the measure). One screen case now relabels a real payload to `time` with its
+   baseline intact — the one shape the service cannot emit — and mutation 6 fails it. The choice left
+   for the owner: that case reaches the adapter through a `StatsProgressService` subclass overriding
+   `computeMixPeriod`, and if that seam is unwelcome the alternative is to accept the rule-level
+   S-2509 case alone as the pin. **Owner to confirm.**

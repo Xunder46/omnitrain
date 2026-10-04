@@ -60,19 +60,124 @@ and passes on re-run. (It passed in the run above.)
 
 ## Phase 3A — the card, the registry, the guards
 
+### The screen fixture, worked out before the test
+
+The real registry is evaluated, so the fixture must (a) make the layer render at all, (b) make the
+Cardio Efficiency Drift rule fire, and (c) leave every other signal silent. All days are local
+calendar days off the real `DateTime.now()`; a "cardio session" is a rated session whose segment
+holds one finished `timed` effort (480 s, one timed instance) for `ex-run` (`Treadmill Run`), a
+paired distance row and an instance-scope summary at 150 bpm. Its measured cardio time equals its
+duration, so its resistance remainder is 0.
+
+**S-2501 (one card).** Four recent efforts at days 3, 6, 9, 12 (2790 m each) and four reference
+efforts at days 30, 33, 36, 39 (3000 m each), all 480 s at 150 bpm.
+
+- efficiency = `metres × 60 ÷ (150 × 480)`: 2790 → 2.325, 3000 → 2.5.
+- drift `p = (1 − 2.325/2.5) × 100 = 7.0 → 7`, and `2.325 × 100 = 232.5 <= 2.5 × 95 = 237.5`, so it
+  fires. Both windows hold 4 ≥ 3 efforts, and all eight durations equal 480 s, so there is one
+  group.
+- A training period `[day(20), end of today]` holds the recent efforts, so `resolveWindow` is
+  period-scoped and the Mix layer's window starts at `day(20)`.
+- Layer gate: the window's baseline is the 12 blocks before `day(20)` (`day(104)…day(21)`). Four
+  rated filler cardio sessions at days 48, 62, 76 and 90 sit in four distinct blocks, and the
+  reference efforts add two more (days 30/33 in `day(34)…day(28)`, days 36/39 in
+  `day(41)…day(35)`), so `ratedBaselineWeeks = 6 >= 4` and `signalsGateMet` holds. Every session is
+  rated, so the unrated share is 0 and the window's measure is load.
+- Lifting: the adapter's own payload `[day(27), now]` is measured in load too (its baseline holds
+  the same six rated blocks). Every baseline session is cardio, so `liftUsualLoad` (resistance
+  segments) is 0 and no second sentence appears.
+- Modality Mix Shift: recent and baseline bars are both 100 % cardio, so no modality has a baseline
+  share ≥ 10 % to fall from. Protein Consistency: no resistance session and (after the food log is
+  cleared) no logged days. Progression Rate: no `set` effort. Interference: no sports time.
+  Sustained High Load: no five-week streak. All abstain.
+
+**S-2503 (two recent efforts).** S-2501 with `recentCount = 2`: the group holds 2 < 3 in the recent
+window, so the rule returns null; the layer still renders (gate met) and shows the quiet line.
+
+**S-2504 at the screen (an estimate).** S-2501 with `recentCount = 3` and the first recent effort's
+distance stored `estimated`: 2 eligible recent efforts < 3, so no card.
+
+**S-2509 (the lifting sentence).** S-2501 plus four rated resistance sessions in the last 28 days
+(days 2, 8, 15, 22) at 69 min × rating 5 = 345 each → `liftRecentLoad = 1380`, and twelve rated
+resistance sessions in the twelve baseline blocks of `[day(27), now]` at 60 min × 5 = 300 each →
+`liftUsualLoad = 3600`. `1380 × 84 × 100 = 11,592,000 >= 3600 × 28 × 115 = 11,592,000`, so the
+sentence appears with `q = 15`. Modality Mix Shift: recent resistance share `1380/1476 = 93.5 %`
+against a baseline share `3600/3696 = 97.4 %`, and `2 × 1380 × 3696 > 3600 × 1476`, so resistance
+does not fire; cardio's baseline share is 2.6 % < 10 %.
+
+**The two-caution variant (S-2511).** 9a's `_seedF9A` seventeen weeks (all resistance) plus the
+period and the S-2501 cardio fixture. Sustained High Load's streak weeks gain at most 24 load each
+(the cardio sessions), so every week stays above 110 % of the usual 200. The cautions that survive
+are Sustained High Load (100) and Cardio Efficiency Drift (50); `resolveSignals` sorts a kind by
+priority **descending**, so Sustained High Load renders first — the plan's "ascending priority
+(Cardio Efficiency Drift first)" is the S-2511 defect, logged in the Assumption Log.
+
 | Check | Command | Result |
 |---|---|---|
-| red run | `flutter test test/cardio_efficiency_drift_signal_screen_test.dart --plain-name "Mock"` | _to fill_ |
-| green | same, Mock-first | _to fill_ |
-| guards | `flutter test test/interference_test.dart test/modality_mix_shift_signal_screen_test.dart` | _to fill_ |
-| full | `flutter test` | _to fill_ |
+| red run | `flutter test test/cardio_efficiency_drift_signal_screen_test.dart --plain-name "Mock"` | `00:05 +2 -5: Some tests failed.` — the five card-bearing cases fail on `Found 0 widgets with key [<'signal_card_cardio-efficiency-drift'>]` (the signal is not registered), and the service case fails `Expected: <12> / Actual: <8>` because the four rated baseline sessions are not yet counted by the fixture's own expectation. The two abstain cases pass, as they must. |
+| green | same, Mock-first | `00:04 +7: All tests passed!` (Mock), then the whole file `00:08 +13: All tests passed!` (Mock + Hive). |
+| guards | `flutter test test/interference_test.dart test/modality_mix_shift_signal_screen_test.dart` | `00:07 +45: All tests passed!` |
+| full | `flutter test` | `04:57 +3829 ~1: All tests passed!` — 13 over the 3816 baseline, no regressions. `flutter analyze` = `196 issues found.` (0 errors), none in a touched file. |
 
 ### Mutation checks
 
 | # | Mutation | Test that must fail | Result |
 |---|---|---|---|
-| 5 | registry entry moved to the end | both registry guards | _to fill_ |
-| 6 | `liftMeasure: MixMeasure.load` passed unconditionally | S-2509 (the time-measure variant gains a sentence) | _to fill_ |
+| 5 | registry entry moved to the end | both registry guards | Both fail: `interference_test.dart:1092` and `modality_mix_shift_signal_screen_test.dart:621`, each `at location [0] is 'sustained-high-load' instead of 'cardio-efficiency-drift'`. Restored exactly; both pass again (`+2: All tests passed!`). |
+| 6 | `liftMeasure: MixMeasure.load` passed unconditionally | S-2509 (the time-measure variant gains a sentence) | **First run: not observed.** The Mock suite stayed `+7: All tests passed!` with the mutation in place, so no test in this file pinned the measure guard. Restored exactly; green again. Logged as an Open Item. **Re-run with the new screen case: caught** — see the subsection below. |
+
+### Mutation check 6, re-run — the payload's own measure
+
+Hand-computed **before** the test was written. F-TIME is S-2501's cardio fixture with every session
+unrated, plus unrated set-only resistance sessions on both sides of the payload's window; days are
+local calendar days off the real clock.
+
+| Figure | Value | Arithmetic |
+|---|---|---|
+| recent cardio efforts | 4 | days 3, 6, 9, 12 at 480 s / 2790 m / 150 bpm, no rating |
+| reference cardio efforts | 4 | days 30, 33, 36, 39 at 480 s / 3000 m / 150 bpm, no rating |
+| efficiency, recent / reference | 2.325 / 2.5 | `metres × 60 ÷ (150 × 480 = 72000)` |
+| drift | 7 | `(1 − 2.325/2.5) × 100 = 7.0`; `232.5 <= 237.5`, so it fires |
+| payload window | `[day(27), now]` | `kCardioEfficiencyLiftLoadWindowDays − 1 = 27` |
+| payload measure | `time` | no session is rated anywhere, so `ratedBaselineWeeks = 0 < kTrainingLoadMinRatedWeeks = 4` |
+| window resistance measure | 300 min | 4 unrated set-only sessions at days 2, 8, 15, 22 × 75 min (no efforts, so the whole duration is Resistance) |
+| baseline resistance time | 720 min | 12 unrated set-only sessions, one per block of `[day(111), day(27))`, × 60 min |
+| **payload `baselineSegments`** | **empty** | `_mixPayload` returns `const []` unless `measure == load`, so the baseline's 720 min never reach the adapter |
+| the +15 % test on those figures | would pass at +25 % | `300 × 84 × 100 = 2,520,000 >= 720 × 28 × 115 = 2,318,400` — but only if the payload carried a baseline at all, which in the time measure it never does |
+
+**Why the prescribed all-unrated fixture cannot fail.** `liftUsualLoad` is
+`_resistanceLoad(mix.baselineSegments)`, which is **0** for every time-measured payload, and
+`_liftRisePercent` returns null on `liftUsualLoad <= 0` before it ever looks at the measure. So the
+measure argument is inert wherever `mix.measure` is `time`. The mutant and the shipped line agree on
+every payload `_mixPayload` can emit — proved by exhaustion over the three reachable cases:
+
+| Reachable payload | Shipped `liftMeasure` | Mutated `liftMeasure` | Same card? |
+|---|---|---|---|
+| `measure == load` (`baselineSegments` non-empty) | `load` | `load` | yes |
+| `measure == time` (`baselineSegments` `const []`) | `time` → null at guard 1 | `load` → null at guard 2 (`liftUsualLoad = 0`) | yes |
+| `mix == null` (`liftUsualLoad = 0`) | `time` → null | `load` → null | yes |
+
+**How the mutant is killed.** The distinguishing payload is a *time-measured payload that carries a
+baseline* — a shape `_mixPayload` never emits, and the only shape where the two lines disagree. The
+second case below hands the adapter F-LIFT's own real payload (1380 window / 3600 usual, which clear
+the +15 % test exactly) with its measure label forced to `time`, which is the single field the
+service gates the baseline on. Then `liftUsualLoad = 3600 > 0`, so the mutant's `load` reaches the
++15 % test and the sentence appears, while the shipped `time` still short-circuits at guard 1. F-LIFT
+is used rather than the unrated fixture because it is the only seed set whose two resistance figures
+both sit in the payload's own units.
+
+| Check | Command | Result |
+|---|---|---|
+| new cases, Mock only | `flutter test test/cardio_efficiency_drift_signal_screen_test.dart --plain-name "Mock"` | `00:04 +9: All tests passed!` — the file's Mock harness goes 7 → 9 |
+| mutation 6 applied, Mock only | same | `00:05 +8 -1: Some tests failed.` — **caught**, by the relabelled-payload case alone: `Expected: 'At similar durations, your Treadmill Run efforts are about 7% less efficient (slower pace at the same heart rate) than 4–6 weeks ago.' / Actual: '…than 4–6 weeks ago. Lifting load is 15% above your usual over the same period.'`. The all-unrated case stayed green, exactly as the reachability table above predicts. |
+| restored, whole file | `flutter test test/cardio_efficiency_drift_signal_screen_test.dart` | `00:08 +17: All tests passed!` — 13 → 17, both harnesses. The adapter line is byte-identical to the copy above (`liftMeasure: mix?.measure ?? MixMeasure.time,`). |
+
+**What the two cases do and do not pin.** The all-unrated case is a behaviour pin, not a mutation
+check: it records that an unrated history measures time with no baseline, so the sentence cannot
+fire, and it passes with the mutant in place. The relabelled-payload case is the mutation check, and
+it is the only test in the repository that fails under mutation 6 — the rule-level S-2509 case pins
+the rule's own measure guard, and no payload the shipped service emits can distinguish the adapter's
+pass-through from a hard-coded `load`.
 
 ## Phase 3B — guards, residue, docs
 
@@ -109,6 +214,6 @@ with no test is deleted, not kept.
 
 | Check | Result |
 |---|---|
-| `flutter analyze` | _to fill_ |
-| full `flutter test` | _to fill_ |
+| `flutter analyze` | `196 issues found. (ran in 7.3s)` — the pre-existing baseline, 0 errors, and 0 issues in either file this run touched |
+| full `flutter test` | `04:57 +3833 ~1: All tests passed!` — Phase 3A's `+3829` plus this run's four new cases (two per harness), re-run after `dart format` |
 | diff vs Predicted Files | _to fill_ |
