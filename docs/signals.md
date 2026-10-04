@@ -7,8 +7,10 @@ registered signals' definitions and adapters:
 `lib/core/services/signals_service.dart`, the signal definitions
 `lib/core/models/progression_rate.dart`,
 `lib/core/models/modality_mix_shift.dart`, `lib/core/models/interference.dart`,
-`lib/core/models/fuel_vs_load.dart` and
-`lib/core/models/protein_consistency.dart`, and the adapters under
+`lib/core/models/fuel_vs_load.dart`,
+`lib/core/models/protein_consistency.dart`,
+`lib/core/models/sustained_high_load.dart` and
+`lib/core/models/cardio_efficiency_drift.dart`, and the adapters under
 `lib/core/services/signals/`. It does not cover the Stats screen or
 any widget that draws a signal; that surface belongs to
 [Stats Screen](stats_screen.md).
