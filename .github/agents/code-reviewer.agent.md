@@ -693,4 +693,6 @@ After: Add to lib/core/constants/workout_constants.dart, update all references (
 - Always verify environment compatibility (web + native)
 - **Missing tests for new public behaviour are a WARNING-level issue** — not blocking, but must be flagged
 - **Stale tests (referencing removed/renamed code) are a WARNING-level issue** — they break CI and must be flagged prominently
+- Create the review file FIRST, then append to it; never write filler between tool calls
+- Look up every test name a doc cites (exact group + test name) and every type or file it names; docs must name nothing unshipped
 - Use the test file map in the Unit Test Coverage section to quickly locate where tests belong

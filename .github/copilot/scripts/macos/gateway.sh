@@ -63,6 +63,7 @@ list_checks() {
   conf_entries | awk -F'|' '{ gsub(/^ +| +$/, "", $1); gsub(/^ +| +$/, "", $2); gsub(/^ +| +$/, "", $3); gsub(/^ +| +$/, "", $4)
     printf "  %-14s %5ss  %s%s\n", $1, $2, $3, ($4 == "" ? "" : "  [" $4 "]") }'
   echo "Git views: git-status · git-diff [<ref>] [--stat|--name-only|--name-status|--cached] [-- <path>...] · git-log [<count>] [<ref>] · git-show <ref> [--stat]"
+  echo "Cleanup: delete-scratch test/zz_<name>.dart (an untracked probe file you created)"
 }
 
 git_diff() {
@@ -103,6 +104,18 @@ git_show() {
   exec git --no-pager show "$ref"
 }
 
+# Lets an agent remove its OWN probe file: only an untracked test/zz_*.dart, nothing else.
+delete_scratch() {
+  [[ $# -eq 1 ]] || refuse "delete-scratch takes exactly one path"
+  local p="$1"
+  check_arg "$p"
+  [[ $p =~ ^test/zz_[A-Za-z0-9_]+\.dart$ ]] || refuse "delete-scratch only removes test/zz_*.dart probe files: $p"
+  if git ls-files --error-unmatch -- "$p" > /dev/null 2>&1; then refuse "delete-scratch will not remove a tracked file: $p"; fi
+  [[ -f $p ]] || refuse "no such file: $p"
+  rm -- "$p"
+  echo "gateway: removed $p" >&2
+}
+
 run_check() {
   local name="$1"; shift
   local line
@@ -119,6 +132,14 @@ run_check() {
   if [[ $opts == *requires-args* && $# -eq 0 ]]; then
     refuse "'$name' needs explicit file arguments (it must never run on the whole tree)"
   fi
+  if [[ $opts == *new-files-only* ]]; then
+    for a in "$@"; do
+      case "$a" in -*) continue ;; esac
+      if git ls-files --error-unmatch -- "$a" > /dev/null 2>&1; then
+        refuse "'$name' only runs on files this change created; '$a' is already tracked by git. Edit existing files with small edits (the repo is not format-clean)"
+      fi
+    done
+  fi
   local parts=()
   read -r -a parts <<< "$cmd"
   echo "gateway: $name (timeout ${secs}s): ${parts[*]} $*" >&2
@@ -133,5 +154,6 @@ case "$action" in
   git-diff) git_diff "$@" ;;
   git-log) git_log "$@" ;;
   git-show) git_show "$@" ;;
+  delete-scratch) delete_scratch "$@" ;;
   *) run_check "$action" "$@" ;;
 esac

@@ -282,4 +282,11 @@ prerequisites.
 - Defect reports without counts and root-cause lines
 - Fixing a defect without its structural guard
 - Closing a phase while old-representation readers remain
+- Measuring or maintaining line counts in a plan (a run looped 74 minutes on it): leave counts to the governor
+- A threshold measured against a baseline that depends on the thing being detected (a streak against
+  "usual"): give the algorithm in one paragraph plus an edge fixture
+- Prose fixtures ("ten rated weeks and two empty"): list every value and show each expected number's arithmetic
+- Saying "ascending" or "first" without separating registry position from render order: read the function
+- A mutation check the real data cannot tell apart: name the seed, or the stub that flips only that input
+- Adding a registry signal without listing which existing real-registry screen tests could also qualify
 - Duplicating conventions into plans instead of referencing them

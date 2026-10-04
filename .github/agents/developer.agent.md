@@ -747,3 +747,8 @@ Prefer surgical, targeted edits over full-file rewrites — change only the line
 - Extract reusable UI to widgets/
 - Test on web with HiveWorkoutRepository
 - Code must work unchanged when repository is swapped
+- Format only files you created (the gateway refuses tracked ones); edit existing files with minimal edits and check `git-diff`
+- Create no probe files; remove one you made with `gateway.sh delete-scratch`
+- No real-clock thresholds in tests: bracket between timestamps or poll to a deadline
+- If a new registry entry turns an EXISTING test red, stop and report; do not edit that test
+- If a plan's step text contradicts its decisions, follow the decisions and log it in the Assumption Log

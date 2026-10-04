@@ -3,7 +3,7 @@
 # and anything that is not a flag. Unlisted shell commands are denied (runs are non-interactive).
 # The only shell command an agent may run is the gateway (.github/copilot/gateway.conf): analyze, test,
 # format, pub get and read-only git. Reading and searching use Copilot's built-in tools, not the shell.
-# The governor (Claude) never commits for the owner and agents never touch git history either.
+# Agents never touch git history. The governor (Claude) commits only when the owner has authorised it for the cycle (feature.md rule 5).
 --allow-tool=shell(.github/copilot/scripts/macos/gateway.sh:*)
 --deny-tool=shell(git:*)
 --deny-tool=shell(gh:*)

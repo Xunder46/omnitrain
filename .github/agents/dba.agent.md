@@ -445,4 +445,7 @@ Then hand off to @developer with a summary:
 - Keep the SQL schema contract in step with the models
 - Keep models pure Dart (no Flutter imports)
 - Use repository pattern to abstract storage
+- Format only files you created (the gateway refuses tracked ones); edit existing files with minimal edits and check `git-diff`
+- Create no probe files; remove one you made with `gateway.sh delete-scratch`
+- No real-clock thresholds in tests: bracket between timestamps or poll to a deadline
 - Test that changes work on web

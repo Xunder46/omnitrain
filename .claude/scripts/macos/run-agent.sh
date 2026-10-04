@@ -282,6 +282,18 @@ print_health() {
   if [[ -n $hung ]]; then
     echo "$hung" | sed 's/^/  HUNG_CHILD: /'
   fi
+  # Machine-level warnings: runaway background loops (left by a stopped load experiment) and a load
+  # average far above the core count both make test timings and agent runs look slow for no reason.
+  local strays load cores
+  strays="$(ps -eo ppid=,command= 2>/dev/null | awk '$1 == 1 && /while :; do :; done/ { n++ } END { print n + 0 }')"
+  if [[ $strays -gt 0 ]]; then
+    echo "  STRAY_LOOPS: $strays busy-loop shell(s) are running outside any run; stop them (ps -eo pid,ppid,command | grep 'while :')"
+  fi
+  load="$(uptime 2>/dev/null | sed -E 's/.*load averages?: *//; s/[ ,].*//')"
+  cores="$(sysctl -n hw.ncpu 2>/dev/null || echo 1)"
+  if awk -v l="${load:-0}" -v c="$cores" 'BEGIN { exit !(l + 0 > c * 2) }'; then
+    echo "  HIGH_LOAD: load average $load on $cores cores; timings are unreliable until it drops"
+  fi
 }
 
 # --- Summary ------------------------------------------------------------------------------------
