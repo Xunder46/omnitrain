@@ -466,30 +466,30 @@ gateway wrapper in Copilot sessions.
 
 ### Phase 1: the pure rule and its constants (@dba)
 
-1. [ ] Write `test/cardio_efficiency_drift_test.dart` **first**, importing
+1. [x] Write `test/cardio_efficiency_drift_test.dart` **first**, importing
        `package:omnitrain/core/models/cardio_efficiency_drift.dart`, with the S-2501, S-2502,
        S-2503, S-2506, S-2507, S-2508, S-2509, S-2510 fixtures, small local builders for an
        `CardioEffort`, and a `the constant contracts` group asserting every
        `kCardioEfficiency…` value. Run it: it must fail to compile. Record that red run in the
        evidence file.
-2. [ ] Create `lib/core/models/cardio_efficiency_drift.dart` with the constants of D-1813, the
+2. [x] Create `lib/core/models/cardio_efficiency_drift.dart` with the constants of D-1813, the
        `CardioEffort{exerciseId, exerciseName, start, durationSecs, distanceMetres, avgHeartRateBpm}`
        payload (D-1802), `CardioEfficiencyWindows{recentStart, recentEnd, referenceStart,
        referenceEnd}`, `CardioEffortGroup{anchorSecs, efforts}`, `CardioEfficiencyDriftResult{…}`
        and `CardioEfficiencyDriftCopy{observation, suggestion}`.
-3. [ ] Add `cardioEfficiency(…effort)` (D-1803) and `cardioEfficiencyWindows(now)` (D-1801), each
+3. [x] Add `cardioEfficiency(…effort)` (D-1803) and `cardioEfficiencyWindows(now)` (D-1801), each
        with the exact arithmetic in its doc comment.
-4. [ ] Add `cardioEffortGroups(efforts)` (D-1804) — partition by exercise, sort by
+4. [x] Add `cardioEffortGroups(efforts)` (D-1804) — partition by exercise, sort by
        (duration, start, id), anchor greedily, no chaining — and
        `cardioEfficiencyDriftFor({efforts, now})` (D-1805, D-1806) applying the windows, the
        per-window floor and the largest-drift selection.
-5. [ ] Add the composed `cardioEfficiencyDrift({required List<CardioEffort> efforts, required
+5. [x] Add the composed `cardioEfficiencyDrift({required List<CardioEffort> efforts, required
        DateTime now, required double liftRecentLoad, required double liftUsualLoad, required
        MixMeasure liftMeasure})` (D-1807, D-1814) and `cardioEfficiencyDriftCopy(result)` with the
        exact strings of D-1808 (the span built from the two week constants; the second sentence only
        when the lifting test fired).
-6. [ ] Green: run the Phase 1 suite and paste the summary line into the evidence file.
-7. [ ] **Mutation check 1** (must fail if the boundary is wrong): change the drift test to
+6. [x] Green: run the Phase 1 suite and paste the summary line into the evidence file.
+7. [x] **Mutation check 1** (must fail if the boundary is wrong): change the drift test to
        `recentMean * 100 < referenceMean * 95` (strict), run S-2502's exactly-5% case, confirm it
        fails, revert. **Mutation check 2** (must fail if grouping chains): change the ±10% bound to
        compare each member with the group's *previous* member instead of the anchor, run S-2506's
@@ -681,13 +681,13 @@ One line per item, filled as it lands.
 
 | Phase | Item | Result |
 |---|---|---|
-| 1 | `test/cardio_efficiency_drift_test.dart` written, red run recorded | not started |
-| 1 | Constants, payload and result types | not started |
-| 1 | `cardioEfficiency` and `cardioEfficiencyWindows` | not started |
-| 1 | `cardioEffortGroups` and `cardioEfficiencyDriftFor` | not started |
-| 1 | `cardioEfficiencyDrift` and `cardioEfficiencyDriftCopy` | not started |
-| 1 | Phase 1 suite green, evidence pasted | not started |
-| 1 | Mutation checks 1–2 (strict boundary, chaining) | not started |
+| 1 | `test/cardio_efficiency_drift_test.dart` written, red run recorded | done — 14 tests; red run was a compile failure (the rule file did not exist) |
+| 1 | Constants, payload and result types | done — D-1813 constants; `kTrainingLoadBaselineWeeks` reused, not redeclared |
+| 1 | `cardioEfficiency` and `cardioEfficiencyWindows` | done — `DateTime(y, m, d − n)`, never a `Duration` |
+| 1 | `cardioEffortGroups` and `cardioEfficiencyDriftFor` | done — windowed before grouping; anchored, no chaining; largest drift wins |
+| 1 | `cardioEfficiencyDrift` and `cardioEfficiencyDriftCopy` | done — per-day 84-vs-28 lift test; span built from the two week constants |
+| 1 | Phase 1 suite green, evidence pasted | done — `+64` with the neighbour; full run `+3789 ~1` |
+| 1 | Mutation checks 1–2 (strict boundary, chaining) | done — both caught; S-2506 D added because B and C had no bridging duration |
 | 2 | Service test written, red run recorded | not started |
 | 2 | `cardioEfforts()` | not started |
 | 2 | Phase 2 suites green, evidence pasted | not started |
@@ -715,7 +715,19 @@ Executors append here — decision, options considered, choice and why, at most 
 The conductor ratifies (promote to a new `D-18xx` by supersedure) or reverts with a remediation
 sub-phase. An empty log after Phase 3A or 3B is itself suspicious.
 
-_(empty)_
+1. **`CardioEffort` carries no per-effort id, so D-1804's third sort key is inert.** The payload
+   has `{exerciseId, exerciseName, start, durationSecs, distanceMetres, avgHeartRateBpm}`. Options:
+   add an instance id, or sort by (duration, start). Choice: (duration, start) — within one
+   exercise's partition the id key could only order two efforts sharing both a duration and a start,
+   and either order yields the same group. Phase 2 can widen the payload if that ever matters.
+2. **S-2506 C is read literally.** Both its groups (1800 s and 2700 s) get equal recent and reference
+   efficiency, so neither drifts and the rule returns null. Option: give one group a drift and assert
+   the other is untouched. Choice: literal — AC-7 is about the two durations never being compared,
+   which the group assertions already prove, and S-2506 D now carries the chaining guard.
+3. **S-2506 D was added as test design, not from the plan.** Mutation check 2 could not fail against
+   B or C: neither fixture has a duration that bridges 480 s to 529 s, so comparing a candidate with
+   the previous member rather than the anchor changes nothing there. Choice: add a 500 s bridge so
+   the anchored bound is observable. Recorded in the evidence file.
 
 ## Feedback
 
