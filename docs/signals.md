@@ -67,15 +67,22 @@ Stats body a signal can displace.
 
 **The caution order.** Within a kind, a signal's place in the order is carried
 by its own `k…Priority` constant rather than by the selection rule, so the order
-is a property of the signals. Four cautions are registered today, in ascending
-priority: Protein Consistency (`kProteinConsistencyPriority`), Fuel vs Load
-(`kFuelVsLoadPriority`), Modality Mix Shift (`kModalityMixShiftPriority`) and
-Cross-Modality Interference (`kCrossModalityInterferencePriority`). The registered positive is Progression
-Rate, whose priority is `kProgressionRatePriority`. Verified by
-`test/interference_test.dart` (`the caution order holds and the registry is
-ordered by it`), which asserts the registry lists the cautions in ascending
-priority, and by `test/modality_mix_shift_test.dart` (the constant contracts)
-for the Modality Mix Shift entry.
+is a property of the signals. Five cautions are registered today, in ascending
+priority: Sustained High Load (`kSustainedHighLoadPriority`), Protein Consistency
+(`kProteinConsistencyPriority`), Fuel vs Load (`kFuelVsLoadPriority`), Modality
+Mix Shift (`kModalityMixShiftPriority`) and Cross-Modality Interference
+(`kCrossModalityInterferencePriority`). The registered positive is Progression
+Rate, whose priority is `kProgressionRatePriority`. The list is the priority
+order, not the render order: when two cautions qualify together the framework
+draws the higher priority first, so Protein Consistency renders above Sustained
+High Load. Verified by `test/interference_test.dart` (`the caution order holds
+and the registry is ordered by it`), which asserts the registry lists the
+cautions in ascending priority; by `test/sustained_high_load_test.dart` (`the
+registry lists the cautions in strictly ascending priority`); by
+`test/sustained_high_load_signal_screen_test.dart` (`S-2412 two cautions
+qualifying` › `renders the higher-priority caution above the Sustained High Load
+card`); and by `test/modality_mix_shift_test.dart` (the constant contracts) for
+the Modality Mix Shift entry.
 
 ## Abstention
 
@@ -158,6 +165,84 @@ needs no change to the contract. Verified by `test/signals_service_test.dart`,
 whose stub signals implement the contract and are driven through the service.
 
 ## Registered signals
+
+`sustainedHighLoad({required weeks, required mixShowsLoad})` in
+`lib/core/models/sustained_high_load.dart` is the Sustained High Load signal's
+definition, and `SustainedHighLoadSignal` in
+`lib/core/services/signals/sustained_high_load_signal.dart` is its adapter. The
+signal reports that the user's completed weeks ran above their usual load with no
+easier week in the run, and proposes a caution card.
+
+- **The weeks.** The rule reads `WeeklyLoad` weeks, oldest first and completed
+  only: the week containing `now` is never one of them, whatever it holds.
+  Verified by `test/sustained_high_load_service_test.dart` (`S-2411 the incomplete
+  current week is never counted`, `S-2411 the current week holding nothing changes
+  nothing`) and `test/training_load_test.dart` (`WeeklyLoad (D-1702) sums its
+  sessions and an empty week is zero`).
+- **The baseline.** A candidate run's baseline is the
+  `kTrainingLoadBaselineWeeks` weeks immediately before it, pooled and strictly
+  earlier, so a run can never inflate its own baseline. The usual is that window's
+  summed load divided by the twelve weeks — an empty week counts as zero, never
+  the mean of the rated weeks alone. A candidate with fewer than twelve weeks
+  before it has no baseline and cannot qualify. Verified by
+  `test/sustained_high_load_test.dart` (`the baseline stage abstains below twelve
+  earlier weeks`).
+- **The rated-history floor.** The candidate's baseline needs at least
+  `kSustainedHighLoadMinRatedWeeks` weeks carrying a rated session, the boundary
+  inclusive. Verified by `test/sustained_high_load_test.dart` (`S-2404 the
+  rated-history floor, and the twelve-week requirement`).
+- **A higher-load week.** A week is higher-load when its own load reaches
+  `kSustainedHighLoadHigherPercent` of the usual, compared by exact
+  cross-multiplication rather than a rounded percentage, so the boundary is
+  inclusive. Verified by `test/sustained_high_load_test.dart` (`S-2402 the 110%
+  boundary is inclusive`).
+- **The streak.** Candidate `m` is the last `m` completed weeks; it qualifies when
+  its own baseline clears the rated floor and every one of its weeks is
+  higher-load against that baseline's usual. The streak is the largest qualifying
+  `m`, and a run shorter than `kSustainedHighLoadMinStreakWeeks` never fires — the
+  boundary is inclusive, and a week below the higher-load line ends the run there.
+  Verified by `test/sustained_high_load_test.dart` (`S-2403 four weeks is not
+  five`, `S-2405 a 105% week resets the count at that week`).
+- **The measure gate.** The card shows only when the Mix layer measures the
+  streak's own span in load. The adapter reads one payload for the span from the
+  streak's first week's start through `now`, and a span measured in time abstains
+  without ever reaching the card. Verified by
+  `test/sustained_high_load_signal_screen_test.dart` (`S-2410(b) the streak period
+  measures time` › `the rule qualifies but the period the adapter reads is time`,
+  `the card does not appear and the layer is quiet`).
+- **The history fact.** An easier week is one at or below
+  `kSustainedHighLoadEasierPercent` of the usual, inclusive, and an empty week
+  counts as an easier week. The fact reports the median gap between the easier
+  weeks strictly before the run when at least `kSustainedHighLoadMinEasierGaps`
+  gaps exist and every gap lies between `kSustainedHighLoadGapMinWeeks` and
+  `kSustainedHighLoadGapMaxWeeks` weeks; an even number of gaps reports the lower
+  of the two middle ones, and otherwise the fact is absent. Verified by
+  `test/sustained_high_load_test.dart` (`S-2406 the easier boundary, and an
+  ordinary week that is neither`, `S-2407 the history fact shows the interval`,
+  `S-2408 the even-count median is the lower one`, `S-2409 the fact is absent when
+  the habit is not there`).
+- **Kind and priority.** The kind is caution; the priority is
+  `kSustainedHighLoadPriority`, the bottom of the caution order. Verified by
+  `test/sustained_high_load_test.dart` (`the constant contracts`).
+- **Copy.** `sustainedHighLoadCopy` builds the observation from the run's own week
+  count and appends the history fact's sentence only when the fact fired; the
+  suggestion is one sentence and the copy carries no amount, no percentage and no
+  causal claim. Verified by `test/sustained_high_load_test.dart` (`S-2407 the
+  history fact shows the interval`, `the copy is the exact shipped wording`, `the
+  copy carries no amount, no percentage and no causal word`) and
+  `test/sustained_high_load_signal_screen_test.dart` (`S-2412 the card on the
+  layer` › `the caution card shows with S-2401's copy, the caution label and its
+  key, below the Mix layer`).
+
+The definition reads no clock, no repository and no service — the week list and
+the Mix gate are arguments. The adapter asks `StatsProgressService.weeklyLoads`
+for the completed weeks and reads one `StatsProgressService.computeMixPeriod`
+payload for the streak's own span, so it walks no history of its own and calls no
+personal-record API. Verified by `test/sustained_high_load_service_test.dart`
+(`S-2401 the service's weeks feed the rule the pack's figures`) and
+`test/sustained_high_load_signal_screen_test.dart` (`S-2412 the card on the
+layer` › `the caution card shows with S-2401's copy, the caution label and its
+key, below the Mix layer`).
 
 `progressionRate({required samples, required now})` in
 `lib/core/models/progression_rate.dart` is the Progression Rate signal's
@@ -476,11 +561,11 @@ usually manage, or short of their own daily target.
   `test/protein_consistency_service_test.dart` (`the latest bodyweight is the
   newest by recordedAtMs`, `no measurement on file yields null`).
 - **Kind and priority.** The kind is caution; the priority is
-  `kProteinConsistencyPriority`, the lowest of the caution order, so the card
-  ranks below Fuel vs Load. Verified by `test/protein_consistency_test.dart`
+  `kProteinConsistencyPriority`, above Sustained High Load and below Fuel vs
+  Load. Verified by `test/protein_consistency_test.dart`
   (`the constant contracts`) and
   `test/modality_mix_shift_signal_screen_test.dart` (`the registry lists exactly
-  the five shipped signals, in order`).
+  the six shipped signals, in order`).
 - **Copy.** `proteinConsistencyCopy` builds the observation from the average and
   a span derived from `kProteinConsistencyWindowDays` — never written as a
   literal — and, in target mode, the whole-percent shortfall and the target; the

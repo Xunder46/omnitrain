@@ -147,6 +147,37 @@ local-midnight result — and the constant contract for `kMixStripWeeks`).
 
 ---
 
+## The weekly load series
+
+`WeeklyLoad` is one completed calendar week: its start, its load in load minutes
+and whether it carries a rated session. A week's load is the sum of the session
+split's load components over the sessions whose own start falls in that week —
+the same figure the Mix layer renders — so a weekly load cannot read two ways.
+The week start comes from `OmniDateUtils.startOfWeek`, so the series follows the
+saved start-of-week setting exactly as the strip does.
+
+`StatsProgressService.weeklyLoads` builds the series oldest first, one entry per
+completed week with empty weeks present as zero load, and stops at the week
+before `now`'s: the week containing `now` is never an entry.
+
+**The weekly baseline is twelve consecutive entries of this list**, not
+`baselineBlockStarts`. The Sustained High Load rule reads
+`kTrainingLoadBaselineWeeks` weeks immediately before a candidate run as
+neighbours in the same series, so its usual load is that window's sum divided by
+the twelve weeks, an empty week counting as zero. The baseline period above is
+anchored to a window's start day and serves the Mix layer's window comparison;
+the two are separate reads of separate spans and neither is derived from the
+other.
+
+Verified by `test/training_load_test.dart` (`WeeklyLoad (D-1702) sums its
+sessions and an empty week is zero`) and
+`test/sustained_high_load_service_test.dart` (`D-1702 an empty week between
+sessions is present`, `S-2401 the service returns the seventeen completed
+weeks`, `S-2401 the service's weeks feed the rule the pack's figures`, `S-2411
+the incomplete current week is never counted`).
+
+---
+
 ## The four constants
 
 | Constant | Rule it governs |

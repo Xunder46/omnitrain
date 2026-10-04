@@ -392,6 +392,31 @@ the boundary scenarios S-2201–S-2213).
 
 ---
 
+## Sustained High Load Constants
+
+**File**: `lib/core/models/sustained_high_load.dart`
+
+The run length, the two floors, the two load lines, the gap band and the
+priority behind the Sustained High Load rule. Named here so a reader can find
+the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kSustainedHighLoadMinStreakWeeks` | The run length the card needs, in completed weeks; the boundary is inclusive |
+| `kSustainedHighLoadMinRatedWeeks` | The rated weeks a candidate's baseline needs; the boundary is inclusive |
+| `kSustainedHighLoadHigherPercent` | The load a week must reach against its usual to be a higher-load week; the boundary is inclusive |
+| `kSustainedHighLoadEasierPercent` | The load a week must fall to against its usual to be an easier week; the boundary is inclusive |
+| `kSustainedHighLoadMinEasierGaps` | The gaps between consecutive easier weeks the history fact needs |
+| `kSustainedHighLoadGapMinWeeks` | The shortest gap the history fact accepts, in weeks |
+| `kSustainedHighLoadGapMaxWeeks` | The longest gap the history fact accepts, in weeks |
+| `kSustainedHighLoadPriority` | The signal's priority |
+| `kTrainingLoadBaselineWeeks` | How many weeks a candidate's baseline pools — shared with the Mix baseline (see Training Load Constants) |
+
+Verified by `test/sustained_high_load_test.dart` (the constant contracts and the
+boundary scenarios S-2402–S-2409).
+
+---
+
 ## Home Tile Configuration
 
 **File**: `lib/core/constants/home_tiles.dart`

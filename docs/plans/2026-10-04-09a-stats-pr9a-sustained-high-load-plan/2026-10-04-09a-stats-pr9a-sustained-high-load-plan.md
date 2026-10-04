@@ -594,41 +594,41 @@ list); `test/modality_mix_shift_signal_screen_test.dart` (EDIT — one name, one
 
 ### Phase 3B: structural guards, the residue sweep and the docs (@developer)
 
-1. [ ] Add the structural guard for the priority order to `test/sustained_high_load_test.dart`: the
+1. [x] Add the structural guard for the priority order to `test/sustained_high_load_test.dart`: the
        caution constants, read off the registry itself, are strictly ascending — so a future signal
        added in the wrong position fails a test rather than a review.
-2. [ ] Add the structural guard for the copy: the observation, the optional sentence and the
+2. [x] Add the structural guard for the copy: the observation, the optional sentence and the
        suggestion are compared with the exact strings, so no rewording can land silently; and a
        guard that the copy contains no amount, no percentage and no causal word from the banned set
        (`fatigue`, `because`, `due to`, `cause`).
-3. [ ] Residue sweep, recorded in the evidence file: `lib/core/models/sustained_high_load.dart`
+3. [x] Residue sweep, recorded in the evidence file: `lib/core/models/sustained_high_load.dart`
        imports only `training_load.dart` and `signals.dart`; no file outside
        `lib/core/models/sustained_high_load.dart`, `lib/core/services/signals/sustained_high_load_signal.dart`
        and `lib/core/services/signals/signal_registry.dart` mentions `sustainedHighLoad`; and
        `stats_progress_service.dart` gains no reader of the replaced representation. Do **not**
        introduce the literal `nutritionTrend` anywhere in `stats_progress_service.dart` — the
        retired-name sweep (`S-1263`) rejects it.
-4. [ ] `docs/signals.md`: add the Sustained High Load bullets to `## Registered signals` in the
+4. [x] `docs/signals.md`: add the Sustained High Load bullets to `## Registered signals` in the
        style of the existing signals (definitions, the baseline, the floor, the fact, kind and
        priority, copy), each bullet naming its test; change `Four cautions are registered today`
        to `Five cautions…` and add Sustained High Load first in the caution-order paragraph; change
        the Protein Consistency bullet's `the five shipped signals, in order` to `the six shipped
        signals, in order`. Keep the file below 52,428 bytes (the indexing contract's warning band)
        — measure it and record the byte count in the evidence file.
-5. [ ] `docs/stats_screen.md`: add the signal's paragraph as the sixth, in the style of the
+5. [x] `docs/stats_screen.md`: add the signal's paragraph as the sixth, in the style of the
        existing five, naming its test.
-6. [ ] `docs/constants_reference.md`: add `## Sustained High Load Constants` in the style of
+6. [x] `docs/constants_reference.md`: add `## Sustained High Load Constants` in the style of
        `## Protein Consistency Constants`, one row per constant with its rule and its test.
-7. [ ] `docs/state_management/services_and_utils.md`: document `weeklyLoads` and
+7. [x] `docs/state_management/services_and_utils.md`: document `weeklyLoads` and
        `startOfWeekSetting` — what they read, what they return, and that they reuse the cached
        history read.
-8. [ ] `docs/training_load.md`: document `WeeklyLoad` and the shared weekly-load definition, and
+8. [x] `docs/training_load.md`: document `WeeklyLoad` and the shared weekly-load definition, and
        state that the weekly baseline is twelve *calendar* weeks taken from the same list (not
        `baselineBlockStarts`).
-9. [ ] Write the doc-claim-to-test table into the evidence file: every behavioural sentence added
+9. [x] Write the doc-claim-to-test table into the evidence file: every behavioural sentence added
        to `docs/` in steps 4–8, with the exact test name that proves it. Any sentence with no test
        is deleted, not kept.
-10. [ ] Full `flutter test`, `flutter analyze`, and
+10. [x] Full `flutter test`, `flutter analyze`, and
         `flutter test test/docs_indexing_contract_test.dart`; paste the summary lines.
 
 **Done Criteria** (run until green): `flutter analyze`;
@@ -705,16 +705,16 @@ One line per item, filled as it lands.
 | 3A | Guard 2 extended and renamed (`modality_mix_shift_signal_screen_test.dart`) | Complete — test renamed to "six", one line added |
 | 3A | Phase 3A suites green, evidence pasted | Complete — full suite `05:15 +3772 ~1: All tests passed!` after scoping the three S-2013 assertions in `test/interference_signal_screen_test.dart` to Interference's own card (Assumption Log #11) |
 | 3A | Mutation checks 5–6 (registry order, the gate) | Complete — both red as predicted, both reverted, green re-run |
-| 3B | Priority-order structural guard | not started |
-| 3B | Copy structural guard | not started |
-| 3B | Residue sweep recorded | not started |
-| 3B | `docs/signals.md` | not started |
-| 3B | `docs/stats_screen.md` | not started |
-| 3B | `docs/constants_reference.md` | not started |
-| 3B | `docs/state_management/services_and_utils.md` | not started |
-| 3B | `docs/training_load.md` | not started |
-| 3B | Doc-claim-to-test table | not started |
-| 3B | Final suites green | not started |
+| 3B | Priority-order structural guard | Complete — `the registry lists the cautions in strictly ascending priority`, reading `buildSignalRegistry()`; red under mutation 7 (registry entry moved last), reverted |
+| 3B | Copy structural guard | Complete — `the copy is the exact shipped wording` and `the copy carries no amount, no percentage and no causal word`; red under mutations 8 and 9, reverted |
+| 3B | Residue sweep recorded | Complete — 14-file PR diff; no framework file, no `watch/`, no `lib/data/`, no 8a/8b file, no `Cardio Efficiency Drift`; no `nutritionTrend` literal in `stats_progress_service.dart` |
+| 3B | `docs/signals.md` | Complete — the signal's nine bullets, "Five cautions…" with Sustained High Load first, the render-order sentence, the Protein Consistency priority fix and its `six shipped signals` citation; 39,952 bytes |
+| 3B | `docs/stats_screen.md` | Complete — "lists six" and the sixth signal's paragraph |
+| 3B | `docs/constants_reference.md` | Complete — `## Sustained High Load Constants`, nine rows including the shared `kTrainingLoadBaselineWeeks` |
+| 3B | `docs/state_management/services_and_utils.md` | Complete — `startOfWeekSetting()` and `weeklyLoads()` beside `computeMixPeriod` |
+| 3B | `docs/training_load.md` | Complete — `## The weekly load series`, including the twelve-entry baseline vs `baselineBlockStarts` |
+| 3B | Doc-claim-to-test table | Complete — 22 rows in the evidence file; every added sentence names an existing test |
+| 3B | Final suites green | Complete — analyze `196 issues found.` (0 errors); Done Criteria `00:11 +91: All tests passed!`; full `05:15 +3775 ~1: All tests passed!` |
 
 ## Assumption Log
 
@@ -773,6 +773,29 @@ sub-phase. An empty log after Phase 3A or 3B is itself suspicious.
 12. **`test/interference_signal_screen_test.dart` was not in Phase 3A's Predicted Files.** It is a PR 7b
     file that the registry line turned red; it was edited only under #11, so the out-of-bounds finding is
     recorded here rather than absorbed silently.
+
+13. **Both Phase 3B guards were green on first write**, because they pin behaviour Phases 1–3A already
+    shipped. Per the brief's red-first rule each was given a mutation that must fail it — the registry
+    entry moved to the end, the observation reworded, a causal word inserted — and all three went red
+    before being reverted (evidence checks 7–9). No mutation was left applied.
+
+14. **`docs/signals.md`'s Protein Consistency bullet made two claims the registry line falsified**, only
+    one of which the plan's step 4 names: the cited test name (now "six") and "the priority is
+    `kProteinConsistencyPriority`, the lowest of the caution order". The second was corrected to "above
+    Sustained High Load and below Fuel vs Load" — a stale claim, not new scope.
+
+15. **The plan's step 3 expects `sustained_high_load.dart` to import `training_load.dart` and
+    `signals.dart`.** The shipped file imports `training_load.dart` only (Assumption Log #1's subset), so
+    the sweep records the actual import rather than the plan's expectation.
+
+16. **`docs/stats_screen.md`'s paragraph was added as "the sixth"**, matching that section's own
+    enumeration order (which is not the registry order — pre-existing, and not changed here). The
+    registry's own order is documented in `docs/signals.md`'s caution-order paragraph, which now also
+    states the render order.
+
+17. **The `docs/signals.md` byte count was taken with a read-only byte count**, because the gateway has
+    no verb for it: 39,952 bytes after the edit (34,099 before), 12,476 under the 52,428 ceiling. The
+    ceiling itself is enforced by `test/docs_indexing_contract_test.dart`, which is green.
 
 ## Feedback
 

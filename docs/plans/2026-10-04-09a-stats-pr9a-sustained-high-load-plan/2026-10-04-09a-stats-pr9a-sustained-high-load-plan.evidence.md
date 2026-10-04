@@ -151,19 +151,50 @@ Originals, copied before each edit:
 
 ## Phase 3B — guards, residue, docs
 
+### Mutation checks
+
+The two guards passed on first write (they pin behaviour Phases 1-3A already shipped), so each was
+given a mutation that must make it fail. Originals copied before each edit:
+
+- check 7 original: `  SustainedHighLoadSignal(),` — first entry of the const list in `signal_registry.dart`
+- check 8 original: `    'training load, with no easier week.',` — the observation's second line
+- check 9 original: `    suggestion: 'An easier week is one option.',`
+
+| # | Mutation | Test that must fail | Result |
+|---|---|---|---|
+| 7 | registry entry moved to the end of the const list | `the registry lists the cautions in strictly ascending priority` | RED: `Expected: a value greater than <500> Actual: <100> — sustained-high-load (100) must sit after cross-modality-interference (500)`, `test/sustained_high_load_test.dart:277`, `00:00 +0 -1: Some tests failed.` Restored; `git-diff` on the file is empty. |
+| 8 | observation reworded: `with no easier week.` → `and no easier week in that run.` | `the copy is the exact shipped wording` | RED: `is different … Differ at offset 63`, `test/sustained_high_load_test.dart:294`, `00:00 +0 -1: Some tests failed.` Restored. |
+| 9 | causal word inserted into the suggestion: `'An easier week is one option, because fatigue builds up.'` | `the copy carries no amount, no percentage and no causal word` | RED: `Expected: not contains 'fatigue' Actual: 'an easier week is one option, because fatigue builds up.'`, `test/sustained_high_load_test.dart:366`, `00:00 +0 -1: Some tests failed.` Restored. |
+
+After all three restores: `git-diff` on both mutated files is empty and the file is green again —
+`00:00 +13: All tests passed!`.
+
 | Check | Command | Result |
 |---|---|---|
-| green | `flutter test test/docs_indexing_contract_test.dart` | _to fill_ |
-| size | `docs/signals.md` byte count (limit 52,428) | _to fill_ |
-| full | `flutter test` | _to fill_ |
+| green | `flutter test test/sustained_high_load_test.dart` | `00:00 +13: All tests passed!` (10 pre-existing + 3 new) |
+| size | `docs/signals.md` byte count (limit 52,428) | **39,952 bytes** after the edit (was 34,099). Read-only byte count; the gateway has no such verb. 12,476 bytes of headroom. |
+| done criteria | `flutter test test/sustained_high_load_test.dart test/sustained_high_load_service_test.dart test/sustained_high_load_signal_screen_test.dart test/signals_framework_test.dart test/signals_service_test.dart test/docs_indexing_contract_test.dart` | `00:11 +91: All tests passed!` (re-run after the plan and evidence edits: same `+91`) |
+| lint | `flutter analyze` | `196 issues found. (ran in 8.0s)` — identical to the baseline, 0 errors, and no issue mentions `sustained_high_load` |
+| full | `flutter test` | `05:15 +3775 ~1: All tests passed!` — baseline `+3772 ~1` plus the three new guards; no other change |
 
 ### Residue sweep
 
+Read-only sweep of the PR 9a diff (`git-diff c42e526`) plus the files it names. Every row below is
+a check by **reading**; the ones also covered by a test are marked.
+
 | Sweep | Result |
 |---|---|
-| `sustained_high_load.dart` imports | _to fill_ (must be `training_load.dart`, `signals.dart` only) |
-| `sustainedHighLoad` mentioned outside the three production files | _to fill_ (must be tests and docs only) |
-| literal `nutritionTrend` in `stats_progress_service.dart` | _to fill_ (must be absent — `S-1263`) |
+| `sustained_high_load.dart` imports | `training_load.dart` only. That is a **subset** of D-1701's allowed set (which also permits `signals.dart`); the rule needs no signal type, so the narrower import is the shipped one (Assumption Log #1). |
+| `sustainedHighLoad` mentioned outside the three production files | Tests and docs only. Tests: the three new 9a suites plus the two registry id-lists updated in 3A (`test/interference_test.dart`, `test/modality_mix_shift_signal_screen_test.dart`). No framework file names it. |
+| literal `nutritionTrend` in `stats_progress_service.dart` | Absent. The file's diff adds only `startOfWeekSetting()` and `weeklyLoads()`; it gains no reader of the replaced representation (`S-1263`). |
+| framework files absent from the PR diff | Confirmed: `lib/core/services/signals/signal.dart`, `lib/core/models/signals.dart`, `lib/core/services/signals_service.dart` and `test/signals_framework_test.dart` are all absent from the 14-file list. |
+| `watch/` absent | Confirmed: no path under `watch/` appears in the diff. |
+| `lib/data/` absent | Confirmed: no path under `lib/data/` appears in the diff. |
+| 8a/8b files absent | Confirmed: no `protein_consistency*`, `fuel_vs_load*`, `progression_rate*` or `nutrition*` path appears in the diff. |
+| `Cardio Efficiency Drift` absent | Confirmed: no such path, id or name in the diff. PR 9b does not exist yet. |
+| the three new production files | Exactly `lib/core/models/sustained_high_load.dart` (new), `lib/core/services/signals/sustained_high_load_signal.dart` (new), `lib/core/services/signals/signal_registry.dart` (+1 line), `lib/core/services/stats_progress_service.dart` (+74 lines), `lib/core/models/training_load.dart` (+20 lines). |
+| `interference_signal_screen_test.dart` | Untouched in 3B; its 3A edit scoped S-2013's assertions to Interference's card and is unchanged here. |
+
 
 ## Doc-claim-to-test table
 
@@ -172,11 +203,28 @@ with no test is deleted, not kept.
 
 | Doc | Claim | Test |
 |---|---|---|
-| `docs/signals.md` | _to fill_ | _to fill_ |
-| `docs/stats_screen.md` | _to fill_ | _to fill_ |
-| `docs/constants_reference.md` | _to fill_ | _to fill_ |
-| `docs/state_management/services_and_utils.md` | _to fill_ | _to fill_ |
-| `docs/training_load.md` | _to fill_ | _to fill_ |
+| `docs/signals.md` | five cautions are registered, in ascending priority, Sustained High Load first | `test/sustained_high_load_test.dart` (`the registry lists the cautions in strictly ascending priority`); `test/interference_test.dart` (`the caution order holds and the registry is ordered by it`) |
+| `docs/signals.md` | the list is the priority order, not the render order: the higher priority renders first, so Protein Consistency sits above Sustained High Load | `test/sustained_high_load_signal_screen_test.dart` (`S-2412 two cautions qualifying` › `renders the higher-priority caution above the Sustained High Load card`) |
+| `docs/signals.md` | the rule reads completed weeks only, the week containing `now` never among them | `test/sustained_high_load_service_test.dart` (`S-2411 the incomplete current week is never counted`, `S-2411 the current week holding nothing changes nothing`); `test/training_load_test.dart` (`WeeklyLoad (D-1702) sums its sessions and an empty week is zero`) |
+| `docs/signals.md` | a candidate's baseline is the twelve weeks strictly before it, an empty week counting as zero, and fewer than twelve preceding weeks means no baseline | `test/sustained_high_load_test.dart` (`the baseline stage abstains below twelve earlier weeks`) |
+| `docs/signals.md` | the baseline needs `kSustainedHighLoadMinRatedWeeks` rated weeks, inclusive | `test/sustained_high_load_test.dart` (`S-2404 the rated-history floor, and the twelve-week requirement`) |
+| `docs/signals.md` | a higher-load week reaches `kSustainedHighLoadHigherPercent` of the usual, inclusive, by exact cross-multiplication | `test/sustained_high_load_test.dart` (`S-2402 the 110% boundary is inclusive`) |
+| `docs/signals.md` | the streak is the largest run of consecutive higher-load weeks whose own baseline clears the rated floor, and a run shorter than the floor never fires | `test/sustained_high_load_test.dart` (`S-2403 four weeks is not five`, `S-2405 a 105% week resets the count at that week`) |
+| `docs/signals.md` | the card shows only when the Mix layer measures the streak's own span in load | `test/sustained_high_load_signal_screen_test.dart` (`S-2410(b) the streak period measures time` › `the rule qualifies but the period the adapter reads is time`, `the card does not appear and the layer is quiet`) |
+| `docs/signals.md` | the history fact reports the median gap between earlier easier weeks under its gap band, the lower middle one on an even count, and is absent otherwise | `test/sustained_high_load_test.dart` (`S-2406 the easier boundary, and an ordinary week that is neither`, `S-2407 the history fact shows the interval`, `S-2408 the even-count median is the lower one`, `S-2409 the fact is absent when the habit is not there`) |
+| `docs/signals.md` | the kind is caution and the priority is `kSustainedHighLoadPriority`, the bottom of the caution order | `test/sustained_high_load_test.dart` (`the constant contracts`); `test/interference_test.dart` (`the caution order holds and the registry is ordered by it`) |
+| `docs/signals.md` | the copy names the run's own week count, appends the fact's sentence only when the fact fired, and carries no amount, percentage or causal claim | `test/sustained_high_load_test.dart` (`S-2407 the history fact shows the interval`, `the copy is the exact shipped wording`, `the copy carries no amount, no percentage and no causal word`); `test/sustained_high_load_signal_screen_test.dart` (`S-2412 the card on the layer` › `the caution card shows with S-2401's copy, the caution label and its key, below the Mix layer`) |
+| `docs/signals.md` | the definition reads no clock, repository or service; the adapter reads `weeklyLoads` and one `computeMixPeriod` payload and walks no history of its own | `test/sustained_high_load_service_test.dart` (`S-2401 the service's weeks feed the rule the pack's figures`); `test/sustained_high_load_signal_screen_test.dart` (`S-2412 the card on the layer` › `the caution card shows with S-2401's copy, the caution label and its key, below the Mix layer`) |
+| `docs/signals.md` | Protein Consistency sits above Sustained High Load and below Fuel vs Load | `test/protein_consistency_test.dart` (`the constant contracts`); `test/modality_mix_shift_signal_screen_test.dart` (`the registry lists exactly the six shipped signals, in order`) |
+| `docs/stats_screen.md` | the registry lists six signals | `test/modality_mix_shift_signal_screen_test.dart` (`the registry lists exactly the six shipped signals, in order`) |
+| `docs/stats_screen.md` | the sixth signal reports weeks above usual with no easier week, its copy built by `sustainedHighLoadCopy` | `test/sustained_high_load_signal_screen_test.dart` (`S-2412 the card on the layer` › `the caution card shows with S-2401's copy, the caution label and its key, below the Mix layer`, `S-2412 the card is dismissible` › `one tap removes the card in the tap frame, the store holds the id, and the next open is still quiet`); `test/sustained_high_load_test.dart` |
+| `docs/constants_reference.md` | each named constant's rule, and the inclusive boundaries | `test/sustained_high_load_test.dart` (the constant contracts and S-2402–S-2409) |
+| `docs/state_management/services_and_utils.md` | a week's load is the session split's own load components summed over the sessions of that week | `test/sustained_high_load_service_test.dart` (`S-2401 the service's weeks feed the rule the pack's figures`) |
+| `docs/state_management/services_and_utils.md` | the series runs from the earliest completed week to the week before `now`'s, empty weeks present, an empty history yielding an empty list | `test/sustained_high_load_service_test.dart` (`D-1702 an empty week between sessions is present`, `D-1703 no completed session yields an empty list`, `S-2401 the service returns the seventeen completed weeks`, `S-2411 the incomplete current week is never counted`) |
+| `docs/state_management/services_and_utils.md` | the boundaries follow the saved start-of-week setting, which is the value `SettingsState` writes | `test/sustained_high_load_service_test.dart` (`S-2413 the saved start-of-week moves the boundaries`, `S-2413 SettingsState writes the value the service reads`) |
+| `docs/state_management/services_and_utils.md` | the two reads are one walk of the cached snapshot, identical under both repositories | `test/sustained_high_load_service_test.dart` (`S-2414 Hive and Mock return identical week lists`) |
+| `docs/training_load.md` | a week's load is the Mix layer's own figure and a week's start follows the saved start-of-week setting | `test/training_load_test.dart` (`WeeklyLoad (D-1702) sums its sessions and an empty week is zero`, `OmniDateUtils.startOfWeek (D-910, D-935)`); `test/sustained_high_load_service_test.dart` (`S-2401 the service's weeks feed the rule the pack's figures`) |
+| `docs/training_load.md` | the weekly baseline is twelve consecutive entries of the same series, not `baselineBlockStarts` | `test/sustained_high_load_test.dart` (`the baseline stage abstains below twelve earlier weeks`); `test/training_load_test.dart` (`baselineBlockStarts (D-934)`) |
 
 ## Closing
 
@@ -188,4 +236,13 @@ with no test is deleted, not kept.
 | `flutter analyze` | Phase 1: `196 issues found. (ran in 7.0s)` — 0 errors, no issue in either new file |
 | full `flutter test` | Phase 1: `05:10 +3742 ~1: All tests passed!` (baseline `+3731 ~1` + the 11 added tests) |
 | diff vs Predicted Files | Phase 1: exactly the four predicted paths — `lib/core/models/sustained_high_load.dart` (new), `test/sustained_high_load_test.dart` (new), `lib/core/models/training_load.dart` (edit), `test/training_load_test.dart` (edit) |
+
+### Phase 3B closing re-verification
+
+| Check | Result |
+|---|---|
+| `flutter analyze` | `196 issues found. (ran in 8.0s)` — 0 errors, unchanged from the baseline, no issue mentions `sustained_high_load` |
+| full `flutter test` | `05:15 +3775 ~1: All tests passed!` — Phase 3A's `+3769 ~1 -3` plus the three S-2013 fixes (committed in `becb06d`) is the `+3772 ~1` baseline, plus the three new guards. No other movement. |
+| diff vs Predicted Files | exactly the predicted paths: `test/sustained_high_load_test.dart` (EDIT — the three guards) and the five docs (`docs/signals.md`, `docs/stats_screen.md`, `docs/constants_reference.md`, `docs/state_management/services_and_utils.md`, `docs/training_load.md`). Nothing else in the working tree. |
+| no mutation left applied | `git-diff` on `signal_registry.dart` and `sustained_high_load.dart` is empty |
 

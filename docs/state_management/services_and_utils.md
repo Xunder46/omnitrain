@@ -363,6 +363,34 @@ period is not anchored to a week.
 Verified by `test/modality_mix_period_service_test.dart` (S-1904a, S-1907,
 S-1913, over both repository implementations).
 
+`startOfWeekSetting()` is the saved start-of-week preference, normalized the way
+`SettingsState` normalizes it when it writes, so the weeks the service returns
+are the user's own calendar weeks.
+
+`weeklyLoads({required DateTime now})` returns one `WeeklyLoad` per completed
+calendar week, oldest first, and is the entry point the Sustained High Load rule
+reads. It is one walk of the same cached history snapshot the Mix reads use, so
+it costs no extra repository read.
+
+- **A week's load is the Mix layer's own figure.** Each completed session is
+  bucketed by the week of its own start and the week's load is the sum of the
+  session split's load components, so the weekly load is shared and never
+  re-derived.
+- **The weeks run from the earliest completed session's week through the week
+  before `now`'s, with empty weeks present** as zero load and no rated session.
+  The week containing `now` is never returned, whatever it holds, and an empty
+  history yields an empty list.
+- **The boundaries follow the saved start-of-week setting**, so a week here is
+  the user's own week rather than an always-Monday one.
+
+Verified by `test/sustained_high_load_service_test.dart` (`D-1702 an empty week
+between sessions is present`, `D-1703 no completed session yields an empty
+list`, `S-2401 the service returns the seventeen completed weeks`, `S-2411 the
+incomplete current week is never counted`, `S-2411 the current week holding
+nothing changes nothing`, `S-2413 the saved start-of-week moves the boundaries`,
+`S-2413 SettingsState writes the value the service reads`, `S-2414 Hive and Mock
+return identical week lists`, over both repository implementations).
+
 `interferenceSessions()` returns one `InterferenceSession` per completed session
 in the cached history, ordered by start and then by id — the signal layer's only
 read. Each carries the session's rating, its Sports load in load minutes,

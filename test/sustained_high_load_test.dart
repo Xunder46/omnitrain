@@ -5,8 +5,10 @@
 // S-2402…S-2409 of
 // `docs/plans/2026-10-04-09a-stats-pr9a-sustained-high-load-plan/2026-10-04-09a-stats-pr9a-sustained-high-load-plan.md`.
 
+import 'package:omnitrain/core/models/signals.dart';
 import 'package:omnitrain/core/models/sustained_high_load.dart';
 import 'package:omnitrain/core/models/training_load.dart';
+import 'package:omnitrain/core/services/signals/signal_registry.dart';
 import 'package:test/test.dart';
 
 /// The weeks of [loads], oldest first, each starting seven calendar days after
@@ -258,6 +260,112 @@ void main() {
       expect(result.easierGapWeeks, isNull);
       final copy = sustainedHighLoadCopy(result);
       expect(copy.observation, isNot(contains('Earlier in your history')));
+    }
+  });
+
+  // ─── structural guards (Phase 3B) ─────────────────────────────────────────
+  //
+  // The registry's caution order and the copy's wording are the two things a
+  // later change could break without any scenario above noticing.
+
+  test('the registry lists the cautions in strictly ascending priority', () {
+    final cautions = buildSignalRegistry()
+        .where((signal) => signal.kind == SignalKind.caution)
+        .toList();
+
+    for (var i = 1; i < cautions.length; i++) {
+      expect(
+        cautions[i].priority,
+        greaterThan(cautions[i - 1].priority),
+        reason:
+            '${cautions[i].id} (${cautions[i].priority}) must sit after '
+            '${cautions[i - 1].id} (${cautions[i - 1].priority})',
+      );
+    }
+  });
+
+  test('the copy is the exact shipped wording', () {
+    final withoutFact = sustainedHighLoadCopy(
+      sustainedHighLoad(
+        weeks: _weeks([..._baseline2400, ..._repeat(230, 5)]),
+        mixShowsLoad: true,
+      )!,
+    );
+    expect(
+      withoutFact.observation,
+      "You've had 5 consecutive weeks above your usual training load, with no "
+      'easier week.',
+    );
+    expect(withoutFact.suggestion, 'An easier week is one option.');
+
+    final withFact = sustainedHighLoadCopy(
+      sustainedHighLoad(
+        weeks: _weeks([
+          200,
+          250,
+          250,
+          200,
+          250,
+          250,
+          250,
+          250,
+          200,
+          250,
+          250,
+          200,
+          ..._repeat(250, 12),
+          ..._repeat(280, 5),
+        ]),
+        mixShowsLoad: true,
+      )!,
+    );
+    expect(
+      withFact.observation,
+      "You've had 5 consecutive weeks above your usual training load, with no "
+      'easier week. Earlier in your history, you usually had an easier week '
+      'every 3 weeks.',
+    );
+    expect(withFact.suggestion, 'An easier week is one option.');
+  });
+
+  test('the copy carries no amount, no percentage and no causal word', () {
+    const units = ['%', 'min', 'kg', 'lb', 'kcal'];
+    const causal = ['fatigue', 'because', 'due to', 'cause'];
+
+    final results = [
+      sustainedHighLoad(
+        weeks: _weeks([..._baseline2400, ..._repeat(230, 5)]),
+        mixShowsLoad: true,
+      )!,
+      sustainedHighLoad(
+        weeks: _weeks([
+          200,
+          250,
+          250,
+          200,
+          250,
+          250,
+          250,
+          250,
+          200,
+          250,
+          250,
+          200,
+          ..._repeat(250, 12),
+          ..._repeat(280, 5),
+        ]),
+        mixShowsLoad: true,
+      )!,
+    ];
+
+    for (final result in results) {
+      final copy = sustainedHighLoadCopy(result);
+      for (final text in [copy.observation, copy.suggestion]) {
+        final lower = text.toLowerCase();
+        for (final token in [...units, ...causal]) {
+          expect(lower, isNot(contains(token)), reason: 'in "$text"');
+        }
+      }
     }
   });
 }

@@ -145,7 +145,7 @@ deliberately replaces that, limited to these signal rules, rather than leaving
 it as a gap. Verified by `test/signals_layer_screen_test.dart` (`S-1716`) and
 `test/stats_legacy_removal_test.dart` (`S-1210`, no chart primitive).
 
-**The registered signals.** `buildSignalRegistry()` lists five. The first is the
+**The registered signals.** `buildSignalRegistry()` lists six. The first is the
 Progression Rate: it compares each exercise's own metric across two adjacent
 windows and proposes a positive card only when the recent window improves on the
 prior one. Its rules — the two windows, what a sample is, the zero fallback, the
@@ -210,6 +210,20 @@ one tap removes the card in the tap frame, the store holds the id, and the next
 open is still quiet`, `S-2207 with no bodyweight drops the g/kg figure and
 renders no second line at all`) and, for the definition itself,
 `test/protein_consistency_test.dart`.
+
+The sixth is the Sustained High Load: it reports that the user's completed weeks
+ran above their usual load with no easier week in the run, and proposes a caution
+card. Its rules — the weeks, the twelve-week baseline, the rated-history floor,
+the higher-load line, the streak, the measure gate, the history fact, the copy
+and the priority — live in [Signals](signals.md#registered-signals) and are not
+restated here. The card's copy is built by `sustainedHighLoadCopy`
+(`lib/core/models/sustained_high_load.dart`) so that the copy and the fire test
+cannot disagree. Verified by `test/sustained_high_load_signal_screen_test.dart`
+(`S-2412 the card on the layer` › `the caution card shows with S-2401's copy, the
+caution label and its key, below the Mix layer`, `S-2412 the card is dismissible`
+› `one tap removes the card in the tap frame, the store holds the id, and the
+next open is still quiet`) and, for the definition itself,
+`test/sustained_high_load_test.dart`.
 
 ### ALL TIME card
 
