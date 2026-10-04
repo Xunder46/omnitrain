@@ -655,6 +655,7 @@ Nothing in `lib/data/`, `scripts/`, `watch/` or `lib/features/`. No file 8a crea
 | O-6 | D-1514 — the per-kilogram figure is appended in parentheses immediately after the `X g/day` figure, in both comparison modes | Owner | Defaulted — **owner to confirm**; the pack says only "add the per-kilogram figure" |
 | O-7 | D-1511 — a bodyweight whose unit is not `unit-kg` is treated as absent | Owner | Defaulted — **owner to confirm**; both implementations store the canonical unit, so this only bites on hand-written rows |
 | O-8 | D-1515 — with no target and no bodyweight the card carries **no** suggestion rather than a generic one | Owner | **Answered** by the pack ("otherwise omit the suggestion"); confirmed by 7a's nullable-`suggestion` support |
+| O-9 | S-2215's expectation — "shows ONLY the Fuel vs Load card" — is unreachable: `resolveSignals` renders the top two cards of a kind, so both qualifying cautions render. The suite pins the reachable contract (Fuel vs Load above Protein Consistency; dismissing Fuel leaves Protein) rather than editing a frozen framework file. The scenario text needs correcting | Conductor | **Finding**, implemented as described; **owner/Conductor to confirm** the scenario text is restated as "both cautions render, in priority order" |
 
 ## Progress
 
@@ -663,7 +664,8 @@ Nothing in `lib/data/`, `scripts/`, `watch/` or `lib/features/`. No file 8a crea
 | Plan lines re-measured | not started | this file, read back after Phase 3 |
 | Phase 1 | **Complete** | `.evidence.md` → Phase 1: red `+0 -1` (compile failure), green `+14`, four mutation pairs each red then restored green, full suite `+3692 ~1: All tests passed!`, `flutter analyze` `196 issues found.` (0 errors) |
 | Phase 2 | **Complete** | `.evidence.md` → Phase 2: red `+0 -1` (compile failure), green `+21`, neighbours `+112`, one mutation pair red on both factories then restored green, S-2214 parity identical on both factories, full suite `02:00 +3713 ~1: All tests passed!`, `flutter analyze` `196 issues found.` (0 errors, none in the files this phase touched) |
-| Phase 3 | not started | — |
+| Phase 3 (steps 1–6) | **Complete** | `.evidence.md` → Phase 3: two-stage red (`+0 -1` compile failure, then `+3 -6` with the adapter present and no registry line), green `+16` on Mock+Hive, both registry guards re-applied (`+2`) with 1-line and 1-word diffs, the 11-file surface/framework set `+261`, mutation (f) red on S-2211 (`Expected: <false> Actual: <true>`) then restored byte-for-byte and green, full suite `01:50 +3729 ~1: All tests passed!` (exactly `+16` over Phase 2), `flutter analyze` `196 issues found.` (0 errors, none in the files this phase touched) |
+| Phase 3 (steps 7–9: structural guards, residue sweep, docs) | **Complete** | `.evidence.md` → Phase 3 — steps 7–9: guards (a) and (d) confirmed present, (b) and (c) added and each made to fail by a mutation ((g) a written `2 weeks` literal, (h) a `context.repository` read in the adapter) then restored green; residue sweep covers all terms and finds nothing outside the 16-file footprint; `docs/signals.md`, `docs/stats_screen.md` and `docs/nutrition.md` updated (the plan's three-caution list and S-2215's "only the Fuel vs Load card" corrected, not implemented); Done-Criteria suites `+161`, full suite `01:44 +3731 ~1: All tests passed!` (exactly the two new guards over Phase 3 steps 1–6's `+3729`), `flutter analyze` `196 issues found.` whole-tree and `No issues found!` on the touched paths |
 
 ## Assumption Log
 
@@ -705,6 +707,36 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
 - **A-9 (Phase 2, step 2) —** The three reads are named `proteinTargetsByDay`,
   `resistanceSessionCount` and `latestBodyWeightKg` (the plan's suggested names). `proteinTargetsByDay`
   walks local calendar days via `DateTime(y, m, d + 1)`, not `Duration`, so a DST day is still one day.
+- **A-10 (Phase 3, step 3) —** The plan's step 3 text prints the registry list with
+  `ProteinConsistencySignal()` last and the brief puts it first. Options: follow the plan's literal text,
+  or the priority order. The brief wins — the list is the ascending-priority list the guard loops over,
+  and Protein Consistency is priority 200, below Fuel vs Load's 300, so it goes first. Step 4's text is
+  stale the same way: it lists the cautions as `modality-mix-shift, cross-modality-interference,
+  fuel-vs-load, protein-consistency`, which is neither the shipped order nor ascending. The guards were
+  edited against the shipped order: `protein-consistency, fuel-vs-load, modality-mix-shift,
+  cross-modality-interference`.
+- **A-11 (Phase 3, step 1) —** S-2215's stated expectation ("shows ONLY the Fuel vs Load card") is
+  unreachable: `resolveSignals` renders the top `kSignalMaxCards = 2` of a single kind, so two qualifying
+  cautions both render. Options: edit the frozen framework (forbidden by D-1518 and the brief), or pin the
+  reachable contract. The screen suite pins the reachable contract — Fuel vs Load (300) above Protein
+  Consistency (200), and dismissing Fuel vs Load leaves the Protein Consistency card with S-2201's copy.
+  The framework behaviour is already pinned by `test/signals_layer_screen_test.dart` and `docs/signals.md`
+  D-1004. The plan's S-2215 text is a plan defect, not an implementation gap; see Open items.
+- **A-12 (Phase 3, step 1) —** Two red runs, not one. The first is the file failing to compile (no
+  adapter); the second is the six card-present scenarios finding no card (adapter present, no registry
+  line). Both are recorded. The second is the stronger one: it proves the adapter's reads and copy are
+  exercised by the three scenarios that pass without a registry line, so the registry line is the only
+  thing those six were waiting on.
+- **A-13 (Phase 3, step 9) —** Two counts in the plan's step 9 text were wrong and were corrected in the
+  docs instead of copied: the caution list is **four** signals (the doc said three), and the shipped
+  target screen is calories-only (F-1), so Protein Consistency always compares against the user's own
+  usual level. The F-1 sentence is pinned by `test/nutrition_test.dart`'s
+  `NutritionTargetScreen — calories only (D-3 / S-040)`, which is the test that proves the target is zero.
+- **A-14 (Phase 3, step 8) —** The gateway exposes no search verb, so the residue sweep could not be a
+  grep. It was derived from the exhaustive footprint (`git-diff 73afe76 --name-status` → 16 files, plus
+  the two untracked files `git diff` cannot show) and from reading each edited file's patch; every hit
+  lands inside the footprint. Byte sizes are likewise unobservable, so the 64 KiB contract is evidenced
+  by `test/docs_indexing_contract_test.dart` (`+9`) instead of by numbers.
 
 ## Feedback
 

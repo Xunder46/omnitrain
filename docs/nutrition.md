@@ -318,11 +318,15 @@ forward.** The service reads one value per local calendar day through the
 repository's existing per-day lookup, which returns the target stored for that
 day or the most recent earlier one, so a target saved once applies to every later
 day until it is changed; a day before any stored target has none, and no day is
-ever zero-filled. The shipped target screen writes `protein: 0.0` on every save
-(F-1), so a rolled-forward protein figure only arises from a target stored
-directly through the repository rather than from the screen. Verified by
+ever zero-filled. The shipped target screen is calories-only and writes a
+protein target of zero on every save, so a rolled-forward protein figure only
+arises from a target stored directly through the repository rather than from the
+screen, and in the shipped app the Protein Consistency card always compares with
+the user's own usual level rather than with a target. Verified by
 `test/protein_consistency_service_test.dart` (`proteinTargetsByDay inherits the
-last stored target forward`, `a day before any stored target is absent`).
+last stored target forward`, `a day before any stored target is absent`) and, for
+the screen, `test/nutrition_test.dart` (`NutritionTargetScreen — calories only
+(D-3 / S-040) save builds a macros-0 target (D-3)`).
 
 **The own baseline is pooled over logged days, never over the window.** The
 baseline is the eight 7-day blocks abutting the window, and only blocks with at

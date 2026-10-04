@@ -145,7 +145,7 @@ deliberately replaces that, limited to these signal rules, rather than leaving
 it as a gap. Verified by `test/signals_layer_screen_test.dart` (`S-1716`) and
 `test/stats_legacy_removal_test.dart` (`S-1210`, no chart primitive).
 
-**The registered signals.** `buildSignalRegistry()` lists four. The first is the
+**The registered signals.** `buildSignalRegistry()` lists five. The first is the
 Progression Rate: it compares each exercise's own metric across two adjacent
 windows and proposes a positive card only when the recent window improves on the
 prior one. Its rules — the two windows, what a sample is, the zero fallback, the
@@ -193,6 +193,23 @@ restated here. The card's copy is built by `fuelVsLoadCopy`
 disagree. Verified by `test/fuel_vs_load_signal_screen_test.dart` (`S-2113` the
 card on the layer and its dismissal, and the abstention when the repository
 holds no food) and, for the definition itself, `test/fuel_vs_load_test.dart`.
+
+The fifth is the Protein Consistency: it reports that the user's protein has
+averaged short of the level they usually manage, or short of their own daily
+target, over its own `kProteinConsistencyWindowDays`-day window, and proposes a
+caution card. Its rules — the window, the logged-days and resistance gates, the
+two comparison modes, the per-day target mean, the baseline's consistent weeks,
+the threshold, the copy and the priority — live in
+[Signals](signals.md#registered-signals) and are not restated here. The card's
+copy is built by `proteinConsistencyCopy`
+(`lib/core/models/protein_consistency.dart`) so that the copy and the fire test
+cannot disagree. Verified by `test/protein_consistency_signal_screen_test.dart`
+(`S-2216 the card on the layer the caution card shows with S-2201's copy, the
+caution label and its key, below the Mix layer`, `S-2216 the card is dismissible
+one tap removes the card in the tap frame, the store holds the id, and the next
+open is still quiet`, `S-2207 with no bodyweight drops the g/kg figure and
+renders no second line at all`) and, for the definition itself,
+`test/protein_consistency_test.dart`.
 
 ### ALL TIME card
 

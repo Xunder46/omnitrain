@@ -6,8 +6,9 @@ registered signals' definitions and adapters:
 `lib/core/services/signals/signal_registry.dart`,
 `lib/core/services/signals_service.dart`, the signal definitions
 `lib/core/models/progression_rate.dart`,
-`lib/core/models/modality_mix_shift.dart`, `lib/core/models/interference.dart`
-and `lib/core/models/fuel_vs_load.dart`, and the adapters under
+`lib/core/models/modality_mix_shift.dart`, `lib/core/models/interference.dart`,
+`lib/core/models/fuel_vs_load.dart` and
+`lib/core/models/protein_consistency.dart`, and the adapters under
 `lib/core/services/signals/`. It does not cover the Stats screen or
 any widget that draws a signal; that surface belongs to
 [Stats Screen](stats_screen.md).
@@ -66,10 +67,10 @@ Stats body a signal can displace.
 
 **The caution order.** Within a kind, a signal's place in the order is carried
 by its own `k…Priority` constant rather than by the selection rule, so the order
-is a property of the signals. Three cautions are registered today, in ascending
-priority: Fuel vs Load (`kFuelVsLoadPriority`), Modality Mix Shift
-(`kModalityMixShiftPriority`) and Cross-Modality Interference
-(`kCrossModalityInterferencePriority`). The registered positive is Progression
+is a property of the signals. Four cautions are registered today, in ascending
+priority: Protein Consistency (`kProteinConsistencyPriority`), Fuel vs Load
+(`kFuelVsLoadPriority`), Modality Mix Shift (`kModalityMixShiftPriority`) and
+Cross-Modality Interference (`kCrossModalityInterferencePriority`). The registered positive is Progression
 Rate, whose priority is `kProgressionRatePriority`. Verified by
 `test/interference_test.dart` (`the caution order holds and the registry is
 ordered by it`), which asserts the registry lists the cautions in ascending
@@ -408,6 +409,122 @@ the figures to the rule, so it walks no history of its own and calls no
 personal-record API. Verified by `test/fuel_vs_load_test.dart` (`the adapter
 walks no history and calls no PR API`).
 
+`proteinConsistency({required now, required recentDays, required proteinTargets,
+required resistanceSessions, required baselineDays, bodyWeightKg})` in
+`lib/core/models/protein_consistency.dart` is the Protein Consistency signal's
+definition, and `ProteinConsistencySignal` in
+`lib/core/services/signals/protein_consistency_signal.dart` is its adapter. The
+signal reports that the user's protein has averaged short of the level they
+usually manage, or short of their own daily target.
+
+- **The window.** The window is the `kProteinConsistencyWindowDays` local
+  calendar days ending with `now`'s local day, built from calendar components
+  rather than a `Duration` so a daylight-saving transition cannot shift a
+  boundary, and a logged day outside it is dropped rather than folded in. A day
+  with nothing logged is absent from the window, never a zero. Verified by
+  `test/protein_consistency_test.dart` (`S-2203 9 of 14 logged days shows
+  nothing`).
+- **The logged-days gate.** The card needs at least
+  `kProteinConsistencyMinLoggedDays` logged days in the window, inclusive, and
+  both the average and the comparison are over those logged days — never over
+  the window length. Verified by `test/protein_consistency_test.dart`
+  (`S-2203 9 of 14 logged days shows nothing`, `S-2204 exactly 10 of 14 logged
+  days fires`).
+- **The resistance gate.** The card needs at least
+  `kProteinConsistencyMinResistanceSessions` completed sessions in the window
+  holding a resistance effort, inclusive. The adapter counts them, so the rule
+  is handed a count and classifies no effort itself. Verified by
+  `test/protein_consistency_test.dart` (`S-2209 the resistance gate`) and
+  `test/protein_consistency_service_test.dart` (`only completed resistance
+  sessions in the range are counted`, `a session with only timed efforts is not
+  counted`).
+- **Two comparison modes, and no third.** Target mode is selected when every
+  logged day in the window carries a positive stored target; a single logged day
+  whose stored target is zero or missing selects the own baseline instead. In
+  target mode the comparison is the mean of the window's own per-day targets, so
+  a target changed mid-window is averaged rather than replaced by the latest
+  one, and the per-day target is the stored one rolled forward from the most
+  recent earlier save. Verified by `test/protein_consistency_test.dart`
+  (`S-2210 a target changed mid-window is read per day and averaged`, `S-2211 a
+  mixed window falls back to the own baseline`) and
+  `test/protein_consistency_service_test.dart` (`proteinTargetsByDay inherits
+  the last stored target forward`, `a day before any stored target is absent`).
+- **The own baseline.** The baseline is the `kProteinConsistencyBaselineWeeks`
+  7-day blocks abutting the window — the last of them ends the day before the
+  window's first day, so the two neither gap nor overlap. Only blocks with at
+  least `kConsistentWeekMinLoggedDays` logged days contribute, and their logged
+  days are pooled into one mean, so the divisor is the logged days and never the
+  block count or the window length. The card needs at least
+  `kProteinConsistencyMinBaselineWeeks` consistent blocks, and the baseline is
+  never widened to reach that floor. Verified by
+  `test/protein_consistency_test.dart` (`S-2205 the own baseline pools
+  consistent weeks and divides by logged days`, `S-2212 fewer than two
+  consistent baseline weeks shows nothing`).
+- **The shortfall test.** The card needs the average at least
+  `kProteinConsistencyShortfallPercent` below the comparison, compared as an
+  exact fraction on the totals — and on the logged-day counts as well in the
+  baseline mode — rather than on the rounded percentage, so the boundary is
+  inclusive. Protein above the comparison never produces a card: the rule is
+  one-directional. Verified by `test/protein_consistency_test.dart` (`S-2201 the
+  pack row fires with the target comparison`, `S-2202 13% under shows nothing`,
+  `S-2205 the own baseline pools consistent weeks and divides by logged days`).
+- **The per-kilogram figure.** With a bodyweight on file the card carries the
+  average per kilogram of the latest measurement, to one decimal; with none it
+  carries no such figure. Verified by `test/protein_consistency_test.dart`
+  (`S-2206 no target with a bodyweight on file shows the per-kilogram figure`,
+  `S-2207 no target and no bodyweight carries no suggestion`) and
+  `test/protein_consistency_service_test.dart` (`the latest bodyweight is the
+  newest by recordedAtMs`, `no measurement on file yields null`).
+- **Kind and priority.** The kind is caution; the priority is
+  `kProteinConsistencyPriority`, the lowest of the caution order, so the card
+  ranks below Fuel vs Load. Verified by `test/protein_consistency_test.dart`
+  (`the constant contracts`) and
+  `test/modality_mix_shift_signal_screen_test.dart` (`the registry lists exactly
+  the five shipped signals, in order`).
+- **Copy.** `proteinConsistencyCopy` builds the observation from the average and
+  a span derived from `kProteinConsistencyWindowDays` — never written as a
+  literal — and, in target mode, the whole-percent shortfall and the target; the
+  own-baseline observation names the usual level and carries no percentage. Two
+  suggestions exist: `'Bringing protein back toward your target is one option.'`
+  in target mode, and the `kProteinGuidancePerKg` guidance sentence when the
+  card compares with the usual level and a bodyweight is on file. A card with
+  neither a target nor a bodyweight carries no suggestion at all, so it renders
+  no second line. Verified by `test/protein_consistency_test.dart` (`S-2206 no
+  target with a bodyweight on file shows the per-kilogram figure`, `S-2207 no
+  target and no bodyweight carries no suggestion`, `S-2208 a target suppresses
+  the reference`, `the span and the reference are derived, not written`) and
+  `test/protein_consistency_signal_screen_test.dart` (`S-2206 the own-baseline
+  card names the usual level and the per-kilogram figure, and carries the
+  reference suggestion`, `S-2207 with no bodyweight drops the g/kg figure and
+  renders no second line at all`).
+
+A caution does not exclude another of its kind: when this signal and Fuel vs
+Load both qualify and no positive qualifies, both cards render — the top
+`kSignalMaxCards` of the surviving kind, per [Selection and the card
+cap](#selection-and-the-card-cap) — with Fuel vs Load above the protein card.
+Verified by `test/protein_consistency_signal_screen_test.dart` (`S-2215 two
+cautions qualifying renders the higher-priority caution above the protein card`,
+`S-2215 two cautions qualifying dismissing Fuel vs Load leaves the protein card
+on the layer`).
+
+In the shipped app this signal always compares with the user's own usual level:
+the daily target screen is calories-only and saves a protein target of zero, so
+target mode is unreachable outside a target stored through the repository
+directly (see [Nutrition](nutrition.md)). Verified by
+`test/nutrition_test.dart` (`NutritionTargetScreen — calories only (D-3 / S-040)
+save builds a macros-0 target (D-3)`).
+
+The definition reads no clock, no repository and no service — `now` and the
+figures are arguments. The adapter derives its window and the
+`kProteinConsistencyBaselineWeeks` blocks before it from `context.now`, asks
+`StatsProgressService` for one `nutritionSeries` read spanning both,
+`proteinTargetsByDay`, `resistanceSessionCount` and `latestBodyWeightKg`, and
+hands the figures to the rule, so it walks no history of its own and calls no
+personal-record API. Verified by `test/protein_consistency_test.dart` (`the
+adapter walks no history and calls no PR API`) and
+`test/protein_consistency_service_test.dart` (`S-2214 Mock and Hive give the
+same figures for all four reads`).
+
 ## One evaluation per load
 
 A Stats load builds one `StatsProgressService` and one `SignalsService` over it.
@@ -422,6 +539,8 @@ the evaluated candidates`, which counts the evaluations).
 
 - [Stats Screen](stats_screen.md) — the surface that renders a signal
 - [Training Load & Mix](training_load.md) — `MixLayerData`, the gate's input
+- [Nutrition](nutrition.md) — the food log, the daily target and the
+  consistency foundation the nutrition signals read
 - [Data Models](data_models.md) — where the Signals value types sit
 - [State Management & Services](state_management/services_and_utils.md) —
   `SignalsService` alongside the other services

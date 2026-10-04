@@ -499,4 +499,90 @@ void main() {
     expect(source, isNot(contains('kcal')));
     expect(source, isNot(contains('1.6')));
   });
+
+  test('the span and the reference are derived, not written', () {
+    // The 2-week span comes from `kProteinConsistencyWindowDays ~/ 7` and the
+    // reference from `kProteinGuidancePerKg` (D-1516). A `2 weeks` or `1.6`
+    // literal is a second definition of the same figure and would keep
+    // rendering after the constant moved.
+    final source = _strippedSource('lib/core/models/protein_consistency.dart');
+    expect(
+      source,
+      isNot(contains('2 weeks')),
+      reason: 'the span must be derived from kProteinConsistencyWindowDays, '
+          'not written as a literal',
+    );
+    expect(
+      source,
+      isNot(contains('1.6')),
+      reason: 'the reference must interpolate kProteinGuidancePerKg, not a '
+          'decimal literal',
+    );
+
+    final targetCard = _rule(
+      anchor: anchor,
+      proteinTargets: _targets(anchor: anchor),
+    )!;
+    expect(
+      proteinConsistencyCopy(targetCard).observation,
+      contains('over the last 2 weeks'),
+    );
+
+    final ownCard = _rule(
+      anchor: anchor,
+      recentDays: _rows(anchor: anchor, protein: 118),
+      baselineDays: _usualBaseline(anchor: anchor),
+      bodyWeightKg: 70,
+    )!;
+    expect(
+      proteinConsistencyCopy(ownCard).suggestion,
+      contains('1.6 g/kg'),
+    );
+  });
+
+  test('the adapter walks no history and calls no PR API', () {
+    // The signal is a thin adapter: it asks `StatsProgressService` for the
+    // window's series, the per-day targets, the resistance count and the
+    // bodyweight, and hands them to the rule (D-1519). A repository read, a
+    // window-scoped walk or a personal-record call would be a second source of
+    // the figures. The banned set is 7b's own (see `test/interference_test.dart`,
+    // `the adapter walks no history and calls no PR API`).
+    const forbidden = <String>[
+      'context.repository',
+      'computeMixLayer',
+      'computeMixPeriod',
+      'computeTotals',
+      'computeProgressData',
+      'getAllSessions',
+      'getSessionsByDateRange',
+      'getSegmentsBySession',
+      'getEffortsBySegment',
+      'personalRecord',
+      'PersonalRecord',
+      'estimatedOneRepMax',
+    ];
+    final source = _strippedSource(
+      'lib/core/services/signals/protein_consistency_signal.dart',
+    );
+    for (final identifier in forbidden) {
+      expect(
+        source.contains(identifier),
+        isFalse,
+        reason: 'the adapter must not walk history itself ("$identifier"); it '
+            'calls the four service reads and nothing else (D-1519)',
+      );
+    }
+    for (final read in const [
+      'nutritionSeries',
+      'proteinTargetsByDay',
+      'resistanceSessionCount',
+      'latestBodyWeightKg',
+    ]) {
+      expect(
+        source.contains(read),
+        isTrue,
+        reason: 'the adapter must read "$read" from the service (D-1519)',
+      );
+    }
+  });
 }
