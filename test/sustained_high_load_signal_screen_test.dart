@@ -36,6 +36,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/models/signals.dart';
 import 'package:omnitrain/core/models/sustained_high_load.dart';
 import 'package:omnitrain/core/models/training_load.dart';
+import 'package:omnitrain/core/services/signals/protein_consistency_signal.dart';
+import 'package:omnitrain/core/services/signals/signal.dart';
+import 'package:omnitrain/core/services/signals/sustained_high_load_signal.dart';
 import 'package:omnitrain/core/services/stats_progress_service.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -475,6 +478,7 @@ void main() {
       Future<void> pumpStats(
         WidgetTester tester, {
         Size size = _kTallViewport,
+        List<Signal>? signals = const [SustainedHighLoadSignal()],
       }) async {
         await tester.binding.setSurfaceSize(size);
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -483,6 +487,7 @@ void main() {
             home: StatsScreen(
               workoutState: workoutState,
               settingsState: settingsState,
+              signals: signals,
             ),
           ),
         );
@@ -490,9 +495,12 @@ void main() {
       }
 
       /// Rebuilds the screen from scratch, so a second load really happens.
-      Future<void> reopen(WidgetTester tester) async {
+      Future<void> reopen(
+        WidgetTester tester, {
+        List<Signal>? signals = const [SustainedHighLoadSignal()],
+      }) async {
         await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-        await pumpStats(tester);
+        await pumpStats(tester, signals: signals);
       }
 
       /// Gives a repository write started inside a test body a real event-loop
@@ -513,7 +521,10 @@ void main() {
 
         testWidgets('the caution card shows with S-2401\'s copy, the caution '
             'label and its key, below the Mix layer', (tester) async {
-          await pumpStats(tester);
+          await pumpStats(
+            tester,
+            signals: const [SustainedHighLoadSignal(), ProteinConsistencySignal()],
+          );
 
           expect(find.byKey(const Key(_kCardKey)), findsOneWidget);
           expect(find.text(_kCautionLabel), findsOneWidget);
@@ -562,7 +573,10 @@ void main() {
 
         testWidgets('renders the higher-priority caution above the Sustained '
             'High Load card', (tester) async {
-          await pumpStats(tester);
+          await pumpStats(
+            tester,
+            signals: const [SustainedHighLoadSignal(), ProteinConsistencySignal()],
+          );
 
           // Both cautions qualify. The framework sorts a kind by priority
           // descending, so the layer carries Protein Consistency (200) above

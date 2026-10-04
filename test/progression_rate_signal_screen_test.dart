@@ -22,6 +22,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/models/signals.dart';
+import 'package:omnitrain/core/services/signals/progression_rate_signal.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
@@ -302,6 +303,7 @@ void main() {
             home: StatsScreen(
               workoutState: workoutState,
               settingsState: settingsState,
+              signals: const [ProgressionRateSignal()],
             ),
           ),
         );

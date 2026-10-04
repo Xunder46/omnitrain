@@ -393,6 +393,7 @@ void main() {
             home: StatsScreen(
               workoutState: workoutState,
               settingsState: settingsState,
+              signals: const [ModalityMixShiftSignal()],
             ),
           ),
         );

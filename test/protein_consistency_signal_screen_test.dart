@@ -42,6 +42,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/models/protein_consistency.dart';
 import 'package:omnitrain/core/models/signals.dart';
 import 'package:omnitrain/core/models/stats_progress.dart';
+import 'package:omnitrain/core/services/signals/fuel_vs_load_signal.dart';
 import 'package:omnitrain/core/services/signals/protein_consistency_signal.dart';
 import 'package:omnitrain/core/services/signals/signal.dart';
 import 'package:omnitrain/core/services/stats_progress_service.dart';
@@ -515,6 +516,7 @@ void main() {
       Future<void> pumpStats(
         WidgetTester tester, {
         Size size = _kTallViewport,
+        List<Signal>? signals = const [ProteinConsistencySignal()],
       }) async {
         await tester.binding.setSurfaceSize(size);
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -523,6 +525,7 @@ void main() {
             home: StatsScreen(
               workoutState: workoutState,
               settingsState: settingsState,
+              signals: signals,
             ),
           ),
         );
@@ -530,9 +533,12 @@ void main() {
       }
 
       /// Rebuilds the screen from scratch, so a second load really happens.
-      Future<void> reopen(WidgetTester tester) async {
+      Future<void> reopen(
+        WidgetTester tester, {
+        List<Signal>? signals = const [ProteinConsistencySignal()],
+      }) async {
         await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-        await pumpStats(tester);
+        await pumpStats(tester, signals: signals);
       }
 
       /// Gives a repository write started inside a test body a real
@@ -553,7 +559,10 @@ void main() {
 
         testWidgets('the caution card shows with S-2201\'s copy, the caution '
             'label and its key, below the Mix layer', (tester) async {
-          await pumpStats(tester);
+          await pumpStats(
+            tester,
+            signals: const [ProteinConsistencySignal(), FuelVsLoadSignal()],
+          );
 
           expect(find.byKey(const Key(_kCardKey)), findsOneWidget);
           expect(find.text(_kCautionLabel), findsOneWidget);
@@ -687,7 +696,10 @@ void main() {
         testWidgets(
           'renders the higher-priority caution above the protein card',
           (tester) async {
-            await pumpStats(tester);
+            await pumpStats(
+              tester,
+              signals: const [ProteinConsistencySignal(), FuelVsLoadSignal()],
+            );
 
             // Both cautions qualify. The framework renders the top
             // `kSignalMaxCards` of a single kind, so the layer carries both, Fuel
@@ -709,7 +721,10 @@ void main() {
         if (harness.name == 'Mock') {
           testWidgets('dismissing Fuel vs Load leaves the protein card on the '
               'layer', (tester) async {
-            await pumpStats(tester);
+            await pumpStats(
+              tester,
+              signals: const [ProteinConsistencySignal(), FuelVsLoadSignal()],
+            );
 
             await tester.tap(find.byKey(const Key(_kFuelDismissKey)));
             await tester.pump();
@@ -723,7 +738,10 @@ void main() {
             final store = await _readDismissals(repo);
             expect(store['fuel-vs-load'], isA<int>());
 
-            await reopen(tester);
+            await reopen(
+              tester,
+              signals: const [ProteinConsistencySignal(), FuelVsLoadSignal()],
+            );
             expect(find.byKey(const Key(_kFuelCardKey)), findsNothing);
             expect(find.byKey(const Key(_kCardKey)), findsOneWidget);
           });

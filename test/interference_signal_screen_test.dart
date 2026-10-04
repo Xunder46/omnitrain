@@ -30,6 +30,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/models/interference.dart';
 import 'package:omnitrain/core/models/signals.dart';
+import 'package:omnitrain/core/services/signals/interference_signal.dart';
 import 'package:omnitrain/core/services/stats_progress_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
@@ -371,6 +372,7 @@ void main() {
             home: StatsScreen(
               workoutState: workoutState,
               settingsState: settingsState,
+              signals: const [InterferenceSignal()],
             ),
           ),
         );
@@ -497,6 +499,7 @@ void main() {
             // (D-1010).
             await tester.pump();
             expect(find.byKey(const Key(_kCardKey)), findsNothing);
+            expect(find.byKey(const Key('signals_quiet_line')), findsOneWidget);
 
             await settleStore(tester);
             final store = await _readDismissals(repo);
@@ -504,6 +507,7 @@ void main() {
 
             await reopen(tester);
             expect(find.byKey(const Key(_kCardKey)), findsNothing);
+            expect(find.byKey(const Key('signals_quiet_line')), findsOneWidget);
           });
         });
       }

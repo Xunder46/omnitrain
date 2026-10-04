@@ -409,7 +409,11 @@ nine non-signal test files.
 | Item | Status | Evidence |
 |---|---|---|
 | Plan written | **Complete** | this file |
-| Phase 1 | not started | `.evidence.md` → baseline, per-file summaries, the three mutation pairs, the full-suite and analyze lines |
+| Phase 1 — steps run in the plan's order, seven test files edited | **Complete** | `.evidence.md` §4 (change inventory, incl. the override's neighbour imports) |
+| Phase 1 — every edited file re-run green after its edit | **Complete** | `.evidence.md` §6 — per file: interference 5, fuel_vs_load 9, progression_rate 5, modality_mix_shift 10, protein_consistency 16, sustained_high_load 13, cardio_efficiency_drift 17 |
+| Phase 1 — three mutation pairs: original copied, red observed, exact original restored, green | **Complete** | `.evidence.md` §2 (originals) and §3 (records) |
+| Phase 1 — nine non-signal files run unedited | **Complete** | `.evidence.md` §5 — one command, `+277: All tests passed!` |
+| Phase 1 — full suite, lint and git-status at baseline | **Complete** | `.evidence.md` §6 — `+3852 ~1: All tests passed!`, `196 issues found.` with 0 errors, exactly the seven test files plus this folder modified |
 
 ## Assumption Log
 
@@ -418,6 +422,29 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
 
 - **A-0 (planner) —** The brief says the plan folder "exists"; it exists and is empty. The two files are
   created, nothing else in it is touched.
+- **A-1 (developer) — the governor override is applied, so no call site passes `signals: null`.**
+  D-1904 and its table keep the real registry for the nine scenarios whose own assertions name a
+  neighbouring card. The brief overrides that: each of those scenarios now gets an explicit
+  `const [OwnSignal(), NeighbourSignal()]`. Options: keep `null` (the plan's text, and the plan's own
+  O-1 alternative), or inject the pair. Injected — the brief is binding and the pair is the
+  registry-independent form the PR exists to reach. Consequences: three neighbour imports are added
+  (`fuel_vs_load_signal.dart` → protein, `protein_consistency_signal.dart` → sustained,
+  `sustained_high_load_signal.dart` → cardio); the `List<Signal>?` parameter type is kept per D-1903
+  even though nothing now passes `null`; the two whole-registry guards are untouched.
+- **A-2 (developer) — the seven files' now-stale registry prose is left unchanged, and reported.**
+  Each of the seven carries a file-header sentence ("The card is produced by the app's real registry
+  (`buildSignalRegistry()`), which the screen falls back to when no `signals:` seam is passed …") and a
+  `pumpStats` doc comment ("Pumps the Stats screen with no `signals:` seam, so the layer evaluates the
+  app's real registry") that the override made false; the load-bearing claims ("the shipped signal, the
+  shipped walk and the shipped copy — nothing here is stubbed") stay true. Options: correct all fourteen
+  comment sites, or leave them and report. Left — the brief fixes the change inventory ("implement
+  Phase 1, exactly", "undo the extra and report") and this is the first item that falls outside it.
+  Raised as a follow-up in the handoff.
+- **A-3 (developer) — the plan's M-(b) pre-recorded original was corrected to the override's line.**
+  The plan writes it as `await pumpStats(tester, signals: null);`; under A-1 the original is the explicit
+  `signals: const [ProteinConsistencySignal(), FuelVsLoadSignal()]`. The mutation itself is unchanged —
+  the call falls back to the injected default either way — and the observed red is identical in kind to
+  the plan's prediction. Recorded in `.evidence.md` §2.
 
 ## Feedback
 
