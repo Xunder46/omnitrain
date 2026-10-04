@@ -48,16 +48,33 @@ Originals, copied before each edit:
 
 | Check | Command | Result |
 |---|---|---|
-| red run | `flutter test test/sustained_high_load_service_test.dart` | _to fill_ |
-| green | `flutter test test/sustained_high_load_service_test.dart test/training_load_test.dart test/mix_layer_service_test.dart test/modality_mix_period_service_test.dart test/stats_progress_test.dart` | _to fill_ |
-| full | `flutter test` | _to fill_ |
+| red run | `flutter test test/sustained_high_load_service_test.dart` | FAILS TO COMPILE as expected: `The method 'weeklyLoads' isn't defined for the type 'StatsProgressService'` (8 sites) and `The method 'startOfWeekSetting' isn't defined …` (6 sites). `00:00 +0 -1: Some tests failed.` |
+| green | `flutter test test/sustained_high_load_service_test.dart test/training_load_test.dart test/mix_layer_service_test.dart test/modality_mix_period_service_test.dart test/stats_progress_test.dart` | `00:07 +170: All tests passed!` (17 new + 153 existing) |
+| lint | `flutter analyze` | `196 issues found. (ran in 7.9s)` — 0 errors, identical to the baseline, no issue in `stats_progress_service.dart` or the new test file |
+| full | `flutter test` | `05:19 +3759 ~1: All tests passed!` (baseline `+3742 ~1` + the 17 added tests) |
 
 ### Mutation checks
 
+Originals, copied before each edit:
+
+- check 3 original:
+  ```
+      while (weekStart.millisecondsSinceEpoch <
+          currentWeekStart.millisecondsSinceEpoch) {
+  ```
+- check 4 original:
+  ```
+        WeeklyLoad(
+          weekStart: weekStart,
+          loadMinutes: loadByWeekStartMs[weekStartMs] ?? 0.0,
+          hasRatedSession: ratedWeekStartsMs.contains(weekStartMs),
+        ),
+  ```
+
 | # | Mutation | Test that must fail | Result |
 |---|---|---|---|
-| 3 | include the week containing `now` | S-2411 | _to fill_ |
-| 4 | drop empty weeks from the list | S-2401 service case (usual changes) | _to fill_ |
+| 3 | include the week containing `now` | S-2411 | RED: all four S-2411 cases `Expected: an object with length of <17> Actual: … has length of <18>` — `00:01 +0 -4: Some tests failed.` Restored, suite green again (`00:07 +170: All tests passed!`). |
+| 4 | drop empty weeks from the list | S-2401 service case (usual changes) | RED: `Expected: an object with length of <17> … has length of <15>` and the rule case `Expected: <5> Actual: <0>` (streak) — `00:01 +0 -4: Some tests failed.` Restored, suite green again (`00:07 +170: All tests passed!`). |
 
 ## Phase 3A — the card, the registry, the guards
 

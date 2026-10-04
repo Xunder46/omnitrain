@@ -518,22 +518,22 @@ full `flutter test` with its summary line pasted into the evidence file.
 
 ### Phase 2: the service read (@dba)
 
-1. [ ] Write `test/sustained_high_load_service_test.dart` **first**, plain `test()` (never
+1. [x] Write `test/sustained_high_load_service_test.dart` **first**, plain `test()` (never
        `testWidgets`), over `test/helpers/repository_harness.dart` with **both** `harnessFactories`
        where the assertion is store-independent: S-2401's seventeen weeks plus a strong current
        week, S-2411, S-2413 and S-2414. Run it: it must fail (the method does not exist). Record
        the red run.
-2. [ ] Add `Future<String> startOfWeekSetting()` to `lib/core/services/stats_progress_service.dart`:
+2. [x] Add `Future<String> startOfWeekSetting()` to `lib/core/services/stats_progress_service.dart`:
        read `preferred_start_of_week` through the repository preference API and normalize
        `'sunday'`/`'sun'` → `'sunday'`, everything else → `'monday'`, matching `SettingsState`.
-3. [ ] Add `Future<List<WeeklyLoad>> weeklyLoads({required DateTime now})` to the same file: reuse
+3. [x] Add `Future<List<WeeklyLoad>> weeklyLoads({required DateTime now})` to the same file: reuse
        `_loadHistory` and the existing session split; walk the completed sessions once; bucket each
        by the week of its start (`OmniDateUtils.startOfWeek`); return oldest first, from the
        earliest completed session's week to the last completed week, with empty weeks present. Do
        **not** add a second history walk and do not touch the sensor or PR paths.
-4. [ ] Green on the new suite, then on the neighbouring service suites, then the full suite; paste
+4. [x] Green on the new suite, then on the neighbouring service suites, then the full suite; paste
        all three summary lines.
-5. [ ] **Mutation check 3** (must fail if the incomplete week leaks in): make the last week's
+5. [x] **Mutation check 3** (must fail if the incomplete week leaks in): make the last week's
        boundary include the week containing `now`, run S-2411, confirm it fails, revert.
        **Mutation check 4**: drop the empty weeks from the returned list, run S-2401's service case,
        confirm the card's `usual` changes and the test fails, revert. Record both.
@@ -692,11 +692,11 @@ One line per item, filled as it lands.
 | 1 | `sustainedHighLoad` and `sustainedHighLoadCopy` | Complete — floor + gate composed; D-1712 strings exact |
 | 1 | Phase 1 suites green, evidence pasted | Complete — analyze 196 issues/0 errors; suites `+60`; full `+3742 ~1` |
 | 1 | Mutation checks 1–2 (boundary, median) | Complete — both red as predicted (`5→4`, `3→5`), both reverted, green re-run |
-| 2 | Service test written, red run recorded | not started |
-| 2 | `startOfWeekSetting()` | not started |
-| 2 | `weeklyLoads()` | not started |
-| 2 | Phase 2 suites green, evidence pasted | not started |
-| 2 | Mutation checks 3–4 (incomplete week, empty weeks) | not started |
+| 2 | Service test written, red run recorded | Complete — 17 tests over both harness factories plus a parity test; red run failed to compile (both methods absent), recorded in evidence |
+| 2 | `startOfWeekSetting()` | Complete — reads `preferred_start_of_week`, `'sunday'`/`'sun'` → Sunday, else Monday |
+| 2 | `weeklyLoads()` | Complete — one `_loadHistory` walk reusing `_sessionSplit`; oldest first, empty weeks present, `now`'s week never returned |
+| 2 | Phase 2 suites green, evidence pasted | Complete — analyze 196 issues/0 errors; suites `+170`; full `+3759 ~1` |
+| 2 | Mutation checks 3–4 (incomplete week, empty weeks) | Complete — both red as predicted (18 weeks, 15 weeks), both reverted, green re-run |
 | 3A | Screen test written, red run recorded | not started |
 | 3A | The adapter | not started |
 | 3A | The registry line, first | not started |
@@ -735,6 +735,18 @@ sub-phase. An empty log after Phase 3A or 3B is itself suspicious.
 
 4. **Every scenario number matched the plan's fixtures on the first run** — the streak, the per-candidate
    usual and the gap medians all reproduced without a disagreement to report.
+
+5. **F-9A's `firstWeekStart` is `_weekStart(5)`, not `_weekStart(13)`.** W1…W17 map to weeksAgo
+   18−k, so W13 (the first week of the second block) sits five weeks back. The test's own arithmetic
+   was wrong first; the service was correct.
+
+6. **`weeklyLoads` derives a week's load from `_sessionSplit`'s section loads summed**, the same figure
+   the Mix layer renders. A completed session with no efforts therefore counts its whole duration at
+   Resistance, so F-9A's weeks are exactly `durationMinutes × sessionFeeling` (240, 230).
+
+7. **The full suite ran once at the end, not twice.** Phase 2's Done Criteria are analyze, the five
+   neighbouring suites and the full suite; the post-mutation re-run used the five-suite command so the
+   full suite was not repeated after reverting.
 
 ## Feedback
 

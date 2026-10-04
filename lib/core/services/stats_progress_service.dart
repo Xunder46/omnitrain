@@ -540,6 +540,80 @@ class StatsProgressService {
     );
   }
 
+  /// The saved start-of-week setting, as the service reads it (D-1704).
+  ///
+  /// Reads the same `preferred_start_of_week` preference `SettingsState`
+  /// writes and normalizes it the same way — `'sunday'`/`'sun'` to Sunday,
+  /// everything else to Monday — so the weeks this service returns are the
+  /// user's own calendar weeks.
+  Future<String> startOfWeekSetting() async {
+    final saved = await _repository.getPreferenceString(
+      'preferred_start_of_week',
+      defaultValue: 'monday',
+    );
+    final normalized = saved?.toLowerCase().trim();
+    return normalized == 'sunday' || normalized == 'sun' ? 'sunday' : 'monday';
+  }
+
+  /// Every completed calendar week's load, oldest first (D-1702, D-1703).
+  ///
+  /// One walk of the cached history snapshot: each completed session is
+  /// bucketed by the week of its own start, and the week's load is the sum of
+  /// [_sessionSplit]'s load — the same figure the Mix layer renders, so the
+  /// weekly load is shared and never re-derived (D-1714). The weeks run from
+  /// the earliest completed session's week through the week before `now`'s,
+  /// with empty weeks present as `loadMinutes: 0, hasRatedSession: false`; the
+  /// week containing `now` is never returned, whatever it holds. An empty
+  /// history yields an empty list. The weeks are the user's calendar weeks, so
+  /// the saved start-of-week setting moves their boundaries (D-1704).
+  Future<List<WeeklyLoad>> weeklyLoads({required DateTime now}) async {
+    final history = await _loadHistory();
+    final startOfWeek = await startOfWeekSetting();
+
+    final loadByWeekStartMs = <int, double>{};
+    final ratedWeekStartsMs = <int>{};
+    int? earliestWeekStartMs;
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final weekStart = OmniDateUtils.startOfWeek(
+        DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+        startOfWeek: startOfWeek,
+      );
+      final weekStartMs = weekStart.millisecondsSinceEpoch;
+      final split = _sessionSplit(history, session);
+      loadByWeekStartMs[weekStartMs] =
+          (loadByWeekStartMs[weekStartMs] ?? 0.0) +
+          split.loadBySection.values.fold<double>(0, (a, b) => a + b);
+      if (session.sessionFeeling != null) ratedWeekStartsMs.add(weekStartMs);
+      if (earliestWeekStartMs == null || weekStartMs < earliestWeekStartMs) {
+        earliestWeekStartMs = weekStartMs;
+      }
+    }
+
+    if (earliestWeekStartMs == null) return const [];
+
+    final currentWeekStart = OmniDateUtils.startOfWeek(
+      now,
+      startOfWeek: startOfWeek,
+    );
+    final weeks = <WeeklyLoad>[];
+    var weekStart = DateTime.fromMillisecondsSinceEpoch(earliestWeekStartMs);
+    while (weekStart.millisecondsSinceEpoch <
+        currentWeekStart.millisecondsSinceEpoch) {
+      final weekStartMs = weekStart.millisecondsSinceEpoch;
+      weeks.add(
+        WeeklyLoad(
+          weekStart: weekStart,
+          loadMinutes: loadByWeekStartMs[weekStartMs] ?? 0.0,
+          hasRatedSession: ratedWeekStartsMs.contains(weekStartMs),
+        ),
+      );
+      weekStart = DateTime(weekStart.year, weekStart.month, weekStart.day + 7);
+    }
+    return weeks;
+  }
+
   /// One [InterferenceSession] per completed session in the cached history,
   /// ordered by start and then by id (D-1316).
   ///
