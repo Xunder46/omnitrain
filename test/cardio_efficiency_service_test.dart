@@ -149,6 +149,53 @@ Future<void> _seedInstanceHeartRate(
   );
 }
 
+/// The eligibility table's fixture: one completed session holding one `timed`
+/// effort with a single finished 480 s instance, a [metres] distance stored
+/// with [source] and — when [heartRateBpm] is not null — an instance-scope
+/// summary carrying it.
+Future<void> _seedOneEffort(
+  WorkoutRepository repo, {
+  required double metres,
+  String? source,
+  double? heartRateBpm,
+}) async {
+  await seedExercise(
+    repo,
+    id: 'ex-run',
+    name: 'Treadmill Run',
+    capabilities: ['time', 'distance'],
+  );
+  await _seedSession(repo, id: 's-one', start: _day(3));
+  await _seedTimedEffort(
+    repo,
+    segmentId: 'seg-s-one',
+    effortId: 'e-one',
+    exerciseId: 'ex-run',
+  );
+  await _seedInstance(
+    repo,
+    effortId: 'e-one',
+    entryIndex: 0,
+    start: _day(3),
+    durationSecs: 480,
+  );
+  await _seedDistance(
+    repo,
+    effortId: 'e-one',
+    entryIndex: 0,
+    metres: metres,
+    source: source,
+  );
+  if (heartRateBpm != null) {
+    await _seedInstanceHeartRate(
+      repo,
+      sessionId: 's-one',
+      instanceId: 'ti-e-one-0',
+      avgHeartRateBpm: heartRateBpm,
+    );
+  }
+}
+
 /// S-2501's fixture: one exercise (`Treadmill Run`) with four recent efforts at
 /// 480 s and 2790 m and four reference efforts at 480 s and 3000 m, each with
 /// an average heart rate of 150. The recent efforts start 3, 6, 9 and 12 days
@@ -260,6 +307,50 @@ void main() {
 
       setUp(() async => repo = await harness.open());
       tearDown(() async => await harness.close());
+
+      group('the eligibility table', () {
+        // D-1802: only the watch's own estimate is excluded. Every other
+        // stored source — `'gps'`, `'entered'`, and a row stored with no
+        // source at all — is eligible, and any of them stops being eligible
+        // the moment the instance carries no average heart rate.
+        const rows = <({String label, String? source, bool eligible})>[
+          (label: 'gps', source: EffortObservation.sourceGps, eligible: true),
+          (
+            label: 'entered',
+            source: EffortObservation.sourceEntered,
+            eligible: true,
+          ),
+          (
+            label: 'estimated',
+            source: EffortObservation.sourceEstimated,
+            eligible: false,
+          ),
+          (label: 'no source', source: null, eligible: true),
+        ];
+
+        for (final row in rows) {
+          test('a ${row.label} distance with a heart rate', () async {
+            await _seedOneEffort(
+              repo,
+              metres: 3000,
+              source: row.source,
+              heartRateBpm: 150,
+            );
+
+            final efforts = await _read(repo);
+
+            expect(efforts, hasLength(row.eligible ? 1 : 0));
+          });
+
+          test('a ${row.label} distance with no heart rate', () async {
+            await _seedOneEffort(repo, metres: 3000, source: row.source);
+
+            final efforts = await _read(repo);
+
+            expect(efforts, isEmpty);
+          });
+        }
+      });
 
       test('S-2504 an estimated indoor distance is never eligible', () async {
         await _seedS2501(repo, recentSource: EffortObservation.sourceEstimated);

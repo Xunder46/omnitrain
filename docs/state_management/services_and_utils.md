@@ -455,6 +455,34 @@ bodyweight is the newest by recordedAtMs`, `no measurement on file yields null`,
 `a non-kg measurement yields null`, `S-2214 Mock and Hive give the same figures
 for all four reads`).
 
+`cardioEfforts({required DateTime fromMs, required DateTime toMs})` returns one
+`CardioEffort` per eligible cardio effort whose instance started in the range,
+ordered by start and then by instance id, and is the entry point the Cardio
+Efficiency Drift rule reads. It is one walk of the same cached history snapshot
+the other reads use, so it costs no extra repository read.
+
+- **Eligibility is the service's, the span is the caller's.** An effort is
+  eligible when its session is completed, its effort kind is `timed`, its
+  instance is finished with a measured duration above zero, its paired distance
+  is above zero and its stored source is not the watch's estimate, and its own
+  instance-scope sensor summary carries an average heart rate above zero. The
+  method applies no window decision of its own beyond the span it is given, so
+  the rule owns the boundaries.
+- **The distance pairing is the shipped one.** Distances pair with instances
+  through `DistancePairing.forEntries`, the same pairing the Stats pace uses —
+  never a second pairing — and the heart rate comes from the shipped
+  `timed_instance` sensor summary, never a second sensor index.
+- **A row with no stored source is eligible**; only the watch's own estimate is
+  excluded, so an effort becomes eligible when a correction changes its stored
+  source.
+
+Verified by `test/cardio_efficiency_service_test.dart` (`Mock — cardioEfforts` ›
+`the eligibility table` › `a estimated distance with a heart rate`, `S-2504 a
+correction to entered makes the effort eligible`, `S-2504 a gps row and a row
+with no source stay eligible`, `S-2505 no instance summary is never eligible`,
+`S-2508 the span is the caller's, ordered by start`, `S-2512 Hive and Mock
+return identical eligible efforts`).
+
 ---
 
 ### `SignalsService`

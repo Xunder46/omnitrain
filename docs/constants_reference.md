@@ -417,6 +417,32 @@ boundary scenarios S-2402–S-2409).
 
 ---
 
+## Cardio Efficiency Drift Constants
+
+**File**: `lib/core/models/cardio_efficiency_drift.dart`
+
+The two windows, the duration tolerance, the per-window floor, the drift line,
+the lifting line and the priority behind the Cardio Efficiency Drift rule. Named
+here so a reader can find the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kCardioEfficiencyDriftPriority` | The signal's priority |
+| `kCardioEfficiencyRecentDays` | The span of the recent window the rule reads |
+| `kCardioEfficiencyReferenceWeeksFrom` | The far edge of the reference window, in weeks before today |
+| `kCardioEfficiencyReferenceWeeksTo` | The near edge of the reference window, in weeks before today |
+| `kCardioEfficiencyDurationTolerancePercent` | How far a duration may sit from its group's anchor and still be compared; the boundary is inclusive |
+| `kCardioEfficiencyMinEffortsPerWindow` | The smallest number of comparable efforts each window needs; the boundary is inclusive |
+| `kCardioEfficiencyDriftPercent` | The efficiency drop the card needs; the boundary is inclusive |
+| `kCardioEfficiencyLiftLoadRisePercent` | The lifting-load rise the second sentence needs; the boundary is inclusive |
+| `kCardioEfficiencyLiftLoadWindowDays` | The span of the period the lifting comparison reads |
+| `kTrainingLoadBaselineWeeks` | How many weeks the lifting comparison's baseline pools — shared with the Mix baseline (see Training Load Constants) |
+
+Verified by `test/cardio_efficiency_drift_test.dart` (the constant contracts and
+the boundary scenarios S-2502, S-2503, S-2506, S-2508 and S-2509).
+
+---
+
 ## Home Tile Configuration
 
 **File**: `lib/core/constants/home_tiles.dart`

@@ -67,22 +67,26 @@ Stats body a signal can displace.
 
 **The caution order.** Within a kind, a signal's place in the order is carried
 by its own `k…Priority` constant rather than by the selection rule, so the order
-is a property of the signals. Five cautions are registered today, in ascending
-priority: Sustained High Load (`kSustainedHighLoadPriority`), Protein Consistency
+is a property of the signals. Six cautions are registered today, in ascending
+priority: Cardio Efficiency Drift (`kCardioEfficiencyDriftPriority`), Sustained
+High Load (`kSustainedHighLoadPriority`), Protein Consistency
 (`kProteinConsistencyPriority`), Fuel vs Load (`kFuelVsLoadPriority`), Modality
 Mix Shift (`kModalityMixShiftPriority`) and Cross-Modality Interference
 (`kCrossModalityInterferencePriority`). The registered positive is Progression
 Rate, whose priority is `kProgressionRatePriority`. The list is the priority
 order, not the render order: when two cautions qualify together the framework
 draws the higher priority first, so Protein Consistency renders above Sustained
-High Load. Verified by `test/interference_test.dart` (`the caution order holds
+High Load, and Sustained High Load renders above Cardio Efficiency Drift.
+Verified by `test/interference_test.dart` (`the caution order holds
 and the registry is ordered by it`), which asserts the registry lists the
 cautions in ascending priority; by `test/sustained_high_load_test.dart` (`the
 registry lists the cautions in strictly ascending priority`); by
 `test/sustained_high_load_signal_screen_test.dart` (`S-2412 two cautions
 qualifying` › `renders the higher-priority caution above the Sustained High Load
-card`); and by `test/modality_mix_shift_test.dart` (the constant contracts) for
-the Modality Mix Shift entry.
+card`); by `test/cardio_efficiency_drift_signal_screen_test.dart` (`S-2511 two
+cautions qualifying` › `renders the higher-priority caution above the Cardio
+Efficiency Drift card`); and by `test/modality_mix_shift_test.dart` (the
+constant contracts) for the Modality Mix Shift entry.
 
 ## Abstention
 
@@ -565,7 +569,7 @@ usually manage, or short of their own daily target.
   Load. Verified by `test/protein_consistency_test.dart`
   (`the constant contracts`) and
   `test/modality_mix_shift_signal_screen_test.dart` (`the registry lists exactly
-  the six shipped signals, in order`).
+  the seven shipped signals, in order`).
 - **Copy.** `proteinConsistencyCopy` builds the observation from the average and
   a span derived from `kProteinConsistencyWindowDays` — never written as a
   literal — and, in target mode, the whole-percent shortfall and the target; the
@@ -609,6 +613,111 @@ personal-record API. Verified by `test/protein_consistency_test.dart` (`the
 adapter walks no history and calls no PR API`) and
 `test/protein_consistency_service_test.dart` (`S-2214 Mock and Hive give the
 same figures for all four reads`).
+
+`cardioEfficiencyDrift({required efforts, required now, required liftRecentLoad,
+required liftUsualLoad, required liftMeasure})` in
+`lib/core/models/cardio_efficiency_drift.dart` is the Cardio Efficiency Drift
+signal's definition, and `CardioEfficiencyDriftSignal` in
+`lib/core/services/signals/cardio_efficiency_drift_signal.dart` is its adapter.
+The signal reports that one cardio exercise's measured pace at the same average
+heart rate is worse than it was four to six weeks ago, over efforts of
+comparable duration, with enough of them on both sides to mean anything.
+
+- **The two windows.** The recent window is the `kCardioEfficiencyRecentDays`
+  local calendar days ending with `now`'s day; the reference window is the
+  `kCardioEfficiencyReferenceWeeksTo`-to-`kCardioEfficiencyReferenceWeeksFrom`
+  weeks before it, and the days between the two hold no effort. Both are built
+  from calendar components rather than a `Duration`, so a daylight-saving
+  transition cannot shift a boundary, and an effort belongs to the window its own
+  instance start falls in, lower bound inclusive and upper bound exclusive.
+  Verified by `test/cardio_efficiency_drift_test.dart` (`D-1801 the two windows
+  are local calendar spans`, `S-2508 the window edges, and a gap effort changes
+  nothing`).
+- **The eligible effort.** An eligible effort is a finished timed instance of a
+  cardio effort whose paired distance is above zero and whose stored source is
+  not the watch's estimate, and whose own instance-scope sensor summary carries
+  an average heart rate above zero. A row carrying no source at all is not an
+  estimate and stays eligible. Verified by
+  `test/cardio_efficiency_service_test.dart` (`Mock — cardioEfforts` › `the
+  eligibility table` › `a estimated distance with a heart rate`, `a no source
+  distance with a heart rate`) and `test/cardio_efficiency_drift_test.dart`
+  (`S-2503 three efforts per window is the floor`).
+- **Efficiency.** The figure is distance per heart-rate-minute, so a larger value
+  is better and the comparison is on the stored values rather than a rounded
+  pace. Verified by `test/cardio_efficiency_drift_test.dart` (`D-1803 the
+  efficiency is distance per heart-rate-minute`).
+- **Comparable durations.** Within one exercise the efforts are grouped by
+  duration, anchored at the shortest member and bounded by
+  `kCardioEfficiencyDurationTolerancePercent` of that anchor, inclusive, with no
+  chaining — so a 30-minute and a 45-minute effort can never share a group
+  however many intermediate durations exist. A group qualifies only with at least
+  `kCardioEfficiencyMinEffortsPerWindow` efforts in each window. Verified by
+  `test/cardio_efficiency_drift_test.dart` (`S-2506 A the ±10% boundary groups
+  inclusively`, `S-2506 C 30 and 45 minutes never merge`, `S-2506 D a middle
+  duration does not chain 480 s to 529 s`).
+- **The comparison never crosses exercises.** Grouping partitions by exercise
+  before anything else, so a run is never compared with a ride, a row or a walk.
+  Verified by `test/cardio_efficiency_drift_test.dart` (`S-2507 different
+  exercises are never compared`).
+- **The drift test.** A qualifying group fires when its recent mean is at least
+  `kCardioEfficiencyDriftPercent` worse than its reference mean, compared by
+  exact cross-multiplication rather than a rounded percentage, so the boundary is
+  inclusive. Verified by `test/cardio_efficiency_drift_test.dart` (`S-2502 the 5%
+  boundary is inclusive`).
+- **One card.** Every qualifying group of every exercise is evaluated and the
+  card reports the largest drift, so exactly one card is produced whatever the
+  number of qualifying groups. Verified by
+  `test/cardio_efficiency_drift_test.dart` (`S-2510 one card, the largest
+  drift`).
+- **The lifting sentence.** The adapter reads one `computeMixPeriod` payload for
+  the `kCardioEfficiencyLiftLoadWindowDays` days ending at `now` and sums its
+  resistance segments and its resistance baseline segments. The sentence is
+  appended only when that payload measures load, the baseline figure is above
+  zero, and the recent figure is at least
+  `kCardioEfficiencyLiftLoadRisePercent` above the usual — compared per day, as
+  exact integer arithmetic, because the payload's baseline spans
+  `kTrainingLoadBaselineWeeks` while the period spans four. Verified by
+  `test/cardio_efficiency_drift_test.dart` (`S-2509 the lifting sentence fires
+  only at 15% or more`) and
+  `test/cardio_efficiency_drift_signal_screen_test.dart` (`the payload's own
+  measure` › `a time-measured payload that still carries a baseline never earns
+  the lifting sentence`).
+- **The card fires on the drift alone.** A lift rise with no drift shows nothing,
+  and a drift with no lift rise shows the observation with no second sentence;
+  the two facts are shown side by side and the copy never links them causally.
+  Verified by `test/cardio_efficiency_drift_test.dart` (`S-2509 the lifting
+  sentence fires only at 15% or more`) and
+  `test/cardio_efficiency_drift_signal_screen_test.dart` (`the payload's own
+  measure` › `an all-unrated history measures time and carries no baseline, so no
+  sentence`).
+- **Kind and priority.** The kind is caution; the priority is
+  `kCardioEfficiencyDriftPriority`, the bottom of the caution order. Verified by
+  `test/cardio_efficiency_drift_test.dart` (`the constant contracts`) and
+  `test/interference_test.dart` (`the caution order holds and the registry is
+  ordered by it`).
+- **Copy.** `cardioEfficiencyDriftCopy` builds the observation from the drift
+  percentage and a span derived from the two reference-week constants — never
+  written as a literal — names the exercise's own name, and appends the lifting
+  sentence only when the lifting test fired. The suggestion is one sentence and
+  the copy carries no amount, no pace figure, no zone, no calorie and no causal
+  claim. Verified by `test/cardio_efficiency_drift_test.dart` (`S-2501 four
+  comparable runs, 7% worse, fires with the exact copy`, `the copy structural
+  guards` › `the observation, the optional sentence and the suggestion are
+  exact`, `the span is derived from the two week constants, not written`, `the
+  copy carries no banned word`) and
+  `test/cardio_efficiency_drift_signal_screen_test.dart` (`S-2501 the card on the
+  layer` › `the caution card shows with S-2501's copy, the caution label and its
+  key, below the Mix layer`).
+
+The definition reads no clock, no repository and no service — `now`, the efforts
+and the two lifting figures are arguments. The adapter asks
+`StatsProgressService.cardioEfforts` for the eligible efforts and reads one
+`StatsProgressService.computeMixPeriod` payload for the lifting figures, so it
+walks no history of its own and calls no personal-record API. Verified by
+`test/cardio_efficiency_service_test.dart` (`S-2508 the span is the caller's,
+ordered by start`, `S-2512 Hive and Mock return identical eligible efforts`) and
+`test/cardio_efficiency_drift_signal_screen_test.dart` (`S-2501 the card on the
+layer` › `the service reads the eight efforts and the rule reports 7%`).
 
 ## One evaluation per load
 

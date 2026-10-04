@@ -699,16 +699,16 @@ One line per item, filled as it lands.
 | 3A | Phase 3A suites green, evidence pasted | done — new `+13`; guards `+45`; full run `+3829 ~1`; analyze 196, 0 errors |
 | 3A | Mutation checks 5–6 (registry order, the lift measure) | done — 5 caught by both guards; 6 not caught by the original fixtures, re-run and **caught** by the resume run's relabelled-payload case (evidence: Mutation check 6, re-run) |
 | 3A | Mutation check 6 re-run (resume run) | done — two new screen cases (an unrated history, and a real payload relabelled to `time`); Mock 7 → 9, file 13 → 17; the mutant now fails the second case; line restored |
-| 3B | Eligibility structural guard table | not started |
-| 3B | Copy structural guard | not started |
-| 3B | Residue sweep recorded | not started |
-| 3B | `docs/signals.md` (and its size measured) | not started |
-| 3B | `docs/stats_screen.md` | not started |
-| 3B | `docs/constants_reference.md` | not started |
-| 3B | `docs/state_management/services_and_utils.md` | not started |
-| 3B | `docs/distance_source.md` (and `training_load.md` if needed) | not started |
-| 3B | Doc-claim-to-test table | not started |
-| 3B | Final suites green | not started |
+| 3B | Eligibility structural guard table | done — 4 sources × heart-rate present/absent × 2 harnesses = 16 cases; mutation 7 (the estimate guard dropped) fails it in both harnesses |
+| 3B | Copy structural guard | done — 3 cases (exact strings, span from the two week constants, banned words); mutations 8 and 9 each fail it |
+| 3B | Residue sweep recorded | done — reading/diff-based (the gateway has no search verb); the rule imports `training_load.dart` only, not `signals.dart` as the plan text says |
+| 3B | `docs/signals.md` (and its size measured) | done — 47,366 bytes, below the 52,428-byte warning band, so no split; six cautions in ascending priority, the `seven` citation, and the new registered-signal block |
+| 3B | `docs/stats_screen.md` | done — `lists seven` and the seventh-signal paragraph after the Sustained High Load one |
+| 3B | `docs/constants_reference.md` | done — `## Cardio Efficiency Drift Constants`, one row per constant |
+| 3B | `docs/state_management/services_and_utils.md` | done — `cardioEfforts` documented after the protein-consistency reads |
+| 3B | `docs/distance_source.md` (and `training_load.md` if needed) | done — eligibility and correction in `distance_source.md`; `training_load.md` **was** edited (the per-day lifting comparison is a fact about the shared `computeMixPeriod` entry point) |
+| 3B | Doc-claim-to-test table | done — 30 rows, every sentence naming an existing test by group and name; no sentence was left without one |
+| 3B | Final suites green | done — Done Criteria `+142`; full run `+3852 ~1`; analyze 196, 0 errors; indexing contract `+9` |
 
 ## Assumption Log
 
@@ -755,6 +755,21 @@ sub-phase. An empty log after Phase 3A or 3B is itself suspicious.
    are cardio but sit outside `day(42)`, so `cardioEfforts` returns the eight S-2501 efforts. The
    case now also calls the rule directly and asserts `driftPercent == 7`, so it pins the arithmetic
    rather than only the count.
+10. **The rule file imports `training_load.dart` only.** The plan's step 3 and D-1801 both say
+    "`training_load.dart` and `signals.dart`". The file imports `training_load.dart` and nothing
+    else: the rule returns its own result type and never names a `Signal`, `SignalKind` or
+    `SignalContext`, so `signals.dart` would be an unused import. Choice: record what the file
+    actually imports and add nothing. The adapter owns the kind.
+11. **`docs/training_load.md` was edited.** Step 8 makes it conditional on the lifting sentence's
+    per-day comparison needing a line there. It does: the comparison is the one `computeMixPeriod`
+    caller that reads the payload's resistance segments and its resistance baseline segments as two
+    totals and compares them per day, which is a fact about the shared entry point rather than about
+    the rule. Choice: one sentence plus the test pointer, and the comparison's own arithmetic left
+    in `cardio_efficiency_drift.dart`.
+12. **The eligibility table is cited by its `Mock — cardioEfforts` path in the docs.** The table runs
+    under both harnesses, so the `Hive — cardioEfforts` path names the same cases. Choice: cite the
+    Mock path once rather than both, since the parity case (`S-2512`) is what pins the two stores
+    together.
 
 ## Feedback
 

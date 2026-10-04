@@ -231,13 +231,20 @@ period's start day, and the measure gate is the same one.
 The two instants are the only thing that varies between callers: the Modality
 Mix Shift rule asks for its own shift period, the Fuel vs Load rule asks for a
 21-day period, and the 21-day call needs no code of its own — the same figures
-come back for the equivalent range.
+come back for the equivalent range. The Cardio Efficiency Drift rule's lifting
+comparison is the one caller that reads the payload's resistance segments and
+its resistance baseline segments as two totals and compares them **per day**,
+because its period is shorter than the baseline it is measured against; the
+comparison itself lives in `lib/core/models/cardio_efficiency_drift.dart`, not
+here.
 
 Verified by `test/modality_mix_period_service_test.dart` (`S-1904a`, `S-1907`,
-`S-1913`, over both repository implementations), and the 21-day call by
+`S-1913`, over both repository implementations), the 21-day call by
 `test/nutrition_series_service_test.dart` (`S-2112 the 21-day period equals the
 equivalent window call`, `S-2112 the two periods abut and the boundary rows land
-in the right period`).
+in the right period`), and the per-day lifting comparison by
+`test/cardio_efficiency_drift_test.dart` (`S-2509 the lifting sentence fires
+only at 15% or more`).
 
 The per-session time and load split is one private helper that both entry points
 and `StatsProgressService.interferenceSessions` call, so a session's Sports load

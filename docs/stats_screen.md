@@ -145,7 +145,7 @@ deliberately replaces that, limited to these signal rules, rather than leaving
 it as a gap. Verified by `test/signals_layer_screen_test.dart` (`S-1716`) and
 `test/stats_legacy_removal_test.dart` (`S-1210`, no chart primitive).
 
-**The registered signals.** `buildSignalRegistry()` lists six. The first is the
+**The registered signals.** `buildSignalRegistry()` lists seven. The first is the
 Progression Rate: it compares each exercise's own metric across two adjacent
 windows and proposes a positive card only when the recent window improves on the
 prior one. Its rules — the two windows, what a sample is, the zero fallback, the
@@ -224,6 +224,22 @@ caution label and its key, below the Mix layer`, `S-2412 the card is dismissible
 › `one tap removes the card in the tap frame, the store holds the id, and the
 next open is still quiet`) and, for the definition itself,
 `test/sustained_high_load_test.dart`.
+
+The seventh is the Cardio Efficiency Drift: it reports that one cardio exercise's
+measured pace at the same average heart rate is worse than it was four to six
+weeks ago, over efforts of comparable duration, and proposes a caution card. Its
+rules — the two windows, the eligible effort, the duration grouping, the drift
+test, the one-card selection, the lifting sentence, the copy and the priority —
+live in [Signals](signals.md#registered-signals) and are not restated here. The
+card's copy is built by `cardioEfficiencyDriftCopy`
+(`lib/core/models/cardio_efficiency_drift.dart`) so that the copy and the fire
+test cannot disagree. Verified by
+`test/cardio_efficiency_drift_signal_screen_test.dart` (`S-2501 the card on the
+layer` › `the caution card shows with S-2501's copy, the caution label and its
+key, below the Mix layer`, `S-2511 the card is dismissible` › `one tap removes
+the card in the tap frame, the store holds the id, and the next open is still
+quiet`) and, for the definition itself,
+`test/cardio_efficiency_drift_test.dart`.
 
 ### ALL TIME card
 

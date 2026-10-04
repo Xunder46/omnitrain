@@ -10,9 +10,26 @@
 // heart rate of 150 and a 480-second effort the divisor is 72000, so 2790 m
 // reads 2.325, 2850 m reads 2.375, 2880 m reads 2.4 and 3000 m reads 2.5.
 
+import 'dart:io';
+
 import 'package:omnitrain/core/models/cardio_efficiency_drift.dart';
 import 'package:omnitrain/core/models/training_load.dart';
 import 'package:test/test.dart';
+
+/// [path] with its comments stripped, so a guard fires on code and not on a
+/// comment that merely names what the code must not do.
+String _strippedSource(String path) {
+  final source = File(
+    path,
+  ).readAsStringSync().replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
+  return source
+      .split('\n')
+      .map((line) {
+        final i = line.indexOf('//');
+        return i < 0 ? line : line.substring(0, i);
+      })
+      .join('\n');
+}
 
 final DateTime _now = DateTime(2026, 6, 15, 12, 0);
 
@@ -505,5 +522,102 @@ void main() {
     expect(result, isNotNull);
     expect(result!.driftPercent, 5);
     expect(result.anchorSecs, 480);
+  });
+
+  group('the copy structural guards', () {
+    // D-1808: the copy is a fixed sentence pair, its span is the two week
+    // constants interpolated, and it carries no causal, medical or unobserved
+    // vocabulary.
+    const opening =
+        'At similar durations, your Treadmill Run efforts are about 7% less '
+        'efficient (slower pace at the same heart rate) than ';
+
+    test('the observation, the optional sentence and the suggestion are exact', () {
+      final span =
+          '$kCardioEfficiencyReferenceWeeksTo–'
+          '$kCardioEfficiencyReferenceWeeksFrom';
+
+      final withoutCopy = cardioEfficiencyDriftCopy(_for(_pair())!);
+      expect(withoutCopy.observation, '$opening$span weeks ago.');
+      expect(withoutCopy.suggestion, 'An easier week is one option.');
+
+      final withLift = cardioEfficiencyDrift(
+        efforts: _pair(),
+        now: _now,
+        liftRecentLoad: 1380,
+        liftUsualLoad: 3600,
+        liftMeasure: MixMeasure.load,
+      )!;
+      final withCopy = cardioEfficiencyDriftCopy(withLift);
+      expect(
+        withCopy.observation,
+        '$opening$span weeks ago. '
+        'Lifting load is 15% above your usual over the same period.',
+      );
+      expect(withCopy.suggestion, 'An easier week is one option.');
+    });
+
+    test('the span is derived from the two week constants, not written', () {
+      final source = _strippedSource(
+        'lib/core/models/cardio_efficiency_drift.dart',
+      );
+      expect(
+        source.contains('4–6'),
+        isFalse,
+        reason: 'the span must be derived from the two week constants, not '
+            'written as a literal',
+      );
+      expect(
+        source.contains(
+          r'$kCardioEfficiencyReferenceWeeksTo–'
+          r'$kCardioEfficiencyReferenceWeeksFrom',
+        ),
+        isTrue,
+        reason: 'the observation must interpolate both owning constants',
+      );
+
+      // The sentence's span is the constants' span, so moving either constant
+      // moves the sentence.
+      expect(
+        cardioEfficiencyDriftCopy(_for(_pair())!).observation,
+        endsWith(
+          'than $kCardioEfficiencyReferenceWeeksTo–'
+          '$kCardioEfficiencyReferenceWeeksFrom weeks ago.',
+        ),
+      );
+    });
+
+    test('the copy carries no banned word', () {
+      const banned = <String>[
+        'fatigue',
+        'because',
+        'due to',
+        'cause',
+        'zone',
+        'calorie',
+      ];
+      final texts = <String>[
+        cardioEfficiencyDriftCopy(_for(_pair())!).observation,
+        cardioEfficiencyDriftCopy(_for(_pair())!).suggestion,
+        cardioEfficiencyDriftCopy(
+          cardioEfficiencyDrift(
+            efforts: _pair(),
+            now: _now,
+            liftRecentLoad: 1380,
+            liftUsualLoad: 3600,
+            liftMeasure: MixMeasure.load,
+          )!,
+        ).observation,
+      ];
+      for (final text in texts) {
+        for (final word in banned) {
+          expect(
+            text.toLowerCase().contains(word),
+            isFalse,
+            reason: 'the copy must not carry "$word": $text',
+          );
+        }
+      }
+    });
   });
 }

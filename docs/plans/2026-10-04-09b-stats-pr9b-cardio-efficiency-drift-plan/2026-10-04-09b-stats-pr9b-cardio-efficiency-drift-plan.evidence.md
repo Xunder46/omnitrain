@@ -183,18 +183,38 @@ pass-through from a hard-coded `load`.
 
 | Check | Command | Result |
 |---|---|---|
-| green | `flutter test test/docs_indexing_contract_test.dart` | _to fill_ |
-| size | `docs/signals.md` byte count after the edit (must stay below 52,428) | _to fill_ |
-| full | `flutter test` | _to fill_ |
+| green | `flutter test test/docs_indexing_contract_test.dart` | `00:01 +9: All tests passed!` — including `no documentation file exceeds the indexing ceiling` and `no documentation file is within the warning band of the ceiling`, so no doc is at or above 52,428 bytes. |
+| size | `docs/signals.md` byte count after the edit (must stay below 52,428) | **47,366 bytes** (measured with `wc -c`; the file was 39.0 KB before this phase's edits, so the new block and the two count corrections added ~8.3 KB). Below the 52,428-byte warning band, so no split into `docs/signals/` was needed. The other four edited docs: `docs/stats_screen.md` 32,064, `docs/constants_reference.md` 24,845, `docs/state_management/services_and_utils.md` 30,506, `docs/distance_source.md` 10,791, `docs/training_load.md` 12,920 — all far below the ceiling. |
+| Done Criteria suites | `flutter test test/cardio_efficiency_drift_test.dart test/cardio_efficiency_service_test.dart test/cardio_efficiency_drift_signal_screen_test.dart test/distance_source_test.dart test/signals_framework_test.dart test/docs_indexing_contract_test.dart` | `00:09 +142: All tests passed!` |
+| full | `flutter test` | `05:12 +3852 ~1: All tests passed!` — the Phase 3A baseline was `+3833 ~1`, so this phase adds 19: the eligibility table's 16 cases (4 sources × 2 heart-rate states × 2 harnesses) and the copy guard's 3. No regressions; the known order-dependent `test/food_photo_clear_legacy_edit_test.dart` passed in this run. |
 
 ### Residue sweep
 
-| Sweep | Result |
-|---|---|
-| `cardio_efficiency_drift.dart` imports | _to fill_ (must be `training_load.dart`, `signals.dart` only) |
-| `cardioEfficiencyDrift` / `cardioEfforts` mentioned outside the three production files | _to fill_ (must be tests and docs only) |
-| `DistancePairing.forEntries` callers in `stats_progress_service.dart` | _to fill_ (one added, no second pairing introduced) |
-| literal `nutritionTrend` in `stats_progress_service.dart` | _to fill_ (must be absent — `S-1263`) |
+The gateway exposes no search verb, so every check below is a **reading or diff check**, not a
+test. Each row says which. Nothing here is inferred from a passing suite.
+
+| Sweep | Method | Result |
+|---|---|---|
+| `cardio_efficiency_drift.dart` imports | reading the file's import block | **`training_load.dart` only.** The plan's step 3 and D-1801 both say "`training_load.dart` and `signals.dart`"; the file imports `training_load.dart` and nothing else. `signals.dart` is not needed — the rule returns its own `CardioEfficiencyDriftResult` and never names a `Signal`, `SignalKind` or `SignalContext`; the adapter owns the kind. No unused import was added to satisfy the plan text. |
+| `cardioEfficiencyDrift` / `cardioEfforts` outside the three production files | `git-diff 91295d2 --name-only` (both identifiers are new in this PR, so any file naming them is in the diff) | **Four production files, and no others.** `lib/core/models/cardio_efficiency_drift.dart` (the rule), `lib/core/services/stats_progress_service.dart` (`cardioEfforts`), `lib/core/services/signals/cardio_efficiency_drift_signal.dart` (the adapter) and `lib/core/services/signals/signal_registry.dart` (the one line). The remaining diff entries are the three test files, the two guard files, the plan and this evidence file. No framework file, no `watch/` file, no `lib/data/` file, and no 8a/8b/9a file appears in the diff. |
+| `DistancePairing.forEntries` callers in `stats_progress_service.dart` | reading the `cardioEfforts` diff hunk | **One caller added, no second pairing.** The hunk adds exactly one `DistancePairing.forEntries(distanceRows: …, entryCount: …)` call, inside `cardioEfforts`, and the method's own doc comment names D-324 as the pairing it reuses. No other line in the hunk touches a pairing, a sensor index or a history walk. |
+| literal `nutritionTrend` in `stats_progress_service.dart` | reading the `cardioEfforts` diff hunk | **Absent.** The hunk's only added identifiers are `cardioEfforts`, `CardioEffort`, `DistancePairing`, `DistanceSource`, `SensorSummary`, `TimedState` and `_exerciseById`; the string `nutritionTrend` does not appear in any added line. The retired-name sweep is `test/stats_legacy_removal_test.dart` (`S-1263`), which is green in the full run below. |
+
+### Mutation checks
+
+The two new guards were written red-first. Each was proved to fail by mutating the production line
+it pins, then the exact original line was restored and the suite re-run green. The original lines are
+copied here **before** the mutation, as the brief requires.
+
+| # | Mutation | Test that must fail | Result |
+|---|---|---|---|
+| 7 | drop the estimate guard in `stats_progress_service.dart` — the original line is `            if (DistanceSource.isEstimated(row?.valueSource)) continue;` | the eligibility table's `a estimated distance with a heart rate` | PASS — `+14 -2: Some tests failed.` The case failed in **both** harnesses (`Mock — cardioEfforts` and `Hive — cardioEfforts`), each `Expected: an object with length of <0> / Actual: … has length of <1>`. Restored byte-identically (`git-diff` on the file empty); re-ran green. |
+| 8 | write the span as a literal in `cardio_efficiency_drift.dart` — the original is `  final span =\n      '$kCardioEfficiencyReferenceWeeksTo–$kCardioEfficiencyReferenceWeeksFrom';`, mutated to `  const span = '4–6';` | `the copy structural guards` › `the span is derived from the two week constants, not written` | PASS — `+2 -1: Some tests failed.` The source scan found the `4–6` literal and the missing interpolation. Restored byte-identically; re-ran green. |
+| 9 | put a banned word in the suggestion — the original is `    suggestion: 'An easier week is one option.',`, mutated to a sentence containing `fatigue` | `the copy structural guards` › `the observation, the optional sentence and the suggestion are exact` and `the copy carries no banned word` | PASS — `+1 -2: Some tests failed.` Both the exact-string case and the banned-word case failed. Restored byte-identically (`git-diff` on both production files empty); re-ran green. |
+
+Post-restore: `flutter test test/cardio_efficiency_drift_test.dart
+test/cardio_efficiency_service_test.dart` = `+60: All tests passed!`, and
+`test/cardio_efficiency_drift_signal_screen_test.dart` = `+17: All tests passed!`.
 
 ## Doc-claim-to-test table
 
@@ -203,17 +223,39 @@ with no test is deleted, not kept.
 
 | Doc | Claim | Test |
 |---|---|---|
-| `docs/signals.md` | _to fill_ | _to fill_ |
-| `docs/stats_screen.md` | _to fill_ | _to fill_ |
-| `docs/constants_reference.md` | _to fill_ | _to fill_ |
-| `docs/state_management/services_and_utils.md` | _to fill_ | _to fill_ |
-| `docs/distance_source.md` | _to fill_ | _to fill_ |
-| `docs/training_load.md` (only if edited) | _to fill_ | _to fill_ |
+| `docs/signals.md` | Six cautions are registered, in ascending priority, Cardio Efficiency Drift first | `test/interference_test.dart` › `the caution order holds and the registry is ordered by it` |
+| `docs/signals.md` | When two cautions qualify together the framework draws the higher priority first, so Sustained High Load renders above Cardio Efficiency Drift | `test/cardio_efficiency_drift_signal_screen_test.dart` › `S-2511 two cautions qualifying` › `renders the higher-priority caution above the Cardio Efficiency Drift card` |
+| `docs/signals.md` | The registry lists exactly the seven shipped signals, in order | `test/modality_mix_shift_signal_screen_test.dart` › `the registry` › `lists exactly the seven shipped signals, in order` |
+| `docs/signals.md` | The two windows are local calendar spans, and an effort belongs to the window its own start falls in | `test/cardio_efficiency_drift_test.dart` › `D-1801 the two windows are local calendar spans`; `S-2508 the window edges, and a gap effort changes nothing` |
+| `docs/signals.md` | An eligible effort needs a measured distance and an instance-scope heart rate; a row with no source stays eligible | `test/cardio_efficiency_service_test.dart` › `Mock — cardioEfforts` › `the eligibility table` › `a estimated distance with a heart rate`, `a no source distance with a heart rate` |
+| `docs/signals.md` | Efficiency is distance per heart-rate-minute | `test/cardio_efficiency_drift_test.dart` › `D-1803 the efficiency is distance per heart-rate-minute` |
+| `docs/signals.md` | Grouping is anchored at the shortest member, bounded by the tolerance constant, with no chaining | `test/cardio_efficiency_drift_test.dart` › `S-2506 A the ±10% boundary groups inclusively`, `S-2506 C 30 and 45 minutes never merge`, `S-2506 D a middle duration does not chain 480 s to 529 s` |
+| `docs/signals.md` | The comparison never crosses exercises | `test/cardio_efficiency_drift_test.dart` › `S-2507 different exercises are never compared` |
+| `docs/signals.md` | The drift test is exact cross-multiplication, boundary inclusive | `test/cardio_efficiency_drift_test.dart` › `S-2502 the 5% boundary is inclusive` |
+| `docs/signals.md` | One card, the largest drift | `test/cardio_efficiency_drift_test.dart` › `S-2510 one card, the largest drift` |
+| `docs/signals.md` | The lifting sentence needs a load-measured payload, a positive baseline and the rise constant, compared per day | `test/cardio_efficiency_drift_test.dart` › `S-2509 the lifting sentence fires only at 15% or more`; `test/cardio_efficiency_drift_signal_screen_test.dart` › `the payload's own measure` › `a time-measured payload that still carries a baseline never earns the lifting sentence` |
+| `docs/signals.md` | The card fires on the drift alone; a lift rise with no drift shows nothing | `test/cardio_efficiency_drift_signal_screen_test.dart` › `the payload's own measure` › `an all-unrated history measures time and carries no baseline, so no sentence` |
+| `docs/signals.md` | Kind is caution; priority is the bottom of the caution order | `test/cardio_efficiency_drift_test.dart` › `the constant contracts`; `test/interference_test.dart` › `the caution order holds and the registry is ordered by it` |
+| `docs/signals.md` | The copy is exact, the span is derived from the two week constants, and no banned word appears | `test/cardio_efficiency_drift_test.dart` › `S-2501 four comparable runs, 7% worse, fires with the exact copy`; `the copy structural guards` › `the observation, the optional sentence and the suggestion are exact`, `the span is derived from the two week constants, not written`, `the copy carries no banned word` |
+| `docs/signals.md` | The adapter walks no history of its own and calls no PR API | `test/cardio_efficiency_service_test.dart` › `S-2508 the span is the caller's, ordered by start`, `S-2512 Hive and Mock return identical eligible efforts`; `test/cardio_efficiency_drift_signal_screen_test.dart` › `S-2501 the card on the layer` › `the service reads the eight efforts and the rule reports 7%` |
+| `docs/stats_screen.md` | `buildSignalRegistry()` lists seven | `test/modality_mix_shift_signal_screen_test.dart` › `the registry` › `lists exactly the seven shipped signals, in order` |
+| `docs/stats_screen.md` | The seventh signal is the Cardio Efficiency Drift, and its card renders on the layer | `test/cardio_efficiency_drift_signal_screen_test.dart` › `S-2501 the card on the layer` › `the caution card shows with S-2501's copy, the caution label and its key, below the Mix layer` |
+| `docs/stats_screen.md` | The card is dismissible | `test/cardio_efficiency_drift_signal_screen_test.dart` › `S-2511 the card is dismissible` › `one tap removes the card in the tap frame, the store holds the id, and the next open is still quiet` |
+| `docs/constants_reference.md` | Each `kCardioEfficiency…` constant governs the rule named beside it, and `kTrainingLoadBaselineWeeks` is shared | `test/cardio_efficiency_drift_test.dart` › `the constant contracts` |
+| `docs/constants_reference.md` | The boundaries the constants set are inclusive | `test/cardio_efficiency_drift_test.dart` › `S-2502 the 5% boundary is inclusive`, `S-2503 three efforts per window is the floor`, `S-2506 A the ±10% boundary groups inclusively`, `S-2508 the window edges, and a gap effort changes nothing`, `S-2509 the lifting sentence fires only at 15% or more` |
+| `docs/state_management/services_and_utils.md` | `cardioEfforts` returns eligible efforts ordered by start then instance id, over the cached history read | `test/cardio_efficiency_service_test.dart` › `S-2508 the span is the caller's, ordered by start` |
+| `docs/state_management/services_and_utils.md` | Eligibility is the service's and the span is the caller's | `test/cardio_efficiency_service_test.dart` › `Mock — cardioEfforts` › `the eligibility table` › `a estimated distance with a heart rate`; `S-2505 no instance summary is never eligible` |
+| `docs/state_management/services_and_utils.md` | The distance pairing is the shipped one and a row with no source is eligible | `test/cardio_efficiency_service_test.dart` › `S-2504 a gps row and a row with no source stay eligible` |
+| `docs/state_management/services_and_utils.md` | A correction changes eligibility | `test/cardio_efficiency_service_test.dart` › `S-2504 a correction to entered makes the effort eligible` |
+| `docs/state_management/services_and_utils.md` | Hive and Mock return identical eligible efforts | `test/cardio_efficiency_service_test.dart` › `S-2512 Hive and Mock return identical eligible efforts` |
+| `docs/distance_source.md` | The cardio-efficiency read admits a distance above zero whose stored source is not the estimate, and a row with no source is eligible | `test/cardio_efficiency_service_test.dart` › `Mock — cardioEfforts` › `the eligibility table` › `a estimated distance with a heart rate` |
+| `docs/distance_source.md` | A correction that changes the stored source changes that verdict | `test/cardio_efficiency_service_test.dart` › `S-2504 a correction to entered makes the effort eligible` |
+| `docs/training_load.md` | The Cardio Efficiency Drift lifting comparison is the one caller that compares the payload's resistance segments per day | `test/cardio_efficiency_drift_test.dart` › `S-2509 the lifting sentence fires only at 15% or more` |
 
 ## Closing
 
 | Check | Result |
 |---|---|
-| `flutter analyze` | `196 issues found. (ran in 7.3s)` — the pre-existing baseline, 0 errors, and 0 issues in either file this run touched |
-| full `flutter test` | `04:57 +3833 ~1: All tests passed!` — Phase 3A's `+3829` plus this run's four new cases (two per harness), re-run after `dart format` |
-| diff vs Predicted Files | _to fill_ |
+| `flutter analyze` | `196 issues found. (ran in 7.1s)` — the pre-existing baseline, 0 errors, and 0 issues in any file this phase touched (the five docs and the two guard test files) |
+| full `flutter test` | `05:12 +3852 ~1: All tests passed!` — Phase 3A's `+3833` plus this phase's 19 new cases (16 eligibility + 3 copy guards) |
+| diff vs Predicted Files | **Matches, with one addition the plan allowed.** Predicted: `test/cardio_efficiency_drift_test.dart` (EDIT), `test/cardio_efficiency_service_test.dart` (EDIT), `docs/signals.md`, `docs/stats_screen.md`, `docs/constants_reference.md`, `docs/state_management/services_and_utils.md`, `docs/distance_source.md` (EDIT), `docs/training_load.md` (EDIT only if step 8 needed it). All eight are edited. `docs/training_load.md` **was** edited: the lifting comparison is the one `computeMixPeriod` caller that compares the payload's resistance segments per day, which is a fact about the shared entry point that belongs in its own document. No out-of-bounds file was touched: `git-status` shows only the two guard test files modified on top of the committed PR, and `git-diff 91295d2 --name-only` lists exactly the 11 PR files plus the two plan artefacts. |

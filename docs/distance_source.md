@@ -35,7 +35,14 @@ value always carries a source, so nothing ever has to substitute one for a
 missing source. Verified by `test/distance_source_test.dart` (`S-1301`).
 `StatsProgressService` marks an exercise's value as estimated when any distance
 behind it is one, and the Instruments list renders that mark. Verified by
-`test/instrument_list_screen_test.dart` (`S-1001`).
+`test/instrument_list_screen_test.dart` (`S-1001`). The same service's
+cardio-efficiency read admits an effort only when its paired distance is above
+zero and its stored source is not the estimate, so a row carrying no source at
+all is eligible and an estimated row is not; a correction that changes the
+stored source changes that verdict. Verified by
+`test/cardio_efficiency_service_test.dart` (`Mock — cardioEfforts` › `the
+eligibility table` › `a estimated distance with a heart rate`, `S-2504 a
+correction to entered makes the effort eligible`).
 
 `DistancePairing` is how the source-aware code decides which distance row
 belongs to which entry. It delegates to `EntryRows` in
