@@ -34,16 +34,29 @@ and passes on re-run. (It passed in the run above.)
 
 | Check | Command | Result |
 |---|---|---|
-| red run | `flutter test test/cardio_efficiency_service_test.dart` | _to fill_ |
-| green | `flutter test test/cardio_efficiency_service_test.dart test/stats_progress_test.dart test/mix_layer_service_test.dart test/modality_mix_period_service_test.dart test/distance_source_test.dart` | _to fill_ |
-| full | `flutter test` | _to fill_ |
+| red run | `flutter test test/cardio_efficiency_service_test.dart` | `00:00 +0 -1: Some tests failed.` — compile failure: `Error: The method 'cardioEfforts' isn't defined for the type 'StatsProgressService'.` at the two call sites (the helper and the span-exclusion case). No other error, so the red is exactly the missing method. |
+| green | `flutter test test/cardio_efficiency_service_test.dart` | `00:04 +27: All tests passed!` (13 cases × 2 stores + the parity case). |
+| green | `flutter test test/cardio_efficiency_service_test.dart test/stats_progress_test.dart test/mix_layer_service_test.dart test/modality_mix_period_service_test.dart test/distance_source_test.dart` | `00:06 +128: All tests passed!` |
+| green | `flutter analyze` | `196 issues found. (ran in 7.0s)` — 0 errors, unchanged from baseline; neither `test/cardio_efficiency_service_test.dart` nor `lib/core/services/stats_progress_service.dart` appears in the output. |
+| full | `flutter test` | `05:12 +3816 ~1: All tests passed!` (baseline 3789 + this phase's 27). |
 
 ### Mutation checks
 
 | # | Mutation | Test that must fail | Result |
 |---|---|---|---|
-| 3 | drop `!DistanceSource.isEstimated(...)` | S-2504 (the estimated effort becomes eligible) | _to fill_ |
-| 4 | read the heart rate from the session-scope summary | S-2505 (third variant) | _to fill_ |
+| 3 | drop `!DistanceSource.isEstimated(...)` (guard short-circuited with `if (false && …)`) | S-2504 (the estimated effort becomes eligible) | PASS — `00:05 +21 -6: Some tests failed.` The three estimated-source cases failed in both stores (`Expected: an object with length of <7> / Actual: … has length of <8>`). Reverted; re-ran green `+27`. |
+| 4 | read the heart rate from the session-scope summary (`scopeTimedInstance, instance.id` → `scopeSession, session.id`) | S-2505 (third variant) | PASS — `00:05 +0 -27: Some tests failed.` Every case failed, since no fixture stores a session-scope reading (`Expected: an object with length of <8> / Actual: []`). Reverted; re-ran green `+27`. |
+
+### Test-authoring notes
+
+- The plan's S-2504 variants need **one** estimated effort among the four recent ones, so
+  `_seedS2501`'s `recentSource` names the first recent effort's source and leaves the other three
+  measured. Applying it to all four made the first red run report 4 eligible efforts instead of 7.
+- There is no `deleteSensorSummary` on `WorkoutRepository`. A fixture that needs an effort without a
+  summary deletes the instance (`deleteTimedInstance`, which cascades the instance's summaries per
+  D-131) and re-seeds the instance. The "session in progress" variant clears `endedAtMs` through
+  `updateSession` rather than deleting the session, so the effort, its distance and its summary stay
+  in place and only the completion flag changes.
 
 ## Phase 3A — the card, the registry, the guards
 

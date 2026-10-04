@@ -688,10 +688,10 @@ One line per item, filled as it lands.
 | 1 | `cardioEfficiencyDrift` and `cardioEfficiencyDriftCopy` | done — per-day 84-vs-28 lift test; span built from the two week constants |
 | 1 | Phase 1 suite green, evidence pasted | done — `+64` with the neighbour; full run `+3789 ~1` |
 | 1 | Mutation checks 1–2 (strict boundary, chaining) | done — both caught; S-2506 D added because B and C had no bridging duration |
-| 2 | Service test written, red run recorded | not started |
-| 2 | `cardioEfforts()` | not started |
-| 2 | Phase 2 suites green, evidence pasted | not started |
-| 2 | Mutation checks 3–4 (estimates, sensor scope) | not started |
+| 2 | Service test written, red run recorded | done — 27 tests; red run was a compile failure (`cardioEfforts` undefined) |
+| 2 | `cardioEfforts()` | done — one method; `_loadHistory` + `DistancePairing.forEntries` + instance-scope summary |
+| 2 | Phase 2 suites green, evidence pasted | done — new `+27`; neighbours `+128`; full run `+3816 ~1` |
+| 2 | Mutation checks 3–4 (estimates, sensor scope) | done — both caught (3: 6 failures; 4: all 27) |
 | 3A | Screen test written, red run recorded | not started |
 | 3A | The adapter | not started |
 | 3A | The registry line, first | not started |
@@ -728,6 +728,16 @@ sub-phase. An empty log after Phase 3A or 3B is itself suspicious.
    B or C: neither fixture has a duration that bridges 480 s to 529 s, so comparing a candidate with
    the previous member rather than the anchor changes nothing there. Choice: add a 500 s bridge so
    the anchored bound is observable. Recorded in the evidence file.
+4. **`cardioEfforts` skips an effort whose `exerciseId` is null.** `SegmentEffort.exerciseId` is
+   nullable and the payload's `exerciseId` is not. Options: skip, or fall back to the effort id.
+   Choice: skip — every other walk in the service does the same (`_sensorFiguresFor`,
+   `computeExerciseMetrics`), and an effort with no exercise has no name to show.
+5. **The test's `recentSource` applies to the first recent effort only.** The plan's S-2504 variants
+   need one estimated effort among four, not four. Choice: the parameter names the first effort's
+   source; the other three stay measured. Recorded in the evidence file.
+6. **The "session in progress" variant re-seeds the session via `updateSession`, not `deleteSession`.**
+   Deleting the session would also remove the effort, its distance and its summary, so the test would
+   pass for the wrong reason. Choice: clear `endedAtMs` only, leaving the rest of the fixture intact.
 
 ## Feedback
 

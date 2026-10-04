@@ -7,6 +7,7 @@ library;
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
+import '../models/cardio_efficiency_drift.dart';
 import '../models/exercise_metric.dart';
 import '../models/fuel_summary.dart';
 import '../models/instrument_list.dart';
@@ -2519,6 +2520,92 @@ class StatsProgressService {
             .toList()
           ..sort((a, b) => a.date.compareTo(b.date));
     return NutritionAdherence(actuals: actuals, targetLine: targetLine);
+  }
+
+  /// The eligible cardio efforts whose instance started in `[fromMs, toMs]`,
+  /// ordered by start (D-1802, D-1816).
+  ///
+  /// An effort is eligible when all of these hold:
+  ///
+  /// - its session is completed (`endedAtMs != null`);
+  /// - its effort kind is `timed`;
+  /// - its instance is finished and its measured duration is above zero;
+  /// - the distance paired to that instance is above zero and its source is
+  ///   not the watch's estimate ([DistanceSource.isEstimated]);
+  /// - the instance's own `timed_instance` sensor summary carries an average
+  ///   heart rate above zero.
+  ///
+  /// The span is the caller's: this method applies no window decision of its
+  /// own, so the rule can ask for the whole span it needs and apply its own
+  /// boundaries. Ties on start are broken by instance id, so the order is
+  /// stable across stores.
+  Future<List<CardioEffort>> cardioEfforts({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) async {
+    final history = await _loadHistory();
+    final from = fromMs.millisecondsSinceEpoch;
+    final to = toMs.millisecondsSinceEpoch;
+
+    final found = <({TimedInstance instance, CardioEffort effort})>[];
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (effort.effortKind != 'timed') continue;
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null) continue;
+
+          final instances = [...history.timedInstancesOf(effort.id)]
+            ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+          final paired = DistancePairing.forEntries(
+            distanceRows: history.observationsOf(effort.id),
+            entryCount: instances.length,
+          );
+
+          for (var i = 0; i < instances.length; i++) {
+            final instance = instances[i];
+            if (instance.state != TimedState.finished) continue;
+            if (instance.startedAtMs < from || instance.startedAtMs > to) {
+              continue;
+            }
+            final secs = instance.actualDurationSecs;
+            if (secs <= 0) continue;
+
+            final row = paired[i];
+            final metres = row?.valueReal ?? 0.0;
+            if (metres <= 0) continue;
+            if (DistanceSource.isEstimated(row?.valueSource)) continue;
+
+            final avg = history
+                .sensorFor(SensorSummary.scopeTimedInstance, instance.id)
+                ?.avgHeartRateBpm;
+            if (avg == null || avg <= 0) continue;
+
+            final exercise = await _exerciseById(exerciseId);
+            found.add((
+              instance: instance,
+              effort: CardioEffort(
+                exerciseId: exerciseId,
+                exerciseName: exercise?.name ?? exerciseId,
+                start: DateTime.fromMillisecondsSinceEpoch(instance.startedAtMs),
+                durationSecs: secs,
+                distanceMetres: metres,
+                avgHeartRateBpm: avg,
+              ),
+            ));
+          }
+        }
+      }
+    }
+
+    found.sort((a, b) {
+      final byStart = a.instance.startedAtMs.compareTo(b.instance.startedAtMs);
+      if (byStart != 0) return byStart;
+      return a.instance.id.compareTo(b.instance.id);
+    });
+    return [for (final entry in found) entry.effort];
   }
 }
 
