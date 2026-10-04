@@ -299,10 +299,10 @@ PR adds or to user-facing strings only.
 
 | Guard test | What it makes impossible | Green |
 |---|---|---|
-| `the Stats primer key is written in exactly one file` | a second reader/writer of `primer_seen_stats` drifting away from `StatsPrimerState` | _pending_ |
-| `the Home screen's primer state stays optional and nullable` | a refactor to a required parameter, which would break every existing `HomeScreen` consumer | _pending_ |
-| `the Stats screen holds no StatsPrimerState` | the state creeping back into the screen, which is what re-opens the "reopen marks seen" hole | _pending_ |
-| `no unfinished-feature wording reaches the Stats feature` | the banned wording from D-2011 re-entering the Stats feature | _pending_ |
+| `the Stats primer key is written in exactly one file` | a second reader/writer of `primer_seen_stats` drifting away from `StatsPrimerState` | green (mutation D red) |
+| `the Home screen's primer state stays optional and nullable` | a refactor to a required parameter, which would break every existing `HomeScreen` consumer | green (mutation A red) |
+| `the Stats screen holds no StatsPrimerState` | the state creeping back into the screen, which is what re-opens the "reopen marks seen" hole | green (mutation B red) |
+| `no unfinished-feature wording reaches the Stats feature` | the banned wording from D-2011 re-entering the Stats feature | green (mutation C red) |
 
 ### 4.2 Mutation records
 
@@ -313,29 +313,49 @@ PR adds or to user-facing strings only.
 - **Mutated:** `final StatsPrimerState statsPrimerState;` (the `?` dropped)
 - **Test that must go red:** `the Home screen's primer state stays optional and nullable`
 - **Command:** `gateway.sh test test/stats_primer_contract_test.dart`
-- **Observed:** _pending_
-- **Restore → re-run:** _pending_
+- **Observed:** `00:00 +1 -1: the Home screen's primer state stays optional and nullable [E]` → `Expected: contains 'StatsPrimerState? statsPrimerState'`
+- **Restore → re-run:** line 99 read back as `final StatsPrimerState? statsPrimerState;`; `00:00 +4: All tests passed!`
 
 #### Mutation B — the no-state-in-the-screen guard bites
 
 - **File:** `lib/features/stats/stats_screen.dart`
 - **Original:** no `StatsPrimerState` reference
-- **Mutated:** a temporary `final StatsPrimerState? statsPrimerState;` field plus its import
+- **Mutated:** a temporary `final StatsPrimerState? statsPrimerState;` field plus `import '../../state/stats/stats_primer_state.dart';`
 - **Test that must go red:** `the Stats screen holds no StatsPrimerState`
 - **Command:** `gateway.sh test test/stats_primer_contract_test.dart`
-- **Observed:** _pending_
-- **Restore → re-run:** _pending_
+- **Observed:** `00:00 +2 -1: the Stats screen holds no StatsPrimerState [E]` → `Expected: not contains 'StatsPrimerState'`
+- **Restore → re-run:** the import (line 27) and the field are gone (`sed -n '27p;47p'` → `import 'widgets/stats_primer_sheet.dart';` / `final bool showPrimerHelp;`); `00:00 +4: All tests passed!`
+
+#### Mutation C — the wording guard bites
+
+- **File:** `lib/features/stats/widgets/stats_primer_sheet.dart`
+- **Original:** `child: Text('Got it'),`
+- **Mutated:** `child: Text('Got it coming soon'),`
+- **Test that must go red:** `no unfinished-feature wording reaches the Stats feature`
+- **Command:** `gateway.sh test test/stats_primer_contract_test.dart`
+- **Observed:** `00:00 +3 -1: no unfinished-feature wording reaches the Stats feature [E]` → `Expected: empty / Actual: ['lib/features/stats/widgets/stats_primer_sheet.dart: coming soon']`
+- **Restore → re-run:** line 143 read back as `child: Text('Got it'),`; `00:00 +4: All tests passed!`
+
+#### Mutation D — the single-writer guard bites
+
+- **File:** `lib/features/stats/widgets/stats_primer_sheet.dart`
+- **Original:** `// filepath: …` then `//` (line 2 is the blank comment line)
+- **Mutated:** an inserted line `// primer_seen_stats`
+- **Test that must go red:** `the Stats primer key is written in exactly one file`
+- **Command:** `gateway.sh test test/stats_primer_contract_test.dart`
+- **Observed:** `00:00 +0 -1: the Stats primer key is written in exactly one file [E]` → `Actual: ['lib/features/stats/widgets/stats_primer_sheet.dart', 'lib/state/stats/stats_primer_state.dart']`
+- **Restore → re-run:** lines 1–3 read back as `// filepath: …` / `//` / `// One-shot orientation sheet…`; `00:00 +4: All tests passed!`; `gateway.sh git-diff` on tracked files is empty.
 
 ### 4.3 Residue sweep (paste the raw output of each)
 
 | # | Sweep | Command | Expected | Observed |
 |---|---|---|---|---|
-| a | `primer_seen_stats` outside the state file | gateway `list` / source scan | only `lib/state/stats/stats_primer_state.dart` | _pending_ |
-| b | `StatsPrimerSheet(` construction sites | source scan over `lib/` | only `lib/features/stats/stats_screen.dart` and `lib/features/home/home_screen.dart` | _pending_ |
-| c | Records & Trends' own empty state untouched | `gateway.sh git-diff lib/features/stats/records_and_trends_screen.dart` | empty diff; one occurrence of `Complete your first session to see stats here.` | _pending_ |
-| d | no placeholders in the new files | source scan | no `TODO`, no `UnimplementedError`, no placeholder text | _pending_ |
-| e | no new colour or token value | source scan | no `Color(0x`, no new token literal in either new file | _pending_ |
-| f | no leftover in-screen auto-open machinery | source scan over `lib/features/stats/` | no `_primerAutoShown`, no `AnimationStatusListener`, no post-frame auto-open | _pending_ |
+| a | `primer_seen_stats` outside the state file | gateway `list` / source scan | only `lib/state/stats/stats_primer_state.dart` | `grep -rn "primer_seen_stats" lib` → `lib/state/stats/stats_primer_state.dart:12` (comment) and `:46` (the `preferenceKey` const); nothing else |
+| b | `StatsPrimerSheet(` construction sites | source scan over `lib/` | only `lib/features/stats/stats_screen.dart` and `lib/features/home/home_screen.dart` | `grep -rn "StatsPrimerSheet(" lib` → `lib/features/home/home_screen.dart:467`, `lib/features/stats/stats_screen.dart:351`, plus the widget's own declaration `lib/features/stats/widgets/stats_primer_sheet.dart:47` (`const StatsPrimerSheet({super.key, this.onDismiss})` — the constructor, not a call site) |
+| c | Records & Trends' own empty state untouched | `gateway.sh git-diff` | empty diff; one occurrence of `Complete your first session to see stats here.` | `gateway.sh git-diff` (all tracked files) is empty, so the file is unmodified; `grep -c "Complete your first session to see stats here." lib/features/stats/records_and_trends_screen.dart` → `1` |
+| d | no placeholders in the new files | source scan | no `TODO`, no `UnimplementedError`, no placeholder text | `grep -n "TODO\|UnimplementedError\|placeholder" lib/state/stats/stats_primer_state.dart lib/features/stats/widgets/stats_primer_sheet.dart` → no matches (exit 1) |
+| e | no new colour or token value | source scan | no `Color(0x`, no new token literal in either new file | `grep -n "Color(0x\|Color.fromARGB" …` → no matches (exit 1); the sheet's colour references are `OmniTheme`/`Theme.of(context).colorScheme` tokens |
+| f | no leftover in-screen auto-open machinery | source scan over `lib/features/stats/` | no `_primerAutoShown`, no `AnimationStatusListener`, no post-frame auto-open | `grep -rn "_primerAutoShown\|AnimationStatusListener" lib/features/stats/` → no matches (exit 1) |
 
 ### 4.4 Docs guards
 
@@ -349,10 +369,10 @@ PR adds or to user-facing strings only.
 
 | Check | Expected | Observed |
 |---|---|---|
-| `gateway.sh test test/stats_primer_contract_test.dart test/stats_primer_screen_test.dart test/stats_primer_home_test.dart test/stats_primer_state_test.dart` | green | _pending_ |
-| `gateway.sh test` (full suite) | the re-measured baseline count, `All tests passed!` | _pending_ |
-| `gateway.sh lint` | the re-measured baseline issue count, 0 errors | _pending_ |
-| `gateway.sh git-status` | exactly the seventeen Predicted Files across all five runs; nothing deleted | _pending_ |
+| `gateway.sh test test/stats_primer_contract_test.dart test/stats_primer_screen_test.dart test/stats_primer_home_test.dart test/stats_primer_state_test.dart` | green | `00:01 +21: All tests passed!` (4 contract + 7 screen + 4 home + 6 state; the concurrent reporter's per-line labels are unreliable — the total is what counts) |
+| `gateway.sh test` (full suite) | the re-measured baseline count, `All tests passed!` | `01:42 +3873 ~1: All tests passed!` (baseline `+3869 ~1` + the 4 new guards) |
+| `gateway.sh lint` | the re-measured baseline issue count, 0 errors | `196 issues found. (ran in 3.2s)` — 0 errors; no notice in `test/stats_primer_contract_test.dart` |
+| `gateway.sh git-status` | exactly the seventeen Predicted Files across all five runs; nothing deleted | `M docs/plans/…-plan.evidence.md`, `M docs/plans/…-plan.md`, `?? test/stats_primer_contract_test.dart` — the Phase 3A files only; no `lib/` change |
 
 ---
 

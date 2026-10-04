@@ -743,7 +743,7 @@ files.
 | Phase 1 — `StatsPrimerState` + tests (@dba) | **Complete** | `.evidence.md` §2 → red compile failure, `+6` green (S-2705/2706 on Mock+Hive, S-2710, S-2711), mutations A/B red→restore→green, lint `196 issues`, full suite `+3858 ~1` |
 | Phase 2A — sheet + `showPrimerHelp` + "?" + first-use card (@developer) | **Complete** | `.evidence.md` §3 → red compile failure (`No named parameter 'showPrimerHelp'`), `+7` green (S-2703/2704×2/2707×2/2708/2714), mutation A red→restore→green, unaffected set `+525` with no edit, lint `196 issues`, full suite `+3865 ~1` |
 | Phase 2B — HomeScreen hosting + DI + home test (@developer) | **Complete** | `.evidence.md` §3A → red compile failure (`No named parameter 'statsPrimerState'`), `+4` green (S-2701/2716/2717/2718), mutations A/B red→restore→green, targeted set `+108`, lint `196 issues`, full suite `+3869 ~1` |
-| Phase 3A — guards + residue sweep (@developer) | not started | `.evidence.md` → the four guards, the two mutations, the six-point residue sweep, lint line |
+| Phase 3A — guards + residue sweep (@developer) | **Complete** | `.evidence.md` §4 → four guards green (4 new), mutations A/B/C/D red→restore→green, six-point residue sweep empty, lint `196 issues`, full suite `+3873 ~1` |
 | Phase 3B — docs (@developer) | not started | `.evidence.md` → docs-guard line, full-suite line, lint line |
 
 ## Assumption Log
