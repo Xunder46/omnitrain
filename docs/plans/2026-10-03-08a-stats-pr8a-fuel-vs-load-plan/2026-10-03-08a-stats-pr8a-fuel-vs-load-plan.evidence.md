@@ -98,34 +98,93 @@ account for the whole difference. No pre-existing test changed its result.
 
 | Suite | Command | Output |
 |---|---|---|
-| _not run yet_ | | |
+| `test/nutrition_series_service_test.dart` (step 2, before the service change) | `.github/copilot/scripts/macos/gateway.sh test test/nutrition_series_service_test.dart` | compile failure: `test/nutrition_series_service_test.dart:270:38: Error: The method 'nutritionSeries' isn't defined for the type 'StatsProgressService'.` — same error at 287:11, 303:11, 403:31, 409:27, 429:9 (6 ×), plus `69:12: Error: The getter 'millisecondsSinceEpoch' isn't defined for the type 'Object'.`; `00:00 +0 -1: Some tests failed.` |
 
 ### Green runs
 
 | Suite | Command | Output |
 |---|---|---|
-| _not run yet_ | | |
+| `test/nutrition_series_service_test.dart` (step 2, after the service change) | `.github/copilot/scripts/macos/gateway.sh test test/nutrition_series_service_test.dart` | `00:00 +11: All tests passed!` |
+| the four neighbouring suites (step 4) | `.github/copilot/scripts/macos/gateway.sh test test/stats_progress_test.dart test/mix_layer_service_test.dart test/modality_mix_period_service_test.dart test/db_seed_test.dart` | `00:01 +112: All tests passed!` — no existing expectation changed |
+| the new suite plus the sweep the extraction tripped (step 4, second pass) | `.github/copilot/scripts/macos/gateway.sh test test/nutrition_series_service_test.dart test/stats_legacy_removal_test.dart test/stats_progress_test.dart test/mix_layer_service_test.dart test/modality_mix_period_service_test.dart test/db_seed_test.dart` | `00:01 +132: All tests passed!` |
+
+### Extraction defect found and fixed (step 4)
+
+The first full-suite run after the extraction was `01:35 +3666 ~1 -1: Some tests failed.` —
+`test/stats_legacy_removal_test.dart` / `S-1263 residue sweep` / `no lib reader of a removed
+projection name survives`:
+
+```
+Expected: false
+  Actual: <true>
+D-666: `nutritionTrend` was deleted by 4c2 and must not come back to lib/core/services/stats_progress_service.dart
+test/stats_legacy_removal_test.dart 511:11
+```
+
+The sweep is a case-sensitive `source.contains(name)` over `_kRetiredNames`, which lists
+`nutritionTrend`. The first helper name was `_nutritionTrendInRange`, which contains that literal
+(`computeNutritionTrend` does not — capital `N`). Fixed the extraction, not the test: the helper is
+now `_nutritionPointsInRange`. `grep` for `nutritionTrend` in
+`lib/core/services/stats_progress_service.dart` afterwards returns nothing.
 
 ### Mutation pair
 
 | # | File | Mutation | Test that must fail | Observed | Restored |
 |---|---|---|---|---|---|
-| (d) | `lib/core/services/stats_progress_service.dart` | anchor the new read on the real clock instead of its bounds | S-2112 / the past-dated fixture | | |
+| (d) | `lib/core/services/stats_progress_service.dart` | anchor the new read on the real clock instead of its bounds | S-2112 / the past-dated fixture | `00:00 +2 -9: Some tests failed.` — the three `nutritionSeries` tests fail in both stores (each returns only today's point), the S-2112 boundary test fails on `nutritionSeries(fromMs: _day(41), toMs: priorTo)` returning `[]` instead of `[day(21)]`, and the Mock/Hive parity test fails `hasLength(3)`; the two-period call itself is unaffected | restored → `00:00 +11: All tests passed!` |
+
+Original line (copied before mutating):
+
+`lib/core/services/stats_progress_service.dart` — `nutritionSeries`, mutation (d):
+```dart
+  }) => _nutritionPointsInRange(
+    fromMs: fromMs.millisecondsSinceEpoch,
+    toMs: toMs.millisecondsSinceEpoch,
+  );
+```
 
 ### S-2112 detail
 
 | Assertion | Observed |
 |---|---|
-| 21-day period call equals the equivalent window call, field for field | |
-| prior call's last instant is the millisecond before the recent call's first | |
-| session at `day(20) 00:00` in recent only; at `day(21) 00:00` in prior only | |
-| `test/modality_mix_period_service_test.dart` passes unmodified | |
+| 21-day period call equals the equivalent window call, field for field | pass (Mock and Hive) — `measure`, `segments`, `baselineSegments`, `unratedSessionCount`, `ratedBaselineWeeks` all equal; `weeks` empty; measure is `MixMeasure.load` |
+| prior call's last instant is the millisecond before the recent call's first | pass — `day(20) 00:00 − 1 ms` vs `day(20) 00:00` |
+| session at `day(20) 00:00` in recent only; at `day(21) 23:59` in prior only | pass — recent has Sports > 0 and Isometric 0; prior has Isometric > 0 and Sports 0 |
+| the boundary rows land in the period whose day they carry | pass — `nutritionSeries(prior bounds)` = `[day(21)]`, `nutritionSeries(recent bounds)` = `[day(20)]` |
+| `test/modality_mix_period_service_test.dart` passes unmodified | pass — `00:01 +112: All tests passed!` over the four neighbouring suites |
 
 ### Full-suite summary (Phase 2)
 
 ```
-<paste `flutter test`'s summary line>
+01:46 +3667 ~1: All tests passed!
 ```
+
+Baseline at Phase 1's close was `+3656 ~1`; the 11 new tests in
+`test/nutrition_series_service_test.dart` account for the whole difference. No pre-existing test
+changed its result.
+
+### Phase 2 Done Criteria
+
+| Command | Result |
+|---|---|
+| `.github/copilot/scripts/macos/gateway.sh lint` | `196 issues found. (ran in 3.0s)` — 0 errors; identical to the baseline, and no issue in `lib/core/services/stats_progress_service.dart` or `test/nutrition_series_service_test.dart` |
+| `.github/copilot/scripts/macos/gateway.sh test test/nutrition_series_service_test.dart test/stats_progress_test.dart test/mix_layer_service_test.dart test/modality_mix_period_service_test.dart test/db_seed_test.dart` | `00:01 +123: All tests passed!` |
+| `.github/copilot/scripts/macos/gateway.sh test` | `01:46 +3667 ~1: All tests passed!` |
+
+`.github/copilot/scripts/macos/gateway.sh format test/nutrition_series_service_test.dart` reported
+`Formatted 1 file (1 changed)`; the suite was re-run afterwards and stayed green. `dart format` was
+not run on `lib/core/services/stats_progress_service.dart` (not format-clean).
+
+### Doc edits (step 6)
+
+| Doc | Added |
+|---|---|
+| `docs/state_management/services_and_utils.md` | `nutritionSeries` under the `StatsProgressService` entry: the shared walk, the inclusive bounds, the absent-day rule; verification names all six tests |
+| `docs/training_load.md` | the period entry point's callers: the shift rule's period and a 21-day period, the 21-day call needing no code of its own; verified by the two S-2112 tests alongside the unmodified 7a suite |
+| `docs/nutrition.md` | the shared per-day source under `computeNutritionTrend`; verified by the four `nutritionSeries` tests alongside the existing two suites |
+
+Every test name cited above was read back from `test/nutrition_series_service_test.dart` after the
+last edit to that file, so no doc names a test that does not exist.
 
 ## Phase 3 — the card, the registry line, the guards
 

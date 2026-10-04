@@ -379,6 +379,27 @@ whether it holds a Resistance effort, and the best each exercise reached.
 Verified by `test/interference_sessions_service_test.dart` (D-1316, S-2005,
 S-2005(b), S-2009, S-2011, S-2012, over both repository implementations).
 
+`nutritionSeries({required DateTime fromMs, required DateTime toMs})` is the
+per-day nutrition read for bounds a caller owns. It is the same walk
+`computeNutritionTrend` makes: one private helper aggregates the range's
+`ConsumedFood` rows into one `NutritionTrendPoint` per day, and both reads
+delegate to it, so no second aggregation of `ConsumedFood` rows exists (D-1402).
+`computeNutritionTrend` keeps its real-clock anchor and resolves its own bounds
+from `days` before delegating; the period read resolves nothing and reads no
+clock, which is what lets a period carry its own `now`.
+
+- **Both bounds are inclusive and compared against the row's day key**, so a
+  caller whose `toMs` falls mid-day still sees that day's row, and two abutting
+  periods partition the rows between them with no gap and no overlap.
+- **A day with no row is absent**, never zero-filled — the same rule the trend
+  read applies.
+
+Verified by `test/nutrition_series_service_test.dart` (`the new read equals
+computeNutritionTrend for the equivalent span`, `the logged days are the rows'
+own days`, `a day without a row is absent`, `Mock and Hive give the same
+points`, `S-2112 the 21-day period equals the equivalent window call`, `S-2112
+the two periods abut and the boundary rows land in the right period`).
+
 ---
 
 ### `SignalsService`

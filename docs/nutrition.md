@@ -249,7 +249,17 @@ The `days` argument defaults to the service's trend constant; passing no limit
 computes the whole history, which is what the trend screen does. Days with nothing
 logged are skipped rather than zero-filled.
 
-Verified by `test/stats_progress_test.dart` and `test/nutrition_trend_screen_test.dart`.
+The per-day walk is shared. `StatsProgressService.nutritionSeries` takes the two
+instants a caller owns and returns the same points for that range, and both reads
+delegate to one private aggregation, so a day is summed one way wherever it is
+read. The trend read keeps its real-clock anchor; the period read reads no clock,
+which is what lets a period carry its own `now`.
+
+Verified by `test/stats_progress_test.dart` and `test/nutrition_trend_screen_test.dart`,
+and the period-scoped read by `test/nutrition_series_service_test.dart` (`the new
+read equals computeNutritionTrend for the equivalent span`, `the logged days are
+the rows' own days`, `a day without a row is absent`, `Mock and Hive give the same
+points`).
 
 ### `computeNutritionAdherence`
 

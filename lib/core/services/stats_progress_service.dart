@@ -516,10 +516,12 @@ class StatsProgressService {
   /// The Mix payload for the period `[fromMs, toMs]` — the same figures the Mix
   /// layer shows for the equivalent window, with no weekly strip (D-1204).
   ///
-  /// The period is the last [kModalityMixShiftPeriodDays] days, so its baseline
-  /// is the 12 calendar blocks before its own start day and its measure gate is
-  /// the same one the layer applies (D-1203). The strip is the layer's alone:
-  /// the period has no `now` to anchor it to, so [MixLayerData.weeks] is empty.
+  /// The period is whatever bounds the caller passes — the Modality Mix Shift
+  /// rule asks for its own shift period, the Fuel vs Load rule asks for a
+  /// 21-day one — so its baseline is the 12 calendar blocks before its own start
+  /// day and its measure gate is the same one the layer applies (D-1203). The
+  /// strip is the layer's alone: the period has no `now` to anchor it to, so
+  /// [MixLayerData.weeks] is empty.
   Future<MixLayerData?> computeMixPeriod({
     required DateTime fromMs,
     required DateTime toMs,
@@ -1769,6 +1771,32 @@ class StatsProgressService {
       DateTime.fromMillisecondsSinceEpoch(todayMs),
     );
 
+    return _nutritionPointsInRange(fromMs: fromMs, toMs: toMs);
+  }
+
+  /// The per-day nutrition series for `[fromMs, toMs]` — the same days, sums
+  /// and rounding [computeNutritionTrend] produces for the span it resolves,
+  /// but for bounds the caller names (D-1419).
+  ///
+  /// Both bounds are inclusive and both are compared against
+  /// [ConsumedFood.dateMs] (the day key, local midnight), so a caller whose
+  /// `toMs` falls mid-day still sees that day's row. The caller owns the
+  /// calendar arithmetic: a period read passes a period's own start and end,
+  /// where the trend read passes today-relative bounds.
+  Future<List<NutritionTrendPoint>> nutritionSeries({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) => _nutritionPointsInRange(
+    fromMs: fromMs.millisecondsSinceEpoch,
+    toMs: toMs.millisecondsSinceEpoch,
+  );
+
+  /// The one walk both reads share: rows in `[fromMs, toMs]`, grouped by day
+  /// key, macros scaled per row and rounded once per day, days ascending.
+  Future<List<NutritionTrendPoint>> _nutritionPointsInRange({
+    required int fromMs,
+    required int toMs,
+  }) async {
     final rows = await _repository.getConsumedFoodsInRange(fromMs, toMs);
     if (rows.isEmpty) return const [];
 

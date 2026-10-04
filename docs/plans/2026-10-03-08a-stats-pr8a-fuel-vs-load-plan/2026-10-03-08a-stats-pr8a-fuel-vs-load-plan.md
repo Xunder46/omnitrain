@@ -561,7 +561,7 @@ Signals layer. `docs/README.md` needs no change: it indexes feature docs, not pl
 |---|---|---|
 | Plan lines re-measured | not started | this file, read back after Phase 3 |
 | Phase 1 | **Complete** | `.evidence.md` § Phase 1 — red→green for both suites, three mutation pairs, `lint` `196 issues found.` (0 errors), full suite `01:37 +3654 ~1: All tests passed!`; § Phase 1 — Fix 1 — the two "the constant contracts" tests the docs name, mutation (f), full suite `01:36 +3656 ~1: All tests passed!` |
-| Phase 2 | not started | — |
+| Phase 2 | **Complete** | `.evidence.md` § Phase 2 — red run (compile: `nutritionSeries` not defined) → green `00:00 +11: All tests passed!`; extraction defect found by the full suite (`S-1263` residue sweep) and fixed; mutation (d) `+2 -9: Some tests failed.` → restored green; `lint` `196 issues found.` (0 errors); full suite `01:46 +3667 ~1: All tests passed!` |
 | Phase 3 | not started | — |
 
 ## Assumption Log
@@ -581,6 +581,15 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
   value defined in source. Chose the standard: both new groups use the established sibling form (a
   "Constant | Rule it governs" table plus a "Verified by …" line), matching Training Load, Modality Mix
   Shift, Progression Rate and Interference. No value is written in prose.
+- **A-3 (Phase 2, step 2) —** D-1402 names the extracted helper only as "ONE private helper". The
+  name must not contain the literal `nutritionTrend`: `test/stats_legacy_removal_test.dart`'s S-1263
+  sweep is a case-sensitive `contains` over `_kRetiredNames`, which lists it (`computeNutritionTrend`
+  is safe — capital `N`). Chose `_nutritionPointsInRange`; the first name, `_nutritionTrendInRange`,
+  tripped the sweep and was fixed rather than the test.
+- **A-4 (Phase 2, step 3) —** the corrected `computeMixPeriod` sentence must describe the caller, not
+  the method. Chose to name the two callers by rule (the Modality Mix Shift rule's shift period, the
+  Fuel vs Load rule's 21-day period) rather than by the plan's `7a`/`8a` series labels, which are
+  plan vocabulary and not app vocabulary.
 
 ## Feedback
 
