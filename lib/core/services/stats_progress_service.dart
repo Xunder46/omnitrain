@@ -1840,6 +1840,71 @@ class StatsProgressService {
         .toList();
   }
 
+  /// The stored protein target for each local day in `[fromMs, toMs]`, keyed by
+  /// local midnight — the same key the protein rule uses. A day inherits the
+  /// most recent target stored on or before it; a day before any stored target
+  /// is absent, never zero. Resolved one day at a time through
+  /// [WorkoutRepository.getNutritionTargetForDate], so no repository method is
+  /// added for it (D-1519).
+  Future<Map<DateTime, double>> proteinTargetsByDay({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) async {
+    final targets = <DateTime, double>{};
+    final from = DateTime(fromMs.year, fromMs.month, fromMs.day);
+    final to = DateTime(toMs.year, toMs.month, toMs.day);
+    // Calendar arithmetic, never a Duration, so a DST shift cannot skip or
+    // repeat a day.
+    var day = from;
+    while (!day.isAfter(to)) {
+      final target = await _repository.getNutritionTargetForDate(
+        day.millisecondsSinceEpoch,
+      );
+      if (target != null) targets[day] = target.protein;
+      day = DateTime(day.year, day.month, day.day + 1);
+    }
+    return targets;
+  }
+
+  /// The number of completed sessions starting in `[fromMs, toMs]` that hold at
+  /// least one Resistance effort (D-1510).
+  ///
+  /// An in-progress session, a session starting outside the range, and a
+  /// session carrying only cardio, isometric or sports efforts are excluded —
+  /// the same `_sectionForKind` rule `interferenceSessions` applies.
+  Future<int> resistanceSessionCount({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) async {
+    final history = await _loadHistory();
+    var count = 0;
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      if (!_sessionInWindow(session, fromMs, toMs)) continue;
+      var hasResistance = false;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (_sectionForKind(effort.effortKind) ==
+              ExerciseSection.resistance) {
+            hasResistance = true;
+            break;
+          }
+        }
+        if (hasResistance) break;
+      }
+      if (hasResistance) count++;
+    }
+    return count;
+  }
+
+  /// The latest recorded bodyweight in kilograms, or null when none is on file
+  /// or its unit is not the canonical `unit-kg` (D-1511).
+  Future<double?> latestBodyWeightKg() async {
+    final entry = await _repository.getLatestMeasurement('bodyweight');
+    if (entry == null || entry.unitId != MetricIds.unitKg) return null;
+    return entry.value;
+  }
+
   /// The Fuel row's figures: intake averaged over logged days, split by
   /// whether the day carried a completed session, against the day's target.
   ///

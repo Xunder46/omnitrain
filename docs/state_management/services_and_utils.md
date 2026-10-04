@@ -400,6 +400,33 @@ own days`, `a day without a row is absent`, `Mock and Hive give the same
 points`, `S-2112 the 21-day period equals the equivalent window call`, `S-2112
 the two periods abut and the boundary rows land in the right period`).
 
+`proteinTargetsByDay({required DateTime fromMs, required DateTime toMs})`,
+`resistanceSessionCount({required DateTime fromMs, required DateTime toMs})` and
+`latestBodyWeightKg()` are the protein-consistency reads; the window's nutrition
+series is `nutritionSeries` above.
+
+- **A day inherits the most recent stored target on or before it**, resolved one
+  local calendar day at a time through the repository's existing
+  `getNutritionTargetForDate` — no repository method was added for it — and keyed
+  by local midnight, the key the protein rule uses. A day before any stored
+  target is absent, never zero-filled.
+- **The count takes completed sessions only**, starting inside the range and
+  holding at least one Resistance effort by the same `_sectionForKind` rule
+  `interferenceSessions` applies. A session with only cardio, isometric or sports
+  efforts, an in-progress session, and a session starting outside the range are
+  all excluded.
+- **The bodyweight is null unless its unit is the canonical `unit-kg`**, so a
+  measurement in any other unit yields no figure rather than a converted one.
+
+Verified by `test/protein_consistency_service_test.dart` (`proteinTargetsByDay
+inherits the last stored target forward`, `a day before any stored target is
+absent`, `only completed resistance sessions in the range are counted`, `a
+session with only timed efforts is not counted`, `an in-progress session is not
+counted`, `a session starting before the range is not counted`, `the latest
+bodyweight is the newest by recordedAtMs`, `no measurement on file yields null`,
+`a non-kg measurement yields null`, `S-2214 Mock and Hive give the same figures
+for all four reads`).
+
 ---
 
 ### `SignalsService`

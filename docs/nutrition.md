@@ -313,6 +313,17 @@ the most recent one. A single logged day whose stored target is zero or missing
 takes the whole window out of the target comparison — there is no third mode, and
 the rule falls back to the user's own usual level instead.
 
+**Each day's stored target is resolved by rolling the last stored target
+forward.** The service reads one value per local calendar day through the
+repository's existing per-day lookup, which returns the target stored for that
+day or the most recent earlier one, so a target saved once applies to every later
+day until it is changed; a day before any stored target has none, and no day is
+ever zero-filled. The shipped target screen writes `protein: 0.0` on every save
+(F-1), so a rolled-forward protein figure only arises from a target stored
+directly through the repository rather than from the screen. Verified by
+`test/protein_consistency_service_test.dart` (`proteinTargetsByDay inherits the
+last stored target forward`, `a day before any stored target is absent`).
+
 **The own baseline is pooled over logged days, never over the window.** The
 baseline is the eight 7-day blocks abutting the window, and only blocks with at
 least `kConsistentWeekMinLoggedDays` logged days contribute. Their logged days

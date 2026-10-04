@@ -489,27 +489,33 @@ measurement.
 
 ### Phase 2: the service reads (@dba)
 
-1. [ ] Write `test/protein_consistency_service_test.dart` (plain `test()` against
+1. [x] Write `test/protein_consistency_service_test.dart` (plain `test()` against
    `test/helpers/repository_harness.dart`, both factories, rows seeded in `setUp`): S-2214's parity for all
    four reads; a target stored for one day and inherited by a later day resolves to that value; a day
    before any target resolves to null; a session with only timed efforts is not counted; the latest
    bodyweight is the newest by `recordedAtMs`; a non-canonical unit yields null. Run it and record the
-   failure.
-2. [ ] Add the reads to `lib/core/services/stats_progress_service.dart` (D-1519): the window's nutrition
+   failure. — 21 tests written; red `00:00 +0 -1: Some tests failed.` (compile failure, the three reads
+   undefined).
+2. [x] Add the reads to `lib/core/services/stats_progress_service.dart` (D-1519): the window's nutrition
    series (8a's `nutritionSeries`), the per-day stored protein targets for a range (one
    `getNutritionTargetForDate` call per local day — no new repository method), the resistance-session
    count for a range (reusing `_sessionInWindow` and `_sectionForKind`), and the latest bodyweight in
    kilograms (via `getLatestMeasurement('bodyweight')`, returning null unless `unitId == 'unit-kg'`).
-   Nothing else in the file changes.
-3. [ ] Re-run step 1 to green, then the neighbouring suites:
+   Nothing else in the file changes. — three public reads added after `_nutritionPointsInRange`
+   (`proteinTargetsByDay`, `resistanceSessionCount`, `latestBodyWeightKg`); the series read is 8a's,
+   untouched.
+3. [x] Re-run step 1 to green, then the neighbouring suites:
    `flutter test test/nutrition_series_service_test.dart test/interference_test.dart test/stats_progress_test.dart test/db_seed_test.dart`.
-   A changed expectation anywhere here is a defect in the new reads, not a test to update.
-4. [ ] Mutation: make the resistance count include sessions with any effort kind rather than Resistance
-   efforts — the timed-only fixture in step 1 must fail. Restore and re-run.
-5. [ ] Docs: add the four reads to `docs/state_management/services_and_utils.md`'s `StatsProgressService`
+   A changed expectation anywhere here is a defect in the new reads, not a test to update. — green
+   `00:04 +21`; neighbours `00:19 +112`, no expectation changed.
+4. [x] Mutation: make the resistance count include sessions with any effort kind rather than Resistance
+   efforts — the timed-only fixture in step 1 must fail. Restore and re-run. — `== ExerciseSection.resistance`
+   → `!= null` failed the timed-only test on both factories (`Expected: <0> Actual: <1>`); restored,
+   re-ran green.
+5. [x] Docs: add the four reads to `docs/state_management/services_and_utils.md`'s `StatsProgressService`
    entry; add the per-day target resolution rule to `docs/nutrition.md`'s target section, noting that the
    shipped target screen persists `protein: 0.0` (F-1) so the resolution matters only for
-   directly-stored targets.
+   directly-stored targets. — both updated; every claim cites its test.
 
 **Done Criteria** (run until green):
 `flutter analyze`;
@@ -656,7 +662,7 @@ Nothing in `lib/data/`, `scripts/`, `watch/` or `lib/features/`. No file 8a crea
 |---|---|---|
 | Plan lines re-measured | not started | this file, read back after Phase 3 |
 | Phase 1 | **Complete** | `.evidence.md` → Phase 1: red `+0 -1` (compile failure), green `+14`, four mutation pairs each red then restored green, full suite `+3692 ~1: All tests passed!`, `flutter analyze` `196 issues found.` (0 errors) |
-| Phase 2 | not started | — |
+| Phase 2 | **Complete** | `.evidence.md` → Phase 2: red `+0 -1` (compile failure), green `+21`, neighbours `+112`, one mutation pair red on both factories then restored green, S-2214 parity identical on both factories, full suite `02:00 +3713 ~1: All tests passed!`, `flutter analyze` `196 issues found.` (0 errors, none in the files this phase touched) |
 | Phase 3 | not started | — |
 
 ## Assumption Log
@@ -695,6 +701,10 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
 - **A-8 (Phase 1, step 2) —** S-2213's source scan covers `lib/core/models/protein_consistency.dart` only.
   The private day helpers are named `_midnight`/`_plusDays` rather than `_localDay` so the file's stripped
   source contains no `cal` substring; the guard is on the definition file, as the scenario states.
+
+- **A-9 (Phase 2, step 2) —** The three reads are named `proteinTargetsByDay`,
+  `resistanceSessionCount` and `latestBodyWeightKg` (the plan's suggested names). `proteinTargetsByDay`
+  walks local calendar days via `DateTime(y, m, d + 1)`, not `Duration`, so a DST day is still one day.
 
 ## Feedback
 

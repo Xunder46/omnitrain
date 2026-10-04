@@ -104,35 +104,56 @@ Targeted run of the three nutrition-rule suites
 
 | Suite | Command | Output |
 |---|---|---|
-| _not run yet_ | | |
+| `test/protein_consistency_service_test.dart` (new, before the reads exist) | `.github/copilot/scripts/macos/gateway.sh test test/protein_consistency_service_test.dart` | `00:00 +0 -1: Some tests failed.` — `Failed to load ... Compilation failed for testPath=.../test/protein_consistency_service_test.dart: test/protein_consistency_service_test.dart:247:58: Error: The method 'proteinTargetsByDay' isn't defined for the type 'StatsProgressService'.` plus 12 further `The method 'proteinTargetsByDay' / 'resistanceSessionCount' / 'latestBodyWeightKg' isn't defined for the type 'StatsProgressService'.` lines |
 
 ### Green runs
 
 | Suite | Command | Output |
 |---|---|---|
-| _not run yet_ | | |
+| `test/protein_consistency_service_test.dart` (after the three reads land) | `.github/copilot/scripts/macos/gateway.sh test test/protein_consistency_service_test.dart` | `00:04 +21: All tests passed!` |
+| neighbours: `nutrition_series_service_test.dart`, `interference_test.dart`, `stats_progress_test.dart`, `db_seed_test.dart` | `.github/copilot/scripts/macos/gateway.sh test test/nutrition_series_service_test.dart test/interference_test.dart test/stats_progress_test.dart test/db_seed_test.dart` | `00:19 +112: All tests passed!` |
 
 ### Mutation pair
 
+**`lib/core/services/stats_progress_service.dart` — original line, copied before the mutation (an
+existing tracked file, so this is its state at the phase's first green run):**
+
+```dart
+          if (_sectionForKind(effort.effortKind) ==
+              ExerciseSection.resistance) {
+```
+
 | # | File | Mutation | Test that must fail | Observed | Restored |
 |---|---|---|---|---|---|
-| (e) | `lib/core/services/stats_progress_service.dart` | the resistance count accepts any effort kind instead of Resistance efforts | the timed-only fixture | | |
+| (e) | `lib/core/services/stats_progress_service.dart` | the resistance count accepts any effort kind instead of Resistance efforts (`== ExerciseSection.resistance` → `!= null`) | the timed-only fixture (`a session with only timed efforts is not counted`) | failed on **both** factories — `Mock — ... a session with only timed efforts is not counted` and `Hive — ... a session with only timed efforts is not counted`, each `Expected: <0> Actual: <1>` (`00:01 +10 -2: Some tests failed.`) | yes — the line above was put back verbatim and the suite re-ran green (`00:04 +21: All tests passed!`) |
 
 ### S-2214 parity detail
 
+The parity test runs one identical fixture through `MockRepositoryHarness` and
+`HiveRepositoryHarness`, reduces the four reads to a list of strings, and asserts the two lists are
+equal and 28 long (2 series points + 14 target days + 1 count + 1 bodyweight).
+
 | Read | Mock | Hive | Equal |
 |---|---|---|---|
-| the window's nutrition series | | | |
-| the per-day stored protein targets | | | |
-| the resistance-session count | | | |
-| the latest bodyweight in kilograms | | | |
-| the fired card's observation and suggestion | | | |
+| the window's nutrition series | 2 points: day 13 → 120.0 g, day 0 → 130.0 g | identical | ✓ |
+| the per-day stored protein targets | 14 days: day 13–7 → 150.0, day 6–0 → 160.0 | identical | ✓ |
+| the resistance-session count | 1 | identical | ✓ |
+| the latest bodyweight in kilograms | 78.5 | identical | ✓ |
+| the fired card's observation and suggestion | _Phase 3 — this phase's parity test compares the four reads only_ | | |
 
 ### Full-suite summary (Phase 2)
 
 ```
-<paste `flutter test`'s summary line>
+02:00 +3713 ~1: All tests passed!
 ```
+
+(Phase 1's baseline was `+3692 ~1`; this phase adds the new file's 21 tests. `flutter analyze`
+re-ran unchanged at `196 issues found.` with no issue in either file this phase touched.)
+
+Re-ran `test/docs_indexing_contract_test.dart` after the plan and doc edits (the plan grew past the
+suite's 80%-of-64 KiB warning threshold at 52 429 bytes): `00:00 +30: All tests passed!` with the plan
+at 51 892 bytes and the evidence file at 11 868 — both still under the threshold, with ~500 bytes of
+headroom left on the plan before Phase 3's additions.
 
 ## Phase 3 — the card, the registry line, the guards
 
