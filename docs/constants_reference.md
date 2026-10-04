@@ -368,6 +368,30 @@ boundary scenarios S-2103–S-2106).
 
 ---
 
+## Protein Consistency Constants
+
+**File**: `lib/core/models/protein_consistency.dart`
+
+The window, the three floors, the baseline span, the reference figure and the
+priority behind the Protein Consistency rule. Named here so a reader can find
+the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kProteinConsistencyWindowDays` | The span of the window the rule reads |
+| `kProteinConsistencyMinLoggedDays` | The smallest number of logged days the window needs; the boundary is inclusive |
+| `kProteinConsistencyShortfallPercent` | The shortfall below the comparison the card needs; the boundary is inclusive |
+| `kProteinConsistencyMinResistanceSessions` | The smallest number of completed resistance sessions the window needs; the boundary is inclusive |
+| `kProteinConsistencyMinBaselineWeeks` | The smallest number of consistent baseline blocks the own-baseline comparison needs |
+| `kProteinConsistencyBaselineWeeks` | The number of 7-day blocks the own baseline reads |
+| `kProteinGuidancePerKg` | The commonly cited strength-training guidance, in grams per kilogram of bodyweight |
+| `kProteinConsistencyPriority` | The signal's priority |
+
+Verified by `test/protein_consistency_test.dart` (the constant contracts and
+the boundary scenarios S-2201–S-2213).
+
+---
+
 ## Home Tile Configuration
 
 **File**: `lib/core/constants/home_tiles.dart`

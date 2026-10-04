@@ -451,14 +451,14 @@ can never drain.
 
 ### Phase 1: the pure protein rule (@dba)
 
-1. [ ] Read `lib/core/models/nutrition_consistency.dart` (8a's file) and `lib/core/models/fuel_vs_load.dart`
+1. [x] Read `lib/core/models/nutrition_consistency.dart` (8a's file) and `lib/core/models/fuel_vs_load.dart`
    (8a's rule) — the second is the shape to follow: constants, a result type, separately callable stages,
    a copy builder. Do not edit either.
-2. [ ] Write `test/protein_consistency_test.dart` (plain `test()`): S-2201, S-2202, S-2203, S-2204,
+2. [x] Write `test/protein_consistency_test.dart` (plain `test()`): S-2201, S-2202, S-2203, S-2204,
    S-2205, S-2206, S-2207, S-2208, S-2209, S-2210, S-2211, S-2212, S-2213 — each asserting one stage where
    the scenario names one, and the exact observation and suggestion strings where it names a card. Run it
    and record the failure.
-3. [ ] Create `lib/core/models/protein_consistency.dart` (D-1502…D-1517): the constants
+3. [x] Create `lib/core/models/protein_consistency.dart` (D-1502…D-1517): the constants
    `kProteinConsistencyWindowDays = 14`, `kProteinConsistencyMinLoggedDays = 10`,
    `kProteinConsistencyShortfallPercent = 15`, `kProteinConsistencyMinResistanceSessions = 2`,
    `kProteinConsistencyMinBaselineWeeks = 2`, `kProteinConsistencyBaselineWeeks = 8`,
@@ -467,12 +467,12 @@ can never drain.
    functions; the span and the reference derived from their constants. Pure Dart: no Flutter import, no
    repository, no clock, no service. It imports `lib/core/models/nutrition_consistency.dart` and
    `lib/core/utils/food_helpers.dart` only.
-4. [ ] Re-run step 2 to green.
-5. [ ] Mutations, one at a time, each restored: **(a)** D-1508's target-mode `<=` → `<` — S-2201 must
+4. [x] Re-run step 2 to green.
+5. [x] Mutations, one at a time, each restored: **(a)** D-1508's target-mode `<=` → `<` — S-2201 must
    fail; **(b)** D-1504's `>= 10` → `>= 11` — S-2204 must fail; **(c)** D-1508's own-mode comparison
    changed to divide both totals by `kProteinConsistencyWindowDays` — S-2205(b) must fail; **(d)**
    D-1509's minimum 2 → 1 — S-2212 must fail. Record all four red→green pairs in the evidence file.
-6. [ ] Docs: add the `protein_consistency` constant group to `docs/constants_reference.md` (names and
+6. [x] Docs: add the `protein_consistency` constant group to `docs/constants_reference.md` (names and
    values only, no restatement of a rule); add the own-baseline and per-day-target reading rules to
    `docs/nutrition.md`'s computation section, each with its test named.
 
@@ -655,7 +655,7 @@ Nothing in `lib/data/`, `scripts/`, `watch/` or `lib/features/`. No file 8a crea
 | Item | Status | Evidence |
 |---|---|---|
 | Plan lines re-measured | not started | this file, read back after Phase 3 |
-| Phase 1 | not started | — |
+| Phase 1 | **Complete** | `.evidence.md` → Phase 1: red `+0 -1` (compile failure), green `+14`, four mutation pairs each red then restored green, full suite `+3692 ~1: All tests passed!`, `flutter analyze` `196 issues found.` (0 errors) |
 | Phase 2 | not started | — |
 | Phase 3 | not started | — |
 
@@ -664,7 +664,37 @@ Nothing in `lib/data/`, `scripts/`, `watch/` or `lib/features/`. No file 8a crea
 _Executors append here: decision made, options considered, choice and why. The Conductor marks each
 RATIFIED (promoted to a D-x) or REVERT (remediation)._
 
-- **A-1 (Phase 1, step 1) —** _empty until the first run._
+- **A-1 (Phase 1, step 1) —** Read 8a's `nutrition_consistency.dart` and `fuel_vs_load.dart`; neither
+  edited. The new rule reuses `weekBlockStarts`, `isConsistentWeek` and `kWeekDays` rather than
+  re-deriving block arithmetic.
+- **A-2 (Phase 1, step 3) —** `kProteinGuidancePerKg` is written `8 / 5`, not `1.6`. Options: the literal
+  (matches the plan's step 3 text) or the fraction. S-2213 and Phase 3's guard 7(b) both require the
+  definition file's stripped source to contain no `1.6` literal, and the plan's own step 3 also says the
+  reference is "derived from its constant". The fraction satisfies both; the value is identical.
+- **A-3 (Phase 1, step 5a) —** Mutation (a) cannot flip S-2201's card: its fixture is 20% below, not on the
+  15% boundary, so `<=` and `<` agree there. Options: leave (a) unflippable, or assert the boundary
+  directly. S-2201 now also asserts `proteinShortfallTestAgainstTarget(recentTotal: 1530, targetSum: 1800)`
+  is true — exactly 15% below, where `<=` and `<` differ. The mutation then fails S-2201 as the plan
+  requires, and D-1508's inclusive boundary gains a test it did not have.
+- **A-4 (Phase 1, step 5d) —** Mutation (d) cannot flip S-2212's stated fixture: with 0 consistent blocks,
+  a minimum of 1 and a minimum of 2 both abstain. Options: leave (d) unflippable, or add the boundary.
+  S-2212 now also asserts an exactly-one-consistent-block case (5 of 7 days in one block, 3 of 7 in the
+  rest) abstains, where the two minima differ. The mutation then fails S-2212 as the plan requires.
+- **A-5 (Phase 1, step 5c) —** Mutation (c) is implemented as dividing **both** totals by
+  `kProteinConsistencyWindowDays` **and** dropping the logged-day counts (passing `recentDays: 1,
+  usualDays: 1`). Dividing the totals alone leaves the counts in the cross-multiplication and S-2205(b)
+  still abstains, so the mutation would not flip. The mutated reading is the one S-2205 describes: 103.6
+  against 145.
+- **A-6 (Phase 1, step 2) —** S-2205(a), S-2206, S-2207 and S-2211 pin an observation of `118 g/day`, so
+  those fixtures pass 118 g rows; the shared `_rows` default stays at S-2201's 120 g. No rule behaviour
+  changed — the fixtures now match the scenarios' own text.
+- **A-7 (Phase 1, step 2) —** S-2209(c)/(d) and S-2206's "latest of two bodyweights" are adapter/service
+  reads (Phase 2). Phase 1 asserts only what the pure rule owns: the integer resistance count against the
+  gate, and the per-kilogram figure for a bodyweight passed in. The classification and the selection are
+  Phase 2's tests.
+- **A-8 (Phase 1, step 2) —** S-2213's source scan covers `lib/core/models/protein_consistency.dart` only.
+  The private day helpers are named `_midnight`/`_plusDays` rather than `_localDay` so the file's stripped
+  source contains no `cal` substring; the guard is on the definition file, as the scenario states.
 
 ## Feedback
 

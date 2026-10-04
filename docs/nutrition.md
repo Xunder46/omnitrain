@@ -301,6 +301,32 @@ in [Constants Reference](constants_reference.md#nutrition-consistency-constants)
 Verified by `test/nutrition_consistency_test.dart` (the block starts, the
 month-end block, the 5-of-7 boundary and the logged-days-only mean).
 
+### Protein consistency
+
+`lib/core/models/protein_consistency.dart` reads the same foundation and owns two
+reading rules the nutrition figures depend on.
+
+**The per-day target is read per day, not as one current value.** A window's
+target figure is the mean of the stored protein target of each of the window's
+logged days, so a target changed mid-window is averaged rather than replaced by
+the most recent one. A single logged day whose stored target is zero or missing
+takes the whole window out of the target comparison — there is no third mode, and
+the rule falls back to the user's own usual level instead.
+
+**The own baseline is pooled over logged days, never over the window.** The
+baseline is the eight 7-day blocks abutting the window, and only blocks with at
+least `kConsistentWeekMinLoggedDays` logged days contribute. Their logged days
+are pooled into one mean, so the divisor is the number of logged days and never
+the window length; a day with nothing logged is absent rather than a zero, and
+the baseline is never widened past eight weeks to reach a figure.
+
+The constants are in
+[Constants Reference](constants_reference.md#protein-consistency-constants).
+
+Verified by `test/protein_consistency_test.dart` (S-2210 for the per-day target
+mean, S-2211 for the zero-target fallback, S-2205 for the pooled logged-day
+divisor, S-2212 for the baseline floor).
+
 ---
 
 ## Persistence
