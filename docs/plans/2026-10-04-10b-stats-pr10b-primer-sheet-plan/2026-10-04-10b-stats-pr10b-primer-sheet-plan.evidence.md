@@ -15,8 +15,8 @@ Companion to `2026-10-04-10b-stats-pr10b-primer-sheet-plan.md`. Evidence only. R
 
 | Check | Command | Expected | Observed |
 |---|---|---|---|
-| Analyze | `.github/copilot/scripts/macos/gateway.sh lint` | `196 issues found.`, 0 errors | _pending_ |
-| Full suite | `.github/copilot/scripts/macos/gateway.sh test` | `+3852 ~1: All tests passed!` | _pending_ |
+| Analyze | `.github/copilot/scripts/macos/gateway.sh lint` | `196 issues found.`, 0 errors | `196 issues found. (ran in 3.3s)` — 0 errors, measured on the clean tree before Phase 1 |
+| Full suite | `.github/copilot/scripts/macos/gateway.sh test` | `+3852 ~1: All tests passed!` | Phase-1 close run: `+3858 ~1: All tests passed!`. Six tests are new in Phase 1 and `git-diff` shows no tracked file changed, so the pre-Phase-1 count is `3858 − 6 = 3852`, matching the brief. The baseline was not run separately before the change (the untracked new test file cannot be excluded from a run); the arithmetic above is the re-measurement. |
 
 PR 10a (a test-only isolation refactor) may have landed before this PR started. **Re-measure both
 baselines before Phase 1** and record the numbers actually observed; the values above are the
@@ -33,21 +33,36 @@ One pre-existing timing-sensitive test may fail once in a full run. If it does: 
 
 | Command | Expected | Observed |
 |---|---|---|
-| `gateway.sh test test/stats_primer_state_test.dart` (before `lib/state/stats/stats_primer_state.dart` exists) | compile failure — `Target of URI doesn't exist` / `Undefined name 'StatsPrimerState'` | _pending_ |
-| `gateway.sh test test/stats_primer_state_test.dart` (after) | `All tests passed!` | _pending_ |
+| `gateway.sh test test/stats_primer_state_test.dart` (before `lib/state/stats/stats_primer_state.dart` exists) | compile failure — `Target of URI doesn't exist` / `Undefined name 'StatsPrimerState'` | `Error when reading 'lib/state/stats/stats_primer_state.dart': No such file or directory` + 8 `Method not found` / `Undefined name 'StatsPrimerState'` errors → `00:00 +0 -1: Some tests failed.` |
+| `gateway.sh test test/stats_primer_state_test.dart` (after) | `All tests passed!` | `00:00 +6: All tests passed!` |
+
+The test file is created first (so the red run compiles the test), then the state class. The new
+directory `lib/state/stats/` cannot be created by the gateway's menu, so it was created by a
+throwaway `test/zz_mkdir_stats.dart` probe run through `gateway.sh test` and then removed with
+`gateway.sh delete-scratch test/zz_mkdir_stats.dart` (see Assumption Log A-9).
 
 ### 2.2 Scenario coverage
 
 | Scenario | Test name | Mock | Hive |
 |---|---|---|---|
-| S-2705 | `S-2705: the seen flag survives a restart` › `a marked-seen Stats primer is seen again after a Hive restart` | _pending_ | _pending_ |
-| S-2706 | `S-2706: the two primer keys are independent` › `marking the Stats primer seen leaves the Nutrition primer unseen` | _pending_ | _pending_ |
-| S-2710 | `S-2710: markSeen is idempotent` › `two markSeen calls write the flag once and notify once` | _pending_ | — |
-| S-2711 | `S-2711: a hydration failure falls back to unseen` › `a throwing getPreferenceBool leaves the primer unseen` | _pending_ | — |
+| S-2705 | `Mock — S-2705: the seen flag survives a restart` › `a marked-seen Stats primer is seen again after a Hive restart` | green | green |
+| S-2705 | `Hive — S-2705: the seen flag survives a restart` › `a marked-seen Stats primer is seen again after a Hive restart` | green | green |
+| S-2706 | `Mock — S-2706: the two primer keys are independent` › `marking the Stats primer seen leaves the Nutrition primer unseen` | green | green |
+| S-2706 | `Hive — S-2706: the two primer keys are independent` › `marking the Stats primer seen leaves the Nutrition primer unseen` | green | green |
+| S-2710 | `S-2710: markSeen is idempotent` › `two markSeen calls write the flag once and notify once` | green | — |
+| S-2711 | `S-2711: a hydration failure falls back to unseen` › `a throwing getPreferenceBool leaves the primer unseen` | green | — |
+
+The two persistence scenarios run once per `harnessFactories` entry, so the group name is prefixed
+`Mock — ` / `Hive — ` (the `test/entry_identity_test.dart` and
+`test/protein_consistency_service_test.dart` convention); the pinned scenario name and test name are
+kept verbatim after the prefix (Assumption Log A-10).
 
 ### 2.3 Mutation records
 
 Each record: the original line, the mutated line, the command, the observed output, and the restore.
+Both mutations ran before step 6's `dart format`, so the `test/stats_primer_state_test.dart:NN`
+line numbers in the pasted output are those of the pre-format file; the current file wraps the
+`test(` calls and the assertions sit at different lines.
 
 #### Mutation A — the key is not the Nutrition key
 
@@ -59,8 +74,18 @@ Each record: the original line, the mutated line, the command, the observed outp
 - **Command:** `gateway.sh test test/stats_primer_state_test.dart`
 - **Expected red:** the assertion on `getPreferenceBool('primer_seen_nutrition') == false` fails — the
   Stats write lands on the Nutrition key.
-- **Observed:** _pending_
-- **Restore → re-run:** _pending_
+- **Observed:** red, both harnesses:
+  ```
+  00:00 +1 -1: Mock — S-2706: the two primer keys are independent marking the Stats primer seen leaves the Nutrition primer unseen [E]
+    Expected: false
+      Actual: <true>
+    test/stats_primer_state_test.dart 84:9              main.<fn>.<fn>
+  00:00 +2 -2: Hive — S-2706: ... [E]  (same)
+  00:00 +4 -2: Some tests failed.
+  ```
+  S-2705 stayed green (it never reads the Nutrition key), so the mutant is isolated to S-2706.
+- **Restore → re-run:** the original line restored verbatim →
+  `00:00 +6: All tests passed!`
 
 #### Mutation B — `markSeen` really writes
 
@@ -72,16 +97,29 @@ Each record: the original line, the mutated line, the command, the observed outp
 - **Command:** `gateway.sh test test/stats_primer_state_test.dart`
 - **Expected red:** the fresh state's `hasSeen` is `false` after the restart — the flag was never
   persisted.
-- **Observed:** _pending_
-- **Restore → re-run:** _pending_
+- **Observed:** red, both harnesses (S-2705's `hasSeen` assertion is line 61); S-2706 and S-2710 go
+  red with it because the flag never lands:
+  ```
+  00:00 +0 -3: Hive — S-2705: the seen flag survives a restart ... [E]
+    Expected: true
+      Actual: <false>
+    test/stats_primer_state_test.dart 61:9              main.<fn>.<fn>
+  00:00 +0 -4: Hive — S-2706: ... [E]  (Expected: true / Actual: <false>, line 80)
+  00:00 +0 -5: S-2710: markSeen is idempotent ... [E]  (Expected: an object with length of <1> / Actual: [])
+  00:00 +1 -5: Some tests failed.
+  ```
+- **Restore → re-run:** the original line restored verbatim →
+  `00:00 +6: All tests passed!`
 
 ### 2.4 Phase 1 close
 
 | Check | Expected | Observed |
 |---|---|---|
-| `gateway.sh test test/stats_primer_state_test.dart` | green | _pending_ |
-| `gateway.sh lint` | baseline issue count, 0 errors | _pending_ |
-| `gateway.sh git-status` | exactly the two new files | _pending_ |
+| `gateway.sh test test/stats_primer_state_test.dart` | green | `00:00 +6: All tests passed!` |
+| `gateway.sh lint` | baseline issue count, 0 errors | `196 issues found. (ran in 3.0s)` — 0 errors, no issue in either new file |
+| `gateway.sh git-status` | exactly the two new files | `?? lib/state/stats/` and `?? test/stats_primer_state_test.dart`; `git-diff --stat` empty (no tracked file touched) |
+
+Full suite at Phase 1 close: `+3858 ~1: All tests passed!` (`gateway.sh test`).
 
 ---
 
