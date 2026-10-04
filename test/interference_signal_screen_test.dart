@@ -427,7 +427,13 @@ void main() {
           await pumpStats(tester);
 
           expect(find.byKey(const Key(_kCardKey)), findsOneWidget);
-          expect(find.text(_kCautionLabel), findsOneWidget);
+          expect(
+            find.descendant(
+              of: find.byKey(const Key(_kCardKey)),
+              matching: find.text(_kCautionLabel),
+            ),
+            findsOneWidget,
+          );
           expect(find.text(_kObservation), findsOneWidget);
           expect(find.text(_kSuggestion), findsOneWidget);
           expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
@@ -477,7 +483,7 @@ void main() {
           setUp(() => _seedFInt(repo));
 
           testWidgets('one tap removes the card in the tap frame, the store '
-              'holds the id, and the next open is still quiet', (tester) async {
+              'holds the id, and the next open still hides it', (tester) async {
             await pumpStats(tester);
             expect(find.byKey(const Key(_kCardKey)), findsOneWidget);
 
@@ -491,7 +497,6 @@ void main() {
             // (D-1010).
             await tester.pump();
             expect(find.byKey(const Key(_kCardKey)), findsNothing);
-            expect(find.byKey(const Key('signals_quiet_line')), findsOneWidget);
 
             await settleStore(tester);
             final store = await _readDismissals(repo);
@@ -499,7 +504,6 @@ void main() {
 
             await reopen(tester);
             expect(find.byKey(const Key(_kCardKey)), findsNothing);
-            expect(find.byKey(const Key('signals_quiet_line')), findsOneWidget);
           });
         });
       }

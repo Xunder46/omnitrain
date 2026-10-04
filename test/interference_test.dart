@@ -1090,6 +1090,7 @@ void main() {
           .where((s) => s.kind == SignalKind.caution)
           .toList();
       expect(cautions.map((s) => s.id), [
+        'sustained-high-load',
         'protein-consistency',
         'fuel-vs-load',
         'modality-mix-shift',

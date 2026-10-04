@@ -551,13 +551,13 @@ else); `test/sustained_high_load_service_test.dart` (NEW).
 Run this phase in one pass; it is deliberately small so the adapter, the registry and the two
 guards land together and no half-registered state is left behind.
 
-1. [ ] Write `test/sustained_high_load_signal_screen_test.dart` **first**, Mock-first
+1. [x] Write `test/sustained_high_load_signal_screen_test.dart` **first**, Mock-first
        (`--plain-name "Mock"`), following `test/fuel_vs_load_signal_screen_test.dart`: a tall
        viewport, `_day(daysAgo)`/`_at(daysAgo, hour)` local helpers, a local `_seedSession` that
        writes `TrainingSession(…, sessionFeeling: rating, …)` because the harness's own seeder
        cannot set a rating, S-2401, S-2403, S-2410 and S-2412, and the dismissal tap in a
        Mock-only case. Run it: it must fail. Record the red run.
-2. [ ] Create `lib/core/services/signals/sustained_high_load_signal.dart` after
+2. [x] Create `lib/core/services/signals/sustained_high_load_signal.dart` after
        `fuel_vs_load_signal.dart`: private `const String _kSustainedHighLoadTitle = 'Sustained high
        load';`, `id => 'sustained-high-load'`, `kind => SignalKind.caution`, `priority =>
        kSustainedHighLoadPriority`, and an `evaluate` that reads `context.now`, calls
@@ -565,17 +565,18 @@ guards land together and no half-registered state is left behind.
        `computeMixPeriod(fromMs: streak.firstWeekStart, toMs: context.now)` when the run reaches the
        floor, calls the rule and builds the card from `sustainedHighLoadCopy`. It reads no
        repository and no PR API.
-3. [ ] Insert `SustainedHighLoadSignal()` **first** in `buildSignalRegistry()` in
+3. [x] Insert `SustainedHighLoadSignal()` **first** in `buildSignalRegistry()` in
        `lib/core/services/signals/signal_registry.dart` (D-1713) — one line, no reformat.
-4. [ ] Extend `test/interference_test.dart`'s `the caution order holds and the registry is ordered
+4. [x] Extend `test/interference_test.dart`'s `the caution order holds and the registry is ordered
        by it`: add `'sustained-high-load'` first to its expected caution list. No reformat.
-5. [ ] Extend `test/modality_mix_shift_signal_screen_test.dart`'s
+5. [x] Extend `test/modality_mix_shift_signal_screen_test.dart`'s
        `lists exactly the five shipped signals, in order`: rename it to `lists exactly the six
        shipped signals, in order` and add `'sustained-high-load'` first to its expected list. No
        reformat.
-6. [ ] Green: the new screen suite (Mock-first), then the two guard suites, then the full suite.
-       Paste the summary lines.
-7. [ ] **Mutation check 5** (must fail if the registry position is wrong): move the new entry to the
+6. [x] Green: the new screen suite (Mock-first), then the two guard suites, then the full suite.
+       Paste the summary lines. — Complete: full `flutter test` `05:15 +3772 ~1: All tests passed!`
+       after the S-2013 assertions were scoped to Interference's own card (Assumption Log #11).
+7. [x] **Mutation check 5** (must fail if the registry position is wrong): move the new entry to the
        end of the registry, run both guards, confirm both fail, revert. **Mutation check 6**: pass
        `mixShowsLoad: true` unconditionally in the adapter, run S-2410(b), confirm the card wrongly
        appears, revert. Record both.
@@ -697,13 +698,13 @@ One line per item, filled as it lands.
 | 2 | `weeklyLoads()` | Complete — one `_loadHistory` walk reusing `_sessionSplit`; oldest first, empty weeks present, `now`'s week never returned |
 | 2 | Phase 2 suites green, evidence pasted | Complete — analyze 196 issues/0 errors; suites `+170`; full `+3759 ~1` |
 | 2 | Mutation checks 3–4 (incomplete week, empty weeks) | Complete — both red as predicted (18 weeks, 15 weeks), both reverted, green re-run |
-| 3A | Screen test written, red run recorded | not started |
-| 3A | The adapter | not started |
-| 3A | The registry line, first | not started |
-| 3A | Guard 1 extended (`interference_test.dart`) | not started |
-| 3A | Guard 2 extended and renamed (`modality_mix_shift_signal_screen_test.dart`) | not started |
-| 3A | Phase 3A suites green, evidence pasted | not started |
-| 3A | Mutation checks 5–6 (registry order, the gate) | not started |
+| 3A | Screen test written, red run recorded | Complete — 13 tests (7 Mock, 6 Hive); red run `+4 -3`, the three card scenarios failing on the missing registration |
+| 3A | The adapter | Complete — `sustained_high_load_signal.dart`; reads `context.now` and `context.progressService` only, and skips the Mix read below the streak floor |
+| 3A | The registry line, first | Complete — one import plus `SustainedHighLoadSignal()` as the first entry |
+| 3A | Guard 1 extended (`interference_test.dart`) | Complete — one line added to the expected caution list |
+| 3A | Guard 2 extended and renamed (`modality_mix_shift_signal_screen_test.dart`) | Complete — test renamed to "six", one line added |
+| 3A | Phase 3A suites green, evidence pasted | Complete — full suite `05:15 +3772 ~1: All tests passed!` after scoping the three S-2013 assertions in `test/interference_signal_screen_test.dart` to Interference's own card (Assumption Log #11) |
+| 3A | Mutation checks 5–6 (registry order, the gate) | Complete — both red as predicted, both reverted, green re-run |
 | 3B | Priority-order structural guard | not started |
 | 3B | Copy structural guard | not started |
 | 3B | Residue sweep recorded | not started |
@@ -748,6 +749,31 @@ sub-phase. An empty log after Phase 3A or 3B is itself suspicious.
    neighbouring suites and the full suite; the post-mutation re-run used the five-suite command so the
    full suite was not repeated after reverting.
 
+8. **S-2412's parenthetical is wrong: the framework renders the HIGHER priority caution first.** The
+   plan says two qualifying cautions render "in ascending priority (Sustained High Load first)";
+   `resolveSignals` sorts priority descending, so Protein Consistency (200) is the first card and
+   Sustained High Load (100) the second. The new screen test asserts the real order (same class as
+   8b's O-9). No framework file was edited.
+
+9. **The new test asserts S-2410(b) twice, once per harness and once at the service level.** The
+   screen case alone passes before the adapter exists (it asserts an absence), so the sibling
+   `test()` pins the fixture's own figures — streak 5, usual 200, measure `time` — and mutation check
+   6 is what proves the adapter reads the measure.
+
+10. **Phase 3A is Blocked (scope), not Complete.** The registry line makes F-INT (PR 7b's screen
+    fixture) qualify for the new rule, so three S-2013 tests in `test/interference_signal_screen_test.dart`
+    go red. That file is not in this phase's Predicted Files, and the fix — narrow F-INT or expect two
+    cards there — changes what an already-verified scenario asserts, so it is Open Items, not absorbed.
+
+11. **The governor resolved #10 by scoping, not by narrowing the fixture (technical call).** In
+    `test/interference_signal_screen_test.dart` the caution-label check is now scoped to the Interference
+    card key and the two post-dismissal quiet-line checks are gone — a quiet layer is not a property of
+    Interference (the sole-card S-1709 case asserts that). No fixture, registry, seam or production
+    change; supersedes #10.
+12. **`test/interference_signal_screen_test.dart` was not in Phase 3A's Predicted Files.** It is a PR 7b
+    file that the registry line turned red; it was edited only under #11, so the out-of-bounds finding is
+    recorded here rather than absorbed silently.
+
 ## Feedback
 
 Review findings live in
@@ -759,7 +785,8 @@ _(empty)_
 
 ## Open Items
 
-Each is a defaulted choice, marked **owner to confirm**. None blocks Phase 1.
+Each is a defaulted choice, marked **owner to confirm**. None blocks Phase 1; item 8 was resolved by
+the governor's decision (Assumption Log #11).
 
 1. **The suggestion text.** Default: `An easier week is one option.` — the pack's sentence with its
    causal clause (`Accumulated fatigue is a common reason for this;`) dropped, because the app
@@ -779,3 +806,10 @@ Each is a defaulted choice, marked **owner to confirm**. None blocks Phase 1.
    weeks immediately before it (D-1705), so the usual moves with the candidate. The alternative — a
    fixed baseline taken once from the twelve weeks before the last five weeks — would let a long run
    hide a week that is not high against a later usual. **Owner to confirm.**
+8. **PR 7b's F-INT screen fixture now also qualifies for this signal (unplanned, Phase 3A blocked).**
+   `test/interference_signal_screen_test.dart` has three red S-2013 tests: two 'Worth a look' labels
+   where it expects one, and no quiet line after dismissing Interference. That file is not in this
+   phase's Predicted Files. Either narrow F-INT so only Interference qualifies (risk: its own
+   `k=3, n=3, lo=10, hi=16, 38%` precondition test) or accept two cards there and update S-2013.
+   The second option is product-visible — a user with that history now sees both cautions — so the
+   owner should pick. Do not relax the assertions without that decision.

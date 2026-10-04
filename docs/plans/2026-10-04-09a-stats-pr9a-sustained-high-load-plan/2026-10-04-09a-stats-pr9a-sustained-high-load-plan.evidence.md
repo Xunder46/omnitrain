@@ -80,17 +80,74 @@ Originals, copied before each edit:
 
 | Check | Command | Result |
 |---|---|---|
-| red run | `flutter test test/sustained_high_load_signal_screen_test.dart --plain-name "Mock"` | _to fill_ |
-| green | same, Mock-first | _to fill_ |
-| guards | `flutter test test/interference_test.dart test/modality_mix_shift_signal_screen_test.dart` | _to fill_ |
-| full | `flutter test` | _to fill_ |
+| red run | `flutter test test/sustained_high_load_signal_screen_test.dart --plain-name "Mock"` | `00:04 +4 -3: Some tests failed.` — the three card scenarios fail on the missing registration: `Found 0 widgets with key [<'signal_card_sustained-high-load'>]` (S-2412 card, dismissal) and, in the two-caution fixture, Protein Consistency renders while `signal_card_sustained-high-load` is absent. The four abstention/measure cases pass (they assert absence, so they are green before and after). |
+| green | same, Mock-first | `00:04 +7: All tests passed!` |
+| green | whole new file (Mock + Hive) | `00:07 +13: All tests passed!` |
+| green | `flutter test test/interference_test.dart test/modality_mix_shift_signal_screen_test.dart` | `00:07 +45: All tests passed!` |
+| green | `flutter test test/signals_framework_test.dart test/signals_service_test.dart` (with the four signal screen suites) | `00:10 +69` — every suite green. (One further path in that command, `test/stats_screen_test.dart`, does not exist and failed to load; re-run without it below.) |
+| green | `flutter test test/signals_framework_test.dart test/signals_service_test.dart test/signals_layer_screen_test.dart test/interference_signal_screen_test.dart test/mix_layer_screen_test.dart test/screen_widget_test.dart test/screen_overflow_contract_test.dart test/stats_legacy_removal_test.dart test/stats_progress_test.dart test/sustained_high_load_service_test.dart test/sustained_high_load_test.dart` | `00:59 +513 -3` — the only three failures are S-2013 in `test/interference_signal_screen_test.dart` (see the blocker below). `signals_framework_test.dart` and `signals_service_test.dart` are green. |
+| lint | `flutter analyze` | `196 issues found. (ran in 8.2s)` — identical to the baseline, 0 errors, no issue in `sustained_high_load_signal.dart`, `signal_registry.dart` or the new test file |
+| full | `flutter test` | `05:12 +3769 ~1 -3: Some tests failed.` — baseline `+3759 ~1` plus the 13 added tests minus the 3 S-2013 failures; no other failure anywhere |
+
+### Blocker: S-2013 (PR 7b's screen fixture) now also qualifies for this signal
+
+`test/interference_signal_screen_test.dart` is red, and it is not in the plan's Predicted Files.
+
+| Test | Failure |
+|---|---|
+| Mock/Hive `S-2013 the card on the layer …` | `Expected: exactly one matching candidate / Actual: Found 2 widgets with text "Worth a look" / Which: is too many` (`interference_signal_screen_test.dart:430`) |
+| Mock `S-2013 the card is dismissible …` | `Found 0 widgets with key [<'signals_quiet_line'>]` (`:494`) — after Interference is dismissed the Sustained High Load card is still on the layer, so there is no quiet line |
+
+The cause is F-INT's own load history, which satisfies the new rule (a run of weeks above its usual
+with no easier week) as well as Interference. Nothing in the adapter is wrong: the card the rule
+returns is the correct card for that history. Confirmed self-contained — the suite fails the same
+three ways when run alone. It passed in Phase 2's full run (`+3759 ~1`), so the registry line is
+what changed it. It cannot be fixed in the new test file, so Phase 3A was **Blocked (scope)** —
+resolved by the governor's decision below.
+
+### Resolution of the S-2013 blocker (governor decision, technical call)
+
+Decision: **scope the assertions to Interference's own card; change no fixture, registry, seam or
+production code.** The fixture stays on the real registry — "Interference is the only card on the
+layer" is not a property of Interference.
+
+Edits to `test/interference_signal_screen_test.dart` (12 changed lines):
+
+1. `the caution card shows with the exact copy, the caution label and its key, below the Mix layer`:
+   the caution-label expectation is now card-scoped — `find.descendant(of:
+   find.byKey(const Key(_kCardKey)), matching: find.text(_kCautionLabel))`. The `signals_quiet_line`
+   `findsNothing`, the `_cardKeys().first` priority check and the geometry are unchanged.
+2. `one tap removes the card in the tap frame, the store holds the id, and the next open still hides
+   it` (renamed from `… the next open is still quiet`): the two `signals_quiet_line` `findsOneWidget`
+   expectations were deleted. The card-key `findsNothing` assertions, the dismissal-store assertion
+   and the tooltip assertion are kept.
+
+The sole-card dismissal-to-quiet-line behaviour is still asserted in
+`test/signals_layer_screen_test.dart`, group `S-1709 dismissing removes the card at once`, test
+`one tap removes that card, keeps the other, writes the store and re-evaluates nothing`: after the
+one remaining card (`signal_card_p-1`) is dismissed, `signals_quiet_line` is `findsOneWidget`.
+Gateway-verified: `flutter test test/signals_layer_screen_test.dart --plain-name "S-1709"` →
+`00:03 +2: All tests passed!`.
+
+| Check | Command | Result |
+|---|---|---|
+| Mock-first | `flutter test test/interference_signal_screen_test.dart --plain-name "Mock"` | `00:04 +3: All tests passed!` |
+| whole file | `flutter test test/interference_signal_screen_test.dart` | `00:05 +5: All tests passed!` |
+| full | `flutter test` | `05:15 +3772 ~1: All tests passed!` (baseline `+3759 ~1` + the 13 added tests, no failure anywhere) |
+| diff | `git-diff --stat -- test/interference_signal_screen_test.dart` | `1 file changed, 8 insertions(+), 4 deletions(-)` |
+| lint | `flutter analyze` | `196 issues found. (ran in 8.6s)` — identical to the baseline, 0 errors |
 
 ### Mutation checks
 
+Originals, copied before each edit:
+
+- check 5 original: `SustainedHighLoadSignal(),` as the first entry of the const list in `signal_registry.dart`
+- check 6 original: `    final mixShowsLoad = mix != null && mix.measure == MixMeasure.load;`
+
 | # | Mutation | Test that must fail | Result |
 |---|---|---|---|
-| 5 | registry entry moved to the end | both registry guards | _to fill_ |
-| 6 | `mixShowsLoad: true` unconditionally | S-2410(b) | _to fill_ |
+| 5 | registry entry moved to the end | both registry guards | RED: both `at location [0] is 'protein-consistency' instead of 'sustained-high-load'` — `interference_test.dart:1092` and `modality_mix_shift_signal_screen_test.dart:621`; `00:07 +43 -2: Some tests failed.` Restored, both green again (`00:07 +45: All tests passed!`). |
+| 6 | Mix gate ignores the measure (`mixShowsLoad = true`) | S-2410(b) | RED: `the card does not appear and the layer is quiet` fails with `Found 0 widgets with key [<'signals_quiet_line'>]` — the card wrongly appears; `00:03 +1 -1: Some tests failed.` Restored, the five 3A suites green again (`00:07 +85: All tests passed!`). |
 
 ## Phase 3B — guards, residue, docs
 
