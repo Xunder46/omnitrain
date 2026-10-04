@@ -1090,6 +1090,7 @@ void main() {
           .where((s) => s.kind == SignalKind.caution)
           .toList();
       expect(cautions.map((s) => s.id), [
+        'fuel-vs-load',
         'modality-mix-shift',
         'cross-modality-interference',
       ]);

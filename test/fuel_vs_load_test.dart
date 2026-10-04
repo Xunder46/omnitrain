@@ -277,4 +277,70 @@ void main() {
       isNull,
     );
   });
+
+  group('the structural guards', () {
+    test('the span is derived from its constant, not written', () {
+      // D-1412: the observation's span is `kFuelVsLoadWindowDays ~/ 7` alone.
+      // A `3 weeks` literal is a second definition of the same window and
+      // would keep rendering 3 weeks if the constant moved.
+      final source = _strippedSource('lib/core/models/fuel_vs_load.dart');
+      expect(
+        source.contains('3 weeks'),
+        isFalse,
+        reason: 'the span must be derived from kFuelVsLoadWindowDays, not '
+            'written as a literal',
+      );
+      expect(
+        source.contains('kFuelVsLoadWindowDays ~/ 7'),
+        isTrue,
+        reason: 'the observation must interpolate the owning constant',
+      );
+
+      final days = _sixWeeks(
+        anchor: anchor,
+        priorIntake: 2000,
+        recentIntake: 2040,
+      );
+      final result = _rule(anchor: anchor, loggedDays: days);
+      expect(result, isNotNull);
+      expect(
+        fuelVsLoadCopy(result!).observation,
+        contains('over the last 3 weeks;'),
+      );
+    });
+
+    test('the adapter walks no history and calls no PR API', () {
+      // D-1418: the signal is a thin adapter. It asks `StatsProgressService`
+      // for the two Mix payloads and the per-day intake series. A repository
+      // read, a window-scoped walk or a personal-record call would be a second
+      // source of the figures the Mix layer shows.
+      const forbidden = <String>[
+        'context.repository',
+        'computeMixLayer',
+        'computeTotals',
+        'computeProgressData',
+        'getAllSessions',
+        'getSessionsByDateRange',
+        'getSegmentsBySession',
+        'getEffortsBySegment',
+        'personalRecord',
+        'PersonalRecord',
+        'estimatedOneRepMax',
+      ];
+      final source = _strippedSource(
+        'lib/core/services/signals/fuel_vs_load_signal.dart',
+      );
+      for (final identifier in forbidden) {
+        expect(
+          source.contains(identifier),
+          isFalse,
+          reason: 'the adapter must not walk history itself ("$identifier"); '
+              'it calls computeMixPeriod and nutritionSeries and nothing else '
+              '(D-1418)',
+        );
+      }
+      expect(source.contains('computeMixPeriod'), isTrue);
+      expect(source.contains('nutritionSeries'), isTrue);
+    });
+  });
 }

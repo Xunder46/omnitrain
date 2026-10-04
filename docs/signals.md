@@ -1,9 +1,14 @@
 # Signals — Framework, Selection and the Dismissal Store
 
-**Scope.** The pure Signals framework and the service that drives it:
+**Scope.** The pure Signals framework, the service that drives it, and the
+registered signals' definitions and adapters:
 `lib/core/models/signals.dart`, `lib/core/services/signals/signal.dart`,
-`lib/core/services/signals/signal_registry.dart` and
-`lib/core/services/signals_service.dart`. It does not cover the Stats screen or
+`lib/core/services/signals/signal_registry.dart`,
+`lib/core/services/signals_service.dart`, the signal definitions
+`lib/core/models/progression_rate.dart`,
+`lib/core/models/modality_mix_shift.dart`, `lib/core/models/interference.dart`
+and `lib/core/models/fuel_vs_load.dart`, and the adapters under
+`lib/core/services/signals/`. It does not cover the Stats screen or
 any widget that draws a signal; that surface belongs to
 [Stats Screen](stats_screen.md).
 
@@ -61,11 +66,15 @@ Stats body a signal can displace.
 
 **The caution order.** Within a kind, a signal's place in the order is carried
 by its own `k…Priority` constant rather than by the selection rule, so the order
-is a property of the signals. The only caution registered today is Modality Mix
-Shift, whose priority is `kModalityMixShiftPriority`; the registered positive is
-Progression Rate, whose priority is `kProgressionRatePriority`. Verified by
-`test/modality_mix_shift_test.dart` (the constant contracts) for the Modality
-Mix Shift entry.
+is a property of the signals. Three cautions are registered today, in ascending
+priority: Fuel vs Load (`kFuelVsLoadPriority`), Modality Mix Shift
+(`kModalityMixShiftPriority`) and Cross-Modality Interference
+(`kCrossModalityInterferencePriority`). The registered positive is Progression
+Rate, whose priority is `kProgressionRatePriority`. Verified by
+`test/interference_test.dart` (`the caution order holds and the registry is
+ordered by it`), which asserts the registry lists the cautions in ascending
+priority, and by `test/modality_mix_shift_test.dart` (the constant contracts)
+for the Modality Mix Shift entry.
 
 ## Abstention
 
@@ -342,6 +351,62 @@ session payloads are arguments. The adapter asks
 personal-record API. Verified by `test/interference_test.dart` (`the adapter
 walks no history and calls no PR API`) and
 `test/interference_sessions_service_test.dart` (`D-1316`).
+
+`fuelVsLoad({required now, required recentMeasure, required priorMeasure,
+required recentLoad, required priorLoad, required loggedDays})` in
+`lib/core/models/fuel_vs_load.dart` is the Fuel vs Load signal's definition, and
+`FuelVsLoadSignal` in `lib/core/services/signals/fuel_vs_load_signal.dart` is
+its adapter. The signal reports that the user's training load rose over the last
+three weeks while their average daily intake did not rise with it.
+
+- **The two periods.** The recent period is the `kFuelVsLoadWindowDays` local
+  calendar days ending with `now`'s day; the prior period is the same span
+  immediately before it, ending the millisecond before the recent period starts,
+  so the two abut with no gap and no overlap and the whole of the prior period's
+  last day is inside it. Calendar arithmetic, never a `Duration`, so a
+  daylight-saving change cannot shift a boundary. Verified by
+  `test/fuel_vs_load_test.dart` (`S-2101`, `S-2107`).
+- **The consistency gate.** The card needs all six of the periods' 7-day blocks
+  consistent — each holding at least `kConsistentWeekMinLoggedDays` logged days.
+  One block below that abstains whatever the other figures say; the window is
+  never widened and no day is ever zero-filled. Verified by
+  `test/fuel_vs_load_test.dart` (`S-2102`) and
+  `test/nutrition_consistency_test.dart` (`S-2110`).
+- **The measure gate.** A period's load is the sum of that period's
+  `MixLayerData.segments[].measure`, and the card shows only when both periods
+  report `MixMeasure.load`. A period the Mix layer measures in time abstains.
+  Verified by `test/fuel_vs_load_test.dart` (`S-2111`).
+- **The load test.** The card needs a load rise of at least
+  `kFuelVsLoadLoadRisePercent` over the prior period, compared as an exact
+  fraction on the two totals rather than on a rounded percentage, so the
+  boundary is inclusive. A prior load of zero abstains, and a load that fell
+  never produces a card whatever the intake did. Verified by
+  `test/fuel_vs_load_test.dart` (`S-2103`, `S-2104`, `S-2109`).
+- **The intake test.** The two averages are the logged-days-only means — divided
+  by the number of logged days, never by the window length — and the card needs
+  the recent mean to be within `kFuelVsLoadIntakeTolerancePercent` of the prior
+  one, compared as an exact fraction on the two periods' totals and logged-day
+  counts, so the boundary is inclusive. Verified by
+  `test/fuel_vs_load_test.dart` (`S-2105`, `S-2106`, `S-2107`).
+- **Kind and priority.** The kind is caution; the priority is
+  `kFuelVsLoadPriority`, below Modality Mix Shift. Verified by
+  `test/fuel_vs_load_test.dart` (`the constant contracts`) and
+  `test/fuel_vs_load_signal_screen_test.dart` (`the adapter`).
+- **Copy.** `fuelVsLoadCopy` builds the observation from the load percentage and
+  the span — derived from `kFuelVsLoadWindowDays`, never written as a literal —
+  and the suggestion. The observation names no intake figure at all, and no card
+  text carries a calorie amount or any wording that suggests eating less.
+  Verified by `test/fuel_vs_load_test.dart` (`S-2101`, `S-2108`, `the span is
+  derived from its constant, not written`) and
+  `test/fuel_vs_load_signal_screen_test.dart` (`S-2113`).
+
+The definition reads no clock, no repository and no service — `now` and the
+figures are arguments. The adapter derives both periods from `context.now`, asks
+`StatsProgressService.computeMixPeriod` for the two Mix payloads and
+`StatsProgressService.nutritionSeries` for the per-day intake series, and hands
+the figures to the rule, so it walks no history of its own and calls no
+personal-record API. Verified by `test/fuel_vs_load_test.dart` (`the adapter
+walks no history and calls no PR API`).
 
 ## One evaluation per load
 

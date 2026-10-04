@@ -382,12 +382,6 @@ void main() {
 
           final recentFrom = _day(20);
           final priorTo = _day(20).subtract(const Duration(milliseconds: 1));
-          // The prior period's last instant is the millisecond before the
-          // recent period's first, so the two abut with no gap and no overlap.
-          expect(
-            priorTo.millisecondsSinceEpoch,
-            recentFrom.millisecondsSinceEpoch - 1,
-          );
 
           final recent = (await service.computeMixPeriod(
             fromMs: recentFrom,

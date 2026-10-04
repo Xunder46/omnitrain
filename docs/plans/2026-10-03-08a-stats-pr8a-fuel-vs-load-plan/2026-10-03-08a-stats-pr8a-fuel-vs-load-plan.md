@@ -562,7 +562,8 @@ Signals layer. `docs/README.md` needs no change: it indexes feature docs, not pl
 | Plan lines re-measured | not started | this file, read back after Phase 3 |
 | Phase 1 | **Complete** | `.evidence.md` § Phase 1 — red→green for both suites, three mutation pairs, `lint` `196 issues found.` (0 errors), full suite `01:37 +3654 ~1: All tests passed!`; § Phase 1 — Fix 1 — the two "the constant contracts" tests the docs name, mutation (f), full suite `01:36 +3656 ~1: All tests passed!` |
 | Phase 2 | **Complete** | `.evidence.md` § Phase 2 — red run (compile: `nutritionSeries` not defined) → green `00:00 +11: All tests passed!`; extraction defect found by the full suite (`S-1263` residue sweep) and fixed; mutation (d) `+2 -9: Some tests failed.` → restored green; `lint` `196 issues found.` (0 errors); full suite `01:46 +3667 ~1: All tests passed!` |
-| Phase 3 | not started | — |
+| Phase 3 | **Complete (steps 1–6)** | `.evidence.md` § Phase 3 — fixture math; red A (compile) and red B (`+3 -2`, the honest registry-line red); scratch probe proved the fixture fires (recent 1250 load / prior 1000 load, window gate met, 42 food days); green Mock `+5`, full file `+9`, surface + framework suites `+261`; mutation (e) `+10 -1` on S-2111 → restored `+11`; `lint` `196 issues found.` (0 errors, none in touched files); full suite `01:37 +3678 ~1: All tests passed!`. Steps 7–9 are a separate run. |
+| Phase 3 PART B (steps 7–9) | **Complete** | `.evidence.md` § Phase 3 — STEP 0 (both registry guards re-applied: 1-line and 3/1-line diffs, red `Expected: ['modality-mix-shift', 'cross-modality-interference'] / Actual: ['fuel-vs-load', …]`, green `+45`); § Structural guards (guard (a) already present, (b) and (c) added); § Mutation pairs (g) and (h) — both red on their own guard, both restored with `git-diff` empty, `+13` green; § Residue sweep — all ten terms, framework files / `watch/` / `lib/data/` absent; § Doc sizes — `docs/signals.md` 25,803 B, `docs/stats_screen.md` 28,887 B, both under 64 KiB; `lint` `196 issues found.` (0 errors, none in touched files); Done-Criteria suites `00:03 +140: All tests passed!`; full suite `01:35 +3678 ~1: All tests passed!` (three clean runs agree; the two new guards are observed green in their own suite — see the evidence file's count reconciliation). |
 
 ## Assumption Log
 
@@ -591,6 +592,53 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
   Fuel vs Load rule's 21-day period) rather than by the plan's `7a`/`8a` series labels, which are
   plan vocabulary and not app vocabulary.
 
+- **A-5 (Phase 3, step 3) —** the plan's step 3 registers `FuelVsLoadSignal()` **last** and step 4's
+  caution list is `modality-mix-shift`, `cross-modality-interference`, `fuel-vs-load`. Both contradict
+  D-1415, which sets `kFuelVsLoadPriority = 300`, *below* Mix Shift's 400, and the guard
+  `the caution order holds and the registry is ordered by it` asserts the registry is in ascending
+  priority. Chose D-1415: `fuel-vs-load` is registered **first**, and the caution list reads
+  `fuel-vs-load`, `modality-mix-shift`, `cross-modality-interference`. The plan's step 3/4 text is
+  stale; the first surface-suite run failed on that guard (`Expected: a value less than <300> /
+  Actual: <500>`) and passes with the corrected order.
+- **A-6 (Phase 3, step 2) —** red B's first form failed the adapter test too, which read as a fixture
+  bug. The sanctioned scratch probe (`test/zz_ffuel_probe_test.dart`) showed the fault was the
+  **probe's**: it passed `toMs: now` for the prior period instead of the adapter's `day(20) − 1 ms`,
+  so the prior window swallowed the recent sessions and reported 2250. With the adapter's real bounds
+  the fixture fires exactly as the evidence file's math predicted, and the fixture needed no change.
+  The probe file is temporary; no `rm` is available in this run, so it is left for the next run to
+  delete.
+- **A-7 (Phase 3, step 6) —** the evidence file's mutation table pre-filled the target file as the NEW
+  adapter `lib/core/services/signals/fuel_vs_load_signal.dart`. The gate the mutation drops lives in
+  the pure rule, `lib/core/models/fuel_vs_load.dart` (`fuelVsLoadMeasureGate`). Corrected in the
+  evidence file; the mutation was applied there and restored exactly.
+- **A-8 (Phase 3 PART B, STEP 0) —** the governor had reverted both registry-guard files to HEAD, so
+  A-5's corrected order was unguarded. Re-applied both with minimal edits and **no `format` run** on
+  either file (the repo is not format-clean; formatting an existing file produces a ~400-line noise
+  diff, which is what the governor reverted). Diffs: `test/interference_test.dart` 1 insertion;
+  `test/modality_mix_shift_signal_screen_test.dart` 3 insertions, 1 deletion. **RATIFIED by the
+  governor** — the registry order stands as A-5 records it: `fuel-vs-load` first, ascending priority
+  300 < 400 < 500, and the plan's step 3/4 text remains stale on this point.
+- **A-9 (Phase 3 PART B, step 7) —** guard (a) (S-2108's no-calorie-number and no-reduction-wording
+  assertions, including the stripped-source scan) was **already present** in
+  `test/fuel_vs_load_test.dart` as `S-2108 no intake figure and no reduction wording`, so no new work
+  was needed; it was re-verified green rather than duplicated. Guards (b) and (c) were added as a new
+  `group('the structural guards', …)`. Guard (c) reuses the 7b forbidden-identifier list minus
+  `computeMixPeriod` — that call is the adapter's own, so it is asserted **present** alongside
+  `nutritionSeries` instead of absent.
+- **A-10 (Phase 3 PART B, step 7) —** mutation (g)'s first form added a second `fuelVsLoadCopy`
+  declaration, which is a compile error (`'fuelVsLoadCopy' is already declared in this scope`), not a
+  test failure. Chose to comment out the original and leave the mutated body active, which produced the
+  honest red. Recorded in the evidence file so the technique is not mistaken for a passing mutation.
+- **A-11 (Phase 3 PART B, step 9) —** `docs/signals.md`'s "The caution order." paragraph said "the only
+  caution registered today is Modality Mix Shift", which A-5 made false. Rewrote it into the three
+  shipped cautions in ascending priority, naming `the caution order holds and the registry is ordered
+  by it`. `docs/stats_screen.md`'s `buildSignalRegistry()` "lists three" → "lists four", plus a
+  fourth-signal paragraph. Every cited test name was verified to exist by name before citing; both docs
+  stay well under the 64 KiB ceiling.
+
 ## Feedback
 
-[empty — the Conductor folds non-empty entries into a new Iteration block and clears this one]
+Fix round 1 (review `2026-10-03-08a-stats-pr8a-fuel-vs-load-plan.review.md`): [x] 1 `docs/signals.md`
+Fuel vs Load priority no longer names Protein Consistency; [x] 2 `docs/signals.md` Scope names the
+registered-signal definitions and adapters; [x] 3 tautological `priorTo` assertion deleted; [x] 4 dead
+`seedFFuelForProbe` deleted. Evidence: `.evidence.md` § Fix round 1.

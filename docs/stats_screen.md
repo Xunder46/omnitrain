@@ -145,7 +145,7 @@ deliberately replaces that, limited to these signal rules, rather than leaving
 it as a gap. Verified by `test/signals_layer_screen_test.dart` (`S-1716`) and
 `test/stats_legacy_removal_test.dart` (`S-1210`, no chart primitive).
 
-**The registered signals.** `buildSignalRegistry()` lists three. The first is the
+**The registered signals.** `buildSignalRegistry()` lists four. The first is the
 Progression Rate: it compares each exercise's own metric across two adjacent
 windows and proposes a positive card only when the recent window improves on the
 prior one. Its rules — the two windows, what a sample is, the zero fallback, the
@@ -182,6 +182,17 @@ restated here. The card's copy is built by `crossModalityInterferenceCopy`
 disagree. Verified by `test/interference_signal_screen_test.dart` (`S-2013` the
 card on the layer and its dismissal) and, for the definition itself,
 `test/interference_test.dart`.
+
+The fourth is the Fuel vs Load: it reports that the user's training load rose
+over the last three weeks while their average daily intake did not rise with it,
+and proposes a caution card. Its rules — the two periods, the six-block
+consistency gate, the measure gate, the two thresholds, the copy and the
+suggestion — live in [Signals](signals.md#registered-signals) and are not
+restated here. The card's copy is built by `fuelVsLoadCopy`
+(`lib/core/models/fuel_vs_load.dart`) so that the copy and the fire test cannot
+disagree. Verified by `test/fuel_vs_load_signal_screen_test.dart` (`S-2113` the
+card on the layer and its dismissal, and the abstention when the repository
+holds no food) and, for the definition itself, `test/fuel_vs_load_test.dart`.
 
 ### ALL TIME card
 
