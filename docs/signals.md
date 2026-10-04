@@ -256,6 +256,93 @@ payload and hands the payload's own segments to the rule, so it walks no history
 of its own. Verified by `test/modality_mix_period_service_test.dart` (`S-1907`,
 the period payload is the Mix layer's own figures).
 
+`crossModalityInterference({required sessions, required now})` in
+`lib/core/models/interference.dart` is the Cross-Modality Interference signal's
+definition, and `InterferenceSignal` in
+`lib/core/services/signals/interference_signal.dart` is its adapter. The signal
+reports that the user's next lifting day after a hard sports session has come in
+below their own usual level on the same lifts, at least
+`kInterferenceMinDippedFollowUps` times in the pattern window.
+
+- **A sports session and the load it is ranked by.** A session is a sports
+  session when the shared load split attributes a positive measure to the Sports
+  modality; the load it is ranked and summed by is that same Sports component in
+  load minutes, never the session's whole load and never its raw duration.
+  Verified by `test/interference_sessions_service_test.dart` (`S-2012`).
+- **The hard window and its population.** The hard window is the exact
+  `kInterferenceHardWindowDays`-day span ending at `now`, measured back from
+  `now` as a duration, so a daylight-saving change can shift a boundary by at
+  most an hour (D-1321). Both ends are inclusive. The population is the *rated*
+  sports sessions in that window — a
+  session with no rating has zero load and is never in it. Hard classification
+  exists only when the population holds at least
+  `kInterferenceMinRatedSportsSessions` sessions; below that the signal abstains.
+  Verified by `test/interference_test.dart` (`S-2009`, `S-2015`, `fewer than 8
+  rated sports sessions abstains`) and `test/interference_sessions_service_test.dart`
+  (`S-2005(b)`).
+- **Hard.** Sorting the population's Sports loads ascending, the threshold is
+  `sorted[(kInterferenceHardPercentile × n).ceil() − 1]` — nearest-rank, so the
+  share the percentile names is counted, not interpolated — and a session is
+  hard when its load is at least the threshold, inclusive. Verified by
+  `test/interference_test.dart` (`S-2008`).
+- **The follow-up.** A hard session's follow-up is the session with the smallest
+  start among those that hold at least one effort whose section maps to
+  Resistance and start strictly after the hard session's end and at most
+  `kInterferenceFollowUpHours` after it. A session starting exactly at the end is
+  not a follow-up; one starting exactly at the bound is. Ties resolve by session
+  id ascending, and the first qualifying session is the follow-up whatever it
+  holds. A hard session with no such session contributes nothing. Verified by
+  `test/interference_test.dart` (`S-2003`).
+- **The comparable exercises and the prior average.** A follow-up's exercise is
+  comparable when its best there is above zero under the shared native-value rule
+  for the exercise's own axis and it has a qualifying prior session in
+  `[followUpStart − kInterferenceDipWindowDays, followUpStart)` with a best above
+  zero. The prior average is the mean of the exercise's per-session bests over
+  those priors and excludes every follow-up this evaluation identified, so a
+  follow-up never votes for its own baseline and never depresses another's.
+  Verified by `test/interference_test.dart` (`S-2006`) and
+  `test/interference_sessions_service_test.dart` (`S-2011`).
+- **The dip.** A comparable exercise's shortfall is `(average − best) / average`.
+  The follow-up dips when the *unweighted* mean of its comparable exercises'
+  shortfalls is at least `kInterferenceMinDip` — one exercise, one vote, never
+  weighted by volume, sets or load. The comparison tolerates floating-point
+  representation error, so a shortfall that equals the threshold up to that
+  error dips and one below it does not. A follow-up with no comparable exercise
+  is excluded — it is not a dip and it is not counted anywhere. Verified by
+  `test/interference_test.dart` (`S-2004`, `S-2006`).
+- **The pattern.** The signal counts the dipped follow-up sessions whose start
+  falls in `[now − kInterferencePatternWindowDays, now]`, both ends inclusive,
+  and abstains unless that count reaches `kInterferenceMinDippedFollowUps`. Each
+  follow-up session counts once however many hard sessions it follows. The
+  reported `n` is the number of distinct follow-up sessions that are comparable
+  and in the same window, so `n` is never below the count. Verified by
+  `test/interference_test.dart` (`S-2002`, `S-2010`).
+- **The range.** The reported range's ends are the smallest and largest of the
+  counted follow-ups' mean shortfalls as whole percents; a dipped follow-up
+  outside the window never widens it. Verified by `test/interference_test.dart`
+  (`S-2010(b)`).
+- **Kind and priority.** The kind is caution; the priority is
+  `kCrossModalityInterferencePriority`, the top of the caution order. Verified by
+  `test/interference_test.dart` (`the caution order holds and the registry is
+  ordered by it`) and `test/interference_signal_screen_test.dart` (`S-2013`).
+- **Copy.** `crossModalityInterferenceCopy` builds the observation from the
+  rule's own counts and range, collapsing the range to a single number when its
+  two ends are equal, and appends the second sentence only when the Sports load
+  rose at least `kInterferenceSportsLoadRisePercent` over the
+  `kInterferenceSportsLoadWindowDays` days ending at `now` against the span
+  before it. Every fired card carries the suggestion `'A lighter or
+  isometric-focused day after hard sports sessions is one option.'`. Verified by
+  `test/interference_test.dart` (`S-2001`, `S-2007`) and
+  `test/interference_signal_screen_test.dart` (`S-2013`).
+
+The definition reads no clock, no repository and no service — `now` and the
+session payloads are arguments. The adapter asks
+`StatsProgressService.interferenceSessions` for the payloads and hands them and
+`context.now` to the rule, so it walks no history of its own and calls no
+personal-record API. Verified by `test/interference_test.dart` (`the adapter
+walks no history and calls no PR API`) and
+`test/interference_sessions_service_test.dart` (`D-1316`).
+
 ## One evaluation per load
 
 A Stats load builds one `StatsProgressService` and one `SignalsService` over it.

@@ -200,6 +200,12 @@ period's start day, and the measure gate is the same one.
 Verified by `test/modality_mix_period_service_test.dart` (`S-1904a`, `S-1907`,
 `S-1913`, over both repository implementations).
 
+The per-session time and load split is one private helper that both entry points
+and `StatsProgressService.interferenceSessions` call, so a session's Sports load
+is the same number wherever it is read.
+
+Verified by `test/interference_sessions_service_test.dart` (`S-2012`).
+
 ---
 
 ## Related Documentation

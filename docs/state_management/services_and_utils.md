@@ -363,6 +363,22 @@ period is not anchored to a week.
 Verified by `test/modality_mix_period_service_test.dart` (S-1904a, S-1907,
 S-1913, over both repository implementations).
 
+`interferenceSessions()` returns one `InterferenceSession` per completed session
+in the cached history, ordered by start and then by id — the signal layer's only
+read. Each carries the session's rating, its Sports load in load minutes,
+whether it holds a Resistance effort, and the best each exercise reached.
+
+- **The Sports load is the Mix layer's own figure.** The per-session time and
+  load split is one private helper that `computeMixLayer`, `computeMixPeriod`
+  and this walk all call, so a session's Sports load cannot read two ways.
+- **The per-exercise bests use the existing native-value rule and axis
+  classification**, so a best here is the same number the Instruments list
+  reports for that exercise.
+- **One pass over the cached history index** — no second repository read.
+
+Verified by `test/interference_sessions_service_test.dart` (D-1316, S-2005,
+S-2005(b), S-2009, S-2011, S-2012, over both repository implementations).
+
 ---
 
 ### `SignalsService`

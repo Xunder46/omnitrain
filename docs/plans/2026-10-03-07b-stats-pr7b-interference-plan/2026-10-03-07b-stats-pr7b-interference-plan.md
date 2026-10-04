@@ -56,9 +56,10 @@ summed by is that same Sports component, in load minutes — never the session's
 its raw duration. *(Derived from the pack's "a sports session whose load is in the user's top 25% of
 rated sports sessions" — owner to confirm; see Open questions.)*
 
-**D-1302 — The hard window and its population.** The hard window is the 90 local calendar days ending
-at `now`: a session counts when `startMs >= now − kInterferenceHardWindowDays && startMs <= now`, both
-ends inclusive, computed with calendar components. The population is the *rated* sports sessions in
+**D-1302 — The hard window and its population. SUPERSEDED by D-1321.** The hard window is the
+`kInterferenceHardWindowDays`-day span ending at `now`: a session counts when
+`startMs >= now − kInterferenceHardWindowDays && startMs <= now`, both ends inclusive; D-1321 fixes
+how that span is measured. The population is the *rated* sports sessions in
 that window — a session with no rating has zero load and is never in it (D-1305). Hard classification
 exists only when the population holds at least `kInterferenceMinRatedSportsSessions` (8) sessions;
 with 7 or fewer, nothing is hard and the signal abstains.
@@ -161,6 +162,14 @@ comparison is an exercise against its own recent history.
 
 **D-1320 — Dismissal is the framework's.** The signal adds no dismissal rule and no preference key;
 the framework's 14-local-day window applies unchanged.
+
+**D-1321 — The hard window's measurement. SUPERSEDES D-1302's wording, which said local calendar
+days.** The hard
+window is `kInterferenceHardWindowDays` exact 24-hour durations back from `now`, like the Progression
+Rate windows (6b D-1105), not calendar components: a session counts when
+`startMs >= now − kInterferenceHardWindowDays` and `startMs <= now`, both ends inclusive. A
+daylight-saving change can shift a boundary by at most one hour. No window arithmetic changes; S-2015
+locks the duration reading.
 
 ## Feature Invariants
 
@@ -451,12 +460,12 @@ because the harness's `seedSession` writes a fixed one-hour end and no rating).
 
 ### Phase 1: the pure rule and the copy (@dba)
 
-1. [ ] Write `test/interference_test.dart` (plain `test()`, no widget, no repository): S-2003, S-2004,
+1. [x] Write `test/interference_test.dart` (plain `test()`, no widget, no repository): S-2003, S-2004,
    S-2006, S-2007, S-2008, S-2009's pure half, S-2010, S-2015, plus the abstention cases (no sessions;
    fewer than 8 rated sports sessions; no hard session; a hard session with no follow-up; a hard
    session whose follow-up starts outside the 45-day window). Build S-2001's and F-2001's session lists
    as shared helpers in the file. Run it and record the failure.
-2. [ ] Create `lib/core/models/interference.dart` (D-1301…D-1314): the constants
+2. [x] Create `lib/core/models/interference.dart` (D-1301…D-1314): the constants
    `kInterferenceHardWindowDays = 90`, `kInterferenceMinRatedSportsSessions = 8`,
    `kInterferenceHardPercentile = 0.75`, `kInterferenceFollowUpHours = 36`,
    `kInterferenceDipWindowDays = 28`, `kInterferenceMinDip = 0.10`,
@@ -465,11 +474,11 @@ because the harness's `seedSession` writes a fixed one-hour end and no rating).
    `kCrossModalityInterferencePriority = 500`; `InterferenceSession`; the result type carrying `k`,
    `n`, `lo`, `hi` and whether the second sentence applies; the rule; the copy builder. No Flutter, no
    repository, no clock, no service.
-3. [ ] Re-run step 1's suite to green, including S-2001's exact observation string.
-4. [ ] Mutations, one at a time, each restored: **(a)** D-1304's `<= endMs + 36 h` → `< endMs + 36 h` —
+3. [x] Re-run step 1's suite to green, including S-2001's exact observation string.
+4. [x] Mutations, one at a time, each restored: **(a)** D-1304's `<= endMs + 36 h` → `< endMs + 36 h` —
    S-2003(b) must fail; **(b)** D-1308's `>= kInterferenceMinDip − 1e-9` → `> kInterferenceMinDip` —
    S-2004(a) must fail. Record both red→green pairs in the evidence file.
-5. [ ] Docs: add the `interference` constant group to `docs/constants_reference.md` (names and values
+5. [x] Docs: add the `interference` constant group to `docs/constants_reference.md` (names and values
    only, no restatement of the rule); confirm `docs/signals.md` carries the caution order from 7a's
    D-1214 and add it only if 7a has not landed. Every behaviour sentence names its test.
 
@@ -483,25 +492,33 @@ full `flutter test` with its summary line pasted into the evidence file.
 
 **Phase 1 verification notes (Conductor, date):** _(added at verification)_
 
+### Phase 1 status: Complete ✓
+
+Resumed after the stage-exposure correction (`.work/stats-pr7/brief-dev-7b-p1-resume2.md`): the rule's
+stages are exposed as `analyseInterference` / `InterferenceAnalysis` and the eight named tests observe
+them; fixtures hand-corrected against the plan's pinned numbers. `test/interference_test.dart`
+`+26 -0`; `flutter analyze` `196 issues found.`; full suite `+3608 ~1`. `docs/signals.md` untouched —
+7a's caution order is its to own (Phase 3 step 8 extends it). Evidence: `<this plan>.evidence.md`.
+
 ### Phase 2: the walk and the shared split (@dba)
 
-1. [ ] Write `test/interference_sessions_service_test.dart` (plain `test()`) against
+1. [x] Write `test/interference_sessions_service_test.dart` (plain `test()`) against
    `test/helpers/repository_harness.dart` on both factories, with a local rated-session seeder:
    F-INT's per-session payloads, S-2012's parity sum, S-2009's service half (an unrated sports session
    reports zero Sports load), S-2005(b)'s 7-session population, S-2011's 10% and 11% shortfalls, and
    the walk's ordering (by `startMs`, ties by id). Run it and record the failure.
-2. [ ] In `lib/core/services/stats_progress_service.dart`, find `computeMixLayer` by searching for
+2. [x] In `lib/core/services/stats_progress_service.dart`, find `computeMixLayer` by searching for
    `Future<MixLayerData?> computeMixLayer`, read that region, and lift its per-session time and load
    split into a private helper both the Mix walk and the new walk call (D-1317). Nothing about the
    layer's measure, segments, percents, counts or strip changes.
-3. [ ] Add `interferenceSessions()` (D-1316) to the same file: one pass over the cached history index,
+3. [x] Add `interferenceSessions()` (D-1316) to the same file: one pass over the cached history index,
    the existing native-value rule and axis classification for the per-exercise bests, the shared split
    for the Sports load, and the set-effort flag through the shared kind→section rule.
-4. [ ] Re-run step 1's suite to green, then the Mix suites:
+4. [x] Re-run step 1's suite to green, then the Mix suites:
    `flutter test test/mix_layer_service_test.dart test/mix_layer_screen_test.dart`.
-5. [ ] Mutation: replace the Sports component of the shared split with the session's whole load —
+5. [x] Mutation: replace the Sports component of the shared split with the session's whole load —
    S-2012's parity assertion must fail. Restore and re-run.
-6. [ ] Docs: add `interferenceSessions` to `docs/state_management/services_and_utils.md`'s
+6. [x] Docs: add `interferenceSessions` to `docs/state_management/services_and_utils.md`'s
    `StatsProgressService` entry, and note the shared split in `docs/training_load.md`'s entry-point
    section. Every behaviour sentence names its test.
 
@@ -516,45 +533,64 @@ the new method, nothing else); `test/interference_sessions_service_test.dart` (N
 
 **Phase 2 verification notes (Conductor, date):** _(added at verification)_
 
+Phase 2 complete. `test/interference_sessions_service_test.dart` `+14 -0` (7 tests × Mock/Hive);
+`flutter analyze` `196 issues found.`; full suite `+3622 ~1`. The mutation (Sports component → the
+session's whole load) failed 5 of 7 tests per harness, S-2012's parity assertion among them, and was
+restored exactly. Evidence: `<this plan>.evidence.md`.
+
 ### Phase 3: the signal, the card, the guards and the close (@developer)
 
-1. [ ] Write `test/interference_signal_screen_test.dart` first, asserting the exact observation and
+1. [x] Write `test/interference_signal_screen_test.dart` first, asserting the exact observation and
    suggestion strings, the `Worth a look` label, the widget key and the position of S-2013, and the
    dismissal. Run it and record the failure (the card is absent — the registry has no such signal yet).
-2. [ ] Create `lib/core/services/signals/interference_signal.dart` (D-1315, D-1318, D-1320): id
+   — Red `+2 -3`; green `+5 -0`.
+2. [x] Create `lib/core/services/signals/interference_signal.dart` (D-1315, D-1318, D-1320): id
    `cross-modality-interference`, kind caution, priority `kCrossModalityInterferencePriority`;
    `evaluate` asks `context.progressService.interferenceSessions()`, hands the list and `context.now`
    to the rule, and returns the card or null. It reads no repository, walks no history and calls no PR
    API.
-3. [ ] Add one line to `buildSignalRegistry()` so the registry holds Progression Rate, Modality Mix
+3. [x] Add one line to `buildSignalRegistry()` so the registry holds Progression Rate, Modality Mix
    Shift and Interference. Nothing else in the framework changes.
-4. [ ] Re-run the new suite to green, then the framework and surface suites:
+4. [x] Re-run the new suite to green, then the framework and surface suites:
    `flutter test test/signals_layer_screen_test.dart test/signals_framework_test.dart test/signals_service_test.dart test/modality_mix_shift_signal_screen_test.dart test/mix_layer_screen_test.dart test/progression_rate_signal_screen_test.dart test/screen_widget_test.dart test/stats_legacy_removal_test.dart test/screen_overflow_contract_test.dart`.
    A failure in `test/mix_layer_screen_test.dart`, `test/progression_rate_signal_screen_test.dart` or
    `test/modality_mix_shift_signal_screen_test.dart` is a surface-height re-stabilisation; a failure
    anywhere else is a real finding.
-5. [ ] Confirm the PR path is untouched:
+   — Green `+442 -0`. The one failure was the registry guard in
+   `test/modality_mix_shift_signal_screen_test.dart` (a registry-content update, not a height change).
+5. [x] Confirm the PR path is untouched:
    `flutter test test/in_session_pr_toast_test.dart test/pr_toast_test.dart` — with no edit to those
    files.
-6. [ ] Guards, each a permanent test: (a) the caution order holds and the registry's caution
+   — Green `+41 -0`; neither file edited.
+6. [x] Guards, each a permanent test: (a) the caution order holds and the registry's caution
    priorities are distinct — `kCrossModalityInterferencePriority > kModalityMixShiftPriority`; (b) the
    hard rule counts no unrated session (S-2009's fixture); (c) the dip test tolerates representation
    error and nothing more (S-2004's fixture); (d) the signal walks no history and calls no PR API; (e)
    the framework files are unchanged (S-2014).
-7. [ ] Residue sweep: search `lib/`, `test/` and `docs/` for every name this PR introduces —
+   — Six tests in `test/interference_test.dart`'s `the structural guards` group; `+32 -0`. Two
+   mutation pairs red→green: priority 500→300 reddens the caution-order guard; the population's
+   rating gate removed reddens the unrated-session guard. (e) is the git check below.
+7. [x] Residue sweep: search `lib/`, `test/` and `docs/` for every name this PR introduces —
    `InterferenceSignal`, `cross-modality-interference`, `interferenceSessions`, `InterferenceSession`,
    `crossModalityInterference`, every `kInterference*` constant, `kCrossModalityInterferencePriority`,
    and the observation's opening words. List every hit's file in the evidence file; confirm the
    framework files and `watch/` are absent. Confirm the untouched files show no diff.
-8. [ ] Docs: add Interference to `docs/stats_screen.md`'s Signals section; add its paragraph to
+   — Every hit is expected; the framework files and `watch/` name none of the identifiers. The
+   framework files and the PR-path files show no diff; the registry shows one import and one entry.
+8. [x] Docs: add Interference to `docs/stats_screen.md`'s Signals section; add its paragraph to
    `docs/signals.md`'s registered-signals section — the hard rule and its 8-session floor, the 36-hour
    follow-up, the per-exercise dip and its 28-day average, the 45-day pattern, the optional sentence
    and the copy — with every behaviour sentence naming a test.
-9. [ ] Full `flutter test`; paste the summary line and compare it with Phase 2's, explaining every
+   — Both docs updated; constants named, never restated as numbers; every behaviour sentence names a
+   passing test; the documented suggestion matches the shipped copy character for character.
+9. [x] Full `flutter test`; paste the summary line and compare it with Phase 2's, explaining every
    delta. Re-read both docs against the shipped code and correct any claim that no longer matches;
    confirm the shipped copy and the documented copy match character for character, and that both files
    are under the 64 KiB ceiling. Close the Progress table and the Assumption Log and fill the evidence
    file's final table.
+   — `+3633 ~1: All tests passed!` (Phase 2's `+3627 ~1` + 6 new guards). `docs/signals.md` 21,529 B
+   and `docs/stats_screen.md` 28,094 B, both under 64 KiB; `test/docs_indexing_contract_test.dart`
+   `+9 -0`. Analyze `196 issues found.`
 
 **Done Criteria** (run until green):
 `flutter analyze`;
@@ -632,20 +668,69 @@ Signals layer.
 | O-2 | D-1312's single-number collapse when `lo == hi` | Owner | Defaulted — **owner to confirm**; vetoable |
 | O-3 | D-1313's second sentence carries no explicit span on its own — the enclosing period is the 21-day comparison | Owner | Defaulted — **owner to confirm**; vetoable |
 | O-4 | D-1315's priority 500 as the top of the caution order | Owner | Defaulted — **owner to confirm**; matches 7a's D-1214 |
+| O-5 | Distinct follow-up counting: a follow-up session shared by two hard sessions counts once in `k` and in `n` (the pack's "dipped follow-up sessions"); D-1310's "number of hard sessions" is read this way | Owner | Defaulted — **owner to confirm**; vetoable |
 
 ## Progress
 
 | Item | Status | Evidence |
 |---|---|---|
-| Plan lines re-measured | pending | — |
-| Phase 1 | not started | — |
-| Phase 2 | not started | — |
-| Phase 3 | not started | — |
+| Plan lines re-measured | done | `flutter analyze` `196 issues found.`; full suite `+3582 ~1` on `develop` (plan's own baseline) |
+| Phase 1 | **Complete** | `test/interference_test.dart` `+14 -12` → `+26 -0`; two mutation pairs red→green; analyze `196 issues found.`; full suite `+3608 ~1` |
+| Phase 2 | Complete | `test/interference_sessions_service_test.dart` `+14 -0`; Mix suites `+96 -0`; analyze `196 issues found.`; full suite `+3622 ~1`; mutation killed and restored |
+| Phase 3 | **Complete** | Steps 1–5: red `+2 -3` → green `+5 -0`; framework/surface `+442 -0`; PR path `+41 -0`. Steps 6–9: guards `+32 -0` with two mutation pairs red→green; residue sweep clean; docs updated; analyze `196 issues found.`; full suite `+3633 ~1` |
+| Fix round 1 (findings 1–4, carried nit) | **Complete** | Four targeted suites `+62 -0`; mutation pairs 3/4/5 red→green and restored; analyze `196 issues found.`; full suite `+3635 ~1` |
 
 ## Assumption Log
 
 _Executors append here: decision made, options considered, choice and why. The Conductor marks each
 RATIFIED (promoted to a D-x) or REVERT (remediation)._
+
+- **A-1 (@developer, Phase 1 resume 2) — expose the stages rather than grow the fixtures.**
+  Options: (a) enlarge every S-2003/S-2004/S-2006/S-2007(c)/S-2010(b) fixture until it clears
+  `kInterferenceMinDippedFollowUps`; (b) expose the rule's stages as a pure
+  `analyseInterference` / `InterferenceAnalysis` and let those tests observe them. Chose (b) per the
+  resume-2 brief: the scenarios describe follow-up detection and per-follow-up dips, which are stages,
+  and (a) would have rewritten the plan's pinned boundaries. `crossModalityInterference` keeps its
+  top-level behaviour (the 3-dipped floor and the `k`/`n`/`lo`/`hi`/rise fields) unchanged; the 8-rated
+  floor still yields an all-empty analysis. Verified: `test/interference_test.dart` `+26 -0`, the two
+  mutation pairs red→green, full suite `+3608 ~1`.
+- **A-2 (@developer, Phase 1 resume 2) — `docs/constants_reference.md` lists the interference constant
+  names without their numeric values.** The plan's step 5 says "names and values only";
+  `docs/documentation_standard.md` §3.4 forbids restating a numeric value defined in code. Chose the
+  standard: a `## Interference Constants` section listing each name and the rule it governs, closing
+  with `Verified by test/interference_test.dart`.
+- **A-3 (@dba, Phase 2) — S-2012's window needs four rated baseline sessions the plan does not seed.**
+  The Mix layer renders in load mode only when the 12 blocks before the window's start day hold
+  `kTrainingLoadMinRatedWeeks` rated weeks; F-INT's sessions all start at day 88 or later, so the
+  baseline is empty and the layer would read by time. Chose to seed 4 rated effort-less sessions at
+  days 96/110/124/138 — inert to every interference rule (not sports, outside the 90-day hard window
+  and both 21-day rise spans) but enough to put the layer on the load measure. Verified: S-2012 reads
+  `MixMeasure.load` and the parity sum 187.
+- **A-4 (@dba, Phase 2) — the walk's per-exercise bests reuse `_nativeValueFor` unchanged.** The plan
+  says "the existing native-value rule and axis classification"; `_repsAxisExercises` scans the whole
+  history, so it is called once for the union of exercise ids rather than per session. Verified:
+  S-2011's 16%/10%/11% shortfalls and D-1316's payloads.
+- **A-5 (@developer, Phase 3 part B) — the unrated-session guard's fixture carries a positive Sports
+  load.** Options: (a) reuse S-2009's zero-load unrated sessions; (b) give the guard's three unrated
+  sessions a positive load. Chose (b): with a zero load the `sportsLoadMinutes > 0` clause filters them
+  regardless of the rating gate, so the guard would pass under the mutation and prove nothing. The
+  shipped S-2009 fixture keeps its zero loads, because the service walk reports an unrated session's
+  Sports load as 0 (D-1302). Verified: the guard reddens when the rating gate is removed and is green
+  with it in place.
+- **A-6 (@developer, Phase 3 part B) — the registry guard asserts ascending priority, not descending.**
+  `buildSignalRegistry()` lists signals in ascending priority (Progression Rate, Mix Shift,
+  Interference), and the layer sorts them itself. The guard pins the registry's own order and the
+  caution priorities' distinctness, not a descending list. Verified: the guard is green on the shipped
+  registry and reddens when the priority drops below the Mix Shift's.
+
+- **A-7 (@developer, fix round 1) — the fix round's two new fixtures sit beside S-2008 rather than in it.**
+  Options: (a) extend S-2008's own fixture; (b) add a sibling 9-session fixture and a shared-follow-up
+  fixture. Chose (b): the 12-session fixture is asserted by the shipped S-2008 test, and the shared
+  follow-up needs two hard sessions close enough that one follow-up ends within 36h of both. Verified:
+  both tests red under their mutation and green after restore.
+
+_Closed at Phase 3 part B: A-1…A-6 all verified; no entry is left open. The Conductor ratifies or
+reverts each at verification. Fix round 1 adds A-7._
 
 ## Feedback
 

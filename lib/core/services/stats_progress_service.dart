@@ -10,6 +10,7 @@ import '../constants/metric_ids.dart';
 import '../models/exercise_metric.dart';
 import '../models/fuel_summary.dart';
 import '../models/instrument_list.dart';
+import '../models/interference.dart';
 import '../models/progression_rate.dart';
 import '../models/stats_progress.dart';
 import '../models/training_load.dart';
@@ -537,6 +538,92 @@ class StatsProgressService {
     );
   }
 
+  /// One [InterferenceSession] per completed session in the cached history,
+  /// ordered by start and then by id (D-1316).
+  ///
+  /// The walk is the signal layer's only read: it carries each session's
+  /// rating, its Sports load in load minutes, whether it holds a Resistance
+  /// effort, and the best each exercise reached. The Sports load comes from
+  /// [_sessionSplit], the same split the Mix layer renders, so the two surfaces
+  /// cannot disagree (D-1317). One pass over the cached history index — no
+  /// second repository read.
+  Future<List<InterferenceSession>> interferenceSessions() async {
+    final history = await _loadHistory();
+
+    final logsBySession = <String, Map<String, List<_ExerciseLog>>>{};
+    final exerciseIds = <String>{};
+    final hasSetEffort = <String, bool>{};
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final byExercise = <String, List<_ExerciseLog>>{};
+      var hasSet = false;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (_sectionForKind(effort.effortKind) ==
+              ExerciseSection.resistance) {
+            hasSet = true;
+          }
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null) continue;
+          exerciseIds.add(exerciseId);
+          (byExercise[exerciseId] ??= <_ExerciseLog>[]).add(
+            _ExerciseLog(
+              session: session,
+              effort: effort,
+              dayMs: localMidnightDay(
+                DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+              ).millisecondsSinceEpoch,
+            ),
+          );
+        }
+      }
+      logsBySession[session.id] = byExercise;
+      hasSetEffort[session.id] = hasSet;
+    }
+
+    final repsAxis = await _repsAxisExercises(exerciseIds);
+
+    final walk = <InterferenceSession>[];
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final byExercise = logsBySession[session.id] ?? const {};
+
+      final bests = <String, double>{};
+      for (final entry in byExercise.entries) {
+        final section = _sectionForLogs(entry.value);
+        if (section == null) continue;
+        final value = await _nativeValueFor(
+          entry.value,
+          section,
+          repsAxis.contains(entry.key),
+        );
+        if (value == null || value.value <= 0) continue;
+        bests[entry.key] = value.value;
+      }
+
+      final split = _sessionSplit(history, session);
+      walk.add(
+        InterferenceSession(
+          id: session.id,
+          startMs: session.startedAtMs,
+          endMs: session.endedAtMs!,
+          rating: session.sessionFeeling,
+          sportsLoadMinutes:
+              split.loadBySection[ExerciseSection.sports] ?? 0.0,
+          hasSetEffort: hasSetEffort[session.id] ?? false,
+          bests: bests,
+        ),
+      );
+    }
+
+    walk.sort((a, b) {
+      final byStart = a.startMs.compareTo(b.startMs);
+      return byStart != 0 ? byStart : a.id.compareTo(b.id);
+    });
+    return walk;
+  }
+
   /// One walk of [history] serving the window's bar, the baseline's and the
   /// strip's (D-916, D-917, D-919).
   ///
@@ -568,40 +655,22 @@ class StatsProgressService {
       if (session.endedAtMs == null) continue;
       final startMs = session.startedAtMs;
 
-      final measured = _measuredSecsFor(history, session);
-      final dominant = _dominantSectionFor(history, session);
-      final durationSecs = session.isRolling
-          ? 0
-          : ((session.endedAtMs! - startMs) / 1000).round();
-      final timeBySection = sessionTimeByModality(
-        durationSecs: durationSecs,
-        isRolling: session.isRolling,
-        measuredSecs: measured,
-        dominantSection: dominant,
-      );
-      final loadBySection = sessionLoadByModality(
-        timeByModality: timeBySection,
-        rating: session.sessionFeeling,
-      );
-      final sessionTimeSeconds = timeBySection.values.fold<double>(
-        0,
-        (a, b) => a + b,
-      );
+      final split = _sessionSplit(history, session);
 
       if (_sessionInWindow(session, fromMs, toMs)) {
-        _addAll(windowTime, timeBySection);
-        _addAll(windowLoad, loadBySection);
-        windowTimeSeconds += sessionTimeSeconds;
+        _addAll(windowTime, split.timeBySection);
+        _addAll(windowLoad, split.loadBySection);
+        windowTimeSeconds += split.timeSeconds;
         if (session.sessionFeeling == null) {
           unratedSessionCount++;
-          unratedTimeSeconds += sessionTimeSeconds;
+          unratedTimeSeconds += split.timeSeconds;
         }
       }
 
       if (startMs < baselineEndMs) {
         final block = _baselineBlockFor(baselineStarts, startMs);
         if (block != null) {
-          _addAll(baselineLoad, loadBySection);
+          _addAll(baselineLoad, split.loadBySection);
           if (session.sessionFeeling != null) ratedBaselineBlocks.add(block);
         }
       }
@@ -610,11 +679,11 @@ class StatsProgressService {
       if (weekIndex != null) {
         _addAll(
           weekTime[weekIndex] ??= <ExerciseSection, double>{},
-          timeBySection,
+          split.timeBySection,
         );
         _addAll(
           weekLoad[weekIndex] ??= <ExerciseSection, double>{},
-          loadBySection,
+          split.loadBySection,
         );
       }
     }
@@ -681,6 +750,32 @@ class StatsProgressService {
   ) => {
     for (final entry in secondsBySection.entries) entry.key: entry.value / 60.0,
   };
+
+  /// One completed session's time and load, split by section (D-1317).
+  ///
+  /// The Mix walk and the interference walk both read a session's Sports load
+  /// from here, so the layer's bar and the signal's figure cannot disagree.
+  /// [session] must be completed: the split needs its end.
+  _SessionSplit _sessionSplit(_HistoryIndex history, TrainingSession session) {
+    final measured = _measuredSecsFor(history, session);
+    final dominant = _dominantSectionFor(history, session);
+    final durationSecs = session.isRolling
+        ? 0
+        : ((session.endedAtMs! - session.startedAtMs) / 1000).round();
+    final timeBySection = sessionTimeByModality(
+      durationSecs: durationSecs,
+      isRolling: session.isRolling,
+      measuredSecs: measured,
+      dominantSection: dominant,
+    );
+    return _SessionSplit(
+      timeBySection: timeBySection,
+      loadBySection: sessionLoadByModality(
+        timeByModality: timeBySection,
+        rating: session.sessionFeeling,
+      ),
+    );
+  }
 
   /// The measured active seconds of [session] per modality (D-903).
   ///
@@ -2265,6 +2360,23 @@ class _SetTuple {
   final int reps;
 
   const _SetTuple({required this.weight, required this.reps});
+}
+
+/// One completed session's time and load, split by section (D-1317).
+class _SessionSplit {
+  const _SessionSplit({
+    required this.timeBySection,
+    required this.loadBySection,
+  });
+
+  /// Active seconds per section.
+  final Map<ExerciseSection, double> timeBySection;
+
+  /// Load minutes per section — zero throughout when the session is unrated.
+  final Map<ExerciseSection, double> loadBySection;
+
+  double get timeSeconds =>
+      timeBySection.values.fold<double>(0, (a, b) => a + b);
 }
 
 /// One effort an exercise was logged under, with the session it belongs to and

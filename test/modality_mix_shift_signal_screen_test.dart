@@ -614,13 +614,14 @@ void main() {
 
   // D-1215: the signal is one class plus one registry line, and no framework
   // file names a concrete signal. The registry is the only place a signal is
-  // registered, so it must list exactly the two shipped signals.
+  // registered, so it must list exactly the shipped signals.
   group('the registry', () {
-    test('lists exactly the two shipped signals, in order', () {
+    test('lists exactly the three shipped signals, in order', () {
       final registry = buildSignalRegistry();
       expect(registry.map((signal) => signal.id), [
         'progression-rate',
         'modality-mix-shift',
+        'cross-modality-interference',
       ]);
     });
   });

@@ -302,6 +302,34 @@ qualification test group).
 
 ---
 
+## Interference Constants
+
+**File**: `lib/core/models/interference.dart`
+
+The windows, the boundaries and the priority behind the Cross-Modality
+Interference rule. Named here so a reader can find the owner; the file itself
+states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kInterferenceHardWindowDays` | How far back the hard-session window reaches; both ends inclusive |
+| `kInterferenceMinRatedSportsSessions` | The smallest rated-sports-session population that can classify anything |
+| `kInterferenceHardPercentile` | The nearest-rank percentile that separates hard sessions from the rest; the boundary is inclusive |
+| `kInterferenceFollowUpHours` | How long after a hard session's end a follow-up may start; the upper bound is inclusive |
+| `kInterferenceDipWindowDays` | The lookback a follow-up's comparable exercises are averaged over; the lower bound inclusive, the upper exclusive |
+| `kInterferenceMinDip` | The mean shortfall at which a follow-up dips; the boundary is inclusive within the rule's tolerance |
+| `kInterferencePatternWindowDays` | The window the pattern is counted over; both ends inclusive |
+| `kInterferenceMinDippedFollowUps` | How many dipped follow-ups the pattern needs |
+| `kInterferenceSportsLoadWindowDays` | The recent span the optional second sentence compares |
+| `kInterferenceSportsLoadRisePercent` | The rise that second sentence needs; the boundary is inclusive |
+| `kCrossModalityInterferencePriority` | The signal's priority, the highest among cautions |
+
+Verified by `test/interference_test.dart` (the constant contracts group, plus
+the boundary scenarios S-2003, S-2004, S-2010 and S-2015); the caution order it
+sits at the top of is pinned by `test/modality_mix_shift_test.dart`.
+
+---
+
 ## Home Tile Configuration
 
 **File**: `lib/core/constants/home_tiles.dart`

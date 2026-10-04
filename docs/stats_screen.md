@@ -145,7 +145,7 @@ deliberately replaces that, limited to these signal rules, rather than leaving
 it as a gap. Verified by `test/signals_layer_screen_test.dart` (`S-1716`) and
 `test/stats_legacy_removal_test.dart` (`S-1210`, no chart primitive).
 
-**The registered signals.** `buildSignalRegistry()` lists two. The first is the
+**The registered signals.** `buildSignalRegistry()` lists three. The first is the
 Progression Rate: it compares each exercise's own metric across two adjacent
 windows and proposes a positive card only when the recent window improves on the
 prior one. Its rules — the two windows, what a sample is, the zero fallback, the
@@ -170,6 +170,18 @@ cannot disagree. Verified by `test/modality_mix_shift_signal_screen_test.dart`
 (`S-1909` the card on the layer and its dismissal, `S-1904b` its absence while
 the period measures time) and, for the definition itself,
 `test/modality_mix_shift_test.dart`.
+
+The third is the Cross-Modality Interference: it reports that the user's next
+lifting day after a hard sports session has come in below their own usual level
+on the same lifts, at least `kInterferenceMinDippedFollowUps` times in the
+pattern window, and proposes a caution card. Its rules — the hard window and its rated population, the follow-up, the
+per-exercise dip against its own average, the pattern window and the optional
+second sentence — live in [Signals](signals.md#registered-signals) and are not
+restated here. The card's copy is built by `crossModalityInterferenceCopy`
+(`lib/core/models/interference.dart`) so that the copy and the fire test cannot
+disagree. Verified by `test/interference_signal_screen_test.dart` (`S-2013` the
+card on the layer and its dismissal) and, for the definition itself,
+`test/interference_test.dart`.
 
 ### ALL TIME card
 
