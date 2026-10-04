@@ -127,22 +127,36 @@ Full suite at Phase 1 close: `+3858 ~1: All tests passed!` (`gateway.sh test`).
 
 ### 3.1 Red run before the code
 
+The new test file was authored after the production surface in this run, so the "before step 1 exists" red
+was produced by **temporarily reverting the new constructor surface** rather than by an absent file: the
+`showPrimerHelp` field was given an initializer and the constructor parameter was deleted, so the screen
+still compiled while the test's named argument no longer resolved. The compile failure below is the
+observed red; the exact original lines were then restored (the diff returned to 89 insertions, 0 deletions)
+and the file went green.
+
 | Command | Expected | Observed |
 |---|---|---|
-| `gateway.sh test test/stats_primer_screen_test.dart` (before `stats_primer_sheet.dart` exists) | compile failure — `Target of URI doesn't exist` / `Undefined name 'StatsPrimerSheet'` | _pending_ |
-| `gateway.sh test test/stats_primer_screen_test.dart` (after) | `All tests passed!` | _pending_ |
+| `gateway.sh test test/stats_primer_screen_test.dart` (new constructor surface temporarily reverted) | compile failure — the test's `showPrimerHelp:` named argument does not resolve | `test/stats_primer_screen_test.dart:51:15: Error: No named parameter with the name 'showPrimerHelp'.` + `lib/features/stats/stats_screen.dart:49:9: Context: Found this candidate, but the arguments don't match.` → `00:00 +0 -1: Some tests failed.` |
+| `gateway.sh test test/stats_primer_screen_test.dart` (after the surface is restored) | `All tests passed!` | `00:00 +7: All tests passed!` |
 
 ### 3.2 Scenario coverage
 
 | Scenario | Test name | Result |
 |---|---|---|
-| S-2703 | `S-2703: with showPrimerHelp omitted the Stats primer feature is off` › `no help action, no empty-state button and the chart action still renders` | _pending_ |
-| S-2704 (a) | `S-2704: the header "?" reopens the primer and never marks it` › `reopening with an unseen state leaves it unseen` | _pending_ |
-| S-2704 (b) | `S-2704: the header "?" reopens the primer and never marks it` › `reopening with a seen state still opens the sheet` | _pending_ |
-| S-2707 (a) | `S-2707: the first-use card explains what will appear` › `the empty state keeps its title and body and adds the explanation and the button` | _pending_ |
-| S-2707 (b) | `S-2707: the first-use card explains what will appear` › `the empty-state button opens the sheet without marking it seen` | _pending_ |
-| S-2708 | `S-2708: the "?" and the chart icon coexist` › `the chart icon stays the only way into Records & Trends` | _pending_ |
-| S-2714 | `S-2714: the taller first-use card fits a small viewport` › `the card lays out at 320x568 without an overflow` | _pending_ |
+| S-2703 | `S-2703: with showPrimerHelp omitted the Stats primer feature is off` › `no help action, no empty-state button and the chart action still renders` | green |
+| S-2704 (a) | `S-2704: the header "?" reopens the primer and never marks it` › `reopening with an unseen state leaves it unseen` | green |
+| S-2704 (b) | `S-2704: the header "?" reopens the primer and never marks it` › `reopening with a seen state still opens the sheet` | green |
+| S-2707 (a) | `S-2707: the first-use card explains what will appear` › `the empty state keeps its title and body and adds the explanation and the button` | green |
+| S-2707 (b) | `S-2707: the first-use card explains what will appear` › `the empty-state button opens the sheet without marking it seen` | green |
+| S-2708 | `S-2708: the "?" and the chart icon coexist` › `the chart icon stays the only way into Records & Trends` | green |
+| S-2714 | `S-2714: the taller first-use card fits a small viewport` › `the card lays out at 320x568 without an overflow` | green |
+
+**Honesty note (as the plan pre-declared).** The two S-2704 cases and the S-2707 (b) "still `false`"
+assertion hold a test-owned `StatsPrimerState` that the screen never receives (D-2019), so they cannot go
+red from any screen mutation — the "reopen never marks" property is structural, held by the Phase 3A
+guard `the Stats screen holds no StatsPrimerState`, and its cross-phase behavioural mutation is 2B
+mutation B. What these cases do prove is the positive half: the sheet opens from both hosts and closes
+cleanly. Mutation A below is the one screen-level mutant this run can turn red.
 
 S-2702, S-2709, S-2712 and S-2713 were dropped before approval (the auto-open is no longer in this
 screen). S-2701, S-2716, S-2717 and S-2718 are covered in section 3A.
@@ -153,32 +167,43 @@ screen). S-2701, S-2716, S-2717 and S-2718 are covered in section 3A.
 
 | File | Why it is unaffected | Green |
 |---|---|---|
-| `test/header_standardization_test.dart` | pumps `StatsScreen` with `showPrimerHelp` omitted; asserts the header title, the back icon and the empty-state copy — never an action count | _pending_ |
-| `test/records_and_trends_screen_test.dart` | S-913 keys off `find.byTooltip('Records & Trends')`; the static scan still finds one construction site | _pending_ |
-| `test/stats_legacy_removal_test.dart` | `showPrimerHelp` omitted; asserts the empty state and the legacy-title absence | _pending_ |
-| `test/screen_widget_test.dart` | `showPrimerHelp` omitted; asserts the empty-state copy | _pending_ |
-| `test/fuel_row_screen_test.dart` | S-1107; `showPrimerHelp` omitted | _pending_ |
-| `test/screen_overflow_contract_test.dart` | seeds sessions, so the empty card is never built | _pending_ |
-| `test/nutrition_trend_screen_test.dart` | exercises the zero-session empty state with `showPrimerHelp` omitted | _pending_ |
-| `test/mix_layer_screen_test.dart` | `showPrimerHelp` omitted; every assertion is scoped to a `mix_*` key or the Mix layer's own copy | _pending_ |
-| `test/signals_layer_screen_test.dart` | `showPrimerHelp` omitted | _pending_ |
-| the remaining `StatsScreen`-pumping files (18 total) | `showPrimerHelp` omitted | _pending_ |
+| `test/header_standardization_test.dart` | pumps `StatsScreen` with `showPrimerHelp` omitted; asserts the header title, the back icon and the empty-state copy — never an action count | green |
+| `test/records_and_trends_screen_test.dart` | S-913 keys off `find.byTooltip('Records & Trends')`; the static scan still finds one construction site | green |
+| `test/stats_legacy_removal_test.dart` | `showPrimerHelp` omitted; asserts the empty state and the legacy-title absence | green |
+| `test/screen_widget_test.dart` | `showPrimerHelp` omitted; asserts the empty-state copy | green |
+| `test/fuel_row_screen_test.dart` | S-1107; `showPrimerHelp` omitted | green |
+| `test/screen_overflow_contract_test.dart` | seeds sessions, so the empty card is never built | green |
+| `test/nutrition_trend_screen_test.dart` | exercises the zero-session empty state with `showPrimerHelp` omitted | green |
+| `test/mix_layer_screen_test.dart` | `showPrimerHelp` omitted; every assertion is scoped to a `mix_*` key or the Mix layer's own copy | green |
+| `test/signals_layer_screen_test.dart` | `showPrimerHelp` omitted | green |
+| the remaining `StatsScreen`-pumping files (18 total) | `showPrimerHelp` omitted | green |
 
-One command for the whole unaffected set is in section 5.
+**Observed answer: none needs an edit.** One command for the whole unaffected set is in section 5; it
+reported `00:11 +525: All tests passed!` with no tracked `test/` file modified
+(`gateway.sh git-status` lists only `stats_screen.dart` modified and the two new untracked files).
 
 ### 3.4 Mutation records
 
 #### Mutation A — the flag really defaults to off
 
 - **File:** `lib/features/stats/stats_screen.dart`
-- **Original:** the `showPrimerHelp` constructor parameter's `= false` default
-- **Mutated:** the default changed to `true`
+- **Original:** `    this.showPrimerHelp = false,` (the constructor parameter's default)
+- **Mutated:** `    this.showPrimerHelp = true,`
 - **Test that must go red:** `S-2703: with showPrimerHelp omitted the Stats primer feature is off` ›
   `no help action, no empty-state button and the chart action still renders`
 - **Command:** `gateway.sh test test/stats_primer_screen_test.dart`
 - **Expected red:** the "?" and the empty-state button render on a screen that omitted the flag
-- **Observed:** _pending_
-- **Restore → re-run:** _pending_
+- **Observed:** red — the `stats_primer_help` `findsNothing` assertion at test line 69 failed:
+  ```
+  00:00 +0 -1: S-2703: with showPrimerHelp omitted the Stats primer feature is off no help action, no empty-state button and the chart action still renders [E]
+    Test failed. See exception logs above.
+  ...
+  00:00 +6 -1: Some tests failed.
+  ```
+  The other six cases stayed green: they all pass `showPrimerHelp: true`, which the mutant renders
+  identically to the correct code, so the mutant is isolated to S-2703.
+- **Restore → re-run:** the original line restored verbatim → `00:00 +7: All tests passed!` (the
+  `git-diff --stat` on `stats_screen.dart` reads `89 insertions(+)`, the pre-mutation shape).
 
 The "reopen never marks" half of S-2704 / S-2707 cannot go red in this run: the screen holds no
 state, so there is nothing to mutate here. It is held by the Phase 3A guard that `StatsScreen` never
@@ -188,10 +213,24 @@ references `StatsPrimerState`, and its cross-phase mutation is 2B mutation B.
 
 | Check | Expected | Observed |
 |---|---|---|
-| `gateway.sh test test/stats_primer_screen_test.dart test/stats_primer_state_test.dart` | green | _pending_ |
-| `gateway.sh test` (full suite) | the re-measured baseline count, `All tests passed!` | _pending_ |
-| `gateway.sh lint` | baseline issue count, 0 errors | _pending_ |
-| `gateway.sh git-status` | exactly the three Predicted Files | _pending_ |
+| `gateway.sh test test/stats_primer_screen_test.dart test/stats_primer_state_test.dart` | green | `00:00 +13: All tests passed!` (7 screen + 6 state) |
+| `gateway.sh test` (full suite) | the re-measured baseline count, `All tests passed!` | `01:43 +3865 ~1: All tests passed!` (baseline `+3858 ~1` + 7 new screen cases) |
+| `gateway.sh lint` | baseline issue count, 0 errors | `196 issues found. (ran in 3.7s)` — 0 errors, 0 issues in `stats_screen.dart`, `stats_primer_sheet.dart` or `stats_primer_screen_test.dart` |
+| `gateway.sh git-status` | exactly the three Predicted Files | `M lib/features/stats/stats_screen.dart`, `?? lib/features/stats/widgets/stats_primer_sheet.dart`, `?? test/stats_primer_screen_test.dart`; `git-diff --stat` = `89 insertions(+)`, 0 deletions |
+
+**Residue sweep pre-check** (Phase 3A formalises these; run here so the phase ends with the sweeps
+empty): (a) `primer_seen_stats` in `lib/` → only `lib/state/stats/stats_primer_state.dart`; (b)
+`StatsPrimerSheet(` in `lib/` → `lib/features/stats/stats_screen.dart:351` (the host) and the
+constructor declaration in the sheet itself (`home_screen.dart` is Phase 2B); (c) the Records & Trends
+empty-state string → exactly one occurrence, file otherwise unmodified; (d) no `TODO` /
+`UnimplementedError` in either new file; (e) no `Color(0x` in either new file; (f) no
+`_primerAutoShown` / `AnimationStatusListener` in `lib/features/stats/`.
+
+**Phase 3A risk to flag (not acted on — out of 2A scope).** The Phase 3A guard `no unfinished-feature
+wording reaches the Stats feature` scans all of `lib/features/stats/` for the D-2011 banned strings,
+and the pre-existing comment at `lib/features/stats/widgets/mix_layer.dart:11` contains the phrase
+"load baseline". A naive substring scan will hit it; the guard will need to scope to the files this
+PR adds or to user-facing strings only.
 
 ---
 
@@ -324,6 +363,6 @@ no edits. Record the observed line for each command.
 
 | Command | Expected | Observed |
 |---|---|---|
-| `gateway.sh test test/header_standardization_test.dart test/records_and_trends_screen_test.dart test/stats_legacy_removal_test.dart test/screen_widget_test.dart test/fuel_row_screen_test.dart test/screen_overflow_contract_test.dart test/nutrition_trend_screen_test.dart test/mix_layer_screen_test.dart test/signals_layer_screen_test.dart` | green, no edits | _pending_ |
-| `gateway.sh test test/nutrition_primer_test.dart test/home_logo_hub_open_test.dart` | green, no edits | _pending_ |
-| `gateway.sh git-status` | no `test/` file outside the Predicted Files is modified | _pending_ |
+| `gateway.sh test test/header_standardization_test.dart test/records_and_trends_screen_test.dart test/stats_legacy_removal_test.dart test/screen_widget_test.dart test/fuel_row_screen_test.dart test/screen_overflow_contract_test.dart test/nutrition_trend_screen_test.dart test/mix_layer_screen_test.dart test/signals_layer_screen_test.dart` | green, no edits | `00:11 +525: All tests passed!` |
+| `gateway.sh test test/nutrition_primer_test.dart test/home_logo_hub_open_test.dart` | green, no edits | deferred to Phase 2B (those files construct `HomeScreen`; nothing in 2A touches them) |
+| `gateway.sh git-status` | no `test/` file outside the Predicted Files is modified | `M lib/features/stats/stats_screen.dart` only; the two untracked files are the Predicted Files |

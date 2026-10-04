@@ -24,6 +24,7 @@ import 'widgets/instrument_list.dart';
 import 'widgets/mix_layer.dart';
 import 'widgets/signals_layer.dart';
 import 'widgets/stats_pill.dart';
+import 'widgets/stats_primer_sheet.dart';
 
 class StatsScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -35,11 +36,22 @@ class StatsScreen extends StatefulWidget {
   /// `buildSignalRegistry()` (D-1016).
   final List<Signal>? signals;
 
+  /// Whether the first-use explanation surfaces render: the header "?" and
+  /// the `How Stats works` button on the empty card.
+  ///
+  /// Defaults to `false`, so every existing `StatsScreen` consumer renders
+  /// today's tree unchanged. The screen deliberately holds no
+  /// `StatsPrimerState`: with `onDismiss: null` on both hosts it has no
+  /// reference through which it could mark the flag, so reopening from here
+  /// can never mark seen (D-2019).
+  final bool showPrimerHelp;
+
   const StatsScreen({
     super.key,
     required this.workoutState,
     required this.settingsState,
     this.signals,
+    this.showPrimerHelp = false,
   });
 
   @override
@@ -233,6 +245,18 @@ class _StatsScreenState extends State<StatsScreen> {
           appBar: OmniBackHeader(
             title: 'Stats',
             actions: [
+              if (widget.showPrimerHelp)
+                Semantics(
+                  label: 'About Stats',
+                  button: true,
+                  child: IconButton(
+                    key: const Key('stats_primer_help'),
+                    icon: const Icon(Icons.help_outline),
+                    color: OmniTheme.colors.textDominant,
+                    tooltip: 'About Stats',
+                    onPressed: _reopenPrimer,
+                  ),
+                ),
               Semantics(
                 label: 'Records & Trends',
                 button: true,
@@ -305,6 +329,26 @@ class _StatsScreenState extends State<StatsScreen> {
                           ],
                   ),
           ),
+        );
+      },
+    );
+  }
+
+  /// Reopen the one-shot primer sheet at any time. The seen state is NOT
+  /// mutated — the screen holds no primer state and hosts the sheet with a
+  /// null `onDismiss`, so the "?" and the empty-card button are the way to
+  /// read the primer without committing (D-2019).
+  Future<void> _reopenPrimer() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: const StatsPrimerSheet(),
         );
       },
     );
@@ -391,6 +435,51 @@ class _StatsScreenState extends State<StatsScreen> {
               color: themeColors.textMuted,
             ),
           ),
+          if (widget.showPrimerHelp) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Your training mix, by kind of work.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Your records, and how each exercise changes over time.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'How your eating lines up with your training, once you log '
+              'food.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const Key('stats_primer_empty_cta'),
+                style: ButtonStyle(
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonUtilityRadius,
+                      ),
+                    ),
+                  ),
+                ),
+                onPressed: _reopenPrimer,
+                child: const Text('How Stats works'),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
         ],
       ),

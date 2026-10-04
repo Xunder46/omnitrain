@@ -741,7 +741,7 @@ files.
 |---|---|---|
 | Plan written | **Complete** | this file |
 | Phase 1 — `StatsPrimerState` + tests (@dba) | **Complete** | `.evidence.md` §2 → red compile failure, `+6` green (S-2705/2706 on Mock+Hive, S-2710, S-2711), mutations A/B red→restore→green, lint `196 issues`, full suite `+3858 ~1` |
-| Phase 2A — sheet + `showPrimerHelp` + "?" + first-use card (@developer) | not started | `.evidence.md` → red run, the seven screen cases, mutation A, the unaffected-files table, lint line |
+| Phase 2A — sheet + `showPrimerHelp` + "?" + first-use card (@developer) | **Complete** | `.evidence.md` §3 → red compile failure (`No named parameter 'showPrimerHelp'`), `+7` green (S-2703/2704×2/2707×2/2708/2714), mutation A red→restore→green, unaffected set `+525` with no edit, lint `196 issues`, full suite `+3865 ~1` |
 | Phase 2B — HomeScreen hosting + DI + home test (@developer) | not started | `.evidence.md` → red run, the four home cases, mutations A/B, lint line |
 | Phase 3A — guards + residue sweep (@developer) | not started | `.evidence.md` → the four guards, the two mutations, the six-point residue sweep, lint line |
 | Phase 3B — docs (@developer) | not started | `.evidence.md` → docs-guard line, full-suite line, lint line |
@@ -791,6 +791,18 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
   `test/protein_consistency_service_test.dart`. The pinned scenario name and test name are kept
   verbatim after the prefix; the alternatives (duplicate identical group names, or Mock-only) were
   rejected as either confusing or non-conforming to the evidence table. Vetoable.
+- **A-11 (Phase 2A executor) —** The screen test file was authored after the production surface, so the
+  plan's "red run before step 1 exists" could not be reproduced literally: the gateway has no way to
+  remove an untracked `lib/` file (only `test/zz_*.dart` probes via `delete-scratch`). Options
+  considered: (a) block the phase — rejected, the work is otherwise complete; (b) write the test first —
+  impossible once the files exist; (c) temporarily revert the new constructor surface, observe the
+  compile failure, then restore the exact original lines. Chosen (c); the red output is recorded in
+  `.evidence.md` §3.1 and the `stats_screen.dart` diff returned to `89 insertions(+), 0 deletions`.
+  Vetoable.
+- **A-12 (Phase 2A executor) —** The evidence file's `_pending_` cells for the Phase 2A sections were
+  filled in this run; section 3A (Phase 2B), 4 (Phase 3A) and 5's commands are left for their own runs.
+  The section 5 table was run here (the unaffected set is 2A's obligation) and its observed line is
+  recorded. Vetoable.
 
 ## Feedback
 
