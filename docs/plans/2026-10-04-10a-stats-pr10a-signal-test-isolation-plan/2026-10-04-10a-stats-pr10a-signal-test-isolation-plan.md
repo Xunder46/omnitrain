@@ -414,6 +414,7 @@ nine non-signal test files.
 | Phase 1 — three mutation pairs: original copied, red observed, exact original restored, green | **Complete** | `.evidence.md` §2 (originals) and §3 (records) |
 | Phase 1 — nine non-signal files run unedited | **Complete** | `.evidence.md` §5 — one command, `+277: All tests passed!` |
 | Phase 1 — full suite, lint and git-status at baseline | **Complete** | `.evidence.md` §6 — `+3852 ~1: All tests passed!`, `196 issues found.` with 0 errors, exactly the seven test files plus this folder modified |
+| Follow-up (PR 10a fix) — the seven files' stale "real registry" prose corrected | **Complete** | comment-only edits in the seven test files; `gateway.sh lint` `196 issues found.` 0 errors; the seven files `+75: All tests passed!` |
 
 ## Assumption Log
 
@@ -445,6 +446,14 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
   `signals: const [ProteinConsistencySignal(), FuelVsLoadSignal()]`. The mutation itself is unchanged —
   the call falls back to the injected default either way — and the observed red is identical in kind to
   the plan's prediction. Recorded in `.evidence.md` §2.
+- **A-4 (developer, PR 10a fix) — A-2's stale prose is now corrected, comment-only.** The follow-up
+  brief supersedes A-2's "leave and report": the file-header sentence, the `pumpStats` doc comment and
+  the "The real registry also holds …" sentence in each of the seven files now say the screen is given
+  only this signal through the `signals:` seam (and, in the three mixed files, that a scenario can pass
+  an explicit list). No code, import, test name or assertion changed; `modality_mix_shift`'s
+  `buildSignalRegistry()` guard line is untouched. Options: rewrite the prose, or leave it. Rewritten —
+  the brief is binding and the old text was false. Verified: `git-diff` shows only `//` and `///` lines,
+  lint `196 issues found.` 0 errors, the seven files `+75: All tests passed!`.
 
 ## Feedback
 

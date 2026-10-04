@@ -5,10 +5,10 @@
 // `docs/plans/2026-10-03-08a-stats-pr8a-fuel-vs-load-plan/2026-10-03-08a-stats-pr8a-fuel-vs-load-plan.md`,
 // on both repository implementations.
 //
-// The card is produced by the app's real registry (`buildSignalRegistry()`),
-// which the screen falls back to when no `signals:` seam is passed, so this
-// file exercises the shipped signal, the shipped 21-day period walk and the
-// shipped copy — nothing here is stubbed.
+// The screen is given only this signal through the `signals:` seam, so a
+// signal added later cannot change these scenarios. The signal itself, its
+// window and its copy are the shipped ones — nothing about the signal is
+// stubbed.
 //
 // F-FUEL has to satisfy four things at once: the Mix layer's rated-baseline
 // gate for the Stats window (>= 4 rated blocks, so the layer renders), the
@@ -23,12 +23,11 @@
 // payload are the same figures, and the rated baseline blocks the window needs
 // are the ones the recent period needs.
 //
-// The real registry also holds Progression Rate, Modality Mix Shift and
-// Interference, so every assertion here names the Fuel vs Load card by its key
-// rather than counting cards. None of the other three qualifies in F-FUEL:
-// every effort is a `set` (no Sports time for Interference), both Mix bars are
-// 100% Resistance (nothing for Mix Shift to report), and every session carries
-// a unique exercise id, so each exercise has one progression sample and
+// Every assertion here names the Fuel vs Load card by its key rather than
+// counting cards. None of the other signals qualifies in F-FUEL: every effort
+// is a `set` (no Sports time for Interference), both Mix bars are 100%
+// Resistance (nothing for Mix Shift to report), and every session carries a
+// unique exercise id, so each exercise has one progression sample and
 // Progression Rate counts nothing.
 //
 // The harness is opened and seeded in `setUp`, never inside a `testWidgets`
@@ -358,8 +357,8 @@ void main() {
         await harness.close();
       });
 
-      /// Pumps the Stats screen with no `signals:` seam, so the layer evaluates
-      /// the app's real registry.
+      /// Pumps the Stats screen with only this signal injected through the
+      /// `signals:` seam.
       Future<void> pumpStats(
         WidgetTester tester, {
         Size size = _kTallViewport,

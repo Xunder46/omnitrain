@@ -6,10 +6,11 @@
 // `docs/plans/2026-10-03-08b-stats-pr8b-protein-consistency-plan/2026-10-03-08b-stats-pr8b-protein-consistency-plan.md`,
 // on both repository implementations.
 //
-// The card is produced by the app's real registry (`buildSignalRegistry()`),
-// which the screen falls back to when no `signals:` seam is passed, so this
-// file exercises the shipped signal, the shipped 14-day window and the shipped
-// copy — nothing here is stubbed.
+// The screen is given only this signal through the `signals:` seam, so a
+// signal added later cannot change these scenarios; the scenarios that assert a
+// neighbouring card pass an explicit two-signal list. The signal itself, its
+// window and its copy are the shipped ones — nothing about the signal is
+// stubbed.
 //
 // Every fixture has to satisfy the Mix layer's rated-baseline gate for the
 // Stats window (>= 4 rated blocks, so the layer renders at all) and the
@@ -20,9 +21,8 @@
 // The window is period-scoped over `day(20)`…today so the Mix layer renders
 // above the Signals layer, exactly as F-FUEL does in
 // `test/fuel_vs_load_signal_screen_test.dart`, whose helper pattern this file
-// copies. The real registry also holds Fuel vs Load, Progression Rate, Modality
-// Mix Shift and Interference, so every assertion names the Protein Consistency
-// card by its key rather than counting cards.
+// copies. Every assertion names the Protein Consistency card by its key rather
+// than counting cards.
 //
 // S-2215's plan text expects "exactly one card, Fuel vs Load", which the shipped
 // `resolveSignals` cannot produce: two cautions qualify and the framework renders
@@ -511,8 +511,8 @@ void main() {
         await harness.close();
       });
 
-      /// Pumps the Stats screen with no `signals:` seam, so the layer evaluates
-      /// the app's real registry.
+      /// Pumps the Stats screen with only this signal injected through the
+      /// `signals:` seam; a scenario can pass an explicit list instead.
       Future<void> pumpStats(
         WidgetTester tester, {
         Size size = _kTallViewport,

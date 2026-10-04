@@ -6,10 +6,11 @@
 // `docs/plans/2026-10-04-09b-stats-pr9b-cardio-efficiency-drift-plan/2026-10-04-09b-stats-pr9b-cardio-efficiency-drift-plan.md`,
 // on both repository implementations.
 //
-// The card is produced by the app's real registry (`buildSignalRegistry()`),
-// which the screen falls back to when no `signals:` seam is passed, so this file
-// exercises the shipped signal, the shipped Mix gate and the shipped copy —
-// nothing here is stubbed.
+// The screen is given only this signal through the `signals:` seam, so a
+// signal added later cannot change these scenarios; the scenarios that assert a
+// neighbouring card pass an explicit two-signal list. The signal itself, its
+// window and its copy are the shipped ones — nothing about the signal is
+// stubbed.
 //
 // The fixtures are anchored to the real clock, not a fixed `now`: the windows
 // are local calendar days, so every effort is placed with `_day(daysAgo)` and
@@ -589,8 +590,8 @@ void main() {
         await harness.close();
       });
 
-      /// Pumps the Stats screen with no `signals:` seam, so the layer evaluates
-      /// the app's real registry.
+      /// Pumps the Stats screen with only this signal injected through the
+      /// `signals:` seam; a scenario can pass an explicit list instead.
       Future<void> pumpStats(
         WidgetTester tester, {
         Size size = _kTallViewport,

@@ -4,10 +4,10 @@
 // `docs/plans/2026-10-03-06b-stats-pr6b-progression-rate-plan/2026-10-03-06b-stats-pr6b-progression-rate-plan.md`,
 // on both repository implementations.
 //
-// The card is produced by the app's real registry (`buildSignalRegistry()`),
-// which the screen falls back to when no `signals:` seam is passed, so this
-// file exercises the shipped signal, the shipped sample walk and the shipped
-// copy — nothing here is stubbed.
+// The screen is given only this signal through the `signals:` seam, so a
+// signal added later cannot change these scenarios. The signal itself, its
+// window and its copy are the shipped ones — nothing about the signal is
+// stubbed.
 //
 // F-PR is the plan's nine-session fixture. Its sessions carry a rating, so the
 // weeks behind the window meet the Mix layer's rated-baseline gate that the
@@ -290,8 +290,8 @@ void main() {
         await harness.close();
       });
 
-      /// Pumps the Stats screen with no `signals:` seam, so the layer evaluates
-      /// the app's real registry.
+      /// Pumps the Stats screen with only this signal injected through the
+      /// `signals:` seam.
       Future<void> pumpStats(
         WidgetTester tester, {
         Size size = _kTallViewport,

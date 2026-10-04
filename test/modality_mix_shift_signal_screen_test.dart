@@ -4,10 +4,10 @@
 // `docs/plans/2026-10-03-07a-stats-pr7a-mix-shift-plan/2026-10-03-07a-stats-pr7a-mix-shift-plan.md`,
 // on both repository implementations.
 //
-// The card is produced by the app's real registry (`buildSignalRegistry()`),
-// which the screen falls back to when no `signals:` seam is passed, so this
-// file exercises the shipped signal, the shipped period walk and the shipped
-// copy — nothing here is stubbed.
+// The screen is given only this signal through the `signals:` seam, so a
+// signal added later cannot change these scenarios. The signal itself, its
+// window and its copy are the shipped ones — nothing about the signal is
+// stubbed.
 //
 // F-MIX is the plan's mixed history. It has to satisfy three things at once:
 // the Mix layer's rated-baseline gate for the Stats window (>= 4 rated weeks),
@@ -15,8 +15,8 @@
 // regularly trained modality whose recent share fell below half. The window is
 // period-scoped so the rated baseline sessions stay outside it.
 //
-// The real registry also holds Progression Rate, so every assertion here names
-// the Mix Shift card by its key rather than counting cards.
+// Every assertion here names the Mix Shift card by its key rather than counting
+// cards.
 //
 // The harness is opened and seeded in `setUp`, never inside a `testWidgets`
 // body: a widget test body runs under `FakeAsync`, where Hive's real file I/O
@@ -380,8 +380,8 @@ void main() {
         await harness.close();
       });
 
-      /// Pumps the Stats screen with no `signals:` seam, so the layer evaluates
-      /// the app's real registry.
+      /// Pumps the Stats screen with only this signal injected through the
+      /// `signals:` seam.
       Future<void> pumpStats(
         WidgetTester tester, {
         Size size = _kTallViewport,

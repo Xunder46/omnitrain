@@ -5,10 +5,10 @@
 // `docs/plans/2026-10-03-07b-stats-pr7b-interference-plan/2026-10-03-07b-stats-pr7b-interference-plan.md`,
 // on both repository implementations.
 //
-// The card is produced by the app's real registry (`buildSignalRegistry()`),
-// which the screen falls back to when no `signals:` seam is passed, so this
-// file exercises the shipped signal, the shipped walk and the shipped copy —
-// nothing here is stubbed.
+// The screen is given only this signal through the `signals:` seam, so a
+// signal added later cannot change these scenarios. The signal itself, its
+// window and its copy are the shipped ones — nothing about the signal is
+// stubbed.
 //
 // F-INT is the plan's seeded fixture, re-anchored to the real clock: 8 rated
 // sports sessions, 10 rated lifting sessions, 3 follow-up lifting sessions and
@@ -16,9 +16,9 @@
 // the day-10 sports session, and the rated sessions behind it clear the Mix
 // layer's rated-baseline gate that the Signals layer shares (D-1006).
 //
-// The real registry holds three signals, so every assertion names the
-// Interference card by its key rather than counting cards. Interference has the
-// highest caution priority, so it is the first card whenever it shows.
+// Every assertion names the Interference card by its key rather than counting
+// cards. Interference has the highest caution priority, so it is the first card
+// whenever it shows.
 //
 // The harness is opened and seeded in `setUp`, never inside a `testWidgets`
 // body: a widget test body runs under `FakeAsync`, where Hive's real file I/O
@@ -359,8 +359,8 @@ void main() {
         await harness.close();
       });
 
-      /// Pumps the Stats screen with no `signals:` seam, so the layer evaluates
-      /// the app's real registry.
+      /// Pumps the Stats screen with only this signal injected through the
+      /// `signals:` seam.
       Future<void> pumpStats(
         WidgetTester tester, {
         Size size = _kTallViewport,
