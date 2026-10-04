@@ -275,6 +275,22 @@ service's own window, never the Stats screen's selected training period.
 Verified by `test/fuel_row_screen_test.dart` (S-1101–S-1108, the entry-point half
 of S-1109, S-1111, S-1112, and S-1259–S-1261).
 
+### Logged-day consistency
+
+`lib/core/models/nutrition_consistency.dart` is the shared foundation the
+nutrition signals read, and it owns one rule: a week block counts as consistent
+only when at least `kConsistentWeekMinLoggedDays` distinct local calendar days
+inside it carry a logged day. A day with more than one row counts once, a day
+outside the block counts not at all, and a day with nothing logged is absent
+rather than present as a zero — the window is never widened to reach the floor.
+
+The block boundaries are calendar days, computed from the anchor day and never
+from a `Duration`, so a DST transition cannot shift a boundary. The constants are
+in [Constants Reference](constants_reference.md#nutrition-consistency-constants).
+
+Verified by `test/nutrition_consistency_test.dart` (the block starts, the
+month-end block, the 5-of-7 boundary and the logged-days-only mean).
+
 ---
 
 ## Persistence

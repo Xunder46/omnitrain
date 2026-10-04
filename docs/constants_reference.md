@@ -330,6 +330,44 @@ sits at the top of is pinned by `test/modality_mix_shift_test.dart`.
 
 ---
 
+## Nutrition Consistency Constants
+
+**File**: `lib/core/models/nutrition_consistency.dart`
+
+The shared week-block foundation the nutrition signals read: the block length and
+the logged-day floor a block needs. Named here so a reader can find the owner;
+the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kWeekDays` | How many local calendar days one week block holds |
+| `kConsistentWeekMinLoggedDays` | The smallest number of logged days a week block needs to count as consistent; the boundary is inclusive |
+
+Verified by `test/nutrition_consistency_test.dart` (the constant contracts and
+the block-boundary scenarios).
+
+---
+
+## Fuel vs Load Constants
+
+**File**: `lib/core/models/fuel_vs_load.dart`
+
+The two periods, the two boundaries and the priority behind the Fuel vs Load
+rule. Named here so a reader can find the owner; the file itself states each
+rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kFuelVsLoadWindowDays` | The span of each of the two periods the rule compares |
+| `kFuelVsLoadLoadRisePercent` | The load rise the card needs; the boundary is inclusive |
+| `kFuelVsLoadIntakeTolerancePercent` | The intake rise the card tolerates; the boundary is inclusive |
+| `kFuelVsLoadPriority` | The signal's priority |
+
+Verified by `test/fuel_vs_load_test.dart` (the constant contracts and the
+boundary scenarios S-2103–S-2106).
+
+---
+
 ## Home Tile Configuration
 
 **File**: `lib/core/constants/home_tiles.dart`

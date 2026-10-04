@@ -560,7 +560,7 @@ Signals layer. `docs/README.md` needs no change: it indexes feature docs, not pl
 | Item | Status | Evidence |
 |---|---|---|
 | Plan lines re-measured | not started | this file, read back after Phase 3 |
-| Phase 1 | not started | — |
+| Phase 1 | **Complete** | `.evidence.md` § Phase 1 — red→green for both suites, three mutation pairs, `lint` `196 issues found.` (0 errors), full suite `01:37 +3654 ~1: All tests passed!`; § Phase 1 — Fix 1 — the two "the constant contracts" tests the docs name, mutation (f), full suite `01:36 +3656 ~1: All tests passed!` |
 | Phase 2 | not started | — |
 | Phase 3 | not started | — |
 
@@ -569,7 +569,18 @@ Signals layer. `docs/README.md` needs no change: it indexes feature docs, not pl
 _Executors append here: decision made, options considered, choice and why. The Conductor marks each
 RATIFIED (promoted to a D-x) or REVERT (remediation)._
 
-- **A-1 (Phase 1, step 1) —** _empty until the first run._
+- **A-1 (Phase 1, step 5) —** D-1417 says `lib/core/models/fuel_vs_load.dart` "imports
+  `nutrition_consistency.dart` only". The file also imports `training_load.dart`, for `MixMeasure`.
+  Options: (i) take the measure as a local enum or a bool; (ii) import `training_load.dart` as the
+  sibling `modality_mix_shift.dart` does. Chose (ii) — S-2111 requires the rule to see
+  `MixMeasure.time`, and a parallel enum would be a second source of truth for the same vocabulary.
+  The brief's own restatement of the constraint forbids only Flutter, repository, service and clock
+  imports, all of which still hold.
+- **A-2 (Phase 1, step 8) —** the plan's step 8 asks for "names and values only" in
+  `docs/constants_reference.md`, but `docs/documentation_standard.md` §3.4 forbids restating a numeric
+  value defined in source. Chose the standard: both new groups use the established sibling form (a
+  "Constant | Rule it governs" table plus a "Verified by …" line), matching Training Load, Modality Mix
+  Shift, Progression Rate and Interference. No value is written in prose.
 
 ## Feedback
 
