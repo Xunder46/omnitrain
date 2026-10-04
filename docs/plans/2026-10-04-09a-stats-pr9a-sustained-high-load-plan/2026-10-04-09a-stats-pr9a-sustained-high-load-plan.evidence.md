@@ -7,8 +7,8 @@
 
 | Command | Result |
 |---|---|
-| `flutter analyze` | _to fill_ (expected: `196 issues found.`, 0 errors) |
-| `flutter test` | _to fill_ (expected: `+3731 ~1: All tests passed!`) |
+| `flutter analyze` | `196 issues found. (ran in 7.0s)` — 0 errors |
+| `flutter test` | `+3731 ~1: All tests passed!` |
 
 Known and untouched: `test/food_photo_clear_legacy_edit_test.dart` is order-dependent in a full run
 and passes on re-run.
@@ -17,17 +17,32 @@ and passes on re-run.
 
 | Check | Command | Result |
 |---|---|---|
-| red run | `flutter test test/sustained_high_load_test.dart` | _to fill_ (must fail: file not found / does not compile) |
-| green | `flutter analyze` | _to fill_ |
-| green | `flutter test test/sustained_high_load_test.dart test/training_load_test.dart` | _to fill_ |
-| full | `flutter test` | _to fill_ |
+| red run | `flutter test test/sustained_high_load_test.dart` | FAILS TO COMPILE as expected: `Error when reading 'lib/core/models/sustained_high_load.dart': No such file or directory` plus every symbol undefined (`kSustainedHighLoadPriority`, `sustainedHighLoadBaseline`, `sustainedHighLoadStreak`, `sustainedHighLoadEasierGapWeeks`, `sustainedHighLoad`, `sustainedHighLoadCopy`). `00:00 +0 -1: Some tests failed.` |
+| green | `flutter analyze` | `196 issues found. (ran in 7.0s)` — 0 errors, no issue in either new file (identical to the baseline) |
+| green | `flutter test test/sustained_high_load_test.dart test/training_load_test.dart` | `00:00 +60: All tests passed!` (10 new + 50 existing) |
+| full | `flutter test` | `04:57 +3742 ~1: All tests passed!` (baseline `+3731 ~1` + the 11 added tests) |
 
 ### Mutation checks
 
+Originals, copied before each edit:
+
+- check 1 original: `}) => week.loadMinutes * 100 >= usual * kSustainedHighLoadHigherPercent;`
+- check 2 original: `  return gaps[(gaps.length - 1) ~/ 2];`
+
 | # | Mutation | Test that must fail | Result |
 |---|---|---|---|
-| 1 | higher-load `>=` → `>` | S-2402 (exactly 110%) | _to fill_ |
-| 2 | median `(n-1)~/2` → `n~/2` | S-2408 (expects 3, would report 5) | _to fill_ |
+| 1 | higher-load `>=` → `>` | S-2402 (exactly 110%) | RED: `Expected: <5> Actual: <4>` — `00:00 +0 -1: Some tests failed.` Restored, `S-2402` green again (`00:00 +1: All tests passed!`). |
+| 2 | median `(n-1)~/2` → `n~/2` | S-2408 (expects 3, would report 5) | RED: `Expected: <3> Actual: <5>` — `00:00 +0 -1: Some tests failed.` Restored, full new suite green (`00:00 +10: All tests passed!`). |
+
+### Final re-verification (after both mutations were reverted)
+
+| Check | Command | Result |
+|---|---|---|
+| lint | `flutter analyze` | `196 issues found. (ran in 7.0s)` — 0 errors, no issue in either new file |
+| suites | `flutter test test/sustained_high_load_test.dart test/training_load_test.dart` | `00:00 +60: All tests passed!` |
+| full | `flutter test` | `05:10 +3742 ~1: All tests passed!` |
+| revert proof | `sustained_high_load.dart:138,224` | `>= usual * kSustainedHighLoadHigherPercent` and `gaps[(gaps.length - 1) ~/ 2]` — both originals in place |
+| diff | `git status --short` | only the four predicted files plus this plan and this evidence file |
 
 ## Phase 2 — the service read
 
@@ -91,8 +106,12 @@ with no test is deleted, not kept.
 
 ## Closing
 
+> Phase 1 rows below are the Phase 1 final re-verification; Phases 2 and 3 re-run the full suite and
+> re-fill these at the end of the PR.
+
 | Check | Result |
 |---|---|
-| `flutter analyze` | _to fill_ |
-| full `flutter test` | _to fill_ |
-| diff vs Predicted Files | _to fill_ |
+| `flutter analyze` | Phase 1: `196 issues found. (ran in 7.0s)` — 0 errors, no issue in either new file |
+| full `flutter test` | Phase 1: `05:10 +3742 ~1: All tests passed!` (baseline `+3731 ~1` + the 11 added tests) |
+| diff vs Predicted Files | Phase 1: exactly the four predicted paths — `lib/core/models/sustained_high_load.dart` (new), `test/sustained_high_load_test.dart` (new), `lib/core/models/training_load.dart` (edit), `test/training_load_test.dart` (edit) |
+

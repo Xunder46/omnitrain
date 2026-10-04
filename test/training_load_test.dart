@@ -544,4 +544,24 @@ void main() {
       ]);
     });
   });
+
+  test('WeeklyLoad (D-1702) sums its sessions and an empty week is zero', () {
+    final week = WeeklyLoad(
+      weekStart: DateTime(2026, 1, 5),
+      loadMinutes:
+          sessionLoadMinutes(sessionTimeSecs: 3600, rating: 4) +
+          sessionLoadMinutes(sessionTimeSecs: 1800, rating: 3),
+      hasRatedSession: true,
+    );
+    expect(week.loadMinutes, 330.0);
+    expect(week.hasRatedSession, isTrue);
+
+    final empty = WeeklyLoad(
+      weekStart: DateTime(2026, 1, 12),
+      loadMinutes: 0,
+      hasRatedSession: false,
+    );
+    expect(empty.loadMinutes, 0.0);
+    expect(empty.hasRatedSession, isFalse);
+  });
 }

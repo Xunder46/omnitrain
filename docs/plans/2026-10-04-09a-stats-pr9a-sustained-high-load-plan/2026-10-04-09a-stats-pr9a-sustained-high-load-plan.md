@@ -686,12 +686,12 @@ One line per item, filled as it lands.
 
 | Phase | Item | Result |
 |---|---|---|
-| 1 | `test/sustained_high_load_test.dart` written, red run recorded | not started |
-| 1 | `WeeklyLoad` in `training_load.dart` + contract test | not started |
-| 1 | `sustained_high_load.dart`: constants, types, stages | not started |
-| 1 | `sustainedHighLoad` and `sustainedHighLoadCopy` | not started |
-| 1 | Phase 1 suites green, evidence pasted | not started |
-| 1 | Mutation checks 1–2 (boundary, median) | not started |
+| 1 | `test/sustained_high_load_test.dart` written, red run recorded | Complete — 10 tests; red run failed to compile (rule file absent), recorded in evidence |
+| 1 | `WeeklyLoad` in `training_load.dart` + contract test | Complete — type beside `MixWeek`; one contract test appended to `training_load_test.dart` |
+| 1 | `sustained_high_load.dart`: constants, types, stages | Complete — 8 constants, 4 result types, 3 separately callable stages |
+| 1 | `sustainedHighLoad` and `sustainedHighLoadCopy` | Complete — floor + gate composed; D-1712 strings exact |
+| 1 | Phase 1 suites green, evidence pasted | Complete — analyze 196 issues/0 errors; suites `+60`; full `+3742 ~1` |
+| 1 | Mutation checks 1–2 (boundary, median) | Complete — both red as predicted (`5→4`, `3→5`), both reverted, green re-run |
 | 2 | Service test written, red run recorded | not started |
 | 2 | `startOfWeekSetting()` | not started |
 | 2 | `weeklyLoads()` | not started |
@@ -721,7 +721,20 @@ Executors append here — decision, options considered, choice and why, at most 
 The conductor ratifies (promote to a new `D-17xx` by supersedure) or reverts with a remediation
 sub-phase. An empty log after Phase 3A or 3B is itself suspicious.
 
-_(empty)_
+1. **`sustained_high_load.dart` imports only `training_load.dart`, not `signals.dart`.** No framework
+   type is referenced in Phase 1 (priority is a plain `int`; the adapter builds `SignalCard`), so that
+   import would add an `unused_import` issue. D-1701's allowed set is unchanged; this is its subset.
+
+2. **The Phase 1 test file holds S-2402…S-2409, not S-2401.** Plan step 1 enumerates those eight
+   scenarios. S-2401's rule-level numbers are exercised through S-2402/S-2403/S-2404 (same baseline)
+   and S-2409(A) (its exact fixture); its adapter and card halves are Phase 3A.
+
+3. **Two direct stage assertions were added beyond the fixture tables** — `sustainedHighLoadBaseline`
+   abstaining below twelve weeks, and `sustainedHighLoadEasierGapWeeks` at the exact 80% boundary
+   (S-2406's 160/162 pair does not reach the easier boundary against the winner's own usual).
+
+4. **Every scenario number matched the plan's fixtures on the first run** — the streak, the per-candidate
+   usual and the gap medians all reproduced without a disagreement to report.
 
 ## Feedback
 

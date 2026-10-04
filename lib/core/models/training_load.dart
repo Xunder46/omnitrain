@@ -65,6 +65,26 @@ class MixWeek {
   });
 }
 
+/// One completed calendar week's load (D-1702).
+///
+/// [weekStart] is the local-midnight first day of the week. [loadMinutes] is
+/// the week's summed [sessionLoadMinutes] — the same load definition the Mix
+/// layer uses, so the weekly figure is shared and never re-derived. A session
+/// counts in the week its own start falls in. [hasRatedSession] is true when a
+/// completed rated session starts in the week. A week with no work is present
+/// with `loadMinutes: 0` and `hasRatedSession: false`, never dropped.
+class WeeklyLoad {
+  final DateTime weekStart;
+  final double loadMinutes;
+  final bool hasRatedSession;
+
+  const WeeklyLoad({
+    required this.weekStart,
+    required this.loadMinutes,
+    required this.hasRatedSession,
+  });
+}
+
 /// The whole payload the Mix layer renders (D-916, D-917).
 ///
 /// [measure] names the measure the bar and the strip both use; the surface
