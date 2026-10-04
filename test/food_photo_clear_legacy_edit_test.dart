@@ -138,8 +138,16 @@ void main() {
       await tester.runAsync(() async {
         await tester.tap(clearButton);
         // The clear awaits a real repository write and a real
-        // file delete; give them a turn of the real event loop.
-        await Future<void>.delayed(const Duration(milliseconds: 100));
+        // file delete. Poll the end state against a generous deadline
+        // instead of sleeping a fixed time, so a loaded machine only
+        // makes the test slower; the assertions below still decide
+        // pass or fail once the deadline passes.
+        final deadline = DateTime.now().add(const Duration(seconds: 5));
+        while (DateTime.now().isBefore(deadline)) {
+          final food = await repo.getFoodById(foodId);
+          if (food?.imagePath == null && !managedFile.existsSync()) break;
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
       });
       await tester.pumpAndSettle();
 

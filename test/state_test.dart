@@ -2874,8 +2874,13 @@ void main() {
           // Capture the start timestamp so we can compute the expected end.
           final startMs = state.getEntryRests(effortId).first.restStartMs;
           await Future<void>.delayed(const Duration(milliseconds: 5));
+          // Bracket the pause between two wall-clock reads: the pause time is
+          // stamped somewhere inside this interval however slow the machine
+          // is, so the assertions below do not depend on how long it took.
+          final beforePauseMs = DateTime.now().millisecondsSinceEpoch;
           await state.pauseRest(effortId, 0);
-          // Wait well past the start while the rest is paused.
+          final afterPauseMs = DateTime.now().millisecondsSinceEpoch;
+          // Wait well past the pause while the rest is paused.
           await Future<void>.delayed(const Duration(milliseconds: 30));
           final wallNow = DateTime.now().millisecondsSinceEpoch;
           await state.recordRestEnd(effortId, 0);
@@ -2885,10 +2890,12 @@ void main() {
           // The recorded restEndMs must be the pause time, not wallNow,
           // because the user did nothing during the paused interval.
           expect(rest.restEndMs!, lessThan(wallNow));
-          // And it must be at or shortly after the start (we paused ~5 ms
-          // after start). The point: pause-time is captured faithfully.
+          // The pause time is captured faithfully: it was stamped inside the
+          // pause call's own interval, never later (a wall-clock end would
+          // land at or after wallNow, 30 ms past afterPauseMs).
           expect(rest.restEndMs!, greaterThanOrEqualTo(startMs));
-          expect(rest.restEndMs! - startMs, lessThan(20));
+          expect(rest.restEndMs!, greaterThanOrEqualTo(beforePauseMs));
+          expect(rest.restEndMs!, lessThanOrEqualTo(afterPauseMs));
           // The rest is no longer paused after ending.
           expect(rest.restIsPaused, isFalse);
           expect(rest.restPausedAtMs, isNull);
