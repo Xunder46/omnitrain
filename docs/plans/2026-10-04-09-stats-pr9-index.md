@@ -1,5 +1,9 @@
 # Stats PR 9 — series index
 
+> **Status:** DONE. Shipped: 9a Sustained High Load `91295d2` (phases `7685094`, `95e9094`,
+> `becb06d`), 9b Cardio Efficiency Drift `97a4331` (phases `aa059ed`, `3959938`, `f156927`);
+> review minors `04a2369`.
+>
 > Two cautions from the modality-lens prompt pack
 > (`docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md`): item 14, Sustained High
 > Load, and item 15, Cardio Efficiency Drift. Each is one pure definition file, one thin adapter

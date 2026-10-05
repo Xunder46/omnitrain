@@ -1,7 +1,8 @@
 # Feature: Signals test isolation — every per-signal screen test injects its own signal (Stats PR 10a)
 
-> **Status:** READY (planner) — not started.
-> **Next handoff:** @developer. This plan has no data-layer phase: it changes test files only.
+> **Status:** DONE: `c4bdd7c` (the isolation) and `9b5cc25` (comment-only follow-up).
+> **Next handoff:** none. This plan has no data-layer phase: it changes test files only.
+> **Note:** scenarios that need a neighbouring card use an explicit two-signal list (governor override A-1).
 > **Source of scope:** `.work/stats-pr10/brief-plan-10a.md`.
 > **Base:** `develop` after Stats PR 9 (seven signals registered in `buildSignalRegistry()`).
 > **Binding conventions:** `docs/global_conventions.md`. Read before Phase 1: `docs/signals.md`,

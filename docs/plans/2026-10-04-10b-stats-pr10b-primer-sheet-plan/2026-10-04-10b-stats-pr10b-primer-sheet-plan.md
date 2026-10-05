@@ -1,8 +1,10 @@
 # Feature: Stats PR 10b — a "?" explanation sheet and a friendlier first-use screen
 
-> Status: DRAFT — the auto-open is hosted by `HomeScreen`, the Nutrition way, not by `StatsScreen`,
+> Status: DONE (owner to confirm the sheet copy and O-1..O-8) — the auto-open is hosted by `HomeScreen`, the Nutrition way, not by `StatsScreen`,
 > and the seen flag is marked when the sheet closes by any means (D-2022). Copy is pinned below and
-> marked **owner to confirm** (see Open questions). Not started. Next handoff: **@dba (Phase 1)**.
+> marked **owner to confirm** (see Open questions). Shipped: Phase 1 `b9b735d`, 2A `31ce03a`,
+> 2B `c13ef99`, 3A `a1d2069`, 3B `40aa8ca`, review fix `eeb6dc5`. Reviewed APPROVE, minors carried:
+> no re-entrancy guard on rapid double tap (parity with the Nutrition primer).
 > Plan folder: `docs/plans/2026-10-04-10b-stats-pr10b-primer-sheet-plan/` — this file,
 > `2026-10-04-10b-stats-pr10b-primer-sheet-plan.evidence.md` (executors),
 > `2026-10-04-10b-stats-pr10b-primer-sheet-plan.review.md` (reviewer).

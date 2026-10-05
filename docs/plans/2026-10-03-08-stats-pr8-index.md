@@ -1,6 +1,7 @@
 # Stats PR 8 — Fuel vs Load, Protein Consistency and housekeeping: PR series index
 
-> **Status:** READY (planner) — none of the three started.
+> **Status:** DONE. Shipped in this order: 8h `627199f`, 8a `73afe76` (phases `0fea40a`, `2e60517`),
+> 8b `e86c4ad` (phases `b54af73`, `d388231`).
 > **Source of scope:** `docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md` items 12
 > (Fuel vs Load) and 13 (Protein Consistency), plus the drift the research for those two turned up.
 > **Base:** `develop`, Stats PR 7 DONE — 7a shipped as `b3b91fa`, 7b as `2b6e8e5`
