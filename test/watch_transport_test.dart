@@ -7,6 +7,8 @@
 //   S-002 watch → phone delivery              → `S-002 ...`
 //   S-003 the phone answers a routine request → `S-003 ...`
 //   S-006 the transport is chosen by platform → `S-006 ...`
+//   S-102 the request frames match the contract → `S-102 ...`
+//   Phase 2 item 6: phone fixtures carry no null → `Phase 2 item 6: ...`
 //   S-253 every sync is answered with preferences → `S-253 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-113, D-115)
@@ -17,6 +19,8 @@
 // dispatch, and the graph `createWatchSync` builds — is the shipping code.
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,6 +83,41 @@ Map<String, Object?> _slot(String id, List<String> capabilities) => {
   'name': id,
   'capabilities': capabilities,
 };
+
+/// The shared protocol fixtures and schemas, read from the repository rather
+/// than restated here.
+const String _protocolRoot = 'watch/sync_protocol';
+
+Map<String, Object?> _readJson(String relativePath) => _asObject(
+  jsonDecode(
+    File('${Directory.current.path}/$relativePath').readAsStringSync(),
+  ),
+);
+
+/// The values both watch clients must agree on.
+Map<String, Object?> _contract() =>
+    _readJson('watch/contract/watch_start_paths_contract.json');
+
+/// The instant a later sync's `since` is pinned to in the contract.
+final DateTime _syncedAt = DateTime.utc(2026, 7, 13, 17);
+
+/// Every path in [value] that holds a JSON null, as `a.b[0].c`.
+List<String> _nullPaths(Object? value, [String path = '']) {
+  if (value == null) return [path.isEmpty ? '<root>' : path];
+  if (value is List) {
+    return [
+      for (var index = 0; index < value.length; index++)
+        ..._nullPaths(value[index], '$path[$index]'),
+    ];
+  }
+  if (value is Map) {
+    return [
+      for (final entry in value.entries)
+        ..._nullPaths(entry.value, path.isEmpty ? '${entry.key}' : '$path.${entry.key}'),
+    ];
+  }
+  return const [];
+}
 
 /// One end of a two-ended in-memory link. What this end sends appears on the
 /// other end's stream, once, in order.
@@ -683,5 +722,65 @@ void main() {
       );
       expect(none, isNull);
     });
+  });
+
+  group('S-102 the request frames match the contract', () {
+    test('S-102 the three frames equal the contract transportRequests', () {
+      final requests = _asObject(_contract()['transportRequests']);
+
+      expect(
+        WatchTransportRequest.routinesFrame(),
+        _asObject(requests['routines']),
+        reason: 'a first sync asks for everything, with no since key at all',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(since: _syncedAt),
+        _asObject(requests['routinesSince']),
+        reason: 'a later sync says what the wrist already has',
+      );
+      expect(
+        WatchTransportRequest.snapshotFrame(),
+        _asObject(requests['snapshot']),
+      );
+    });
+
+    test('S-102 a request frame carries no type key', () {
+      final frames = [
+        WatchTransportRequest.routinesFrame(),
+        WatchTransportRequest.routinesFrame(since: _syncedAt),
+        WatchTransportRequest.snapshotFrame(),
+      ];
+
+      for (final frame in frames) {
+        expect(
+          WatchTransportRequest.nameOf(frame),
+          isNotNull,
+          reason: 'a frame carrying type is a message, not a request',
+        );
+      }
+    });
+
+    test('S-102 a first sync omits since rather than nulling it', () {
+      expect(
+        WatchTransportRequest.routinesFrame().containsKey('since'),
+        isFalse,
+        reason: 'a null would make the phone\'s send fail',
+      );
+    });
+  });
+
+  group('Phase 2 item 6: phone fixtures carry no null', () {
+    for (final name in ['routines_down', 'preferences_down', 'exercise_push']) {
+      test('Phase 2 item 6: $name has no JSON null anywhere', () {
+        final fixture = _readJson('$_protocolRoot/fixtures/valid/$name.json');
+
+        expect(
+          _nullPaths(fixture),
+          isEmpty,
+          reason: 'the phone sends this frame with sendMessage, so a null '
+              'anywhere in it makes the phone\'s send fail',
+        );
+      });
+    }
   });
 }

@@ -250,6 +250,97 @@ to construct answers null rather than refusing to start the app.
 Verified by `test/watch_transport_test.dart` (S-001, S-002, S-003, S-006, S-009)
 over an in-memory two-ended channel.
 
+#### The wrist's half of the same radio
+
+**Files**: `watch/watchos/Sources/WatchSessionEngine/WatchConnectivityBridge.swift`,
+`.../PropertyListFrames.swift`; the real session is
+`ios/OmniTrain Watch App/OmniTrainWatchConnectivity.swift`.
+
+The wrist's transport is written against a seam rather than against
+`WatchConnectivity`: `WatchConnectivitySession` is send, report a failure, report
+reachability and deliver an arriving frame, and `WatchConnectivityBridge` is the
+`WatchSyncTransport` conformance over it. That seam is what lets the whole bridge
+run under `swift test` on macOS against a fake session; the only file that
+imports `WatchConnectivity` is the app target's, and it supplies the real
+session and nothing else.
+
+**A request frame is byte-for-byte the phone's shape and carries no `type`**,
+because the presence of `type` is what makes a frame a message rather than a
+request. `since` is omitted rather than nulled when the wrist has never synced,
+and is formatted by the package's own UTC encoder — three fractional digits,
+where Dart's `toIso8601String()` can emit six. The divergence is known and
+unread, because the phone ignores `since` today. The three frames are pinned in
+`watch/contract/watch_start_paths_contract.json` under `transportRequests`, which
+both suites read. Verified by
+`WatchConnectivityBridgeTests.testS102FirstSyncAsksForRoutinesWithNoSince`,
+`…testS103LaterSyncCarriesSince` and `…testS104SyncWithNoSessionAsksForASnapshot`.
+
+**An outbound frame is checked for plist safety before the radio sees it.** A
+`WCSession` message dictionary holds property-list values only, and `NSNull` is
+not one — the platform rejects the whole message, so the check refuses the frame
+rather than stripping the null, and reports it through the same failure hook a
+refused send uses. `Date` becomes the package's UTC string, and `String`, `Bool`,
+`NSNumber`, arrays and dictionaries of accepted values pass through **unchanged**
+— an `Int` stays an `Int` and a `Double` stays a `Double`, because the protocol's
+integer fields are integers and the phone's validator refuses a whole-number
+`Double` (witness: `fixtures/invalid/observations_up_steps_as_double.json`). The
+refusal costs nothing today because the wrist's wire encoders omit absent
+optional fields rather than nulling them; it turns a future regression into a
+reported failure instead of a silently dropped message. Verified by
+`WatchConnectivityBridgeTests.testS112TheFramesTheWristSendsSurviveThePlistRoundTrip`,
+`…testS113AFrameThatCannotBeRepresentedIsReported` and
+`…testD5NumbersAreNeverCoerced`.
+
+**Nothing is queued on the wrist either**, for the phone transport's own reason:
+a send that fails is reported and dropped, and recovery is the next `sync()`
+re-sending from storage. **Nothing is sent unsolicited** — the bridge answers a
+user action or nothing, which is what makes the surface's "no automatic sync"
+label true. Verified by `WatchConnectivityBridgeTests.testBridgeSendsNothingUntilAsked`
+and `…testASendThePlatformRefusesIsReported`.
+
+**Reachability is three-state, and starts unknown.** The wrist says the phone is
+unreachable only once the radio has said so; a launch that has asked nothing
+says nothing. `WatchPhoneReachability.unknown` is the state a `Bool` cannot
+express, which is why the app target's host starts there and moves only when the
+bridge reports what the platform observed — the platform's answer is always an
+observation, never a "not yet". Verified by
+`WatchConnectivityBridgeTests.testS111TheSurfaceSaysUnreachableOnlyAfterObservingIt`.
+The sentence lives in the package's `WatchStartSurfaceCopy` rather than the
+contract's `startSurface` block; it moves into the contract if the Wear OS client
+ever ships a transport.
+
+#### The wrist's start surface, and what an arrival does to it
+
+**A push with no session to land in is read and dropped.** The wrist's start
+paths can only grow a session that exists, so an `exercise_push` arriving with
+nothing open changes nothing, stores nothing and creates nothing: the engine
+returns nil instead of requiring a session, and the message reports itself not
+applied. The guard sits *after* the conformance gate on purpose — a frame this
+build cannot read is still a refusal, while a readable frame with nowhere to go
+is simply nothing to do. Verified by
+`WatchConnectivityBridgeTests.testS110APushWithNoLiveSessionChangesNothing` and
+`…testS108APushIntoAnOpenFreeWorkoutLands`.
+
+**An arrival is a revision, not a listener.** `WatchSessionStartPaths` is a plain
+class that publishes nothing, so the app target's host bumps its own revision on
+every frame it routes and hands it to the start surface, which is what re-runs
+the picker's body; the rows themselves are derived on every read. Whether a push
+that lands while the picker is open appears without the user leaving and
+re-entering it is an owner-run check — step 7 of the push-path walkthrough in
+[the setup and QA guide](../watch-app-setup-and-qa.md) — not a tested behaviour.
+A row is keyed by its own slot id rather than by the exercise, because one
+exercise may legitimately hold two slots, and the session's slots come first with
+the fallback list minus what the ladder already shows behind them. Verified by
+`WatchConnectivityBridgeTests.testPickerRowsListTheSessionFirstAndNeverTwice` and
+`…testPickerRowsFallBackToTheFallbackListWhileTheSessionIsEmpty`.
+
+#### The wrist shell's second surface
+
+Once a session is open, the shell's second surface is the session's own exercise
+list with the current one marked — still a placeholder, with no logging surface.
+The shell keeps an in-memory store, so nothing logged on the wrist survives a
+relaunch.
+
 ### `WatchSyncRequestHandler`
 
 **File**: `lib/state/watch/watch_sync_request_handler.dart`

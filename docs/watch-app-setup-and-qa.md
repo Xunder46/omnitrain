@@ -11,20 +11,22 @@ the keyboard, not for an agent.
 
 ## 1. Where things actually stand
 
-The wrist logic is finished and tested. The wrist *app* does not exist.
+The wrist logic is finished and tested. The wrist *app* now exists and hosts it.
 
-Verified 2026-09-21:
+Verified 2026-10-04:
 
 | | Apple Watch | Wear OS |
 |---|---|---|
 | Client logic | `watch/watchos/Sources/WatchSessionEngine/` (Swift) | `lib/watch/` (Dart) |
-| Tests | 241 passing (`swift test`, 2026-09-26), also run by the pre-release gate on a Mac | covered in the Dart suite |
-| App shell | **template only** — `ios/OmniTrain Watch App/` exists, still calling the Xcode template's `ContentView` (§3.6) | **none** — no production `main()` |
-| Build target | **exists**, `WatchSessionEngine` not yet linked (§3.5) | **none** — Gradle has only `:app` |
+| Tests | `swift test` on a Mac, also run by the pre-release gate; 0 failures required | covered in the Dart suite |
+| App shell | `ios/OmniTrain Watch App/` — the start surface, the session's slot list once one starts, and a radio (§3.6) | **none** — no production `main()` |
+| Build target | **exists**; the target links the `WatchSessionEngine` package — building the watch scheme (§5) is the proof | **none** — Gradle has only `:app` |
 | Transport | implemented (`lib/core/platform/`) | **none** |
+| Wrist store | **in-memory only** — nothing logged survives a relaunch | — |
 
-Both wrist clients are libraries with nothing to run them in. The four
-`*_debug_main.dart` files are QA harnesses, not the app.
+The Apple shell is the only thing that hosts a wrist client. The four
+`*_debug_main.dart` files are QA harnesses, not the app, and the Wear OS client
+still has no host at all.
 
 **Scope**: Apple Watch first. Wear OS is deferred to a separate cloning job
 once the Apple path is proven on hardware — see §4.
@@ -34,9 +36,9 @@ The phone half is wired: `lib/main.dart` builds the watch graph through
 handle (`watchSessionRatings`) to the app — both null on a platform with no
 watch. Verified by the S-006 tests in `test/watch_transport_test.dart`.
 
-**What this means practically**: you cannot install anything on a watch today.
-The first milestone is not a feature — it is getting the watch app shell onto
-hardware with the engine linked in. Everything else follows from that.
+**What this means practically**: the first milestone — a watch app shell hosting
+the engine — is built and awaiting its first run on a paired simulator (§5,
+Level 3). Everything else follows from that.
 
 ---
 
@@ -47,7 +49,7 @@ do work an agent could have done.
 
 ### An agent can do these (all plain text, all in-repo)
 
-- [ ] The Swift `@main` App type and SwiftUI scene for watchOS.
+- [x] The Swift `@main` App type and SwiftUI scene for watchOS (§3.6).
 - [ ] `Info.plist` and `.entitlements` edits — these are plain XML.
 - [x] The watchOS platform entry in `watch/watchos/Package.swift`.
 - [x] The transport Dart interface implementation and the Swift bridge code
@@ -155,24 +157,33 @@ in the portal:
 
 ### 3.5 Link the engine
 
-The Swift package at `watch/watchos/` exists precisely for this —
-`Package.swift` says so: *"the Xcode watch target depends on this package and
-adds the app entry point and the transport."*
+The watch target already links the `WatchSessionEngine` package from `watch/watchos/`.
 
-Target → General → Frameworks, Libraries, and Embedded Content → **+** → Add
-Package Dependency → Add Local… → select `watch/watchos/`. Add the
-`WatchSessionEngine` library product.
+### 3.6 The entry point and the shell
 
-**One catch**: `Package.swift` declares `platforms: [.macOS(.v13)]` only, so the
-package can `swift test` on your Mac. Adding a watchOS platform entry is a
-one-line change an agent can make, and it must happen before the watch target
-will link it.
+Written, by Phases 1–4 of the shell-bridge plan:
 
-### 3.6 Write the entry point
+- `ios/OmniTrain Watch App/OmniTrainApp.swift` — the `@main` App type.
+- `ios/OmniTrain Watch App/ContentView.swift` — `WatchAppHost`, which owns the
+  store, the engine, the start paths, the phone preferences, the radio, the
+  bridge and the orchestrator, plus the two surfaces it renders: the start
+  surface (`WatchStartView`, in the package, with its exercise picker) and, once
+  a session is open, the session's own exercise list with the current one
+  marked. The second is deliberately not a logging screen — no sets, no End, no
+  rating prompt.
+- `ios/OmniTrain Watch App/OmniTrainWatchConnectivity.swift` — the one file in
+  the target that imports `WatchConnectivity`: the real `WCSession` conformance
+  behind the package's `WatchConnectivitySession` seam.
 
-Create the `@main` App type in the watch target. It should present the existing
-`WatchStartView` from the package and own the `WCSession` delegate. This is code
-— hand it to an agent once the target exists.
+The watch `xcodebuild` in §5 is what proves these compile; the S-102 to S-113
+tests in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`
+are what prove the logic they host.
+
+**One thing the shell still does not have**: a durable store. `WatchAppHost`
+builds an in-memory one, so a session does not survive a relaunch on the wrist.
+That is the "durable wrist store" item the shell-bridge plan moved out of scope
+(`docs/plans/2026-10-04-14-watch-shell-bridge-plan/2026-10-04-14-watch-shell-bridge-plan.md`).
 
 ---
 
@@ -216,14 +227,15 @@ regression introduced by your work.
 flutter test
 ```
 
-Expected: **2973 passed, 1 skipped** (2026-09-26).
+Expected: **3881 passed, 1 skipped** (2026-10-04).
 
 ```bash
 cd watch/watchos && swift test
 ```
 
-Expected: **241 tests, 0 failures.** `bash scripts/pre_release_check.sh` runs
-this too on a Mac, and a red suite blocks the release; on a host that cannot
+Expected: **0 failures.** The count grows with every scenario added, so read it
+off the run rather than against a number here. `bash scripts/pre_release_check.sh`
+runs this too on a Mac, and a red suite blocks the release; on a host that cannot
 build the package it logs a skip instead.
 
 **Neither suite compiles the watch UI.** `swift test` runs on macOS, and every
@@ -289,6 +301,32 @@ tell you the integration is real.
 **Setup**: an Apple Watch paired to an iPhone, both on the same Apple ID, both
 unlocked, the phone app installed and launched at least once.
 
+**A second walkthrough, for the push path** (shell-bridge plan, Phase 4 — the
+unit that gave the wrist a radio and a visible pushed exercise). Both apps must
+be foregrounded and reachable for a send to cross; a backgrounded app on either
+end is the usual reason a frame never arrives.
+
+1. Boot the iPhone 17 Pro simulator and the Apple Watch Series 11 (42mm)
+   simulator, and pair them.
+2. Foreground the phone app and the watch app.
+3. On the phone, create a routine.
+4. On the watch, tap "Sync routines" and confirm the routine list fills. The
+   phone's preference arrives on the same exchange; the wrist has no screen for
+   it yet.
+5. On the watch, start "Free workout". The session the push will land in has to
+   exist first — a push that arrives with no live session changes nothing, by
+   design.
+6. On the phone, start a session. The push's envelope carries a `sessionId`,
+   which only a live phone session has.
+7. On the phone, tap the watch icon on a picker row. The exercise appears on the
+   wrist: in the free workout's picker (first, because it is the session's own
+   slot) and in the session's slot list, marked as the current exercise. If the
+   picker was already open it fills in without leaving and re-entering it.
+
+**Do not tap "Sync routines" again once the phone's session is live.** The wrist
+would adopt the phone's session and the push would land in a different one than
+the free workout you started by hand.
+
 **The walkthrough** — each step maps to a protocol rule that is already
 enforced in code, so a failure points at the transport, not the logic:
 
@@ -299,9 +337,11 @@ enforced in code, so a failure points at the transport, not the logic:
 2. **Reference data arrives when the watch asks for it.** Trigger the sync
    action *on the wrist*. The routine list should populate. Confirm it does
    **not** populate on its own when you merely launch the phone app — an
-   automatic refresh here is a defect, not a convenience. *This is the
-   `routines_down` path that currently has no phone-side producer at all, so
-   it is the first thing to build and the first to break.*
+   automatic refresh here is a defect, not a convenience. The phone side of this
+   path exists (`WatchSyncRequestHandler` answers the request; tested by
+   `test/watch_transport_test.dart` and `test/watch_reference_sync_test.dart`),
+   so a failure here points at pairing or at the radio, not at a missing
+   producer.
 3. **A routine renders the way the routine defines it.** Start a routine
    containing a Plank on the wrist. It must show the effort kind the routine
    declares, not one the watch re-derived from capabilities. This is the

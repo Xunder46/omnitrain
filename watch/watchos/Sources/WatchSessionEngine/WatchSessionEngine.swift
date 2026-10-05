@@ -285,6 +285,27 @@ public final class WatchSessionEngine {
         )
     }
 
+    /// Moves the session to the slot `slotId` names, the way a user picking it
+    /// off the ladder would.
+    ///
+    /// The position is looked up in the session at the moment of the tap rather
+    /// than carried by whatever was on screen, so a push that lands in between
+    /// cannot leave the session on the wrong exercise. A slot the session no
+    /// longer holds returns nil and changes nothing.
+    @discardableResult
+    public func selectExercise(slotId: String) async -> WatchSessionRecord? {
+        guard let session = current,
+              let index = session.exercises.firstIndex(where: {
+                  $0["sessionExerciseId"] as? String == slotId
+              })
+        else { return nil }
+
+        return await transitionTo(
+            currentExerciseIndex: Self.clampIndex(index, session.exercises.count),
+            lifecycle: WatchLifecycleState.exerciseAdvanced
+        )
+    }
+
     /// Closes the session as done.
     @discardableResult
     public func finishSession() async -> WatchSessionRecord {
@@ -343,9 +364,14 @@ public final class WatchSessionEngine {
     /// position it names, and the user stays on the exercise they were logging.
     ///
     /// A message the watch cannot read is refused whole — no half-applied edit.
+    /// A readable push that arrives with no session to land in is dropped: a
+    /// wrist that never started a workout has no ladder to put it on, and the
+    /// next sync is what brings the two devices back together. The push is not
+    /// queued and nothing is created for it.
     @discardableResult
-    public func applyExercisePush(_ envelope: [String: Any]) async throws -> WatchSessionRecord {
+    public func applyExercisePush(_ envelope: [String: Any]) async throws -> WatchSessionRecord? {
         try requireConformingIncoming(envelope)
+        guard current != nil else { return nil }
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         return await insertExercise(
             (payload["exercise"] as? [String: Any]) ?? [:],

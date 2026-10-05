@@ -1156,9 +1156,20 @@ already in progress.**
       `ios/OmniTrain Watch App/` exists (staged: `OmniTrainApp.swift`,
       `ContentView.swift`, `Assets.xcassets`), `Runner.xcodeproj` carries 16
       references to it, and `INFOPLIST_KEY_WKCompanionAppBundleIdentifier =
-      dev.sasha.omnitrain` is set in all three build configurations. Remaining
-      human steps (Swift Package link, HealthKit, background modes, provisioning,
-      replacing the template `ContentView`) are still open.
+      dev.sasha.omnitrain` is set in all three build configurations.
+- [x] The template `ContentView` is gone. The shell hosts `WatchAppHost` (the
+      store, the engine, the start paths, the phone preferences, the real
+      `WCSession` conformance, the bridge and the orchestrator) and renders the
+      start surface, with the session's own slot list once one starts. Delivered
+      by Phases 1–4 of
+      `docs/plans/2026-10-04-14-watch-shell-bridge-plan/`, which also gave the
+      wrist an icon matching the phone's and a radio that answers the Sync
+      button. The shell-bridge plan's evidence file carries the per-test
+      mutations; `swift test` and the watch `xcodebuild` are the governor's.
+- Remaining human steps: HealthKit, background modes,
+      provisioning. Plus a durable wrist store, which the shell-bridge plan moved
+      out of scope — the shell keeps `InMemoryWatchSessionStore`, so nothing
+      logged on the wrist survives a relaunch.
 
 ### Phase 8 — Sensor recording
 Not started; correctly blocked on Phase 7's remaining human steps.
