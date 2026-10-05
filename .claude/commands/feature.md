@@ -1,6 +1,6 @@
 ---
 description: Govern the Copilot planner → dba → developer → reviewer cycle for one feature or PR-sized unit, end to end
-argument-hint: <feature description, or path to a roadmap item / prompt pack>
+argument-hint: <feature description, or path to a roadmap item / brief>
 ---
 
 # Role
@@ -11,243 +11,341 @@ You do not write product code yourself.
 
 Feature request: $ARGUMENTS
 
-## Configuration
+## Configuration (resolved by install.sh — edit here or re-run the installer to change)
 
-- Runner: `bash .claude/scripts/macos/run-agent.sh` (settings in `.claude/pipeline.env`)
+- Runner: `bash .claude/scripts/macos/run-agent.sh` (knobs in `.claude/pipeline.env`)
+- Timeout wrapper for your own long commands: `bash .claude/scripts/macos/with-timeout.sh <seconds> <cmd…>`
+- Copilot agents' only shell command: `.github/copilot/scripts/macos/gateway.sh` (checks in `.github/copilot/gateway.conf`)
 - **Only Copilot agents do pipeline work.** Never use the Claude subagents (the Agent tool, `/plan`,
   `/implement`, `/review`, `/run-pipeline`, the `.claude/agents/` copies) for planning, implementing or
   reviewing inside `/feature`. Your own part is briefing, verifying, reviewing the diff yourself, and
   reporting.
-- Copilot agents live in `.github/agents/<name>.agent.md`; the runner takes `<name>`. Tool permissions
-  come from `.github/copilot/permissions/{common,<name>}.flags`; the runner refuses to start without them.
-- Planner: you pick per request.
+- Planner: you pick per request, and say which in one line.
   - `conductor-v2` for anything that spans several phases, touches the data layer, changes behaviour
-    users can see, or will run across sessions or agents (Decision Ledger, fixture-enumerated
-    scenarios, per-phase Done Criteria).
+    users can see, or will run across sessions or agents.
   - `conductor` for small, single-phase, low-risk work.
-  - Say which you chose and why in one line.
-- Data agent (models, repository interface and implementations, seed, SQL contract): `dba`
-- Developer agent (state, logic, screens, widgets, tests): `developer`
+- Data-layer agent (models, repository interface and implementations, seed, SQL contract): `dba`
+- Developer agent: `developer`
 - Reviewer agent: `code-reviewer`
 - Branch: **`develop` only.** Never create or switch branches. The base for diffs is the commit `HEAD`
-  pointed at when the run started (record it in step 0).
-- Docs live in `docs/` (conventions: `docs/global_conventions.md`, index: `docs/README.md`, doc rules:
-  `docs/documentation_standard.md`). Each plan is a folder under `docs/plans/` named after the plan file (without `.md`) that holds the plan, its `.evidence.md` and its `.review.md`.
-- Verify commands: `flutter analyze`, then `flutter test`
+  pointed at when the run started (step 0).
+- Docs: index `docs/README.md`, doc rules `docs/documentation_standard.md`
+- Verify commands, in order: `flutter analyze` (it exits non-zero on the repo's pre-existing info
+  notices: compare the issue count with the plan's baseline and require 0 errors), then `flutter test`;
+  plus `swift test` in `watch/watchos` when Swift changed
+- Extra verify command (build/typecheck; "(not used in this project)" means skip): `(not used in this project)`
+- Project invariant checks every run must leave clean: `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` returns nothing
+- Plans: one folder per plan, `docs/plans/<slug>-plan/`, holding `<slug>-plan.md`,
+  `<slug>-plan.evidence.md` and `<slug>-plan.review.md` · Conventions: `docs/global_conventions.md`
+- Scope budget: `.github/copilot/pr-scope-budget.md` (applied with the `pr-scope-guard` skill)
 - Max plan revisions: 2
 - Max fix rounds (verify failures + review rejections combined): 3
-- Max total agent time for one run: 90 minutes
-- Check-in interval: the runner returns every `WAIT_MINUTES` (15) with `STATUS: RUNNING`.
+- Max total agent time for one feature: 90 minutes
+- Per-role models: set in `.claude/pipeline.env` (`PLANNER_MODEL`, `DEVELOPER_MODEL`, `REVIEWER_MODEL`)
+  and applied by the runner; pass a 4th runner argument only to override one run
+
+Agents run by Copilot are the **Copilot editions** in `.github/agents/<name>.agent.md` (Copilot tool
+names, Copilot-mode instructions); the agent name is the file name without `.agent.md`. Each run gets
+exactly the tool permissions in `.github/copilot/permissions/common.flags` + `<name>.flags`. The
+`.claude/agents/` editions are for Claude Code subagents (Mode A) only.
 
 ## Hard rules
 
-1. Never edit `.github/agents/**`, `.github/copilot/**`, anything under `.claude/`, or `CLAUDE.md`.
-2. Never write or edit product code, tests, or docs. Every change goes through an agent. The only
-   files you create or edit are under `.work/`.
-3. Friction is record-only. Append entries to `.work/friction.md` in the format below. Do not fix,
+1. Never edit `.claude/**`, `.github/agents/**`, `.github/copilot/**`, `AGENTS.md`, or any agent or
+   instruction file. Pipeline changes go through `/retro`, never through a feature run.
+2. **Never grant an agent all tools.** Never pass `--allow-all-tools`, `--allow-all`, `--yolo`,
+   `--allow-all-paths` or `--allow-all-urls`, never call `copilot` directly, and never widen a
+   permission profile to get a run through. Agents run only through the runner, which applies the
+   profiles and refuses allow-all. When an agent reports a denied command or write, treat it as a
+   finding: log friction, and if the work truly needs it, stop and ask the user (`/retro` changes
+   profiles).
+3. Never write or edit product code, tests or docs. Every change goes through an agent. The only files
+   you create or edit are under `.work/`; the only other thing you create is empty directories an agent
+   needs (Copilot's create tool cannot make directories).
+4. Friction is record-only. Append entries to `.work/friction.md` in the format below. Do not fix,
    work around, or propose changes for anything you record, and do not mention fixes in your reports.
-4. Do not read full agent logs. Work from the runner summary. If you need more, search the log for
+5. Do not read full agent logs. Work from the runner summary. If you need more, search the log for
    specific terms instead of opening it whole.
-5. **Never push, merge, force-push, create branches or open PRs.** The owner commits, unless they
-   have authorised commits for this cycle: then commit one phase per commit on `develop` (plans
-   first), after your own verification, and record the authorisation in `.work/<slug>/commit-ok.txt`.
+6. **Never push, merge, force-push, create branches or open PRs.** The owner commits, unless they have
+   authorised commits for this cycle: then commit one phase per commit on `develop` (plans first),
+   after your own verification, and record the authorisation in `.work/<slug>/commit-ok.txt`.
    Without it, leave the finished work uncommitted on `develop`.
-6. Keep your own context small: targeted file reads, `git diff --stat` before full diffs, trimmed
+7. Keep your own context small: targeted file reads, `git diff --stat` before full diffs, trimmed
    test output (failures only).
-7. **Verification is observed output.** `flutter analyze` is not a test run. A phase is done only when
-   you have run `flutter test` yourself and read the pass/fail counts. A new test for a bug fix must
-   be shown to fail without the fix (stash the source change, run the test, restore). If a run hangs
-   or you killed it, that is a failure, not an inconclusive result.
-8. **Decision ownership.** The project owner decides product behaviour (what the app does, how it
-   feels, what the user sees). You and the agents decide architecture, structure, naming, tests and
-   libraries: decide, state it in one line, proceed. Ask the user only about observable behaviour or
-   product trade-offs. Report in terms of what the app does; keep file paths and code out of
-   summaries unless asked.
-9. **Scope.** Run the `pr-scope-guard` skill when the plan is written, after each implementation
-   phase, and after the review. If the work is over budget, bring the current unit to a stopping
-   point and plan the remainder as a separate unit instead of growing the plan. Evidence goes in
-   `<plan>.evidence.md`, review findings in `<plan>.review.md`, both in the plan's folder, never in the plan itself.
-10. **Machine hygiene.** Never run background load or CPU-burner experiments: stopping a background
-    command does not stop its children (40 stray loops once ran 14 hours and made every suite 3x
+8. **Decision ownership.** The owner decides product behaviour: what the software does and what its
+   users see. You and the agents decide architecture, structure, naming, tests and libraries: decide,
+   state it in one line, proceed. Ask the owner only about observable behaviour or product trade-offs,
+   and report in terms of what the software now does.
+9. **Scope.** Run the `pr-scope-guard` skill when the plan is accepted, after each implementation
+   phase, and after the review. Over budget → bring the unit to a stopping point and plan the rest as
+   a separate unit; never grow the plan. Evidence goes in `<plan>.evidence.md`, review findings in
+   `<plan>.review.md`, never in the plan itself.
+10. **Machine hygiene.** Never start background load or stress experiments: stopping a background
+    command does not stop its children (40 stray busy loops once ran 14 hours and made every suite 3x
     slower). If one is unavoidable, run it bounded in the foreground with a `trap` that kills it, then
-    verify by COUNTING processes with `ps`. Act on the runner's `STRAY_LOOPS` / `HIGH_LOAD` lines.
-11. **Planners never measure line counts.** A planner once looped 74 minutes re-counting lines. Tell
-    them not to; you measure with `wc -l` after accepting the plan.
+    count the processes with `ps` to prove they are gone. Act on the runner's `HIGH_LOAD` and `STRAY_LOOPS` lines.
+
+11. **Verification is observed output.** Lint passing is not a test run. A phase is done only when
+    you ran the tests yourself and read the pass/fail counts. A new test for a bug fix is shown to
+    fail without the fix (stash the source change, run it, restore). A hang, or a run you killed, is
+    a failure, not an inconclusive result.
+## Cost
+
+Every model request re-sends the agent's whole context (typically 30–60k tokens; about 25k of it is
+fixed instructions), so a run's cost is roughly its number of requests, not the size of its change.
+Measured on one day of runs: a 24-request fix cost 0.7M input tokens, a 193-request phase 10.6M, and
+a single stuck loop of 577 requests about 29M, a fifth of the day. What keeps the request count down:
+
+- **One concern per run**, about ten steps at most: one phase, or part A / part B of a large phase.
+  A failure late in a long run costs everything before it, and short runs stay below the point where
+  the agent's context is compacted and it starts re-reading its brief.
+- **Point agents at plan sections**, not "read the plan": the decisions, the scenarios and the phase
+  they implement. Agents re-read whole plans 8–40 times in a run.
+- **Closed fix briefs.** A fix brief names the defect, the change, and the one check that proves it,
+  then "touch nothing else; if that check is not enough, stop and report". An open invitation ("also
+  look for similar mistakes") turned a one-line fix into a 22-minute, 100-request investigation.
+- **Never ask an agent to verify what its tools cannot check** (a build or platform the gateway does
+  not run): it substitutes exploration for the check. Run that check yourself and give it the result.
+- **Quote only fresh output** in a brief. An agent handed a stale log spends its run re-verifying it.
 
 ## Workflow
 
 ### 0. Preflight
-- `git status --porcelain` must be empty. If not, stop and ask the user to commit or park the
-  changes. Never absorb unrelated changes into the feature.
+- `git status --porcelain` must be empty. If not, stop and ask the owner to commit or park the
+  changes. Never absorb unrelated changes.
 - `git branch --show-current` must be `develop`. Record `git rev-parse HEAD` as the base in
   `.work/<slug>/base.txt`.
 - Use `.work/<slug>/` for every brief you write.
+- **Owner-check backlog.** `grep -rln "(owner)" docs/plans` and list any owner check still marked
+  not run / pending. Show the list to the user in one line per item before planning. Never let the
+  backlog grow silently; it never blocks the run.
 
 ### 1. Understand
-Read the docs and code this feature touches (start with `docs/README.md` and the relevant feature
-doc, the previous plan for the same area, and `docs/future-work.md`). Stop and ask the user, in one
-batched message with a recommended default per question, if:
-- requirements are ambiguous and two reasonable readings lead to different user-visible behaviour, or
-- a decision is hard to reverse (schema, data model, public API, new dependency), or
+Read only the parts of the repo this feature touches, plus the previous plan for the same area. Start
+from `docs/README.md`, the feature doc for the area, and `docs/future-work.md`. Stop
+and ask the user, in one batched message with a recommended default per question, if:
+- requirements are ambiguous and two reasonable readings lead to different behaviour users can see, or
+- a decision is hard to reverse (schema, data migration, public API, new dependency), or
 - the request conflicts with something already in the codebase or the docs.
 Otherwise continue without asking.
 
 ### 2. Plan
-Write `.work/<slug>/brief-plan.md` with: goal, acceptance criteria, relevant files and patterns you
-found, constraints, answers to anything the user clarified, the plan file path
-(`docs/plans/<YYYY-MM-DD>-<NN>-<slug>-plan/<YYYY-MM-DD>-<NN>-<slug>-plan.md`: the folder is named after the plan file; matching the neighbouring plans' names). **You create the empty folder yourself (`mkdir`) before running the planner**: the planner's create tool cannot make directories, so it would otherwise write the files flat. Tell the planner the exact folder and file paths to create inside it, and, if it may need to split the work, create one folder per expected plan, and this line:
+Create the plan folder yourself first (`mkdir -p docs/plans/<slug>-plan`, where `<slug>` follows the
+neighbouring plans: `<YYYY-MM-DD>-<NN>-<name>`), one per plan if the
+work may split. Write `.work/<slug>/brief-plan.md` with: goal, acceptance criteria, relevant files and
+patterns you found, constraints, answers to anything the user clarified, the exact plan and evidence
+file paths inside that folder, and these lines:
 "List anything you are unsure about under an Open questions heading at the end of the plan."
+"Do not measure or maintain line counts; the governor measures the plan." (A planner once looped 74
+minutes re-counting lines.)
 
-Run the planner with the runner. Find the plan file in FILES_CHANGED_DURING_RUN.
+Run the planner. Find the plan file in FILES_CHANGED_DURING_RUN.
 
 Validate the plan against the repo: right files and layers, follows existing patterns, covers every
-acceptance criterion, testable, no scope creep, every phase has Done Criteria (runnable commands),
-Predicted Files and enumerated scenario fixtures, open questions resolvable. Also: re-implement any
-non-trivial rule in a throwaway script and compare EVERY fixture number (plans have had circular
-definitions and wrong arithmetic); confirm each "the framework does X" claim by reading the function
-(for signals: the registry lists ascending priority but the framework renders the HIGHER priority
-first); and require each mutation check to name the seed or stub that turns it red.
-- Sound → run `pr-scope-guard`, then continue.
+acceptance criterion, testable, no scope creep, open questions resolvable, and every phase has Done
+Criteria (commands), Predicted Files and fixture-enumerated scenarios. Then the checks that caught
+real plan defects:
+- **Re-derive the numbers.** Re-implement any non-trivial rule in a throwaway script and compare EVERY
+  fixture value and expected result. Plans have shipped circular definitions (a threshold measured
+  against a baseline that depended on the thing being detected) and wrong arithmetic.
+- **Read the function behind each "the framework does X" claim**, especially order: where something
+  is registered is not the order it is shown in. (Stats signals: `buildSignalRegistry()` lists ascending priority,
+  but the higher priority renders first.)
+- **Each mutation check names the seed or stub that turns it red**; one the real fixture cannot tell
+  apart proves nothing.
+- **A new entry in a shared registry lists the existing tests it could also satisfy** (they go red
+  when two results appear where one was expected).
+
+- Sound → run `pr-scope-guard` (you measure the plan), then continue.
 - Fixable → write `brief-plan-rev<N>.md` with specific corrections and the plan path, re-run the planner.
 - Open questions only the user can answer → ask, then revise.
 - Revision limit reached → stop and report to the user.
 
+Owner-prerequisite gaps: plan and build everything the agents can verify without them, mark the rest
+**(owner)**, and split out any stage that cannot be verified blind (e.g. one needing a physical watch or real device data).
+
 ### 3. Implement
-Write `.work/<slug>/brief-<agent>.md`: path to the approved plan, "implement the plan exactly",
-the footer below. Run `dba` first when the plan has data phases and verify them (step 4) before the
-developer starts. Then run `developer`. Do not commit between phases.
+Run `dba` for the data phases first and verify them (commit only under hard rule 6), then the developer. Before each
+run, create any new directory the phase's Predicted Files need. Write `.work/<slug>/brief-<agent>-<phase>.md`:
+the approved plan path, the plan sections to read (decisions, scenarios, this phase), "implement the plan
+exactly, test-first from the scenario register", and the standard brief footer (below).
+
+**One phase per run** (split a large phase into part A and part B): each phase then gets its own
+verify and commit checkpoint, a failure costs one phase, and the run stays short (see Cost). Give
+several phases to one run only when each is a few steps.
 
 ### 4. Verify (you)
-Run the verify commands yourself, with a timeout so a hang cannot block you:
-`bash .claude/scripts/macos/with-timeout.sh 900 flutter test` (and 300 for `flutter analyze`; it exits non-zero on the repo's existing info notices, so compare the issue count with the plan's baseline and require 0 errors).
-Do not trust the agent's claim. On failure, write `brief-fix-<N>.md` with the trimmed failure output
-and the plan path, re-run the agent, repeat step 4. Each fix counts toward the round limit.
+Run the verify commands yourself, each through the timeout wrapper; do not trust the agent's claim. Also
+run the invariant checks. Read the code of the one or two files where the plan's core invariant lives.
+Check `git diff --stat`: an existing file with a far bigger diff than its edit is formatter damage. Look
+for mutation residue (read the lines the evidence says were mutated) and for stray scratch files.
+
+On failure, write `brief-fix-<N>.md` with the **full, untrimmed failure output**, the plan path, and the
+**goal and the acceptance test**, not a prescribed mechanism: name the defect and what must be true
+afterwards, and let the developer choose how. If you believe a mechanism matters, give it as a
+suggestion the developer may reject with a reason. Keep it closed (see Cost). Re-run the developer,
+repeat step 4. Each fix counts toward the round limit.
 
 ### 5. Review
-Write `brief-review-<N>.md`: plan path, base commit, "review `git diff <base>` against the plan and
-`docs/global_conventions.md`", "number each finding with file, severity (blocker / major / minor),
-and reason", "end your response with exactly one line: VERDICT: APPROVE or VERDICT: CHANGES_REQUESTED".
-Run the reviewer and read the verdict from the log tail.
+Write a short, ordered `brief-review-<N>.md` (a long open-ended review brief once degenerated into
+filler): plan path, base commit, "review `git diff <base>` against the plan", "create
+`<plan>.review.md` FIRST, then append each finding to it", "number each finding with file, severity
+(blocker / major / minor), and reason", the standing review focus below, and "end your response with
+exactly one line: VERDICT: APPROVE or VERDICT: CHANGES_REQUESTED". Run the reviewer and read the
+verdict from the log tail.
 
-Then do your own review: `git diff --stat <base>` (plus untracked files from `git status --short`), then read the files that matter, in particular
-the one or two where the plan's core invariant lives. Check that the change matches the plan,
-touches nothing unrelated, has tests that exercise the new behaviour (and, for a bug fix, that they
-fail without it), updated the docs it implicates, and has nothing the reviewer missed.
+**Standing review focus** (each item is a class of defect that has shipped behind a green suite):
+- A figure or rule shown on two surfaces is computed in one place, and both surfaces agree on the same
+  fixture (a test asserts it).
+- No test asserts the buggy behaviour: for each fix, the test fails on the old code.
+- Any rewritten UI component keeps its accessibility semantics and has an interaction/tap test.
+- Injected seams (clock, gateway, repository) are used everywhere, not half-applied.
+- Docs and plan status touched by the change are still true; every test, type or file a doc names
+  exists, and docs name nothing unshipped.
+
+Then do your own review: `git diff --stat <base>` (plus untracked files), then read the files that
+matter. Check that the change matches the plan, touches nothing unrelated, has tests that exercise the
+new behaviour, and has nothing the reviewer missed. **Compare test names**: list the test names at the
+base and on the tree; judge every removed name (a rename is fine, a lost guard is not).
 
 Decide:
 - Reviewer approves, you agree, verify is green → go to step 6.
 - Otherwise → consolidate valid findings (the reviewer's and yours; drop wrong ones and nitpicks)
-  into `brief-fix-<N>.md`, re-run the developer, go back to step 4. Re-review after a fix round when
-  the first review had a major finding.
+  into `brief-fix-<N>.md` (goal + acceptance test per finding), re-run the developer, go back to step 4.
+- A green developer report is not evidence of correctness: never skip the review. Re-review after a fix
+  round when the first review had a blocker or major finding. Log which minor findings were left unfixed
+  and why.
+- Over the scope budget's review limits → fix only the blockers and cheap mechanical findings, and plan
+  the rest as a follow-up unit.
 - Round limit reached → stop, summarise where things stand, ask the user.
 
 ### 6. Ship
-Do not push; unless hard rule 5's authorisation applies, do not commit or stage either: the owner does
-that. Stop with the work uncommitted on `develop`, and
-tell the user the files changed (`git status --short`), a suggested conventional-commit message that
-names the plan file, and the base commit from step 0. Because the next unit's preflight needs a clean
-tree, say that the owner has to commit first.
+Do not push. Unless hard rule 6's authorisation applies, do not commit or stage either: stop with the
+work uncommitted on `develop`, and tell the owner the files changed (`git status --short`), a suggested
+conventional-commit message that names the plan file, and the base commit from step 0. The next unit's
+preflight needs a clean tree, so say that the owner has to commit first.
 
 ### 7. Wrap up
-Append the SUMMARY entry to `.work/friction.md`. Report to the user in a few lines: what the app
-now does, the files changed, rounds used, anything left open, and any **(owner)** checks the plan lists.
+- Status hygiene: the plan's `> Status:` header reads CLOSED (or names what is open), its Progress table
+  is complete, and any "state of the build" section in `AGENTS.md`/`CLAUDE.md` that the feature made
+  false is listed for the user to update (you may not edit those files yourself).
+- Append the SUMMARY entry to `.work/friction.md`.
+- Report to the owner in a few lines, in terms of what the app now does: rounds used, what is
+  committed or left for them to commit, owner checks outstanding, anything left open.
 
 ## Running agents
 
-Start a run: `<runner> start <agent> .work/<slug>/<brief>.md`
+Start a run: `bash .claude/scripts/macos/run-agent.sh start <agent> .work/<slug>/<brief>.md [model]`
 
 Always run `start` and `wait` with the Bash tool's `run_in_background: true`. A foreground call
-blocks the whole session, so the user cannot reach you, and stopping the call kills the agent. When
-the background command exits you are re-invoked with its output; until then, answer the user normally
-(for example "is it running?" → `<runner> status <RUN_ID>`). Never stop a background run unless the
-user asks or the time cap is hit. Do not poll.
+blocks the whole session until the agent finishes or the check-in interval passes, so the user cannot
+reach you, and stopping the call kills the agent. When the background command exits you are re-invoked
+with its output; until then, answer the user normally ("is it running?" →
+`bash .claude/scripts/macos/run-agent.sh status <RUN_ID>`, which returns at once). Never stop a background run
+unless the user asks or a limit is hit. Do not poll.
 
-The runner blocks until the agent finishes or `WAIT_MINUTES` pass, then prints a summary.
-Read STATUS:
+The runner returns at the check-in interval (`WAIT_MINUTES` in `.claude/pipeline.env`) or when the agent
+finishes, and prints a summary. Read STATUS:
 - `DONE` → use FILES_CHANGED_DURING_RUN and the log tail.
-- `RUNNING` → read HEALTH, then call `<runner> wait <RUN_ID>`. This is the only way to wait; do not
-  poll with sleeps.
-- `STOPPED` → read STOP_REASON (`loop`, `stalled`, `max_runtime`, `user`). Read the log tail, then
-  re-brief with the real failure output and "if a fix fails twice, stop and report".
+- `RUNNING` → read the HEALTH block (below), then `bash .claude/scripts/macos/run-agent.sh wait <RUN_ID>`.
+  This is the only way to wait; do not poll with sleeps.
 - `FAILED` → read the log tail. Retry once if it looks transient (network, rate limit, provider
   error); otherwise stop and report. Log friction either way.
-- If ELAPSED_MIN exceeds the max total agent time, run `<runner> stop <RUN_ID>`, log friction,
+- `STOPPED` → STOP_REASON says why (`user`, `max_runtime`, `loop`, `denied`, `filler`, `stalled`). The
+  runner stopped it on its own for all but `user`: log friction, then re-brief with the cause (see
+  below) or ask the user.
+- If the Bash call itself times out, read `.work/runs/latest.txt` for the RUN_ID and use `wait`.
+- If your total agent time for the feature exceeds the maximum, run `stop <RUN_ID>`, log friction,
   and ask the user.
 
-## Health checks
+## Health checks (every RUNNING summary)
 
-The runner stops a run by itself on `MAX_RUN_MINUTES`, on `REPEAT_STOP` repeats of one action, or when
-log and diff are both idle for `STALL_MINUTES`. On every `RUNNING` return, also check:
-- `HUNG_CHILD` lines: kill that child process only (never the runner or the agent), log friction.
-- DIFF_FILES against the last check: a jump of dozens of files that no phase names is collateral
-  damage (for example a tree-wide formatter). Stop the run at once. Recover by restoring only files
-  whose content equals `dart format` of their HEAD version; never files with real changes.
-- Two consecutive checks with no file changes is the limit even when the log is busy.
-- `STRAY_LOOPS` / `HIGH_LOAD` lines: something outside the run is eating the machine. Find it with
-  `ps`, stop only processes you can prove are yours, and re-check by count before trusting timings.
+The runner prints a HEALTH block so you do not have to gather it by hand:
+- `LOG_IDLE_MIN` — minutes since the agent last wrote output
+- `DIFF_FILES` / `DIFF_IDLE_MIN` — files changed so far, and minutes since that set last changed
+- `TOP_REPEAT` — the most repeated tool call (shell calls keyed on the command, reads on path and range)
+- `DENIED` / `TOP_TEXT_REPEAT` — permission denials, and the most repeated line of prose
+- `MODEL_REQUESTS` / `TOKENS` — requests so far (with the proxy), and Copilot's token totals at the end
+- `HUNG_CHILD` — a child process running ≥ 10 min at ~0% CPU (pid, elapsed, command)
+- `HIGH_LOAD` — the machine is saturated; timings are unreliable
+- `STRAY_LOOPS` — orphaned busy-loop shells (left by a stopped stress experiment) are running
 
-## Standard brief footer (paste into every dba / developer / reviewer brief)
+It auto-stops a run on `MAX_RUN_MINUTES`; on `REPEAT_STOP` repeats of one call (`loop`) or denials
+(`denied`); on a prose line repeated `max(200, 5 × REPEAT_STOP)` times (`filler`: the model has
+degenerated); and when both the log and the diff are idle for `STALL_MINUTES` (`stalled`). Between
+those limits, you judge:
+- `HUNG_CHILD` present → kill that child process only (never the runner or the agent), log friction,
+  tell the user. If the same command hangs twice, stop the run and re-brief with the timeout wrapper
+  and the fix for the cause.
+- `DIFF_IDLE_MIN` ≥ 30 for an implementing agent while the log is busy → it is going in circles: stop
+  the run, log friction, re-brief. (A reviewer or planner legitimately changes few files.)
+- Diff-size jump: compare `DIFF_FILES` with the last check; a jump of dozens of files that no phase
+  names is collateral damage (e.g. a tree-wide formatter): stop the run at once. Recover by restoring
+  only files whose content equals the formatter's output of their HEAD version, never files with real
+  changes.
+- `HIGH_LOAD` / `STRAY_LOOPS` → find the cause with `ps`; stop only processes you can prove are yours, and re-check by
+  count before trusting timings.
+- Loops: in the fix brief, include the real failure output and say "if a fix fails twice, stop and
+  report instead of re-running".
+
+## Standard brief footer (paste into every developer / dba / reviewer brief)
 
 ```
-Rules: read docs/global_conventions.md and the plan first. Do not commit, push, stage, switch or create
-branches, or touch .claude/, .github/ or CLAUDE.md. The only shell command you may run is the gateway,
-`.github/copilot/scripts/macos/gateway.sh` spelled in full and never piped: `list`, `lint`,
-`test [paths] [--plain-name ...]`, `pub-get`, `format <new file paths>`, `delete-scratch test/zz_<name>.dart`,
-`git-status`, `git-diff`, `git-log`, `git-show`. Plain `git`, `flutter`, `dart`, `bash`, `perl`, `python`,
-`grep`, `sed` and `rm` are denied and a denied command is never retried; read and search with your
-built-in tools. Every turn must call a tool; never write filler. If a command hangs (a test over 3
-minutes) or fails twice, stop and report; never re-run the same command a third time. Never truncate
-test output. View at most ~100 lines of a large file at once.
-Files: format only files you CREATE (the gateway refuses tracked ones; the repo is not format-clean).
-Edit existing files with minimal edits, then `git-diff` them: a bigger diff than intended means undo and
-report. Create no scratch files (remove a probe with `delete-scratch`). Depend on WorkoutRepository
-only, never on a concrete storage class. Keep SQL schema/seed in step with models.dart when models
-change. Update the docs your change implicates (docs/documentation_standard.md) and the plan's
-Progress table and Assumption Log.
-Tests: widget tests run Mock-first (`--plain-name "Mock"`); a Hive write inside a widget test's
-fake-async zone never drains, so persisting taps are Mock-only and Hive is seeded in setUp. No
-real-clock thresholds: bracket between timestamps or poll to a deadline. Every guard is shown RED
-first, or by a mutation: copy the original line into the evidence, change it, see the test fail,
-restore the EXACT original, re-run green, never end a step mutated; if real data cannot tell the
-mutant apart, say so and stub only that input. Every doc sentence about behaviour names a test that
-exists (exact group + test name); docs name nothing unshipped.
-Before finishing: `gateway.sh lint` reports no more issues than the plan's baseline (it exits non-zero
-while the repo carries pre-existing info notices; compare the count, and files you touched must have
-none), the full `gateway.sh test` is green with the counts pasted (one pre-existing timing-sensitive
-test may fail once: re-run it once), and the plan's residue sweeps are empty. For a bug fix, show the
-new test failing without the fix. After registering a new signal, run the full suite at once: if an
-EXISTING test goes red because two cards now show, STOP and report.
+Shell: your only shell command is the gateway, `.github/copilot/scripts/macos/gateway.sh`, spelled exactly like that and never
+piped or chained (`.github/copilot/scripts/macos/gateway.sh list` shows the checks; each runs with its own timeout). Everything
+else is denied by policy: read and search with your file tools. A denied command is never retried, in
+any spelling; record what you needed under Open questions. Exit 124 means a check timed out: diagnose
+it, never re-run it unchanged. If a fix fails twice, stop and report; never run the same failing check
+a third time. Long output is saved under .work/gateway/ and summarised: read the log by line range
+only when the summary is not enough.
+Turns: every turn calls a tool; never write filler text. Do not re-read a file section you already
+have unless you changed it.
+Git and pipeline: do not commit, push, reset or switch branches; do not touch .claude/, .github/agents/,
+.github/copilot/ or AGENTS.md.
+Files: create no scratch or probe files; remove one you made with `.github/copilot/scripts/macos/gateway.sh delete-scratch`. Run
+formatters only on files you created, by explicit path. Edit existing files with minimal edits, then
+check them with `.github/copilot/scripts/macos/gateway.sh git-diff --stat`: a diff bigger than your edit means undo and report.
+Tests: no real-clock thresholds (bracket between timestamps, or poll to a deadline). Every new guard is
+shown red first, or by a mutation: record the original line, change it, see the test fail, restore the
+EXACT original, re-run green; never end a step with a mutation applied. If a change turns an EXISTING
+test red that the plan did not predict, stop and report; do not edit that test. If a step's text
+contradicts the plan's decisions, follow the decisions and log it in the Assumption Log.
+Plan: update the plan's Progress table (one line per item) and Assumption Log as phases complete; put
+baselines, suite outputs and red/green tables in the plan's .evidence.md, never in the plan.
+OmniTrain: depend on WorkoutRepository only; keep the SQL schema/seed contract in step with models.dart;
+update the docs your change implicates, following docs/documentation_standard.md; every doc sentence about behaviour names a test that
+exists (exact group + test name). If Swift changed, `.github/copilot/scripts/macos/gateway.sh swift-test` is green.
+Before finishing: `.github/copilot/scripts/macos/gateway.sh lint` reports no more issues than the plan's baseline (files you touched have none), full `.github/copilot/scripts/macos/gateway.sh test` green (paste the real counts), the
+project invariant checks clean (`grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` returns nothing), and the plan's own residue sweeps.
 ```
-
-Owner-prerequisite gaps: plan and build everything the agents can verify without them, mark the rest
-**(owner)**, and split out any stage that cannot be verified blind (for example one needing a
-physical watch or real device data).
 
 ## Friction log
 
 Append to `.work/friction.md` (create it if missing) whenever:
 - a plan needed revision (say why)
 - an agent ignored the brief or its own instructions (committed, touched unrelated files, skipped tests)
-- an agent reported success but verify failed
+- an agent reported success but verify failed, or review found a blocker/major behind a green suite
 - the reviewer missed something you caught, or flagged something wrong
-- an agent stalled, timed out, crashed, or tried to ask a question
+- an agent stalled, timed out, looped, crashed, or tried to ask a question
+- the runner auto-stopped a run (record STOP_REASON)
 - the same finding came back in a later round
 - you had to spell out something in a brief that the agent should have found in the repo
 
-Entry format:
+Format:
 
 ```
-### <YYYY-MM-DD> · <slug> · <agent> · <stage>
-- What happened: <one or two factual sentences>
-- Cost: <e.g. +1 fix round, plan rejected, 25 min lost>
-- Evidence: <RUN_ID> — <≤2-line excerpt or file path>
+### <YYYY-MM-DD> · <slug> · <agent> · stage <n>
+- What happened: <one or two sentences, facts only>
+- Cost: <+n fix rounds / +n plan revisions / ~n minutes lost / none>
+- Evidence: <RUN_ID, or a short quoted excerpt>
 ```
 
-Per-feature summary, written once at the end (also when you stop early):
+At the end of each feature (shipped or stopped), add:
 
 ```
 ### <YYYY-MM-DD> · <slug> · SUMMARY
-- Plan revisions: <n> · Fix rounds: <n> · Verify green on first try: <yes/no> · Agent time: <n> min · Outcome: <ready for owner commit / stopped: reason>
+- Plan revisions: <n> · Fix rounds: <n> · Verify green on first try: <yes/no> · Review found blocker/major behind green: <yes/no> · Agent time: <n> min · Model requests: <n> · Outcome: <ready for owner commit / committed <hashes> / stopped: reason>
 ```
 
-Record facts only. No suggested fixes, no opinions about the agents' instructions.
+Record facts only. No suggested fixes, no opinions about the agents' instructions — `/retro` turns the
+log into pipeline changes, in a separate session the user starts.
