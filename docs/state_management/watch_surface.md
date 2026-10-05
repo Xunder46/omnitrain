@@ -59,11 +59,25 @@ would pull the wrist back to a session it had finished, and merging would file
 one workout's entries under another. Verified by `test/live_mirroring_test.dart`
 (`S-251`); same-session re-assertion by its `S-008` group.
 
-**Session-scoped entries are held, not counted.** The mirror keeps the wrist's
-`effort_rating` and `session_end` entries (`sessionScopedKinds`), because a
-snapshot it re-asserts must carry every entry. `effortEntries` and
-`effortEntriesOf` are what a surface lists and counts as logged work. Verified
-by `test/live_session_capture_entries_test.dart` (`S-254`).
+**Session-scoped entries are held.** The mirror keeps every entry of the session
+it carries, the wrist's `effort_rating` and `session_end` entries included,
+because a snapshot it re-asserts must carry every entry; `sessionScopedKinds`
+names that kind set. Verified by `test/watch_session_import_test.dart` (`S-268`),
+which pins the entries the mirror holds when a snapshot names another session.
+
+**What this phone asserts is its own session, not this copy.** The ladder a wrist
+snapshot is answered with is composed on demand from the session the regular
+screen is running — the session-adoption bridge projects `WorkoutState` into
+protocol shape. Its slots are that session's efforts, a slot id is the effort's
+own row id, and its revision rises only when the ladder changes, so the wrist's
+replace-structure rule accepts a real edit and stays silent on a replay of a
+snapshot it already holds. This mirror's own copy answers only when the phone has
+no session of its own to speak from: nothing bound, no session running, or a
+snapshot naming a session this phone is not in. `projectedSession` is what a
+snapshot request is answered with, and `sendState` sends a composed answer.
+Verified by `test/watch_session_projection_test.dart` (`S-2`, `S-8`, `S-6`, and
+the revision-rises-only-with-the-ladder case);
+`test/watch_transport_test.dart`'s `S-003` group covers the copy's fallback.
 
 `WatchMirrorTransport` is the phone's half of the transport contract: `send`
 and `requestSnapshot`. Per-platform carriers (WatchConnectivity, the Wear OS
@@ -81,10 +95,14 @@ mirror is where every one of those edits originates. Its named operations —
 `addExercise`, `removeExercise`, `reorderExercises`, `moveExercise`,
 `swapExercise`, `correctEntry`, `deleteEntry`, `pushExercise`,
 `completeSession` — apply the change locally, then hand the protocol message to
-the transport. They exist so no screen has to know a `structure_change` from an
+the transport. They exist so no caller has to know a `structure_change` from an
 `exercise_push`: a searched catalog exercise is a push (it carries its own
 position), while managing the ladder is a change. Both are the phone's to
 originate — the watch never does (PROTOCOL.md, authority rules 1 and 2).
+Verified by `test/phone_manage_bridge_test.dart` and
+`test/live_mirroring_test.dart`; no phone screen calls them yet, and
+`lib/state/watch/live_session_mirror_debug_main.dart` is the only caller of this
+object outside tests, through `applyStructureChange`.
 
 `reorderExercises` takes a whole order and `moveExercise` is the one-place case
 of it, because the protocol carries the ladder rather than a pair of indices;
@@ -95,6 +113,14 @@ once, snapshots the converged session, and returns the same record on a second
 call, so one session closes as one record however many times Finish is tapped.
 The entries in it are the reconciler's — ordered by wall-clock `loggedAt`, so
 ordering does not depend on which device logged what.
+
+The phone's *ordinary* finish does not go through it: a session ended from the
+regular screen writes history and reports nothing, and the wrist learns at its
+next sync when its snapshot of that session is answered with the session's own
+`completed` lifecycle. The one production caller of `reportLifecycle` is that
+answer, in `WatchIncomingRouter`; see
+[Watch Session Sync](../watch_session_sync.md). Verified by
+`test/watch_session_finish_test.dart` (`S-5` and both of its `G1` cases).
 
 Two rules the bridge depends on, both already in `PROTOCOL.md`:
 
@@ -373,10 +399,10 @@ inbox), `WatchIncomingRouter` (inbox + mirror + nutrition bridge), and
 `SettingsState`), with the transport's inbound handler dispatching between the
 last two. It resumes any import the phone had not run when it last stopped;
 see [Watch Session Capture](../watch_session_capture.md). It returns a
-`WatchSyncGraph` — the mirror, and the inbox behind the one capability a screen
-needs, `WatchSessionRatings` — or null when the platform has no watch, which is
-what keeps the environment contract intact: `main.dart` passes `liveSession` and
-`watchSessionRatings` to `MyApp` only when this answered.
+`WatchSyncGraph` — the mirror, the inbox behind `WatchSessionRatings` and
+`WatchLateEntryRecovery`, and the adoption bridge — or null when the platform has
+no watch, which is what keeps the environment contract intact: a platform without
+a wrist builds none of it.
 
 The graph carries a second handle, `WatchLateEntryRecovery`, which is the same
 inbox behind a narrower capability: recovering the entries that arrived while an
@@ -418,6 +444,16 @@ The inbox is asked first, so what a wrist session will become in history is
 durable before anything else can answer the message; see
 [Watch Session Capture](../watch_session_capture.md). Verified by
 `test/watch_session_import_test.dart` (`S-261`).
+
+The session the wrist is running is adopted last, after the mirror has answered:
+a snapshot the mirror applied is projected into the phone's own session state
+(D-2). Both directions of *ending* are answered here too — a wrist
+`session_lifecycle` ends the phone's copy through the ordinary finish or discard,
+and a snapshot naming a session whose row already has an end is answered with that
+session's `completed` lifecycle instead of being adopted back. See
+[Watch Session Sync](../watch_session_sync.md). Verified by
+`test/watch_session_finish_test.dart` (`S-4`, `S-5`, `G1`, `G3` and the
+lifecycle-naming-another-session case).
 
 ### `WatchNutritionLogBridge`
 

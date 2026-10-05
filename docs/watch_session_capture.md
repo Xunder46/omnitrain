@@ -13,9 +13,10 @@ liveness. It describes the phone half —
 back an entry which arrived while the screen was open
 (`lib/state/workout/session_core_lifecycle.dart`), the screen that captures the
 snapshot that restore reads (`lib/features/session/workout_session_screen.dart`),
-and the phone's own question after
-it finishes a wrist session (`lib/features/session/live_session_screen.dart`,
-`lib/widgets/session/effort_rating_sheet.dart`). The stored models (`WatchInboxEntry`,
+and the question the phone's Summary asks about an imported session
+(`lib/widgets/session/effort_rating_sheet.dart`). Which session is whose, and
+what ending a session on either device does, is
+[Watch Session Sync](watch_session_sync.md). The stored models (`WatchInboxEntry`,
 `SensorSummary`) belong to [Data Models](data_models.md); the wire format is
 `watch/sync_protocol/PROTOCOL.md` ("Session capture"); the live mirror is in
 [The Watch Surface](state_management/watch_surface.md). "The wrist half"
@@ -33,7 +34,7 @@ and the Platform Workout").
 | Staging what a wrist sends: effort entries, the effort rating and the session end, from `observations_up` and from a wrist `session_snapshot` | `WatchSessionInbox.receive`, which `WatchIncomingRouter` calls before the mirror and the nutrition bridge |
 | Staging the phone's own corrections and deletions of wrist entries | `WatchInboxStagingTransport`, the mirror's transport in `createWatchSync` |
 | The phone's own effort rating for a wrist session | `WatchSessionInbox.recordPhoneRating` |
-| Asking for it after the phone's own Finish | `LiveSessionScreen`, through `EffortRatingSheet` — the Session Summary's sheet — and `WatchSessionRatings`, the one inbox capability a screen receives; `createWatchSync` returns it in `WatchSyncGraph`, and `MyApp` and `HomeScreen` thread it beside the mirror |
+| Asking for the rating, after the fact | The Session Summary's `EffortRatingSheet` — its automatic prompt and its EFFORT row both open it — writing through `WorkoutState.updateSessionFeeling` |
 | Turning staged rows into history | `WatchSessionImporter.apply`, a service over `WorkoutRepository` only |
 | Keeping the rows the user added to an imported effort | `WatchSessionImporter`, which tells its own rows from the user's by the stamp every imported row carries |
 | The measured heart rate and steps, once imported | `SensorSummary` rows, one per target; why they are not `metric-heart-rate` observations is [Data Models](data_models.md)'s |
@@ -125,16 +126,16 @@ the live session. Wrapping its transport lets the inbox see exactly what the
 wrist is sent, and stage it before the message leaves, without the mirror
 knowing history exists.
 
-**Why the phone's answer goes through the inbox.** When the phone finishes a
-wrist session, that session is not history yet: it becomes history when the
-wrist's `session_end` arrives, at the wrist's next sync. So the answer is
-staged as the phone's own rating and wins at import, or is written to the
-session directly if the import has already landed. A screen is handed only
-`WatchSessionRatings`, so recording a rating is all it can do to the inbox.
+**Why a phone rating goes through the inbox.** When the phone rates a wrist
+session that is not history yet, the rating is staged as the phone's own and wins
+at import; once the import has landed it is written to the session directly. One
+answer either way, which the import's own tests pin
+(`test/watch_session_import_test.dart`,
+`the phone’s own rating (D-138, D-139 state half)`).
 
 **Why the phone asks with the Summary's sheet.** One sheet for every phone
-surface that asks means the phone never asks a different question from the
-one the wrist asks, which the capture contract pins for both.
+surface that asks means the phone never asks a different question from the one
+the wrist asks, which the capture contract pins for both.
 
 ## Invariants
 
@@ -179,11 +180,13 @@ one the wrist asks, which the capture contract pins for both.
   `test/watch_capture_contract_test.dart` (`S-272`), which imports every case of
   `watch/contract/watch_capture_contract.json` on both and compares them row for
   row.
-- **Only the device that ended a live-mirrored session asks how hard it was.**
-  The phone's own Finish of a running session with something logged asks when
-  the Effort Rating setting is on, and only an answer closes the question; a
-  session the wrist completed is shown closed and asks nothing. Verified by
-  `test/live_session_effort_rating_test.dart` (`S-281` to `S-284`, `A-62`).
+- **Only the device that ended a session asks how hard it was.** The phone's own
+  Finish of a session with something logged asks when the Effort Rating setting
+  is on, and only an answer closes the question; a session the wrist completed is
+  shown closed and asks nothing, and the wrist's answer is the finished session's
+  one rating. Verified by `S-4` and `S-5` in `test/watch_session_finish_test.dart`,
+  and — for the phone's own rating — by the `the phone's own rating (D-138, D-139
+  state half)` group in `test/watch_session_import_test.dart` (`S-281`, `S-284`).
 - **Receipts name only applied entries.** Verified by `S-261` (`receipts are
   sent after the rows exist`) and `S-266` (a late entry is acknowledged and
   dropped).

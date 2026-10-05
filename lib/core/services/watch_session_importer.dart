@@ -103,6 +103,22 @@ class WatchSessionImporter {
   // The pass
   // ---------------------------------------------------------------------------
 
+  /// The kinds a pass applies to a session the phone owns (G3).
+  ///
+  /// A wrist session the phone adopted is *the phone's own* session: its
+  /// effort rows already exist, under the protocol's ids (D-3), and the
+  /// wrist's copies of them are the merge PR 3 owns. What the wrist alone
+  /// knows about such a session is when it ended and how it felt — so that is
+  /// all a pass over it applies. Every effort row stays staged and unapplied,
+  /// which is also what keeps it unreceipted: the protocol only lets a wrist
+  /// drop what the phone has acknowledged, so the entries survive until the
+  /// merge can use them.
+  static const Set<String> _sessionScopedKinds = {
+    WatchInboxEntry.kindSessionEnd,
+    WatchInboxEntry.kindEffortRating,
+    WatchInboxEntry.kindPhoneRating,
+  };
+
   /// Applies every staged, unapplied row of [watchSessionId].
   ///
   /// Nothing happens before the session's `session_end` is staged: until then
@@ -110,7 +126,16 @@ class WatchSessionImporter {
   /// least one effort entry the phone did not delete), or its rows are
   /// consumed without history (abandoned, empty, or deleted by the user), or
   /// an imported session is topped up with what arrived since.
-  Future<WatchSessionImport> apply(String watchSessionId) async {
+  ///
+  /// [phoneOwnsSession] narrows the pass to a session the phone already holds
+  /// as its own — one the mirror adopted off the wrist (D-2). Then only
+  /// [sessionScopedKinds] are applied, and the effort rows a wrist session
+  /// sends are left staged for PR 3 (G3) instead of being materialised onto
+  /// rows the phone already has, where they would duplicate every set.
+  Future<WatchSessionImport> apply(
+    String watchSessionId, {
+    bool phoneOwnsSession = false,
+  }) async {
     final rows = await _repository.getWatchInboxEntriesForSession(
       watchSessionId,
     );
@@ -124,7 +149,9 @@ class WatchSessionImporter {
 
     final unapplied = [
       for (final row in rows)
-        if (row.appliedAtMs == null) row,
+        if (row.appliedAtMs == null &&
+            (!phoneOwnsSession || _sessionScopedKinds.contains(row.kind)))
+          row,
     ];
     if (unapplied.isEmpty) return const WatchSessionImport();
 
@@ -151,8 +178,14 @@ class WatchSessionImporter {
     };
 
     final entries = [
+      // Effort rows are the one thing a pass over the phone's own session
+      // never materialises (G3): they are not news, and the ids they would be
+      // written under are derived, not the slot ids the phone's rows carry
+      // (D-3) — so reading them as entries here would create a second set of
+      // everything the wrist reports.
       for (final row in rows)
-        if (row.origin == WatchInboxEntry.originWatch &&
+        if (!phoneOwnsSession &&
+            row.origin == WatchInboxEntry.originWatch &&
             _effortKinds.contains(row.kind))
           ?_Entry.parse(row, corrections),
     ];

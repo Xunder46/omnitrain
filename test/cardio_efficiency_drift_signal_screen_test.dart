@@ -78,9 +78,19 @@ const String _kLiftSentence =
 
 // ─── calendar anchors ───────────────────────────────────────────────────────
 
+/// The instant the day- and week-anchored fixture helpers build around.
+///
+/// Null — the default — is the real clock, which is what the screen scenarios
+/// need: `StatsScreen` reads `DateTime.now()` itself and has no clock seam. The
+/// fixed-date cases set it, so the fixture is built around the same `now` the
+/// rules are then read at.
+DateTime? _fixtureNow;
+
+DateTime _now() => _fixtureNow ?? DateTime.now();
+
 /// Local midnight of the day [daysAgo] days back.
 DateTime _day(int daysAgo) {
-  final now = DateTime.now();
+  final now = _now();
   return DateTime(now.year, now.month, now.day - daysAgo);
 }
 
@@ -92,20 +102,29 @@ int _at(int daysAgo, int hour) {
 
 /// Local midnight of the start of the week [weeksAgo] weeks before this week.
 DateTime _weekStart(int weeksAgo) {
-  final now = DateTime.now();
+  final now = _now();
   final current = OmniDateUtils.startOfWeek(now, startOfWeek: 'monday');
   return DateTime(current.year, current.month, current.day - 7 * weeksAgo);
 }
 
-/// The epoch ms of the session slot in the week [weeksAgo] weeks back: three
-/// days into the week, 09:00. Mid-week, so the session is never near a week
-/// boundary and never after `now`.
+/// The epoch ms of the session slot in the week [weeksAgo] weeks back: the
+/// week's own first day, 09:00.
+///
+/// The first day, not the middle: `_seedCardio` anchors its sessions to a day
+/// count back from `now`, and the Cardio Efficiency Drift rule compares 28 local
+/// days against its 84-day baseline, so a session's day offset has to stay on
+/// one side of that 28-day edge whatever the weekday. On the week's first day
+/// every session is `dow` days further back than on a Monday, so the week five
+/// back (day offset 28…34) is always inside the 84-day baseline and never
+/// inside the 28-day period, while the weeks one to three back stay inside it.
+/// Nine hours past the week's start, so the session belongs to its own week and
+/// is never after `now`.
 int _atWeek(int weeksAgo) {
   final start = _weekStart(weeksAgo);
   return DateTime(
     start.year,
     start.month,
-    start.day + 3,
+    start.day,
     9,
   ).millisecondsSinceEpoch;
 }
@@ -265,7 +284,7 @@ Future<void> _seedPeriod(
   required int daysAgo,
 }) async {
   final start = _day(daysAgo);
-  final now = DateTime.now();
+  final now = _now();
   await repo.createPeriod(
     TrainingPeriod(
       id: 'period-1',
@@ -554,13 +573,17 @@ Future<void> _seedFLift(WorkoutRepository repo) async {
 /// F-TWO (S-2511, two cautions): F-9A's seventeen resistance weeks, the
 /// period-scoped window, an empty food log and the cardio fixture.
 ///
-/// Sustained High Load qualifies on the weeks; the cardio sessions add at most
-/// 24 load to a streak week, so every week stays above 110% of the usual 200.
+/// Sustained High Load qualifies on the weeks; the cardio sessions carry no
+/// rating, so they add no load at all and every streak week stays at its own
+/// `230`, above 110% of the usual the resistance history sets. A rating here
+/// would put cardio load into whichever week the session's day count lands in,
+/// and that week moves with the weekday — which is what left the streak short
+/// of five on some days.
 Future<void> _seedFTwo(WorkoutRepository repo) async {
   await _seedF9A(repo);
   await _seedPeriod(repo, name: 'Test Block', daysAgo: 20);
   await _clearConsumedFoods(repo);
-  await _seedCardio(repo);
+  await _seedCardio(repo, rating: null);
   await _seedRatedBaseline(repo);
 }
 
@@ -580,6 +603,7 @@ void main() {
       late SettingsState settingsState;
 
       setUp(() async {
+        _fixtureNow = null;
         repo = await harness.open();
         workoutState = WorkoutState(repo);
         settingsState = SettingsState(repo, fakePreferencesService());
@@ -930,6 +954,65 @@ void main() {
           expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
           expect(tester.takeException(), isNull);
         });
+      });
+
+      // ─── S-2511: the fixture is weekday-independent ───────────────────────
+
+      // The screen case above runs against the real clock, so it can only ever
+      // exercise the weekday the suite happens to run on. These cases build the
+      // same fixture around three fixed `now` values — a Monday, a Wednesday and
+      // a Sunday — and read the two signals at them, so the fixture's weekday
+      // arithmetic is pinned whatever day the suite runs.
+      //
+      // The fixture mixes two anchorings: `_seedF9A` places its sessions in
+      // calendar weeks, `_seedCardio` a day count back from `now`, and the two
+      // rules that read them measure different spans — the streak compares whole
+      // weeks, the lifting sentence 28 local days against 84. Which week a
+      // cardio session lands in, and whether the week five back falls inside the
+      // 28-day period, both move with the weekday. Neither signal reads
+      // `SignalContext.window`; the screen cases above cover it.
+      group('S-2511 the two cautions hold on every weekday', () {
+        for (final (label, now) in [
+          ('Monday', DateTime(2026, 10, 5, 20)),
+          ('Wednesday', DateTime(2026, 10, 7, 20)),
+          ('Sunday', DateTime(2026, 10, 11, 20)),
+        ]) {
+          test('qualifies both cautions at a fixed $label', () async {
+            _fixtureNow = now;
+            addTearDown(() => _fixtureNow = null);
+            await _seedFTwo(repo);
+
+            final service = StatsProgressService(repo);
+            SignalContext context() => SignalContext(
+              now: now,
+              window: StatsWindow(
+                fromMs: DateTime(now.year, now.month, now.day - 20),
+                toMs: now,
+                label: 'Test window',
+                isPeriodScoped: false,
+              ),
+              mix: null,
+              progressService: service,
+              repository: repo,
+            );
+
+            final sustained = await const SustainedHighLoadSignal().evaluate(
+              context(),
+            );
+            final drift = await const CardioEfficiencyDriftSignal().evaluate(
+              context(),
+            );
+
+            expect(sustained, isNotNull);
+            expect(
+              sustained!.observation,
+              startsWith("You've had 5 consecutive weeks above your usual"),
+            );
+            expect(drift, isNotNull);
+            expect(drift!.observation, _kObservation);
+            expect(drift.observation, isNot(contains('Lifting load')));
+          });
+        }
       });
 
       // ─── S-2511, the dismissal ────────────────────────────────────────────

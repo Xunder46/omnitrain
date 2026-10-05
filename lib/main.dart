@@ -388,6 +388,11 @@ Future<Widget> runStartup({
     healthSync: healthSyncService,
     watchLateEntryRecovery: watchSync?.lateEntryRecovery,
   );
+
+  // The session the wrist is running becomes this phone's own (D-2): the graph
+  // adopts a snapshot into the state built just above, once the mirror has
+  // reconciled it.
+  watchSync?.adoption.bindWorkoutState(workoutState);
   final exerciseLibraryState = ExerciseLibraryState(
     service: exerciseLibraryService,
     workoutState: workoutState,
@@ -425,7 +430,5 @@ Future<Widget> runStartup({
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,
-    liveSession: watchSync?.mirror,
-    watchSessionRatings: watchSync?.ratings,
   );
 }

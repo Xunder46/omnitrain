@@ -4,8 +4,7 @@
 /// Phase 2 (D-2). Scenario S-006.
 ///
 /// Before this, the mirror, the router, and the nutrition bridge existed only in
-/// debug harnesses: `MyApp.liveSession` was always null, so the home panel and
-/// the live session screen were dead in the shipping app. What this file adds is
+/// debug harnesses: the shipping app never built them. What this file adds is
 /// the production construction — transport, mirror, router, request handler —
 /// behind one function that answers null on a platform with no watch.
 ///
@@ -32,6 +31,7 @@ import '../settings/settings_state.dart';
 import 'live_session_mirror_state.dart';
 import 'watch_incoming_router.dart';
 import 'watch_nutrition_log_bridge.dart';
+import 'watch_session_adoption_bridge.dart';
 import 'watch_session_inbox.dart';
 import 'watch_sync_request_handler.dart';
 
@@ -62,10 +62,10 @@ class WatchSyncGraph {
     required this.mirror,
     required this.ratings,
     required this.lateEntryRecovery,
+    required this.adoption,
   });
 
-  /// The session running on the wrist, as the phone mirrors it — what the
-  /// home panel and the Watch Session screen show.
+  /// The session running on the wrist, as the phone mirrors it.
   final LiveSessionMirrorState mirror;
 
   /// Where the phone records its own effort rating for a wrist session: the
@@ -77,6 +77,10 @@ class WatchSyncGraph {
   /// the screen was open: the same [WatchSessionInbox], behind the one
   /// capability the restore needs (D-811).
   final WatchLateEntryRecovery lateEntryRecovery;
+
+  /// Where the session the wrist is running becomes the phone's own: the app
+  /// binds its `WorkoutState` to this once it has built it (D-2).
+  final WatchSessionAdoptionBridge adoption;
 }
 
 /// Builds the phone's watch graph and answers the handles the app keeps on it,
@@ -85,13 +89,18 @@ class WatchSyncGraph {
 /// Every outgoing and incoming path is wired here: the transport hands arriving
 /// frames to the router (protocol messages) or the request handler (requests),
 /// and the request handler answers from storage and from [settingsState], the
-/// owner of the settings the wrist honours. A platform without a watch, or a
+/// owner of the settings the wrist honours. The router drives the adoption
+/// bridge after the mirror, so a snapshot the mirror applies becomes the phone's
+/// own session (D-2). A platform without a watch, or a
 /// transport that cannot be set up, answers null and the app carries on
 /// without a wrist — see `createPlatformWatchTransport`.
 ///
 /// [clock] is the phone's wall clock for everything the graph stamps; tests
 /// pin it. [onHistoryChanged] runs once whenever a wrist session changes the
 /// phone's history — the calendar's refresh in the shipping app (D-142).
+/// [onSkipped] observes a refused adoption (D-10) — the phone kept the session
+/// it was already running — which is not a failure: left out, the bridge logs
+/// it once in debug.
 Future<WatchSyncGraph?> createWatchSync({
   required WorkoutRepository repository,
   required NutritionState nutritionState,
@@ -101,21 +110,39 @@ Future<WatchSyncGraph?> createWatchSync({
   DateTime Function()? clock,
   Future<void> Function()? onHistoryChanged,
   void Function(Object error, StackTrace stack)? onFailure,
+  void Function(String heldSessionId, String offeredSessionId)? onSkipped,
 }) async {
   final resolved =
       transport ??
       await createPlatformWatchTransport(onFailure: onFailure);
   if (resolved == null || resolved is NoWatchTransport) return null;
 
+  // Built first: the inbox asks the bridge whether a session is the phone's own
+  // (G3), and the bridge answers from the `WorkoutState` the app binds once it
+  // has built it.
+  final adoption = WatchSessionAdoptionBridge(
+    repository: repository,
+    clock: clock,
+    onFailure: onFailure,
+    onSkipped: onSkipped,
+  );
   final inbox = WatchSessionInbox(
     repository: repository,
     transport: resolved,
     clock: clock,
     onHistoryChanged: onHistoryChanged,
+    // A session the mirror adopted is the phone's own (D-2), so an import pass
+    // over it never materialises the wrist's effort entries: the phone holds
+    // those rows already (G3).
+    phoneOwnsSession: adoption.holdsSession,
   );
   final mirror = LiveSessionMirrorState(
     transport: WatchInboxStagingTransport(inner: resolved, inbox: inbox),
     snapshot: watchSessionPlaceholder,
+    // Every ladder this phone asserts — a request answered or a wrist snapshot
+    // re-asserted — is composed from the phone's own session, never from the
+    // copy this mirror converged with the wrist (D-11).
+    projection: adoption.projectSession,
   );
   final router = WatchIncomingRouter(
     inbox: inbox,
@@ -125,6 +152,7 @@ Future<WatchSyncGraph?> createWatchSync({
       library: foodLibraryState,
       transport: resolved,
     ),
+    adoption: adoption,
   );
   final requests = WatchSyncRequestHandler(
     mirror: mirror,
@@ -148,5 +176,6 @@ Future<WatchSyncGraph?> createWatchSync({
     mirror: mirror,
     ratings: inbox,
     lateEntryRecovery: inbox,
+    adoption: adoption,
   );
 }

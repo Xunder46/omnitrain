@@ -64,10 +64,12 @@ class LiveSessionMirrorState extends ChangeNotifier {
     SyncProtocolValidator? validator,
     DateTime Function()? clock,
     String Function()? idFactory,
+    Map<String, Object?>? Function(Map<String, Object?>? incoming)? projection,
   }) : _transport = transport,
        _validator = validator,
        _clock = clock ?? _utcNow,
        _newId = idFactory ?? _uuid,
+       _projection = projection,
        _reconciler = SyncSessionReconciler.fromSnapshot(snapshot);
 
   static const Uuid _uuidV4 = Uuid();
@@ -81,6 +83,14 @@ class LiveSessionMirrorState extends ChangeNotifier {
   final DateTime Function() _clock;
   final String Function() _newId;
   final SyncSessionReconciler _reconciler;
+
+  /// Composes what this phone asserts for a session it holds, from the phone's
+  /// own session rather than from the copy this mirror reconciled (D-11).
+  /// [incoming] is the wrist frame being answered, null for a bare request.
+  /// Null means the phone has no session of its own to speak from — the mirror's
+  /// own copy answers then, which is the protocol's echo.
+  final Map<String, Object?>? Function(Map<String, Object?>? incoming)?
+  _projection;
 
   /// The session as the phone closed it. Null while it is running.
   Map<String, Object?>? _completedRecord;
@@ -120,17 +130,6 @@ class LiveSessionMirrorState extends ChangeNotifier {
     WatchInboxEntry.kindEffortRating,
     WatchInboxEntry.kindSessionEnd,
   };
-
-  /// [entries] without the session-scoped ones: what the user logged, and so
-  /// what a surface lists and counts as logged (D-141). The mirror itself keeps
-  /// every entry, because the snapshot it re-asserts must carry them all.
-  List<Map<String, Object?>> get effortEntries => effortEntriesOf(entries);
-
-  /// [effortEntries] for any list of entries — a closed record's included.
-  static List<Map<String, Object?>> effortEntriesOf(Object? entries) => [
-    for (final entry in _objects(entries))
-      if (!sessionScopedKinds.contains(entry['kind'])) entry,
-  ];
 
   /// The exercise the session is on, or null when the ladder is empty.
   Map<String, Object?>? get currentExercise {
@@ -213,19 +212,24 @@ class LiveSessionMirrorState extends ChangeNotifier {
 
     if (switchesSession) return MirrorOutcome.applied;
 
-    if (envelope['type'] == 'session_snapshot' &&
-        _shapeDiffers(envelope, before)) {
-      // The watch's ladder is a reflection of the phone's, so it is normally
-      // the same. When it is not, the phone has changed shape since the watch
-      // last heard, and the watch's copy is the stale one: answer with what the
-      // phone holds rather than adopting a ladder nobody asked for.
-      //
-      // A phone that holds no ladder for the session has no shape to assert,
-      // and asserting an empty one would wipe the wrist's. It adopts the
-      // wrist's instead. (A session started on the wrist names a session the
-      // phone does not hold, so it is adopted by the switch above.)
-      if (_holdsLadder(before)) {
-        await _transport.send(snapshotEnvelope(state: before));
+    // The watch's ladder is a reflection of the phone's, so it is normally
+    // the same. When it is not, the phone has changed shape since the watch
+    // last heard, and the watch's copy is the stale one: answer with what the
+    // phone holds rather than adopting a ladder nobody asked for. What the
+    // phone holds is its own session when it has one (D-11), and this mirror's
+    // copy of the session otherwise — a session this phone is not in is not
+    // answered with another session's ladder (D-10).
+    //
+    // A phone that holds no ladder for the session has no shape to assert,
+    // and asserting an empty one would wipe the wrist's. It adopts the
+    // wrist's instead. (A session started on the wrist names a session the
+    // phone does not hold, so it is adopted by the switch above.)
+    if (envelope['type'] == 'session_snapshot') {
+      final answer = _projection?.call(envelope) ?? before;
+      if (_shapeDiffers(envelope, answer)) {
+        if (_holdsLadder(answer)) {
+          await sendState(answer);
+        }
       }
     }
     return MirrorOutcome.applied;
@@ -258,11 +262,20 @@ class LiveSessionMirrorState extends ChangeNotifier {
   // Outgoing
   // ---------------------------------------------------------------------------
 
+  /// The phone's own session as a protocol state, composed on demand from the
+  /// bound session state (D-11) — the ladder a wrist snapshot is answered with.
+  ///
+  /// Null when the phone has no session of its own to speak from; the caller
+  /// falls back to what this mirror holds, which is all a phone with no bound
+  /// session has.
+  Map<String, Object?>? get projectedSession => _projection?.call(null);
+
   /// The phone's live session as a protocol message — the answer to a snapshot
   /// request, and what brings a watch that drifted back to the phone's shape.
   ///
-  /// [state] overrides the converged session, which is how a re-assertion sends
-  /// the shape the phone held *before* it applied the peer's snapshot.
+  /// [state] overrides the converged session: an answer composed from the
+  /// phone's own session ([projectedSession]) is sent through here, and so is a
+  /// re-assertion the mirror's copy composes.
   Map<String, Object?> snapshotEnvelope({
     Map<String, Object?>? state,
     String? messageId,
@@ -287,7 +300,12 @@ class LiveSessionMirrorState extends ChangeNotifier {
   ///
   /// Verified by `test/live_mirroring_test.dart` (`S-008 a snapshot the phone
   /// disagrees with is answered with its own`).
-  Future<void> sendSnapshot() => _transport.send(snapshotEnvelope());
+  Future<void> sendSnapshot() => sendState(state);
+
+  /// Hands the watch [state] as this phone's snapshot, over the same transport
+  /// every other outgoing message uses.
+  Future<void> sendState(Map<String, Object?> state) =>
+      _transport.send(snapshotEnvelope(state: state));
 
   /// Asks the watch for its snapshot — the phone's half of joining a session
   /// that was started on the wrist.
@@ -313,13 +331,6 @@ class LiveSessionMirrorState extends ChangeNotifier {
     await _sendOwn(envelope);
     return envelope;
   }
-
-  /// The id a slot gets when a searched exercise joins the ladder.
-  ///
-  /// The phone chooses slot ids (PROTOCOL.md, "Exercise identity"), and the id
-  /// has to be stable for the life of the session: entries point at the slot,
-  /// not at the exercise in it.
-  String mintSlotId() => 'sx-${_newId()}';
 
   /// Applies [changes] to the live session and tells the watch.
   ///

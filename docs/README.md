@@ -91,6 +91,7 @@ non-overlapping training periods).
 | [Widget Catalog](widget_catalog.md) | **Index** — reusable UI components. Split into [Layout & Inputs](widget_catalog/layout_and_inputs.md), [Home & Nutrition Cards](widget_catalog/home_screen.md), [Session/Pickers](widget_catalog/session_widgets.md), [Nutrition Widgets](widget_catalog/nutrition_widgets.md), and [Routine/Profile/Brand](widget_catalog/feature_primitives.md) |
 | [Rest Tracking](rest_tracking.md) | Wall-clock rest tracking architecture, EntryRest model, DB-backed rest records between sets |
 | [Watch Session Capture](watch_session_capture.md) | How a session run on the watch becomes phone history — what the wrist sends (session end, effort rating, heart-rate and step summaries, the preferences it asks by), the watch session inbox, the import, rating precedence, the phone-ended rating question, tombstones, receipts, history liveness |
+| [Watch Session Sync](watch_session_sync.md) | The one-session model across the two devices — which session becomes the phone's, both directions of ending, the conflict rule, and what does not sync |
 | [Navigation Contract](navigation_contract.md) | The single source of truth for screen-level navigation. Enforced by `test/navigation_contract_enforcement_test.dart`; raw `MaterialPageRoute` / `PageRouteBuilder` outside `lib/core/navigation/` is a build break. The historical migration audit lives under [history/route-migration-audit.md](history/route-migration-audit.md). |
 
 ---

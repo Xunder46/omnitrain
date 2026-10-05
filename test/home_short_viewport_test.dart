@@ -38,12 +38,9 @@ import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
-import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
-import 'package:omnitrain/widgets/session/live_session_entry_point.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'helpers/live_session_fixtures.dart';
 import 'helpers/test_nutrition_primer_state.dart';
 
 class _FakeTimerAlertService extends TimerAlertService {
@@ -67,13 +64,10 @@ class _FakePreferencesService implements PreferencesService {
 
 /// Builds the Home Screen with the same state injected by the other
 /// home-screen tests. The `WorkoutState` is returned so the active-session
-/// test can start a session before pumping the screen. A [liveSession] adds
-/// the watch entry point to the panel, which is laid out under the same
-/// height budget as the tiles.
+/// test can start a session before pumping the screen.
 Future<({HomeScreen screen, WorkoutState workoutState})> buildHomeScreen(
-  MockWorkoutRepository repo, {
-  LiveSessionMirrorState? liveSession,
-}) async {
+  MockWorkoutRepository repo,
+) async {
   final workoutState = WorkoutState(repo);
   final homeState = HomeState(repo);
   await homeState.init();
@@ -109,7 +103,6 @@ Future<({HomeScreen screen, WorkoutState workoutState})> buildHomeScreen(
       service: ExerciseLibraryService(repo),
       workoutState: workoutState,
     ),
-    liveSession: liveSession,
   );
 
   return (screen: screen, workoutState: workoutState);
@@ -140,21 +133,16 @@ const List<String> _tileLabels = <String>[
 ///   2. All six training-tile labels are findable.
 ///   3. The nutrition summary card is rendered and within the viewport
 ///      bounds (not clipped by the bottom edge).
-///   4. When a [liveSession] is present, the entry point is rendered at
-///      exactly the height `LiveSessionEntryPoint.budgetHeight` reserves
-///      for it — the panel's height budget is only load-bearing for the
-///      cases where the tile grid has no room left to give.
 Future<void> _pumpAndAssertShortViewport(
   WidgetTester tester, {
   required Size viewport,
   required double textScale,
-  LiveSessionMirrorState? liveSession,
 }) async {
   await tester.binding.setSurfaceSize(viewport);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   final repo = MockWorkoutRepository();
-  final built = await buildHomeScreen(repo, liveSession: liveSession);
+  final built = await buildHomeScreen(repo);
   await tester.pumpWidget(
     MediaQuery(
       data: MediaQueryData(
@@ -222,28 +210,6 @@ Future<void> _pumpAndAssertShortViewport(
         'Nutrition card width (${cardRect.width}) must not exceed '
         'viewport width (${viewport.width}) at $viewport.',
   );
-
-  // (4) The live-session block is reserved at the height it renders at. The
-  // panel cannot absorb a wrong budget until the tile grid reaches its
-  // floor, so an over-reserve would otherwise go unnoticed.
-  if (liveSession != null) {
-    final entryFinder = find.byKey(const Key('live_session_entry_point'));
-    expect(
-      entryFinder,
-      findsOneWidget,
-      reason:
-          'A live watch session must surface its entry point at $viewport '
-          'and text scale $textScale.',
-    );
-    expect(
-      tester.getSize(entryFinder).height,
-      closeTo(LiveSessionEntryPoint.budgetHeight(textScale), 0.5),
-      reason:
-          'The panel reserves LiveSessionEntryPoint.budgetHeight and the '
-          'entry point renders at that height; a gap between them is '
-          'height the panel budgets wrongly.',
-    );
-  }
 }
 
 void main() {
@@ -376,61 +342,5 @@ void main() {
         );
       },
     );
-
-    // ───────────────────────────────────────────────────────────────────
-    // S-005 — a live watch session adds a block to the same height budget.
-    //
-    // The entry point sits above the TRAIN label and the panel does not
-    // scroll, so its height competes with the tile grid. The grid absorbs
-    // an overrun by compressing, but only down to its own 56-point floor,
-    // and at `veryShortFloor` it is ALREADY at that floor without the
-    // block — measured, the panel overflows by 13px there. 490pt is below
-    // `SupportedViewport`'s 640pt minimum, and that class's contract
-    // forbids per-size handling below it, so the block is asserted where
-    // the app has to work. S-003 above still guards the compressed path
-    // with no watch session, which is where the production break was.
-    //
-    // The panel budgets the block as `LiveSessionEntryPoint.budgetHeight`,
-    // and the helper asserts the entry point renders at exactly that height —
-    // so this case covers the budget as well as the layout, not just the
-    // absence of an overflow.
-    // ──────────────────────────────────────────────────────────────────
-    testWidgets(
-      'live watch session at the supported floor: no overflow, tiles and card fit',
-      (tester) async {
-        for (final scale in scales) {
-          await _pumpAndAssertShortViewport(
-            tester,
-            viewport: supportedFloor,
-            textScale: scale,
-            liveSession: liveWatchSession(entries: [liveSessionEntry('e-1')]),
-          );
-        }
-      },
-    );
-
-    // ───────────────────────────────────────────────────────────────────
-    // S-006 — the block is reserved exactly when there is something to
-    // surface. The panel must not keep a hole for a session that is not
-    // running, or every watch-less build loses that height.
-    // ───────────────────────────────────────────────────────────────────
-    testWidgets('no block is reserved without a live watch session', (
-      tester,
-    ) async {
-      for (final scale in scales) {
-        await _pumpAndAssertShortViewport(
-          tester,
-          viewport: supportedFloor,
-          textScale: scale,
-        );
-        expect(
-          find.byKey(const Key('live_session_entry_point')),
-          findsNothing,
-          reason:
-              'A panel with no watch session must not render the entry '
-              'point at $supportedFloor and text scale $scale.',
-        );
-      }
-    });
   });
 }

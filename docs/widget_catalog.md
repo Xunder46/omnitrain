@@ -85,7 +85,6 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `FoodThumbnail` | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) |
 | `HomeLogoButton` | [Routine, Profile & Brand](widget_catalog/feature_primitives.md) |
 | `InlineMetricEditor` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
-| `LiveSessionEntryPoint` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `LogFoodRow` | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) |
 | `MacroDonutChart` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |
 | `MacroFocusContent` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |

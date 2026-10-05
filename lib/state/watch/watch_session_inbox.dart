@@ -108,6 +108,7 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     String Function()? idFactory,
     Future<void> Function()? onHistoryChanged,
     void Function(Object error, StackTrace stack)? onFailure,
+    bool Function(String sessionId)? phoneOwnsSession,
   }) : _repository = repository,
        _transport = transport,
        _validator = validator,
@@ -115,6 +116,7 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
        _newId = idFactory ?? _uuid,
        _onHistoryChanged = onHistoryChanged,
        _onFailure = onFailure ?? _report,
+       _phoneOwnsSession = phoneOwnsSession,
        _importer = WatchSessionImporter(
          repository: repository,
          clock: clock ?? _utcNow,
@@ -144,6 +146,12 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
   final Future<void> Function()? _onHistoryChanged;
   final void Function(Object error, StackTrace stack) _onFailure;
   final WatchSessionImporter _importer;
+
+  /// Whether a session id is one the phone owns as its own current session —
+  /// the mirror adopted it off the wrist (D-2). Asked of the adoption bridge,
+  /// which is the one place that question is answered. Null (a test, a build
+  /// with no session state) imports every session the ordinary way.
+  final bool Function(String sessionId)? _phoneOwnsSession;
 
   /// The fields each staged kind must carry to become history — the ones the
   /// `observations_up` schema requires of it. A snapshot entry is held only to
@@ -406,7 +414,10 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     final receipted = <String>[];
     var changed = false;
     for (final sessionId in sessionIds) {
-      final pass = await _importer.apply(sessionId);
+      final pass = await _importer.apply(
+        sessionId,
+        phoneOwnsSession: _phoneOwnsSession?.call(sessionId) ?? false,
+      );
       receipted.addAll(pass.appliedEntryIds);
       changed = changed || pass.historyChanged;
     }

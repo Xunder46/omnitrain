@@ -1,0 +1,719 @@
+// A session the wrist is running becomes the phone's own in-progress session.
+//
+// Plan: `docs/plans/2026-10-05-15a-watch-session-sync-pr1-plan/2026-10-05-15a-watch-session-sync-pr1-plan.md`,
+// Phase 2 — D-2, D-3, D-6, D-7, D-10.
+// Scenario mapping:
+//   S-1 a wrist-started free session becomes the phone's in-progress session
+//       → `S-1 a wrist snapshot ...`, `S-1 Mock and Hive ...`, `S-1 a restart ...`,
+//         `S-1 the adopted session survives checkForInProgressSession ...`
+//   S-3 an empty wrist session does not surface as active → `S-3 ...`
+//   S-6 the phone keeps the session it already has → `S-6 ...`, `S-6 counter-case ...`
+//
+// Every snapshot arrives through the real `LiveSessionMirrorState` behind the
+// real `WatchIncomingRouter`, so the bridge reads the reconciler's own converged
+// output and the wiring is part of what these tests prove. Plain `test()`: no
+// widget is involved.
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/block_types.dart';
+import 'package:omnitrain/core/constants/capability.dart';
+import 'package:omnitrain/core/sync_protocol/message_validator.dart';
+import 'package:omnitrain/core/utils/logged_entry_rows.dart';
+import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/data/repositories/workout_repository.dart';
+import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
+import 'package:omnitrain/state/watch/watch_incoming_router.dart';
+import 'package:omnitrain/state/watch/watch_nutrition_log_bridge.dart';
+import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
+import 'package:omnitrain/state/watch/watch_session_inbox.dart';
+import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
+import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
+
+import 'helpers/repository_harness.dart';
+import 'helpers/sync_protocol_harness.dart';
+import 'helpers/watch_capture_import_harness.dart'
+    show CaptureTransport, importedEfforts, importedRows, importedSegment;
+
+/// The phone's clock, pinned: every row an adoption writes carries the same
+/// stamps on both implementations, which is what makes the parity dump compare.
+final DateTime _adoptedAt = DateTime.utc(2026, 10, 5, 12);
+
+final SyncProtocolValidator _validator = loadProtocolValidator();
+
+Future<WorkoutRepository> _repository() async {
+  final repository = MockWorkoutRepository();
+  await repository.initialize();
+  await seedExercise(
+    repository,
+    id: 'ex-bench',
+    name: 'Barbell Bench Press',
+    capabilities: [
+      ExerciseCapability.sets,
+      ExerciseCapability.reps,
+      ExerciseCapability.load,
+    ],
+  );
+  await seedExercise(
+    repository,
+    id: 'ex-squat',
+    name: 'Barbell Back Squat',
+    capabilities: [
+      ExerciseCapability.sets,
+      ExerciseCapability.reps,
+      ExerciseCapability.load,
+    ],
+  );
+  return repository;
+}
+
+/// A repository whose session writes fail: the adoption a wrist snapshot asks
+/// for, with a disk that will not take the row. Everything else behaves as the
+/// in-memory twin does.
+class _UnwritableRepository extends MockWorkoutRepository {
+  @override
+  Future<String> createSession(TrainingSession session) async {
+    throw StateError('the session row cannot be written');
+  }
+}
+
+/// One phone, wired the way `createWatchSync` wires it: the watch session inbox,
+/// the mirror behind the entry-staging transport, the router that drives them,
+/// and the bridge bound to a real `WorkoutState`.
+class _Phone {
+  _Phone({
+    required this.router,
+    required this.mirror,
+    required this.state,
+    required this.bridge,
+    required this.failures,
+    required this.skipped,
+  });
+
+  final WatchIncomingRouter router;
+  final LiveSessionMirrorState mirror;
+  final WorkoutState state;
+  final WatchSessionAdoptionBridge bridge;
+
+  /// What the bridge reported as a failure: nothing, in these tests.
+  final List<Object> failures;
+
+  /// Every D-10 skip the bridge reported, in order, as the (held, offered)
+  /// session ids it acted on.
+  final List<({String held, String offered})> skipped;
+}
+
+Future<_Phone> _phone(WorkoutRepository repository) async {
+  final failures = <Object>[];
+  final skipped = <({String held, String offered})>[];
+  final transport = CaptureTransport();
+  final inbox = WatchSessionInbox(
+    repository: repository,
+    transport: transport,
+    clock: () => _adoptedAt,
+    onFailure: (error, stack) => fail('the watch session inbox failed: $error'),
+  );
+  final mirror = LiveSessionMirrorState(
+    transport: WatchInboxStagingTransport(inner: transport, inbox: inbox),
+    snapshot: watchSessionPlaceholder,
+    validator: _validator,
+  );
+  final bridge = WatchSessionAdoptionBridge(
+    repository: repository,
+    clock: () => _adoptedAt,
+    onFailure: (error, stack) => failures.add(error),
+    onSkipped: (held, offered) => skipped.add((held: held, offered: offered)),
+  );
+  final state = WorkoutState(repository);
+  bridge.bindWorkoutState(state);
+
+  return _Phone(
+    router: WatchIncomingRouter(
+      inbox: inbox,
+      mirror: mirror,
+      nutrition: WatchNutritionLogBridge(
+        nutrition: NutritionState(repository),
+        library: FoodLibraryState(repository),
+        validator: _validator,
+        transport: transport,
+      ),
+      adoption: bridge,
+    ),
+    mirror: mirror,
+    state: state,
+    bridge: bridge,
+    failures: failures,
+    skipped: skipped,
+  );
+}
+
+/// One ladder slot as the wrist sends it.
+Map<String, Object?> _slot(
+  String sessionExerciseId,
+  String exerciseId, {
+  List<String> capabilities = const [
+    ExerciseCapability.sets,
+    ExerciseCapability.reps,
+    ExerciseCapability.load,
+  ],
+  String? declaredKind,
+}) => {
+  'sessionExerciseId': sessionExerciseId,
+  'exerciseId': exerciseId,
+  'name': exerciseId,
+  'capabilities': capabilities,
+  'effortKind': ?declaredKind,
+};
+
+/// One `session_snapshot` from the wrist.
+Map<String, Object?> _snapshot({
+  required String sessionId,
+  required int revision,
+  List<Map<String, Object?>> exercises = const [],
+  String status = WatchSessionStatus.active,
+  int currentExerciseIndex = 0,
+  String messageId = 'msg-snapshot',
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'session_snapshot',
+  'origin': 'watch',
+  'sentAt': '2026-10-05T10:00:00Z',
+  'payload': {
+    'sessionId': sessionId,
+    'revision': revision,
+    'status': status,
+    'currentExerciseIndex': currentExerciseIndex,
+    'exercises': [...exercises],
+    'entries': <Object?>[],
+    'timers': <String, Object?>{},
+  },
+};
+
+/// S-1's wrist session: `s-w1`, on the second of two set slots, nothing logged.
+Map<String, Object?> _s1Envelope() => _snapshot(
+  sessionId: 's-w1',
+  revision: 3,
+  currentExerciseIndex: 1,
+  exercises: [_slot('sl-1', 'ex-bench'), _slot('sl-2', 'ex-squat')],
+  messageId: 'msg-s1',
+);
+
+/// The rows a phone session the user is already running has: its own id family,
+/// one segment, one effort per exercise — and, for an active one, a logged entry.
+Future<void> _seedPhoneSession(
+  WorkoutRepository repository, {
+  required String sessionId,
+  List<(String effortId, String exerciseId)> efforts = const [],
+  String? loggedEffortId,
+}) async {
+  const at = 1780000000000;
+  await repository.createSession(
+    TrainingSession(
+      id: sessionId,
+      ownerUserId: LoggedEntryRows.ownerUserId,
+      startedAtMs: at,
+      createdAtMs: at,
+      updatedAtMs: at,
+    ),
+  );
+  final segmentId = 'segment-$sessionId';
+  await repository.createSegment(
+    LoggedEntryRows.defaultSegment(
+      id: segmentId,
+      sessionId: sessionId,
+      atMs: at,
+    ),
+  );
+  for (final (index, effort) in efforts.indexed) {
+    await repository.createEffort(
+      SegmentEffort(
+        id: effort.$1,
+        segmentId: segmentId,
+        orderIndex: index,
+        topLevelOrderIndex: index,
+        effortKind: BlockTypes.set,
+        exerciseId: effort.$2,
+        createdAtMs: at,
+        updatedAtMs: at,
+      ),
+    );
+  }
+  if (loggedEffortId != null) {
+    await repository.createObservation(repsRow(loggedEffortId, 0, 5, atMs: at));
+  }
+}
+
+void main() {
+  test('S-1 a wrist snapshot becomes the phone\'s in-progress session', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+
+    final receipt = await phone.router.receive(_s1Envelope());
+
+    // The mirror is still the reconciler: the bridge projects its verdict, it
+    // does not replace it.
+    expect(receipt.session, MirrorOutcome.applied);
+    expect([for (final slot in phone.mirror.exercises) slot['exerciseId']], [
+      'ex-bench',
+      'ex-squat',
+    ]);
+
+    final session = await repository.getSession('s-w1');
+    expect(session, isNotNull, reason: 'S-1 the wrist session is a real row');
+    expect(session!.ownerUserId, LoggedEntryRows.ownerUserId);
+    expect(
+      session.modality,
+      isNull,
+      reason: 'D-7 a wrist free session is Free Training',
+    );
+    expect(session.endedAtMs, isNull, reason: 'D-2 an in-progress session');
+    expect(session.isRolling, isFalse);
+
+    final segment = await importedSegment(repository, 's-w1');
+    final efforts = await importedEfforts(repository, 's-w1');
+    expect(
+      [for (final effort in efforts) effort.id],
+      ['sl-1', 'sl-2'],
+      reason: 'D-3 each effort row id IS its slot id, in ladder order',
+    );
+    expect(
+      [for (final effort in efforts) effort.exerciseId],
+      ['ex-bench', 'ex-squat'],
+    );
+    expect(
+      [for (final effort in efforts) effort.effortKind],
+      [BlockTypes.set, BlockTypes.set],
+    );
+    expect([for (final effort in efforts) effort.orderIndex], [0, 1]);
+    expect(
+      [for (final effort in efforts) effort.segmentId],
+      [segment.id, segment.id],
+      reason: 'S-1 one default segment holds the whole ladder',
+    );
+
+    // What the phone renders: the home's Free Training tile is active, and the
+    // regular session screen opens on this ladder.
+    expect(phone.state.currentSession?.id, 's-w1');
+    expect(phone.state.hasActiveSession, isTrue, reason: 'D-6, AC2');
+    expect(phone.state.segments, hasLength(1));
+    expect(
+      [
+        for (final effort in phone.state.getEffortsForSegment(segment.id))
+          effort.id,
+      ],
+      ['sl-1', 'sl-2'],
+    );
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-1 Mock and Hive adopt the same rows', () async {
+    final dumps = <String, Map<String, Object?>>{};
+
+    for (final factory in harnessFactories) {
+      final harness = factory();
+      final repository = await harness.open();
+      try {
+        final phone = await _phone(repository);
+        await phone.router.receive(_s1Envelope());
+
+        dumps[harness.name] = await importedRows(repository, 's-w1');
+        expect(
+          phone.state.hasActiveSession,
+          isTrue,
+          reason: '${harness.name}: the adopted ladder is live state',
+        );
+      } finally {
+        await harness.close();
+      }
+    }
+
+    expect(dumps['Hive'], dumps['Mock']);
+  });
+
+  test('S-1 a restart resolves the same session and slot ids', () async {
+    for (final factory in harnessFactories) {
+      final harness = factory();
+      final repository = await harness.open();
+      try {
+        await (await _phone(repository)).router.receive(_s1Envelope());
+
+        final state = WorkoutState(await harness.restart());
+        await state.loadHistoricalSession('s-w1');
+
+        expect(state.currentSession?.id, 's-w1', reason: '${harness.name}: D-3');
+        expect(
+          state.hasActiveSession,
+          isTrue,
+          reason:
+              '${harness.name}: it is still the phone\'s in-progress session',
+        );
+        expect(
+          [
+            for (final effort
+                in state.getEffortsForSegment(state.segments.single.id))
+              effort.id,
+          ],
+          ['sl-1', 'sl-2'],
+          reason: '${harness.name}: the slot ids survive the restart unchanged',
+        );
+      } finally {
+        await harness.close();
+      }
+    }
+  });
+
+  test('S-3 an empty wrist session is adopted but reads "not yet active"',
+      () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+
+    await phone.router.receive(
+      _snapshot(sessionId: 's-w0', revision: 1, messageId: 'msg-s3'),
+    );
+
+    expect((await repository.getSession('s-w0'))?.endedAtMs, isNull);
+    final segments = await repository.getSessionSegments('s-w0');
+    expect(segments, hasLength(1));
+    expect(await repository.getSegmentEfforts(segments.single.id), isEmpty);
+
+    expect(phone.state.currentSession?.id, 's-w0');
+    expect(
+      phone.state.hasActiveSession,
+      isFalse,
+      reason:
+          'D-6, AC5: zero efforts reads exactly like a just-created phone '
+          'session, so nothing offers it as active and nothing navigates',
+    );
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-6 the phone keeps the session it is already running', () async {
+    final repository = await _repository();
+    await _seedPhoneSession(
+      repository,
+      sessionId: 'session-phone-1',
+      efforts: const [
+        ('effort-a', 'ex-bench'),
+        ('effort-b', 'ex-squat'),
+      ],
+      loggedEffortId: 'effort-a',
+    );
+    final phone = await _phone(repository);
+    await phone.state.loadHistoricalSession('session-phone-1');
+    expect(phone.state.hasActiveSession, isTrue);
+
+    final rows = await importedRows(repository, 'session-phone-1');
+    final sessions = (await repository.getAllSessions()).length;
+
+    final receipt = await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w2',
+        revision: 1,
+        exercises: [_slot('sl-1', 'ex-deadlift')],
+        messageId: 'msg-s6',
+      ),
+    );
+
+    expect(
+      receipt.session,
+      MirrorOutcome.applied,
+      reason: 'D-10 sits above the reconciler: the mirror still switches',
+    );
+    expect(
+      phone.mirror.state['sessionId'],
+      's-w2',
+      reason: 'the protocol projection follows the wrist',
+    );
+
+    expect(
+      await repository.getSession('s-w2'),
+      isNull,
+      reason: 'D-10 the wrist session is not adopted',
+    );
+    expect(phone.state.currentSession?.id, 'session-phone-1');
+    expect(phone.state.hasActiveSession, isTrue);
+    expect(
+      (await repository.getAllSessions()).length,
+      sessions,
+      reason: 'S-6 no history row is created',
+    );
+    expect(
+      await importedRows(repository, 'session-phone-1'),
+      rows,
+      reason: 'S-6 the phone\'s rows, entries and segment are untouched',
+    );
+
+    expect(
+      phone.skipped,
+      [(held: 'session-phone-1', offered: 's-w2')],
+      reason: 'D-10 the skipped adoption is reported, not dropped',
+    );
+    expect(
+      phone.failures,
+      isEmpty,
+      reason:
+          'D-10 refusing is the rule working: the skip is not a failure and '
+          'carries no stack',
+    );
+
+    // The wrist re-sends the snapshot it holds, because it has not converged
+    // yet. The same decision again is not a second skip to report.
+    expect(
+      await phone.bridge.consider(phone.mirror.state),
+      WatchSessionAdoption.refusedConflict,
+      reason: 'the same pair is refused again',
+    );
+    expect(
+      phone.skipped,
+      hasLength(1),
+      reason: 'D-10 the skip is reported once per (held, offered) pair',
+    );
+  });
+
+  test('S-6 counter-case an empty phone session does not block adoption',
+      () async {
+    final repository = await _repository();
+    await _seedPhoneSession(repository, sessionId: 'session-phone-empty');
+    final phone = await _phone(repository);
+    await phone.state.loadHistoricalSession('session-phone-empty');
+    expect(phone.state.hasActiveSession, isFalse);
+
+    await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w2',
+        revision: 1,
+        exercises: [_slot('sl-1', 'ex-deadlift')],
+        messageId: 'msg-s6-counter',
+      ),
+    );
+
+    expect(
+      await repository.getSession('s-w2'),
+      isNotNull,
+      reason: 'D-10: an empty session is nothing to protect',
+    );
+    expect(phone.state.currentSession?.id, 's-w2');
+    expect(phone.state.hasActiveSession, isTrue);
+    expect(
+      [
+        for (final effort in await importedEfforts(repository, 's-w2'))
+          effort.exerciseId,
+      ],
+      ['ex-deadlift'],
+    );
+    expect(phone.failures, isEmpty);
+  });
+
+  test('a second snapshot of the session the phone holds does not rewrite it',
+      () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    await phone.router.receive(_s1Envelope());
+    final rows = await importedRows(repository, 's-w1');
+
+    // The same ladder again: nothing to adopt, and nothing written.
+    final again = await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w1',
+        revision: 4,
+        currentExerciseIndex: 1,
+        exercises: [_slot('sl-1', 'ex-bench'), _slot('sl-2', 'ex-squat')],
+        messageId: 'msg-again',
+      ),
+    );
+    expect(again.session, MirrorOutcome.applied);
+    expect(await importedRows(repository, 's-w1'), rows);
+    expect(
+      await phone.bridge.consider(phone.mirror.state),
+      WatchSessionAdoption.alreadyHeld,
+      reason: 'D-2: the phone holds this session, so there is nothing to adopt',
+    );
+
+    // A ladder the wrist rewrote. The mirror applies it and re-asserts the
+    // phone's own (its rule, unchanged by this phase); the phone's rows stand,
+    // because it already holds this session and owns its structure (D-2).
+    final rewritten = await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w1',
+        revision: 9,
+        exercises: [_slot('sl-9', 'ex-deadlift')],
+        messageId: 'msg-rewritten',
+      ),
+    );
+    expect(rewritten.session, MirrorOutcome.applied);
+    expect(await importedRows(repository, 's-w1'), rows);
+    expect(
+      [for (final effort in await importedEfforts(repository, 's-w1')) effort.id],
+      ['sl-1', 'sl-2'],
+      reason: 'the adopted ladder stands',
+    );
+    expect(phone.state.currentSession?.id, 's-w1');
+    expect(phone.failures, isEmpty);
+  });
+
+  test('a slot resolves its effort kind from its declaration, then its '
+      'capabilities', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+
+    await phone.router.receive(
+      _snapshot(
+        sessionId: 's-kind',
+        revision: 1,
+        exercises: [
+          // Declared by the routine that produced the slot: wins over `time`.
+          _slot(
+            'sl-declared',
+            'ex-row',
+            capabilities: [ExerciseCapability.time],
+            declaredKind: BlockTypes.round,
+          ),
+          // Nothing declared: `hold` decides, in the order the wrist resolves
+          // it by, even though the slot carries `time` as well.
+          _slot('sl-hold', 'ex-plank', capabilities: [
+            ExerciseCapability.hold,
+            ExerciseCapability.time,
+          ]),
+          // Nothing that decides: the free-session default.
+          _slot('sl-bilateral', 'ex-lunge', capabilities: [
+            ExerciseCapability.bilateral,
+          ]),
+        ],
+        messageId: 'msg-kind',
+      ),
+    );
+
+    expect(
+      [for (final effort in await importedEfforts(repository, 's-kind')) effort.effortKind],
+      [BlockTypes.round, BlockTypes.drill, BlockTypes.set],
+    );
+  });
+
+  test('a snapshot the wrist has closed is not adopted', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+
+    await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w3',
+        revision: 1,
+        status: WatchSessionStatus.completed,
+        exercises: [_slot('sl-1', 'ex-bench')],
+        messageId: 'msg-closed',
+      ),
+    );
+
+    expect(
+      await repository.getSession('s-w3'),
+      isNull,
+      reason: 'D-2 adopts the session the wrist is running, not one it ended',
+    );
+    expect(phone.state.currentSession, isNull);
+    expect(phone.state.hasActiveSession, isFalse);
+  });
+
+  test('an unbound bridge writes nothing', () async {
+    final repository = await _repository();
+    final failures = <Object>[];
+    final bridge = WatchSessionAdoptionBridge(
+      repository: repository,
+      clock: () => _adoptedAt,
+      onFailure: (error, stack) => failures.add(error),
+    );
+
+    final outcome = await bridge.consider({
+      'sessionId': 's-w9',
+      'status': WatchSessionStatus.active,
+      'revision': 1,
+      'currentExerciseIndex': 0,
+      'exercises': [_slot('sl-1', 'ex-bench')],
+      'entries': <Object?>[],
+      'timers': <String, Object?>{},
+    });
+
+    expect(outcome, WatchSessionAdoption.unbound);
+    expect(await repository.getSession('s-w9'), isNull);
+    expect(failures, isEmpty);
+  });
+
+  // The one failure the bridge can have that is not the rule working: the
+  // adoption itself. D-10 is a skip and reports through `onSkipped`; a row that
+  // cannot be written is a failure, and it goes to the graph's hook and still
+  // reaches whoever asked for the adoption.
+  test('an adoption that cannot be written is reported as a failure', () async {
+    final repository = _UnwritableRepository();
+    await repository.initialize();
+    final failures = <Object>[];
+    final bridge = WatchSessionAdoptionBridge(
+      repository: repository,
+      clock: () => _adoptedAt,
+      onFailure: (error, stack) => failures.add(error),
+    );
+    bridge.bindWorkoutState(WorkoutState(repository));
+
+    await expectLater(
+      bridge.consider({
+        'sessionId': 's-w9',
+        'status': WatchSessionStatus.active,
+        'revision': 1,
+        'currentExerciseIndex': 0,
+        'exercises': [_slot('sl-1', 'ex-bench')],
+        'entries': <Object?>[],
+        'timers': <String, Object?>{},
+      }),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(failures, hasLength(1));
+    expect(await repository.getSession('s-w9'), isNull);
+  });
+
+  // The guard the restart path rests on. `checkForInProgressSession` keeps
+  // `sessions.first` and deletes the rest, and both repositories sort
+  // in-progress rows by `startedAtMs` descending — so an adopted session is
+  // only safe if it is the newer row. A same-millisecond tie is accepted: the
+  // adapter builds the adopted row from the wrist's own clock while a phone row
+  // is stamped by the phone's, and the two are never equal in practice.
+  test(
+    'S-1 the adopted session survives checkForInProgressSession beside an '
+    'empty phone row',
+    () async {
+      final repository = await _repository();
+      await _seedPhoneSession(repository, sessionId: 'session-phone-empty');
+      final phone = await _phone(repository);
+      await phone.router.receive(_s1Envelope());
+
+      // A restart: a fresh state over the same rows.
+      final restarted = WorkoutState(repository);
+      final survivor = await restarted.checkForInProgressSession();
+      expect(
+        survivor?.id,
+        's-w1',
+        reason: 'the adopted row is the newer in-progress row',
+      );
+      await restarted.loadHistoricalSession(survivor!.id);
+
+      expect(restarted.currentSession?.id, 's-w1');
+      expect(restarted.hasActiveSession, isTrue);
+      expect(
+        [
+          for (final effort
+              in restarted.getEffortsForSegment(restarted.segments.single.id))
+            effort.id,
+        ],
+        ['sl-1', 'sl-2'],
+        reason: 'D-3 the slot ids survive the restart unchanged',
+      );
+      expect(
+        await repository.getSession('session-phone-empty'),
+        isNull,
+        reason: 'the older empty row is swept, not the wrist\'s session',
+      );
+    },
+  );
+}

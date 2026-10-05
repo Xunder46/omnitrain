@@ -48,9 +48,7 @@ import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
-import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
-import 'package:omnitrain/features/session/live_session_screen.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
@@ -64,7 +62,6 @@ import 'helpers/test_nutrition_primer_state.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/test_content_column.dart';
 import 'helpers/fake_asset_bundle.dart';
-import 'helpers/live_session_fixtures.dart';
 import 'helpers/test_image_helper.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -1955,10 +1952,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('HomeScreen', () {
-    Future<HomeScreen> buildHomeScreen(
-      MockWorkoutRepository repo, {
-      LiveSessionMirrorState? liveSession,
-    }) async {
+    Future<HomeScreen> buildHomeScreen(MockWorkoutRepository repo) async {
       final workoutState = WorkoutState(repo);
       final homeState = HomeState(repo);
       await homeState.init();
@@ -1992,7 +1986,6 @@ void main() {
           service: ExerciseLibraryService(repo),
           workoutState: workoutState,
         ),
-        liveSession: liveSession,
       );
     }
 
@@ -2026,59 +2019,6 @@ void main() {
 
       // Should have multiple EnergyTile cards in a grid
       expect(find.byType(CustomScrollView), findsWidgets);
-    });
-
-    // S-001 — a session running on the wrist is an entry point one screen
-    // from launch, and its absence costs the panel nothing.
-    testWidgets(
-      'shows the live watch session entry point when one is running',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-        final screen = await buildHomeScreen(
-          repo,
-          liveSession: liveWatchSession(),
-        );
-
-        await tester.pumpWidget(MaterialApp(home: screen));
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(const Key('live_session_entry_point')),
-          findsOneWidget,
-        );
-        expect(find.text('Barbell Bench Press'), findsOneWidget);
-        expect(find.text('TRAIN'), findsOneWidget);
-      },
-    );
-
-    testWidgets('shows no entry point without a live watch session', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final screen = await buildHomeScreen(repo);
-
-      await tester.pumpWidget(MaterialApp(home: screen));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('live_session_entry_point')), findsNothing);
-      expect(find.text('TRAIN'), findsOneWidget);
-    });
-
-    testWidgets('the entry point leaves when the session completes', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final liveSession = liveWatchSession();
-      final screen = await buildHomeScreen(repo, liveSession: liveSession);
-
-      await tester.pumpWidget(MaterialApp(home: screen));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('live_session_entry_point')), findsOneWidget);
-
-      await liveSession.completeSession();
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('live_session_entry_point')), findsNothing);
     });
 
     testWidgets('free training flow shows rolling toggle and inline guidance', (
@@ -9933,173 +9873,6 @@ void main() {
     });
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // LiveSessionScreen — the phone rendering a session the wrist is running
-  // ══════════════════════════════════════════════════════════════════════════
-
-  group('LiveSessionScreen', () {
-    Future<void> pumpLiveSession(
-      WidgetTester tester, {
-      required LiveSessionMirrorState liveSession,
-      MockWorkoutRepository? repo,
-      String weightUnit = 'kg',
-    }) async {
-      final repository = repo ?? await _freshRepo();
-      final settingsState = SettingsState(repository, fakePreferencesService());
-      await settingsState.initialize();
-      await settingsState.setPreferredWeightUnit(weightUnit);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: LiveSessionScreen(
-            liveSession: liveSession,
-            workoutState: WorkoutState(repository),
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('S-001 renders the wrist\'s ladder and where it is', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(currentExerciseIndex: 1),
-      );
-
-      expect(find.byKey(const Key('live_session_screen')), findsOneWidget);
-      for (final slot in liveSessionSlots()) {
-        expect(find.text(slot['name']! as String), findsWidgets);
-      }
-      expect(find.textContaining('2 of 3'), findsOneWidget);
-    });
-
-    testWidgets('S-004 renders logged entries in the saved weight unit', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          entries: [liveSessionEntry('e-1', reps: 5, loadKg: 80)],
-        ),
-      );
-
-      expect(find.text('5 × 80 kg'), findsOneWidget);
-    });
-
-    testWidgets('S-004 the same entry reads in lbs after the unit changes', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          entries: [liveSessionEntry('e-1', reps: 5, loadKg: 80)],
-        ),
-        weightUnit: 'lbs',
-      );
-
-      expect(find.text('5 × 176.4 lbs'), findsOneWidget);
-    });
-
-    testWidgets('renders the completion state once the session is finished', (
-      WidgetTester tester,
-    ) async {
-      final liveSession = liveWatchSession(
-        entries: [liveSessionEntry('e-1'), liveSessionEntry('e-2')],
-      );
-      await pumpLiveSession(tester, liveSession: liveSession);
-
-      await tester.tap(find.byKey(const Key('live_session_finish')));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('live_session_completed')), findsOneWidget);
-      expect(find.byKey(const Key('live_session_add_exercise')), findsNothing);
-      expect(
-        find.byKey(const Key('live_session_finish')),
-        findsNothing,
-        reason: 'a finished session offers nothing left to manage',
-      );
-    });
-
-    // A session the watch has joined but has no exercises in yet is
-    // reachable — it is what a wrist-started session looks like before the
-    // first push, and what is left after the last exercise is removed. The
-    // screen has to stay usable in it: the two ways out are adding an
-    // exercise and finishing.
-    testWidgets('an empty ladder still offers both ways out', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          exercises: const [],
-          currentExerciseIndex: 0,
-        ),
-      );
-
-      expect(find.textContaining('No exercises'), findsOneWidget);
-      expect(find.text('Waiting for the wrist'), findsOneWidget);
-      expect(
-        find.byKey(const Key('live_session_add_exercise')),
-        findsOneWidget,
-        reason:
-            'with no exercises the ladder can only be rebuilt by adding '
-            'one — the action must survive the empty state',
-      );
-      expect(find.byKey(const Key('live_session_finish')), findsOneWidget);
-    });
-
-    // Effort kinds other than `set` carry no reps or load. A timed entry
-    // reads as its duration, and anything the screen cannot summarise still
-    // has to say something rather than render blank.
-    testWidgets('a timed entry reads as its duration', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          entries: [
-            {
-              'entryId': 'e-timed',
-              'eventId': 'e-timed',
-              'kind': 'timed',
-              'loggedAt': '2026-07-13T06:00:00Z',
-              'sessionExerciseId': 'sx-plank',
-              'exerciseId': 'ex-sx-plank',
-              'startedAt': '2026-07-13T06:00:00Z',
-              'endedAt': '2026-07-13T06:01:30Z',
-            },
-          ],
-        ),
-      );
-
-      expect(find.text('1:30'), findsOneWidget);
-    });
-
-    testWidgets('an entry with nothing to summarise still reads', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          entries: [
-            {
-              'entryId': 'e-bare',
-              'eventId': 'e-bare',
-              'kind': 'set',
-              'loggedAt': '2026-07-13T06:00:00Z',
-              'sessionExerciseId': 'sx-bench',
-              'exerciseId': 'ex-sx-bench',
-            },
-          ],
-        ),
-      );
-
-      expect(find.text('Logged'), findsOneWidget);
-    });
-  });
 }
 
 /// Test-only [NavigatorObserver] that records the most recent
