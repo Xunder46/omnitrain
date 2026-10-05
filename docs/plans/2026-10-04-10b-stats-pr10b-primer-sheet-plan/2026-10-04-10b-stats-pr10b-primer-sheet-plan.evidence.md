@@ -402,3 +402,104 @@ no edits. Record the observed line for each command.
 | `gateway.sh test test/header_standardization_test.dart test/records_and_trends_screen_test.dart test/stats_legacy_removal_test.dart test/screen_widget_test.dart test/fuel_row_screen_test.dart test/screen_overflow_contract_test.dart test/nutrition_trend_screen_test.dart test/mix_layer_screen_test.dart test/signals_layer_screen_test.dart` | green, no edits | `00:11 +525: All tests passed!` |
 | `gateway.sh test test/nutrition_primer_test.dart test/home_logo_hub_open_test.dart` | green, no edits | deferred to Phase 2B (those files construct `HomeScreen`; nothing in 2A touches them) |
 | `gateway.sh git-status` | no `test/` file outside the Predicted Files is modified | `M lib/features/stats/stats_screen.dart` only; the two untracked files are the Predicted Files |
+
+---
+
+## Fix round 1 — review findings 1–3 (@developer)
+
+Finding 4 (the `_openStatsScreen` re-entrancy guard) is carried, not fixed.
+
+### F1.1 Red run before the fix (S-2719)
+
+New group appended to `test/stats_primer_screen_test.dart`:
+
+```
+group('S-2719: the sheet fits a small viewport', () {
+  testWidgets('the sheet lays out at 320x568 without an overflow', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 568));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repo = await _freshRepo();
+    await _pumpStats(tester, repo, showPrimerHelp: true);
+    await tester.tap(find.byKey(const Key('stats_primer_help')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('stats_primer_dismiss')), findsOneWidget);
+  });
+});
+```
+
+`gateway.sh test test/stats_primer_screen_test.dart --plain-name "S-2719"`:
+
+```
+00:00 +0: S-2719: the sheet fits a small viewport the sheet lays out at 320x568 without an overflow
+Expected: null
+  Actual: FlutterError:<A RenderFlex overflowed by 346 pixels on the bottom.>
+00:00 +0 -1: Some tests failed.
+```
+
+### F1.2 The fix
+
+`lib/features/stats/widgets/stats_primer_sheet.dart` — the `Column` is wrapped in a
+`SingleChildScrollView`; `OmniSurface` stays outermost, `mainAxisSize.min` stays, every key and
+string is unchanged. Original lines (before):
+
+```dart
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+```
+
+After:
+
+```dart
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+```
+
+`gateway.sh test test/stats_primer_screen_test.dart`:
+
+```
+00:00 +8: All tests passed!
+```
+
+### F1.3 Mutation — remove the wrapper
+
+Restored the original `Column` (no `SingleChildScrollView`), re-ran the same command:
+
+```
+00:00 +0: S-2719: the sheet fits a small viewport the sheet lays out at 320x568 without an overflow
+Expected: null
+  Actual: FlutterError:<A RenderFlex overflowed by 346 pixels on the bottom.>
+00:00 +0 -1: Some tests failed.
+```
+
+Restored the exact fix; re-ran green (`00:00 +8: All tests passed!`). Never left mutated.
+
+### F1.4 Finding 3 — class doc comment
+
+The comment already read "inside a scrollable column"; with the wrapper in place it is now true, so
+no wording change was needed. Verified against the shipped widget.
+
+### F1.5 Finding 2 — docs
+
+`docs/stats_screen.md`: the "?" paragraph now cites `test/stats_primer_contract_test.dart` (`the
+Stats screen holds no StatsPrimerState`) for "never marks", and keeps the S-2708 citation only for
+the coexistence claim. The Primer Sheet section gained one sentence: the sheet scrolls when it is
+taller than the screen, citing `S-2719: the sheet fits a small viewport` › `the sheet lays out at
+320x568 without an overflow`.
+
+### F1.6 Close
+
+| Check | Expected | Observed |
+|---|---|---|
+| `gateway.sh test` (full suite) | `+3874 ~1` | `01:50 +3874 ~1: All tests passed!` |
+| `gateway.sh lint` | 196 issues, 0 errors | `196 issues found. (ran in 3.1s)` — 0 errors |
+| `gateway.sh test test/docs_indexing_contract_test.dart` | green | `00:00 +9: All tests passed!` |

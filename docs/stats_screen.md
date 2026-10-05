@@ -37,8 +37,12 @@ that constructs `RecordsAndTrendsScreen`. Verified by
 When `showPrimerHelp` is true the header carries a second action, the "?"
 (tooltip `About Stats`), placed before the chart icon so the chart icon stays
 rightmost. It opens the [primer sheet](#primer-sheet) and never marks the seen
-flag. Verified by `test/stats_primer_screen_test.dart` (`S-2708: the "?" and the
-chart icon coexist` › `the chart icon stays the only way into Records & Trends`).
+flag: the screen holds no `StatsPrimerState`, so it has no reference through
+which it could mark it. Verified by `test/stats_primer_contract_test.dart` (`the
+Stats screen holds no StatsPrimerState`); the coexistence of the two header
+actions is verified by `test/stats_primer_screen_test.dart` (`S-2708: the "?"
+and the chart icon coexist` › `the chart icon stays the only way into Records &
+Trends`).
 
 ---
 
@@ -63,7 +67,11 @@ at 320x568 without an overflow`.
 `StatsPrimerSheet` (`lib/features/stats/widgets/stats_primer_sheet.dart`) is a
 presentation-only sheet: three labelled blocks — what the page shows, the
 Signals cards, and the chart icon — over one `Got it` CTA. It imports no state
-class and reads no repository; the host owns the seen flag.
+class and reads no repository; the host owns the seen flag. The sheet scrolls
+when it is taller than the screen, so it stays usable at large text scale on a
+short phone. Verified by `test/stats_primer_screen_test.dart` (`S-2719: the
+sheet fits a small viewport` › `the sheet lays out at 320x568 without an
+overflow`).
 
 The sheet auto-opens once per install on the **first Stats tap from Home**,
 hosted by `HomeScreen` exactly as the Daily Nutrition primer is: the sheet is

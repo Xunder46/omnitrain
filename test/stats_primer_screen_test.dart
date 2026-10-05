@@ -271,4 +271,22 @@ void main() {
       expect(find.byKey(const Key('stats_primer_empty_cta')), findsOneWidget);
     });
   });
+
+  group('S-2719: the sheet fits a small viewport', () {
+    testWidgets('the sheet lays out at 320x568 without an overflow', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(320, 568));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = await _freshRepo();
+
+      await _pumpStats(tester, repo, showPrimerHelp: true);
+
+      await tester.tap(find.byKey(const Key('stats_primer_help')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('stats_primer_dismiss')), findsOneWidget);
+    });
+  });
 }

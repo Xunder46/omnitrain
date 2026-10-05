@@ -745,6 +745,7 @@ files.
 | Phase 2B — HomeScreen hosting + DI + home test (@developer) | **Complete** | `.evidence.md` §3A → red compile failure (`No named parameter 'statsPrimerState'`), `+4` green (S-2701/2716/2717/2718), mutations A/B red→restore→green, targeted set `+108`, lint `196 issues`, full suite `+3869 ~1` |
 | Phase 3A — guards + residue sweep (@developer) | **Complete** | `.evidence.md` §4 → four guards green (4 new), mutations A/B/C/D red→restore→green, six-point residue sweep empty, lint `196 issues`, full suite `+3873 ~1` |
 | Phase 3B — docs (@developer) | **Complete** | `.evidence.md` §4.4/§4.4a/§4.5 → docs guard `+9` green, five docs edited (79 insertions, 3 deletions; all under 64 KiB), full suite `+3873 ~1`, lint `196 issues` |
+| Fix round 1 — review findings 1–3 (@developer) | **Complete** | `.evidence.md` §Fix round 1 → S-2719 red (`RenderFlex overflowed by 346 pixels`), scroll wrapper green, mutation red→restore→green, docs corrected, full suite `+3874 ~1`, lint `196 issues` |
 
 ## Assumption Log
 
@@ -815,6 +816,11 @@ RATIFIED (promoted to a D-x) or REVERT (remediation)._
   described by what they explain, not quoted, because the strings are values the source owns. The
   `## Navigation Entry Point` section gained the "?" action and the `## Overview` gained the
   `showPrimerHelp` contract. Vetoable.
+- **A-15 (Fix round 1 executor) —** Review finding 1 (the sheet's non-scrollable `Column` overflows
+  at 320x568) is fixed by wrapping the column in a `SingleChildScrollView` inside the existing
+  `OmniSurface`, rather than by shrinking copy or capping the sheet height. The shipped
+  `NutritionPrimerSheet` has the identical shape and is **not** touched (out of scope, D-2001);
+  finding 4 (the `_openStatsScreen` re-entrancy guard) is carried, not fixed. Vetoable.
 
 ## Feedback
 

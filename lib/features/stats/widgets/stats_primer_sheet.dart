@@ -59,92 +59,94 @@ class StatsPrimerSheet extends StatelessWidget {
 
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Top eyebrow: short sheet title.
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              'STATS',
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2.0,
-                color: themeColors.textMuted,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Top eyebrow: short sheet title.
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'STATS',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2.0,
+                  color: themeColors.textMuted,
+                ),
               ),
             ),
-          ),
-          Text(
-            'A quick orientation',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: OmniTheme.titleLetterSpacing,
-              color: themeColors.textDominant,
+            Text(
+              'A quick orientation',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: OmniTheme.titleLetterSpacing,
+                color: themeColors.textDominant,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          // Block 1: what the page itself shows.
-          const _PrimerBlock(
-            key: Key('stats_primer_block_page'),
-            label: 'WHAT THIS PAGE SHOWS',
-            body:
-                'Your training mix by kind of work, the exercises you have '
-                'trained and how they changed since last time, all-time '
-                'totals, and your Fuel row once you log food.',
-          ),
-          const SizedBox(height: 16),
-          // Block 2: the Signals cards.
-          const _PrimerBlock(
-            key: Key('stats_primer_block_signals'),
-            label: 'SIGNALS',
-            body:
-                'Short notes about your own patterns, compared only with '
-                'your own history. They start after about four weeks of '
-                'rating how hard each workout felt, and a few need food '
-                'logging or a watch. Dismiss any card and it stays hidden '
-                'for 14 days.',
-          ),
-          const SizedBox(height: 16),
-          // Block 3: the header chart icon.
-          const _PrimerBlock(
-            key: Key('stats_primer_block_records'),
-            label: 'THE CHART ICON',
-            body:
-                'Opens Records & Trends: your personal records and the full '
-                'history of each exercise. Tap an exercise there to see its '
-                'progress.',
-          ),
-          const SizedBox(height: 24),
-          // Single primary action — explicit shape, theme token, no
-          // StadiumBorder. Keyed for tests.
-          SizedBox(
-            height: OmniTheme.buttonPrimaryHeight,
-            width: double.infinity,
-            child: FilledButton(
-              key: const Key('stats_primer_dismiss'),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
+            const SizedBox(height: 16),
+            // Block 1: what the page itself shows.
+            const _PrimerBlock(
+              key: Key('stats_primer_block_page'),
+              label: 'WHAT THIS PAGE SHOWS',
+              body:
+                  'Your training mix by kind of work, the exercises you have '
+                  'trained and how they changed since last time, all-time '
+                  'totals, and your Fuel row once you log food.',
+            ),
+            const SizedBox(height: 16),
+            // Block 2: the Signals cards.
+            const _PrimerBlock(
+              key: Key('stats_primer_block_signals'),
+              label: 'SIGNALS',
+              body:
+                  'Short notes about your own patterns, compared only with '
+                  'your own history. They start after about four weeks of '
+                  'rating how hard each workout felt, and a few need food '
+                  'logging or a watch. Dismiss any card and it stays hidden '
+                  'for 14 days.',
+            ),
+            const SizedBox(height: 16),
+            // Block 3: the header chart icon.
+            const _PrimerBlock(
+              key: Key('stats_primer_block_records'),
+              label: 'THE CHART ICON',
+              body:
+                  'Opens Records & Trends: your personal records and the full '
+                  'history of each exercise. Tap an exercise there to see its '
+                  'progress.',
+            ),
+            const SizedBox(height: 24),
+            // Single primary action — explicit shape, theme token, no
+            // StadiumBorder. Keyed for tests.
+            SizedBox(
+              height: OmniTheme.buttonPrimaryHeight,
+              width: double.infinity,
+              child: FilledButton(
+                key: const Key('stats_primer_dismiss'),
+                style: ButtonStyle(
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonBorderRadius,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              onPressed: () {
-                // Pop first so the host's post-dismiss logic runs against a
-                // stable, sheet-less tree.
-                Navigator.of(context).pop();
-                onDismiss?.call();
-              },
-              child: const FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text('Got it'),
+                onPressed: () {
+                  // Pop first so the host's post-dismiss logic runs against a
+                  // stable, sheet-less tree.
+                  Navigator.of(context).pop();
+                  onDismiss?.call();
+                },
+                child: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Got it'),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
