@@ -80,13 +80,19 @@ assisted *drill*, not as the set the user logged.
   plan whose load target is an assist validates and reaches the wrist. The "metrics the wire has no
   key for (RPE, rest, band assist) are not sent" sentence in
   `docs/state_management/watch_surface.md` is about the `extra-weight` *metric* (which has no wire
-  key) and remains true — this plan must not edit it.
+  key) and remains true — the must-not-edit clause is superseded by fix 1 (A-P3-4), which names the
+  metric so S-66's assisted target cannot be read into the sentence.
 - **D-66 — the contract amendment is additive and keeps `protocolVersion: 1`.** `PROTOCOL.md` gains a
   `1 (amended) | 2026-10-06` row in `## Version history` recording that a `loadKg` may be negative
   (band assist) with a floor of −200 kg, targets and corrections included. No version bump, no
   migration, no back-fill: the change only widens what is accepted, so nothing a v1 client accepted
   becomes invalid, both clients ship from this repository, and a receiver that predates the change
   simply never sees a negative load.
+- **D-67 — a zero load leaves the projection as an absent key, not `loadKg: 0.0` (ratified from
+  A-P2-1).** `PhoneEntries._entry` writes no `loadKg` key for an entry whose weight is zero or
+  absent (D-60's rule), so a payload that used to carry `loadKg: 0.0` no longer does. Every phone
+  reader defaults an absent `loadKg` with `?? 0.0`, so absent and `0.0` stay equivalent downstream
+  while the wire-visible payload changes; S-2's updated assertion is the guard.
 
 ## Feature Invariants
 
@@ -192,8 +198,8 @@ signal fires: **no PR series and no index plan** — one PR (Q1).
   units `lbs`; direct `clampTo`/`adjust` calls (no widget).
 - Trigger/Flow: table of inputs, driven twice — once by the Dart test, once by the Swift twin:
   `(-100, -1 detent) → -102.5` (a normal step still works); `(-197.5, -1) → -200` (the last step
-  lands exactly on the floor); `(-200, -1) → -200`; `(+2.5, -1) → 0` and `(0, -1) → 0` (a positive
-  dial still stops at zero).
+  lands exactly on the floor); `(-200, -1) → -200`; `(+2.5, -1) → 0` (a positive dial still stops
+  at zero).
 - Expected outcome: every value as listed, in kg and in lbs (in lbs one detent is 5 lb ≈ 2.27 kg, so
   the floor value is reached in a different number of detents but is the same −200 kg).
 - Edge case of: none (new surface).
@@ -487,6 +493,15 @@ analytics services, `scripts/sqlite_schema.sql`, `lib/core/sync_protocol/sync_pr
   full suite 3980 passed / 1 skipped / 0 failed (+7), lint 196 (baseline, none in a touched file),
   invariant clean; five mutations (a–e) and the full residue sweep in the evidence file. `format`
   refused the tracked files (policy) — recorded, not retried.
+- [x] Fix 1 (review 1) — Complete. No source change (`git-diff --stat` shows no `lib/` entry). F1
+  (S-61's redundant `(0, -1) → 0` row deleted), F2 (`docs/watch_session_sync.md` names
+  `WireLimits.minLoadKg` instead of restating the floor), F3 (`docs/watch-app-setup-and-qa.md` step 5
+  carries tests instead of values), F4 (`docs/state_management/watch_surface.md` names the
+  `extra-weight` metric), F6 (one assertion in S-65's test separating *refused* from *clamped* — the
+  row's `updated_at_ms`, which a bare `-200.0` assertion cannot see — shown red by mutation and
+  restored); A-P2-1 promoted to D-67, D-65's must-not-edit clause superseded by A-P3-4. Targeted
+  57/0, full suite 3980 passed / 1 skipped / 0 failed, lint 196/0 (none in a touched file), invariant
+  clean, residue sweep re-run clean. Evidence in the evidence file.
 
 ## Assumption Log
 
@@ -509,6 +524,7 @@ analytics services, `scripts/sqlite_schema.sql`, `lib/core/sync_protocol/sync_pr
   with its own ladder` asserted a zero-load row's `loadKg == 0.0`; D-60 omits that key. Options: keep the
   key at `0.0` (contradicts D-60, and the wire keeps "no load" and "load 0" indistinguishable anyway) or
   assert the key is absent. Chose absent — one assertion, the rest of S-2 untouched.
+  **PROMOTED to D-67** (review 1): the omission is wire-visible, so it is a decision now.
 - **A-P2-2 — S-65's fixture needs an advancing clock, not a real one.** Corrections are stamped by the
   inbox clock, and a later correction of the *same* metric only wins on a strictly later stamp, so with
   the file's fixed `_phoneNow` the second correction was a no-op and S-65 passed alone but failed in the
@@ -531,9 +547,25 @@ analytics services, `scripts/sqlite_schema.sql`, `lib/core/sync_protocol/sync_pr
   policy) and to keep the edits as line-for-line matches of the surrounding style; recorded in the
   evidence file.
 
+- **A-P3-4 — fix 1 supersedes D-65's "must not edit this sentence" clause.** Review F4: with S-66
+  shipping, the routine-targets paragraph in `docs/state_management/watch_surface.md` reads as "an
+  assisted target is not sent", which is false now. Chose to name the metric (F4's parenthesis
+  change) rather than leave the sentence as is; D-65's substantive ruling — the sentence is about
+  the `extra-weight` *metric* — still holds.
+
 ## Feedback
 
-(empty — owner feedback only; fold into a new Iteration block when non-empty, then clear)
+Review 1 (`2026-10-06-16-watch-negative-load-plan.review.md`) — code approved, documentation fixes owed.
+Fix checklist (documentation only; no code change, no re-review of code):
+
+1. F1 — delete S-61's `(0, -1) → 0` row (this file, line ~198); the two stepping tests pin the crossing.
+2. F2 — `docs/watch_session_sync.md:181-182`: drop the restated "of −200 kg", keep `WireLimits.minLoadKg`.
+3. F3 — `docs/watch-app-setup-and-qa.md:467-478`: drop the restated value and the "leading minus" clause;
+   keep the test pointers.
+4. F4 — `docs/state_management/watch_surface.md:240`: name the metric ("the `extra-weight` metric").
+5. F5 — decide at merge whether commit `b14b7d6` (another feature's plans) belongs in this branch.
+
+Findings F1–F6, the observed test counts and the Assumption Log adjudication are in the review file.
 
 ## Open questions
 

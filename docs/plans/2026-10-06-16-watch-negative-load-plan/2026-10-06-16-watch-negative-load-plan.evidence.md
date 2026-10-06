@@ -171,7 +171,7 @@ shows the previous mutation's restore). Final run of both suites with every muta
 | load guards (`> 0`, `>= 0`, `< 0 ? 0`) on `loadKg`/`weight` in `lib/watch/`, `watch/watchos/Sources/` | none on a load/weight metric. The only two load guards are the two floors themselves (`WireLimits.minLoadKg`, `minimumLoadKg`); `duration`/`distance`/`roundDuration` keep their `0` floor (D-62) and `extraWeight` stays unbounded | clean — nothing to fix |
 | `never be negative`, `non-negative load`, `band assist is not sent` in `lib/`, `watch/`, `docs/` | **no matches** anywhere | clean |
 | `cannot carry` in `lib/`, `watch/`, `docs/` | `docs/watch_session_sync.md:176`; `lib/core/sync_protocol/phone_entries.dart:9,113`; `lib/core/platform/watch_transport.dart:15`; `watch/watchos/Sources/…/WatchConnectivityBridge.swift:16,128`; `PropertyListFrames.swift:24,42`; plus `docs/plans/` history | all are the **transport** rule ("a frame the radio cannot carry is dropped") or Phase 2's rewritten projection bullet — the negative-load half of the bullet already reads "a band-assisted set reaches the wrist as a negative `loadKg` … (D-58)". No stale claim; nothing to fix |
-| `band assist … are not sent` | `docs/state_management/watch_surface.md:240` and its source twin `lib/core/utils/watch_reference_sync.dart:230` | **the one surviving mention, as the plan predicts** — both are about the `extra-weight` metric having no wire key, which is still true (D-65). Not edited |
+| `band assist … are not sent` | `docs/state_management/watch_surface.md:240` and its source twin `lib/core/utils/watch_reference_sync.dart:230` | **the one surviving mention, as the plan predicts** — both are about the `extra-weight` *metric* having no wire key, which is still true (D-65). **Fix 1 (F4)** rewrote the doc sentence to name the `extra-weight` metric, because with S-66 shipping the "band assist" wording could read as "an assisted weight target is not sent", which is false now (A-P3-4). The source comment is unchanged — it already names the metric |
 | `S-42` in `test/`, `watch/watchos/Tests/` | none in `watch/watchos/Tests/`; `test/watch_session_projection_test.dart:29` explains that S-59/S-60 replace it (Phase 2) | clean |
 | `S-007 load` in `test/`, `watch/watchos/Tests/` | `test/watch_logging_stepping_test.dart:56` `'S-007 load steps by the saved increment'` (step sizes unchanged, D-62 — still true) | kept |
 | `S-007 extra load is signed, because band assist is a load` (`test/watch_logging_stepping_test.dart`) | its assertions still hold, but the name repeated the claim Phase 3's Swift twin dropped | **renamed** to `'S-61 extra load stays signed and unbounded'` with the reason string naming D-58, so both stacks say the same thing |
@@ -187,3 +187,45 @@ failing run taken **before** the source change and the passing run after, same c
 | D-62 floor | `test/watch_logging_stepping_test.dart` S-61 | `+16 -1` — `S-61 an assisted load stops at the wire floor [E]` — `Expected: <-200>` / `Actual: <0.0>` (the `weight` case back on the `0` floor) | `00:00 +17: All tests passed!` |
 | D-61 emitter | `test/watch_logging_surfaces_test.dart` S-62 | `+45 -2` — `S-062 an assisted load is emitted with its sign [E]` — `Expected: contains pair 'loadKg' => <-20>` / the payload has no `loadKg` (the emitter back to `load > 0`) | `00:00 +30: All tests passed!` |
 | D-63 correction floor | `test/watch_session_import_test.dart` S-65 | `S-65 … [E]` — `Expected: <-200.0>` / `Actual: <-20.0>` (floor `>= 0` refuses the correction) | `00:00 +48: All tests passed!` (`test/watch_session_import_test.dart`) |
+
+## Fix 1 — review 1 (documentation + one assertion, no source change)
+
+F1–F4 (plan row deleted, three doc sentences) and F6 (one assertion in S-65's test) plus the
+A-P2-1 → D-67 promotion. **No source file changed**: `git-diff --stat` lists only the plan, the three
+docs and the test file — `lib/` does not appear.
+
+### Done Criteria — observed
+
+| Command | Result |
+|---|---|
+| `gateway.sh test test/watch_session_import_test.dart test/docs_indexing_contract_test.dart` | `00:00 +57: All tests passed!` (57 passed / 0 failed; includes the docs indexing contract) |
+| `gateway.sh test` (full) | `01:42 +3980 ~1: All tests passed!` (3980 passed / 1 skipped / 0 failed — +0 over Phase 3, the fix adds an assertion to an existing test, not a test) |
+| `gateway.sh lint` | `196 issues found.` — the Phase 1–3 baseline; `lines that look like failures (0)`; no issue mentions any file this fix touched |
+| invariant `hive_workout_repository` in `lib/state`, `lib/features`, `lib/widgets`, `lib/core` | **no matches** |
+| residue sweep (re-run) | `never be negative` / `non-negative load` / `band assist is not sent` in `lib/`, `watch/`, `docs/` — **no matches** (F4 removed the last one; the only `band assist` prose left is D-65's own text in this plan). `cannot carry` hits are unchanged from Phase 3. `S-42` / `S-007 load` unchanged. |
+
+### The one new guard, red first (mutation F6)
+
+The assertion is the row-identity check added after S-65's `-200.0` assertion:
+
+```dart
+expect(
+  (await observationAt(repository, bench, 0, 'weight'))?.toMap(),
+  beforeRefusal?.toMap(),
+  reason: 'S-65 refused, not clamped: the row is unchanged from before the '
+      '−240 kg correction, value and stamp alike',
+);
+```
+
+A bare `weightKg == -200.0` cannot separate the two behaviours — a clamp **also** ends at `-200.0`.
+The stamp can: `_applyCorrections` writes `updated_at_ms: entry.stampFor(field)`, so a clamp that
+*accepts* the `-240` correction re-stamps the row at that correction's time, where a refusal leaves
+value and stamp untouched. `toMap()` carries `updated_at_ms`, so the whole-row comparison separates
+them.
+
+| Mutant | Original line (recorded) | Changed to | Observed red |
+|---|---|---|---|
+| F6 — clamp instead of refuse | `'loadKg' => value is num && value >= WireLimits.minLoadKg,` beside `effective[field] = value;` (`lib/core/services/watch_session_importer.dart:1508`) | `'loadKg' => value is num,` beside `effective[field] = field == 'loadKg' && value is num && value < WireLimits.minLoadKg ? WireLimits.minLoadKg : value;` | `gateway.sh test test/watch_session_import_test.dart --plain-name "S-65 a band assist corrects down to the floor and no further"` → `00:00 +0 -1: S-267 live corrections carry into history S-65 … [E]` — `Which: at location ['updated_at_ms'] is <1790334003000> instead of <1790334002000>`, reason string `S-65 refused, not clamped: the row is unchanged from before the −240 kg correction, value and stamp alike`. Every other field in the two maps is equal, so the stamp is the discriminator. |
+
+Restored the exact original (comment included), re-ran: `00:00 +57: All tests passed!`, and
+`git-diff --stat` shows no `lib/` entry — the mutation was not left applied.

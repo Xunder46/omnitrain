@@ -1072,6 +1072,9 @@ void main() {
       );
 
       now = now.add(const Duration(seconds: 1));
+      // The row as the −200 kg correction left it. A refusal must leave it
+      // untouched; a clamp would re-stamp it at the −240 kg correction.
+      final beforeRefusal = await observationAt(repository, bench, 0, 'weight');
       final below = await mirror.correctEntry('e-neg', {'loadKg': -240});
       final decision = SyncProtocolValidator.evaluateOrAccept(
         loadProtocolValidator(),
@@ -1096,6 +1099,12 @@ void main() {
         (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
         -200.0,
         reason: 'S-65 a correction below the floor leaves the last value',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.toMap(),
+        beforeRefusal?.toMap(),
+        reason: 'S-65 refused, not clamped: the row is unchanged from before the '
+            '−240 kg correction, value and stamp alike',
       );
     });
   });

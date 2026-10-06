@@ -237,8 +237,8 @@ decision rather than the wire's:
 - **Targets.** A routine's targets are per metric *and per set*; the wire's
   `targets` is per effort, so the first set travels and the phone's own screen is
   where the rest stay. Durations are stored in seconds and travel in
-  milliseconds; metrics the wire has no key for (RPE, rest, band assist) are not
-  sent, because the schema carries no field for them.
+  milliseconds; metrics the wire has no key for (RPE, rest, the `extra-weight`
+  metric) are not sent, because the schema carries no field for them.
 
 `preferences_down` is its own message rather than a field on `routines_down`
 because `buildRoutinesDown` answers null for a phone with no routines, and a

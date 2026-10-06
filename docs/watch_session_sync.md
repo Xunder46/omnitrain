@@ -179,9 +179,9 @@ remains out is listed below.
   and stays on the phone — and a set's added weight goes with it, `extraLoadKg`
   being a hold's load. A set the wire *can* carry is carried with its sign: a
   band-assisted set reaches the wrist as a negative `loadKg`, down to the wire's
-  floor of −200 kg (D-58). The floor is one number — `WireLimits.minLoadKg`,
-  which the three schema minimums, the projection and the wrist's dial all state
-  (D-59) — so a weighted row *below* it is omitted like any other the wire cannot
+  floor (`WireLimits.minLoadKg`, D-58/D-59). The floor is one number, which the
+  three schema minimums, the projection and the wrist's dial all state (D-59) —
+  so a weighted row *below* it is omitted like any other the wire cannot
   carry, and a row with no load is carried without a `loadKg` key at all (D-60). A
   rejected entry would reject the whole snapshot
   (`test/watch_session_projection_test.dart`,
