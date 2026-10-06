@@ -375,6 +375,14 @@ If step 4 shows the sets only on the watch, this PR did not work.
 
 Pinned here so the next planner does not re-decide them; PR 2b's own plan holds the detail.
 
+> **Correction, added when PR 2b was planned (2026-10-05, `docs/plans/2026-10-05-15c-watch-session-sync-pr2b-plan/`).**
+> The item below says the engine "does not have" the `onEmit` sink. It does — `WatchSessionEngine.swift:24,37,86`
+> declare, store and take it, and every emission point already calls it; the app target simply never passes one,
+> which is why nothing leaves the wrist. PR 2b wires it (its D-21) rather than adding it. The pruning item below
+> is **superseded**: with an in-memory store there is nothing to prune, and pruning confirmed rows during a session
+> changes values derived from them (the next round number reads the stored rows) — pruning moves to PR 4 with the
+> durable store (PR 2b's D-27).
+
 - Host `WatchLoggingView`, `WatchEndSessionView` and `WatchEffortRatingView` in
   `ios/OmniTrain Watch App/ContentView.swift` over the in-memory store, replacing
   `startedPlaceholder(session:)`; build `WatchLoggingState` and `WatchEffortRatingState`, restore the
