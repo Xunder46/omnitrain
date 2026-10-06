@@ -547,10 +547,9 @@ class WatchLoggingState {
         return OmniDateUtils.formatClock((value * 1000).round());
       case WatchMetricKey.weight:
       case WatchMetricKey.extraWeight:
-        return UnitFormatter.fromKilograms(
-          value,
-          units.weightUnit,
-        ).toStringAsFixed(1);
+        final converted = UnitFormatter.fromKilograms(value, units.weightUnit);
+        // A signed zero is a zero: `-0.0` must not print as "-0.0".
+        return (converted == 0 ? 0.0 : converted).toStringAsFixed(1);
       case WatchMetricKey.distance:
         return (value / UnitFormatter.metresPerUnit(units.distanceUnit))
             .toStringAsFixed(1);
@@ -640,10 +639,11 @@ class WatchLoggingState {
         // Unloaded work leaves `loadKg` off rather than sending a zero. The
         // phone sends 0.0 for the same case and the two are indistinguishable
         // once logged, so this is a choice, not an oversight: the field is
-        // optional and a wrist log of bodyweight reps makes no load claim.
+        // optional and a wrist log of bodyweight reps makes no load claim. A
+        // negative load is a band assist and is emitted with its sign (D-61).
         return {
           'reps': reps.round() < 1 ? 1 : reps.round(),
-          if (load != null && load > 0) 'loadKg': load,
+          if (load != null && load != 0) 'loadKg': load,
         };
       case WatchEffortKind.timed:
         return _windowPayload(loggedAt, distance: true);

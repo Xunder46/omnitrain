@@ -503,7 +503,8 @@ public final class WatchLoggingState {
                 value,
                 unit: units.isPounds ? "lbs" : "kg"
             )
-            return String(format: "%.1f", converted)
+            // A signed zero is a zero: `-0.0` must not print as "-0.0".
+            return String(format: "%.1f", converted == 0 ? 0 : converted)
         case WatchMetricKey.distance:
             let converted = value / WatchMetricStepping.metresPerUnit(units.distanceUnit)
             return String(format: "%.1f", converted)
@@ -607,7 +608,10 @@ public final class WatchLoggingState {
         case WatchEffortKind.set:
             let reps = Int((value(of: WatchMetricKey.reps) ?? 1).rounded())
             var payload: [String: Any] = ["reps": max(1, reps)]
-            if let load = value(of: WatchMetricKey.weight), load > 0 { payload["loadKg"] = load }
+            // A negative load is a band assist and travels with its sign; at
+            // exactly zero the key is absent, as unloaded work sends no load
+            // claim (D-61).
+            if let load = value(of: WatchMetricKey.weight), load != 0 { payload["loadKg"] = load }
             return payload
         case WatchEffortKind.timed:
             return windowPayload(loggedAt: loggedAt, coversDistance: true)

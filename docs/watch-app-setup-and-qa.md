@@ -464,6 +464,18 @@ hardware yet.
    Start another wrist workout and log a set with the phone in Airplane Mode.
    Nothing arrives. Turn Airplane Mode off, foreground the phone app and tap
    **Sync** on the wrist: the set lands exactly once.
+5. **A band-assisted set logs a negative load** *(owner)*. Pick a set exercise
+   with a load. Dial the load down past zero: the row shows a leading minus, and
+   the crown stops at −200 kg however long you keep turning
+   (`WatchLoggingTimersTests.testS061AnAssistedLoadStopsAtTheWireFloor`, and the
+   phone's own floor in `watch_logging_stepping_test.dart`). Log the set: the
+   phone's session for this wrist session shows the same assisted value, not
+   zero (`WatchLoggingSurfacesTests.testS062AnAssistedLoadIsEmittedWithItsSign`),
+   and the next set opens at that assisted load rather than resetting to zero
+   (`testS063TheNextSetCarriesTheAssist`). A set whose load was never touched
+   still claims no load at all (`testS062AnUntouchedLoadDialSendsNoLoadKg`).
+   Dialling back up to zero leaves a plain `0.0`, never a `-0.0`
+   (`testS064AZeroLoadNeverPrintsASignedZero`).
 
 Two known gaps this walkthrough must not be read as failing on: a Sync while a
 rest countdown runs stops that countdown (the wrist adopts the answer's empty

@@ -9,6 +9,9 @@
 //   S-006 manual distance entry without GPS                  → `S-006 ...`
 //   S-007 metric stepping                                    → watch_logging_stepping_test.dart
 //   S-008 terminology parity with the phone                  → `S-008 ...`
+//   S-062 zero still means "no load claim"                   → `S-062 ...`
+//   S-063 the assist carries to the next set                 → `S-063 ...`
+//   S-064 a leading minus renders in the user's unit         → `S-064 ...`
 //
 // Every event asserted here is validated against the shared protocol schemas
 // read from the repository — the same documents the phone's validator and the
@@ -145,19 +148,27 @@ void main() {
 
   Future<WatchLoggingState> surfaceFor(
     String? modality,
-    Map<String, Object?> slot,
-  ) async {
+    Map<String, Object?> slot, {
+    WatchUnitPreferences units = const WatchUnitPreferences(),
+  }) async {
     engine = WatchSessionEngine(
       InMemoryWatchSessionStore(),
       clock: clock.call,
       onEmit: emitted.add,
     );
     await engine.createSession(modality: modality, exercises: [slot]);
-    return WatchLoggingState(engine: engine, clock: clock.call);
+    return WatchLoggingState(
+      engine: engine,
+      clock: clock.call,
+      units: units,
+    );
   }
 
   double fieldValue(WatchLoggingState surface, String metricKey) =>
       surface.fields.firstWhere((field) => field.metricKey == metricKey).value;
+
+  WatchMetricField fieldOf(WatchLoggingState surface, String metricKey) =>
+      surface.fields.firstWhere((field) => field.metricKey == metricKey);
 
   setUp(() {
     clock = _Clock(DateTime.utc(2026, 7, 13, 17));
@@ -224,6 +235,113 @@ void main() {
       final logged = _emittedEvent(emitted);
       expect(logged.rejections, isEmpty);
       expect(logged.event.containsKey('loadKg'), isFalse);
+    });
+  });
+
+  group('S-062 zero still means "no load claim"', () {
+    test('S-062 an assisted load is emitted with its sign', () async {
+      final surface = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+      );
+
+      // Eight detents down from the 0 kg default: a 20 kg band assist.
+      surface.adjust(WatchMetricKey.weight, -8);
+      expect(fieldValue(surface, WatchMetricKey.weight), -20);
+
+      await surface.log();
+
+      final logged = _emittedEvent(emitted);
+      expect(logged.rejections, isEmpty);
+      expect(logged.event, containsPair('loadKg', -20));
+    });
+
+    test('S-062 an untouched dial and a bodyweight set send no loadKg', () async {
+      final untouched = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-bench', ['reps', 'sets', 'load']),
+      );
+      await untouched.log();
+      expect(_emittedEvent(emitted).event.containsKey('loadKg'), isFalse);
+
+      emitted.clear();
+      final bodyweight = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-pushup', ['reps', 'sets']),
+      );
+      await bodyweight.log();
+      expect(_emittedEvent(emitted).event.containsKey('loadKg'), isFalse);
+    });
+
+    test('S-062 a drill sends its extra load and never a loadKg', () async {
+      final surface = await surfaceFor(
+        'isometric_stretching',
+        _slot('sx-plank', ['hold', 'time']),
+      );
+
+      surface.adjust(WatchMetricKey.extraWeight, -4);
+      await surface.log();
+
+      final logged = _emittedEvent(emitted);
+      expect(logged.rejections, isEmpty);
+      expect(logged.event, containsPair('extraLoadKg', -10));
+      expect(logged.event.containsKey('loadKg'), isFalse);
+    });
+  });
+
+  group('S-063 the assist carries to the next set', () {
+    test('S-063 the next set opens at the assisted load just logged', () async {
+      final surface = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+      );
+
+      surface.adjust(WatchMetricKey.weight, -8);
+      await surface.log();
+
+      // The carry-over reads the stored `loadKg` back, sign and all; it must
+      // not fall back to zero.
+      expect(fieldValue(surface, WatchMetricKey.weight), -20);
+    });
+  });
+
+  group('S-064 a leading minus renders in the user\'s unit', () {
+    test('S-064 a negative load prints a leading minus in kg and lbs', () async {
+      final kg = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+      );
+      kg.adjust(WatchMetricKey.weight, -8);
+      expect(fieldOf(kg, WatchMetricKey.weight).displayValue, '-20.0');
+      expect(fieldOf(kg, WatchMetricKey.weight).unitLabel, 'kg');
+
+      const pounds = WatchUnitPreferences(weightUnit: 'lbs');
+      final lbs = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+        units: pounds,
+      );
+      final step = WatchMetricStepping.stepFor(
+        WatchMetricKey.weight,
+        units: pounds,
+      );
+      // Dial to exactly -20 kg, so the same load prints in the saved unit.
+      lbs.adjust(WatchMetricKey.weight, -20 / step);
+      expect(fieldValue(lbs, WatchMetricKey.weight), -20);
+      expect(fieldOf(lbs, WatchMetricKey.weight).displayValue, '-44.1');
+      expect(fieldOf(lbs, WatchMetricKey.weight).unitLabel, 'lbs');
+    });
+
+    test('S-064 a zero load never prints a signed zero', () async {
+      final surface = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+      );
+
+      // A fractional detent that rounds to zero must not leave a "-0.0"
+      // behind: zero is zero.
+      surface.adjust(WatchMetricKey.weight, -0.0001);
+      expect(fieldOf(surface, WatchMetricKey.weight).displayValue, '0.0');
     });
   });
 

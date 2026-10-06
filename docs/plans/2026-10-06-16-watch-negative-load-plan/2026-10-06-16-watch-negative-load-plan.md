@@ -372,41 +372,41 @@ the `extra-weight` entries in `docs/data_models.md`/`docs/modality_tracking.md`/
 `test/watch_reference_sync_test.dart`, `docs/watch_session_sync.md`.
 
 ### Phase 3: the wrist and the residue sweep (@developer)
-1. [ ] Floor the load at the shared constant in `clampTo` in
+1. [x] Floor the load at the shared constant in `clampTo` in
    `lib/watch/logging/watch_metric_stepping.dart` (~126–140): the `weight` case becomes
    `value < WireLimits.minLoadKg ? WireLimits.minLoadKg : value`; `extraWeight` keeps its current
    floor and `duration`/`distance`/`roundDuration` keep `0` (D-62). · `clampTo`
-2. [ ] Do the same in `watch/watchos/Sources/WatchSessionEngine/WatchMetricStepping.swift`
+2. [x] Do the same in `watch/watchos/Sources/WatchSessionEngine/WatchMetricStepping.swift`
    `clamp(_:metricKey:)` (~136–148): declare `static let minimumLoadKg: Double = -200` on
    `WatchMetricStepping` and floor the weight case at it, with a comment saying the value mirrors
    `envelope.schema.json` and `WireLimits.minLoadKg` (D-59). · `WatchMetricStepping.minimumLoadKg`
-3. [ ] Emit a negative load in `lib/watch/logging/watch_logging_state.dart` `_metricPayload`
+3. [x] Emit a negative load in `lib/watch/logging/watch_logging_state.dart` `_metricPayload`
    (line ~646): `if (load != null && load != 0)` instead of `load > 0`, updating the comment above
    (line ~640–643) that explains the zero-omission choice (D-61). · `_metricPayload`
-4. [ ] Do the same in `watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift` (~610). · `_metricPayload`
-5. [ ] Split the S-007 test in `test/watch_logging_stepping_test.dart` into
+4. [x] Do the same in `watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift` (~610). · `_metricPayload`
+5. [x] Split the S-007 test in `test/watch_logging_stepping_test.dart` into
    `'S-007 duration and distance never go negative'` (its duration/distance assertions unchanged) and
    a new `'S-61 an assisted load stops at the wire floor'` carrying S-61's table, in kg and in lbs. · `'S-61'`
-6. [ ] Split `testS007LoadAndDistanceNeverGoNegative` in
+6. [x] Split `testS007LoadAndDistanceNeverGoNegative` in
    `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift` the same way
    (`testS007DurationAndDistanceNeverGoNegative` + `testS061AnAssistedLoadStopsAtTheWireFloor` with
    the same table), and rename `testS007ExtraLoadIsSignedBecauseBandAssistIsALoad` to
    `testS061ExtraLoadStaysSignedAndUnbounded` — its `extraLoadKg` assertions stay, its name stops
    claiming band assist rides `extraLoadKg` (D-58). Keep the pound-preference test that pins kg
    storage. · `testS061AnAssistedLoadStopsAtTheWireFloor`
-7. [ ] Add a schema-mirror test to the watchOS suite:
+7. [x] Add a schema-mirror test to the watchOS suite:
    `testS059TheWireFloorMatchesTheSchema` reads
    `watch/sync_protocol/schemas/envelope.schema.json` from the repository root, pulls
    `$defs.entry.loadKg.minimum`, and asserts it equals `WatchMetricStepping.minimumLoadKg`. · `testS059TheWireFloorMatchesTheSchema`
-8. [ ] Add an assisted case on both logging surfaces: in `test/watch_logging_surfaces_test.dart` and
+8. [x] Add an assisted case on both logging surfaces: in `test/watch_logging_surfaces_test.dart` and
    `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingSurfacesTests.swift`, a load dial set to
    −20 emits `loadKg: -20` (and the existing no-load bodyweight case still emits no key, S-62). · `'S-062'`
-9. [ ] Add step 5 to the "### The wrist's own logging (PR 2b)" list in
+9. [x] Add step 5 to the "### The wrist's own logging (PR 2b)" list in
    `docs/watch-app-setup-and-qa.md` (~445–467), marked `*(owner)*`: dial the load below zero until
    the row shows a minus and the crown stops at −200; log the set; confirm the phone's session shows
    the same assisted value and its summary counts it. Note it under the walkthrough, not in "known
    gaps". · `### The wrist's own logging (PR 2b)`
-10. [ ] Residue sweep — every hit is either fixed in this phase or listed in the phase report:
+10. [x] Residue sweep — every hit is either fixed in this phase or listed in the phase report:
     search `lib/watch/`, `watch/watchos/Sources/` for load guards (`> 0`, `>= 0`, `< 0 ? 0`) on
     `loadKg`/`weight`; search `lib/`, `watch/`, `docs/` for the old rule's words
     (`cannot carry`, `never be negative`, `non-negative load`, `band assist is not sent`);
@@ -479,7 +479,14 @@ analytics services, `scripts/sqlite_schema.sql`, `lib/core/sync_protocol/sync_pr
   S-58/S-63/S-65/S-66 and `test/watch_wire_limits_test.dart` added, the `docs/watch_session_sync.md`
   bullet rewritten. Five suites 112/0, full suite 3973 passed / 1 skipped / 0 failed (+10 = the new tests),
   lint 196 (baseline, none in a touched file), invariant clean, six mutations (A–F) in the evidence file.
-- [ ] Phase 3 — not started.
+- [x] Phase 3 — Complete. The wrist floors a load at the shared constant on both stacks (Dart
+  `WireLimits.minLoadKg`, Swift `WatchMetricStepping.minimumLoadKg`), both emitters carry a non-zero
+  signed load (D-61), and both display paths print `0.0` rather than `-0.0`. S-007 split, S-061/S-062/
+  S-063/S-064 added on both stacks plus the schema-mirror `testS059TheWireFloorMatchesTheSchema`;
+  `docs/watch-app-setup-and-qa.md` step 5 added. `swift-test` 302/0 (+8), stepping 17/0, surfaces 30/0,
+  full suite 3980 passed / 1 skipped / 0 failed (+7), lint 196 (baseline, none in a touched file),
+  invariant clean; five mutations (a–e) and the full residue sweep in the evidence file. `format`
+  refused the tracked files (policy) — recorded, not retried.
 
 ## Assumption Log
 
@@ -509,6 +516,20 @@ analytics services, `scripts/sqlite_schema.sql`, `lib/core/sync_protocol/sync_pr
 - **A-P2-3 — the S-67 assertion was already in place.** Step 7 predicted adding it, but Phase 1's
   A-P1-1 landed it as `S-67 a re-stated assist is neither duplicated nor zeroed` (cross-stack 19/0), not
   under the plan's working name. Left as it is; no new test written.
+
+- **A-P3-1 — the schema path in the Swift mirror test is `$defs.entry.properties.loadKg`.**
+  The plan writes the path as `$defs.entry.loadKg`; the schema nests it under `properties`, so the
+  first run failed with `XCTUnwrap failed: expected non-nil value of type "Dictionary<String, Any>"`.
+  Chose the real path — the same one `test/watch_wire_limits_test.dart` walks — and said so in the
+  test's doc comment.
+- **A-P3-2 — the Dart extra-load test was renamed too, though step 6 asked only for the Swift one.**
+  `'S-007 extra load is signed, because band assist is a load'` repeated the claim D-58 refines (a
+  set's assist rides `loadKg`, not `extraLoadKg`), which is exactly why its Swift twin was renamed.
+  Chose parity: `'S-61 extra load stays signed and unbounded'`, assertions untouched.
+- **A-P3-3 — `gateway.sh format` refused the two tracked `lib/watch/` files** (`only runs on files this
+  change created`), and Phase 3 created no file, so no formatter ran. Chose not to retry (a denial is
+  policy) and to keep the edits as line-for-line matches of the surrounding style; recorded in the
+  evidence file.
 
 ## Feedback
 

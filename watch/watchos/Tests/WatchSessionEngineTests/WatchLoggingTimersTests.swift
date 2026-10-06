@@ -451,11 +451,7 @@ final class WatchLoggingTimersTests: XCTestCase {
         )
     }
 
-    func testS007LoadAndDistanceNeverGoNegative() {
-        XCTAssertEqual(
-            WatchMetricStepping.adjust(0, metricKey: WatchMetricKey.weight, detents: -1),
-            0
-        )
+    func testS007DurationAndDistanceNeverGoNegative() {
         XCTAssertEqual(
             WatchMetricStepping.adjust(0, metricKey: WatchMetricKey.duration, detents: -1),
             0
@@ -466,11 +462,64 @@ final class WatchLoggingTimersTests: XCTestCase {
         )
     }
 
-    func testS007ExtraLoadIsSignedBecauseBandAssistIsALoad() {
+    func testS061AnAssistedLoadStopsAtTheWireFloor() {
+        let kg = WatchUnitPreferences()
+        let lbs = WatchUnitPreferences(weightUnit: "lbs")
+
+        // The floor itself: the same canonical kilograms in both units.
+        XCTAssertEqual(WatchMetricStepping.clamp(-240, metricKey: WatchMetricKey.weight), -200)
+        XCTAssertEqual(WatchMetricStepping.clamp(-200.1, metricKey: WatchMetricKey.weight), -200)
+        XCTAssertEqual(WatchMetricStepping.clamp(-200, metricKey: WatchMetricKey.weight), -200)
+
+        for units in [kg, lbs] {
+            let step = WatchMetricStepping.step(for: WatchMetricKey.weight, units: units)
+            func turn(_ from: Double, _ detents: Double) -> Double {
+                WatchMetricStepping.adjust(from, metricKey: WatchMetricKey.weight, detents: detents, units: units)
+            }
+
+            // A normal step below zero still works.
+            XCTAssertEqual(turn(-100, -1), -100 - step, accuracy: 0.001)
+            // The dial crosses zero into an assist.
+            XCTAssertEqual(turn(0, -1), -step, accuracy: 0.001)
+            // A positive load dialled down lands on zero.
+            XCTAssertEqual(turn(step, -1), 0)
+        }
+
+        // The last step onto the floor lands exactly on it, and stays there.
+        XCTAssertEqual(
+            WatchMetricStepping.adjust(-197.5, metricKey: WatchMetricKey.weight, detents: -1),
+            -200
+        )
+        XCTAssertEqual(
+            WatchMetricStepping.adjust(-200, metricKey: WatchMetricKey.weight, detents: -1),
+            -200
+        )
+    }
+
+    func testS061ExtraLoadStaysSignedAndUnbounded() {
         XCTAssertEqual(
             WatchMetricStepping.adjust(0, metricKey: WatchMetricKey.extraWeight, detents: -4),
             -10,
-            "negative extra load is band assist"
+            "extra load is signed and unbounded; extraLoadKg is not the carrier for a set's assist (D-58)"
         )
+    }
+
+    /// The dial's floor must be the schema's floor, read from the repository so
+    /// the two cannot drift (D-58/D-59): `$defs.entry.properties.loadKg.minimum`,
+    /// the same site the phone's `WireLimits` test reads.
+    func testS059TheWireFloorMatchesTheSchema() throws {
+        let envelope = try Fixtures.json("schemas/envelope.schema.json")
+        let defs = try XCTUnwrap(envelope["$defs"] as? [String: Any])
+        let entry = try XCTUnwrap(defs["entry"] as? [String: Any])
+        let properties = try XCTUnwrap(entry["properties"] as? [String: Any])
+        let loadKg = try XCTUnwrap(properties["loadKg"] as? [String: Any])
+        let minimum = try XCTUnwrap(loadKg["minimum"] as? NSNumber).doubleValue
+
+        XCTAssertEqual(
+            minimum,
+            WatchMetricStepping.minimumLoadKg,
+            "the dial's floor is the wire's own floor"
+        )
+        XCTAssertNotEqual(minimum, 0, "the floor is no longer zero")
     }
 }

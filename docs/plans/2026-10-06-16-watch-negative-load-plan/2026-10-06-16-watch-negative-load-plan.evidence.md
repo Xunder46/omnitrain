@@ -119,7 +119,62 @@ do the same.
 
 ## Phase 3 — the wrist and the residue sweep (@developer)
 
-(to be filled by the implementer)
+Starting point is Phase 2's committed HEAD (`49232ed`): `gateway.sh test` `01:40 +3973 ~1`, `lint`
+196 issues / 0 errors, `swift-test` 294 / 0.
+
+### Files
+
+| File | Change |
+|---|---|
+| `lib/watch/logging/watch_metric_stepping.dart` | `clampTo`'s `weight` case split out of the `0`-floored group and floored at `WireLimits.minLoadKg`; `WireLimits` import; doc comment (D-58/D-62) |
+| `lib/watch/logging/watch_logging_state.dart` | `_metricPayload` set case: `load > 0` → `load != 0` (D-61); `_displayValueFor` prints `0.0`, never `-0.0` |
+| `watch/watchos/Sources/WatchSessionEngine/WatchMetricStepping.swift` | new `minimumLoadKg: Double = -200`; `clamp`'s `weight` case floored at it (D-59) |
+| `watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift` | `metricPayload` set case: `load > 0` → `load != 0` (D-61); `displayValue` prints `0.0`, never `-0.0` |
+| `test/watch_logging_stepping_test.dart` | S-007 split into duration/distance; new S-61 floor table; the extra-load test renamed off `S-007` |
+| `test/watch_logging_surfaces_test.dart` | new S-062 (emit), S-063 (carry-over), S-064 (display) cases |
+| `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift` | S-007 split; S-061 floor table; `testS061ExtraLoadStaysSignedAndUnbounded`; `testS059TheWireFloorMatchesTheSchema` |
+| `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingSurfacesTests.swift` | the same S-062/S-063/S-064 cases on the watchOS surface |
+| `docs/watch-app-setup-and-qa.md` | step 5 under "The wrist's own logging (PR 2b)" |
+
+### Done Criteria — observed
+
+| Command | Result |
+|---|---|
+| `gateway.sh swift-test` | `Executed 302 tests, with 0 failures` — 302 passed / 0 failed (baseline 294; delta +8 = the new cases) |
+| `gateway.sh test test/watch_logging_stepping_test.dart` | `00:00 +17: All tests passed!` (17 passed / 0 failed) |
+| `gateway.sh test test/watch_logging_surfaces_test.dart` | `00:00 +30: All tests passed!` (30 passed / 0 failed) |
+| `gateway.sh test` (full) | `01:40 +3980 ~1: All tests passed!` — 3980 passed / 1 skipped / 0 failed (Phase 3 start 3973; delta +7 = the new tests) |
+| `gateway.sh lint` | `196 issues found. (ran in 3.0s)` — unchanged from the baseline, every issue `info`, **none** in a touched file (grep of the log for `watch_logging`/`watch_metric`/`wire_limits` → no matches) |
+| `gateway.sh format <the two lib files>` | **refused** — `'format' only runs on files this change created; 'lib/watch/logging/watch_metric_stepping.dart' is already tracked by git`. Phase 3 created no file, so no formatter ran; the edits are line-for-line matches of the surrounding style. Not retried (policy). |
+| invariant grep | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` → **no matches** |
+| `git-diff --stat` | 9 files, `+395 / -31`, every one in the plan's Phase 3 Predicted Files |
+
+### Mutations (each reverted to the exact original; green re-run after)
+
+| # | Mutation | Observed red | Restored |
+|---|---|---|---|
+| a | `watch_metric_stepping.dart`: the `weight` case back to `value < 0 ? 0 : value` | `test/watch_logging_stepping_test.dart` → `+16 -1`: `S-61 an assisted load stops at the wire floor [E]` — `Expected: <-200>` / `Actual: <0.0>` | yes, `WireLimits.minLoadKg` |
+| b | `WatchMetricStepping.swift`: `clamp`'s `weight` case back to `value < 0 ? 0 : value` (`minimumLoadKg` left at −200, so S-059 stays green) | `swift-test` → `Executed 302 tests, with 15 failures`: `testS061AnAssistedLoadStopsAtTheWireFloor` (10 assertions, `("0.0") is not equal to ("-200.0")`), `testS062AnAssistedLoadIsEmittedWithItsSign` (`("Optional(0.0)") is not equal to ("Optional(-20.0")`), `testS063TheNextSetCarriesTheAssist`, `testS064ANegativeLoadPrintsALeadingMinusInKgAndLbs` (`("0.0") is not equal to ("-44.1")`). `testS059TheWireFloorMatchesTheSchema` green | yes, `minimumLoadKg` |
+| c | `watch_logging_state.dart`: the emitter back to `load > 0` | `+45 -2`: `S-062 an assisted load is emitted with its sign [E]` — `Expected: contains pair 'loadKg' => <-20>` / the payload has no `loadKg`; and `S-063 the next set opens at the assisted load just logged [E]` — `Expected: <-20>` / `Actual: <0.0>` (nothing was stored to carry). `S-61` green, proving (a)'s restore | yes, `load != 0` |
+| d | `WatchLoggingState.swift`: the emitter back to `load > 0` | `swift-test` → `Executed 302 tests, with 10 failures`: `testS062AnAssistedLoadIsEmittedWithItsSign` (`("nil") is not equal to ("Optional(-20.0)")`) and `testS063TheNextSetCarriesTheAssist` (`("Optional(0.0)")`). `testS062AnUntouchedLoadDialSendsNoLoadKg`, `testS062ADrillSendsItsExtraLoadAndNeverALoadKg` and both `testS064…` green, proving (b)'s restore | yes, `load != 0` |
+| e | `WatchMetricStepping.swift`: `minimumLoadKg` `-200` → `-100` | same run as (d) → `testS059TheWireFloorMatchesTheSchema` `("−200.0") is not equal to ("−100.0") — the dial's floor is the wire's own floor`, plus `testS061AnAssistedLoadStopsAtTheWireFloor` (`("−100.0") is not equal to ("−200.0")`) | yes, `-200` |
+
+(b), (d) and (e) were run as `gateway.sh swift-test`; (a) and (c) as `gateway.sh test
+test/watch_logging_stepping_test.dart test/watch_logging_surfaces_test.dart` (the pairing is what
+shows the previous mutation's restore). Final run of both suites with every mutation reverted:
+`swift-test` `Executed 302 tests, with 0 failures`, full `gateway.sh test` `+3980 ~1`.
+
+### Residue sweep (step 10) — every hit and its disposition
+
+| Search | Hits | Disposition |
+|---|---|---|
+| load guards (`> 0`, `>= 0`, `< 0 ? 0`) on `loadKg`/`weight` in `lib/watch/`, `watch/watchos/Sources/` | none on a load/weight metric. The only two load guards are the two floors themselves (`WireLimits.minLoadKg`, `minimumLoadKg`); `duration`/`distance`/`roundDuration` keep their `0` floor (D-62) and `extraWeight` stays unbounded | clean — nothing to fix |
+| `never be negative`, `non-negative load`, `band assist is not sent` in `lib/`, `watch/`, `docs/` | **no matches** anywhere | clean |
+| `cannot carry` in `lib/`, `watch/`, `docs/` | `docs/watch_session_sync.md:176`; `lib/core/sync_protocol/phone_entries.dart:9,113`; `lib/core/platform/watch_transport.dart:15`; `watch/watchos/Sources/…/WatchConnectivityBridge.swift:16,128`; `PropertyListFrames.swift:24,42`; plus `docs/plans/` history | all are the **transport** rule ("a frame the radio cannot carry is dropped") or Phase 2's rewritten projection bullet — the negative-load half of the bullet already reads "a band-assisted set reaches the wrist as a negative `loadKg` … (D-58)". No stale claim; nothing to fix |
+| `band assist … are not sent` | `docs/state_management/watch_surface.md:240` and its source twin `lib/core/utils/watch_reference_sync.dart:230` | **the one surviving mention, as the plan predicts** — both are about the `extra-weight` metric having no wire key, which is still true (D-65). Not edited |
+| `S-42` in `test/`, `watch/watchos/Tests/` | none in `watch/watchos/Tests/`; `test/watch_session_projection_test.dart:29` explains that S-59/S-60 replace it (Phase 2) | clean |
+| `S-007 load` in `test/`, `watch/watchos/Tests/` | `test/watch_logging_stepping_test.dart:56` `'S-007 load steps by the saved increment'` (step sizes unchanged, D-62 — still true) | kept |
+| `S-007 extra load is signed, because band assist is a load` (`test/watch_logging_stepping_test.dart`) | its assertions still hold, but the name repeated the claim Phase 3's Swift twin dropped | **renamed** to `'S-61 extra load stays signed and unbounded'` with the reason string naming D-58, so both stacks say the same thing |
 
 ## Red → green (required for every rule this feature reverses)
 
@@ -129,6 +184,6 @@ failing run taken **before** the source change and the passing run after, same c
 | Rule | Test | Before the fix | After the fix |
 |---|---|---|---|
 | D-60 projection | `test/watch_session_projection_test.dart` S-59/S-60 | `S-59 … [E]` — `Expected: {'entry-slot-bench-0': -20.0, 'entry-slot-bench-1': 60.0}` / `Actual: {'entry-slot-bench-1': 60.0}`, `missing map key 'entry-slot-bench-0'`; `S-60 … [E]` — `Actual: ['entry-slot-bench-0', 'entry-slot-bench-1', 'entry-slot-bench-2', 'entry-slot-bench-3']` | `00:00 +112: All tests passed!` (five Phase 2 suites) |
-| D-62 floor | `test/watch_logging_stepping_test.dart` S-61 | (Phase 3) | (Phase 3) |
-| D-61 emitter | `test/watch_logging_surfaces_test.dart` S-62 | (Phase 3) | (Phase 3) |
+| D-62 floor | `test/watch_logging_stepping_test.dart` S-61 | `+16 -1` — `S-61 an assisted load stops at the wire floor [E]` — `Expected: <-200>` / `Actual: <0.0>` (the `weight` case back on the `0` floor) | `00:00 +17: All tests passed!` |
+| D-61 emitter | `test/watch_logging_surfaces_test.dart` S-62 | `+45 -2` — `S-062 an assisted load is emitted with its sign [E]` — `Expected: contains pair 'loadKg' => <-20>` / the payload has no `loadKg` (the emitter back to `load > 0`) | `00:00 +30: All tests passed!` |
 | D-63 correction floor | `test/watch_session_import_test.dart` S-65 | `S-65 … [E]` — `Expected: <-200.0>` / `Actual: <-20.0>` (floor `>= 0` refuses the correction) | `00:00 +48: All tests passed!` (`test/watch_session_import_test.dart`) |

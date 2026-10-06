@@ -16,6 +16,9 @@
 //    S-006 manual distance entry without GPS             → `testS006...`
 //    S-007 metric stepping                               → WatchLoggingTimersTests
 //    S-008 terminology parity with the phone             → `testS008...`
+//    S-062 zero still means "no load claim"              → `testS062...`
+//    S-063 the assist carries to the next set            → `testS063...`
+//    S-064 a leading minus renders in the user's unit    → `testS064...`
 //
 //  Every event asserted here is validated against the shared protocol schemas
 //  read from the repository — the same documents the phone's validator and the
@@ -62,6 +65,10 @@ final class WatchLoggingSurfacesTests: XCTestCase {
 
     private func value(_ state: WatchLoggingState, _ metricKey: String) -> Double? {
         state.fields.first(where: { $0.metricKey == metricKey })?.value
+    }
+
+    private func field(_ state: WatchLoggingState, _ metricKey: String) -> WatchMetricField {
+        state.fields.first(where: { $0.metricKey == metricKey })!
     }
 
     // MARK: - S-001 log a set (reps + load)
@@ -126,6 +133,121 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         let logged = try loggedEvent(harness)
         XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
         XCTAssertNil(logged.event["loadKg"])
+    }
+
+    // MARK: - S-062 zero still means "no load claim"
+
+    func testS062AnAssistedLoadIsEmittedWithItsSign() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-assisted")]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        // Eight detents down from the 0 kg default: a 20 kg band assist.
+        surface.adjust(WatchMetricKey.weight, detents: -8)
+        XCTAssertEqual(value(surface, WatchMetricKey.weight), -20)
+
+        try await surface.log()
+
+        let logged = try loggedEvent(harness)
+        XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
+        XCTAssertEqual(logged.event["loadKg"] as? Double, -20)
+    }
+
+    func testS062AnUntouchedLoadDialSendsNoLoadKg() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-bench")]
+        )
+
+        try await WatchLoggingState(engine: engine, clock: harness.clock.call).log()
+
+        XCTAssertNil(try loggedEvent(harness).event["loadKg"])
+    }
+
+    func testS062ADrillSendsItsExtraLoadAndNeverALoadKg() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "isometric_stretching",
+            exercises: [slot("sx-plank", capabilities: ["hold", "time"])]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        surface.adjust(WatchMetricKey.extraWeight, detents: -4)
+        try await surface.log()
+
+        let logged = try loggedEvent(harness)
+        XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
+        XCTAssertEqual(logged.event["extraLoadKg"] as? Double, -10)
+        XCTAssertNil(logged.event["loadKg"])
+    }
+
+    // MARK: - S-063 the assist carries to the next set
+
+    func testS063TheNextSetCarriesTheAssist() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-assisted")]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        surface.adjust(WatchMetricKey.weight, detents: -8)
+        try await surface.log()
+
+        // The carry-over reads the stored `loadKg` back, sign and all; it must
+        // not fall back to zero.
+        XCTAssertEqual(value(surface, WatchMetricKey.weight), -20)
+    }
+
+    // MARK: - S-064 a leading minus renders in the user's unit
+
+    func testS064ANegativeLoadPrintsALeadingMinusInKgAndLbs() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-assisted")]
+        )
+        let kg = WatchLoggingState(engine: engine, clock: harness.clock.call)
+        kg.adjust(WatchMetricKey.weight, detents: -8)
+        XCTAssertEqual(field(kg, WatchMetricKey.weight).displayValue, "-20.0")
+        XCTAssertEqual(field(kg, WatchMetricKey.weight).unitLabel, "kg")
+
+        let pounds = WatchUnitPreferences(weightUnit: "lbs")
+        let lbs = WatchLoggingState(
+            engine: engine,
+            clock: harness.clock.call,
+            units: pounds
+        )
+        let step = WatchMetricStepping.step(for: WatchMetricKey.weight, units: pounds)
+        // Dial to exactly -20 kg, so the same load prints in the saved unit.
+        lbs.adjust(WatchMetricKey.weight, detents: -20 / step)
+        XCTAssertEqual(value(lbs, WatchMetricKey.weight), -20)
+        XCTAssertEqual(field(lbs, WatchMetricKey.weight).displayValue, "-44.1")
+        XCTAssertEqual(field(lbs, WatchMetricKey.weight).unitLabel, "lbs")
+    }
+
+    func testS064AZeroLoadNeverPrintsASignedZero() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-assisted")]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        // A fractional detent that rounds to zero must not leave a "-0.0"
+        // behind: zero is zero.
+        surface.adjust(WatchMetricKey.weight, detents: -0.0001)
+        XCTAssertEqual(field(surface, WatchMetricKey.weight).displayValue, "0.0")
     }
 
     // MARK: - S-002 log timed work (duration, optional distance)

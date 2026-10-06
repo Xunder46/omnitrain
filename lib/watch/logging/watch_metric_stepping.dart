@@ -10,6 +10,7 @@
 /// display through `UnitFormatter`, which owns the conversion constants.
 library;
 
+import '../../core/sync_protocol/wire_limits.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/settings/settings_state.dart';
 
@@ -121,8 +122,9 @@ abstract final class WatchMetricStepping {
   }
 
   /// Holds [value] inside the range the metric's own semantics allow: counts
-  /// start at one, load and distance never go negative, and extra load is
-  /// signed because negative is band assist.
+  /// start at one, load is floored at the wire's own `-200 kg` (band assist,
+  /// D-58/D-62), distance never goes negative, and extra load is signed because
+  /// negative is band assist.
   static double clampTo(String metricKey, double value) {
     switch (metricKey) {
       case WatchMetricKey.reps:
@@ -131,6 +133,7 @@ abstract final class WatchMetricStepping {
       case WatchMetricKey.extraWeight:
         return value;
       case WatchMetricKey.weight:
+        return value < WireLimits.minLoadKg ? WireLimits.minLoadKg : value;
       case WatchMetricKey.duration:
       case WatchMetricKey.distance:
       case WatchMetricKey.roundDuration:
