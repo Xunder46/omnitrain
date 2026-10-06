@@ -346,6 +346,11 @@ at that moment. Tap **Sync** on the watch: the wrist's session ends, and the pho
 calendar holds exactly one entry for it.
 **(f) Finishing on the watch.** Answering the wrist's own End closes the session
 on the phone as well, with one history entry and the rating the wrist gave.
+**(g) Sets the phone logged reach the wrist at its Sync — (owner), not yet run.**
+Log two sets on the phone's regular session screen, in a session that is also on
+the watch. With the phone app in the foreground, tap **Sync** on the watch: the
+watch's logging screen shows both sets, in the phone's order. The doubling
+check: a set logged on the watch earlier is not duplicated by that Sync.
 
 **The walkthrough** — each step maps to a protocol rule that is already
 enforced in code, so a failure points at the transport, not the logic:

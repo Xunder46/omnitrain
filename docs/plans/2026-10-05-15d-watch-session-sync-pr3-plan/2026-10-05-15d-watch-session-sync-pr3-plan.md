@@ -474,7 +474,23 @@ set reach the wrist; Phase 4 closes the docs. Phases 2 and 3 could swap, at the 
       `test/live_mirroring_test.dart`; whole suite `+3935 ~1`, 0 failures; `swift-test` 268 / 0; `lint`
       196 / 0. Evidence: `<plan>.evidence.md`.
 - [ ] Phase 3 — the wrist takes a re-statement (@dba)
-- [ ] Phase 4 — docs, walkthrough, residue sweep (@developer)
+- [x] Phase 4 — docs, walkthrough, residue sweep (@developer, PR 3a) — **Complete.** The
+      `watch_session_sync.md` limits finished (the edit and delete limits added, the phone's rest timer
+      named plainly, the sets-only bullet made plain); `watch_surface.md` states the answer carries the
+      phone's logged sets; the walkthrough gained one (owner) phone→wrist step, not yet run. Residue
+      sweeps clean (the debug harness's seeded `entries` re-shaped to the sibling wiring's non-const
+      empty list). Whole suite `+3935 ~1`, 0 failures; `swift-test` 268 / 0; `lint` 196 / 0; docs guard
+      `+9`. Evidence: `<plan>.evidence.md`.
+- [x] Fix round 1 — the review's F1–F8 (@developer, PR 3a) — **Complete.** F1: `PhoneEntries._entry`
+      omits a set whose `loadKg` is negative (band assist) beside the `reps` rule, so the answer stays
+      one the validator accepts whole; F3: `_wristRowStamps` claims a group whether or not the row is
+      marked applied, so an interrupted import can no longer echo the wrist its own set under a phone
+      id; F2/F5/S-43/D-38: the missing guard tests added. Four mutations, all caught (the negative
+      weight sent → S-42 red; the applied-only skip restored → the staged-row test red, showing the
+      duplicate `entry-slot-bench-1`; the `entryId` tie-break removed → the same-instant test red;
+      `reps < 1` weakened → S-42 red, proving the reps rule is what omits a skipped set). Green `+24`
+      in `test/watch_session_projection_test.dart`; whole suite `+3940 ~1`, 0 failures; `swift-test`
+      268 / 0; `lint` 196 / 0. Evidence: `<plan>.evidence.md`.
 
 ## Assumption Log
 
@@ -522,10 +538,50 @@ promote to a D-x — or REVERT, opening a remediation item.)*
   `test/watch_session_projection_test.dart` takes `seedExercise` from
   `helpers/watch_capture_import_harness.dart` and `hide`s the other. Test-helper only; no production
   change. Worth folding into the harness on the next touch.
+- **A-12 (Developer, Phase 4).** The residue sweep `grep -rn "entries': const <Object?>" lib/` still hit
+  `live_session_mirror_debug_main.dart:143` — the debug harness's own seeded snapshot, not the
+  projection. Options: exempt the debug file, or re-shape the literal. Chosen: re-shape it to
+  `'entries': <Object?>[],`, the exact shape `watch_sync_wiring.dart:55` already uses for the same kind
+  of seed — no behaviour change, sweep clean, no exemption needed.
+- **A-13 (Developer, Phase 4).** The manual-Sync limit bullet cited `test/watch_session_merge_test.dart`
+  with no test name, while the claim is adoption. Options: name that file's `S-17` (about importing an
+  unheld session, not adopting one) or point at the adoption bridge. Chosen:
+  `test/watch_session_adoption_bridge_test.dart`,
+  `S-1 a wrist snapshot becomes the phone's in-progress session`, which is the test that proves adoption.
+- **A-14 (Developer, fix round 1).** F1's remedy: omit a set whose weight is negative rather than send
+  `loadKg: 0` + negative `extraLoadKg`. Options: (a) omit it; (b) carry the band assist in
+  `extraLoadKg`. Chosen: omit. `extraLoadKg` is declared, so a `set` entry may carry it, but its
+  documented meaning is *a hold's* load, D-40 already says a set's added weight is not sent, and option
+  (b) needs a Swift-side assertion this round has no room to add (no Swift change). The cost is one
+  band-assisted set staying on the phone, now stated as a limit in `docs/watch_session_sync.md`.
+- **A-15 (Developer, fix round 1).** F3 widens D-34's "live": a watch-inbox row claims its group whether
+  or not it is marked applied. Options: keep the applied-only test (an interrupted import doubles the
+  wrist's own set, permanently — staged rows are never deleted) or claim a staged row too (a row
+  staged for another reason can under-project a phone set logged in the same millisecond, which the
+  plan's one-to-one claim already accepts as benign). Chosen: claim staged rows.
+- **A-16 (Developer, fix round 1).** F8: `docs/state_management/watch_surface.md` now cites D-31/D-33
+  for "a set the phone logged reaches the wrist at its Sync". D-35 is the *re-statement* decision and
+  belongs to Phase 3 (PR 3b), so the sentence named a decision PR 3a does not implement. **PR 3b must
+  revisit this sentence** and add D-35 (and D-38's edit/delete limits) once the wrist takes a
+  re-statement.
+- **A-17 (Developer, fix round 1).** S-43 is modelled in the projection harness as an answer that is
+  composed and never delivered: the request reaches the phone through the radio, the phone composes
+  its answer, and the test never hands it to the wrist engine. Transport-level delivery failure is
+  `test/watch_session_engine_test.dart` S-003's subject; S-43's own subject — nothing is queued, and a
+  later answered Sync converges — is what the test pins, before and after the later Sync.
+- **A-18 (Developer, fix round 1).** The F7 edit/delete pin asserts both halves in one test: the
+  projection half (an edited set is still named, with the corrected weight; a deleted group is named by
+  nothing) and the wrist half (after the edited answer is applied, the wrist's stored `loadKg` is still
+  the value it received, because `_storeSnapshotEntry` returns on a held id). The wrist half cites the
+  once-each rule `test/watch_reconciliation_cross_stack_test.dart`, `S-31 a snapshot's own entries are
+  absorbed by both stacks, once each`, rather than restating the store's contract.
 
 ## Feedback
 
-[empty]
+Code review 1 (PR 3a) — `2026-10-05-15d-watch-session-sync-pr3-plan.review.md`, findings F1–F8.
+Fix list for one round: F1 (a negative weight makes the whole snapshot invalid — AC-6/R7 unmet),
+F6 (`docs/watch_session_sync.md:174-179` name no test; Phase 4 criterion 1 unmet), F7 (S-43 has no
+test), plus the F2 and F3 guard tests; F4/F5 ride along in the same file. F8 is a planner note for 3b.
 
 ## Open questions
 

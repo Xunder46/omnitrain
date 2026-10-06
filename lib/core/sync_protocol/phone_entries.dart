@@ -17,7 +17,7 @@
 /// `WatchSessionAdoptionBridge.projectSession`.
 ///
 /// Verified by `test/watch_session_projection_test.dart` (S-31, S-33, S-34,
-/// S-36, S-37, S-39, S-40, S-42).
+/// S-36, S-37, S-39, S-40, S-42, S-43).
 library;
 
 import '../utils/entry_rows.dart';
@@ -110,8 +110,11 @@ abstract final class PhoneEntries {
   }
 
   /// One group as the wire spells an entry, or null when the wire cannot carry
-  /// it (D-40): a skipped set has no field to say so (`additionalProperties:
-  /// false`) and `reps` has a minimum of 1. A rejected entry rejects the
+  /// it (D-40). `reps` has a minimum of 1, and the phone writes a skipped set as
+  /// reps 0, so that rule alone omits it — there is no field to say a set was
+  /// skipped (`additionalProperties: false`). `loadKg` has a minimum of 0, and
+  /// the phone stores a negative weight for a band-assisted set, so a set with a
+  /// negative weight is omitted too (S-42). A rejected entry rejects the
   /// **whole** snapshot, so an entry that cannot be rendered is omitted, never
   /// placeheld. A set's added weight is not sent either: the wire's extra load
   /// is a hold's.
@@ -122,7 +125,10 @@ abstract final class PhoneEntries {
   }) {
     final set = group.entry;
     final reps = (set['reps'] as int?) ?? 0;
-    if (set['skipped'] == true || reps < 1) return null;
+    if (reps < 1) return null;
+
+    final weightKg = (set['weight'] as double?) ?? 0.0;
+    if (weightKg < 0) return null;
 
     final entryId = 'entry-$sessionExerciseId-${group.number}';
     return <String, Object?>{
@@ -135,7 +141,7 @@ abstract final class PhoneEntries {
       'sessionExerciseId': sessionExerciseId,
       'exerciseId': exerciseId,
       'reps': reps,
-      'loadKg': (set['weight'] as double?) ?? 0.0,
+      'loadKg': weightKg,
     };
   }
 }

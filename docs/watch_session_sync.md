@@ -157,11 +157,14 @@ remains out is listed below.
   reps are below 1, has no place in the protocol's `set` shape
   (`additionalProperties: false`, `reps` ≥ 1), so it is left out of the answer
   and stays on the phone — and a set's added weight goes with it, `extraLoadKg`
-  being a hold's load. A rejected entry would reject the whole snapshot
+  being a hold's load. A set logged with a negative weight (band assist) is not
+  carried to the watch either: `loadKg` has a minimum of 0 and a `set` has no
+  negative-load field, so a band-assisted set stays on the phone. A rejected
+  entry would reject the whole snapshot
   (`test/watch_session_projection_test.dart`,
   `S-42 a set the wire cannot carry is omitted`).
 - **Only sets are carried.** D-39 projects `set` entries only: a `timed`, `hold`
-  or `round` effort contributes nothing to `entries` yet, while the ladder still
+  or `round` effort contributes nothing to `entries`, while the ladder still
   carries its slot (`test/watch_session_projection_test.dart`,
   `S-2 a running phone session is answered with its own ladder`).
 - **An entry is asserted once, not re-asserted.** The answer's `entries` are
@@ -171,6 +174,15 @@ remains out is listed below.
   `S-39 the projection is deterministic, and an echo is not sent`;
   `test/live_mirroring_test.dart`,
   `S-32/S-39 an entry-only difference is not re-asserted`).
+- **An edit to a set already on the wrist does not update the wrist's copy.**
+  The phone states a set once, when it first reaches the wrist; editing the
+  phone's row afterwards changes nothing on the wrist, which keeps the values it
+  received (`test/watch_session_projection_test.dart`,
+  `D-38 an edit leaves the wrist's copy and a delete is not sent`).
+- **A delete does not reach the wrist.** A set deleted on the phone stays on the
+  wrist until the wrist's own session is replaced
+  (`test/watch_session_projection_test.dart`,
+  `D-38 an edit leaves the wrist's copy and a delete is not sent`).
 - **The wrist's own start, current exercise and timers are not carried.** The
   answer the phone composes carries its own current index and its own timers, not
   the wrist's (`test/watch_session_projection_test.dart`,
@@ -180,8 +192,9 @@ remains out is listed below.
   in its answer to a wrist Sync (`test/watch_session_projection_test.dart`,
   `S-2 a running phone session is answered with its own ladder`), and the phone
   adopts a wrist session from the snapshot it asks for at a Sync
-  (`test/watch_session_merge_test.dart`). What a settled set and the wrist's End
-  do without one is listed above
+  (`test/watch_session_adoption_bridge_test.dart`,
+  `S-1 a wrist snapshot becomes the phone's in-progress session`). What a
+  settled set and the wrist's End do without one is listed above
   (`WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder`).
 - **Per-effort heart-rate summaries are attached only where the import places
   an effort** (`WatchSessionImporter._attachSetBlockSummary`, reached from
@@ -200,10 +213,10 @@ remains out is listed below.
   a session it logs carries no heart-rate or step values of its own; the
   recording layer exists and is exercised only by its own suites
   (`WatchSensorRecordingTests`, `test/watch_sensor_recording_test.dart`).
-- **A Sync stops a rest countdown running on the wrist.** The phone's answer
-  projects no timers and the wrist adopts that as authoritative, so a countdown
-  under a Sync loses its remaining-time line and its milestone haptic (D-26).
-  Held by the reconciliation fixture `timer_cleared.json`, replayed by
+- **The phone's rest timer is not carried.** The answer projects no timers and
+  the wrist adopts that as authoritative, so a countdown running on the wrist at
+  a Sync loses its remaining-time line and its milestone haptic (D-26). Held by
+  the reconciliation fixture `timer_cleared.json`, replayed by
   `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`.
 - **The wrist labels load in kilograms.** The shell hands the surfaces no unit
   preferences, so the rows read kg whatever the phone's saved unit is, while the

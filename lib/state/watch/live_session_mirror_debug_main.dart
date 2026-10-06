@@ -140,7 +140,7 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
       'revision': 0,
       'currentExerciseIndex': 0,
       'exercises': _slots,
-      'entries': const <Object?>[],
+      'entries': <Object?>[],
       'timers': const <String, Object?>{},
     },
   );

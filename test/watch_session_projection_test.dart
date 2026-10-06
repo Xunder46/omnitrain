@@ -3,7 +3,7 @@
 // Plan: `docs/plans/2026-10-05-15a-watch-session-sync-pr1-plan/` (S-2, S-6, S-8,
 // D-10, D-11) and `docs/plans/2026-10-05-15d-watch-session-sync-pr3-plan/` (the
 // phone's own sets ride the answer: S-31, S-32, S-33, S-34, S-36, S-37, S-38,
-// S-39, S-40, S-42).
+// S-39, S-40, S-42, S-43, D-38).
 // Scenario mapping:
 //   S-2 a phone session surfaces at a watch-initiated sync → `S-2 ...`
 //   S-8 phone edits reach the wrist at sync               → `S-8 ...`
@@ -18,6 +18,8 @@
 //   S-39 the projection is deterministic, and does not echo → `S-39 ...`
 //   S-40 two sessions do not share entries                → `S-40 ...`
 //   S-42 an entry the wire cannot carry is omitted        → `S-42 ...`
+//   S-43 the phone is unreachable at Sync                 → `S-43 ...`
+//   D-38 an edit and a delete do not reach the wrist      → `D-38 ...`
 //
 // The phone side is the graph `createWatchSync` builds, over a fake radio: the
 // answer's shape, its revision, its entries and where it comes from are the
@@ -141,6 +143,10 @@ String _atIso(int minute) =>
 /// id, which the phone imports and must never send back (D-34).
 const String _wristEntryId = '9f2c1d2e-3b4a-4c5d-8e6f-7a8b9c0d1e2f';
 
+/// A second set the wrist logs in the same millisecond as [_wristEntryId]: two
+/// rows, two groups of imported rows, one instant (F2).
+const String _wristEntryId2 = '2b7e4f6a-1c8d-4e5f-9a0b-3c4d5e6f7a8b';
+
 /// The ids the answer's `entries` carry, in order.
 List<String> _entryIds(Map<String, Object?> payload) => [
   for (final entry in _objects(payload['entries']))
@@ -232,8 +238,13 @@ abstract final class _SessionFixture {
     return slotId;
   }
 
-  /// Stages the watch-inbox row of a set the wrist logged in [slotId] and marks
-  /// it applied — a live row, which is what the provenance claim (D-34) reads.
+  /// Stages the watch-inbox row of a set the wrist logged in [slotId] and — when
+  /// [applied] — marks it applied: a live row, which is what the provenance
+  /// claim (D-34) reads.
+  ///
+  /// A fixture passes `applied: false` for the half-applied state the importer
+  /// can leave behind, where an entry's rows are already written but the row
+  /// they came from is still staged (F3).
   ///
   /// The row's `loggedAt` is the identity the importer stamps on every row it
   /// writes for that entry, so a fixture passes the stamp its imported rows
@@ -244,6 +255,7 @@ abstract final class _SessionFixture {
     String slotId, {
     required String entryId,
     required int loggedAtMs,
+    bool applied = true,
   }) async {
     await repository.stageWatchInboxEntry(
       WatchInboxEntry(
@@ -266,7 +278,9 @@ abstract final class _SessionFixture {
         receivedAtMs: loggedAtMs,
       ),
     );
-    await repository.markWatchInboxEntriesApplied([entryId], loggedAtMs);
+    if (applied) {
+      await repository.markWatchInboxEntriesApplied([entryId], loggedAtMs);
+    }
   }
 }
 
@@ -784,7 +798,7 @@ void main() {
     });
   });
 
-  group('S-31…S-42 the sets the phone logged ride the answer', () {
+  group('S-31…S-43 the sets the phone logged ride the answer', () {
     /// A phone session of one `set` slot with three groups: the phone's own at
     /// the first and third instants, and — when [wristAlsoLogged] — a second
     /// group carrying the rows the importer wrote for a set the wrist logged,
@@ -1176,6 +1190,9 @@ void main() {
       await seed('sess-1', [
         (reps: 0, loadKg: 0.0, skipped: true, atMs: _at(1)),
         (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(2)),
+        // The crown clamps weight to −200..999, and a band-assisted set is
+        // stored negative (F1).
+        (reps: 8, loadKg: -20.0, skipped: false, atMs: _at(3)),
       ]);
 
       await radio.fromWrist(WatchTransportRequest.snapshotFrame());
@@ -1187,8 +1204,9 @@ void main() {
         ['entry-slot-bench-1'],
         reason:
             'S-42 a skipped set has no wire shape — the schema has no field to '
-            'say so and `reps` has a minimum of 1 — so it is left out, never '
-            'placeheld (D-40)',
+            'say so and `reps` has a minimum of 1 — and a band-assisted set has '
+            'none either, `loadKg` having a minimum of 0, so both are left out, '
+            'never placeheld (D-40)',
       );
       final sent = _objects(payload['entries']).single;
       expect(sent['reps'], 8);
@@ -1198,9 +1216,16 @@ void main() {
         loadProtocolValidator().validateEnvelope(answer),
         isEmpty,
         reason:
-            'S-42 a `reps: 0` entry would be a rejection, and a rejected entry '
-            'costs the whole snapshot: omitting it is what keeps the answer '
-            'conformant',
+            'S-42 a `reps: 0` or a negative-`loadKg` entry would be a '
+            'rejection, and a rejected entry costs the whole snapshot: omitting '
+            'it is what keeps the answer conformant',
+      );
+      expect(
+        jsonEncode(payload['entries']),
+        isNot(contains('-20')),
+        reason:
+            'F1 the negative weight is nowhere in the answer, under any field: '
+            '`extraLoadKg` is a hold\'s load, not a set\'s',
       );
 
       expect(await engine.applyMessage(answer), isTrue);
@@ -1209,6 +1234,286 @@ void main() {
         ['entry-slot-bench-1'],
         reason: 'the wrist holds the set that could be carried, and no other',
       );
+    });
+
+    test('S-34 a staged row claims its group before it is marked applied',
+        () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 5, loadKg: 55.0, skipped: false, atMs: _at(2)),
+      ]);
+      // The half-applied state an interrupted import leaves: the entry's rows
+      // are written (the group stamped `_at(2)`), and the inbox row they came
+      // from is still staged — the importer marks it applied only once every
+      // row has landed.
+      await _SessionFixture.stageImportedSet(
+        repository,
+        'sess-1',
+        'slot-bench',
+        entryId: _wristEntryId,
+        loggedAtMs: _at(2),
+        applied: false,
+      );
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final answer = radio.lastOfType('session_snapshot');
+      expect(
+        _entryIds(_payload(answer)),
+        ['entry-slot-bench-0'],
+        reason:
+            'S-34 F3 the staged row still claims the group its rows were '
+            'written for, so the wrist\'s own set is not sent back to it under '
+            'a phone id — reading only applied rows would double it, and staged '
+            'rows are never deleted, so the duplicate would never go away',
+      );
+    });
+
+    test('S-34 a second watch row at one stamp claims the second group',
+        () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 5, loadKg: 55.0, skipped: false, atMs: _at(2)),
+        (reps: 6, loadKg: 50.0, skipped: false, atMs: _at(2)),
+        (reps: 10, loadKg: 70.0, skipped: false, atMs: _at(2)),
+      ]);
+      // Two sets the wrist logged in the same millisecond: two live inbox rows
+      // and two groups of imported rows at one stamp.
+      for (final entryId in [_wristEntryId, _wristEntryId2]) {
+        await _SessionFixture.stageImportedSet(
+          repository,
+          'sess-1',
+          'slot-bench',
+          entryId: entryId,
+          loggedAtMs: _at(2),
+        );
+      }
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final answer = radio.lastOfType('session_snapshot');
+      expect(
+        _entryIds(_payload(answer)),
+        ['entry-slot-bench-0', 'entry-slot-bench-3'],
+        reason:
+            'S-34 F2 the claim is one group per row: the first row takes the '
+            'first group stamped like it (number 1) and the second row the next '
+            'one (number 2), so the group left over — number 3, a set the phone '
+            'logged in the same millisecond — is still sent. The ladder the '
+            'wrist ends up with is neither doubled nor short',
+      );
+      expect(loadProtocolValidator().validateEnvelope(answer), isEmpty);
+
+      expect(await engine.applyMessage(answer), isTrue);
+      for (final entryId in [_wristEntryId, _wristEntryId2]) {
+        await engine.appendObservation(<String, Object?>{
+          'entryId': entryId,
+          'eventId': entryId,
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': 'slot-bench',
+          'exerciseId': 'ex-bench',
+          'reps': 5,
+          'loadKg': 55.0,
+        });
+      }
+
+      final held = [for (final entry in engine.entries) entry.entryId];
+      expect(held.toSet(), {
+        'entry-slot-bench-0',
+        'entry-slot-bench-3',
+        _wristEntryId,
+        _wristEntryId2,
+      });
+      expect(
+        held,
+        hasLength(4),
+        reason: 'S-34 F2 four sets, and not one of them twice',
+      );
+    });
+
+    test('S-31 two phone sets at one instant answer in `entryId` order',
+        () async {
+      await seed('sess-1', const []);
+      // Two sets logged in the same millisecond whose entry numbers sort the
+      // other way round byte-wise ("…-10" is below "…-9"), so the order the
+      // answer carries them in can only come from the tie-break.
+      for (final number in [9, 10]) {
+        for (final row in LoggedEntryRows.setObservations(
+          effortId: 'slot-bench',
+          entryIndex: number,
+          reps: 8,
+          weightKg: 60.0,
+          exerciseHasLoad: true,
+          atMs: _at(2),
+        )) {
+          await repository.createObservation(row);
+        }
+      }
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        _entryIds(_payload(radio.lastOfType('session_snapshot'))),
+        ['entry-slot-bench-10', 'entry-slot-bench-9'],
+        reason:
+            'S-31 F5 the protocol orders by `loggedAt`, then by `entryId` — the '
+            'wrist\'s own order (AC-6) — so two sets logged in one millisecond '
+            'do not depend on the order the store handed their rows back',
+      );
+    });
+
+    test('D-38 an edit leaves the wrist\'s copy and a delete is not sent',
+        () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        await engine.applyMessage(radio.lastOfType('session_snapshot')),
+        isTrue,
+      );
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+      );
+
+      // An edit: the phone's first set is corrected from 60.0 to 65.0.
+      final weightId = LoggedEntryRows.observationId('slot-bench', 0, 'weight');
+      final storedWeight = (await repository.getEffortObservations(
+        'slot-bench',
+      )).firstWhere((row) => row.id == weightId);
+      await repository.updateObservation(
+        EffortObservation(
+          id: storedWeight.id,
+          effortId: storedWeight.effortId,
+          metricId: storedWeight.metricId,
+          unitId: storedWeight.unitId,
+          valueReal: 65.0,
+          createdAtMs: storedWeight.createdAtMs,
+          updatedAtMs: _at(3),
+        ),
+      );
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final edited = radio.lastOfType('session_snapshot');
+      expect(
+        [
+          for (final entry in _objects(_payload(edited)['entries']))
+            entry['loadKg'],
+        ],
+        [65.0, 62.5],
+        reason:
+            'D-38 the edit is the phone\'s state: the projection still names '
+            'both sets, the edited one with the corrected weight — it omits '
+            'nothing it should carry',
+      );
+      expect(
+        await engine.applyMessage(edited),
+        isTrue,
+      );
+      expect(
+        [
+          for (final entry in engine.entries) entry.payload['loadKg'],
+        ],
+        [60.0, 62.5],
+        reason:
+            'D-38 the wrist keeps the weight it received: `_storeSnapshotEntry` '
+            'returns on an `entryId` it already holds, so a re-statement is '
+            'absorbed, never applied (the same once-each rule '
+            '`test/watch_reconciliation_cross_stack_test.dart`, "S-31 a '
+            'snapshot\'s own entries are absorbed by both stacks, once each", '
+            'pins on the wrist\'s own store)',
+      );
+
+      // A delete: the phone drops the set it logged second.
+      for (final metricKey in ['reps', 'weight']) {
+        await repository.deleteObservation(
+          LoggedEntryRows.observationId('slot-bench', 1, metricKey),
+        );
+      }
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final deleted = radio.lastOfType('session_snapshot');
+      expect(
+        _entryIds(_payload(deleted)),
+        ['entry-slot-bench-0'],
+        reason:
+            'D-38 a delete is not carried: the projection carries nothing for a '
+            'group the phone no longer holds',
+      );
+      expect(await engine.applyMessage(deleted), isTrue);
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+        reason:
+            'D-38 the wrist holds a row the phone no longer names until its own '
+            'session is replaced: nothing in the answer takes it away',
+      );
+    });
+
+    test('S-43 the phone is unreachable at Sync', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+
+      // The wrist is running sess-1 with the phone's sets and has logged one of
+      // its own, which it still owes the phone.
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      await engine.applyMessage(radio.lastOfType('session_snapshot'));
+      await wristLogsItsOwnSet();
+      final held = [for (final entry in engine.entries) entry.entryId];
+      final owed = engine.pendingObservations().length;
+      expect(held, ['entry-slot-bench-0', _wristEntryId, 'entry-slot-bench-1']);
+      expect(owed, 1);
+
+      // The Sync runs and the phone does not answer: the radio carries the
+      // request in, the answer is composed per request — and never delivered.
+      radio.sent.clear();
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        radio.ofType('session_snapshot'),
+        hasLength(1),
+        reason: 'S-43 the phone composed exactly one answer to the request',
+      );
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        held,
+        reason:
+            'S-43 nothing reached the wrist, so nothing changed on it: it keeps '
+            'its own row and the two the phone sent, each once',
+      );
+      expect(
+        engine.pendingObservations().length,
+        owed,
+        reason: 'S-43 the wrist still owes the phone its own set',
+      );
+
+      // The same Sync, answered: the phone's sets arrive — and neither side
+      // doubled or lost anything.
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        await engine.applyMessage(radio.lastOfType('session_snapshot')),
+        isTrue,
+      );
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', _wristEntryId, 'entry-slot-bench-1'],
+        reason:
+            'S-43 a later answered Sync converges exactly: the two sets the '
+            'phone logged and the one the wrist logged, each once — an '
+            'unreachable Sync queues nothing, so nothing is lost or doubled',
+      );
+      expect(reportedFailure, isNull);
     });
   });
 

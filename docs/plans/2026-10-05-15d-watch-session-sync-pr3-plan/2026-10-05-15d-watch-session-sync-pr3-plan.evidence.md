@@ -202,3 +202,129 @@ Phase 2 item 6's regressions ran inside the whole suite: `test/watch_session_mer
 - No Swift file: the wrist's treatment of a re-statement is Phase 3 (PR 3b). `swift-test` staying at
   268 / 0 is the observed proof that nothing on the watch side moved.
 - No write on the projection path (D-41): `projectSession` only reads observations and inbox rows.
+
+---
+
+# Evidence — watch-session-sync PR 3a, Phase 4 (docs, walkthrough, residue sweep)
+
+Executor: @developer (Copilot CLI edition), 2026-10-06. Scope: the plan's Phase 4, items 1–6, per
+`.work/watch-pr3/brief-dev-4.md` (governor's split: PR 3a = Phases 1, 2, 4; PR 3b = Phase 3 —
+**not shipped**). Phase 3 is untouched; no sentence in the docs claims a re-statement.
+
+Baselines inherited from Phase 2's final tree: `test` `+3935 ~1`, `swift-test` 268 / 0, `lint` 196 / 0.
+
+## Docs written
+
+| File | What changed |
+|---|---|
+| `docs/watch_session_sync.md` | Finished the "What does not sync" limits: added the two new limits (an edit to a set already on the wrist does not update the wrist's copy; a delete does not reach the wrist), named the phone's rest timer plainly, dropped the "yet" from the sets-only bullet, and repointed the manual-Sync bullet at `S-1 a wrist snapshot becomes the phone's in-progress session` instead of a bare file. The "what now syncs" half (the sets the phone logs ride its answer as `entries`) and the discarded-session limit were already in place from Phase 2. |
+| `docs/state_management/watch_surface.md` | One statement added to the existing "What this phone asserts is its own session" paragraph: the projection carries the ladder and the `set` entries the phone logged, and the wrist's snapshot merge stores the ones it does not already hold (D-31, D-33, D-35). An edit inside the paragraph, not a new section; the file stays inside the 52 KB band. |
+| `docs/watch-app-setup-and-qa.md` | One phone→wrist step added to the one-session walkthrough as step **(g)**, marked (owner), not yet run: two sets logged on the phone appear on the watch's logging screen in the phone's order at that Sync, and a set logged on the watch earlier is not doubled. No "edit one and Sync again" step is present. |
+
+## Residue sweeps
+
+| Sweep | Result |
+|---|---|
+| `grep -rn "entries': const <Object?>" lib/` | One hit initially — `lib/state/watch/live_session_mirror_debug_main.dart:143`, the debug harness's own seeded snapshot (not the projection). Changed to `'entries': <Object?>[],`, the shape `watch_sync_wiring.dart:55` already uses for the same kind of seed. Re-run: no matches. |
+| `grep -rn "not carried to the wrist" docs/*.md docs/state_management` | No matches in any top-level `docs/*.md` file or under `docs/state_management/`; the phrase survives only inside `docs/plans/…`, which the sweep scope excludes. |
+| `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | No matches. |
+
+## Phase Done Criteria — observed output
+
+| Check | Command | Result |
+|---|---|---|
+| Flutter, whole suite | `gateway.sh test` | `01:33 +3935 ~1: All tests passed!` — 3935 passing, 1 skipped, **0 failures** (log `.work/gateway/test-20261006-013446-272.log`), the final-tree run after the plan and evidence edits; unchanged from the Phase 2 baseline. The earlier run on the same tree before those edits was `01:35 +3935 ~1` (log `.work/gateway/test-20261006-013154-95135.log`). |
+| Swift package | `gateway.sh swift-test` | `Executed 268 tests, with 0 failures (0 unexpected) in 1.024 (1.042) seconds`, exit 0 (log `.work/gateway/swift-test-20261006-013337-99776.log`) — no Swift file touched. |
+| Lint | `gateway.sh lint` | `196 issues found. (ran in 2.6s)`, 0 errors; exit 1 on the pre-existing info notices, unchanged from the baseline. No issue names a file this phase touched (log `.work/gateway/lint-20261006-013414-99948.log`). |
+| Docs guard | `gateway.sh test test/docs_indexing_contract_test.dart` | `+9: All tests passed!` — no file over the 64 KiB ceiling, none in the warning band, every relative link resolves, every page reachable. Also included in the final-tree full-suite run above. |
+
+## Not claimed
+
+- The owner walkthrough (step **(g)**) has **not** been run: the governor could not tap through the
+  simulator (no Screen Recording permission). It is documented for the owner; nothing here says it
+  passed.
+- The governor's watch-app build (`xcodebuild … "OmniTrain Watch App"`) is the governor's, not an
+  agent's; this phase runs no `xcodebuild`.
+
+---
+
+# Evidence — watch-session-sync PR 3a, fix round 1 (the review's F1–F8)
+
+Executor: @developer (Copilot CLI edition), 2026-10-06. One bounded pass per `.work/watch-pr3/brief-fix-1.md`.
+Findings: `...pr3-plan.review.md`. Baselines inherited from the Phase 4 tree: `test` `+3935 ~1`,
+`swift-test` 268 / 0, `lint` 196 / 0. **No Swift file was touched**, so `swift-test` staying at 268 / 0
+is the observed proof that nothing on the watch side moved.
+
+## What each finding became
+
+| Finding | Change | Test that now pins it |
+|---|---|---|
+| **F1** (critical) — a set logged with a negative weight (band assist, the crown clamps to −200) projected `loadKg < 0`; `$defs.entry.loadKg` has `minimum: 0`, and a rejected entry rejects the **whole** snapshot | `PhoneEntries._entry` returns null when `weightKg < 0`, beside the existing `reps < 1`; the doc comment now states both omissions in the schema's own terms. `extraLoadKg` *is* declared on a `set` entry and would take −20, but its documented meaning is *a hold's* load, D-40 already says a set's added weight is not sent, and carrying it needs a Swift-side assertion this round cannot add. **Omitted** (plan A-14) | `S-42 a set the wire cannot carry is omitted` — extended with a `loadKg: -20.0` group beside the sendable one: exactly one entry, `loadKg` 60.0, the validator clean, `'-20'` absent from the encoded array, and the wrist holding that one set after the answer is applied |
+| **F3** — `_wristRowStamps` skipped rows with `appliedAtMs == null`, but the importer writes a group's rows *before* it marks the inbox row applied, so a failure between the two left the group unclaimed and echoed the wrist's own set back to it under a phone id — a permanent duplicate, since staged rows are never deleted | The skip is dropped: a row claims on `originWatch` + `kindSet` + slot + `loggedAtMs`, staged or applied. The doc comment that justified the old rule was rewritten to say why a staged row must claim (plan A-15) | `S-34 a staged row claims its group before it is marked applied` — the fixture *is* the half-applied state, and the answer carries only the phone's own set |
+| **F2** (guard test) | Added, with the invariant written down below | `S-34 a second watch row at one stamp claims the second group` |
+| **F4** — the `set['skipped'] == true` clause is unreachable (a skipped set is written with `reps` 0) | Removed; `reps < 1` kept, with a comment saying so | the pre-existing skipped-set half of `S-42` — proven to still be doing the work, see MUTATION-F4 |
+| **F5** — no test covered the `entryId` tie-break | Added | `S-31 two phone sets at one instant answer in 'entryId' order` |
+| **F6** — S-43 was in the register and unanswered | Added | `S-43 the phone is unreachable at Sync` |
+| **F7** — an edit that does **not** reach the wrist and a delete that is not sent had no test | Added, citing the wrist-side once-each rule rather than restating it | `D-38 an edit leaves the wrist's copy and a delete is not sent` |
+| **F8** — `watch_surface.md` cited D-35 for a sentence PR 3a implements as D-31/D-33 | `(D-31, D-33, D-35)` → `(D-31, D-33)` | none — a decision citation; PR 3b must revisit the sentence (plan A-16) |
+
+Docs: `docs/watch_session_sync.md` gained the band-assist limit (F1) and a test pointer on each of the
+edit and delete bullets (F6/F7). `docs/documentation_standard.md` §4.2 asks for a test plus a pointer,
+so no prose was rewritten and no duplicate explanation was added.
+
+## F2 — the invariant, stated
+
+`claimedBy` walks the watch-inbox stamps in order and, for each, takes the **first unclaimed** group
+whose stamp equals it, scanning groups in ascending entry number: **one row claims exactly one group**,
+and the lowest-numbered match wins. In the F2 fixture four sets sit in one slot — the phone's own at T1,
+then three at T2: the two groups the staged watch rows wrote (numbers 1 and 2) and a third set the
+*phone* logged in that same millisecond (number 3). The first row claims group 1, the second row claims
+group 2 (it cannot take 1 again — claimed numbers are skipped), and group 3 is left unclaimed and so is
+projected. What the wrist ends up holding, after it applies the answer and re-adds its own two rows, is
+**four** rows — `entry-slot-bench-0`, `entry-slot-bench-3` and the two wrist ids — i.e. neither doubled
+nor short, which is the whole point of the one-to-one claim. A second watch row at one stamp therefore
+claims the second group *by construction*, and a row per group is what keeps a same-millisecond
+coincidence a benign under-projection instead of a loss (D-34).
+
+## RED by mutation — observed output
+
+Each mutation was applied to `lib/`, the named test run alone, the output recorded, and the exact
+original line restored immediately; the file went green again after each restore (final targeted run
+`+24`, log `test-20261006-020532-23568.log`). No step ended with a mutation in place.
+
+| Mutation | Test run | Observed |
+|---|---|---|
+| F1: the `if (weightKg < 0) return null;` guard commented out (the negative weight is sent as `loadKg: -20.0`) | `S-42 a set the wire cannot carry is omitted` | `Expected: ['entry-slot-bench-1']` / `Actual: ['entry-slot-bench-1', 'entry-slot-bench-2']` — `00:00 +0 -1 … Some tests failed.` (log `test-20261006-020447-23102.log`) |
+| F3: the `if (row.appliedAtMs == null) continue;` skip restored in `_wristRowStamps` | `S-34 a staged row claims its group before it is marked applied` | `Expected: ['entry-slot-bench-0']` / `Actual: ['entry-slot-bench-0', 'entry-slot-bench-1']` — the wrist's own set sent back under a phone id, i.e. the doubling (`test-20261006-020458-23229.log`) |
+| F5: the tie-break in `ordered()` replaced by `return 0;` | `S-31 two phone sets at one instant answer in 'entryId' order` | `Expected: ['entry-slot-bench-10', 'entry-slot-bench-9']` / `Actual: ['entry-slot-bench-9', 'entry-slot-bench-10']` — the store's own order, which is what the tie-break exists to override (`test-20261006-020507-23310.log`) |
+| F4: the `reps < 1` guard weakened to `reps < 0` (with the `skipped` clause already deleted) | `S-42 a set the wire cannot carry is omitted` | `Expected: ['entry-slot-bench-1']` / `Actual: ['entry-slot-bench-0', 'entry-slot-bench-1']` — the skipped set reappears, so it is the **reps** rule, not the deleted `skipped` clause, that omits it (`test-20261006-020518-23432.log`) |
+
+One earlier red is worth recording as self-inflicted and fixed in the test, not in the product: the
+first run of the new `S-43` test asserted the wrist's held order as `['entry-slot-bench-0',
+'entry-slot-bench-1', <wrist id>]`, but `'9f2c1d2e…'` sorts *before* `'entry-slot-bench-1'` byte-wise,
+so the real order is `['entry-slot-bench-0', <wrist id>, 'entry-slot-bench-1']`. Corrected in the test
+(exactly the protocol order F5 pins); no source line was changed for it (log
+`test-20261006-020422-22848.log`, `+23 -1`).
+
+## Final runs on the fix round's tree
+
+| Check | Command | Result |
+|---|---|---|
+| The touched test file | `gateway.sh test test/watch_session_projection_test.dart` | `00:00 +24: All tests passed!` — 24 tests, 0 failures; 19 before this round (log `.work/gateway/test-20261006-020532-23568.log`) |
+| Flutter, whole suite | `gateway.sh test` | `01:34 +3940 ~1: All tests passed!` — 3940 passing, 1 skipped, **0 failures**, against the Phase 4 baseline of `+3935 ~1`: the five net-new tests, and nothing regressed (log `test-20261006-020537-23643.log`) |
+| Swift package | `gateway.sh swift-test` | `Executed 268 tests, with 0 failures (0 unexpected)`, exit 0 — unchanged from the baseline, no Swift file touched (log `swift-test-20261006-020726-28330.log`) |
+| Lint | `gateway.sh lint` | `196 issues found. (ran in 2.9s)`, 0 errors, exit 1 on the pre-existing info notices — unchanged from the baseline, and no issue names a file this round touched (`phone_entries`, `watch_session_adoption_bridge`, `watch_session_projection_test` all absent from the log; log `lint-20261006-020731-28429.log`) |
+
+## Files, and one that is not mine
+
+The round touched `lib/core/sync_protocol/phone_entries.dart`,
+`lib/state/watch/watch_session_adoption_bridge.dart`, `test/watch_session_projection_test.dart`,
+`docs/watch_session_sync.md`, `docs/state_management/watch_surface.md`, the plan and this file — nothing
+else.
+
+`lib/state/watch/live_session_mirror_debug_main.dart` appears in the working tree diff with **exactly
+one line** changed: `'entries': const <Object?>[],` → `'entries': <Object?>[],`, the `const` dropped so
+the debug harness's seeded snapshot carries the shape `watch_sync_wiring.dart` uses. That is Phase 4's
+residue-grep fix, already recorded above; **this fix round did not touch the file**, and no line of it
+affects the projection.
+

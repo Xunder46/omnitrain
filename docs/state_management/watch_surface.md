@@ -68,15 +68,19 @@ which pins the entries the mirror holds when a snapshot names another session.
 **What this phone asserts is its own session, not this copy.** The ladder a wrist
 snapshot is answered with is composed on demand from the session the regular
 screen is running — the session-adoption bridge projects `WorkoutState` into
-protocol shape. Its slots are that session's efforts, a slot id is the effort's
+protocol shape, the ladder and the `set` entries the phone logged together. The
+wrist's snapshot merge stores the entries it does not already hold beside its
+own, so a set the phone logged reaches the wrist at its Sync (D-31, D-33).
+Its slots are that session's efforts, a slot id is the effort's
 own row id, and its revision rises only when the ladder changes, so the wrist's
 replace-structure rule accepts a real edit and stays silent on a replay of a
 snapshot it already holds. This mirror's own copy answers only when the phone has
 no session of its own to speak from: nothing bound, no session running, or a
 snapshot naming a session this phone is not in. `projectedSession` is what a
 snapshot request is answered with, and `sendState` sends a composed answer.
-Verified by `test/watch_session_projection_test.dart` (`S-2`, `S-8`, `S-6`, and
-the revision-rises-only-with-the-ladder case);
+Verified by `test/watch_session_projection_test.dart` (`S-2`, `S-8`, `S-6`,
+`S-31 the phone's own sets arrive as entries`, and the
+revision-rises-only-with-the-ladder case);
 `test/watch_transport_test.dart`'s `S-003` group covers the copy's fallback.
 
 `WatchMirrorTransport` is the phone's half of the transport contract: `send`

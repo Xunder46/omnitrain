@@ -248,20 +248,23 @@ class WatchSessionAdoptionBridge {
     );
   }
 
-  /// The `loggedAt` of every live watch-inbox row that carries a set the wrist
+  /// The `loggedAt` of every watch-inbox row that carries a set the wrist
   /// logged in [sessionId], by slot (D-34).
   ///
-  /// Live means the phone has imported the row (`appliedAtMs != null`), and
-  /// `originWatch` means the wrist wrote it rather than this phone annotating
-  /// one. Staged rows are never deleted (the repository's contract), so what a
-  /// claim reads stays put.
+  /// A row claims its group whether or not the phone has marked it applied:
+  /// the importer writes an entry's rows *before* it marks the inbox row
+  /// applied, so an interrupted import leaves the session's groups on a staged
+  /// row. Reading only applied rows would leave those groups unclaimed and send
+  /// the wrist its own set back under a phone id — a duplicate that never goes
+  /// away, since staged rows are never deleted (the repository's contract).
+  /// `originWatch` means the wrist wrote the row rather than this phone
+  /// annotating one, so a phone-annotated row never claims its own group.
   Future<Map<String, List<int>>> _wristRowStamps(String sessionId) async {
     final stamps = <String, List<int>>{};
     final rows = await _repository.getWatchInboxEntriesForSession(sessionId);
     for (final row in rows) {
       if (row.origin != WatchInboxEntry.originWatch) continue;
       if (row.kind != WatchInboxEntry.kindSet) continue;
-      if (row.appliedAtMs == null) continue;
 
       final payload = row.payload;
       final slot = payload['sessionExerciseId'];
