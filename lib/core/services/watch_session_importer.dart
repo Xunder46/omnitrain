@@ -32,12 +32,19 @@ import '../../data/repositories/workout_repository.dart';
 class WatchSessionImport {
   const WatchSessionImport({
     this.appliedEntryIds = const [],
+    this.changedEffortIds = const [],
     this.historyChanged = false,
   });
 
   /// The wrist entries this pass applied — materialised or discarded. What the
   /// phone's receipt names.
   final List<String> appliedEntryIds;
+
+  /// The efforts a merge wrote rows into, so the phone's live session state can
+  /// refresh exactly those and leave the rest of the session — its running
+  /// timers included — alone (D-17). Empty for an import, which writes history
+  /// rather than the session the phone is running.
+  final List<String> changedEffortIds;
 
   /// Whether any history row was created, changed or removed.
   final bool historyChanged;
@@ -103,22 +110,6 @@ class WatchSessionImporter {
   // The pass
   // ---------------------------------------------------------------------------
 
-  /// The kinds a pass applies to a session the phone owns (G3).
-  ///
-  /// A wrist session the phone adopted is *the phone's own* session: its
-  /// effort rows already exist, under the protocol's ids (D-3), and the
-  /// wrist's copies of them are the merge PR 3 owns. What the wrist alone
-  /// knows about such a session is when it ended and how it felt — so that is
-  /// all a pass over it applies. Every effort row stays staged and unapplied,
-  /// which is also what keeps it unreceipted: the protocol only lets a wrist
-  /// drop what the phone has acknowledged, so the entries survive until the
-  /// merge can use them.
-  static const Set<String> _sessionScopedKinds = {
-    WatchInboxEntry.kindSessionEnd,
-    WatchInboxEntry.kindEffortRating,
-    WatchInboxEntry.kindPhoneRating,
-  };
-
   /// Applies every staged, unapplied row of [watchSessionId].
   ///
   /// Nothing happens before the session's `session_end` is staged: until then
@@ -127,11 +118,11 @@ class WatchSessionImporter {
   /// consumed without history (abandoned, empty, or deleted by the user), or
   /// an imported session is topped up with what arrived since.
   ///
-  /// [phoneOwnsSession] narrows the pass to a session the phone already holds
-  /// as its own — one the mirror adopted off the wrist (D-2). Then only
-  /// [sessionScopedKinds] are applied, and the effort rows a wrist session
-  /// sends are left staged for PR 3 (G3) instead of being materialised onto
-  /// rows the phone already has, where they would duplicate every set.
+  /// [phoneOwnsSession] merges into a session the phone already holds as its
+  /// own — one the mirror adopted off the wrist (D-2), whether that session is
+  /// running or already ended (D-13). [_mergeHeld] turns the wrist's effort
+  /// rows into rows of the efforts that session already has, and needs no end
+  /// to do it: a wrist set arrives before its end, and must not wait for one.
   Future<WatchSessionImport> apply(
     String watchSessionId, {
     bool phoneOwnsSession = false,
@@ -139,6 +130,8 @@ class WatchSessionImporter {
     final rows = await _repository.getWatchInboxEntriesForSession(
       watchSessionId,
     );
+    if (phoneOwnsSession) return _mergeHeld(watchSessionId, rows);
+
     final endRow = _first(
       rows,
       (row) =>
@@ -149,9 +142,7 @@ class WatchSessionImporter {
 
     final unapplied = [
       for (final row in rows)
-        if (row.appliedAtMs == null &&
-            (!phoneOwnsSession || _sessionScopedKinds.contains(row.kind)))
-          row,
+        if (row.appliedAtMs == null) row,
     ];
     if (unapplied.isEmpty) return const WatchSessionImport();
 
@@ -178,14 +169,8 @@ class WatchSessionImporter {
     };
 
     final entries = [
-      // Effort rows are the one thing a pass over the phone's own session
-      // never materialises (G3): they are not news, and the ids they would be
-      // written under are derived, not the slot ids the phone's rows carry
-      // (D-3) — so reading them as entries here would create a second set of
-      // everything the wrist reports.
       for (final row in rows)
-        if (!phoneOwnsSession &&
-            row.origin == WatchInboxEntry.originWatch &&
+        if (row.origin == WatchInboxEntry.originWatch &&
             _effortKinds.contains(row.kind))
           ?_Entry.parse(row, corrections),
     ];
@@ -233,6 +218,152 @@ class WatchSessionImporter {
     );
   }
 
+  /// One pass over a session the phone already holds as its own (D-13).
+  ///
+  /// The wrist's effort rows are not news: the session's efforts already exist,
+  /// under the protocol's ids (D-3), so each row becomes a row of the effort
+  /// whose own id is the row's slot (D-14) — placed after what that effort
+  /// already holds, in logged order, once (D-15), through the primitives an
+  /// import places with. A merge never invents structure: a row for a slot the
+  /// session does not have, and a row the phone deleted, are dropped and
+  /// acknowledged (D-14, D-136); no session, segment or effort is created, and
+  /// the phone's own rows are the user's — nothing already in an effort moves
+  /// (D-15). Every row the pass looks at is marked applied and named in the
+  /// receipt, so the wrist may forget it (D-18).
+  Future<WatchSessionImport> _mergeHeld(
+    String sessionId,
+    List<WatchInboxEntry> rows,
+  ) async {
+    final unapplied = [
+      for (final row in rows)
+        if (row.appliedAtMs == null) row,
+    ];
+    if (unapplied.isEmpty) return const WatchSessionImport();
+
+    final existing = await _repository.getSession(sessionId);
+    // A session whose row is gone was deleted by the user: it stays deleted
+    // (D-136), and the rows that name it are consumed, not re-created (D-14).
+    if (existing == null) return _consume(unapplied);
+
+    final corrections = [
+      for (final row in rows)
+        if (row.kind == WatchInboxEntry.kindPhoneCorrection) row,
+    ];
+    final deletions = [
+      for (final row in rows)
+        if (row.kind == WatchInboxEntry.kindPhoneDeletion) row,
+    ];
+    final deleted = {for (final row in deletions) ?_entryIdOf(row)};
+    final deletedEarlier = {
+      for (final row in deletions)
+        if (row.appliedAtMs != null) ?_entryIdOf(row),
+    };
+
+    final endRow = _first(
+      rows,
+      (row) =>
+          row.origin == WatchInboxEntry.originWatch &&
+          row.kind == WatchInboxEntry.kindSessionEnd,
+    );
+    final end = endRow == null ? null : _End.parse(endRow);
+
+    final pass = _Pass(
+      repository: _repository,
+      sessionId: sessionId,
+      end: end,
+    );
+    // What only the wrist knows about this session is applied exactly as an
+    // import applies it (D-19): the phone's own rating wins and the wrist's
+    // applies only while the session has none (D-138), and the wrist's summary
+    // attaches when its end is news — whichever way that end reads, an
+    // abandoned one included. An end the phone cannot read names no window and
+    // no average, so it attaches nothing. The session's own end is never
+    // touched (G2/D-5): the phone's end stands, the wrist's is the wrist's own
+    // truth.
+    await pass._topUpRating(existing, unapplied);
+    if (end != null && end.row.appliedAtMs == null) {
+      await pass._attachSessionSummary();
+    }
+
+    // The efforts the session already has, by their own ids (D-14).
+    final efforts = <String, SegmentEffort>{};
+    for (final segment in await _repository.getSessionSegments(sessionId)) {
+      for (final effort in await _repository.getSegmentEfforts(segment.id)) {
+        efforts[effort.id] = effort;
+      }
+    }
+
+    final entries = [
+      for (final row in rows)
+        if (row.origin == WatchInboxEntry.originWatch &&
+            _effortKinds.contains(row.kind))
+          ?_Entry.parse(row, corrections),
+    ];
+    // What earlier passes merged, and what the effort should hold now.
+    final before = [
+      for (final entry in entries)
+        if (entry.row.appliedAtMs != null &&
+            !deletedEarlier.contains(entry.entryId))
+          entry,
+    ];
+    final live = [
+      for (final entry in entries)
+        if (!deleted.contains(entry.entryId)) entry,
+    ];
+
+    final freshCorrections = <String, Set<String>>{};
+    for (final row in unapplied) {
+      if (row.kind != WatchInboxEntry.kindPhoneCorrection) continue;
+      final entryId = _entryIdOf(row);
+      final values = row.payload['correction'];
+      if (entryId == null || values is! Map) continue;
+      (freshCorrections[entryId] ??= {}).addAll(values.keys.cast<String>());
+    }
+
+    List<_Entry> ofSlot(List<_Entry> list, String slot) => [
+      for (final entry in list)
+        if (entry.key.sessionExerciseId == slot) entry,
+    ]..sort(_Entry.compare);
+
+    final changedEffortIds = <String>[];
+    final slots = {
+      for (final entry in before) entry.key.sessionExerciseId,
+      for (final entry in live) entry.key.sessionExerciseId,
+    };
+    for (final slot in slots) {
+      final effort = efforts[slot];
+      // The session does not have this effort: the rows are acknowledged and
+      // dropped — a merge never creates an effort (D-14).
+      if (effort == null) continue;
+      final key = _Key(slot, effort.exerciseId ?? '', effort.effortKind);
+      final rows = ofSlot(live, slot);
+      final effortRows = await _EffortRows.read(
+        _repository,
+        sessionId: sessionId,
+        effortId: slot,
+        before: ofSlot(before, slot),
+        now: rows,
+      );
+      final wasChanged = pass.writes;
+      await pass._placeAroundUserRows(
+        key,
+        slot,
+        ofSlot(before, slot),
+        rows,
+        freshCorrections,
+        effortRows,
+      );
+      if (pass.writes != wasChanged) changedEffortIds.add(slot);
+    }
+
+    await _markApplied(unapplied);
+    return WatchSessionImport(
+      appliedEntryIds: _wristIds(unapplied),
+      changedEffortIds: changedEffortIds,
+      historyChanged: pass.changed,
+    );
+  }
+
   Future<WatchSessionImport> _consume(List<WatchInboxEntry> unapplied) async {
     await _markApplied(unapplied);
     return WatchSessionImport(appliedEntryIds: _wristIds(unapplied));
@@ -272,15 +403,28 @@ class _Pass {
   _Pass({
     required WorkoutRepository repository,
     required this.sessionId,
-    required this.end,
+    this.end,
   }) : _repository = repository;
 
   final WorkoutRepository _repository;
   final String sessionId;
-  final _End end;
 
-  /// Whether this pass wrote anything to history.
-  bool changed = false;
+  /// The wrist's end, when the pass has one. A merge runs without it (D-13)
+  /// and never reaches the code that reads it.
+  final _End? end;
+
+  /// The rows this pass has written, changed or removed — counted rather than
+  /// flagged, because a merge has to name the efforts it wrote into (D-17) and
+  /// the flag alone cannot say whether *this* effort was one of them.
+  int writes = 0;
+
+  /// Whether the pass created, changed or removed any history row.
+  bool get changed => writes > 0;
+
+  /// Records a write; `changed = true` is the pass's only way to say it wrote.
+  set changed(bool wrote) {
+    if (wrote) writes++;
+  }
 
   Future<void> run({
     required TrainingSession? existing,
@@ -294,7 +438,7 @@ class _Pass {
       await _createSession(rows);
     } else {
       await _topUpRating(existing, unapplied);
-      if (end.row.appliedAtMs == null) await _attachSessionSummary();
+      if (end!.row.appliedAtMs == null) await _attachSessionSummary();
     }
 
     final segmentId = await _segmentId();
@@ -363,6 +507,7 @@ class _Pass {
   // --- The session ------------------------------------------------------------
 
   Future<void> _createSession(List<WatchInboxEntry> rows) async {
+    final end = this.end!;
     await _repository.createSession(
       TrainingSession(
         id: sessionId,
@@ -422,7 +567,7 @@ class _Pass {
     final segment = LoggedEntryRows.defaultSegment(
       id: WatchSessionImporter.segmentIdFor(sessionId),
       sessionId: sessionId,
-      atMs: end.startedAtMs,
+      atMs: end!.startedAtMs,
     );
     await _repository.createSegment(segment);
     changed = true;
@@ -957,21 +1102,25 @@ class _Pass {
 
   /// Summaries attach when their target is created — which may be long after
   /// the summary itself arrived (a set block travels in `session_end`).
-  Future<void> _attachSessionSummary() => _attach(
-    () => SensorSummary(
-      sessionId: sessionId,
-      scope: SensorSummary.scopeSession,
-      targetId: sessionId,
-      windowStartMs: end.startedAtMs,
-      windowEndMs: end.endedAtMs,
-      avgHeartRateBpm: end.avgHeartRateBpm,
-      maxHeartRateBpm: end.maxHeartRateBpm,
-      createdAtMs: end.loggedAtMs,
-    ),
-    when: end.avgHeartRateBpm != null || end.maxHeartRateBpm != null,
-  );
+  Future<void> _attachSessionSummary() {
+    final end = this.end!;
+    return _attach(
+      () => SensorSummary(
+        sessionId: sessionId,
+        scope: SensorSummary.scopeSession,
+        targetId: sessionId,
+        windowStartMs: end.startedAtMs,
+        windowEndMs: end.endedAtMs,
+        avgHeartRateBpm: end.avgHeartRateBpm,
+        maxHeartRateBpm: end.maxHeartRateBpm,
+        createdAtMs: end.loggedAtMs,
+      ),
+      when: end.avgHeartRateBpm != null || end.maxHeartRateBpm != null,
+    );
+  }
 
   Future<void> _attachSetBlockSummary(_Key key, String effortId) async {
+    final end = this.end!;
     for (final block in end.setBlocks) {
       if (block.sessionExerciseId != key.sessionExerciseId ||
           block.exerciseId != key.exerciseId) {

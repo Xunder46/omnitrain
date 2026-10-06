@@ -64,7 +64,12 @@ identical rows.
 **Why an import waits for the session end.** Only the wrist's `session_end`
 says whether a session completed or was abandoned, when it started and ended,
 and what it measured over the whole of it. Rows staged before it wait; rows
-arriving after it top the imported session up.
+arriving after it top the imported session up. A session the phone already holds
+as its own is the exception: the wrist's effort rows merge into the efforts that
+session already has as they arrive, with no end to wait for, and its end then
+adds only what the phone's session does not have — its rating, and its
+heart-rate summary, an abandoned end included. Verified by
+`test/watch_session_merge_test.dart` (`S-9`, `D-19`).
 
 **Why the rating and the end are observations of their own.** The wrist
 re-sends only observations the phone has not acknowledged; it never re-sends a

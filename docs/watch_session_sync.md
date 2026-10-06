@@ -23,7 +23,7 @@ transport and the sensors are in
 | Ending the phone's copy when the wrist ends its own | `WatchSessionAdoptionBridge.onLifecycle` → the ordinary finish or the ordinary discard |
 | The ladder the phone asserts | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session |
 | Handing the rating the wrist recorded to the finish that writes the row | `WatchSessionAdoptionBridge.onLifecycle`'s read of the session row before it ends the session |
-| Leaving a session the phone owns alone when the wrist's entries arrive | `WatchSessionImporter.apply`'s `phoneOwnsSession` narrowing, told by `WatchSessionInbox` |
+| Merging a wrist's set into the session the phone holds | `WatchSessionImporter.apply`'s `phoneOwnsSession` branch — the held merge — told by `WatchSessionInbox` |
 | Which session the phone holds | `WatchSessionAdoptionBridge.holdsSession`, read by the inbox |
 
 ## Decisions this model rests on
@@ -95,12 +95,14 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 
 ## Invariants
 
-- **One session id, one row.** A wrist import pass over a session the phone owns
-  writes no second `TrainingSession` for that id and does not materialise the
-  wrist's entries under derived ids: the effort rows stay staged, unreceipted, so
-  the wrist keeps sending what the phone has not acknowledged. Verified by
-  `test/watch_session_finish_test.dart`
-  (`G3 the wrist's entries for a session the phone owns are not lost`).
+- **One session id, one row.** A wrist pass over a session the phone owns writes
+  no second `TrainingSession` for that id and does not materialise the wrist's
+  entries under derived ids: each staged wrist effort row becomes a row of the
+  effort the session already has, under the row id the phone gave that slot
+  (D-14), and is receipted. Verified by `test/watch_session_finish_test.dart`
+  (`a set logged on the watch lands in the session the phone holds`) and
+  `test/watch_session_merge_test.dart` (`S-9 a wrist set reaches the live phone
+  session`, `S-12 a slot the session does not have`).
 - **The phone's finish is silent.** `reportLifecycle` has one production caller —
   the router's answer to a snapshot naming an ended session — and the finish path
   reaches none of it. Verified by
@@ -117,23 +119,25 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 
 ## What does not sync
 
-- **Sets logged on either device, on a session the phone owns, are not merged.**
-  The wrist's entries are staged and stay staged (G3 above). Verified by
-  `test/watch_session_finish_test.dart`, `G3 the wrist's entries for a session the
-  phone owns are not lost`.
+- **Sets logged on the phone are not carried to the wrist.** The phone answers a
+  sync with its ladder and its own place, and never with an entry: the answer's
+  `entries` is always empty, so a set the phone logs stays on the phone. Verified
+  by `test/watch_session_projection_test.dart`
+  (`S-2 a running phone session is answered with its own ladder`).
+- **The wrist's own start, current exercise and timers are not carried.** The
+  answer the phone composes carries its own current index and its own timers, not
+  the wrist's (`test/watch_session_projection_test.dart`,
+  `S-2 a running phone session is answered with its own ladder`).
 - **Nothing starts, changes or finishes without a sync.** Every message in this
   model is either the wrist's request or the phone's answer to it; the phone's own
   finish is the worked example, and it sends nothing
   (`test/watch_session_finish_test.dart`, `S-5 …`).
-- **The wrist's place in the session is the wrist's own.** The answer the phone
-  composes carries its own current index and its own timers, not the wrist's
-  (`test/watch_session_projection_test.dart`,
-  `S-2 a running phone session is answered with its own ladder`).
-- **Per-effort heart-rate summaries are attached only where the importer places
+- **Per-effort heart-rate summaries are attached only where the import places
   an effort** (`WatchSessionImporter._attachSetBlockSummary`, reached from
-  `WatchSessionImporter._placeEffort`), which a pass over a session the phone owns
-  does not run (`test/watch_session_finish_test.dart`, `G3 the wrist's entries for
-  a session the phone owns are not lost`).
+  `WatchSessionImporter._placeEffort`). A merge into a session the phone owns
+  creates no effort (D-14), so it places none
+  (`test/watch_session_merge_test.dart`, `S-12 a slot the session does not
+  have`).
 - **An end that arrives only as observations is not an end.** The finish comes
   from a `session_lifecycle` naming the held session
   (`test/watch_session_finish_test.dart`,

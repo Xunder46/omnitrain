@@ -86,6 +86,7 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 |--------|---------|
 | `createNewSession({modality, title, intent, routineTemplateId, isRolling})` | Creates session + segment; `isRolling` (bool, default `false`) sets `TrainingSession.isRolling` |
 | `loadSessionData()` | Loads exercises, efforts, observations for current session |
+| `refreshEfforts(effortIds)` | Re-reads only the named efforts' observations, instances and entry rests from the repository — a refresh, not a reload, so a running timer survives. Used by the watch merge (`docs/watch_session_sync.md`, D-17); verified by `test/watch_session_merge_test.dart`'s S-16 |
 | `loadHistoricalSession(session)` | Loads a previously completed session for review/edit mode; sets `_currentModalityConfig` correctly from `session.modality` |
 | `endSession()` | Marks session as ended (`endedAtMs`); idempotent — no-op if session already has `endedAtMs`. After a successful save, delegates to the injected `HealthSyncService` (no-op when not injected or when the health write toggle is off) |
 | `clearSession()` | Removes session reference from state (doesn't delete data) |

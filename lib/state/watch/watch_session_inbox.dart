@@ -109,6 +109,8 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     Future<void> Function()? onHistoryChanged,
     void Function(Object error, StackTrace stack)? onFailure,
     bool Function(String sessionId)? phoneOwnsSession,
+    Future<void> Function(String sessionId, List<String> effortIds)?
+    onSessionRowsChanged,
   }) : _repository = repository,
        _transport = transport,
        _validator = validator,
@@ -117,6 +119,7 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
        _onHistoryChanged = onHistoryChanged,
        _onFailure = onFailure ?? _report,
        _phoneOwnsSession = phoneOwnsSession,
+       _onSessionRowsChanged = onSessionRowsChanged,
        _importer = WatchSessionImporter(
          repository: repository,
          clock: clock ?? _utcNow,
@@ -152,6 +155,12 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
   /// which is the one place that question is answered. Null (a test, a build
   /// with no session state) imports every session the ordinary way.
   final bool Function(String sessionId)? _phoneOwnsSession;
+
+  /// Called once per settled session whose merge wrote rows, with the efforts
+  /// it wrote — the live session refresh (D-17). Null (a test, a build with no
+  /// session state) refreshes nothing.
+  final Future<void> Function(String sessionId, List<String> effortIds)?
+  _onSessionRowsChanged;
 
   /// The fields each staged kind must carry to become history — the ones the
   /// `observations_up` schema requires of it. A snapshot entry is held only to
@@ -420,6 +429,12 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
       );
       receipted.addAll(pass.appliedEntryIds);
       changed = changed || pass.historyChanged;
+      // The merge wrote rows into the phone's own live session: refresh exactly
+      // the efforts it wrote, before anything downstream sees the receipt
+      // (D-17). A pass that wrote nothing names no effort and refreshes nothing.
+      if (pass.changedEffortIds.isNotEmpty) {
+        await _onSessionRowsChanged?.call(sessionId, pass.changedEffortIds);
+      }
     }
     for (final entryId in redelivered) {
       if (entryId is! String || receipted.contains(entryId)) continue;

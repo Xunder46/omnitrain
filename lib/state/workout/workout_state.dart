@@ -135,6 +135,13 @@ class WorkoutState extends ChangeNotifier {
   Future<void> loadHistoricalSession(String sessionId) =>
       _sessionCore.loadHistoricalSession(sessionId);
   Future<void> loadSessionData() => _sessionCore.loadSessionData();
+
+  /// Re-reads the named efforts' rows into the live session, notifying once.
+  /// A merge of wrist rows uses this so the session screen shows them without
+  /// reloading the session or stopping a running timer (`loadSessionData`
+  /// clears both timer managers; this does not).
+  Future<void> refreshEfforts(Iterable<String> effortIds) =>
+      _sessionCore.refreshEfforts(effortIds);
   Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) =>
       _sessionCore.populateSessionFromManifest(manifest);
   Future<void> endSession() => _sessionCore.endSession();

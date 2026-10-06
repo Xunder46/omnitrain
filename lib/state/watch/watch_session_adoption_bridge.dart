@@ -144,6 +144,22 @@ class WatchSessionAdoptionBridge {
     return target != null && target.currentSession?.id == sessionId;
   }
 
+  /// Re-reads the efforts a merge wrote into the session this phone holds, so
+  /// the regular session screen shows the merged rows at once (D-17).
+  ///
+  /// A session the phone does not hold is not refreshed: those efforts belong
+  /// to a session that is not the phone's live one, or to none. Writes nothing
+  /// and notifies nothing for such a session, and for a phone with no session
+  /// state bound.
+  Future<void> refreshHeldEfforts(
+    String sessionId,
+    Iterable<String> effortIds,
+  ) async {
+    final target = _workoutState;
+    if (target == null || !holdsSession(sessionId)) return;
+    await target.refreshEfforts(effortIds);
+  }
+
   /// The phone's own session as a protocol state — the answer to a wrist
   /// snapshot (D-11). Composed from `WorkoutState` at the moment it is asked
   /// for, never cached: the answer is the ladder the regular session screen

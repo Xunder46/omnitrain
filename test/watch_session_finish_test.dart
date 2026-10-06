@@ -8,7 +8,8 @@
 //   S-4 the wrist ends its own session        → `S-4 ...` (both arrival orders)
 //   S-5 the phone's finish, rewritten by G2   → `S-5 ...`
 //   G1 never resurrect a finished session     → `G1 ...`, `G1 counter-case ...`
-//   G3 the wrist's entries are not lost       → `G3 ...`
+//   the wrist's sets merge into the session   → `a set logged on the watch ...`
+//     the phone holds, once (PR 2a)
 //
 // Every frame arrives through the real `LiveSessionMirrorState` behind the real
 // `WatchIncomingRouter`, the inbox is wired the way `createWatchSync` wires it
@@ -218,7 +219,11 @@ Map<String, Object?> _set(String entryId, {required String slot}) => {
   'loadKg': 80,
 };
 
-Map<String, Object?> _end(String sessionId) => {
+Map<String, Object?> _end(
+  String sessionId, {
+  double? avgHeartRateBpm,
+  double? maxHeartRateBpm,
+}) => {
   'entryId': 'end-$sessionId',
   'eventId': 'end-$sessionId',
   'kind': 'session_end',
@@ -226,6 +231,8 @@ Map<String, Object?> _end(String sessionId) => {
   'startedAt': '2026-10-05T10:00:00Z',
   'endedAt': '2026-10-05T10:30:00Z',
   'status': 'completed',
+  'avgHeartRateBpm': ?avgHeartRateBpm,
+  'maxHeartRateBpm': ?maxHeartRateBpm,
 };
 
 Map<String, Object?> _rating(String sessionId, int rating) => {
@@ -292,13 +299,20 @@ Future<void> _expectOneEndedSession(
     [for (final effort in await importedEfforts(repository, 's-w1')) effort.id],
     ['sl-1', 'sl-2'],
     reason:
-        'G3 the wrist\'s set rows do not become a second effort per slot — the '
+        'the wrist\'s set rows do not become a second effort per slot — the '
         'phone\'s rows already are those slots (D-3)',
   );
   expect(
-    await repository.getEffortObservations('sl-1'),
-    isEmpty,
-    reason: 'G3 nothing was logged onto the phone\'s own effort either',
+    [for (final row in await repository.getEffortObservations('sl-1')) row.id],
+    ['obs-sl-1-0-reps', 'obs-sl-1-0-weight'],
+    reason:
+        'D-14 the wrist\'s set for sl-1 is a row of the effort the phone '
+        'already has, not a copy of it',
+  );
+  expect(
+    [for (final row in await repository.getEffortObservations('sl-2')) row.id],
+    ['obs-sl-2-0-reps', 'obs-sl-2-0-weight'],
+    reason: 'D-14 and the same for the second slot',
   );
   expect(phone.failures, isEmpty);
 }
@@ -336,15 +350,15 @@ void main() {
     for (final entryId in ['sx-1', 'sx-2']) {
       expect(
         staged[entryId]?.appliedAtMs,
-        isNull,
+        isNotNull,
         reason:
-            'G3 $entryId stays staged for the merge (PR 3) — the phone has not '
-            'used it, so the wrist must not be told it may forget it',
+            'D-18 $entryId merged into the session the phone holds, so the '
+            'wrist is told it may forget it',
       );
       expect(
         phone.transport.receiptedEntryIds,
-        isNot(contains(entryId)),
-        reason: 'G3 the receipt names only what the phone applied',
+        contains(entryId),
+        reason: 'D-18 the receipt names every row the merge looked at',
       );
     }
     expect(
@@ -386,11 +400,13 @@ void main() {
       'rating-s-w1',
       'sx-1',
       'sx-2',
-    ], reason: 'G3 the sets are still held, not dropped');
+    ], reason: 'the sets are still held, not dropped');
     expect(
       staged['sx-2']?.appliedAtMs,
-      isNull,
-      reason: 'G3 an entry that arrived after the end is staged like any other',
+      isNotNull,
+      reason:
+          'an entry that arrived after the end merges like any other — a merge '
+          'does not wait for an end (D-13)',
     );
   });
 
@@ -556,29 +572,36 @@ void main() {
   });
 
   test(
-    'G3 the wrist\'s entries for a session the phone owns are not lost',
+    'a set logged on the watch lands in the session the phone holds',
     () async {
       final repository = await _repository();
       final phone = await _phone(repository);
       await phone.router.receive(_snapshot());
-      final ladder = await importedRows(repository, 's-w1');
 
       final sets = observationsUp('s-w1', [
         _set('sx-1', slot: 'sl-1'),
       ], messageId: 'msg-set');
 
-      // A session the phone is running: its rows are the phone's, so an arriving
-      // set neither becomes a row nor is thrown away.
+      // A session the phone is running: its efforts are the phone's, so the
+      // wrist's set becomes a row of one of them (D-14).
       await phone.router.receive(sets);
       expect(
-        _written(await importedRows(repository, 's-w1')),
-        _written(ladder),
-        reason: 'G3 the wrist\'s set does not rewrite the phone\'s own rows',
+        [
+          for (final row in await repository.getEffortObservations('sl-1'))
+            row.id,
+        ],
+        ['obs-sl-1-0-reps', 'obs-sl-1-0-weight'],
+        reason: 'D-14 the wrist\'s set is a row of the effort the phone has',
       );
       expect(
         (await _staged(repository))['sx-1']?.appliedAtMs,
-        isNull,
-        reason: 'G3 it is held, unapplied, for the merge (PR 3)',
+        isNotNull,
+        reason: 'D-18 the phone used it, so the wrist may forget it',
+      );
+      expect(
+        phone.transport.receiptedEntryIds,
+        contains('sx-1'),
+        reason: 'D-18 the receipt names what the merge applied',
       );
 
       // The wrist redelivers it, as an unacknowledged entry must be.
@@ -590,21 +613,22 @@ void main() {
       expect(
         _stagedIds(await _staged(repository)),
         ['sx-1'],
-        reason: 'G3 a redelivery is the same held row, not a second one',
+        reason: 'a redelivery is the same row, not a second one',
       );
       expect(
-        phone.transport.receiptedEntryIds,
-        isEmpty,
-        reason:
-            'G3 the phone acknowledges nothing it has not used, which is what '
-            'keeps the entry on the wrist',
+        [
+          for (final row in await repository.getEffortObservations('sl-1'))
+            row.id,
+        ],
+        ['obs-sl-1-0-reps', 'obs-sl-1-0-weight'],
+        reason: 'D-15 a redelivery writes no second entry',
       );
 
-      // The end and the rating arrive: those it does apply, and acknowledges.
+      // The end and the rating arrive: those it applies too.
       await phone.router.receive(
         observationsUp('s-w1', [
           _rating('s-w1', 4),
-          _end('s-w1'),
+          _end('s-w1', avgHeartRateBpm: 140, maxHeartRateBpm: 165),
         ], messageId: 'msg-end'),
       );
       await phone.router.receive(_lifecycle('s-w1'));
@@ -613,10 +637,9 @@ void main() {
       expect(
         _stagedIds(staged),
         ['end-s-w1', 'rating-s-w1', 'sx-1'],
-        reason:
-            'G3 the set is still the wrist\'s to re-send and PR 3\'s to use',
+        reason: 'every row of the session is held, and applied',
       );
-      expect(staged['sx-1']?.appliedAtMs, isNull);
+      expect(staged['sx-1']?.appliedAtMs, isNotNull);
       expect(staged['end-s-w1']?.appliedAtMs, isNotNull);
       expect(await _heldRating(phone), 4);
       expect(
@@ -625,22 +648,52 @@ void main() {
             effort.id,
         ],
         ['sl-1', 'sl-2'],
+        reason: 'D-14 the merge creates no effort',
+      );
+      expect(
+        [
+          for (final row in await repository.getEffortObservations('sl-1'))
+            row.id,
+        ],
+        ['obs-sl-1-0-reps', 'obs-sl-1-0-weight'],
+        reason: 'the end and the rating add no entry',
       );
 
-      // The end and rating have been acknowledged, so a redelivery of them
-      // changes nothing — and the held set is still the wrist's to keep.
+      final summaries = await repository.getSensorSummariesForSession('s-w1');
+      expect(
+        summaries.map((summary) => summary.id),
+        ['sensor-session-s-w1'],
+        reason: 'S-15 the held session\'s end attaches one session summary',
+      );
+      expect(summaries.single.avgHeartRateBpm, 140);
+      expect(summaries.single.maxHeartRateBpm, 165);
+
+      // Everything has been acknowledged, so a redelivery changes nothing.
       await phone.router.receive(
         observationsUp('s-w1', [
           _rating('s-w1', 4),
-          _end('s-w1'),
+          _end('s-w1', avgHeartRateBpm: 140, maxHeartRateBpm: 165),
         ], messageId: 'msg-end-again'),
       );
       expect(_stagedIds(await _staged(repository)), _stagedIds(staged));
       expect(await _heldRating(phone), 4);
       expect(
+        await repository.getSensorSummariesForSession('s-w1'),
+        hasLength(1),
+        reason: 'a redelivered end attaches no second summary',
+      );
+      expect(
         phone.state.currentSession?.endedAtMs,
         isNotNull,
         reason: 'the session stays ended',
+      );
+      expect(
+        [
+          for (final row in await repository.getEffortObservations('sl-1'))
+            row.id,
+        ],
+        ['obs-sl-1-0-reps', 'obs-sl-1-0-weight'],
+        reason: 'D-15 a redelivery writes no second entry',
       );
     },
   );

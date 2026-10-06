@@ -1,7 +1,7 @@
 # Series: watch-session-sync — "a session in progress is the same session on the phone and the watch"
 
-> Status: DRAFT awaiting Q&A (index + full PR 1 + PR 2 outline)
-> Next handoff: @developer (PR 1, Phase 1)
+> Status: DRAFT awaiting Q&A (index + full PR 1 + full PR 2a + PR 2b scope)
+> Next handoff: @developer (PR 2a, Phase 1)
 > Binding conventions: `docs/global_conventions.md`, `watch/sync_protocol/PROTOCOL.md`
 > Builds on: `docs/plans/2026-10-04-14-watch-shell-bridge-plan/2026-10-04-14-watch-shell-bridge-plan.md` (UNCOMMITTED verified unit, base commit 373c39b)
 
@@ -25,25 +25,32 @@ the wrist's in-progress session. Both devices eventually log sets into the one s
 
 | PR | Scope | Track(s) | Notes |
 |---|---|---|---|
-| **1** | Phone-side convergence: remove the three surfaces; wrist session → phone's normal in-progress session; phone session → wrist's in-progress ladder. No set logging. | `lib/` (+ docs) | Full plan in this series. |
-| **2** | Host the wrist logging surface (set logging, End, rating prompt) over the in-memory store. | `watch/watchos/` | Outline in this series. Wrist-logged sets already reach the phone via existing `observations_up` → inbox → import-on-end. |
+| **1** | Phone-side convergence: remove the three surfaces; wrist session → phone's normal in-progress session; phone session → wrist's in-progress ladder. No set logging. | `lib/` (+ docs) | Full plan in this series. Its A33 deferred the merge of a held session's wrist rows to "the merge PR" (G3). |
+| **2a** | **Merge a set the wrist logged into the session the phone holds** — the G3 gap PR 1 left. No wrist surface, no protocol change; inert until 2b ships. | `lib/` (+ docs) | Full plan in this series (replaces the old PR 2 outline). |
+| **2b** | Host the wrist logging surface (set logging, End, rating prompt) over the in-memory store, and give the engine the outgoing sink it lacks. | `watch/watchos/` (+ `ios/` shell) | Split out of PR 2 for the scope budget (two tracks, >3 phases); planned when its turn comes. Manual QA steps 15–19 of `docs/watch-app-setup-and-qa.md` become runnable here. |
 | **3** | Phone → wrist set logging: a set logged on the phone appears on the wrist. The one contract decision. | `lib/` + `watch/watchos/` + `watch/sync_protocol/` | Skeleton only; plan next. |
 | **4** | Durable wrist store (if still needed after PR 2/3). | `watch/watchos/` | Conditional. |
 
 ## Order and rationale
 
 PR 1 must land first: the three surfaces are dead once the mirror is demoted to a transport
-projection, and the removal is the visible, low-risk half. PR 2 gives the wrist a logging surface
-so the shared session has two endpoints. PR 3 closes the loop (phone-logged sets reach the wrist)
-and is the only PR that touches the protocol. PR 4 is deferred and may be cancelled.
+projection, and the removal is the visible, low-risk half. **PR 2a comes next**: PR 1's G3 leaves a
+session the phone adopted missing every set the wrist logged in it, and that is the defect the
+wrist's logging surface would otherwise ship into — 2a closes it while the code is still inert.
+PR 2b then gives the wrist its logging screen. PR 3 closes the loop (phone-logged sets reach the
+wrist) and is the only PR that touches the protocol. PR 4 is deferred and may be cancelled.
 
 ## Dependency graph
 
-- PR 1 → PR 2 (the wrist logging surface targets the same session identity PR 1 establishes).
+- PR 1 → PR 2a (the merge resolves wrist rows onto the session identity and effort-row ids PR 1
+  establishes, D-3).
+- PR 1 → PR 2b (the wrist logging surface targets the same session identity PR 1 establishes).
+- PR 2a → PR 2b (the wrist can log the day its screen arrives only if what it logs lands).
+- PR 2a → PR 3 (PR 3's phone→wrist entries meet the merge on the same effort rows).
 - PR 1 → PR 3 (PR 3 sends phone entries to the wrist's live session; needs PR 1's session identity).
-- PR 2 → PR 3 (two-way set sync is testable only once the wrist can log at all).
+- PR 2b → PR 3 (two-way set sync is testable only once the wrist can log at all).
 - PR 3 → PR 4 (a durable store matters only once the wrist holds a session worth persisting).
-- PR 1 and PR 2 are otherwise independent and could swap order.
+- PR 2b and PR 3 are otherwise independent and could swap order; 2a may not move after 2b.
 
 ## The one hard-to-reverse contract decision (lands in PR 3, proposed here)
 
@@ -58,4 +65,6 @@ Owner-visible consequence in **Open questions** (PR 1 file).
 ## See also
 
 - Full PR 1 plan: `docs/plans/2026-10-05-15a-watch-session-sync-pr1-plan/2026-10-05-15a-watch-session-sync-pr1-plan.md`
-- PR 2 outline: `docs/plans/2026-10-05-15b-watch-session-sync-pr2-plan/2026-10-05-15b-watch-session-sync-pr2-plan.md`
+- Full PR 2a plan (the held-session merge, G3): `docs/plans/2026-10-05-15b-watch-session-sync-pr2-plan/2026-10-05-15b-watch-session-sync-pr2-plan.md`
+- PR 2b (the wrist logging surface) gets its own folder when it opens; this index carries its scope,
+  order and dependencies until then.

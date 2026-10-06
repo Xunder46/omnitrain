@@ -452,8 +452,9 @@ a snapshot the mirror applied is projected into the phone's own session state
 and a snapshot naming a session whose row already has an end is answered with that
 session's `completed` lifecycle instead of being adopted back. See
 [Watch Session Sync](../watch_session_sync.md). Verified by
-`test/watch_session_finish_test.dart` (`S-4`, `S-5`, `G1`, `G3` and the
-lifecycle-naming-another-session case).
+`test/watch_session_finish_test.dart` (`S-4`, `S-5`, `G1`, and the wrist's set
+merging into the session the phone holds — `a set logged on the watch lands in
+the session the phone holds` — and the lifecycle-naming-another-session case).
 
 ### `WatchNutritionLogBridge`
 

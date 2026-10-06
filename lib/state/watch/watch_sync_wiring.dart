@@ -135,6 +135,10 @@ Future<WatchSyncGraph?> createWatchSync({
     // over it never materialises the wrist's effort entries: the phone holds
     // those rows already (G3).
     phoneOwnsSession: adoption.holdsSession,
+    // A merge into a held session refreshes the efforts it wrote, on the live
+    // session state, so the session screen shows the set without reloading the
+    // session — a running timer survives (D-17).
+    onSessionRowsChanged: adoption.refreshHeldEfforts,
   );
   final mirror = LiveSessionMirrorState(
     transport: WatchInboxStagingTransport(inner: resolved, inbox: inbox),
