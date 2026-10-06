@@ -224,15 +224,15 @@ status — the Wear OS client still has no host.
 ## Iteration 1
 
 ### Phase 1: The file store (@developer) — PR 4a
-1. [ ] Add `FileWatchSessionStore.swift` in `watch/watchos/Sources/WatchSessionEngine/`: a `public final class FileWatchSessionStore: WatchSessionStore` with `public init(directory: URL)`, exactly the four protocol methods public, and private helpers (`loadRows`, `parseLine`, `markerLine`, `appendLine`, `compact`, `ensureDirectory`, `nextSequence`) — symbol: `FileWatchSessionStore`. No public member beyond those four, so S-004's surface assertion holds unchanged.
-2. [ ] Marker and version gate (D-44, D-45) — `FileWatchSessionStore.markerLine` / `loadRows`: the marker line, the unknown-version short circuit, and line tolerance for unparsable JSON and unknown `recordType`.
-3. [ ] Load-once and lock (D-43): `loadRows` reads the file exactly once on first use into one private row list; every public method takes that lock; the dedupe key and the next `sequence` come from the list, never from a re-read — symbol: `FileWatchSessionStore.loadRows`.
-4. [ ] `append` (D-47): dedupe on `(recordType, recordId)` by returning the stored row, assign the next `sequence` from the cache, `appendLine` one JSON line with its trailing newline, update the cache, and return the record with its assigned sequence.
-5. [ ] `readAll` (D-48): every family into one `WatchStoreContents`, observations folded through `applyConfirmations`, rows in sequence order.
-6. [ ] `pruneConfirmed` and `pruneSensorSamples` (D-46): find the rows, `compact` the file to marker + survivors through a sibling temp file and a move, refresh the cache from the survivors, return the dropped ids.
-7. [ ] Add `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift` with the store cases of S-49, S-50, S-51, S-53 and S-54 — most of them red before step 1's file is complete, which is the order to write them in.
-8. [ ] Add the two-engine cases of S-44, S-45, S-46, S-47 and S-48 to the same file (a helper that builds a second `WatchSessionEngine` over one directory), keeping the existing in-memory harnesses where they are.
-9. [ ] Confirm S-004 stays green over the new file with no edit to that test — it walks the sources directory itself.
+1. [x] Add `FileWatchSessionStore.swift` in `watch/watchos/Sources/WatchSessionEngine/`: a `public final class FileWatchSessionStore: WatchSessionStore` with `public init(directory: URL)`, exactly the four protocol methods public, and private helpers (`loadRows`, `parseLine`, `markerLine`, `appendLine`, `compact`, `ensureDirectory`, `nextSequence`) — symbol: `FileWatchSessionStore`. No public member beyond those four, so S-004's surface assertion holds unchanged. — done; S-004 green with no edit to it.
+2. [x] Marker and version gate (D-44, D-45) — `FileWatchSessionStore.markerLine` / `loadRows`: the marker line, the unknown-version short circuit, and line tolerance for unparsable JSON and unknown `recordType`. — done; S-50, S-53 green.
+3. [x] Load-once and lock (D-43): `loadRows` reads the file exactly once on first use into one private row list; every public method takes that lock; the dedupe key and the next `sequence` come from the list, never from a re-read — symbol: `FileWatchSessionStore.loadRows`. — done; the lock is taken in a synchronous helper so no lock spans a suspension point.
+4. [x] `append` (D-47): dedupe on `(recordType, recordId)` by returning the stored row, assign the next `sequence` from the cache, `appendLine` one JSON line with its trailing newline, update the cache, and return the record with its assigned sequence. — done; S-51 green.
+5. [x] `readAll` (D-48): every family into one `WatchStoreContents`, observations folded through `applyConfirmations`, rows in sequence order. — done; S-44, S-54 green.
+6. [x] `pruneConfirmed` and `pruneSensorSamples` (D-46): find the rows, `compact` the file to marker + survivors through a sibling temp file and a move, refresh the cache from the survivors, return the dropped ids. — done; S-54's parity of both return arrays green.
+7. [x] Add `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift` with the store cases of S-49, S-50, S-51, S-53 and S-54 — most of them red before step 1's file is complete, which is the order to write them in. — done; written first.
+8. [x] Add the two-engine cases of S-44, S-45, S-46, S-47 and S-48 to the same file (a helper that builds a second `WatchSessionEngine` over one directory), keeping the existing in-memory harnesses where they are. — S-44…S-47 done; **S-48 not added** — the brief scopes it to PR 4b (it is AC10, the G3 lens case Phase 4 owns). See A-30.
+9. [x] Confirm S-004 stays green over the new file with no edit to that test — it walks the sources directory itself. — green, unchanged.
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh swift-test` (baseline 275 passing / 0 failing, and the count rises by this phase's cases), `.github/copilot/scripts/macos/gateway.sh lint` (baseline 196 issues / 0 errors — unchanged; no Dart file is touched in this phase)
 **Predicted Files**: `watch/watchos/Sources/WatchSessionEngine/FileWatchSessionStore.swift` (new), `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift` (new)
 **Phase 1 verification notes (Conductor, date):** —
@@ -328,7 +328,7 @@ Dependents that only read a touched surface (no edit): `WatchSessionStartPaths.s
 
 | Phase | State |
 |---|---|
-| 1 — the file store (4a) | not started |
+| 1 — the file store (4a) | **complete** — `swift-test` 284 passing / 0 failing (275 baseline + 9 new), `test` 3945 passing / 0 failing, `lint` 196 issues / 0 errors (unchanged); S-44…S-47, S-49…S-51, S-53, S-54 green; S-004 green unedited; S-48 deferred to 4b (A-30); evidence in `.evidence.md` |
 | 2 — the shell and the rating surface (4a) | not started |
 | 3 — docs, walkthrough and the sweep for 4a | not started |
 | 4 — the engine's bookkeeping, both stacks (4b) | not started |
@@ -342,6 +342,10 @@ Dependents that only read a touched surface (no edit): `WatchSessionStartPaths.s
 | A-26 | plan | Where the rating prompt's durability comes from: nothing new. `WatchEffortRatingState.restore()` already reads `store.readAll().ratingPrompts` and `end()` already stores the prompt row before returning — the in-memory store was the only reason a kill lost it. |
 | A-28 | plan | The lens (`entryCorrections`, `deletedEntryIds`): persist it, or accept the loss. Chosen: accept it (D-50), because persisting a projection makes a second representation to keep in step, and PR 3's re-statement makes the next Sync rebuild it exactly. |
 | A-29 | plan | A session left in progress resumes and never expires (D-57's store keeps it): accept it, because the resume is the point of a durable store and the phone's Sync-ends-wrist rule clears the session when the phone finished it. The owner-visible question is recorded under `## Open questions`. |
+| A-30 | 1 | Phase 1 step 8 lists S-48 among the two-engine cases, but S-48 is AC10 — the G3 prune-takes-the-lens case, which is Phase 4's bookkeeping (4b). Chosen: implement S-44…S-47 only and leave S-48 to Phase 4, following the brief that scoped this run. |
+| A-31 | 1 | S-45's plan fixture drives `WatchSyncOrchestrator.sync()`; the brief names the relaunched engine's `pendingObservations()`. Chosen: the brief's observable — the same "what does the relaunched engine re-send" one layer below the transport, and the transport layer is already covered elsewhere. |
+| A-32 | 1 | S-44's plan fixture names loads 60/60/62.5 kg; the brief prescribes the suite's shared `setEvent` helper. Chosen: the shared helper (reps 5, 80 kg), because the scenario's outcome is that the payload survives the process, not what the payload says. |
+| A-33 | 1 | S-51's plan fixture is S-44's store with two more sets; the brief prescribes five rows plus a re-append of a stored id. Chosen: the brief's fixture, and a prune-then-append stage was added, because the brief's five mutations cannot tell "highest stored sequence + 1" from "row count + 1" and a prune is the only thing that separates them (mutation f). |
 
 ## Feedback
 
