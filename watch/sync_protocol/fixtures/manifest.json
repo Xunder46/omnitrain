@@ -36,6 +36,11 @@
       "path": "valid/observations_up_distance_source.json",
       "type": "observations_up",
       "scenario": "S-871"
+    },
+    {
+      "path": "valid/session_snapshot_with_entries.json",
+      "type": "session_snapshot",
+      "scenario": "S-31"
     }
   ],
   "invalid": [
@@ -340,6 +345,11 @@
       "path": "reconciliation/session_switch.json",
       "scenario": "S-205",
       "property": "a snapshot for another session replaces the held one, entries included"
+    },
+    {
+      "path": "reconciliation/phone_entries_merge.json",
+      "scenario": "S-31",
+      "property": "a snapshot adds the entries the phone logged, once each, and replaces structure"
     }
   ]
 }

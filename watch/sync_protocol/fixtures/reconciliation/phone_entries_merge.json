@@ -1,0 +1,186 @@
+{
+  "protocolVersion": 1,
+  "name": "A phone snapshot adds the entries it logged, under its own ids",
+  "description": "The phone holds the session and logs two sets. It answers a snapshot request, then Sync runs again after it logged one more set. Its answers carry the entries it logged itself, under the ids it mints, and the wrist stores an id it does not hold while an id it already holds is not stored a second time. Structure, position, revision and timers are replaced, and entries merge by entryId, so the wrist's own observation survives the merge and the phone holds the entries its peer logged.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-phone-entries-snapshot-1",
+    "sessionId": "sess-1",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-10-05T10:06:00Z",
+    "payload": {
+      "sessionId": "sess-1",
+      "revision": 30,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "slot-bench",
+          "exerciseId": "ex-bench",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        },
+        {
+          "sessionExerciseId": "slot-plank",
+          "exerciseId": "ex-plank",
+          "name": "Plank",
+          "capabilities": ["time", "hold"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "entry-slot-bench-0",
+          "eventId": "entry-slot-bench-0",
+          "kind": "set",
+          "loggedAt": "2026-10-05T10:05:00Z",
+          "sessionExerciseId": "slot-bench",
+          "exerciseId": "ex-bench",
+          "reps": 8,
+          "loadKg": 60
+        }
+      ],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-phone-entries-obs-1",
+      "sessionId": "sess-1",
+      "type": "observations_up",
+      "origin": "watch",
+      "sentAt": "2026-10-05T10:08:00Z",
+      "payload": {
+        "events": [
+          {
+            "eventId": "9F2C4A10-5B7E-4C3A-9F1D-1A2B3C4D5E6F",
+            "entryId": "9F2C4A10-5B7E-4C3A-9F1D-1A2B3C4D5E6F",
+            "kind": "set",
+            "loggedAt": "2026-10-05T10:07:00Z",
+            "sessionExerciseId": "slot-bench",
+            "exerciseId": "ex-bench",
+            "reps": 5,
+            "loadKg": 55
+          }
+        ]
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-phone-entries-snapshot-2",
+      "sessionId": "sess-1",
+      "type": "session_snapshot",
+      "origin": "phone",
+      "sentAt": "2026-10-05T10:12:00Z",
+      "payload": {
+        "sessionId": "sess-1",
+        "revision": 31,
+        "status": "active",
+        "currentExerciseIndex": 2,
+        "exercises": [
+          {
+            "sessionExerciseId": "slot-bench",
+            "exerciseId": "ex-bench",
+            "name": "Barbell Bench Press",
+            "capabilities": ["sets", "reps", "load"]
+          },
+          {
+            "sessionExerciseId": "slot-plank",
+            "exerciseId": "ex-plank",
+            "name": "Plank",
+            "capabilities": ["time", "hold"]
+          },
+          {
+            "sessionExerciseId": "slot-squat",
+            "exerciseId": "ex-squat",
+            "name": "Goblet Squat",
+            "capabilities": ["sets", "reps", "load"]
+          }
+        ],
+        "entries": [
+          {
+            "entryId": "entry-slot-bench-0",
+            "eventId": "entry-slot-bench-0",
+            "kind": "set",
+            "loggedAt": "2026-10-05T10:05:00Z",
+            "sessionExerciseId": "slot-bench",
+            "exerciseId": "ex-bench",
+            "reps": 8,
+            "loadKg": 60
+          },
+          {
+            "entryId": "entry-slot-bench-1",
+            "eventId": "entry-slot-bench-1",
+            "kind": "set",
+            "loggedAt": "2026-10-05T10:10:00Z",
+            "sessionExerciseId": "slot-bench",
+            "exerciseId": "ex-bench",
+            "reps": 8,
+            "loadKg": 62.5
+          }
+        ],
+        "timers": {}
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "sess-1",
+    "status": "active",
+    "revision": 31,
+    "currentExerciseIndex": 2,
+    "exercises": [
+      {
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "slot-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      },
+      {
+        "sessionExerciseId": "slot-squat",
+        "exerciseId": "ex-squat",
+        "name": "Goblet Squat",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "entry-slot-bench-0",
+        "eventId": "entry-slot-bench-0",
+        "kind": "set",
+        "loggedAt": "2026-10-05T10:05:00Z",
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "reps": 8,
+        "loadKg": 60
+      },
+      {
+        "eventId": "9F2C4A10-5B7E-4C3A-9F1D-1A2B3C4D5E6F",
+        "entryId": "9F2C4A10-5B7E-4C3A-9F1D-1A2B3C4D5E6F",
+        "kind": "set",
+        "loggedAt": "2026-10-05T10:07:00Z",
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "reps": 5,
+        "loadKg": 55
+      },
+      {
+        "entryId": "entry-slot-bench-1",
+        "eventId": "entry-slot-bench-1",
+        "kind": "set",
+        "loggedAt": "2026-10-05T10:10:00Z",
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "reps": 8,
+        "loadKg": 62.5
+      }
+    ],
+    "timers": {}
+  }
+}
