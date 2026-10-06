@@ -435,7 +435,13 @@ else is not.
 - [x] Phase 1 — package: sink adapter + active-session guard — **Complete** (2026-10-05, developer:
   `swift-test` 267 tests / 0 failures; `flutter test` `+3913 ~1` unchanged; `flutter analyze` 196/0.
   Both red-first proofs pasted in `<plan>.evidence.md`)
-- [ ] Phase 2 — shell: hosting the three surfaces
+- [x] Phase 2 — shell: hosting the three surfaces — **Complete** (2026-10-05, developer: body
+  branched owed rating → logging (active session holding ≥1 exercise) → `WatchStartView`; the sink
+  wired over the bridge in D-21's build order; `rating.restore()` alongside the other two;
+  `swift-test` 267 / 0 (package untouched), `flutter test` `+3913 ~1`, `flutter analyze` 196/0 — all
+  observed. The watch `xcodebuild` is the **governor's** and the end-to-end walkthrough is the
+  **owner's**; this agent ran neither. Signature audit of every package call site in
+  `<plan>.evidence.md`)
 - [ ] Phase 3 — docs, walkthrough, residue sweep
 - Planner: plan written, series index corrected (S-28a's index half).
 
@@ -467,6 +473,15 @@ RATIFIED — promote to a D-x — or REVERT — open a remediation item.)
   no-exercise test asserts). S-20/S-30's "the session holds the fallback exercise" describes the
   picker's fallback list, not the session. Phase 2's shell should not assume the slot exists; the two
   Phase 1 tests create their slot with `createSession(modality:exercises:)`.
+
+- **Developer A-8 — the logging branch also requires an exercise.** D-24 says "logging (active
+  session)"; `startFreeWorkout()` builds a session with no slot at all (A-7), so `WatchLoggingView`
+  would have nothing to show there. The brief overrides: chosen branch is *active and holds ≥1
+  exercise*, which falls through to `WatchStartView` and its own picker until the first exercise
+  lands. S-30's flow is unchanged — the pick appends the slot and the nudge switches the body.
+- **Developer A-9 — the picker sheet closes itself on the pick that moved the session.** The package
+  gives no "sheet dismissed" signal, and leaving it up would hide the surface it just switched to.
+  Chose `onExerciseAdded` → `pickingExercise = false` plus `noteSurfaceChange()`. Vetoable.
 
 ## Open questions
 

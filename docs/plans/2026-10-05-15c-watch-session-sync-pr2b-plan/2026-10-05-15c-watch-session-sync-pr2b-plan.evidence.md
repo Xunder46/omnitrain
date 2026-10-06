@@ -121,3 +121,76 @@ repository's formatter check is `dart format` on new Dart files, and this phase 
 
 Not run by this agent, and left to the governor: `xcodebuild` for the watch app target (Phase 2 hosts
 these surfaces; Phase 1 is inert in the app because nothing constructs the adapter yet).
+
+# Evidence — watch-session-sync PR 2b, Phase 2 (the shell hosts the surfaces)
+
+Developer run, Copilot CLI, appended 2026-10-05. One file changed:
+`ios/OmniTrain Watch App/ContentView.swift` — the plan's whole Predicted Files row.
+
+## Why this phase has no red-first run of its own
+
+The shell is SwiftUI behind `#if os(watchOS)` in the app target, which is not part of
+`watch/watchos` and has no test target: no command available to an agent compiles it. Phase 2's items
+are wiring, not new package logic, and the plan assigns it no test item — the register's shell
+clauses (S-28 "the surface shown first", S-23/S-29 "lands on the start surface", S-30's pick) are
+SwiftUI branches, and their state-level halves are the package's own tests
+(`testS029AnEndedSessionCannotBeLoggedInto` plus `WatchEffortRatingTests`' owed-prompt pair). Those
+branches are verified by the owner walkthrough, not asserted here.
+
+## Signature audit — every package member the shell now calls
+
+The shell cannot be compiled here, so each call site was matched against the package by hand.
+Read from source, with the declaring file and line:
+
+| Shell call | Package declaration |
+|---|---|
+| `WatchConnectivityBridge(session:onFailure:)` | `WatchConnectivityBridge.swift:86` |
+| `WatchEmitForwarder(transport:onFailure:)` | `WatchEmitForwarder.swift:47` |
+| `WatchEmitForwarder.sink` → `WatchMessageSink` = `([String: Any]) -> Void` | `WatchEmitForwarder.swift:66`, `WatchSessionEngine.swift:24` |
+| `WatchSessionEngine(store:onEmit:)` | `WatchSessionEngine.swift:84` |
+| `WatchSessionStartPaths(engine:store:)` | `WatchStartPaths.swift:252` |
+| `WatchPhonePreferences(store:)` | `WatchPhonePreferences.swift:92` |
+| `WatchSyncOrchestrator(transport:paths:engine:preferences:)` (`nutrition:` defaults nil) | `WatchSyncOrchestrator.swift:58` |
+| `WatchLoggingState(engine:)` (clock, units, rest, sensors all default) | `WatchLoggingState.swift:174` |
+| `WatchEffortRatingState(engine:store:preferences:)` | `WatchEffortRating.swift:114` |
+| `WatchEffortRatingState.isPromptOwed` / `.objectWillChange` (`ObservableObject`) | `WatchEffortRating.swift:196` / `:91` |
+| `WatchLoggingView(state:)` (`haptics:` defaults) | `WatchLoggingView.swift:53` |
+| `WatchEffortRatingView(state:)`, `WatchEndSessionView(state:)` | `WatchEffortRatingView.swift:30`, `:102` |
+| `WatchStartView(paths:onSessionStarted:onRequestSync:phoneReachability:revision:)` (`onOpenNutrition:` defaults nil) | `WatchStartView.swift:114` |
+| `WatchExercisePickerView(paths:revision:onExerciseAdded:)` — trailing closure is the last parameter | `WatchStartView.swift:219` |
+| `WatchSessionStatus.active` | `WatchRecords.swift:18` |
+| `InMemoryWatchSessionStore()` | `WatchSessionStore.swift:137` |
+| `OmniTrainWatchConnectivity(onSendFailure:)` | `OmniTrainWatchConnectivity.swift:65` |
+
+Every one accepts the labels, order and defaults the shell passes. Two traps the audit was run for,
+and both hold: the sink is a *non-`async`* `([String: Any]) -> Void`, so `forwarder.sink` fits
+`onEmit` directly, and `onOpenNutrition`/`onRequestSync`/`phoneReachability`/`revision` all default,
+so the start surface is called with the four arguments it needs.
+
+## Green runs
+
+| Check | Result |
+|---|---|
+| `gateway.sh swift-test` (full) | `Executed 267 tests, with 0 failures (0 unexpected) in 1.027 (1.046) seconds`, exit 0 — the Phase 1 count exactly (no package file changed; the shell is not in the package) |
+| `gateway.sh test` (full) | `01:36 +3913 ~1: All tests passed!`, exit 0 — unchanged from the baseline (D-28: no Dart changed) |
+| `gateway.sh lint` | `196 issues found. (ran in 3.2s)`, exit 1 — the plan's baseline 196/0, and no issue names a file this phase touched (it changes no Dart file) |
+| `gateway.sh git-diff --stat` | `ios/OmniTrain Watch App/ContentView.swift | 134 ++++++--------`, "1 file changed, 100 insertions(+), 34 deletions(-)" |
+
+`gateway.sh git-status` after the phase: ` M "ios/OmniTrain Watch App/ContentView.swift"` and nothing
+else — no scratch file, no doc mutated (Phase 3 owns the docs), no Dart touched. Nothing was
+formatted.
+
+Not run by this agent, and named as such in `## Progress`: `xcodebuild` for the watch app target
+*(governor)*, and the owner walkthrough *(owner)*. This agent cannot run either.
+
+## What the shell does, and the two decisions behind it
+
+The body branches in D-24's order — the owed question first (nothing else on screen, R-3), then the
+logging surface, then `WatchStartView` — and the host bumps `revision` on an arrival (pre-existing),
+on a rating-state change (a deferred `Task { @MainActor }`, because `objectWillChange` fires *before*
+`end()`/`confirm()` mutate), and on a start/pick (`noteSurfaceChange()`).
+
+Two decisions, both in the plan's Assumption Log as A-8 and A-9: the logging branch requires the
+session to be active **and** hold at least one exercise (the brief's override of D-24 — a Free
+workout has no slot, so it stays on the start surface until one lands), and the picker sheet closes
+itself on the pick that switched the exercise.

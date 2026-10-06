@@ -22,6 +22,13 @@ final class WatchAppHost: ObservableObject {
     let paths: WatchSessionStartPaths
     let preferences: WatchPhonePreferences
 
+    /// The logging surface's state, and the End/effort-rating state. One of each
+    /// for the life of the app (D-30): the logging state derives the current
+    /// exercise live from the engine, so one instance follows the session, the
+    /// picker and the phone's own pushes.
+    let logging: WatchLoggingState
+    let rating: WatchEffortRatingState
+
     /// Bumped whenever `paths` changes underneath us. `WatchSessionStartPaths` is
     /// a plain class that publishes nothing, so without this SwiftUI would never
     /// re-read it — and a restore that loaded routines would leave the surface
@@ -35,24 +42,44 @@ final class WatchAppHost: ObservableObject {
 
     private let orchestrator: WatchSyncOrchestrator
 
+    /// The engine's sink holds this weakly, so the app has to hold it: without
+    /// the host, every frame the wrist produces is dropped (D-21).
+    private let forwarder: WatchEmitForwarder
+
+    private var cancellables: Set<AnyCancellable> = []
+
     init() {
+        // Build order matters (D-21): store, the radio, the sink over the radio,
+        // then the engine that hands its emissions to that sink. The package's
+        // own harnesses record emissions in a separate array and never hand them
+        // to a bridge, so theirs is not the order to copy.
         let store = InMemoryWatchSessionStore()
-        let engine = WatchSessionEngine(store: store)
-        let paths = WatchSessionStartPaths(engine: engine, store: store)
-        let preferences = WatchPhonePreferences(store: store)
         let session = OmniTrainWatchConnectivity(onSendFailure: reportWatchRadioFailure)
         let bridge = WatchConnectivityBridge(session: session, onFailure: reportWatchRadioFailure)
+        let forwarder = WatchEmitForwarder(transport: bridge, onFailure: reportWatchRadioFailure)
+        let engine = WatchSessionEngine(store: store, onEmit: forwarder.sink)
+        let paths = WatchSessionStartPaths(engine: engine, store: store)
+        let preferences = WatchPhonePreferences(store: store)
         let orchestrator = WatchSyncOrchestrator(
             transport: bridge,
             paths: paths,
             engine: engine,
             preferences: preferences
         )
+        let logging = WatchLoggingState(engine: engine)
+        let rating = WatchEffortRatingState(
+            engine: engine,
+            store: store,
+            preferences: preferences
+        )
 
         self.engine = engine
         self.paths = paths
         self.preferences = preferences
+        self.logging = logging
+        self.rating = rating
         self.orchestrator = orchestrator
+        self.forwarder = forwarder
 
         // Every arrival is routed by the orchestrator, then the surface re-reads.
         // A message the wrist refuses is reported through the bridge's failure
@@ -71,14 +98,26 @@ final class WatchAppHost: ObservableObject {
             self.phoneReachability = WatchPhoneReachability.observed(reachable: reachable)
             self.revision += 1
         }
+
+        // End and the answer both change which surface the shell shows, and
+        // neither goes through a host `@Published`. SwiftUI's `objectWillChange`
+        // announces a change *before* it is made, so the nudge is deferred a
+        // turn: by then the session has finished and the prompt is owed (D-24).
+        rating.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.revision += 1 }
+            }
+            .store(in: &cancellables)
     }
 
-    /// Reads whatever the wrist already holds: the routines, and the phone's
-    /// settings as the last `preferences_down` left them. Empty on a fresh
-    /// install, because both only arrive when the user asks the phone for them.
+    /// Reads whatever the wrist already holds: the routines, the phone's settings
+    /// as the last `preferences_down` left them, and any rating the wrist's own
+    /// End still owes. Empty on a fresh install, because all three only arrive
+    /// when the user asks the phone for them.
     func restore() async {
         await paths.restore()
         await preferences.restore()
+        await rating.restore()
         revision += 1
     }
 
@@ -92,27 +131,36 @@ final class WatchAppHost: ObservableObject {
         await orchestrator.sync(reconnect: paths.syncedAt != nil)
         revision += 1
     }
+
+    /// Tells the surfaces to re-read after a change the host did not make itself:
+    /// a session started from a routine or the picker, and an exercise picked on
+    /// the logging surface. Arrivals and rating-state changes already bump
+    /// `revision` on their own.
+    func noteSurfaceChange() {
+        revision += 1
+    }
 }
 
 struct ContentView: View {
     @ObservedObject var host: WatchAppHost
 
-    /// Which session the user is in. The logging surface is not wired in yet, so
-    /// what follows a start is the session's own ladder with the current
-    /// exercise marked — the state a start path, and a push from the phone, both
-    /// have to reach.
-    @State private var startedSessionId: String?
+    /// The exercise picker on the logging surface. The start surface keeps its
+    /// own sheet for the empty Free workout; this one moves between exercises and
+    /// adds new ones (R-1, S-30).
+    @State private var pickingExercise = false
 
     var body: some View {
         Group {
-            if startedSessionId != nil, let session = host.engine.session {
-                startedPlaceholder(session: session)
+            if host.rating.isPromptOwed {
+                owedRating
+            } else if let session = host.engine.session,
+                      session.status == WatchSessionStatus.active,
+                      !session.exercises.isEmpty {
+                loggingSurface
             } else {
                 WatchStartView(
                     paths: host.paths,
-                    onSessionStarted: { record in
-                        startedSessionId = record.sessionId
-                    },
+                    onSessionStarted: { _ in host.noteSurfaceChange() },
                     onRequestSync: { Task { await host.requestSync() } },
                     phoneReachability: host.phoneReachability,
                     revision: host.revision
@@ -124,25 +172,43 @@ struct ContentView: View {
         }
     }
 
-    private func startedPlaceholder(session: WatchSessionRecord) -> some View {
-        VStack(spacing: 4) {
-            Text("Session started")
-                .font(.headline)
-            ForEach(session.exercises.indices, id: \.self) { index in
-                let isCurrent = index == session.currentExerciseIndex
-                HStack(spacing: 4) {
-                    Image(systemName: isCurrent ? "arrowtriangle.right.fill" : "circle.fill")
-                        .font(.system(size: 6))
-                    Text(session.exercises[index]["name"] as? String ?? "Exercise")
-                        .font(.footnote)
-                        .lineLimit(1)
+    /// D-24's first surface: the owed question, alone. The view carries no other
+    /// control, so an answer is the only way past it (R-3).
+    private var owedRating: some View {
+        WatchEffortRatingView(state: host.rating)
+    }
+
+    /// D-24's second surface: logging, with the picker one tap away and the
+    /// package's own End on the same screen (D-25, R-1).
+    ///
+    /// The branch only shows this while the session is active and holds an
+    /// exercise. A Free workout starts with none, so the start surface and its
+    /// picker stay up until the first exercise lands — picking one gives the
+    /// session its slot and the body switches here on the host's nudge.
+    private var loggingSurface: some View {
+        NavigationStack {
+            WatchLoggingView(state: host.logging)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        WatchEndSessionView(state: host.rating)
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            pickingExercise = true
+                        } label: {
+                            Image(systemName: "list.bullet")
+                        }
+                    }
                 }
-                .foregroundStyle(isCurrent ? Color.primary : Color.secondary)
-            }
-            Button("Back") {
-                startedSessionId = nil
-            }
+                .sheet(isPresented: $pickingExercise) {
+                    WatchExercisePickerView(
+                        paths: host.paths,
+                        revision: host.revision
+                    ) { _ in
+                        pickingExercise = false
+                        host.noteSurfaceChange()
+                    }
+                }
         }
-        .padding()
     }
 }
