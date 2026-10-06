@@ -4,6 +4,9 @@
 > Next handoff: @code-reviewer (PR 4b — Phases 4–5 built, review fix 2 applied; PR 4a's review fix 1 and the 4a re-review's G1–G4 are closed in 4b)
 > Binding conventions: `docs/global_conventions.md`, `watch/sync_protocol/PROTOCOL.md`
 > Builds on: `docs/plans/2026-10-04-14-watch-shell-bridge-plan/2026-10-04-14-watch-shell-bridge-plan.md` (UNCOMMITTED verified unit, base commit 373c39b)
+> See also: `docs/plans/2026-10-06-17-watch-auto-sync-index.md` — the follow-on series that makes sync
+> automatic; it supersedes decision 4, the tail of decision 2, and the "the phone's finish is silent"
+> rule this series documents as final.
 
 ## Goal
 
@@ -16,10 +19,24 @@ the wrist's in-progress session. Both devices eventually log sets into the one s
 1. **True two-way logging** — both devices log sets into the one session.
 2. **No conflict-resolution UI or merge logic.** When both devices already hold different
    sessions, each keeps its own until one is finished — nothing lost, no prompt — via R1's
-   phone-policy guard above the protocol's replace-wholesale rule. A later series adds auto-sync.
+   phone-policy guard above the protocol's replace-wholesale rule. **That later series now exists:**
+   `docs/plans/2026-10-06-17-watch-auto-sync-index.md` (the tail of this decision is superseded there).
 3. **Remove all three phone-side watch surfaces**: the Watch Session screen, the home
    entry-point card (+ layout budget), and the picker "Send to watch session" icon.
-4. **Sync stays manual / watch-initiated.**
+4. ~~**Sync stays manual / watch-initiated.**~~ **Superseded 2026-10-06** — see the note under this
+   list and `docs/plans/2026-10-06-17-watch-auto-sync-index.md`.
+
+> **Superseded 2026-10-06 by the auto-sync series**
+> (`docs/plans/2026-10-06-17-watch-auto-sync-index.md`). Decision 4 and the tail of decision 2 above
+> no longer describe the app: anything about a *running* session syncs by itself, and the Sync button
+> is the fallback for a device that was out of reach and for the routine list. Two further statements
+> of this series are superseded there — "the phone's finish is silent" (D-16/"G2", pinned by
+> `test/watch_session_finish_test.dart`'s S-5 and written in `docs/watch_session_sync.md`) becomes a
+> pushed end, and the D-26 rest-timer bullet ("a Sync stops a running wrist countdown") becomes
+> "each device keeps its own countdown". Everything else in this file — including the
+> replace-wholesale conflict rule, which the new series extends to the wrist — still holds, and the
+> history in this file and its evidence files is left exactly as it was.
+
 
 ## Decomposition
 
