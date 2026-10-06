@@ -343,25 +343,25 @@ set reach the wrist; Phase 4 closes the docs. Phases 2 and 3 could swap, at the 
 
 ### Phase 2: The phone's projection (@developer)
 
-1. [ ] Add the pure row → wire-entry mapping (predicted `lib/core/sync_protocol/phone_entries.dart`):
+1. [x] Add the pure row → wire-entry mapping (predicted `lib/core/sync_protocol/phone_entries.dart`):
        given a slot id, the slot's row groups, and the claiming inbox stamps, return the projected
        entries — ids per D-33, `eventId` = `entryId`, `kind: set`, `loggedAt` per D-36, `reps`,
        `loadKg`, `sessionExerciseId`, `exerciseId`; omit per D-40.
-2. [ ] Implement the D-34 claim: read the session's live watch-inbox rows (`originWatch`,
+2. [x] Implement the D-34 claim: read the session's live watch-inbox rows (`originWatch`,
        `appliedAtMs != null`) and claim row groups one-to-one in ascending order by
        `group.createdAtMs == row.loggedAtMs`.
-3. [ ] Fill `'entries'` in `WatchSessionAdoptionBridge.projectSession`
+3. [x] Fill `'entries'` in `WatchSessionAdoptionBridge.projectSession`
        (`lib/state/watch/watch_session_adoption_bridge.dart:177`), iterating the ladder's slots and
        reading the phone's rows for each effort through the repository (observations, plus
        `EntryRows`/`SetRows` readers); no writes (D-41).
-4. [ ] Leave `'timers': const {}` untouched (D-42) and add no new phone surface.
-5. [ ] Flip `test/watch_session_projection_test.dart:318` (S-36's pin) and add the projection tests
+4. [x] Leave `'timers': const {}` untouched (D-42) and add no new phone surface.
+5. [x] Flip `test/watch_session_projection_test.dart:318` (S-36's pin) and add the projection tests
        for S-31, S-33, S-34, S-36, S-37, S-39, S-40, S-42 — plain `test()` where the fixture is state,
        Mock-first where it needs a repository, Hive seeded in `setUp` if a Hive group is used.
-6. [ ] Add the mirror-level test for S-32 (redelivery) and keep S-39's echo guard green in
+6. [x] Add the mirror-level test for S-32 (redelivery) and keep S-39's echo guard green in
        `test/live_mirroring_test.dart`; re-run `test/watch_session_merge_test.dart` and
        `test/watch_session_finish_test.dart` as regressions (both inject `projectSession`).
-7. [ ] Update `docs/watch_session_sync.md`'s ladder table row for the phone's answer and the "What
+7. [x] Update `docs/watch_session_sync.md`'s ladder table row for the phone's answer and the "What
        does not sync" bullet this PR invalidates — docs trail code by zero phases.
 
 **Done Criteria**: `.github/copilot/scripts/macos/gateway.sh lint`, `.github/copilot/scripts/macos/gateway.sh test`.
@@ -465,7 +465,14 @@ set reach the wrist; Phase 4 closes the docs. Phases 2 and 3 could swap, at the 
       version-history row), the two fixtures added and registered, the two test files extended. Red
       first by mutation, 3 of 3 caught; green `+91` in the two files; whole suite `+3920 ~1`, 0
       failures; `swift-test` 268 / 0; `lint` 196 / 0. Evidence: `<plan>.evidence.md`.
-- [ ] Phase 2 — the phone's projection (@developer)
+- [x] Phase 2 — the phone's projection (@developer, PR 3a) — **Complete.** `PhoneEntries` (new, pure, no
+      repository and no clock) maps a `set` slot's rows to wire entries and claims the groups a live wrist
+      row produced; `projectSession` became async and now answers with `entries` beside an unchanged
+      `timers`; `LiveSessionMirrorState` awaits the projection. Four mutations, all caught (entries dropped
+      → 8 of 10 red; the claiming stamps dropped → 3 red; the omission guard weakened → S-42; a
+      clock-stamped `loggedAt` → S-39). Green `+65` across `test/watch_session_projection_test.dart` +
+      `test/live_mirroring_test.dart`; whole suite `+3935 ~1`, 0 failures; `swift-test` 268 / 0; `lint`
+      196 / 0. Evidence: `<plan>.evidence.md`.
 - [ ] Phase 3 — the wrist takes a re-statement (@dba)
 - [ ] Phase 4 — docs, walkthrough, residue sweep (@developer)
 
@@ -492,6 +499,29 @@ promote to a D-x — or REVERT, opening a remediation item.)*
 - **A-5 (Developer, Phase 1).** The plan names Phase 1's owner as @dba; the governor's brief assigns
   it to @developer. Chosen: follow the brief — Phase 1 changes no model, repository or seed, so no
   data-layer work is involved.
+- **A-6 (Developer, Phase 2).** S-36's prose says its pin "holds unchanged", but the pin read `entries`
+  as empty and Phase 2 makes the answer carry the one set the add-exercise path logs. Options: keep the
+  old assertion, or pin the entry id. Chosen: pin `['entry-$bench-0']` — an empty `entries` is exactly
+  the behaviour this PR removes, and S-36's own subject (a ladder with nothing logged) is covered by the
+  S-36 test in the new group.
+- **A-7 (Developer, Phase 2).** D-39 gates projection on `effortKind == set`. Options: project every
+  effort kind, or sets only. Chosen: sets only, asserted by `S-2 a running phone session is answered with
+  its own ladder` — a `timed` or unnamed slot rides the ladder and contributes no entry.
+- **A-8 (Developer, Phase 2).** The projection had to become async (it reads rows through the repository),
+  so `LiveSessionMirrorState`'s `projection` seam and its `projectedSession()` changed shape and
+  `watch_sync_request_handler.dart:102` awaits it. All three files are in the plan's Predicted Files;
+  `_shapeDiffers` still ignores `entries` (S-39's echo guard), which needed no change.
+- **A-9 (Developer, Phase 2).** S-32 and S-39 are covered at the projection and mirror level only: the
+  wrist engine's treatment of a re-statement is Phase 3 (PR 3b), and no Phase 2 sentence claims it. The
+  wrist side of S-38 is asserted through `engine.applyMessage`, which stores snapshot entries today.
+- **A-10 (Developer, Phase 2).** S-37's fixture is a phone-logged set counting like the wrist's own on the
+  wrist; the test asserts `engine.entries`, because `WatchLoggingState` exposes no set-count getter and
+  adding one would be a new phone surface (D-42 forbids one).
+- **A-11 (Developer, Phase 2).** `test/helpers/repository_harness.dart`'s `seedExercise` cannot seed
+  capabilities (it passes them inline to `createExercise`, which drops them), so
+  `test/watch_session_projection_test.dart` takes `seedExercise` from
+  `helpers/watch_capture_import_harness.dart` and `hide`s the other. Test-helper only; no production
+  change. Worth folding into the harness on the next touch.
 
 ## Feedback
 

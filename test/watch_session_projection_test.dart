@@ -1,30 +1,56 @@
 // A phone session surfaces on the wrist at the next watch-initiated sync.
 //
-// Plan: `docs/plans/2026-10-05-15a-watch-session-sync-pr1-plan/`.
+// Plan: `docs/plans/2026-10-05-15a-watch-session-sync-pr1-plan/` (S-2, S-6, S-8,
+// D-10, D-11) and `docs/plans/2026-10-05-15d-watch-session-sync-pr3-plan/` (the
+// phone's own sets ride the answer: S-31, S-32, S-33, S-34, S-36, S-37, S-38,
+// S-39, S-40, S-42).
 // Scenario mapping:
 //   S-2 a phone session surfaces at a watch-initiated sync → `S-2 ...`
 //   S-8 phone edits reach the wrist at sync               → `S-8 ...`
 //   S-6/D-10 a session this phone is not in stays untouched → `S-6 ...`
 //   D-11 on-demand projection, never cached                → `D-11 ...`
+//   S-31 the phone's own sets arrive as entries           → `S-31 ...`
+//   S-32 the same answer twice doubles nothing            → `S-32 ...`
+//   S-33/S-34 provenance: the wrist's own set is not sent back → `S-33 ...`
+//   S-36 a ladder with nothing logged answers with no entries → `S-36 ...`
+//   S-37 a phone entry counts like the wrist's own        → `S-37 ...`
+//   S-38 the wrist adopts a session it does not hold      → `S-38 ...`
+//   S-39 the projection is deterministic, and does not echo → `S-39 ...`
+//   S-40 two sessions do not share entries                → `S-40 ...`
+//   S-42 an entry the wire cannot carry is omitted        → `S-42 ...`
 //
 // The phone side is the graph `createWatchSync` builds, over a fake radio: the
-// answer's shape, its revision and where it comes from are the shipping code's.
-// The wrist side is the real engine over an in-memory store, so every answer is
-// applied the way the watch app applies one.
+// answer's shape, its revision, its entries and where it comes from are the
+// shipping code's. The wrist side is the real engine over an in-memory store, so
+// every answer is applied the way the watch app applies one — and the sets it
+// holds are read back the way the wrist's logging surface reads them.
+
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
+import 'package:omnitrain/core/utils/logged_entry_rows.dart';
+import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_session_engine.dart';
 
 import 'helpers/fake_preferences_service.dart';
+// `seedExercise` comes from the capture harness: it writes capabilities through
+// `setExerciseCapabilities`, which is the only way they reach a repository —
+// `createExercise` ignores the inline list. The projection refuses a slot whose
+// exercise carries none, so this is load-bearing.
+import 'helpers/repository_harness.dart' hide seedExercise;
+import 'helpers/sync_protocol_harness.dart';
 import 'helpers/watch_capture_import_harness.dart' show seedExercise;
 
 final DateTime _now = DateTime.utc(2026, 10, 6, 9);
@@ -95,6 +121,153 @@ Future<void> _seedCatalog(WorkoutRepository repository) async {
     name: 'Mystery',
     capabilities: [],
   );
+}
+
+/// The instant a fixture's rows are stamped with: [minute] past the phone's
+/// own `_now` on the same day, so a stamp is readable in a debugger.
+int _at(int minute) => DateTime.utc(
+  2026,
+  10,
+  6,
+  9,
+  minute,
+).millisecondsSinceEpoch;
+
+/// The same instant, as the protocol writes one.
+String _atIso(int minute) =>
+    utcIso(DateTime.fromMillisecondsSinceEpoch(_at(minute), isUtc: true));
+
+/// The entry id of the set the wrist logs in these fixtures. The wrist's own
+/// id, which the phone imports and must never send back (D-34).
+const String _wristEntryId = '9f2c1d2e-3b4a-4c5d-8e6f-7a8b9c0d1e2f';
+
+/// The ids the answer's `entries` carry, in order.
+List<String> _entryIds(Map<String, Object?> payload) => [
+  for (final entry in _objects(payload['entries']))
+    entry['entryId']! as String,
+];
+
+/// One set of a fixture slot: what its rows carry, and when they were written.
+typedef _Set = ({int reps, double loadKg, bool skipped, int atMs});
+
+/// The repository fixtures this file's scenarios start from.
+///
+/// Both write straight to the repository rather than through the session screen:
+/// the regular session path logs a default set with a real clock when an
+/// exercise is added, and a scenario that pins an exact ladder, stamp or
+/// provenance needs rows of its own.
+abstract final class _SessionFixture {
+  /// Seeds a running phone session holding one `set` slot, with exactly the row
+  /// groups [sets] names and nothing else. Answers the slot's id.
+  static Future<String> seedSets(
+    WorkoutRepository repository,
+    WorkoutState state,
+    String sessionId,
+    String slotId,
+    String exerciseId,
+    List<_Set> sets,
+  ) async {
+    final start = _at(0);
+    await repository.createSession(
+      TrainingSession(
+        id: sessionId,
+        ownerUserId: LoggedEntryRows.ownerUserId,
+        startedAtMs: start,
+        // Running: the answer is the session the phone is in, and a session
+        // with an end is history (G1).
+        endedAtMs: null,
+        createdAtMs: start,
+        updatedAtMs: start,
+      ),
+    );
+    await repository.createSegment(
+      LoggedEntryRows.defaultSegment(
+        id: 'segment-$sessionId',
+        sessionId: sessionId,
+        atMs: start,
+      ),
+    );
+    await repository.createEffort(
+      SegmentEffort(
+        id: slotId,
+        segmentId: 'segment-$sessionId',
+        orderIndex: 0,
+        effortKind: 'set',
+        exerciseId: exerciseId,
+        createdAtMs: start,
+        updatedAtMs: start,
+      ),
+    );
+    for (var number = 0; number < sets.length; number++) {
+      final set = sets[number];
+      if (set.skipped) {
+        // A skipped set: the reps row says so, the way the session screen
+        // writes one.
+        await repository.createObservation(
+          EffortObservation(
+            id: LoggedEntryRows.observationId(slotId, number, 'reps'),
+            effortId: slotId,
+            metricId: MetricIds.reps,
+            unitId: MetricIds.unitReps,
+            valueInt: 0,
+            valueBool: true,
+            createdAtMs: set.atMs,
+            updatedAtMs: set.atMs,
+          ),
+        );
+        continue;
+      }
+      for (final row in LoggedEntryRows.setObservations(
+        effortId: slotId,
+        entryIndex: number,
+        reps: set.reps,
+        weightKg: set.loadKg,
+        exerciseHasLoad: true,
+        atMs: set.atMs,
+      )) {
+        await repository.createObservation(row);
+      }
+    }
+    await state.loadHistoricalSession(sessionId);
+    return slotId;
+  }
+
+  /// Stages the watch-inbox row of a set the wrist logged in [slotId] and marks
+  /// it applied — a live row, which is what the provenance claim (D-34) reads.
+  ///
+  /// The row's `loggedAt` is the identity the importer stamps on every row it
+  /// writes for that entry, so a fixture passes the stamp its imported rows
+  /// carry.
+  static Future<void> stageImportedSet(
+    WorkoutRepository repository,
+    String sessionId,
+    String slotId, {
+    required String entryId,
+    required int loggedAtMs,
+  }) async {
+    await repository.stageWatchInboxEntry(
+      WatchInboxEntry(
+        entryId: entryId,
+        watchSessionId: sessionId,
+        kind: WatchInboxEntry.kindSet,
+        origin: WatchInboxEntry.originWatch,
+        payload: <String, dynamic>{
+          'entryId': entryId,
+          'eventId': entryId,
+          'kind': 'set',
+          'loggedAt': utcIso(
+            DateTime.fromMillisecondsSinceEpoch(loggedAtMs, isUtc: true),
+          ),
+          'sessionExerciseId': slotId,
+          'exerciseId': 'ex-bench',
+          'reps': 5,
+          'loadKg': 55.0,
+        },
+        receivedAtMs: loggedAtMs,
+      ),
+    );
+    await repository.markWatchInboxEntriesApplied([entryId], loggedAtMs);
+  }
 }
 
 /// The phone's radio: records what the phone sent, and hands the phone one
@@ -200,6 +373,22 @@ void main() {
       for (final effort in phoneState.getEffortsForSegment(segment.id))
         effort.id,
   ];
+
+  /// A running phone session holding one `set` slot with exactly [sets] logged
+  /// in it, loaded as the session the phone is in.
+  Future<String> seed(
+    String sessionId,
+    List<_Set> sets, {
+    String slotId = 'slot-bench',
+    String exerciseId = 'ex-bench',
+  }) => _SessionFixture.seedSets(
+    repository,
+    phoneState,
+    sessionId,
+    slotId,
+    exerciseId,
+    sets,
+  );
 
   /// S-8's fixture at the point both cases start from: the wrist starts `s-w1`
   /// with two slots, the phone adopts that session at the hand-over (S-1), the
@@ -315,7 +504,17 @@ void main() {
               'a sessionless wrist asks with no position of its own, and a '
               'phone session opens on its first slot',
         );
-        expect(payload['entries'], isEmpty);
+        expect(
+          _entryIds(payload),
+          ['entry-$bench-0'],
+          reason:
+              'S-31 the phone answers with the sets it logged itself. The '
+              'session path logs one set when an exercise is added, and only '
+              'the `set` slot carries one: a `timed` or unnamed kind has no '
+              'wire entry yet (D-39)',
+        );
+        expect(_objects(payload['entries']).single['reps'], 10);
+        expect(_objects(payload['entries']).single['loadKg'], 0.0);
         expect(payload['timers'], isEmpty);
         expect(reportedFailure, isNull);
       },
@@ -583,5 +782,498 @@ void main() {
       );
       expect(extended['currentExerciseIndex'], 0);
     });
+  });
+
+  group('S-31…S-42 the sets the phone logged ride the answer', () {
+    /// A phone session of one `set` slot with three groups: the phone's own at
+    /// the first and third instants, and — when [wristAlsoLogged] — a second
+    /// group carrying the rows the importer wrote for a set the wrist logged,
+    /// whose live inbox row is staged at that same instant (D-34's identity).
+    Future<String> phoneSets({
+      required int secondAtMs,
+      required int thirdAtMs,
+      bool wristAlsoLogged = false,
+    }) async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 5, loadKg: 55.0, skipped: false, atMs: secondAtMs),
+        (reps: 10, loadKg: 70.0, skipped: false, atMs: thirdAtMs),
+      ]);
+      if (wristAlsoLogged) {
+        await _SessionFixture.stageImportedSet(
+          repository,
+          'sess-1',
+          'slot-bench',
+          entryId: _wristEntryId,
+          loggedAtMs: secondAtMs,
+        );
+      }
+      return 'sess-1';
+    }
+
+    /// The set the wrist logged itself, as the wrist logs one: the same entry
+    /// id and the same instant the phone imported.
+    Future<void> wristLogsItsOwnSet() => engine.appendObservation(
+      <String, Object?>{
+        'entryId': _wristEntryId,
+        'eventId': _wristEntryId,
+        'kind': 'set',
+        'loggedAt': _atIso(2),
+        'sessionExerciseId': 'slot-bench',
+        'exerciseId': 'ex-bench',
+        'reps': 5,
+        'loadKg': 55.0,
+      },
+    );
+
+    test('S-31 the phone\'s own sets arrive as entries', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+      expect(
+        engine.observations,
+        isEmpty,
+        reason: 'the fixture: the wrist has logged nothing of its own',
+      );
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      final answer = radio.lastOfType('session_snapshot');
+      final payload = _payload(answer);
+      expect(payload['sessionId'], 'sess-1');
+      expect(_slotIds(payload), ['slot-bench']);
+      expect(
+        _entryIds(payload),
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+        reason:
+            'S-31 both sets this phone logged ride the answer, named by the '
+            'slot they are in and their place in the ladder (D-33), so the '
+            'wrist can hold them like its own',
+      );
+      final entries = _objects(payload['entries']);
+      expect([for (final entry in entries) entry['kind']], ['set', 'set']);
+      expect([for (final entry in entries) entry['reps']], [8, 8]);
+      expect([for (final entry in entries) entry['loadKg']], [60.0, 62.5]);
+      expect(
+        [for (final entry in entries) entry['sessionExerciseId']],
+        ['slot-bench', 'slot-bench'],
+      );
+      expect(
+        [for (final entry in entries) entry['exerciseId']],
+        ['ex-bench', 'ex-bench'],
+      );
+      expect(
+        [for (final entry in entries) entry['loggedAt']],
+        [_atIso(1), _atIso(2)],
+        reason:
+            'D-36 the instant the set was logged, as the protocol writes one',
+      );
+      expect(
+        [for (final entry in entries) entry['eventId']],
+        _entryIds(payload),
+        reason: 'D-33 the phone is the writer, so the entry is its own event',
+      );
+      expect(
+        payload['timers'],
+        isEmpty,
+        reason: 'D-42 the phone carries no timer state down',
+      );
+
+      expect(await engine.applyMessage(answer), isTrue);
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+        reason: 'S-31 the wrist holds both, in the order the protocol reads them',
+      );
+      expect(engine.entries.first.payload['reps'], 8);
+      expect(engine.entries.last.payload['loadKg'], 62.5);
+      expect(
+        [for (final entry in engine.entries) entry.confirmedAt],
+        everyElement(isNotNull),
+        reason: 'the phone stated them, so they are receipted, not owed',
+      );
+      expect(engine.pendingObservations(), isEmpty);
+      expect(reportedFailure, isNull);
+    });
+
+    test('S-32 the same answer twice doubles nothing', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final answer = radio.lastOfType('session_snapshot');
+
+      expect(await engine.applyMessage(answer), isTrue);
+      expect(
+        await engine.applyMessage(answer),
+        isTrue,
+        reason: 'the very same frame, message id and all, is not an error',
+      );
+      expect(
+        await engine.applyMessage({...answer, 'messageId': 'msg-redelivered'}),
+        isTrue,
+        reason: 'nor is the same answer under a fresh message id',
+      );
+
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+        reason:
+            'S-32 the same entry, however often it arrives, is the row the '
+            'wrist already wrote: the id is the phone\'s (D-33) and the wrist '
+            'keys on it',
+      );
+      expect(engine.observations, hasLength(2));
+      expect(
+        engine.pendingObservations(),
+        isEmpty,
+        reason: 'S-32 a re-delivered snapshot is never echoed back',
+      );
+    });
+
+    test('S-33 the wrist\'s own set is not sent back to it', () async {
+      await phoneSets(secondAtMs: _at(2), thirdAtMs: _at(3), wristAlsoLogged: true);
+      expect(
+        phoneState.getObservationsForEffort('slot-bench'),
+        hasLength(6),
+        reason: 'the fixture: three sets of rows, one of them the wrist\'s',
+      );
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      final answer = radio.lastOfType('session_snapshot');
+      final payload = _payload(answer);
+      expect(
+        _entryIds(payload),
+        ['entry-slot-bench-0', 'entry-slot-bench-2'],
+        reason:
+            'S-33 the middle set is the wrist\'s own, so the answer carries the '
+            'phone\'s two and never the wrist\'s: naming it back under a phone '
+            'id would double it (D-34)',
+      );
+      expect(
+        jsonEncode(payload),
+        isNot(contains(_wristEntryId)),
+        reason: 'S-33 the wrist\'s entry is not sent back under any name',
+      );
+      expect(
+        [for (final entry in _objects(payload['entries'])) entry['reps']],
+        [8, 10],
+      );
+
+      expect(await engine.applyMessage(answer), isTrue);
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', 'entry-slot-bench-2'],
+        reason: 'the wrist holds the two it was sent, and nothing else',
+      );
+    });
+
+    test('S-34 one live row claims one ladder group', () async {
+      await phoneSets(
+        secondAtMs: _at(2),
+        thirdAtMs: _at(2),
+        wristAlsoLogged: true,
+      );
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final answer = radio.lastOfType('session_snapshot');
+      expect(
+        _entryIds(_payload(answer)),
+        ['entry-slot-bench-0', 'entry-slot-bench-2'],
+        reason:
+            'S-34 the wrist\'s row claims the first group stamped like it, and '
+            'the later group — a set of the phone\'s own, logged in the same '
+            'millisecond — is still sent: one row claims one group',
+      );
+
+      // The device that logged it logs it: the wrist holds its own row and the
+      // two the phone sent, each exactly once.
+      expect(await engine.applyMessage(answer), isTrue);
+      await wristLogsItsOwnSet();
+
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', _wristEntryId, 'entry-slot-bench-2'],
+        reason:
+            'S-34 three sets, each represented once: the wrist\'s own and the '
+            'two the phone logged, in the order they were logged',
+      );
+    });
+
+    test('S-36 a ladder with nothing logged answers with no entries', () async {
+      await seed('sess-1', const []);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      final payload = _payload(radio.lastOfType('session_snapshot'));
+      expect(_slotIds(payload), ['slot-bench']);
+      expect(
+        _objects(payload['entries']),
+        isEmpty,
+        reason:
+            'S-36 a session with nothing logged answers with an empty list, '
+            'not an absent one: the field is part of the state',
+      );
+      expect(_entryIds(payload), isEmpty);
+      expect(reportedFailure, isNull);
+    });
+
+    test('S-37 a phone entry counts like the wrist\'s own', () async {
+      await phoneSets(secondAtMs: _at(2), thirdAtMs: _at(3), wristAlsoLogged: true);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        await engine.applyMessage(radio.lastOfType('session_snapshot')),
+        isTrue,
+      );
+      expect(wristSlots(), ['slot-bench']);
+
+      await wristLogsItsOwnSet();
+
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', _wristEntryId, 'entry-slot-bench-2'],
+        reason:
+            'S-37 the list the logging screen reads holds three sets: two the '
+            'phone logged and one the wrist did',
+      );
+      expect(engine.entries.first.payload['reps'], 8);
+      expect(
+        engine.entries.last.payload['reps'],
+        10,
+        reason:
+            'S-37 the newest set is the phone\'s, logged after the wrist\'s '
+            'own: a phone entry is ordered by when it was logged, not by when '
+            'it arrived',
+      );
+      expect(
+        engine.entries.last.payload.keys.toSet(),
+        engine.entries[1].payload.keys.toSet(),
+        reason:
+            'D-33 a phone entry carries the fields the wrist\'s own carries, '
+            'so nothing downstream can tell them apart',
+      );
+    });
+
+    test('S-38 the wrist adopts a session it does not hold', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+      expect(engine.session, isNull, reason: 'the wrist holds nothing yet');
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        await engine.applyMessage(radio.lastOfType('session_snapshot')),
+        isTrue,
+      );
+
+      expect(engine.session!.sessionId, 'sess-1');
+      expect(wristSlots(), ['slot-bench']);
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+        reason: 'S-38 the session arrives with the sets the phone logged in it',
+      );
+      expect(
+        [for (final entry in engine.observations) entry.confirmedAt],
+        everyElement(isNotNull),
+        reason:
+            'S-38 the wrist logged nothing of its own, so every row it now '
+            'holds is one the phone stated',
+      );
+      expect(engine.pendingObservations(), isEmpty);
+    });
+
+    test('S-39 the projection is deterministic, and an echo is not sent', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final first = _payload(radio.lastOfType('session_snapshot'));
+      expect(await engine.applyMessage(radio.lastOfType('session_snapshot')), isTrue);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final second = _payload(radio.lastOfType('session_snapshot'));
+      expect(
+        jsonEncode(second['entries']),
+        jsonEncode(first['entries']),
+        reason:
+            'S-39 byte-identical: the ids come from the ladder and the instants '
+            'from the rows, never from a clock or a counter',
+      );
+      expect(second['revision'], first['revision']);
+
+      radio.sent.clear();
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+      expect(
+        radio.ofType('session_snapshot'),
+        isEmpty,
+        reason:
+            'S-39 the wrist states the shape it was sent, so the phone has '
+            'nothing to correct and does not re-assert',
+      );
+      expect(reportedFailure, isNull);
+    });
+
+    test('S-40 two sessions do not share entries', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        await engine.applyMessage(radio.lastOfType('session_snapshot')),
+        isTrue,
+      );
+      expect(engine.session!.sessionId, 'sess-1');
+
+      await seed('sess-2', [
+        (reps: 6, loadKg: 40.0, skipped: false, atMs: _at(4)),
+      ], slotId: 'slot-other');
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final answer = radio.lastOfType('session_snapshot');
+      final payload = _payload(answer);
+      expect(payload['sessionId'], 'sess-2');
+      expect(_slotIds(payload), ['slot-other']);
+      expect(_entryIds(payload), ['entry-slot-other-0']);
+
+      expect(await engine.applyMessage(answer), isTrue);
+      expect(engine.session!.sessionId, 'sess-2');
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-other-0'],
+        reason:
+            'S-40 the entries belong to the session they were logged in: '
+            'sess-1\'s rows are not carried into sess-2',
+      );
+      expect(
+        [for (final entry in engine.entries) entry.sessionId],
+        ['sess-2'],
+      );
+    });
+
+    test('S-42 a set the wire cannot carry is omitted', () async {
+      await seed('sess-1', [
+        (reps: 0, loadKg: 0.0, skipped: true, atMs: _at(1)),
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(2)),
+      ]);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final answer = radio.lastOfType('session_snapshot');
+      final payload = _payload(answer);
+      expect(
+        _entryIds(payload),
+        ['entry-slot-bench-1'],
+        reason:
+            'S-42 a skipped set has no wire shape — the schema has no field to '
+            'say so and `reps` has a minimum of 1 — so it is left out, never '
+            'placeheld (D-40)',
+      );
+      final sent = _objects(payload['entries']).single;
+      expect(sent['reps'], 8);
+      expect(sent['loadKg'], 60.0);
+
+      expect(
+        loadProtocolValidator().validateEnvelope(answer),
+        isEmpty,
+        reason:
+            'S-42 a `reps: 0` entry would be a rejection, and a rejected entry '
+            'costs the whole snapshot: omitting it is what keeps the answer '
+            'conformant',
+      );
+
+      expect(await engine.applyMessage(answer), isTrue);
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-1'],
+        reason: 'the wrist holds the set that could be carried, and no other',
+      );
+    });
+  });
+
+  // The same answer on both stores: the projection is a read, so what it reads
+  // must not depend on which store holds the rows.
+  final parity = <String, String>{};
+  for (final factory in harnessFactories) {
+    final harness = factory();
+
+    group('${harness.name} — S-31 the answer is the same on both stores', () {
+      late WorkoutRepository store;
+
+      setUp(() async => store = await harness.open());
+      tearDown(() async => await harness.close());
+
+      test('S-31 both stores project the same entries', () async {
+        await seedExercise(
+          store,
+          id: 'ex-bench',
+          name: 'Bench Press',
+          capabilities: ['sets', 'reps', 'load'],
+        );
+        final state = WorkoutState(store);
+        await _SessionFixture.seedSets(store, state, 'sess-1', 'slot-bench', 'ex-bench', [
+          (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+          (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+        ]);
+        await _SessionFixture.stageImportedSet(
+          store,
+          'sess-1',
+          'slot-bench',
+          entryId: _wristEntryId,
+          loggedAtMs: _at(3),
+        );
+
+        final bridge = WatchSessionAdoptionBridge(repository: store);
+        bridge.bindWorkoutState(state);
+        final payload = await bridge.projectSession(null);
+
+        expect(payload, isNotNull);
+        expect(_slotIds(payload!), ['slot-bench']);
+        expect(
+          _entryIds(payload),
+          ['entry-slot-bench-0', 'entry-slot-bench-1'],
+          reason: 'both sets are the phone\'s: the wrist\'s row is stamped later',
+        );
+        expect(
+          [for (final entry in _objects(payload['entries'])) entry['loadKg']],
+          [60.0, 62.5],
+        );
+        expect(payload['timers'], isEmpty);
+        parity[harness.name] = jsonEncode(payload);
+      });
+    });
+  }
+
+  test('S-31 Mock and Hive answer byte for byte the same', () {
+    expect(parity['Mock'], isNotNull, reason: 'the Mock group ran');
+    expect(parity['Hive'], isNotNull, reason: 'the Hive group ran');
+    expect(
+      parity['Hive'],
+      parity['Mock'],
+      reason:
+          'the projection reads the rows through the repository interface, so '
+          'the store underneath must not show through (G1)',
+    );
   });
 }

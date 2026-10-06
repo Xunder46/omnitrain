@@ -64,7 +64,8 @@ class LiveSessionMirrorState extends ChangeNotifier {
     SyncProtocolValidator? validator,
     DateTime Function()? clock,
     String Function()? idFactory,
-    Map<String, Object?>? Function(Map<String, Object?>? incoming)? projection,
+    Future<Map<String, Object?>?> Function(Map<String, Object?>? incoming)?
+    projection,
   }) : _transport = transport,
        _validator = validator,
        _clock = clock ?? _utcNow,
@@ -88,8 +89,9 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// own session rather than from the copy this mirror reconciled (D-11).
   /// [incoming] is the wrist frame being answered, null for a bare request.
   /// Null means the phone has no session of its own to speak from — the mirror's
-  /// own copy answers then, which is the protocol's echo.
-  final Map<String, Object?>? Function(Map<String, Object?>? incoming)?
+  /// own copy answers then, which is the protocol's echo. Asynchronous because
+  /// the phone's own entries are read from the repository (D-31).
+  final Future<Map<String, Object?>?> Function(Map<String, Object?>? incoming)?
   _projection;
 
   /// The session as the phone closed it. Null while it is running.
@@ -225,7 +227,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
     // wrist's instead. (A session started on the wrist names a session the
     // phone does not hold, so it is adopted by the switch above.)
     if (envelope['type'] == 'session_snapshot') {
-      final answer = _projection?.call(envelope) ?? before;
+      final projection = _projection;
+      final answer = projection == null
+          ? before
+          : (await projection(envelope)) ?? before;
       if (_shapeDiffers(envelope, answer)) {
         if (_holdsLadder(answer)) {
           await sendState(answer);
@@ -268,7 +273,11 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// Null when the phone has no session of its own to speak from; the caller
   /// falls back to what this mirror holds, which is all a phone with no bound
   /// session has.
-  Map<String, Object?>? get projectedSession => _projection?.call(null);
+  Future<Map<String, Object?>?> projectedSession() async {
+    final projection = _projection;
+    if (projection == null) return null;
+    return projection(null);
+  }
 
   /// The phone's live session as a protocol message — the answer to a snapshot
   /// request, and what brings a watch that drifted back to the phone's shape.

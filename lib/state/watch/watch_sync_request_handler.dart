@@ -99,7 +99,7 @@ class WatchSyncRequestHandler {
   /// ladder the wrist is actually working through (PROTOCOL.md, "Idempotency
   /// and reconciliation").
   Future<bool> _sendSnapshot() async {
-    final projection = _mirror.projectedSession;
+    final projection = await _mirror.projectedSession();
     if (projection != null) {
       await _mirror.sendState(projection);
       return true;

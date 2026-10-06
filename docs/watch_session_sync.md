@@ -21,7 +21,9 @@ transport and the sensors are in
 | The session the wrist is running becoming the phone's own in-progress session | `WatchSessionAdoptionBridge.consider`, called by `WatchIncomingRouter` after the mirror has applied a snapshot |
 | Telling the wrist when its session is already history | `WatchIncomingRouter`'s answer to that snapshot: the mirror's `reportLifecycle` |
 | Ending the phone's copy when the wrist ends its own | `WatchSessionAdoptionBridge.onLifecycle` → the ordinary finish or the ordinary discard |
-| The ladder the phone asserts | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session |
+| The ladder the phone asserts, and the sets it logged | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session — the ladder, plus the phone's own logged sets in the answer's `entries` (D-31, D-33) |
+| Turning the phone's logged rows into wire entries | `PhoneEntries.project` / `PhoneEntries.ordered` in `lib/core/sync_protocol/phone_entries.dart` — pure, no repository and no clock |
+| Which ladder group a wrist row already claimed | `WatchSessionAdoptionBridge._wristRowStamps`, read from the session's live inbox rows (D-34) |
 | Handing the rating the wrist recorded to the finish that writes the row | `WatchSessionAdoptionBridge.onLifecycle`'s read of the session row before it ends the session |
 | Merging a wrist's set into the session the phone holds | `WatchSessionImporter.apply`'s `phoneOwnsSession` branch — the held merge — told by `WatchSessionInbox` |
 | Which session the phone holds | `WatchSessionAdoptionBridge.holdsSession`, read by the inbox |
@@ -49,6 +51,23 @@ silent on a replay. Verified by `test/watch_session_projection_test.dart`
 (`D-11 the revision rises with the ladder, and only with it`,
 `S-2 a running phone session is answered with its own ladder`, and — an idle
 phone sends nothing at all — `S-2 an idle phone still answers with silence`).
+
+**D-31/D-33/D-34 — the answer carries the sets the phone logged, as its own.**
+`projectSession` reads each `set` slot's row groups through the repository and
+emits one `set` entry per row: id `entry-<slotId>-<n>` with `eventId` equal to
+`entryId` (D-33), `loggedAt` the row's own instant, and the ladder's
+`sessionExerciseId`/`exerciseId` beside the row's reps and load. A group a live
+wrist row already produced is *claimed* by that row and not sent back (D-34), so
+the wrist never re-receives its own set. Nothing is written while composing, and
+no value comes from a clock or a counter. Verified by
+`test/watch_session_projection_test.dart`
+(`S-31 the phone's own sets arrive as entries`,
+`S-33 the wrist's own set is not sent back to it`,
+`S-34 one live row claims one ladder group`,
+`S-39 the projection is deterministic, and an echo is not sent`,
+`S-40 two sessions do not share entries`) and, at the mirror level,
+`test/live_mirroring_test.dart`
+(`S-31 a ladder the phone disagrees with is answered with its sets`).
 
 **D-10 — a conflict resolves to "each keeps its own".** A phone already running a
 session refuses to adopt another, and a wrist session the phone is not in is left
@@ -127,13 +146,31 @@ session`), a wrist end closes the phone's copy
 `S-4 the wrist ends its session, roster of logged sets first`), and a set logged
 while the phone was out of reach arrives at the wrist's next sync
 (`test/watch_session_merge_test.dart`, `S-19 a set logged while the phone was out
-of reach`). What remains out is listed below.
+of reach`). Neither is phone→wrist any more: the sets the phone logs itself ride
+its answer to a Sync as `entries`, which the wrist's existing snapshot merge
+stores (`test/watch_session_projection_test.dart`,
+`S-31 the phone's own sets arrive as entries`, and the wrist adopting a session
+it does not hold — `S-38 the wrist adopts a session it does not hold`). What
+remains out is listed below.
 
-- **Sets logged on the phone are not carried to the wrist.** The phone answers a
-  sync with its ladder and its own place, and never with an entry: the answer's
-  `entries` is always empty, so a set the phone logs stays on the phone. Verified
-  by `test/watch_session_projection_test.dart`
-  (`S-2 a running phone session is answered with its own ladder`).
+- **A set the wire cannot carry is omitted.** A skipped set, or one whose stored
+  reps are below 1, has no place in the protocol's `set` shape
+  (`additionalProperties: false`, `reps` ≥ 1), so it is left out of the answer
+  and stays on the phone — and a set's added weight goes with it, `extraLoadKg`
+  being a hold's load. A rejected entry would reject the whole snapshot
+  (`test/watch_session_projection_test.dart`,
+  `S-42 a set the wire cannot carry is omitted`).
+- **Only sets are carried.** D-39 projects `set` entries only: a `timed`, `hold`
+  or `round` effort contributes nothing to `entries` yet, while the ladder still
+  carries its slot (`test/watch_session_projection_test.dart`,
+  `S-2 a running phone session is answered with its own ladder`).
+- **An entry is asserted once, not re-asserted.** The answer's `entries` are
+  byte-identical between two Syncs of an unchanged ladder, and the wrist's echo
+  of that answer is not answered again — an entry-only difference is no
+  difference (`test/watch_session_projection_test.dart`,
+  `S-39 the projection is deterministic, and an echo is not sent`;
+  `test/live_mirroring_test.dart`,
+  `S-32/S-39 an entry-only difference is not re-asserted`).
 - **The wrist's own start, current exercise and timers are not carried.** The
   answer the phone composes carries its own current index and its own timers, not
   the wrist's (`test/watch_session_projection_test.dart`,

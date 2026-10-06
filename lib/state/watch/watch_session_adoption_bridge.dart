@@ -22,6 +22,8 @@ import '../../core/constants/block_types.dart';
 import '../../core/constants/capability.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/services/watch_session_importer.dart';
+import '../../core/sync_protocol/phone_entries.dart';
+import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -174,7 +176,15 @@ class WatchSessionAdoptionBridge {
   /// includes the wrist naming a session this phone is not in (D-10): the phone
   /// does not answer another session's snapshot with its own ladder, and the
   /// mirror's copy of that session is what answers instead.
-  Map<String, Object?>? projectSession(Map<String, Object?>? incoming) {
+  ///
+  /// The answer carries the entries this phone logged **itself** (`entries`,
+  /// D-31/D-33/D-34): the sets the regular session screen wrote into the slots
+  /// of this session, so the wrist's logging screen shows them like its own.
+  /// That is a repository read, so this composes asynchronously — and it is
+  /// still composed per call, never cached (D-11).
+  Future<Map<String, Object?>?> projectSession(
+    Map<String, Object?>? incoming,
+  ) async {
     final target = _workoutState;
     if (target == null) return null;
 
@@ -185,11 +195,16 @@ class WatchSessionAdoptionBridge {
       if (named != null && named != session.id) return null;
     }
 
+    final wristStamps = await _wristRowStamps(session.id);
+
     final slots = <Map<String, Object?>>[];
+    final entries = <Map<String, Object?>>[];
     for (final segment in target.segments) {
       for (final effort in target.getEffortsForSegment(segment.id)) {
         final slot = _slotFor(effort, target);
-        if (slot != null) slots.add(slot);
+        if (slot == null) continue;
+        slots.add(slot);
+        entries.addAll(await _entriesFor(effort, slot, wristStamps));
       }
     }
     // A ladder with nothing the wrist can render is not a state to send: an
@@ -206,10 +221,68 @@ class WatchSessionAdoptionBridge {
       'revision': _projectedRevision,
       'currentExerciseIndex': _indexFor(incoming, slots.length),
       'exercises': slots,
-      'entries': const <Object?>[],
+      'entries': PhoneEntries.ordered(entries),
       'timers': const <String, Object?>{},
     };
   }
+
+  /// One slot's own entries, in the protocol's order.
+  ///
+  /// None for a kind with no wire entry yet (D-39): a `timed`, `hold` or `round`
+  /// effort's rows are its instances' companions, and their window and round
+  /// fields are not carried. `set` is the kind the wire can spell today.
+  Future<List<Map<String, Object?>>> _entriesFor(
+    SegmentEffort effort,
+    Map<String, Object?> slot,
+    Map<String, List<int>> wristStamps,
+  ) async {
+    if (effort.effortKind != BlockTypes.set) return const [];
+
+    return PhoneEntries.project(
+      sessionExerciseId: effort.id,
+      exerciseId: slot['exerciseId']! as String,
+      groups: EntryRows.setGroups(
+        await _repository.getEffortObservations(effort.id),
+      ),
+      wristLoggedAtMs: wristStamps[effort.id] ?? const [],
+    );
+  }
+
+  /// The `loggedAt` of every live watch-inbox row that carries a set the wrist
+  /// logged in [sessionId], by slot (D-34).
+  ///
+  /// Live means the phone has imported the row (`appliedAtMs != null`), and
+  /// `originWatch` means the wrist wrote it rather than this phone annotating
+  /// one. Staged rows are never deleted (the repository's contract), so what a
+  /// claim reads stays put.
+  Future<Map<String, List<int>>> _wristRowStamps(String sessionId) async {
+    final stamps = <String, List<int>>{};
+    final rows = await _repository.getWatchInboxEntriesForSession(sessionId);
+    for (final row in rows) {
+      if (row.origin != WatchInboxEntry.originWatch) continue;
+      if (row.kind != WatchInboxEntry.kindSet) continue;
+      if (row.appliedAtMs == null) continue;
+
+      final payload = row.payload;
+      final slot = payload['sessionExerciseId'];
+      final loggedAtMs = _loggedAtMs(payload['loggedAt']);
+      if (slot is! String || slot.isEmpty || loggedAtMs == null) continue;
+      (stamps[slot] ??= []).add(loggedAtMs);
+    }
+    for (final slot in stamps.keys) {
+      stamps[slot]!.sort();
+    }
+    return stamps;
+  }
+
+  /// A wire instant in epoch ms, or null when the payload carries none.
+  ///
+  /// The importer reads `loggedAt` the same way, which is why the value is the
+  /// shared identity of an imported entry: it is the `createdAtMs` the importer
+  /// stamps on every row it writes for that entry.
+  static int? _loggedAtMs(Object? value) => value is String
+      ? DateTime.tryParse(value)?.toUtc().millisecondsSinceEpoch
+      : null;
 
   /// One slot, as the protocol's `sessionExercise`.
   ///
