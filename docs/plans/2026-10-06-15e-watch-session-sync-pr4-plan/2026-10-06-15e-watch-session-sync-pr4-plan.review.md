@@ -170,3 +170,137 @@ Architecture: the store depends on the protocol only, the engine names no concre
 platform-specific branch entered shared code — PASS.
 Dead code: no new unreferenced class; `pruneSettledSensorSamples`'s missing production caller is
 pre-existing and is what makes the docs' "never trimmed" claim true — PASS.
+
+---
+
+# Code review 2 (PR 4a fix 1)
+
+Base `fa1c4ff` · reviewed `0077d95` (HEAD) — the round that answers review 1's F1–F3 and records
+A-37…A-42. Layers in scope: the Swift package (`watch/watchos`) and `docs/`. Skipped: the Dart
+models, persistence, state, features, widgets and core layers — no Dart file changed.
+
+## Answers to the brief's five questions
+
+1. **F1 — fixed.** No cache mutation survives a failed write. `appendLocked` reaches
+   `rows?.append`/`fileHasContent` only through `guard prepareFile(), appendLine(line)`
+   (`FileWatchSessionStore.swift:97-99`) and still hands the caller `stored`; both prunes reach
+   `rows = survivors` only through `guard compact(survivors)` (`:165-166`, `:188-189`); `loadRows`'
+   `rows = resolved` *is* the load. `compact` returns false before it clears `tornTail`,
+   `needsMarker` or `fileHasContent`, and `ensureDirectory` reports its failure. Sequence: the
+   counter is instance state (`:53`) that only ever rises, seeded once from the file's own maximum
+   when the rows are loaded (`:233`) and incremented per call (`:340-343`); no load, append, prune or
+   compact path rewinds it, so a refused append burns its number and nothing reuses it.
+   A-41's residual is real and harmless: a refused append consumes a number that a *relaunch*
+   recomputes away — the refused row is in neither the cache nor the file, so no two live rows can
+   collide.
+2. **F2 — fixed in both prunes; one gap.** Both prunes guard `compact` and return `[]` before
+   touching the cache, and a failed `compact` leaves the file untouched: the function returns at
+   the directory step, at the temp write, or at the replace, always before the bookkeeping.
+   Temp file: it is removed (`try?`, best effort) **only** on the replace-failure path (`:331`); the
+   temp-*write* failure path returns without attempting cleanup, so a partial
+   `watch-session.jsonl.tmp` can be left behind — harmless (the next compact truncates it) and
+   untested — G2.
+3. **F3 — fixed.** `prepareFile` (`:277-292`) compacts when `tornTail || (needsMarker &&
+   fileHasContent)`, so a marker-less file and a torn-tail file are each rewritten marker-first once;
+   the marker is appended only to an empty file, and a file whose first line carries the expected
+   marker takes the plain-append path. An unknown version returns at `:79` before `prepareFile`, so
+   the file is left byte-identical. Nothing visible is lost: `compact` writes exactly `loadRows()`,
+   so it can only drop lines that already fail `parseLine` — the torn fragment is the record that
+   never landed. No recursion (the compact path is a leaf) and no path is skipped. One positional
+   limit: a marker naming an unknown version that is *not* the first line is treated as marker-less
+   rows, so it is dropped and the file rewritten as v1 — G4.
+4. **The three guards assert their claims, and they are not vacuous on this host.** `testF1…`
+   asserts the refused row is absent from `readAll`, that the on-disk rows are unchanged, and that
+   the refused row still carries a *fresh* sequence while the next successful append carries a
+   higher one — the assertion pair that makes reuse impossible to reintroduce silently. `testF2…`
+   asserts the empty return, the cache unchanged and the file byte-unchanged, then a successful
+   prune that really does drop. `testF3…` asserts marker-first, exactly one marker and all four rows
+   in order. Each F1/F2 case **asserts its own unwritability precondition** before using it (the
+   handle throws / a probe write throws) and restores attributes in a teardown block; those
+   preconditions passed in my own green run, which is what makes the technique non-vacuous here —
+   on a host that could write anyway, the probe assertion fails first, so a green run cannot be the
+   vacuous outcome. `testF3…` uses no permission trick at all. The only gap in the F2 technique is
+   its reach: it is applied to `pruneConfirmed` and not to `pruneSensorSamples` — G1.
+5. **The new doc sentence is true of the code and its cited test.** `docs/watch_session_sync.md:245-252`
+   matches the code: the store returns the row it refused, so the engine still holds it in the list
+   the surface reads, and that list is what `pendingObservations()` emits at the next Sync — while
+   the store's `readAll()` will not return it. Hence "still visible and still sent … lost if the app
+   is killed before the next Sync" is exact, and `testF1…` asserts both halves. No other sentence
+   was made false by the fix: "the wrist's record file is never trimmed — nothing is ever deleted"
+   is about production pruning (D-51) and stays true, since a dropped torn fragment is not a record
+   and the fix adds no caller.
+
+## Findings
+
+**G1 · warning (test gap) · `watch/watchos/Sources/WatchSessionEngine/FileWatchSessionStore.swift:188`
+(vs `WatchFileStoreTests.swift:702`)**
+`pruneSensorSamples`'s failed-compact branch is the same line as `pruneConfirmed`'s but no test
+guards it, so a re-introduced defect there would be caught by nothing while the confirmed path stays
+red.
+Fix: drive the F2 case over both prunes (parameterise, or add the sensor twin). **Not blocking** —
+route it with PR 4b's prune work, where S-48 extends every prune case anyway. → @developer
+
+**G2 · suggestion · `…/FileWatchSessionStore.swift:326-331`**
+A failed temp write returns without removing a possibly partial `.tmp`, and the replace-failure
+cleanup is best-effort `try?`, so a stale temp can outlive the failure; nothing asserts its absence.
+Fix: `try?` remove the temp on the write-failure path too, and assert no `.tmp` remains in the F2
+case. → @developer
+
+**G3 · warning (plan ledger) · plan `D-47` and `D-51`**
+Two decisions now describe code that does not exist: D-47 ("Every append is durable before it
+returns … that one write is the only file I/O an append does") is false for a refused append and for
+the torn/marker-less path, which rewrites the whole file in `prepareFile`; D-51's "the file is never
+compacted in production" is false for that same path. A-41 records the override but the decisions
+were not amended, so a later phase reads a contract the code does not implement.
+Fix: amend D-47/D-51, or add the one superseding decision the ratification of A-41 asks for. → planner
+
+**G4 · suggestion · `…/FileWatchSessionStore.swift:212-232`**
+The version gate is positional — only line 1 is read as a marker — so a marker naming an unknown
+version anywhere else is ignored, its line dropped and the file rewritten as v1, which is the one
+shape where R6's "left alone, not overwritten" does not hold. Only a pre-fix build's own output
+(F3's bug) or a hand-made file can produce it.
+Fix: state the limit in D-45, or scan parsed lines for an unknown marker before writing. → planner
+
+## Verification
+
+- `gateway.sh test` → **3945 passing / 1 skipped / 0 failing**, exit 0
+  (`test-20261006-133943-14855.log`: `01:41 +3945 ~1: All tests passed!`) — the plan's baseline to
+  the case; the fix touches no Dart file.
+- `gateway.sh swift-test` → **290 passing / 0 failing**, exit 0
+  (`swift-test-20261006-133943-14861.log`) — 287 baseline + the three guards, and the F1/F2
+  unwritability preconditions pass on this host, so neither guard is vacuous here.
+- Red-first and mutation evidence is in the evidence file §Fix 1 (three cases red before the fix;
+  each red under its own mutation; restored green after each). Mutation (d) — reverting `nextSequence`
+  to a max-of-rows rule — going red on the *ordering* assertion is the direct proof that the
+  monotonic counter is what prevents reuse.
+- The sequence rule change is safe for every reader: all twelve consumers only order
+  (`max`/`min`/`sorted`/`>=`/`>`) and none assumes contiguity or uses the value as an index
+  (`WatchSessionEngine.swift:114,159,179,1162,1321,1454`, `WatchStartPaths.swift:292,427,435`,
+  `WatchPhonePreferences.swift:105`, `WatchNutritionState.swift:117`, `WatchEffortRating.swift:189`,
+  `WatchSensorSummaries.swift:142-143,176`). F4/AC8 now holds: both stores use one monotonic counter
+  that neither rewinds.
+- Acceptance criteria re-checked for the touched behaviour: AC1–AC5 (S-44…S-47, S-49…S-51), AC7
+  (S-53) and AC8 (S-54) still met; AC6's S-48/S-52 and AC11's S-56 stay PR 4b's (A-30).
+- Diff vs Predicted Files: conforms for this round — one source file, one test file, the plan, the
+  evidence and the three docs. F7 (the Phase-3 paperwork drift) is untouched and remains the PR's
+  only deviation.
+
+DOC FALSIFICATION: ✅ PASS (3 implicated docs changed — `docs/watch_session_sync.md` (new sentence
+true of the code and of `testF1…`), `docs/state_management/watch_surface.md` (store paragraph and its
+test pointers still true; no durability claim about a refused append), `docs/watch-app-setup-and-qa.md`;
+no other `docs/` file claims a failed append is durable)
+DOC STANDARD: ✅ PASS — the added sentence names its test and adds no walkthrough, value or code
+DECISIONS: **PASS (12)** — D-43, D-44, D-45 (positional limit noted, G4), D-46, D-47 as implemented
+(ledger text stale, G3), D-48 (one rule now), D-49, D-50, D-51 (pruning still unscheduled), D-54,
+D-56, D-57. **N/A (7)** — the remainder, as review 1.
+IMPACT: **PASS** — the fix's one cross-cutting effect is the sequence rule; its reader class was
+re-grepped (twelve files, all order-only, no unlisted reader) and the store's own S-44…S-54 cases pass.
+Assumption Log: **RATIFY** A-40 (the unwritability technique is real here), **RATIFY** A-41 — and
+**promote it to a numbered decision**, since the doc sentence now depends on the returned row keeping
+its sequence and D-47's text must be superseded; **RATIFY** A-42 (F1 only; the prunes still have no
+production caller).
+
+Critical: 0 | Warnings: 2 | Suggestions: 2
+→ G1 with PR 4b's prune cases, G3 to the planner's ledger; G2 and G4 optional.
+
+VERDICT: APPROVE
