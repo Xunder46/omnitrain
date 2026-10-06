@@ -22,7 +22,7 @@ Verified 2026-10-04:
 | App shell | `ios/OmniTrain Watch App/` — the start surface, the logging surface, and a radio (§3.6) | **none** — no production `main()` |
 | Build target | **exists**; the target links the `WatchSessionEngine` package — building the watch scheme (§5) is the proof | **none** — Gradle has only `:app` |
 | Transport | implemented (`lib/core/platform/`) | **none** |
-| Wrist store | **in-memory only** — nothing logged survives a relaunch | — |
+| Wrist store | **append-only file store** — survives a relaunch | — |
 
 The Apple shell is the only thing that hosts a wrist client. The four
 `*_debug_main.dart` files are QA harnesses, not the app, and the Wear OS client
@@ -189,15 +189,10 @@ tests in
 `watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`
 are what prove the logic they host.
 
-**What the wrist cannot do yet.** The store is in memory: `WatchAppHost` builds
-`InMemoryWatchSessionStore`, so a relaunch or force-quit on the wrist loses the
-session and any unanswered rating question. That is the "durable wrist store"
-item the shell-bridge plan moved out of scope
-(`docs/plans/2026-10-04-14-watch-shell-bridge-plan/2026-10-04-14-watch-shell-bridge-plan.md`);
-QA step 17 needs it. Two further gaps: the wrist labels the load it dials in
-kilograms even when the phone's saved unit is pounds — the wire value is always
-kilograms, so the phone's history and conversions stay correct — and a Sync
-while a rest countdown is running stops that countdown and its milestone
+**What the wrist cannot do yet.** Two gaps: the wrist labels the load it dials
+in kilograms even when the phone's saved unit is pounds — the wire value is
+always kilograms, so the phone's history and conversions stay correct — and a
+Sync while a rest countdown is running stops that countdown and its milestone
 haptic, because the phone's answer carries no timers (D-26).
 
 ---
@@ -396,7 +391,10 @@ enforced in code, so a failure points at the transport, not the logic:
    from timestamps, not from a counter — a restored rest timer showing a fresh
    full duration means someone reintroduced remaining-time, which the protocol
    forbids.
-11. **Kill the watch app mid-session** and relaunch. Same expectation.
+11. **Kill the watch app mid-session** and relaunch **(owner)**. Log two sets on
+    the wrist, force-quit the watch app with no Sync, then relaunch: the session,
+    both sets and the rest countdown are back. Sync: the phone shows the sets
+    once.
 12. **Quick-log food on the wrist.** It should land on the phone's correct day,
     and a redelivery must not double it.
 13. **Sensor path** (after HealthKit is configured): heart rate appears during a
@@ -404,10 +402,9 @@ enforced in code, so a failure points at the transport, not the logic:
     "in progress" after you force-quit is the specific bug to hunt.
 14. **Check Apple Health.** The session should appear there once, not twice.
 
-Steps 15–18 check the session effort rating: 15, 16 and 18 run on the shipped
-shell, 17 needs PR 4's durable store. Steps 19–20 check the heart-rate and step
-capture and stay with the shipping plan's Phase 8 (the HealthKit bindings) — see
-that plan's O-2
+Steps 15–18 check the session effort rating and all run on the shipped shell.
+Steps 19–20 check the heart-rate and step capture and stay with the shipping
+plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
 (`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`).
 
 15. **The wrist asks how hard it was.** Turn Settings →
@@ -422,14 +419,12 @@ that plan's O-2
     phone and sync from the wrist: ending a session asks nothing, and the
     phone's Summary offers Add rating. A wrist that has never synced does not
     ask either. A session with nothing logged is never asked about.
-17. **The question survives a kill** *(needs the durable store — PR 4)*. End a
-    session on the wrist and force-quit the watch app while the question shows.
-    Relaunch: the question comes back before anything else, and one answer
-    records one rating. Not runnable yet: the shipped shell's store is in
-    memory, so the force-quit discards the session and the owed question. The
-    package restores the question from a store that outlives the process
+17. **The question survives a kill** **(owner)**. End a session on the wrist and
+    force-quit the watch app while the question shows. Relaunch: the question
+    comes back before anything else, and one answer records one rating. The
+    engine restores it from the store that outlives the process
     (`WatchEffortRatingTests.testS215AKillDuringThePromptAsksAgainAndRecordsOneAnswer`);
-    only the store is missing.
+    the shipped shell builds that store on disk, so this runs on a paired device.
 18. **Finishing on either device.** Finish on the phone and sync from the wrist:
     the wrist's session ends and the phone holds one entry (step *(e)* above).
     Finish on the wrist and sync: the phone's copy ends through its ordinary
@@ -476,15 +471,13 @@ timers as authoritative — the reconciliation fixture `timer_cleared.json`,
 replayed by `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`),
 and the load label is always in kg, whatever unit the phone is set to
 (`WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`
-holds the kilogram payload underneath). A force-quit loses the session and
-any owed question (step 17).
+holds the kilogram payload underneath).
 
 ### What "QA passed" means
 
 Levels 1 and 2 green, plus every step at Level 3 on real paired hardware —
-steps 15–18 now, steps 19–20 once shipping-plan Phase 8 makes them runnable, and
-step 17 once PR 4's durable store lands. Anything less and the integration is
-still a test-suite reality.
+steps 15–18 now and steps 19–20 once shipping-plan Phase 8 makes them runnable.
+Anything less and the integration is still a test-suite reality.
 
 ---
 

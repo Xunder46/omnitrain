@@ -390,11 +390,24 @@ it (`WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder`,
 a logging surface
 (`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
 
-The shell keeps an in-memory store, so a relaunch loses the session and any
-unanswered rating question; the durable wrist store is a separate item. Two
-smaller gaps: the wrist labels load in kilograms whatever the phone's unit
-preference says, and a Sync stops a rest countdown the wrist is running, because
-the phone's answer carries no timers (D-26).
+The shell builds an append-only file store, `FileWatchSessionStore`, over the
+app's Application Support directory (`watch-session/`), so a relaunch brings back
+the session, its logged rows, a running rest countdown and any unanswered rating
+question; the engine is restored at launch, before the start paths, preferences
+and rating. What survives is asserted by the store's two-engine cases
+(`watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`:
+`testS44ALoggedSetSurvivesTheProcess`,
+`…testS46ACountdownThatWasRunningIsStillRight`,
+`…testS47TheOwedRatingQuestionSurvivesTheKill`), and that a commit which suspends
+still shows the owed question by
+`WatchEffortRatingTests.testS55ASlowCommitStillShowsTheOwedQuestion` and
+`…testS55ASlowAnswerNotifiesAfterTheRatingIsRecorded`. Two smaller gaps: the
+wrist labels load in kilograms whatever the phone's unit preference says, and a
+Sync stops a rest countdown the wrist is running, because the phone's answer
+carries no timers (D-26). What a relaunch does not keep is the projection lens:
+a re-stated entry holds the phone's new value only until the process ends, and
+the stored first value shows again until the next Sync re-states it (D-50,
+`WatchFileStoreTests.testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync`).
 
 ### `WatchSyncRequestHandler`
 

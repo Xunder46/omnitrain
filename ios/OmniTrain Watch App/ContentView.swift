@@ -113,9 +113,12 @@ final class WatchAppHost: ObservableObject {
             .store(in: &cancellables)
     }
 
-    /// Reads whatever the wrist already holds: the routines, the phone's settings
-    /// as the last `preferences_down` left them, and any rating the wrist's own
-    /// End still owes. Empty on a fresh install, because all three only arrive
+    /// Reads whatever the wrist already holds, in the order the surfaces need it:
+    /// the engine first (its session, the rows it logged and their timers) so a
+    /// relaunch mid-session comes back before anything is asked of it, then the
+    /// routines, the phone's settings as the last `preferences_down` left them,
+    /// and any rating the wrist's own End still owes. The routines, the settings
+    /// and the rating are empty on a fresh install, because all three only arrive
     /// when the user asks the phone for them.
     func restore() async {
         await engine.restore()

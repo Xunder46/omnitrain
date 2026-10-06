@@ -559,4 +559,294 @@ final class WatchFileStoreTests: XCTestCase {
             "S-47 and the single rating is still the only one"
         )
     }
+
+    // MARK: - D-50 the re-stated set and the relaunch
+
+    func testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync() async throws {
+        let wrist = FileStoreHarness(directory: directory)
+        await wrist.launch()
+
+        _ = try await wrist.engine.applyMessage(
+            snapshot(
+                messageId: "msg-d50-1",
+                sessionId: "s-phone",
+                revision: 1,
+                entries: [entry("entry-sx-bench-0", at: "2026-07-13T06:00:00Z", loadKg: 60)]
+            )
+        )
+        XCTAssertEqual(
+            wrist.engine.entries.first?.payload["loadKg"] as? Double,
+            60,
+            "D-50 the phone's first value is what the wrist shows"
+        )
+
+        _ = try await wrist.engine.applyMessage(
+            snapshot(
+                messageId: "msg-d50-2",
+                sessionId: "s-phone",
+                revision: 2,
+                entries: [entry("entry-sx-bench-0", at: "2026-07-13T06:00:00Z", loadKg: 65)]
+            )
+        )
+        XCTAssertEqual(
+            wrist.engine.entries.first?.payload["loadKg"] as? Double,
+            65,
+            "D-50 the re-statement is what the running wrist shows"
+        )
+        XCTAssertEqual(
+            wrist.engine.observations.first?.payload["loadKg"] as? Double,
+            60,
+            "D-50 the stored row keeps the phone's first value"
+        )
+        XCTAssertEqual(
+            wrist.engine.observations.filter { $0.recordId == "entry-sx-bench-0" }.count,
+            1,
+            "D-50 the re-statement adds no row"
+        )
+
+        // The projection lens is memory-only: a relaunch reads the stored row.
+        let relaunched = FileStoreHarness(directory: directory)
+        relaunched.clock.now = wrist.clock.now
+        await relaunched.launch()
+        XCTAssertEqual(
+            relaunched.engine.entries.first?.payload["loadKg"] as? Double,
+            60,
+            "D-50 after a relaunch the phone's first value is back, until the next Sync"
+        )
+
+        // The next Sync re-states it: the wrist converges back onto the phone.
+        _ = try await relaunched.engine.applyMessage(
+            snapshot(
+                messageId: "msg-d50-3",
+                sessionId: "s-phone",
+                revision: 2,
+                entries: [entry("entry-sx-bench-0", at: "2026-07-13T06:00:00Z", loadKg: 65)]
+            )
+        )
+        XCTAssertEqual(
+            relaunched.engine.entries.first?.payload["loadKg"] as? Double,
+            65,
+            "D-50 the next Sync restores the re-statement"
+        )
+        XCTAssertEqual(
+            relaunched.engine.observations.filter { $0.recordId == "entry-sx-bench-0" }.count,
+            1,
+            "D-50 and still one stored row"
+        )
+    }
+
+    // MARK: - Fix 1: a failed disk write must not look durable
+
+    /// F1: an append whose write fails must not reach the cache, must not be
+    /// read back, and must still carry a sequence no later append can reuse.
+    func testF1AnAppendThatCannotBeWrittenIsNotStoredAndKeepsItsSequence() async throws {
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        let store = FileWatchSessionStore(directory: directory)
+        let first = await store.append(fileSessionRow("s-1", at: at))
+        XCTAssertEqual(first.sequence, 1, "F1 the first append is stored")
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+        try? FileManager.default.setAttributes([.immutable: true], ofItemAtPath: fileURL.path)
+        let lockedFile = fileURL.path
+        let lockedDirectory = directory.path
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: lockedFile)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: lockedDirectory)
+        }
+        XCTAssertThrowsError(
+            try FileHandle(forWritingTo: fileURL),
+            "F1 the file must actually be unwritable, or this case proves nothing"
+        )
+
+        let failed = await store.append(fileSessionRow("s-2", at: at))
+        XCTAssertGreaterThan(
+            failed.sequence,
+            first.sequence,
+            "F1 the unwritable row still gets a fresh sequence"
+        )
+        let cached = await store.readAll()
+        XCTAssertFalse(
+            cached.sessions.contains { $0.recordId == "s-2" },
+            "F1 the row that could not be written is not in the cache"
+        )
+        let onDisk = await FileWatchSessionStore(directory: directory).readAll()
+        XCTAssertEqual(
+            onDisk.sessions.map(\.recordId),
+            ["s-1"],
+            "F1 the file still holds the first row only"
+        )
+
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: fileURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+
+        let third = await store.append(fileSessionRow("s-3", at: at))
+        XCTAssertGreaterThan(
+            third.sequence,
+            failed.sequence,
+            "F1 a sequence is never reused"
+        )
+        let after = await FileWatchSessionStore(directory: directory).readAll()
+        XCTAssertEqual(
+            after.sessions.map(\.recordId),
+            ["s-1", "s-3"],
+            "F1 the next append writes again and both stored rows read"
+        )
+    }
+
+    /// F2: a prune whose compact cannot be written must drop nothing — neither
+    /// from the cache nor from the file.
+    func testF2APruneThatCannotBeWrittenPrunesNothing() async throws {
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        let store = FileWatchSessionStore(directory: directory)
+        _ = await store.append(fileSessionRow("s-1", at: at))
+        for entryId in ["o-1", "o-2"] {
+            _ = await store.append(
+                .observation(
+                    WatchObservationRecord(
+                        recordId: entryId,
+                        sessionId: "s-file",
+                        recordedAt: at,
+                        kind: WatchObservationKind.set,
+                        payload: ["entryId": entryId]
+                    )
+                )
+            )
+        }
+        _ = await store.append(
+            .confirmation(
+                WatchConfirmationRecord(
+                    recordId: "c-1",
+                    sessionId: "s-file",
+                    recordedAt: at,
+                    observationIds: ["o-1"]
+                )
+            )
+        )
+        let before = await store.readAll()
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+        try? FileManager.default.setAttributes([.immutable: true], ofItemAtPath: directory.path)
+        let lockedDirectory = directory.path
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: lockedDirectory)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: lockedDirectory)
+        }
+        XCTAssertThrowsError(
+            try Data("probe".utf8).write(to: directory.appendingPathComponent("probe")),
+            "F2 the directory must actually be unwritable, or this case proves nothing"
+        )
+
+        let pruned = await store.pruneConfirmed()
+        XCTAssertEqual(pruned, [], "F2 a prune that cannot be written drops nothing")
+        let cached = await store.readAll()
+        XCTAssertEqual(
+            fileFamilyJSON(cached),
+            fileFamilyJSON(before),
+            "F2 the cache still reads the pre-prune rows"
+        )
+        let onDisk = await FileWatchSessionStore(directory: directory).readAll()
+        XCTAssertEqual(
+            fileFamilyJSON(onDisk),
+            fileFamilyJSON(before),
+            "F2 the file is untouched"
+        )
+
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: directory.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+
+        let prunedNow = await store.pruneConfirmed()
+        XCTAssertEqual(
+            prunedNow,
+            ["o-1"],
+            "F2 once the directory is writable again the prune drops the confirmed row"
+        )
+        let after = await store.readAll()
+        XCTAssertFalse(
+            after.observations.contains { $0.recordId == "o-1" },
+            "F2 and the dropped row is gone"
+        )
+    }
+
+    /// F3: a file whose first line is not the marker gets one at the top, once,
+    /// instead of a marker appended after the rows on every launch.
+    func testF3AFileWithoutAMarkerGetsOneAtTheTop() async throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        var bytes = Data()
+        for id in ["s-1", "s-2"] {
+            bytes.append(
+                try JSONSerialization.data(
+                    withJSONObject: fileSessionRow(id, at: at).toJson(),
+                    options: [.sortedKeys]
+                )
+            )
+            bytes.append(0x0A)
+        }
+        try bytes.write(to: fileURL)
+
+        let first = FileWatchSessionStore(directory: directory)
+        _ = await first.append(fileSessionRow("s-3", at: at))
+        let second = FileWatchSessionStore(directory: directory)
+        _ = await second.append(fileSessionRow("s-4", at: at))
+
+        let lines = try fileLines()
+        XCTAssertEqual(
+            lines.first,
+            markerText,
+            "F3 the marker ends up first, where the version gate reads it"
+        )
+        XCTAssertEqual(
+            lines.filter { $0 == markerText }.count,
+            1,
+            "F3 exactly one marker line"
+        )
+
+        let third = FileWatchSessionStore(directory: directory)
+        let read = await third.readAll()
+        XCTAssertEqual(
+            read.sessions.map(\.recordId),
+            ["s-1", "s-2", "s-3", "s-4"],
+            "F3 every row reads in order"
+        )
+    }
+
+    // MARK: - D-50 builders (the minimal copies of WatchPhoneEntriesTests' helpers)
+
+    private func entry(_ entryId: String, at loggedAt: String, loadKg: Double) -> [String: Any] {
+        [
+            "entryId": entryId,
+            "eventId": entryId,
+            "kind": "set",
+            "loggedAt": loggedAt,
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-sx-bench",
+            "reps": 8,
+            "loadKg": loadKg,
+        ]
+    }
+
+    private func snapshot(
+        messageId: String,
+        sessionId: String,
+        revision: Int,
+        entries: [[String: Any]]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": sessionId,
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:30:00Z",
+            "payload": [
+                "sessionId": sessionId,
+                "revision": revision,
+                "status": WatchSessionStatus.active,
+                "currentExerciseIndex": 0,
+                "exercises": [exercise("sx-bench")],
+                "entries": entries,
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ]
+    }
 }

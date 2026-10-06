@@ -221,9 +221,34 @@ remains out is listed below.
   from a `session_lifecycle` naming the held session
   (`test/watch_session_finish_test.dart`,
   `a lifecycle naming another session changes nothing`).
-- **Nothing logged on the wrist survives a relaunch.** The shell's store is in
-  memory, so quitting or force-quitting the watch app loses the session, its
-  logged rows and any owed rating question before a sync can carry them.
+- **A relaunch keeps what the wrist logged, with two gaps.** The shell's store
+  is an append-only file, so the session with its place in the ladder, every set
+  logged, a running rest countdown and an owed rating question come back after
+  the app is closed, force-quit or the watch restarts, with no Sync in between —
+  `WatchFileStoreTests.testS44ALoggedSetSurvivesTheProcess`,
+  `…testS46ACountdownThatWasRunningIsStillRight` and
+  `…testS47TheOwedRatingQuestionSurvivesTheKill` in
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`. A
+  session still running when the app died is still running after the relaunch
+  until it is ended on the wrist or the phone's Sync ends it
+  (`…testS44ALoggedSetSurvivesTheProcess`, whose restored session reads active),
+  and what the wrist still owes the phone is sent exactly once at the next Sync
+  (`…testS45ExactlyOneDeliveryAfterARelaunch`). A kill mid-write loses only the
+  row being written, never the rows already on disk
+  (`…testS49ATornLastRecordCostsThatRecordOnly`), and a file written by a newer
+  app is left alone rather than overwritten
+  (`…testS53AVersionThisBinaryDoesNotKnowIsNeverDamaged`). A wrist that cannot
+  write to its storage keeps working in memory and every row already on disk
+  still reads, but the row whose write failed is not treated as stored, so what
+  was logged since the writes began failing is lost if the app is killed before
+  the next Sync
+  (`…testF1AnAppendThatCannotBeWrittenIsNotStoredAndKeepsItsSequence`). What does
+  not come back: a set the phone edited after it reached the wrist shows the
+  phone's first
+  value until the next Sync, because the correction lives only in memory
+  (`…testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync`); and,
+  by design, the wrist's record file is never trimmed — nothing is ever deleted
+  from it.
 - **No sensor samples are collected.** The watch app wires no sensor source, so
   a session it logs carries no heart-rate or step values of its own; the
   recording layer exists and is exercised only by its own suites

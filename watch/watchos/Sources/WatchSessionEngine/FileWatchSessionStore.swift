@@ -44,6 +44,15 @@ public final class FileWatchSessionStore: WatchSessionStore {
     /// fragment can never swallow the row that follows it.
     private var tornTail = false
 
+    /// Whether the file holds any bytes. Distinct from "holds any rows": a file
+    /// of junk needs the marker put above it, not appended after it.
+    private var fileHasContent = false
+
+    /// The highest sequence handed out so far: the file's highest at load, then
+    /// advanced by every accepted append — including one whose bytes never
+    /// landed, so a sequence is never handed out twice.
+    private var lastSequence = 0
+
     public init(directory: URL) {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent(Self.fileName, isDirectory: false)
@@ -81,17 +90,13 @@ public final class FileWatchSessionStore: WatchSessionStore {
         let stored = record.withSequence(nextSequence())
         guard let line = rowLine(stored) else { return record }
 
-        ensureDirectory()
-        if tornTail {
-            appendLine(Data([0x0A]))
-            tornTail = false
-        }
-        if needsMarker {
-            appendLine(markerLine())
-            needsMarker = false
-        }
-        appendLine(line)
+        // A row the disk refused is not durable: it stays out of the cache so
+        // the process does not read back a row the next launch cannot see. The
+        // caller still gets it, with the sequence it was given, because the
+        // engine keeps the newest row and one sequence 0 would lose that tie.
+        guard prepareFile(), appendLine(line) else { return stored }
         rows?.append(stored)
+        fileHasContent = true
         return stored
     }
 
@@ -157,7 +162,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
             return !dropped.contains(value.recordId)
         }
 
-        compact(survivors)
+        guard compact(survivors) else { return [] }
         rows = survivors
         return confirmed
     }
@@ -180,7 +185,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
             return !named.contains(value.sessionId)
         }
 
-        compact(survivors)
+        guard compact(survivors) else { return [] }
         rows = survivors
         return dropped
     }
@@ -224,6 +229,8 @@ public final class FileWatchSessionStore: WatchSessionStore {
         needsMarker = !sawMarker
         unsupported = blocked
         tornTail = !blocked && !data.isEmpty && data.last != 0x0A
+        fileHasContent = !blocked && !data.isEmpty
+        lastSequence = resolved.map(\.sequence).max() ?? 0
         return resolved
     }
 
@@ -258,24 +265,54 @@ public final class FileWatchSessionStore: WatchSessionStore {
         return line + Data([0x0A])
     }
 
-    /// Appends one line, creating the file when this is the store's first write.
-    private func appendLine(_ line: Data) {
-        if !FileManager.default.fileExists(atPath: fileURL.path) {
-            FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+    /// Makes the file ready for the line about to be appended, reporting whether
+    /// it succeeded.
+    ///
+    /// A marker-less file that already holds bytes, and a file whose last line
+    /// was torn, are rewritten through `compact` instead: appending a marker
+    /// after the rows would leave it where the version gate never reads it, and
+    /// every later launch would append another one.
+    private func prepareFile() -> Bool {
+        if tornTail || (needsMarker && fileHasContent) {
+            return compact(loadRows())
         }
-        guard let handle = try? FileHandle(forWritingTo: fileURL) else { return }
+        guard ensureDirectory() else { return false }
+        if needsMarker {
+            guard appendLine(markerLine()) else { return false }
+            needsMarker = false
+            fileHasContent = true
+        }
+        return true
+    }
+
+    /// Appends one line, creating the file when this is the store's first write.
+    /// Reports whether the bytes reached the disk: a caller that hears false
+    /// must not treat the row as stored.
+    private func appendLine(_ line: Data) -> Bool {
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
+            guard FileManager.default.createFile(atPath: fileURL.path, contents: nil) else {
+                return false
+            }
+        }
+        guard let handle = try? FileHandle(forWritingTo: fileURL) else { return false }
         defer { try? handle.close() }
-        _ = try? handle.seekToEnd()
-        try? handle.write(contentsOf: line)
-        try? handle.synchronize()
+        guard (try? handle.seekToEnd()) != nil else { return false }
+        do {
+            try handle.write(contentsOf: line)
+            try handle.synchronize()
+        } catch {
+            return false
+        }
+        return true
     }
 
     /// Rewrites the file as marker plus `survivors`. The write lands in a
     /// sibling file and takes the real one's place, so a kill mid-rewrite leaves
-    /// either the old file or the new one — never half of each.
-    private func compact(_ survivors: [StoredWatchRecord]) {
-        ensureDirectory()
-        tornTail = false
+    /// either the old file or the new one — never half of each. Reports whether
+    /// the file was actually replaced; a caller that hears false leaves its
+    /// cache alone, because the old file is still the truth.
+    private func compact(_ survivors: [StoredWatchRecord]) -> Bool {
+        guard ensureDirectory() else { return false }
         var data = markerLine()
         for row in survivors {
             guard let line = rowLine(row) else { continue }
@@ -286,25 +323,39 @@ public final class FileWatchSessionStore: WatchSessionStore {
         do {
             try data.write(to: tempURL)
         } catch {
-            return
+            return false
         }
 
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            try? FileManager.default.moveItem(at: tempURL, to: fileURL)
-            return
-        }
         do {
-            _ = try FileManager.default.replaceItemAt(fileURL, withItemAt: tempURL)
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                _ = try FileManager.default.replaceItemAt(fileURL, withItemAt: tempURL)
+            } else {
+                try FileManager.default.moveItem(at: tempURL, to: fileURL)
+            }
         } catch {
             try? FileManager.default.removeItem(at: tempURL)
+            return false
         }
+
+        tornTail = false
+        needsMarker = false
+        fileHasContent = true
+        return true
     }
 
-    private func ensureDirectory() {
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    /// Reports whether the directory exists afterwards.
+    private func ensureDirectory() -> Bool {
+        if FileManager.default.fileExists(atPath: directory.path) { return true }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func nextSequence() -> Int {
-        (rows?.map(\.sequence).max() ?? 0) + 1
+        lastSequence += 1
+        return lastSequence
     }
 }

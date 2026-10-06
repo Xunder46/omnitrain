@@ -8,9 +8,11 @@
 > store** — so it can land before or after 4a; it is sequenced second only because 4a is the
 > owner-visible win. The governor commits per phase.
 
-> Status: DRAFT (owner reads Open questions; then hand off — nothing implemented yet)
-> Next handoff: **@developer (Phase 1 — the file store, PR 4a)**; every phase is `@developer` (the
-> `dba` agent owns the Dart data layer, not this Swift store)
+> Status: **PR 4a built (Phases 1–3 complete)** — outstanding: the owner's walkthrough of QA steps 11 and
+> 17 on hardware, the governor's `xcodebuild` of the watch shell, and the review of 4a. PR 4b
+> (Phases 4–5) is not started.
+> Next handoff: **@code-reviewer (PR 4a)**; then @developer for PR 4b (Phases 4–5), which can land
+> before or after 4a
 > Binding conventions: `docs/global_conventions.md`, `watch/sync_protocol/PROTOCOL.md`
 > Series: `docs/plans/2026-10-05-15-watch-session-sync-index.md` (its PR 4 row, split into "4a / 4b",
 > and its Status line are updated with this plan; Phase 3 keeps them in step)
@@ -250,13 +252,13 @@ status — the Wear OS client still has no host.
 **Phase 2 verification notes (Conductor, date):** —
 
 ### Phase 3: Docs, walkthrough and the residue sweep for 4a (@developer)
-1. [ ] `docs/watch_session_sync.md:224`: replace "Nothing logged on the wrist survives a relaunch" with what does survive (the session, its rows, its timers, an owed rating question) and what does not (the projection lens, D-50) — symbol: the bullet list under "What this cannot do today" / "What the wrist cannot do yet".
-2. [ ] `docs/state_management/watch_surface.md:393`: the store is durable; keep the sentence about what a relaunch loses to D-50, and keep the two "smaller gaps" intact.
-3. [ ] `docs/watch-app-setup-and-qa.md:25`: the store row reads "append-only file store; survives a relaunch" instead of "in-memory only".
-4. [ ] `docs/watch-app-setup-and-qa.md:193,425`: the two force-quit sentences stop promising loss, and step 17 drops "(needs the durable store — PR 4)"; mark the kill steps and step 17 **(owner — runs on hardware/simulator)**.
-5. [ ] `docs/plans/2026-10-05-15-watch-session-sync-index.md`: PR 4's row loses "Conditional", reads **4a / 4b** with its track and its full-plan link, and §"See also" gains the PR 4 entry; the Status and Next handoff lines move to PR 4; the "See also" sentence about D-51 becomes "its D-51 keeps pruning unscheduled — PR 2b's D-27 deferral stands".
-6. [ ] Residue sweep, pasted into the evidence file: `grep -rn "InMemoryWatchSessionStore" ios/` returns only the file store's replacement in `ContentView.swift` — no in-memory construction left in the shell; `grep -rn "in-memory only\|Nothing logged on the wrist survives" docs/` returns nothing outside `docs/history/` and the dated release notes; `grep -rn "durable store" docs/` returns no "not runnable yet".
-7. [ ] State the two touched docs' sizes against the 52 KB band in the evidence file, and run `test/docs_indexing_contract_test.dart` (part of `flutter test`) as the 64 KiB guard.
+1. [x] `docs/watch_session_sync.md:224`: replace "Nothing logged on the wrist survives a relaunch" with what does survive (the session, its rows, its timers, an owed rating question) and what does not (the projection lens, D-50) — symbol: the bullet list under "What this cannot do today" / "What the wrist cannot do yet". — the bullet now reads "A relaunch keeps what the wrist logged, with two gaps", citing the file-store cases.
+2. [x] `docs/state_management/watch_surface.md:393`: the store is durable; keep the sentence about what a relaunch loses to D-50, and keep the two "smaller gaps" intact. — the paragraph now says the shell builds `FileWatchSessionStore` over Application Support and the engine is restored at launch; both gaps kept verbatim.
+3. [x] `docs/watch-app-setup-and-qa.md:25`: the store row reads "append-only file store; survives a relaunch" instead of "in-memory only". — done, as "**append-only file store** — survives a relaunch".
+4. [x] `docs/watch-app-setup-and-qa.md:193,425`: the two force-quit sentences stop promising loss, and step 17 drops "(needs the durable store — PR 4)"; mark the kill steps and step 17 **(owner — runs on hardware/simulator)**. — done; a third force-quit-loss sentence (`:479`, "A force-quit loses the session and any owed question") was deleted too, and steps 11/17 are marked **(owner)** (A-37).
+5. [x] `docs/plans/2026-10-05-15-watch-session-sync-index.md`: PR 4's row loses "Conditional", reads **4a / 4b** with its track and its full-plan link, and §"See also" gains the PR 4 entry; the Status and Next handoff lines move to PR 4; the "See also" sentence about D-51 becomes "its D-51 keeps pruning unscheduled — PR 2b's D-27 deferral stands". — already in place at this base (the governor's split); verified and left untouched, per the brief.
+6. [x] Residue sweep, pasted into the evidence file: `grep -rn "InMemoryWatchSessionStore" ios/` returns only the file store's replacement in `ContentView.swift` — no in-memory construction left in the shell; `grep -rn "in-memory only\|Nothing logged on the wrist survives" docs/` returns nothing outside `docs/history/` and the dated release notes; `grep -rn "durable store" docs/` returns no "not runnable yet". — all three clean over the live docs; see the evidence file's Phase 3 section (the one live-doc hit is `nutrition_state.md`'s unrelated maintenance hint).
+7. [x] State the two touched docs' sizes against the 52 KB band in the evidence file, and run `test/docs_indexing_contract_test.dart` (part of `flutter test`) as the 64 KiB guard. — sizes not measurable (`wc` denied): the guard passed all nine cases, including the band check; recorded in the evidence file.
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart` (0 failing), `.github/copilot/scripts/macos/gateway.sh test` (3945 / ~1 / 0), `.github/copilot/scripts/macos/gateway.sh swift-test` (0 failing), plus the three sweep greps with their output pasted into `<plan>.evidence.md`
 **Predicted Files**: `docs/watch_session_sync.md`, `docs/state_management/watch_surface.md`, `docs/watch-app-setup-and-qa.md`, `docs/plans/2026-10-05-15-watch-session-sync-index.md`, `docs/plans/2026-10-06-15e-watch-session-sync-pr4-plan/2026-10-06-15e-watch-session-sync-pr4-plan.evidence.md`
 **Phase 3 verification notes (Conductor, date):** —
@@ -330,9 +332,15 @@ Dependents that only read a touched surface (no edit): `WatchSessionStartPaths.s
 |---|---|
 | 1 — the file store (4a) | **complete** — `swift-test` 284 passing / 0 failing (275 baseline + 9 new), `test` 3945 passing / 0 failing, `lint` 196 issues / 0 errors (unchanged); S-44…S-47, S-49…S-51, S-53, S-54 green; S-004 green unedited; S-48 deferred to 4b (A-30); evidence in `.evidence.md` |
 | 2 — the shell and the rating surface (4a) | **complete** — `swift-test` 286 passing / 0 failing (284 baseline + 2 new S-55 cases), `lint` 196 issues / 0 errors (unchanged; no Dart file touched); S-55 red before the fix and red under both mutations (a: 3 failures, b: 2); the shell's store swap and `engine.restore()` are written but compiled only by the governor's `xcodebuild`; evidence in `.evidence.md` |
-| 3 — docs, walkthrough and the sweep for 4a | not started |
+| 3 — docs, walkthrough and the sweep for 4a | **complete** — `swift-test` 287 passing / 0 failing (286 baseline + 1: D-50's `testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync`), `docs_indexing_contract_test.dart` 9 passing / 0 failing, `test` 3945 passing / 1 skipped / 0 failing (baseline exactly), `lint` 196 issues / 0 errors (unchanged; no Dart file touched), three residue sweeps clean over the live docs, the shell invariant grep empty; the D-50 case proven non-vacuous by mutation (expected 60→65 red, restored, green); evidence in `.evidence.md` |
 | 4 — the engine's bookkeeping, both stacks (4b) | not started |
 | 5 — docs for 4b | not started |
+
+### Review fixes (PR 4a)
+
+| Item | State |
+|---|---|
+| Fix 1 — a failed write must not look durable (review F1–F4) | **complete** — `swift-test` 290 passing / 0 failing (287 baseline + the three guards `testF1AnAppendThatCannotBeWrittenIsNotStoredAndKeepsItsSequence`, `testF2APruneThatCannotBeWrittenPrunesNothing`, `testF3AFileWithoutAMarkerGetsOneAtTheTop`), `docs_indexing_contract_test.dart` 9 passing / 0 failing, `lint` 196 issues / 0 errors (unchanged; no Dart file touched), the hive-import invariant grep empty; all three guards red before the fix (6 failures, with each guard asserting up front that its path is really unwritable) and each red under its own mutation (a: 1, b: 3, c: 2, d: 1), restored and green after each; evidence in `.evidence.md` §Fix 1 |
 
 ## Assumption Log
 
@@ -349,10 +357,26 @@ Dependents that only read a touched surface (no edit): `WatchSessionStartPaths.s
 | A-34 | 2 | Governor finding the plan missed: `WatchAppHost.restore()` restored `paths`, `preferences` and `rating` but never `engine`, while every harness calls `engine.restore()` first. Chosen: call `await engine.restore()` first in `restore()`, matching the harnesses, so a relaunch over the file store shows the rows it already holds. |
 | A-35 | 2 | The brief drops the plan's Phase 2 step 5 (a store-level S-47 half over `FileWatchSessionStore`): Phase 1's `testS47TheOwedRatingQuestionSurvivesTheKill` already proves S-47 over the file store. Chosen: drop it, and mark the step so the plan and the run agree. |
 | A-36 | 2 | In S-55 the armed `append` is the first one after `arm()`, so End suspends inside `engine.finishSession()` rather than at the prompt's own append. Chosen: keep it — the scenario asserts the notification's position relative to the whole commit, and both mutations still turn the cases red. |
+| A-37 | 3 | The brief and the plan name two force-quit-loss sentences (`docs/watch-app-setup-and-qa.md:193,425`), but the walkthrough's "known gaps" paragraph carried a third at `:479` — "A force-quit loses the session and any owed question (step 17)." Chosen: delete it, per the brief's log-and-continue rule, because a false loss claim left standing is the exact drift Phase 3 exists to remove. |
+| A-38 | 3 | The plan's step 4 says to mark the kill steps and step 17 "**(owner — runs on hardware/simulator)**"; the file's own convention for an owner-run step is a bare bold **(owner)** (step 11 was the only one). Chosen: **(owner)** in both headings, one tag style in the file, with the shell-only reason stated in the step body and in §"What QA passed means". |
+| A-39 | 3 | The plan's step 7 asks for each touched doc's size against the 52 KB band; `wc -c` is denied by policy and the docs-guard test reports no size. Chosen: record "not measured" in the evidence file and cite the guard's own band case (`no documentation file is within the warning band of the ceiling`) as the check that would have failed. |
+| A-40 | fix 1 | The guards must make a write fail for real, and the host may run as root, where `chmod` does not block writes (`docs/docs-audit-2026-07-26.md:273`). Chosen: the brief's `chmod 0o500` plus `UF_IMMUTABLE` — the file for F1, the directory for F2 — with each guard asserting up front that its path is really unwritable and restoring both in a teardown block. |
+| A-41 | fix 1 | Review F4 offers two directions (move the in-memory store to max-of-rows + 1, or move the file store to a counter); the brief fixes the counter (item 1). Chosen: the file store keeps a monotonic `lastSequence` like `InMemoryWatchSessionStore.sequence`, because max-of-cache + 1 can hand out a sequence a row on disk already holds (F2's own consequence) and would reuse a failed write's sequence. The brief also overrides F1's "returned unchanged with sequence 0": the failed row comes back with its fresh sequence, so the engine's newest-row pick still sees it. |
+| A-42 | fix 1 | The brief's doc sentence cites F1 only; a first draft also stated the prune behaviour. Chosen: F1 only — the prune paths still have no production caller (D-51), so their failure mode is not yet user-visible behaviour to document. |
 
 ## Feedback
 
-[empty]
+**Review 1 (PR 4a) — `CHANGES_REQUESTED`.** Findings: `<plan>.review.md` §Findings. Fix checklist for
+one bounded round, each item with its guard test:
+
+- **F1** (`FileWatchSessionStore.swift:262-270`) — make the write report failure and stop treating a
+  failed append as durable (D-47). Guard: an unwritable directory → `append` returns the record
+  unchanged with sequence 0 and `readAll()` does not contain it.
+- **F2** (`:160-161`, `:183-184`, `:276-300`) — same code path: `compact` must report failure and the
+  cache must stay un-pruned when it fails. Guard: failed temp write → pre-prune rows still readable,
+  next sequence unchanged.
+- F3-F7 are optional; do not extend this PR to take them. F6 is an owner-visible observation for QA
+  step 17, not a defect.
 
 ## Open questions (owner-visible)
 
