@@ -387,6 +387,84 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         }
     }
 
+    // MARK: - S-029 nothing logs into a session that is over
+
+    func testS029AnEndedSessionCannotBeLoggedInto() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: nil,
+            exercises: [slot("sx-free", capabilities: ["reps", "load"])]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        try await surface.log()
+        _ = await engine.finishSession()
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.completed)
+
+        // The count after the end includes the `session_end` row the engine
+        // appends; the refused log must add nothing to it.
+        let afterEnd = engine.observations.count
+
+        XCTAssertFalse(surface.canLog, "a finished session is not a surface to log into")
+        XCTAssertTrue(surface.fields.isEmpty)
+
+        do {
+            try await surface.log()
+            XCTFail("logging into a finished session must throw")
+        } catch is WatchRecordError {
+            // Expected: the session is over, so there is nothing to log against.
+        }
+        XCTAssertEqual(
+            engine.observations.count,
+            afterEnd,
+            "the refused log appended no observation row"
+        )
+    }
+
+    // MARK: - S-29a the phone's own end closes the wrist's surface
+
+    func testS029aAPhoneCompletionClosesTheLoggingSurface() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: nil,
+            exercises: [slot("sx-free", capabilities: ["reps", "load"])]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        try await surface.log()
+        let sessionId = try XCTUnwrap(engine.session?.sessionId)
+
+        harness.clock.advance(60)
+        _ = try await engine.applyMessage(
+            phoneLifecycle("completed", sessionId: sessionId, at: "2026-07-13T06:01:00Z")
+        )
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.completed)
+
+        // The count after the end includes the `session_end` row the engine
+        // appends; the refused log must add nothing to it.
+        let afterEnd = engine.observations.count
+
+        XCTAssertFalse(
+            surface.canLog,
+            "S-29a a session the phone ended is not a surface to log into"
+        )
+        XCTAssertTrue(surface.fields.isEmpty)
+
+        do {
+            try await surface.log()
+            XCTFail("logging into a phone-ended session must throw")
+        } catch is WatchRecordError {
+            // Expected: the session is over, so there is nothing to log against.
+        }
+        XCTAssertEqual(
+            engine.observations.count,
+            afterEnd,
+            "the refused log appended no observation row"
+        )
+    }
+
     // MARK: - Shared fixtures
 
     func testEveryValidObservationsEventIsReproducedByTheSurfaceShape() async throws {

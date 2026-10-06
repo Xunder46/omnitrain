@@ -17,7 +17,7 @@
 # Written for the bash 3.2 that ships with macOS; needs git, perl and pgrep, nothing from Homebrew.
 set -euo pipefail
 
-CONFIG_KEYS="WAIT_MINUTES TAIL_LINES POLL_SECONDS COPILOT_BIN COPILOT_WRAPPER MAX_RUN_MINUTES STALL_MINUTES REPEAT_STOP HUNG_CHILD_MINUTES PLANNER_MODEL DEVELOPER_MODEL REVIEWER_MODEL"
+CONFIG_KEYS="WAIT_MINUTES TAIL_LINES POLL_SECONDS COPILOT_BIN COPILOT_WRAPPER MAX_RUN_MINUTES STALL_MINUTES REPEAT_STOP NO_WRITE_STOP HUNG_CHILD_MINUTES PLANNER_MODEL DEVELOPER_MODEL REVIEWER_MODEL"
 
 ORIG_PWD="$PWD"
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
@@ -50,6 +50,7 @@ load_config() {
   : "${MAX_RUN_MINUTES:=120}"     # hard cap per run; 0 = off
   : "${STALL_MINUTES:=30}"        # stop when log AND diff are both idle this long; 0 = off
   : "${REPEAT_STOP:=40}"          # stop when one agent action repeats this often; 0 = off
+  : "${NO_WRITE_STOP:=20}"        # stop an implementer that has changed no file after this long; 0 = off
   : "${HUNG_CHILD_MINUTES:=10}"   # report a child process idle (≈0% CPU) this long
   : "${PLANNER_MODEL=}" "${DEVELOPER_MODEL=}" "${REVIEWER_MODEL=}"   # empty = provider default
 }
@@ -84,6 +85,24 @@ load_permissions() {
       PERM_FLAGS+=("$line")
     done < "$file"
   done
+}
+
+# Implementers write code; planners and the reviewer legitimately change few or no files.
+is_implementer() { case "$1" in conductor|conductor-v2|code-reviewer) return 1 ;; *) return 0 ;; esac; }
+
+# The standing rules for one agent: the sections of .github/copilot/agent-rules.md headed
+# "## Every agent" or naming the agent in parentheses. Appended to every prompt, so briefs never carry
+# (possibly stale) copies of them.
+agent_rules() {
+  local agent="$1" file="$REPO_ROOT/.github/copilot/agent-rules.md"
+  [[ -f $file ]] || return 0
+  awk -v a="$agent" '
+    /^<!--/ { c = 1 } c { if (/-->/) c = 0; next }
+    /^## / { inc = ($0 ~ /^## Every agent/)
+             if (match($0, /\([^)]*\)/)) { n = split(substr($0, RSTART + 1, RLENGTH - 2), w, /[ ,]+/)
+               for (i = 1; i <= n; i++) if (w[i] == a) inc = 1 }
+             if (inc) print; next }
+    inc { print }' "$file"
 }
 
 # The model for an agent's role, from .claude/pipeline.env (empty = provider default).
@@ -139,6 +158,15 @@ worker() {
   prompt_file="$(cat "$dir/prompt_file")"
   model="$(cat "$dir/model")"
   local prompt="Your task brief is in the file ${prompt_file}. Read the whole file and carry it out. You cannot ask the user questions in this run. If something is unclear, make the most reasonable choice and list each such choice under an Open questions heading at the end of your final response."
+  local rules
+  rules="$(agent_rules "$agent")"
+  if [[ -n $rules ]]; then
+    prompt="${prompt}
+
+Standing rules for every run (a brief may add to them, never relax them):
+
+${rules}"
+  fi
   load_permissions "$agent"
   local args=(-p "$prompt" --agent "$agent" --no-ask-user "${PERM_FLAGS[@]}")
   if [[ -n $model ]]; then args+=(--model "$model"); fi
@@ -199,20 +227,44 @@ start_run() {
 
 # --- Health -------------------------------------------------------------------------------------
 
-# Most repeated agent action: the first three words of Copilot's "● " action lines, lower-cased,
-# digits normalised. Prints "<count> <action>".
-top_repeat() {
+# Loop signals from the agent log. Prints three lines:
+#   action <count> <key>   the most repeated tool call. Copilot logs each call as "● <title>" (or
+#                          "✗ <title>" when it failed or was denied) followed by "  │ <command or
+#                          path>". The model rewrites the title freely ("Triple check thirty-first
+#                          time"), so a shell call is keyed on its command and a read on its path and
+#                          line range; edits keep their title, because many edits to one plan are normal.
+#   denied <count>         calls refused by the permission profile (each retry counts).
+#   text <count> <line>    the most repeated line of prose: a degenerating model writes the same
+#                          filler line ("Let me read the model file.") thousands of times, no tool calls.
+log_stats() {
   local log="$1"
-  if [[ ! -f $log ]]; then echo "0 -"; return; fi
-  { LC_ALL=C grep -a '^● ' "$log" 2>/dev/null || true; } | LC_ALL=C awk '
-    { $1 = ""; line = tolower($0); gsub(/[0-9]+/, "#", line)
-      n = split(line, w, " "); key = ""
-      for (i = 1; i <= n && i <= 3; i++) key = key (i > 1 ? " " : "") w[i]
-      if (key != "") c[key]++ }
-    END { best = "-"; max = 0
-          for (k in c) if (c[k] > max) { max = c[k]; best = k }
-          printf "%d %s\n", max, best }'
+  if [[ ! -f $log ]]; then printf 'action 0 -\ndenied 0\ntext 0 -\nread 0 -\n'; return; fi
+  LC_ALL=C awk '
+    function sq(s) { gsub(/[[:space:]]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
+    function flush() { if (key != "") { act[key]++; key = "" } }
+    /^(● |✗ |\/ )/ {
+      flush()
+      title = $0; sub(/^(● |✗ |\/ )/, "", title); sub(/[[:space:]]+[0-9.]+m?s[[:space:]]*$/, "", title)
+      t = tolower(sq(title)); gsub(/[0-9]+/, "#", t); split(t, w, " ")
+      kind = (t ~ /\(shell\)$/) ? "shell" : w[1]
+      key = t; stage = (kind == "edit" || kind == "create") ? 0 : 1
+      next
+    }
+    stage == 1 && /^  │ / { c = $0; sub(/^  │ /, "", c); key = kind ": " sq(c); if (kind == "read") reads[sq(c)]++; stage = 2; next }
+    stage == 2 && /^  └ L[0-9]+:[0-9]+/ { r = $0; sub(/^  └ /, "", r); sub(/ .*/, "", r); key = key " " r; stage = 0; next }
+    /Permission denied and could not request permission|Permission to run this tool was denied/ { denied++ }
+    /^[[:space:]]*$/ || /^  [│└]/ { next }
+    { stage = 0; x = tolower(sq($0)); if (length(x) >= 8) text[x]++ }
+    END {
+      flush()
+      ba = "-"; ma = 0; for (k in act) if (act[k] > ma) { ma = act[k]; ba = k }
+      bt = "-"; mt = 0; for (k in text) if (text[k] > mt) { mt = text[k]; bt = k }
+      br = "-"; mr = 0; for (k in reads) if (reads[k] > mr) { mr = reads[k]; br = k }
+      printf "action %d %s\ndenied %d\ntext %d %s\nread %d %s\n", ma, substr(ba, 1, 100), denied + 0, mt, substr(bt, 1, 80), mr, substr(br, 1, 100)
+    }' "$log"
 }
+# Prose repeats this often count as degeneration (well above any real report's repeated lines).
+filler_limit() { local n=$((REPEAT_STOP * 5)); [[ $n -ge 200 ]] || n=200; echo "$n"; }
 
 # Child processes idle for HUNG_CHILD_MINUTES+ at ~0% CPU, excluding the agent itself, the proxy,
 # and the shells/wrappers that merely wait on a child.
@@ -235,6 +287,9 @@ hung_children() {
       if (mins(et) >= lim && cpu + 0 < 1.0) printf "%s %sm %s\n", pid, mins(et), substr(cmd, 1, 120) }'
 }
 
+# True while the run has changed no file in the working tree (its diff fingerprint never moved).
+no_write_yet() { [[ "$(cat "$1/diff_changed_epoch" 2>/dev/null)" == "$(cat "$1/started_epoch" 2>/dev/null)" ]]; }
+
 # Updates the diff fingerprint, then applies the automatic stop rules (loop, stall).
 check_health() {
   local dir="$1" fp old
@@ -247,11 +302,20 @@ check_health() {
   [[ -f $dir/exit ]] && return 0
   worker_alive "$dir" || return 0
 
-  local repeat_count log_idle diff_idle
-  repeat_count="$(top_repeat "$dir/output.log" | awk '{ print $1 }')"
-  if [[ $REPEAT_STOP -gt 0 && $repeat_count -ge $REPEAT_STOP ]]; then
-    stop_run "$(basename "$dir")" loop > /dev/null
-    return 0
+  local stats repeat_count denied text_count log_idle diff_idle
+  stats="$(log_stats "$dir/output.log")"
+  repeat_count="$(echo "$stats" | awk '$1 == "action" { print $2 }')"
+  denied="$(echo "$stats" | awk '$1 == "denied" { print $2 }')"
+  text_count="$(echo "$stats" | awk '$1 == "text" { print $2 }')"
+  if [[ $REPEAT_STOP -gt 0 ]]; then
+    if [[ $repeat_count -ge $REPEAT_STOP ]]; then stop_run "$(basename "$dir")" loop > /dev/null; return 0; fi
+    if [[ $denied -ge $REPEAT_STOP ]]; then stop_run "$(basename "$dir")" denied > /dev/null; return 0; fi
+    if [[ $text_count -ge $(filler_limit) ]]; then stop_run "$(basename "$dir")" filler > /dev/null; return 0; fi
+  fi
+  if [[ $NO_WRITE_STOP -gt 0 ]] && is_implementer "$(cat "$dir/agent")" && no_write_yet "$dir"; then
+    if awk -v e="$(minutes_since "$(cat "$dir/started_epoch")")" -v s="$NO_WRITE_STOP" 'BEGIN { exit !(e >= s) }'; then
+      stop_run "$(basename "$dir")" no_write > /dev/null; return 0
+    fi
   fi
   if [[ $STALL_MINUTES -gt 0 && -f $dir/output.log ]]; then
     log_idle="$(minutes_since "$(mtime "$dir/output.log")")"
@@ -263,24 +327,50 @@ check_health() {
 }
 
 print_health() {
-  local dir="$1" log="$1/output.log" lines=0 log_idle="-" repeat hung files requests
+  local dir="$1" log="$1/output.log" lines=0 log_idle="-" stats repeat text hung files requests tokens
   if [[ -f $log ]]; then
     lines="$(wc -l < "$log" | tr -d ' ')"
     log_idle="$(minutes_since "$(mtime "$log")")"
   fi
-  repeat="$(top_repeat "$log")"
+  stats="$(log_stats "$log")"
+  repeat="$(echo "$stats" | sed -n 's/^action //p')"
+  text="$(echo "$stats" | sed -n 's/^text //p')"
   files="$(status_lines | grep -cv ' \.work/' || true)"
   echo "HEALTH:"
   echo "  LOG_LINES: $lines · LOG_IDLE_MIN: $log_idle"
   echo "  DIFF_FILES: $files · DIFF_IDLE_MIN: $(minutes_since "$(cat "$dir/diff_changed_epoch" 2>/dev/null || now)")"
   echo "  TOP_REPEAT: ${repeat%% *}× \"${repeat#* }\" (auto-stop at ${REPEAT_STOP:-0}; 0 = off)"
+  echo "  DENIED: $(echo "$stats" | sed -n 's/^denied //p') · TOP_TEXT_REPEAT: ${text%% *}× (auto-stop at $(filler_limit))"
+  local topread; topread="$(echo "$stats" | sed -n 's/^read //p')"
+  echo "  TOP_READ: ${topread%% *}× \"${topread#* }\" (one file, any line range)"
+  if is_implementer "$(cat "$dir/agent" 2>/dev/null)" && no_write_yet "$dir" && [[ ! -f $dir/exit ]]; then
+    echo "  FIRST_WRITE: none yet after $(minutes_since "$(cat "$dir/started_epoch")") min (auto-stop at ${NO_WRITE_STOP:-0}; 0 = off)"
+  fi
   if [[ -f $dir/proxy.log ]]; then
     requests="$(grep -c ' -> ' "$dir/proxy.log" || true)"
     echo "  MODEL_REQUESTS: $requests (errors: $(grep -cE ' -> [45][0-9][0-9]' "$dir/proxy.log" || true))"
   fi
+  # Copilot prints its token totals when a run ends; every model request re-sends the whole context,
+  # so cost tracks the number of requests far more than the size of the change.
+  tokens="$( { grep -a '^Tokens ' "$log" 2>/dev/null || true; } | tail -n 1 | sed 's/^Tokens *//')"
+  if [[ -n $tokens ]]; then echo "  TOKENS: $tokens"; fi
   hung="$(hung_children "$dir")"
   if [[ -n $hung ]]; then
     echo "$hung" | sed 's/^/  HUNG_CHILD: /'
+  fi
+  # A load average far above the core count (often stray processes from an earlier experiment)
+  # makes every test timing and agent run look slow for no reason of their own.
+  local strays load cores
+  # Busy-loop shells re-parented to init: a stopped background stress experiment leaves them behind
+  # (40 once ran for 14 hours and made every test suite 3x slower).
+  strays="$(ps -eo ppid=,command= 2>/dev/null | awk '$1 == 1 && /while :; do :; done/ { n++ } END { print n + 0 }')"
+  if [[ $strays -gt 0 ]]; then
+    echo "  STRAY_LOOPS: $strays busy-loop shell(s) are running outside any run; stop them (ps -eo pid,ppid,command | grep 'while :')"
+  fi
+  load="$(uptime 2>/dev/null | sed -E 's/.*load averages?: *//; s/[ ,].*//')"
+  cores="$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+  if awk -v l="${load:-0}" -v c="$cores" 'BEGIN { exit !(l + 0 > c * 2) }'; then
+    echo "  HIGH_LOAD: load average $load on $cores cores; timings are unreliable until it drops (look for stray processes with ps)"
   fi
 }
 

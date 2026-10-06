@@ -123,11 +123,14 @@ extension SessionCoreEntryMethods on SessionCore {
 
         final extraWeightKg =
             (previousValues?['extra-weight'] as double?) ?? 0.0;
+        // A new timed entry starts at zero metres with no source: a distance
+        // is something someone enters, never something carried forward
+        // (D-701, D-702).
         final obsToCreate = effort.effortKind == 'timed'
             ? LoggedEntryRows.timedObservations(
                 effortId: effortId,
                 entryIndex: entryNumber,
-                distanceMeters: (previousValues?['distance'] as double?) ?? 0.0,
+                distanceMeters: 0.0,
                 extraWeightKg: extraWeightKg,
                 atMs: now,
               )
@@ -378,8 +381,8 @@ extension SessionCoreEntryMethods on SessionCore {
   /// existing row keeps its id and `createdAtMs` and gets a new `updatedAtMs`.
   ///
   /// [entryIndex] is the entry's position among the effort's entries: its
-  /// timed instances, or — on an effort that is not timed — its distance rows,
-  /// which are the data-safety rows of D-319.
+  /// timed instances. An effort that is not timed has no distance entries, so
+  /// there is nothing to write (D-703).
   Future<void> setEntryDistance(
     String effortId,
     int entryIndex,
@@ -398,13 +401,15 @@ extension SessionCoreEntryMethods on SessionCore {
   ///
   /// The Summary builds its DISTANCE rows from this, and every distance write
   /// addresses the same list, so a row on screen and the row an edit lands on
-  /// are the same entry.
+  /// are the same entry. Only a `timed` effort has distance entries: a
+  /// distance belongs to a timed entry, and a row stored on another kind is
+  /// not one (D-703).
   List<DistanceEntry> getEffortDistanceEntries(String effortId) {
     final effort = _findEffort(effortId);
     if (effort == null) return const [];
+    if (effort.effortKind != 'timed') return const <DistanceEntry>[];
     return EntryRows.distanceEntries(
       rows: _observations[effortId] ?? const <EffortObservation>[],
-      timed: effort.effortKind == 'timed',
       instanceCount: _timerManager.getTimedInstancesForEffort(effortId).length,
     );
   }
@@ -555,20 +560,17 @@ extension SessionCoreEntryMethods on SessionCore {
   /// The index in [rows] of the row entry [entryIndex] owns for [metricId]
   /// (D-324), or -1 when the entry holds none.
   ///
-  /// D-324's legacy clause leaves an effort that stores a row without a number
-  /// unaddressable by the rule, so the caller falls back to the row's own
-  /// position on the list — which is all that reading ever had.
+  /// Every entry is addressed by its number: a `timed` or `drill` entry owns
+  /// its own companion row, and any other kind owns the row of the set numbered
+  /// *k*. There is no positional fallback (D-706).
   int _rowIndexEntryOwns(
     SegmentEffort effort,
     List<EffortObservation> rows,
     String metricId,
     int entryIndex,
   ) {
-    EffortObservation? owned;
-    if (!_entriesAreNumbered(effort, rows)) {
-      final matching = rows.where((row) => row.metricId == metricId).toList();
-      owned = entryIndex < matching.length ? matching[entryIndex] : null;
-    } else if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
+    final EffortObservation? owned;
+    if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
       final paired = EntryRows.companions(
         rows: rows,
         metricId: metricId,
@@ -582,17 +584,6 @@ extension SessionCoreEntryMethods on SessionCore {
     final row = owned;
     if (row == null) return -1;
     return rows.indexWhere((candidate) => candidate.id == row.id);
-  }
-
-  /// True when every row of the effort carries an entry number, so the rule
-  /// can address one entry at a time. A run effort's entries are its timed
-  /// instances whatever its rows are named, so it is always addressable.
-  bool _entriesAreNumbered(SegmentEffort effort, List<EffortObservation> rows) {
-    if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
-      return true;
-    }
-    if (effort.effortKind == 'round') return false;
-    return rows.every((row) => EntryRows.numberInId(row.id) != null);
   }
 
   /// Set entry [entryIndex] (D-324), or null when the effort holds none.
@@ -628,38 +619,17 @@ extension SessionCoreEntryMethods on SessionCore {
       if (observations == null) return;
 
       // D-326: exactly the rows of the set the caller chose — the k-th group,
-      // not the rows whose id happens to start with the display position.
+      // not the rows whose id happens to start with the display position. An
+      // entry is addressed by its number, so there is no positional fallback
+      // (D-706).
       final group = _setRowsAt(observations, entryIndex);
-      if (_entriesAreNumbered(effort, observations) && group != null) {
-        final doomed = {for (final row in group.rows) row.id};
-        for (final id in doomed) {
-          await _repository.deleteObservation(id);
-        }
-        observations.removeWhere((row) => doomed.contains(row.id));
-        _notify();
-        return;
+      if (group == null) return;
+
+      final doomed = {for (final row in group.rows) row.id};
+      for (final id in doomed) {
+        await _repository.deleteObservation(id);
       }
-
-      final metricsPerEntry = _getMetricsPerEntry(effort.effortKind);
-      final startIndex = entryIndex * metricsPerEntry;
-      final endIndex = startIndex + metricsPerEntry;
-
-      if (startIndex >= observations.length) return;
-
-      final fallbackDelete = observations.sublist(
-        startIndex,
-        endIndex.clamp(0, observations.length),
-      );
-
-      for (final obs in fallbackDelete) {
-        await _repository.deleteObservation(obs.id);
-      }
-
-      observations.removeRange(
-        startIndex,
-        endIndex.clamp(0, observations.length),
-      );
-
+      observations.removeWhere((row) => doomed.contains(row.id));
       _notify();
     } catch (e) {
       _setError('Failed to delete entry: $e');

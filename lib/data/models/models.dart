@@ -555,10 +555,10 @@ class MetricDefinition {
 /// only on a `metric-distance` row, and only to one of [valueSources];
 /// anything else throws [ArgumentError] at construction, mirroring the CHECK
 /// on `app_effort_observation` in `scripts/sqlite_schema.sql`. A row stored
-/// without the key reads as null, which callers resolve as
-/// [sourceEntered] — every distance written before the field existed was
-/// typed or dialled by a person. Pairing a row with its entry and resolving
-/// the source is `DistancePairing`'s job (`lib/core/utils/distance_source.dart`).
+/// without the key reads as null, and null means no source: a distance that
+/// holds a value always carries a source (D-701). Pairing a row
+/// with its entry is `DistancePairing`'s job
+/// (`lib/core/utils/distance_source.dart`).
 class EffortObservation {
   /// Measured by the watch's GPS.
   static const String sourceGps = 'gps';
@@ -2771,6 +2771,20 @@ class WatchInboxEntry {
     payloadJson: m['payload_json'] as String,
     receivedAtMs: m['received_at_ms'] as int,
     appliedAtMs: m['applied_at_ms'] as int?,
+  );
+
+  /// A copy of this row with no applied stamp — the state it held before the
+  /// import applied it.
+  ///
+  /// Every other field is carried over verbatim, and calling this on a row
+  /// that already has no stamp returns an equal row.
+  WatchInboxEntry unapplied() => WatchInboxEntry._(
+    entryId: entryId,
+    watchSessionId: watchSessionId,
+    kind: kind,
+    origin: origin,
+    payloadJson: payloadJson,
+    receivedAtMs: receivedAtMs,
   );
 
   Map<String, dynamic> toMap() => {

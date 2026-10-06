@@ -201,7 +201,9 @@ class SessionSummaryService {
     // per-exercise breakdown are byte-equal before and after this
     // step.
     //
-    // Axis rule (mirrors `StatsProgressService.computeProgressData`):
+    // Axis rule (mirrors `StatsProgressService.topLifts`: the reps
+    // axis comes from the bodyweight sets `_processSetEffort`
+    // accumulates):
     // an exercise that has ANY bodyweight set in this session
     // (`bestReps > 0`) is reps-axis — its PR is a max-reps
     // verdict and the e1RM path is skipped. A loaded-only

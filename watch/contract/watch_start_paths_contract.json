@@ -1,5 +1,5 @@
 {
-  "description": "What both watch clients must agree on when a session starts on the wrist: the fallback list's contents and order, the slots a synced routine turns into, the position rule when the phone pushes an exercise into a live session, the effort-kind each capability set resolves to, and the lifecycle event a session start emits. Neither client owns these values — both suites read this file, so a change on one platform fails the other's tests instead of diverging silently. The two routines_down messages below are schema-conformant phone messages, fed through the same validator the protocol fixtures use. `effortKindParity` is the rule for a slot that declares no kind of its own — a free workout, or an exercise the phone pushed. A slot a routine produced carries the routine's declared `effortKind`, and both clients render that instead: it is what the user set up on the phone, and `routineSession.expectedSlots` pins it. `startSurface` is the sentence the start surface must carry about sync being watch-initiated — nothing arrives unless the user asks, and a user who is not told waits for routines that are never coming.",
+  "description": "What both watch clients must agree on when a session starts on the wrist: the fallback list's contents and order, the slots a synced routine turns into, the position rule when the phone pushes an exercise into a live session, the effort-kind each capability set resolves to, and the lifecycle event a session start emits. Neither client owns these values — both suites read this file, so a change on one platform fails the other's tests instead of diverging silently. The two routines_down messages below are schema-conformant phone messages, fed through the same validator the protocol fixtures use. `effortKindParity` is the rule for a slot that declares no kind of its own — a free workout, or an exercise the phone pushed. A slot a routine produced carries the routine's declared `effortKind`, and both clients render that instead: it is what the user set up on the phone, and `routineSession.expectedSlots` pins it. `startSurface` is the sentence the start surface must carry about sync being watch-initiated — nothing arrives unless the user asks, and a user who is not told waits for routines that are never coming. `transportRequests` pins the three request frames a wrist's transport builds — the two ways it asks for routines (with and without the instant it already has) and its request for the phone's session — so the phone's transport and the wrist's cannot drift: a request carries no `type` key, because that key is what makes a frame a protocol message, and `since` is omitted rather than nulled when the wrist has never synced.",
   "fallback": {
     "recents": [
       {
@@ -241,6 +241,14 @@
   "startSurface": {
     "noAutoSyncLabel": "No automatic sync",
     "syncLabel": "Sync routines"
+  },
+  "transportRequests": {
+    "routines": { "request": "routines" },
+    "routinesSince": {
+      "request": "routines",
+      "since": "2026-07-13T17:00:00.000Z"
+    },
+    "snapshot": { "request": "snapshot" }
   },
   "sessionStarted": {
     "type": "session_lifecycle",

@@ -226,6 +226,223 @@ plugin types so the mapping logic is testable everywhere; the native gateway tra
 
 ---
 
+## Training Load Constants
+
+**File**: `lib/core/models/training_load.dart`
+
+The figures behind the training-load mix. Named here so a reader can find the
+owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kMixStripWeeks` | How many weeks a weekly strip holds |
+| `kTrainingLoadBaselineWeeks` | How many 7-calendar-day blocks the baseline spans |
+| `kTrainingLoadMinRatedWeeks` | How many rated baseline weeks the load measure needs before it is shown |
+| `kTrainingLoadMaxUnratedShare` | The largest share of a window's time that may be unrated for the load measure to be shown; the boundary is inclusive |
+
+Verified by `test/training_load_test.dart` (the constants group).
+
+---
+
+## Modality Mix Shift Constants
+
+**File**: `lib/core/models/modality_mix_shift.dart`
+
+The figures behind the Modality Mix Shift rule. Named here so a reader can find
+the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kModalityMixShiftPeriodDays` | The span of the period the rule compares against its baseline |
+| `kModalityMixShiftMinBaselineShare` | The smallest baseline share a modality needs before it can be reported |
+| `kModalityMixShiftPriority` | The signal's priority |
+
+Verified by `test/modality_mix_shift_test.dart` (the constant contracts).
+
+---
+
+## Signals Constants
+
+**File**: `lib/core/models/signals.dart`
+
+The framework's caps and the keys its store persists under. Named here so a
+reader can find the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kSignalMaxCards` | How many cards one load may yield |
+| `kSignalDismissalDays` | How many local calendar days a dismissal hides its signal |
+| `kSignalDismissalsKey` | The repository preference key the dismissal store persists under |
+| `kSignalQuietLine` | The sentence a gate-met load reports when no card qualifies |
+| `kSignalPositiveLabel` / `kSignalCautionLabel` | The two kind labels, resolved by `signalKindLabel` |
+
+Verified by `test/signals_framework_test.dart` (the selection group, the kind
+vocabulary group and the dismissal-window group) and `test/signals_service_test.dart`
+(the dismissal-store key group).
+
+---
+
+## Progression Rate Constants
+
+**File**: `lib/core/models/progression_rate.dart`
+
+The two windows, the three thresholds the card needs and the signal's priority.
+Named here so a reader can find the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kProgressionRateWindowDays` | The span of each of the two windows the rate compares |
+| `kProgressionRateMinCounted` | How many counted exercise-sessions each window needs before the card may appear |
+| `kProgressionRateMinRate` | The recent rate the card needs |
+| `kProgressionRateMinImprovement` | How far the recent rate must exceed the prior rate |
+| `kProgressionRatePriority` | The signal's priority, the highest among positives |
+
+Verified by `test/progression_rate_test.dart` (the two windows and the
+qualification test group).
+
+---
+
+## Interference Constants
+
+**File**: `lib/core/models/interference.dart`
+
+The windows, the boundaries and the priority behind the Cross-Modality
+Interference rule. Named here so a reader can find the owner; the file itself
+states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kInterferenceHardWindowDays` | How far back the hard-session window reaches; both ends inclusive |
+| `kInterferenceMinRatedSportsSessions` | The smallest rated-sports-session population that can classify anything |
+| `kInterferenceHardPercentile` | The nearest-rank percentile that separates hard sessions from the rest; the boundary is inclusive |
+| `kInterferenceFollowUpHours` | How long after a hard session's end a follow-up may start; the upper bound is inclusive |
+| `kInterferenceDipWindowDays` | The lookback a follow-up's comparable exercises are averaged over; the lower bound inclusive, the upper exclusive |
+| `kInterferenceMinDip` | The mean shortfall at which a follow-up dips; the boundary is inclusive within the rule's tolerance |
+| `kInterferencePatternWindowDays` | The window the pattern is counted over; both ends inclusive |
+| `kInterferenceMinDippedFollowUps` | How many dipped follow-ups the pattern needs |
+| `kInterferenceSportsLoadWindowDays` | The recent span the optional second sentence compares |
+| `kInterferenceSportsLoadRisePercent` | The rise that second sentence needs; the boundary is inclusive |
+| `kCrossModalityInterferencePriority` | The signal's priority, the highest among cautions |
+
+Verified by `test/interference_test.dart` (the constant contracts group, plus
+the boundary scenarios S-2003, S-2004, S-2010 and S-2015); the caution order it
+sits at the top of is pinned by `test/modality_mix_shift_test.dart`.
+
+---
+
+## Nutrition Consistency Constants
+
+**File**: `lib/core/models/nutrition_consistency.dart`
+
+The shared week-block foundation the nutrition signals read: the block length and
+the logged-day floor a block needs. Named here so a reader can find the owner;
+the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kWeekDays` | How many local calendar days one week block holds |
+| `kConsistentWeekMinLoggedDays` | The smallest number of logged days a week block needs to count as consistent; the boundary is inclusive |
+
+Verified by `test/nutrition_consistency_test.dart` (the constant contracts and
+the block-boundary scenarios).
+
+---
+
+## Fuel vs Load Constants
+
+**File**: `lib/core/models/fuel_vs_load.dart`
+
+The two periods, the two boundaries and the priority behind the Fuel vs Load
+rule. Named here so a reader can find the owner; the file itself states each
+rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kFuelVsLoadWindowDays` | The span of each of the two periods the rule compares |
+| `kFuelVsLoadLoadRisePercent` | The load rise the card needs; the boundary is inclusive |
+| `kFuelVsLoadIntakeTolerancePercent` | The intake rise the card tolerates; the boundary is inclusive |
+| `kFuelVsLoadPriority` | The signal's priority |
+
+Verified by `test/fuel_vs_load_test.dart` (the constant contracts and the
+boundary scenarios S-2103–S-2106).
+
+---
+
+## Protein Consistency Constants
+
+**File**: `lib/core/models/protein_consistency.dart`
+
+The window, the three floors, the baseline span, the reference figure and the
+priority behind the Protein Consistency rule. Named here so a reader can find
+the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kProteinConsistencyWindowDays` | The span of the window the rule reads |
+| `kProteinConsistencyMinLoggedDays` | The smallest number of logged days the window needs; the boundary is inclusive |
+| `kProteinConsistencyShortfallPercent` | The shortfall below the comparison the card needs; the boundary is inclusive |
+| `kProteinConsistencyMinResistanceSessions` | The smallest number of completed resistance sessions the window needs; the boundary is inclusive |
+| `kProteinConsistencyMinBaselineWeeks` | The smallest number of consistent baseline blocks the own-baseline comparison needs |
+| `kProteinConsistencyBaselineWeeks` | The number of 7-day blocks the own baseline reads |
+| `kProteinGuidancePerKg` | The commonly cited strength-training guidance, in grams per kilogram of bodyweight |
+| `kProteinConsistencyPriority` | The signal's priority |
+
+Verified by `test/protein_consistency_test.dart` (the constant contracts and
+the boundary scenarios S-2201–S-2213).
+
+---
+
+## Sustained High Load Constants
+
+**File**: `lib/core/models/sustained_high_load.dart`
+
+The run length, the two floors, the two load lines, the gap band and the
+priority behind the Sustained High Load rule. Named here so a reader can find
+the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kSustainedHighLoadMinStreakWeeks` | The run length the card needs, in completed weeks; the boundary is inclusive |
+| `kSustainedHighLoadMinRatedWeeks` | The rated weeks a candidate's baseline needs; the boundary is inclusive |
+| `kSustainedHighLoadHigherPercent` | The load a week must reach against its usual to be a higher-load week; the boundary is inclusive |
+| `kSustainedHighLoadEasierPercent` | The load a week must fall to against its usual to be an easier week; the boundary is inclusive |
+| `kSustainedHighLoadMinEasierGaps` | The gaps between consecutive easier weeks the history fact needs |
+| `kSustainedHighLoadGapMinWeeks` | The shortest gap the history fact accepts, in weeks |
+| `kSustainedHighLoadGapMaxWeeks` | The longest gap the history fact accepts, in weeks |
+| `kSustainedHighLoadPriority` | The signal's priority |
+| `kTrainingLoadBaselineWeeks` | How many weeks a candidate's baseline pools — shared with the Mix baseline (see Training Load Constants) |
+
+Verified by `test/sustained_high_load_test.dart` (the constant contracts and the
+boundary scenarios S-2402–S-2409).
+
+---
+
+## Cardio Efficiency Drift Constants
+
+**File**: `lib/core/models/cardio_efficiency_drift.dart`
+
+The two windows, the duration tolerance, the per-window floor, the drift line,
+the lifting line and the priority behind the Cardio Efficiency Drift rule. Named
+here so a reader can find the owner; the file itself states each rule.
+
+| Constant | Rule it governs |
+|----------|-----------------|
+| `kCardioEfficiencyDriftPriority` | The signal's priority |
+| `kCardioEfficiencyRecentDays` | The span of the recent window the rule reads |
+| `kCardioEfficiencyReferenceWeeksFrom` | The far edge of the reference window, in weeks before today |
+| `kCardioEfficiencyReferenceWeeksTo` | The near edge of the reference window, in weeks before today |
+| `kCardioEfficiencyDurationTolerancePercent` | How far a duration may sit from its group's anchor and still be compared; the boundary is inclusive |
+| `kCardioEfficiencyMinEffortsPerWindow` | The smallest number of comparable efforts each window needs; the boundary is inclusive |
+| `kCardioEfficiencyDriftPercent` | The efficiency drop the card needs; the boundary is inclusive |
+| `kCardioEfficiencyLiftLoadRisePercent` | The lifting-load rise the second sentence needs; the boundary is inclusive |
+| `kCardioEfficiencyLiftLoadWindowDays` | The span of the period the lifting comparison reads |
+| `kTrainingLoadBaselineWeeks` | How many weeks the lifting comparison's baseline pools — shared with the Mix baseline (see Training Load Constants) |
+
+Verified by `test/cardio_efficiency_drift_test.dart` (the constant contracts and
+the boundary scenarios S-2502, S-2503, S-2506, S-2508 and S-2509).
+
+---
+
 ## Home Tile Configuration
 
 **File**: `lib/core/constants/home_tiles.dart`

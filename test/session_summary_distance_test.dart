@@ -8,16 +8,19 @@
 // Format: km/mi through `UnitFormatter`, two decimals, `—` for absence, and
 // `est.` after the unit for an estimate — never a pace, total or delta.
 //
-// Scenarios: S-811–S-820, S-821 (state layer), S-822, S-823 of
-// `docs/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`.
+// Scenarios: S-811–S-817, S-820, S-821 (state layer), S-822, S-823 of
+// `docs/plans/2026-09-26-03a-stats-pr3a-phone-distance-plan.md`, and S-1303 of
+// `docs/plans/2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan.md`.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/constants/modality.dart';
 import 'package:omnitrain/core/constants/modality_config.dart';
+import 'package:omnitrain/core/constants/workout_constants.dart';
 import 'package:omnitrain/core/models/session_edit_snapshot.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
+import 'package:omnitrain/core/utils/distance_source.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
@@ -71,8 +74,8 @@ Future<SettingsState> _settings(
 /// Each exercise is a `(name, effortKind, entries)` triple: `entries` is one
 /// `(actualDurationSecs, distanceMetres, distanceSource)` record per entry, and
 /// a `null` distance stores no row at all. An effort listed in
-/// [legacyMapEfforts] has its rows stored as raw maps with no source key, as a
-/// pre-`value_source` writer left them.
+/// [sourcelessMapEfforts] has its rows stored as raw maps with no source key, as
+/// a pre-`value_source` writer left them.
 Future<String> _seedSession(
   MockWorkoutRepository repo, {
   required String sessionId,
@@ -81,7 +84,7 @@ Future<String> _seedSession(
   String? modality,
   String? title,
   String? intent,
-  Set<int> legacyMapEfforts = const {},
+  Set<int> sourcelessMapEfforts = const {},
 }) async {
   final start = _dayStart(daysAgo);
   final end = start + 3600000;
@@ -162,8 +165,8 @@ Future<String> _seedSession(
       // A raw map with no source key for an effort that stored one before the
       // field existed; otherwise a row built by the model.
       await repo.createObservation(
-        legacyMapEfforts.contains(e)
-            ? _legacyDistanceRow(effortId, i, metres, start)
+        sourcelessMapEfforts.contains(e)
+            ? _sourcelessDistanceRow(effortId, i, metres, start)
             : _distanceRow(effortId, i, metres, source, start),
       );
       if (effortKind == 'drill') {
@@ -193,7 +196,7 @@ EffortObservation _distanceRow(
 
 /// A distance row as this app stored one before the source existed — a map
 /// with no `value_source` key (S-801, S-811's `Easy Run`).
-EffortObservation _legacyDistanceRow(
+EffortObservation _sourcelessDistanceRow(
   String effortId,
   int entryIndex,
   double metres,
@@ -241,7 +244,7 @@ Future<void> _seedCardio(MockWorkoutRepository repo, {int daysAgo = 3}) =>
         ),
         (_easyRun, 'timed', [(1800, 5000.0, null)]),
       ],
-      legacyMapEfforts: {1},
+      sourcelessMapEfforts: {1},
     );
 
 // ─── Widget harness ─────────────────────────────────────────────────────────
@@ -616,7 +619,7 @@ void main() {
     ]);
   });
 
-  testWidgets('S-818d a non-Cardio entry with a stored distance gets one row', (
+  testWidgets('S-1303 a non-timed effort shows no DISTANCE section', (
     tester,
   ) async {
     final repo = await _freshRepo();
@@ -626,40 +629,33 @@ void main() {
       daysAgo: 1,
       modality: Modality.isometricStretching,
       exercises: [
-        (_plank, 'drill', [(60, 400.0, null), (60, null, null)]),
+        (_plank, 'drill', [(60, null, null), (60, null, null)]),
       ],
     );
+    // The pre-3a3 shape: a `drill` effort that still carries a stored distance.
+    await repo.createObservation(
+      _distanceRow('e-s-plank-0', 0, 400.0, null, _dayStart(1)),
+    );
     final settings = await _settings(repo);
-    await _pumpSummary(tester, repo, sessionId: 's-plank', settings: settings);
-
-    expect(_sectionTexts(tester), [_plank, '0.40', 'KM']);
-  });
-
-  testWidgets('S-819 removing a legacy distance hides its row', (tester) async {
-    final repo = await _freshRepo();
-    await _seedSession(
+    final state = await _pumpSummary(
+      tester,
       repo,
       sessionId: 's-plank',
-      daysAgo: 1,
-      modality: Modality.isometricStretching,
-      exercises: [
-        (_plank, 'drill', [(60, 400.0, null), (60, null, null)]),
-      ],
+      settings: settings,
     );
-    final settings = await _settings(repo);
-    await _pumpSummary(tester, repo, sessionId: 's-plank', settings: settings);
 
-    await _tapRow(tester, _plank);
-    await _enterInDialog(tester, '0');
-
-    expect(_distanceCard, findsNothing, reason: 'D-319: the row disappears');
+    expect(_distanceCard, findsNothing);
     expect(find.text('DISTANCE'), findsNothing);
+    expect(
+      state.getEffortDistanceEntries('e-s-plank-0'),
+      isEmpty,
+      reason: 'D-703: only a timed effort has distance entries',
+    );
 
     final stored = (await repo.getEffortObservations(
       'e-s-plank-0',
     )).firstWhere((row) => row.metricId == MetricIds.distance);
-    expect(stored.valueReal, 0.0);
-    expect(stored.valueSource, isNull);
+    expect(stored.valueReal, 400.0, reason: 'the stored row is untouched');
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -858,5 +854,91 @@ void main() {
       isEmpty,
       reason: 'the Isometric-tracked effort gains no distance row',
     );
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // S-1317 — a full-length effort whose rows are stored out of entry order
+  // ══════════════════════════════════════════════════════════════════════════
+
+  testWidgets('S-1317 a 30-entry timed effort with distances on entries 1 and 3 '
+      'reads them in entry order', (tester) async {
+    final repo = await _freshRepo();
+    final settings = await _settings(repo);
+    final state = WorkoutState(repo);
+    await state.createNewSession(modality: Modality.cardioEndurance);
+
+    final exercise = Exercise(
+      id: 'ex-easy-30',
+      name: _easyRun,
+      capabilities: const ['time'],
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    );
+    await repo.createExercise(exercise);
+    final effortId = await state.addExerciseToSession(
+      exercise,
+      effortKindOverride: 'timed',
+    );
+
+    final entryCount = WorkoutConstants.maxEntriesPerEffort;
+    for (var i = 1; i < entryCount; i++) {
+      await state.addEntry(effortId);
+    }
+    expect(state.getTimedInstancesForEffort(effortId), hasLength(entryCount));
+
+    // The phone's own writes: a distance on entry 0 and on entry 2, and an
+    // extra weight on the same two entries. The store hands the rows back in
+    // the order they were written, which is not entry order.
+    await state.setEntryDistance(effortId, 2, 3000.0);
+    await state.updateEntryValue(effortId, 2, 'extra-weight', 9.0);
+    await state.setEntryDistance(effortId, 0, 1000.0);
+    await state.updateEntryValue(effortId, 0, 'extra-weight', 4.0);
+
+    await _pumpSummary(
+      tester,
+      repo,
+      settings: settings,
+      workoutState: state,
+      openedFromCalendar: false,
+    );
+
+    expect(
+      _sectionTexts(tester),
+      [
+        for (var i = 0; i < entryCount; i++) ...[
+          '$_easyRun · ${i + 1}',
+          i == 0
+              ? '1.00'
+              : i == 2
+              ? '3.00'
+              : SessionDistanceCard.absentValue,
+          'KM',
+        ],
+      ],
+      reason: 'D-324: each row is listed against the entry its id numbers',
+    );
+
+    // Stats reads the same pairing, so the session's distance is the sum of
+    // the two stored rows.
+    final paired = DistancePairing.forEntries(
+      distanceRows: state.getObservationsForEffort(effortId),
+      entryCount: entryCount,
+    );
+    expect(
+      paired.map((row) => row?.valueReal ?? 0.0).toList(),
+      [1000.0, 0.0, 3000.0, ...List<double>.filled(entryCount - 3, 0.0)],
+      reason: 'the two stored distances belong to entries 0 and 2',
+    );
+    expect(
+      paired.fold<double>(0.0, (sum, row) => sum + (row?.valueReal ?? 0.0)),
+      4000.0,
+    );
+
+    // The draft reads entry 0's own extra weight, not the first row stored.
+    final draft = state.buildTemplateDraftExercises().single;
+    final extraWeight = draft.targets.firstWhere(
+      (t) => t.metricId == MetricIds.extraWeight,
+    );
+    expect(extraWeight.valueReal, 4.0);
   });
 }

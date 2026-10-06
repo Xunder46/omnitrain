@@ -82,7 +82,7 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
 
 A plan that runs past a few hundred lines is several PRs in one file, or a feedback loop.
 
-- **The budget and the split procedure** are in `.github/agents/pr_scope_budget.md`.
+- **The budget and the split procedure** are in `.github/copilot/pr-scope-budget.md`.
 - **Checkpoints.** Run the `pr-scope-guard` skill when a plan is written, after each implementation
   phase, and after a code review.
 - **Never grow a plan** to absorb new scope or another round of review feedback. Reach a stopping
@@ -124,3 +124,5 @@ tests had never once executed, and a bug shipped alongside a fix because nobody 
 ---
 
 > **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+
+@AGENTS.md

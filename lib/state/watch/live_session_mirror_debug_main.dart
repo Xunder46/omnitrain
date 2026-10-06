@@ -15,13 +15,11 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
-import '../../core/navigation/navigation.dart';
 import '../../core/services/preferences_service.dart';
 import '../../core/utils/watch_reference_sync.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/mock_workout_repository.dart';
 import '../../data/repositories/workout_repository.dart';
-import '../../features/session/live_session_screen.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
 import '../../state/settings/settings_state.dart';
@@ -142,7 +140,7 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
       'revision': 0,
       'currentExerciseIndex': 0,
       'exercises': _slots,
-      'entries': const <Object?>[],
+      'entries': <Object?>[],
       'timers': const <String, Object?>{},
     },
   );
@@ -154,10 +152,6 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
   /// phone states on first use, so the harness renders before a repository is
   /// touched.
   WatchIncomingRouter? _router;
-
-  /// The router's inbox — what the live session screen records the phone's
-  /// own effort rating through, as the shipping graph's does.
-  WatchSessionInbox? _inbox;
 
   /// The phone states once they exist — what the readout reads the day log
   /// through.
@@ -196,7 +190,7 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
 
     final states = _states = await _phoneStates;
     return _router = WatchIncomingRouter(
-      inbox: _inbox = WatchSessionInbox(
+      inbox: WatchSessionInbox(
         repository: states.repository,
         transport: _phoneTransport,
       ),
@@ -313,10 +307,6 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
                 onPressed: _reorderOnPhone,
                 label: 'Reorder on phone',
               ),
-              _actionButton(
-                onPressed: _manageOnPhone,
-                label: 'Manage on phone',
-              ),
             ],
           ),
         ],
@@ -324,9 +314,9 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
     );
   }
 
-  /// The states the live session screen needs to search the catalog and to show
-  /// loads in the saved unit, plus the nutrition side the day log needs. Built
-  /// on first use so the harness's own screen never waits on a repository.
+  /// The states the readout reads through: the catalog and settings the
+  /// session side needs, plus the nutrition side the day log needs. Built on
+  /// first use so the harness's own screen never waits on a repository.
   late final Future<_PhoneStates> _phoneStates = _buildPhoneStates();
 
   static Future<_PhoneStates> _buildPhoneStates() async {
@@ -354,23 +344,6 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
       settingsState: settingsState,
       foodLibrary: foodLibrary,
       nutrition: NutritionState(repository),
-    );
-  }
-
-  /// Opens the shipping live session screen over the harness's session — the
-  /// screen itself, not a debug stand-in for it.
-  Future<void> _manageOnPhone() async {
-    final states = await _phoneStates;
-    await _incomingRouter();
-    if (!mounted) return;
-    await OmniNavigator.push(
-      context,
-      (_) => LiveSessionScreen(
-        liveSession: _mirror,
-        workoutState: states.workoutState,
-        settingsState: states.settingsState,
-        watchSessionRatings: _inbox,
-      ),
     );
   }
 

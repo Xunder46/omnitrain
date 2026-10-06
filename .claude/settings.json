@@ -24,7 +24,8 @@
       "Bash(gh pr merge:*)",
       "Bash(git switch:*)",
       "Bash(git checkout -b:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(copilot:*)"
     ]
   }
 }

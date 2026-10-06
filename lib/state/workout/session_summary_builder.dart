@@ -263,10 +263,7 @@ class SessionSummaryBuilder {
           ];
 
           if (effort.effortKind == 'drill') {
-            final companionObs = _observations[effort.id] ?? [];
-            final extraWeight = companionObs.isNotEmpty
-                ? (companionObs.first.valueReal ?? 0.0)
-                : 0.0;
+            final extraWeight = _entryExtraWeight(effort.id, timedInstances);
             targets.add(
               TemplateTargetDraft(
                 metricId: MetricIds.extraWeight,
@@ -279,17 +276,17 @@ class SessionSummaryBuilder {
             );
           }
           if (effort.effortKind == 'timed') {
-            final companionObs = _observations[effort.id] ?? [];
-            final ewObs = companionObs
-                .where((o) => o.metricId == MetricIds.extraWeight)
-                .toList();
-            if (ewObs.isNotEmpty) {
+            final rows = _observations[effort.id] ?? const <EffortObservation>[];
+            final hasExtraWeightRow = rows.any(
+              (o) => o.metricId == MetricIds.extraWeight,
+            );
+            if (hasExtraWeightRow) {
               targets.add(
                 TemplateTargetDraft(
                   metricId: MetricIds.extraWeight,
                   setIndex: 0,
                   unitId: MetricIds.unitKg,
-                  valueReal: ewObs.first.valueReal ?? 0.0,
+                  valueReal: _entryExtraWeight(effort.id, timedInstances),
                   valueInt: null,
                   valueText: null,
                 ),
@@ -393,9 +390,9 @@ class SessionSummaryBuilder {
           final hasLoad = exercise?.capabilities.contains('load') ?? false;
           if (effort.effortKind == 'set' && !hasLoad) {
             // Each set reads the added weight its own number holds (D-324) — not
-            // whichever row the store returned its position in. On the legacy
-            // fallback the group is sequential, so its own row is the positional
-            // one anyway (F-5).
+            // whichever row the store returned its position in. A row with no
+            // number is in no group, so a group's own row is its numbered row
+            // (D-705).
             final groups = EntryRows.setGroups(effortObservations);
             for (int i = 0; i < entries.length; i++) {
               final own = i < groups.length
@@ -429,6 +426,18 @@ class SessionSummaryBuilder {
     }
 
     return result;
+  }
+
+  /// The added weight a `timed` or `drill` draft carries: the first entry's own
+  /// row (D-324), not whichever row the store returned first. An effort whose
+  /// first entry holds none reads 0.0.
+  double _entryExtraWeight(String effortId, List<TimedInstance> instances) {
+    final paired = EntryRows.companions(
+      rows: _observations[effortId] ?? const <EffortObservation>[],
+      metricId: MetricIds.extraWeight,
+      entryCount: instances.length,
+    );
+    return paired.isEmpty ? 0.0 : (paired.first?.valueReal ?? 0.0);
   }
 
   List<Map<String, dynamic>> _buildEntriesForEffort(

@@ -6,7 +6,7 @@
 them. It also covers the watch's own state classes and services under
 `lib/watch/` (`WatchSessionEngine`, `WatchLoggingState`, the sensor layer), which
 mirror `lib/state/`'s responsibilities on the wrist and are documented in
-[Service & Utility Classes](state_management/services_and_utils.md). Screens and
+[The Watch Surface](state_management/watch_surface.md). Screens and
 widgets are documented under
 [navigation_and_screens.md](navigation_and_screens.md) and
 [widget_catalog.md](widget_catalog.md) instead.
@@ -40,7 +40,8 @@ State classes follow strict rules:
 | [Workout Session State](state_management/workout_state.md) | `WorkoutState` facade + `SessionCore`, `SessionBlockManager`, `SessionSummaryBuilder`, `TimerManager`, `ExerciseLibrary` |
 | [Nutrition State](state_management/nutrition_state.md) | `NutritionState`, `FoodLibraryState`, `NutritionPrimerState` |
 | [Routine, Calendar, Home, Profile & Settings State](state_management/app_state.md) | `RoutineState`, `CalendarState`, `HomeState`, `ProfileState`, `SettingsState`, `PeriodState` |
-| [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch`, and the watch↔phone surface (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, `WatchNutritionState`, `WatchNutritionLogBridge`, `WatchIncomingRouter`, `WatchSyncRequestHandler`, `WatchReferenceSync`, `WatchTransport` and its channel/factory, the two reconcilers) |
+| [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch` |
+| [The Watch Surface](state_management/watch_surface.md) | The watch↔phone mirror (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, `WatchNutritionState`, `WatchNutritionLogBridge`, `WatchIncomingRouter`, `WatchSyncRequestHandler`, `WatchReferenceSync`, `WatchTransport` and its channel/factory, the two reconcilers) and the sensor layer (`WatchPlatformWorkout`, `WatchSensorRecorder`, `WatchSessionSensors`, `WatchGpsPolicy`, `WatchActivityTypes`, `WatchSensorSummaries`) |
 
 ---
 
@@ -58,7 +59,7 @@ State classes follow strict rules:
 | `FuzzySearch` | [Services & Utilities](state_management/services_and_utils.md) |
 | `HealthSyncService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `HomeState` | [App State](state_management/app_state.md) |
-| `LiveSessionMirrorState` | [Services & Utilities](state_management/services_and_utils.md) |
+| `LiveSessionMirrorState` | [The Watch Surface](state_management/watch_surface.md) |
 | `NutritionPrimerState` | [Nutrition State](state_management/nutrition_state.md) |
 | `NutritionState` | [Nutrition State](state_management/nutrition_state.md) |
 | `ObservationGrouper` | [Services & Utilities](state_management/services_and_utils.md) |
@@ -70,27 +71,28 @@ State classes follow strict rules:
 | `RoutineState` | [App State](state_management/app_state.md) |
 | `SessionBlockManager` | [Workout Session State](state_management/workout_state.md) |
 | `SessionCore` | [Workout Session State](state_management/workout_state.md) |
-| `SyncSessionReconciler` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchActivityTypes` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchGpsPolicy` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchLoggingState` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchNutritionState` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchNutritionLogBridge` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchIncomingRouter` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchMessageChannel` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchSyncRequestHandler` | [Services & Utilities](state_management/services_and_utils.md) |
-| `createWatchSync` | [Services & Utilities](state_management/services_and_utils.md) |
-| `createPlatformWatchTransport` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchPlatformWorkout` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchReferenceSync` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchSensorRecorder` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchSessionEngine` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchSessionSensors` | [Services & Utilities](state_management/services_and_utils.md) |
-| `WatchSyncOrchestrator` | [Services & Utilities](state_management/services_and_utils.md) |
+| `SyncSessionReconciler` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchActivityTypes` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchGpsPolicy` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchLoggingState` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchNutritionState` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchNutritionLogBridge` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchIncomingRouter` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchMessageChannel` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchSyncRequestHandler` | [The Watch Surface](state_management/watch_surface.md) |
+| `createWatchSync` | [The Watch Surface](state_management/watch_surface.md) |
+| `createPlatformWatchTransport` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchPlatformWorkout` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchReferenceSync` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchSensorRecorder` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchSessionEngine` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchSessionSensors` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchSyncOrchestrator` | [The Watch Surface](state_management/watch_surface.md) |
 | `SessionSummaryBuilder` | [Workout Session State](state_management/workout_state.md) |
 | `SessionSummaryService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `SettingsState` | [App State](state_management/app_state.md) |
 | `StartupFailureDiagnosticWriter` | [Services & Utilities](state_management/services_and_utils.md) |
+| `StatsPrimerState` | [Stats Screen](stats_screen.md) |
 | `TimerAlertService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `TimerManager` | [Workout Session State](state_management/workout_state.md) |
 | `WorkoutSessionTimerMixin` | [Services & Utilities](state_management/services_and_utils.md) |
@@ -115,6 +117,7 @@ WorkoutRepository (interface, → HiveWorkoutRepository at runtime)
   ├─ NutritionState(repository)
   ├─ FoodLibraryState(repository, …)
   ├─ NutritionPrimerState(repository)
+  ├─ StatsPrimerState(repository)
   ├─ CatalogRefreshService(repository, …)
   ├─ RoutineSessionService(repository)
   └─ SessionSummaryService(repository)

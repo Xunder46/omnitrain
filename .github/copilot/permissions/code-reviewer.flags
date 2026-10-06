@@ -1,2 +1,2 @@
-# Reviewer: reads the diff and re-runs checks through the gateway; writes only the plan's review file.
+# Reviewer: reads everything, writes only the plan file (Feedback, verification notes).
 --allow-tool=write(docs/plans/**)

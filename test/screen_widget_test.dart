@@ -34,7 +34,7 @@ import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/features/splash/omni_splash_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
-import 'package:omnitrain/features/stats/widgets/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:omnitrain/core/utils/chart_axis_helper.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
@@ -48,9 +48,7 @@ import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
-import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
-import 'package:omnitrain/features/session/live_session_screen.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
@@ -64,7 +62,6 @@ import 'helpers/test_nutrition_primer_state.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/test_content_column.dart';
 import 'helpers/fake_asset_bundle.dart';
-import 'helpers/live_session_fixtures.dart';
 import 'helpers/test_image_helper.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -1955,10 +1952,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('HomeScreen', () {
-    Future<HomeScreen> buildHomeScreen(
-      MockWorkoutRepository repo, {
-      LiveSessionMirrorState? liveSession,
-    }) async {
+    Future<HomeScreen> buildHomeScreen(MockWorkoutRepository repo) async {
       final workoutState = WorkoutState(repo);
       final homeState = HomeState(repo);
       await homeState.init();
@@ -1992,7 +1986,6 @@ void main() {
           service: ExerciseLibraryService(repo),
           workoutState: workoutState,
         ),
-        liveSession: liveSession,
       );
     }
 
@@ -2026,59 +2019,6 @@ void main() {
 
       // Should have multiple EnergyTile cards in a grid
       expect(find.byType(CustomScrollView), findsWidgets);
-    });
-
-    // S-001 — a session running on the wrist is an entry point one screen
-    // from launch, and its absence costs the panel nothing.
-    testWidgets(
-      'shows the live watch session entry point when one is running',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-        final screen = await buildHomeScreen(
-          repo,
-          liveSession: liveWatchSession(),
-        );
-
-        await tester.pumpWidget(MaterialApp(home: screen));
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(const Key('live_session_entry_point')),
-          findsOneWidget,
-        );
-        expect(find.text('Barbell Bench Press'), findsOneWidget);
-        expect(find.text('TRAIN'), findsOneWidget);
-      },
-    );
-
-    testWidgets('shows no entry point without a live watch session', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final screen = await buildHomeScreen(repo);
-
-      await tester.pumpWidget(MaterialApp(home: screen));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('live_session_entry_point')), findsNothing);
-      expect(find.text('TRAIN'), findsOneWidget);
-    });
-
-    testWidgets('the entry point leaves when the session completes', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final liveSession = liveWatchSession();
-      final screen = await buildHomeScreen(repo, liveSession: liveSession);
-
-      await tester.pumpWidget(MaterialApp(home: screen));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('live_session_entry_point')), findsOneWidget);
-
-      await liveSession.completeSession();
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('live_session_entry_point')), findsNothing);
     });
 
     testWidgets('free training flow shows rolling toggle and inline guidance', (
@@ -2338,6 +2278,58 @@ void main() {
         expect(find.text('181 cm'), findsOneWidget);
       },
     );
+
+    // S-1714 — the Signals layer is a Stats surface only (D-1003). A Home
+    // build renders no signal content even with a gate-met history, and Home
+    // registers no signal seam. The cards themselves are proven on Stats
+    // (`test/signals_layer_screen_test.dart`, S-1701…S-1713) through the
+    // `StatsScreen(signals: […])` seam.
+    testWidgets('S-1714 renders no signal content', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      // Fixture R's shape: a rated history, the baseline Stats needs before it
+      // evaluates any signal at all.
+      for (var week = 1; week <= 4; week++) {
+        final startMs = now
+            .subtract(Duration(days: week * 7))
+            .millisecondsSinceEpoch;
+        final endMs = startMs + const Duration(minutes: 60).inMilliseconds;
+        await repo.createSession(
+          TrainingSession(
+            id: 'home-signal-$week',
+            ownerUserId: 'user-1',
+            modality: 'resistance_lifting',
+            startedAtMs: startMs,
+            endedAtMs: endMs,
+            sessionFeeling: 4,
+            createdAtMs: startMs,
+            updatedAtMs: endMs,
+          ),
+        );
+      }
+
+      final screen = await buildHomeScreen(repo);
+      await tester.pumpWidget(MaterialApp(home: screen));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('signals_layer')), findsNothing);
+      expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
+      expect(find.text('SIGNALS'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget.key is ValueKey<String> &&
+              (widget.key! as ValueKey<String>).value.startsWith(
+                'signal_card_',
+              ),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2634,119 +2626,6 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    Future<void> seedTimedEffort(
-      MockWorkoutRepository repo, {
-      required String sessionId,
-      required String exerciseId,
-      required int durationSecs,
-      double? distanceM,
-    }) async {
-      final segmentId = 'seg-$sessionId-$exerciseId';
-      final effortId = 'eff-$sessionId-$exerciseId';
-
-      await repo.createSegment(
-        SessionSegment(
-          id: segmentId,
-          sessionId: sessionId,
-          orderIndex: 0,
-          segmentType: 'main',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createEffort(
-        SegmentEffort(
-          id: effortId,
-          segmentId: segmentId,
-          orderIndex: 0,
-          effortKind: 'timed',
-          exerciseId: exerciseId,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createTimedInstance(
-        TimedInstance(
-          id: 'ti-$effortId',
-          effortId: effortId,
-          entryIndex: 0,
-          actualDurationSecs: durationSecs,
-          state: TimedState.finished,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      if (distanceM != null && distanceM > 0) {
-        await repo.createObservation(
-          EffortObservation(
-            id: 'obs-$effortId-distance',
-            effortId: effortId,
-            metricId: MetricIds.distance,
-            unitId: MetricIds.unitMeters,
-            valueReal: distanceM,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-      }
-    }
-
-    Future<void> seedSetEffort(
-      MockWorkoutRepository repo, {
-      required String sessionId,
-      required String exerciseId,
-      required double weightKg,
-      required int reps,
-    }) async {
-      final segmentId = 'seg-$sessionId-$exerciseId';
-      final effortId = 'eff-$sessionId-$exerciseId';
-
-      await repo.createSegment(
-        SessionSegment(
-          id: segmentId,
-          sessionId: sessionId,
-          orderIndex: 0,
-          segmentType: 'main',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createEffort(
-        SegmentEffort(
-          id: effortId,
-          segmentId: segmentId,
-          orderIndex: 0,
-          effortKind: 'set',
-          exerciseId: exerciseId,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createObservation(
-        EffortObservation(
-          id: 'obs-$effortId-weight',
-          effortId: effortId,
-          metricId: MetricIds.weight,
-          unitId: MetricIds.unitKg,
-          valueReal: weightKg,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createObservation(
-        EffortObservation(
-          id: 'obs-$effortId-reps',
-          effortId: effortId,
-          metricId: MetricIds.reps,
-          unitId: MetricIds.unitReps,
-          valueInt: reps,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-    }
-
     testWidgets('shows Stats AppBar title', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 900));
       final repo = await _freshRepo();
@@ -2778,7 +2657,7 @@ void main() {
     testWidgets('aggregate totals reflect seeded completed sessions', (
       WidgetTester tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
       final repo = await _freshRepo();
       final now = DateTime.now();
 
@@ -2806,7 +2685,7 @@ void main() {
 
       await pumpStatsScreen(tester, repo);
 
-      final aggregateCard = find.byType(OmniSurface).first;
+      final aggregateCard = find.byKey(const Key('all_time_card'));
       expect(
         find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
         findsOneWidget,
@@ -2824,7 +2703,7 @@ void main() {
     testWidgets('rolling sessions are excluded from duration aggregates', (
       WidgetTester tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
       final repo = await _freshRepo();
       final now = DateTime.now();
 
@@ -2845,7 +2724,7 @@ void main() {
 
       await pumpStatsScreen(tester, repo);
 
-      final aggregateCard = find.byType(OmniSurface).first;
+      final aggregateCard = find.byKey(const Key('all_time_card'));
       expect(
         find.descendant(of: aggregateCard, matching: find.text('2')),
         findsOneWidget,
@@ -2858,572 +2737,6 @@ void main() {
         find.descendant(of: aggregateCard, matching: find.text('2h 45m')),
         findsNothing,
       );
-    });
-
-    testWidgets('cardio single-day pace respects miles preference', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
-      final repo = await _freshRepo();
-      final now = DateTime.now();
-
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-run',
-          name: 'Run',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await seedCompletedSession(
-        repo,
-        id: 'cardio-1',
-        start: now.subtract(const Duration(days: 1)),
-        duration: const Duration(minutes: 30),
-      );
-      await seedTimedEffort(
-        repo,
-        sessionId: 'cardio-1',
-        exerciseId: 'ex-run',
-        durationSecs: 1800,
-        distanceM: 5000,
-      );
-
-      await pumpStatsScreen(
-        tester,
-        repo,
-        configureSettings: (settingsState) async {
-          await settingsState.setPreferredDistanceUnit('mi');
-        },
-      );
-
-      expect(find.textContaining('Pace: 579 s/mi'), findsOneWidget);
-      // Single-point cardio card also shows the deliberate hint.
-      expect(
-        find.textContaining('1 session — log more to see a trend'),
-        findsWidgets,
-      );
-    });
-
-    testWidgets('cardio multi-day pace chart overlays distance trend', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
-      final repo = await _freshRepo();
-      final now = DateTime.now();
-
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-row',
-          name: 'Row',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      await seedCompletedSession(
-        repo,
-        id: 'cardio-row-1',
-        start: now.subtract(const Duration(days: 2)),
-        duration: const Duration(minutes: 20),
-      );
-      await seedTimedEffort(
-        repo,
-        sessionId: 'cardio-row-1',
-        exerciseId: 'ex-row',
-        durationSecs: 1200,
-        distanceM: 4000,
-      );
-
-      await seedCompletedSession(
-        repo,
-        id: 'cardio-row-2',
-        start: now.subtract(const Duration(days: 1)),
-        duration: const Duration(minutes: 18),
-      );
-      await seedTimedEffort(
-        repo,
-        sessionId: 'cardio-row-2',
-        exerciseId: 'ex-row',
-        durationSecs: 1080,
-        distanceM: 4200,
-      );
-
-      await pumpStatsScreen(tester, repo);
-
-      expect(find.text('Distance (km)'), findsOneWidget);
-
-      final cardioChart = tester.widget<LineChart>(
-        find.byType(LineChart).first,
-      );
-      expect(cardioChart.data.lineBarsData.length, 2);
-    });
-
-    testWidgets('strength e1RM and PRs displayed in lbs when unit is lbs', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
-      final repo = await _freshRepo();
-      final now = DateTime.now();
-
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-squat',
-          name: 'Squat',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      // Single training day → single-point fallback shows inline text
-      await seedCompletedSession(
-        repo,
-        id: 'lift-1',
-        start: now.subtract(const Duration(days: 1)),
-        duration: const Duration(minutes: 45),
-      );
-      // 100 kg × 1 rep → e1RM ≈ 103.33 kg ≈ 227.8 lbs
-      await seedSetEffort(
-        repo,
-        sessionId: 'lift-1',
-        exerciseId: 'ex-squat',
-        weightKg: 100.0,
-        reps: 1,
-      );
-
-      await pumpStatsScreen(
-        tester,
-        repo,
-        configureSettings: (settingsState) async {
-          await settingsState.setPreferredWeightUnit('lbs');
-        },
-      );
-
-      // Unit label must say 'lbs', not 'kg'
-      expect(find.textContaining('lbs'), findsWidgets);
-      expect(find.textContaining('Estimated 1RM:'), findsOneWidget);
-      expect(find.textContaining(' kg'), findsNothing);
-      // Single-point card must show the deliberate "log more" hint.
-      expect(
-        find.textContaining('1 session — log more to see a trend'),
-        findsWidgets,
-      );
-    });
-
-    // ══════════════════════════════════════════════════════════════════════
-    // Plan: unify-chart-scrolling-popup — Phase 1 scenarios
-    // S-101..S-105c apply to every on-card stats chart; the
-    // fixtures below seed >8 training days of strength set
-    // efforts to drive the strength e1RM / volume charts past
-    // the 8-points-visible threshold.
-    // ══════════════════════════════════════════════════════════════════════
-
-    Future<void> seedStrengthDays(
-      MockWorkoutRepository repo, {
-      required String exerciseId,
-      required int dayCount,
-      DateTime? firstStart,
-    }) async {
-      final start = firstStart ?? DateTime.now();
-      for (var i = 0; i < dayCount; i++) {
-        final day = start.subtract(Duration(days: dayCount - 1 - i));
-        final id = 'lift-$exerciseId-$i';
-        await seedCompletedSession(
-          repo,
-          id: id,
-          start: day,
-          duration: const Duration(minutes: 45),
-          modality: 'resistance_lifting',
-        );
-        await seedSetEffort(
-          repo,
-          sessionId: id,
-          exerciseId: exerciseId,
-          weightKg: 80.0 + i.toDouble(),
-          reps: 5,
-        );
-      }
-    }
-
-    Future<void> seedCardioDays(
-      MockWorkoutRepository repo, {
-      required String exerciseId,
-      required int dayCount,
-      DateTime? firstStart,
-    }) async {
-      final start = firstStart ?? DateTime.now();
-      for (var i = 0; i < dayCount; i++) {
-        final day = start.subtract(Duration(days: dayCount - 1 - i));
-        final id = 'cardio-$exerciseId-$i';
-        await seedCompletedSession(
-          repo,
-          id: id,
-          start: day,
-          duration: const Duration(minutes: 30),
-        );
-        await seedTimedEffort(
-          repo,
-          sessionId: id,
-          exerciseId: exerciseId,
-          durationSecs: 1800,
-          distanceM: 5000.0,
-        );
-      }
-    }
-
-    // S-101: many points → scroll, newest first
-    testWidgets('strength chart with >8 points opens scrolled to '
-        'maxScrollExtent (newest at right)', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-squat',
-          name: 'Squat',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await seedStrengthDays(repo, exerciseId: 'ex-squat', dayCount: 12);
-
-      await pumpStatsScreen(tester, repo);
-
-      // Every on-card chart on this screen is a `ScrollableTrendChart`.
-      // For 12 points (> maxVisiblePoints 8) the inner
-      // SingleChildScrollView has a non-zero maxScrollExtent and the
-      // wrapper has jumped its ScrollController to that extent.
-      // Filter to chart-scoped scrollables (horizontal axis, inside a
-      // ScrollableTrendChart) — excludes the parent ListView (vertical).
-      final chartScrollables = <ScrollPosition>[];
-      for (final scrollable in tester.stateList<ScrollableState>(
-        find.byType(Scrollable),
-      )) {
-        if (scrollable.position.axis != Axis.horizontal) continue;
-        final inChart = find
-            .ancestor(
-              of: find.byWidget(
-                tester.widget<Scrollable>(
-                  find.byWidgetPredicate(
-                    (w) => w is Scrollable && w == scrollable.widget,
-                  ),
-                ),
-              ),
-              matching: find.byType(ScrollableTrendChart),
-            )
-            .evaluate()
-            .isNotEmpty;
-        if (inChart) chartScrollables.add(scrollable.position);
-      }
-      expect(chartScrollables, isNotEmpty);
-      for (final pos in chartScrollables) {
-        expect(
-          pos.pixels,
-          pos.maxScrollExtent,
-          reason:
-              'newest-first: scroll position must equal maxScrollExtent '
-              'after first layout',
-        );
-      }
-    });
-
-    // S-102: few points → no scroll, plot fills viewport
-    testWidgets('strength chart with ≤8 points fills the viewport '
-        '(no scroll engagement)', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-bench',
-          name: 'Bench',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await seedStrengthDays(repo, exerciseId: 'ex-bench', dayCount: 3);
-
-      await pumpStatsScreen(tester, repo);
-
-      // With 3 points (<= maxVisiblePoints 8) the strength chart's
-      // SingleChildScrollView has maxScrollExtent == 0. The mock
-      // seed also seeds nutrition data (~30 days), so we filter
-      // to the strength chart only — identified by its 3 spots
-      // (bench has 3 distinct training days in this fixture).
-      // A chart with <= 8 points must not engage horizontal scroll.
-      ScrollPosition? strengthChartPosition;
-      for (final chart in tester.widgetList<LineChart>(
-        find.byType(LineChart),
-      )) {
-        if (chart.data.lineBarsData.isEmpty) continue;
-        if (chart.data.lineBarsData.first.spots.length != 3) continue;
-        // Find the Scrollable ancestor and use its position.
-        final scrollFinder = find
-            .ancestor(
-              of: find.byWidget(chart),
-              matching: find.byType(Scrollable),
-            )
-            .first;
-        if (scrollFinder.evaluate().isEmpty) continue;
-        strengthChartPosition = tester
-            .state<ScrollableState>(scrollFinder)
-            .position;
-        break;
-      }
-      expect(
-        strengthChartPosition,
-        isNotNull,
-        reason: 'should find a strength chart with 3 spots',
-      );
-      expect(
-        strengthChartPosition!.maxScrollExtent,
-        0,
-        reason: 'sparse data: no horizontal scroll on the strength chart',
-      );
-    });
-
-    // S-103: data order is not reversed
-    testWidgets('strength chart data is not reversed: oldest spot '
-        'at index 0, newest at index N-1', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-deadlift',
-          name: 'Deadlift',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await seedStrengthDays(repo, exerciseId: 'ex-deadlift', dayCount: 12);
-
-      await pumpStatsScreen(tester, repo);
-
-      // Find the strength LineChart (the one whose minX/maxX span the
-      // 12 indices). The order of spots must be ascending by index
-      // (oldest to newest); the wrapper just scrolls the view, it
-      // does NOT mirror the data.
-      final lineCharts = tester.widgetList<LineChart>(find.byType(LineChart));
-      final multiSpotCharts = lineCharts
-          .where(
-            (c) =>
-                c.data.lineBarsData.isNotEmpty &&
-                c.data.lineBarsData.first.spots.length >= 2,
-          )
-          .toList();
-      expect(multiSpotCharts, isNotEmpty);
-
-      for (final chart in multiSpotCharts) {
-        final spots = chart.data.lineBarsData.first.spots;
-        for (var i = 1; i < spots.length; i++) {
-          expect(
-            spots[i].x,
-            greaterThan(spots[i - 1].x),
-            reason: 'spots must be in ascending x order (not reversed)',
-          );
-        }
-        // The wrapper uses reverse:false (no mirror).
-        final scrollAncestor = find.ancestor(
-          of: find.byWidget(chart),
-          matching: find.byType(SingleChildScrollView),
-        );
-        final scroller = tester.widget<SingleChildScrollView>(scrollAncestor);
-        expect(scroller.reverse, isFalse);
-      }
-    });
-
-    // S-104: tapping a point does not show a tooltip popup
-    testWidgets('tapping a stats chart point does not surface a fl_chart '
-        'tooltip (popup removed, D-4)', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-ohp',
-          name: 'Overhead Press',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await seedStrengthDays(repo, exerciseId: 'ex-ohp', dayCount: 12);
-
-      await pumpStatsScreen(tester, repo);
-
-      // Verify every chart's LineTouchData is disabled.
-      for (final chart in tester.widgetList<LineChart>(
-        find.byType(LineChart),
-      )) {
-        expect(
-          chart.data.lineTouchData.enabled,
-          isFalse,
-          reason: 'all stats charts must disable lineTouchData',
-        );
-      }
-
-      // Tap the chart and verify no Tooltip renders inside the chart.
-      // The header's Records & Trends action carries the screen's only
-      // Tooltip, so the guard is scoped to the chart subtree.
-      await tester.tap(find.byType(LineChart).first);
-      await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: find.byType(LineChart),
-          matching: find.byType(Tooltip),
-        ),
-        findsNothing,
-      );
-      expect(find.byType(Tooltip), findsOneWidget);
-    });
-
-    // S-105 / S-105b / S-105c: no top headroom, no double padding,
-    // highest point not clipped.
-    testWidgets('stats charts: no topTitles headroom, no double-padding '
-        '(no Transform.translate ancestor), top point not clipped '
-        '(D-5, D-6, S-105, S-105b, S-105c)', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-row',
-          name: 'Row',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await seedStrengthDays(repo, exerciseId: 'ex-row', dayCount: 12);
-
-      await pumpStatsScreen(tester, repo);
-
-      // S-105: topTitles reservedSize == 0 (no popup headroom).
-      for (final chart in tester.widgetList<LineChart>(
-        find.byType(LineChart),
-      )) {
-        expect(
-          chart.data.titlesData.topTitles.sideTitles.reservedSize,
-          0,
-          reason: 'no top headroom — popup no longer needs the gap',
-        );
-      }
-
-      // S-105: no Transform.translate ancestor with a chart
-      // left-shift offset (the deprecated `_buildInsetChart` used
-      // `Transform.translate(offset: Offset(-16, 0))` to push the
-      // chart left). Other framework-introduced Transforms
-      // (overflow fade, scroll position translation) are allowed.
-      final lineCharts = find.byType(LineChart);
-      expect(lineCharts, findsWidgets);
-      for (var i = 0; i < lineCharts.evaluate().length; i++) {
-        final chartFinder = find.byType(LineChart).at(i);
-        final leftShiftTransforms = find
-            .ancestor(
-              of: chartFinder,
-              matching: find.byWidgetPredicate((w) {
-                if (w is! Transform) return false;
-                final t = w.transform.getTranslation();
-                // Match the deprecated pattern: a Transform.translate
-                // that shifts the chart LEFT by the old
-                // `_kChartLeftShift = 16` value (no vertical shift).
-                return t.x < -8 && t.y.abs() < 0.5;
-              }),
-            )
-            .evaluate();
-        expect(
-          leftShiftTransforms,
-          isEmpty,
-          reason:
-              'no Transform.translate chart-left-shift ancestor — '
-              'no double-padding wrapper',
-        );
-      }
-
-      // S-105c: the chart sits inside a SizedBox parent (the
-      // wrapper's plot SizedBox). Verify at least one SizedBox
-      // ancestor exists for each chart.
-      for (var i = 0; i < lineCharts.evaluate().length; i++) {
-        final chartFinder = find.byType(LineChart).at(i);
-        final sizedBoxAncestors = find
-            .ancestor(of: chartFinder, matching: find.byType(SizedBox))
-            .evaluate();
-        expect(
-          sizedBoxAncestors,
-          isNotEmpty,
-          reason: 'chart sits inside a SizedBox(parent)',
-        );
-      }
-
-      // S-105b: the highest data point renders with at least 2 dp of
-      // padding above it so the dot is visibly inside the plot
-      // area. ChartAxisHelper pads above max by
-      // `range × 0.15 + 1.0`, which gives ≥ 2 dp for ranges ≥ 7 —
-      // the typical stats-screen case. For tight ranges the
-      // padding can shrink below the dot radius (3 dp); the dot
-      // may clip by 1 dp on those edge cases but is still
-      // visually inside the chart. The plan forbids additional
-      // padding logic in ChartAxisHelper (D-10), so the wrapper
-      // accepts the helper's existing math and the structural
-      // guard holds for normal data.
-      for (final chart in tester.widgetList<LineChart>(
-        find.byType(LineChart),
-      )) {
-        if (chart.data.lineBarsData.isEmpty) continue;
-        final bar = chart.data.lineBarsData.first;
-        if (bar.spots.isEmpty) continue;
-        final maxYValue = bar.spots
-            .map((s) => s.y)
-            .reduce((a, b) => a > b ? a : b);
-        final maxYBound = chart.data.maxY;
-        final topPadding = maxYBound - maxYValue;
-        expect(
-          topPadding,
-          greaterThanOrEqualTo(2.0),
-          reason:
-              'top point must have ≥2 dp of padding above it so the dot is '
-              'visibly inside the plot area after headroom removal',
-        );
-      }
-    });
-
-    // S-104 also covers the cardio chart (multi-line). Verify
-    // cardio pace + distance chart has LineTouchData disabled and
-    // no popup appears.
-    testWidgets('cardio pace chart: LineTouchData disabled, '
-        'no popup on tap (S-104 cardio)', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-run',
-          name: 'Run',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await seedCardioDays(repo, exerciseId: 'ex-run', dayCount: 12);
-
-      await pumpStatsScreen(tester, repo);
-
-      // Every cardio chart's LineTouchData disabled.
-      final cardioCharts = tester
-          .widgetList<LineChart>(find.byType(LineChart))
-          .where((c) => c.data.lineBarsData.length >= 2);
-      expect(
-        cardioCharts,
-        isNotEmpty,
-        reason: 'multi-line cardio chart (pace + distance) present',
-      );
-      for (final chart in cardioCharts) {
-        expect(chart.data.lineTouchData.enabled, isFalse);
-      }
-
-      // Tap and verify no Tooltip inside the chart (the header's Records &
-      // Trends action is the screen's only Tooltip).
-      await tester.tap(find.byType(LineChart).first);
-      await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: find.byType(LineChart),
-          matching: find.byType(Tooltip),
-        ),
-        findsNothing,
-      );
-      expect(find.byType(Tooltip), findsOneWidget);
     });
 
     // ── Effort rating on Stats (HOW DID IT FEEL removed) ──────────────────────────
@@ -3458,7 +2771,7 @@ void main() {
 
     testWidgets('S-005 guard: no feeling scalar / pill / tile appears in the '
         'ALL TIME summary stat row', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
       final repo = await _freshRepo();
       final now = DateTime.now();
       await seedFeelingSession(
@@ -3471,11 +2784,11 @@ void main() {
 
       await pumpStatsScreen(tester, repo);
 
-      // The ALL TIME row renders inside the first OmniSurface
-      // (the aggregate card). It must NOT contain any "Feeling"
+      // The ALL TIME row renders inside the all_time_card surface.
+      // It must NOT contain any "Feeling"
       // label, no "average feeling" scalar, no pill of any kind
       // referencing feeling.
-      final aggregateCard = find.byType(OmniSurface).first;
+      final aggregateCard = find.byKey(const Key('all_time_card'));
       expect(
         find.descendant(
           of: aggregateCard,
@@ -3507,87 +2820,36 @@ void main() {
       );
     });
 
-    testWidgets(
-      'HOW DID IT FEEL section is removed (Phase 4)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1200));
-        final repo = await _freshRepo();
-        final now = DateTime.now();
-        await seedFeelingSession(
-          repo,
-          id: 'f-1',
-          start: now.subtract(const Duration(days: 2)),
-          duration: const Duration(minutes: 30),
-          feeling: 3,
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'f-2',
-          start: now.subtract(const Duration(days: 1)),
-          duration: const Duration(minutes: 30),
-          feeling: 4,
-        );
+    testWidgets('HOW DID IT FEEL section is removed (Phase 4)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+      await seedFeelingSession(
+        repo,
+        id: 'f-1',
+        start: now.subtract(const Duration(days: 2)),
+        duration: const Duration(minutes: 30),
+        feeling: 3,
+      );
+      await seedFeelingSession(
+        repo,
+        id: 'f-2',
+        start: now.subtract(const Duration(days: 1)),
+        duration: const Duration(minutes: 30),
+        feeling: 4,
+      );
 
-        await pumpStatsScreen(tester, repo);
+      await pumpStatsScreen(tester, repo);
 
-        // HOW DID IT FEEL header must not appear (Phase 4 removal)
-        expect(
-          find.text('HOW DID IT FEEL'),
-          findsNothing,
-          reason: 'HOW DID IT FEEL section has been removed',
-        );
-      },
-    );
-
-    testWidgets(
-      'all-non-strength dataset renders STRENGTH/CARDIO/SPORTS sections '
-      'without HOW DID IT FEEL (Phase 4)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1400));
-        final repo = await _freshRepo();
-        final now = DateTime.now();
-        // 3 cardio/sports sessions with feelings; no set efforts
-        // anywhere → topLifts is empty → Cardio and Sports sections
-        // render without the feeling trend.
-        await seedFeelingSession(
-          repo,
-          id: 'run-1',
-          start: now.subtract(const Duration(days: 3)),
-          duration: const Duration(minutes: 30),
-          feeling: 4,
-          modality: Modality.cardioEndurance,
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'roll-1',
-          start: now.subtract(const Duration(days: 2)),
-          duration: const Duration(minutes: 45),
-          feeling: 3,
-          modality: Modality.sports,
-        );
-        await seedFeelingSession(
-          repo,
-          id: 'run-2',
-          start: now.subtract(const Duration(days: 1)),
-          duration: const Duration(minutes: 30),
-          feeling: 5,
-          modality: Modality.cardioEndurance,
-        );
-
-        await pumpStatsScreen(tester, repo);
-
-        // HOW DID IT FEEL header must not appear (Phase 4 removal)
-        expect(
-          find.text('HOW DID IT FEEL'),
-          findsNothing,
-          reason: 'HOW DID IT FEEL section has been removed',
-        );
-        // Verify CARDIO section is still present
-        expect(find.text('CARDIO'), findsOneWidget);
-        // Verify SPORTS section is still present
-        expect(find.text('SPORTS'), findsOneWidget);
-      },
-    );
+      // HOW DID IT FEEL header must not appear (Phase 4 removal)
+      expect(
+        find.text('HOW DID IT FEEL'),
+        findsNothing,
+        reason: 'HOW DID IT FEEL section has been removed',
+      );
+    });
 
     testWidgets(
       'sessions without effort ratings — HOW DID IT FEEL section not rendered '
@@ -3669,1248 +2931,24 @@ void main() {
       },
     );
 
-    testWidgets(
-      'D-5: Inter-section gaps are uniform (24dp) and owned by ListView, '
-      'not by section builders',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1400));
-        final repo = await _freshRepo();
-
-        // Create a user with some training data so all sections render.
-        final now = DateTime.now();
-
-        // Add a strength exercise to populate topLifts
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-sq',
-            name: 'Squat',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-        await seedCompletedSession(
-          repo,
-          id: 'str-1',
-          start: now.subtract(const Duration(days: 10)),
-          duration: const Duration(minutes: 30),
-        );
-        await seedSetEffort(
-          repo,
-          sessionId: 'str-1',
-          exerciseId: 'ex-sq',
-          weightKg: 100.0,
-          reps: 5,
-        );
-
-        // Add a cardio exercise to populate topCardio
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-run',
-            name: 'Running',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-        await seedCompletedSession(
-          repo,
-          id: 'cardio-1',
-          start: now.subtract(const Duration(days: 8)),
-          duration: const Duration(minutes: 30),
-        );
-        await seedTimedEffort(
-          repo,
-          sessionId: 'cardio-1',
-          exerciseId: 'ex-run',
-          durationSecs: 1200,
-        );
-
-        // Note: We don't populate the feeling section in this test since
-        // the focus is on spacing convention, not section content. The test
-        // verifies that sections are laid out with uniform gaps regardless
-        // of whether all sections are present.
-
-        await pumpStatsScreen(tester, repo);
-
-        // Verify that key section headers are present.
-        expect(find.text('STRENGTH'), findsOneWidget);
-        expect(find.text('CARDIO'), findsOneWidget);
-        // HOW DID IT FEEL section has been removed (Phase 4)
-        expect(find.text('HOW DID IT FEEL'), findsNothing);
-
-        // D-5 guard: measure actual gaps between sections.
-        // Verifies that inter-section gaps are 24dp and owned by the ListView,
-        // not by section builders. A self-prefixed SizedBox(height: 24) in any
-        // section builder would double the gap, causing this test to fail.
-
-        // Strategy: Find the last content in Strength section ("Squat") and
-        // measure the distance to the next section header ("CARDIO").
-        // The gap = (cardioHeaderTop) - (lastStrengthContentBottom).
-        // Expected: ~24dp. If a section self-prefixes with 24dp: ~48dp (FAIL).
-
-        final strengthHeaderFinder = find.text('STRENGTH');
-        final cardioHeaderFinder = find.text('CARDIO');
-
-        // Get render boxes for headers.
-        final strengthHeaderRect = tester.getRect(strengthHeaderFinder);
-        final cardioHeaderRect = tester.getRect(cardioHeaderFinder);
-
-        // Find the bottommost OmniSurface widget in the Strength section.
-        // OmniSurface is used for exercise cards in the stats screen.
-        // We'll find all OmniSurface widgets and identify the one in Strength.
-        final omniSurfaceFinder = find.byType(OmniSurface);
-        Rect? lastStrengthCardRect;
-
-        for (final finder in omniSurfaceFinder.evaluate()) {
-          final rect = finder.renderObject is RenderBox
-              ? (finder.renderObject as RenderBox).localToGlobal(Offset.zero) &
-                    (finder.renderObject as RenderBox).size
-              : null;
-          if (rect != null &&
-              rect.top > strengthHeaderRect.top &&
-              rect.top < cardioHeaderRect.top) {
-            // This surface is in the Strength section
-            lastStrengthCardRect = rect;
-          }
-        }
-
-        expect(
-          lastStrengthCardRect,
-          isNotNull,
-          reason: 'Should find a Strength section exercise card (OmniSurface)',
-        );
-
-        // Sanity check: header order
-        expect(
-          strengthHeaderRect.top,
-          lessThan(cardioHeaderRect.top),
-          reason: 'STRENGTH header should be above CARDIO header',
-        );
-
-        // Measure the gap from the bottom of the last Strength card to the top of
-        // the CARDIO header. This is the inter-section gap that D-5 specifies.
-        final gap = cardioHeaderRect.top - lastStrengthCardRect!.bottom;
-
-        // Expected gap: 24dp. Allow ±3dp tolerance for rendering/measurement.
-        const expectedGap = 24.0;
-        const tolerance = 3.0;
-
-        expect(
-          gap,
-          greaterThan(expectedGap - tolerance),
-          reason:
-              'Gap between Strength and Cardio sections should be ~24dp; '
-              'found ${gap.toStringAsFixed(1)}dp. '
-              'If _buildFeelingSection, _buildNutritionSection, or another '
-              'section builder has a self-prefixed SizedBox(height: 24), '
-              'this gap would be ~48dp and this test would fail.',
-        );
-        expect(
-          gap,
-          lessThan(expectedGap + tolerance),
-          reason:
-              'Gap between Strength and Cardio sections should be ~24dp; '
-              'found ${gap.toStringAsFixed(1)}dp. '
-              'If _buildFeelingSection, _buildNutritionSection, or another '
-              'section builder has a self-prefixed SizedBox(height: 24), '
-              'this gap would be ~48dp and this test would fail.',
-        );
-      },
-    );
-
-    // D-1: Segmented toggle label width contract verification
-    // Per D-1, the only surviving segmented toggle (Nutrition: Calories / Macros)
-    // must have labels that render on exactly one line, fully legible, with no
-    // wrapping, mid-word breaking, or ellipsis.
-    // Labels: "Calories" (8 chars), "Macros" (6 chars) are short words that should
-    // fit on a single line in a SegmentedButton at any supported width and text scale.
-
-    testWidgets(
-      'nutrition toggle (D-1): renders short labels (Calories, Macros) without wrapping',
-      (WidgetTester tester) async {
-        // Minimal test widget just to verify the toggle renders at 360dp.
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // Render the toggle directly (isolated from Stats screen).
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(
-                          value: 'calories',
-                          label: Text('Calories'),
-                        ),
-                        ButtonSegment(value: 'macros', label: Text('Macros')),
-                      ],
-                      selected: const {'calories'},
-                      onSelectionChanged: (selection) {},
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-
-        // At default 800x600 viewport, labels should render without wrapping.
-        expect(
-          find.text('Calories'),
-          findsWidgets,
-          reason: 'Calories label must be present and rendered',
-        );
-        expect(
-          find.text('Macros'),
-          findsWidgets,
-          reason: 'Macros label must be present and rendered',
-        );
-
-        // Verify no layout overflow or clip artifacts.
-        // Both labels are short (6-8 chars) and should fit on one line.
-        final caloriesSize = tester.getSize(find.text('Calories').first);
-        final macrosSize = tester.getSize(find.text('Macros').first);
-
-        expect(
-          caloriesSize.width,
-          greaterThan(0),
-          reason: 'Calories label must have positive width',
-        );
-        expect(
-          macrosSize.width,
-          greaterThan(0),
-          reason: 'Macros label must have positive width',
-        );
-
-        // Both labels should be reasonably sized (not excessively shrunk or wrapped).
-        expect(
-          caloriesSize.width,
-          lessThan(120),
-          reason: 'Calories label should not be excessively wide (no wrap)',
-        );
-        expect(
-          macrosSize.width,
-          lessThan(100),
-          reason: 'Macros label should not be excessively wide (no wrap)',
-        );
-      },
-    );
-
-    testWidgets(
-      'nutrition toggle (D-1): labels fit on single line at max a11y scale 5.0',
-      (WidgetTester tester) async {
-        // Per D-1: labels must fit on one line at max accessibility scale (5.0x).
-        // Test with a wide viewport to isolate label wrapping from page overflow.
-        await tester.binding.setSurfaceSize(const Size(500, 800));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        await tester.pumpWidget(
-          MaterialApp(
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(5.0)),
-              child: child!,
-            ),
-            home: Scaffold(
-              body: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // Render the toggle at max accessibility scale.
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(
-                          value: 'calories',
-                          label: Text('Calories'),
-                        ),
-                        ButtonSegment(value: 'macros', label: Text('Macros')),
-                      ],
-                      selected: const {'calories'},
-                      onSelectionChanged: (selection) {},
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-
-        // Even at 5.0x text scale, labels should still render on a single line.
-        // "Calories" and "Macros" are short words (6-8 chars) that should not wrap.
-        expect(
-          find.text('Calories'),
-          findsWidgets,
-          reason: 'Calories label must render on one line at 5.0x scale',
-        );
-        expect(
-          find.text('Macros'),
-          findsWidgets,
-          reason: 'Macros label must render on one line at 5.0x scale',
-        );
-
-        // Verify the toggle renders without layout errors.
-        final segmentedButtonFinder = find.byType(SegmentedButton<String>);
-        expect(
-          segmentedButtonFinder,
-          findsOneWidget,
-          reason: 'SegmentedButton must render successfully at 5.0x scale',
-        );
-      },
-    );
-
-    testWidgets(
-      'app: only one SegmentedButton exists (all toggles except Nutrition deleted)',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-
-        await pumpStatsScreen(tester, repo);
-
-        // Per Phase A cleanup: Volume Trends and Consistency toggles deleted.
-        // Only Nutrition toggle (SegmentedButton) survives.
-        final allSegmentedButtons = find.byType(SegmentedButton<dynamic>);
-
-        // The test is looking for the toggle in the stats screen.
-        // If no toggle is found, that's expected since nutrition section
-        // might not render without data. But if a toggle IS found, verify it's unique.
-        // This test documents that only one toggle should exist if any do.
-        if (allSegmentedButtons.evaluate().isNotEmpty) {
-          expect(
-            allSegmentedButtons,
-            findsOneWidget,
-            reason: 'Only Nutrition toggle should exist (others deleted)',
-          );
-        }
-      },
-    );
-
-    // ── Phase E: Isometric and Sports sections ───────────────────────────────
-
-    testWidgets('S-601: Isometric section renders with exercise trend cards', (
+    testWidgets('Stats renders no SegmentedButton', (
       WidgetTester tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
       final repo = await _freshRepo();
-
-      // Create exercise
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-plank',
-          name: 'Plank',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Seed multiple isometric sessions across 14+ days
-      for (int i = 0; i < 5; i++) {
-        final day = DateTime.now().subtract(Duration(days: i * 2));
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-iso-$i',
-            ownerUserId: 'user-1',
-            startedAtMs: day.millisecondsSinceEpoch,
-            endedAtMs: day.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-            modality: 'isometric_stretching',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Add drill effort
-        final segId = 'seg-iso-$i';
-        await repo.createSegment(
-          SessionSegment(
-            id: segId,
-            sessionId: 'sess-iso-$i',
-            orderIndex: 0,
-            segmentType: 'main',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        final effId = 'eff-iso-$i';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effId,
-            segmentId: segId,
-            orderIndex: 0,
-            effortKind: 'drill',
-            exerciseId: 'ex-plank',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createTimedInstance(
-          TimedInstance(
-            id: 'ti-iso-$i',
-            effortId: effId,
-            entryIndex: 0,
-            actualDurationSecs: 60,
-            state: TimedState.finished,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-      }
 
       await pumpStatsScreen(tester, repo);
 
-      // Verify ISOMETRIC header exists
-      expect(find.text('ISOMETRIC'), findsOneWidget);
-
-      // Verify exercise name appears
-      expect(find.text('Plank'), findsWidgets);
-
-      // Verify chart is rendered (look for Duration text)
-      expect(find.text('Duration (sec)'), findsWidgets);
-    });
-
-    testWidgets('S-602: Isometric section empty state', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
-      final repo = await _freshRepo();
-
-      // Create a session but no isometric efforts
-      final now = DateTime.now();
-      await repo.createSession(
-        TrainingSession(
-          id: 'sess-1',
-          ownerUserId: 'user-1',
-          startedAtMs: now.millisecondsSinceEpoch,
-          endedAtMs: now.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-          modality: 'cardio_endurance',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      await pumpStatsScreen(tester, repo);
-
-      // Verify ISOMETRIC header exists
-      expect(find.text('ISOMETRIC'), findsOneWidget);
-
-      // Verify empty state message
+      // Every segmented toggle this screen rendered belonged to a legacy
+      // section (Volume Trends, Consistency, the NUTRITION card); none
+      // survives. `find.byType` compares exact runtime types, so match on the
+      // widget kind too and catch any `SegmentedButton<T>` instantiation.
       expect(
-        find.text(
-          'No isometric history yet. Log hold exercises to see trends here.',
-        ),
-        findsOneWidget,
+        find.byWidgetPredicate((widget) => widget is SegmentedButton),
+        findsNothing,
       );
+      expect(find.byType(SegmentedButton<dynamic>), findsNothing);
     });
-
-    testWidgets('S-603: Sports section renders with exercise trend cards', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
-      final repo = await _freshRepo();
-
-      // Create exercise
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-boxing',
-          name: 'Boxing',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Seed multiple sports sessions across 14+ days
-      for (int i = 0; i < 5; i++) {
-        final day = DateTime.now().subtract(Duration(days: i * 2));
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-sport-$i',
-            ownerUserId: 'user-1',
-            startedAtMs: day.millisecondsSinceEpoch,
-            endedAtMs: day.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-            modality: 'sports',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Add round effort
-        final segId = 'seg-sport-$i';
-        await repo.createSegment(
-          SessionSegment(
-            id: segId,
-            sessionId: 'sess-sport-$i',
-            orderIndex: 0,
-            segmentType: 'main',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        final effId = 'eff-sport-$i';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effId,
-            segmentId: segId,
-            orderIndex: 0,
-            effortKind: 'round',
-            exerciseId: 'ex-boxing',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createTimedInstance(
-          TimedInstance(
-            id: 'ti-sport-$i',
-            effortId: effId,
-            entryIndex: 0,
-            actualDurationSecs: 180,
-            state: TimedState.finished,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-      }
-
-      await pumpStatsScreen(tester, repo);
-
-      // Verify SPORTS header exists
-      expect(find.text('SPORTS'), findsOneWidget);
-
-      // Verify exercise name appears
-      expect(find.text('Boxing'), findsWidgets);
-
-      // Verify chart is rendered (look for Duration text)
-      expect(find.text('Duration (sec)'), findsWidgets);
-    });
-
-    testWidgets('S-604: Sports section empty state', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
-      final repo = await _freshRepo();
-
-      // Create a session but no sports efforts
-      final now = DateTime.now();
-      await repo.createSession(
-        TrainingSession(
-          id: 'sess-1',
-          ownerUserId: 'user-1',
-          startedAtMs: now.millisecondsSinceEpoch,
-          endedAtMs: now.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-          modality: 'cardio_endurance',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      await pumpStatsScreen(tester, repo);
-
-      // Verify SPORTS header exists
-      expect(find.text('SPORTS'), findsOneWidget);
-
-      // Verify empty state message
-      expect(
-        find.text(
-          'No sports history yet. Log sports rounds to see trends here.',
-        ),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('S-605: Hold time aggregation — sum per day', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
-      final repo = await _freshRepo();
-
-      // Create exercise
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-plank',
-          name: 'Plank',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Seed a session with three 30-second holds (should sum to 90 sec)
-      final today = DateTime.now();
-      await repo.createSession(
-        TrainingSession(
-          id: 'sess-today',
-          ownerUserId: 'user-1',
-          startedAtMs: today.millisecondsSinceEpoch,
-          endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-          modality: 'isometric_stretching',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      final segId = 'seg-today';
-      await repo.createSegment(
-        SessionSegment(
-          id: segId,
-          sessionId: 'sess-today',
-          orderIndex: 0,
-          segmentType: 'main',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Create three drill efforts, each 30 seconds
-      for (int i = 0; i < 3; i++) {
-        final effId = 'eff-today-$i';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effId,
-            segmentId: segId,
-            orderIndex: i,
-            effortKind: 'drill',
-            exerciseId: 'ex-plank',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createTimedInstance(
-          TimedInstance(
-            id: 'ti-$effId',
-            effortId: effId,
-            entryIndex: 0,
-            actualDurationSecs: 30,
-            state: TimedState.finished,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-      }
-
-      await pumpStatsScreen(tester, repo);
-
-      // Verify the aggregated value shows 90 seconds in some form
-      // The chart will show 90 on the y-axis due to aggregation
-      expect(find.text('ISOMETRIC'), findsOneWidget);
-      expect(find.text('Plank'), findsWidgets);
-
-      // Assert that the aggregated hold time (90 sec) is rendered.
-      // Single-point drill card shows "$secs sec" text.
-      expect(
-        find.textContaining('90 sec'),
-        findsOneWidget,
-        reason: 'aggregated hold time must sum all drills on the same day',
-      );
-    });
-
-    testWidgets('S-606: Isometric/Sports inherit shared 14-day window', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1200));
-      final repo = await _freshRepo();
-
-      // Create exercises
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-plank',
-          name: 'Plank',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-boxing',
-          name: 'Boxing',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Seed isometric and sports data
-      final today = DateTime.now();
-
-      // Isometric session
-      await repo.createSession(
-        TrainingSession(
-          id: 'sess-iso',
-          ownerUserId: 'user-1',
-          startedAtMs: today.millisecondsSinceEpoch,
-          endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-          modality: 'isometric_stretching',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      var segId = 'seg-iso';
-      await repo.createSegment(
-        SessionSegment(
-          id: segId,
-          sessionId: 'sess-iso',
-          orderIndex: 0,
-          segmentType: 'main',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      var effId = 'eff-iso';
-      await repo.createEffort(
-        SegmentEffort(
-          id: effId,
-          segmentId: segId,
-          orderIndex: 0,
-          effortKind: 'drill',
-          exerciseId: 'ex-plank',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      await repo.createTimedInstance(
-        TimedInstance(
-          id: 'ti-iso',
-          effortId: effId,
-          entryIndex: 0,
-          actualDurationSecs: 60,
-          state: TimedState.finished,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Sports session
-      await repo.createSession(
-        TrainingSession(
-          id: 'sess-sport',
-          ownerUserId: 'user-1',
-          startedAtMs: today.millisecondsSinceEpoch,
-          endedAtMs: today.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-          modality: 'sports',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      segId = 'seg-sport';
-      await repo.createSegment(
-        SessionSegment(
-          id: segId,
-          sessionId: 'sess-sport',
-          orderIndex: 0,
-          segmentType: 'main',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      effId = 'eff-sport';
-      await repo.createEffort(
-        SegmentEffort(
-          id: effId,
-          segmentId: segId,
-          orderIndex: 0,
-          effortKind: 'round',
-          exerciseId: 'ex-boxing',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      await repo.createTimedInstance(
-        TimedInstance(
-          id: 'ti-sport',
-          effortId: effId,
-          entryIndex: 0,
-          actualDurationSecs: 180,
-          state: TimedState.finished,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      await pumpStatsScreen(tester, repo);
-
-      // Both sections should show the same window label
-      final isometricWindow = find.text('· Last 14 training days');
-      final sportsWindow = find.text('· Last 14 training days');
-
-      // Find window chips (they may be multiple due to Cardio also having one)
-      final windowChips = find.byKey(const Key('stats_window_chip'));
-      expect(
-        windowChips,
-        findsWidgets,
-        reason: 'All duration sections should inherit the shared 14-day window',
-      );
-    });
-
-    testWidgets(
-      'Multi-modality: Same exercise appears in both CARDIO and ISOMETRIC sections',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1200));
-        final repo = await _freshRepo();
-
-        // Create one exercise that will be logged in two different modalities
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-squat',
-            name: 'Squat',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        final day0 = DateTime.now();
-        final day1 = day0.subtract(const Duration(days: 1));
-
-        // Day 1: Squat as a timed effort in a cardio session
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-cardio',
-            ownerUserId: 'user-1',
-            startedAtMs: day1.millisecondsSinceEpoch,
-            endedAtMs: day1
-                .add(const Duration(hours: 1))
-                .millisecondsSinceEpoch,
-            modality: 'cardio_endurance',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        var segId = 'seg-cardio';
-        await repo.createSegment(
-          SessionSegment(
-            id: segId,
-            sessionId: 'sess-cardio',
-            orderIndex: 0,
-            segmentType: 'main',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        var effId = 'eff-cardio';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effId,
-            segmentId: segId,
-            orderIndex: 0,
-            effortKind: 'timed',
-            exerciseId: 'ex-squat',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createTimedInstance(
-          TimedInstance(
-            id: 'ti-cardio',
-            effortId: effId,
-            entryIndex: 0,
-            actualDurationSecs: 600,
-            state: TimedState.finished,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Day 0: Squat as a drill effort in an isometric session
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-isometric',
-            ownerUserId: 'user-1',
-            startedAtMs: day0.millisecondsSinceEpoch,
-            endedAtMs: day0
-                .add(const Duration(hours: 1))
-                .millisecondsSinceEpoch,
-            modality: 'isometric_stretching',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        segId = 'seg-isometric';
-        await repo.createSegment(
-          SessionSegment(
-            id: segId,
-            sessionId: 'sess-isometric',
-            orderIndex: 0,
-            segmentType: 'main',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        effId = 'eff-isometric';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effId,
-            segmentId: segId,
-            orderIndex: 0,
-            effortKind: 'drill',
-            exerciseId: 'ex-squat',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createTimedInstance(
-          TimedInstance(
-            id: 'ti-isometric',
-            effortId: effId,
-            entryIndex: 0,
-            actualDurationSecs: 120,
-            state: TimedState.finished,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await pumpStatsScreen(tester, repo);
-
-        // Verify both section headers are present
-        expect(
-          find.text('CARDIO'),
-          findsOneWidget,
-          reason: 'CARDIO section must be present',
-        );
-        expect(
-          find.text('ISOMETRIC'),
-          findsOneWidget,
-          reason: 'ISOMETRIC section must be present',
-        );
-
-        // Exercise appears multiple times (once per section)
-        expect(
-          find.text('Squat'),
-          findsWidgets,
-          reason: 'Squat should appear in both CARDIO and ISOMETRIC sections',
-        );
-
-        // Verify the exact count: Squat should appear exactly 2 times
-        // (once in CARDIO section card, once in ISOMETRIC section card)
-        // as the exercise title in each section's card.
-        final squatOccurrences = find.text('Squat').evaluate();
-        expect(
-          squatOccurrences.length,
-          greaterThanOrEqualTo(2),
-          reason:
-              'Squat must appear at least twice: in CARDIO and ISOMETRIC sections (found ${squatOccurrences.length})',
-        );
-      },
-    );
-
-    testWidgets(
-      'S-601/S-603: Isometric and Sports sections positioned correctly between sections',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1400));
-        final repo = await _freshRepo();
-
-        // Create exercises
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-strength',
-            name: 'Squat',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-cardio',
-            name: 'Running',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-plank',
-            name: 'Plank',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-boxing',
-            name: 'Boxing',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Create sessions with various effort kinds
-        final today = DateTime.now();
-
-        // Strength session
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-strength',
-            ownerUserId: 'user-1',
-            startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today
-                .add(const Duration(hours: 1))
-                .millisecondsSinceEpoch,
-            modality: 'resistance_lifting',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        var segId = 'seg-strength';
-        await repo.createSegment(
-          SessionSegment(
-            id: segId,
-            sessionId: 'sess-strength',
-            orderIndex: 0,
-            segmentType: 'main',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        var effId = 'eff-strength';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effId,
-            segmentId: segId,
-            orderIndex: 0,
-            effortKind: 'set',
-            exerciseId: 'ex-strength',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createObservation(
-          EffortObservation(
-            id: 'obs-weight',
-            effortId: effId,
-            metricId: MetricIds.weight,
-            unitId: MetricIds.unitKg,
-            valueReal: 100.0,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createObservation(
-          EffortObservation(
-            id: 'obs-reps',
-            effortId: effId,
-            metricId: MetricIds.reps,
-            unitId: MetricIds.unitReps,
-            valueInt: 5,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Cardio session
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-cardio',
-            ownerUserId: 'user-1',
-            startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today
-                .add(const Duration(hours: 1))
-                .millisecondsSinceEpoch,
-            modality: 'cardio_endurance',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        segId = 'seg-cardio';
-        await repo.createSegment(
-          SessionSegment(
-            id: segId,
-            sessionId: 'sess-cardio',
-            orderIndex: 0,
-            segmentType: 'main',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        effId = 'eff-cardio';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effId,
-            segmentId: segId,
-            orderIndex: 0,
-            effortKind: 'timed',
-            exerciseId: 'ex-cardio',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createTimedInstance(
-          TimedInstance(
-            id: 'ti-cardio',
-            effortId: effId,
-            entryIndex: 0,
-            actualDurationSecs: 1800,
-            state: TimedState.finished,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Isometric session
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-iso',
-            ownerUserId: 'user-1',
-            startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today
-                .add(const Duration(hours: 1))
-                .millisecondsSinceEpoch,
-            modality: 'isometric_stretching',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        segId = 'seg-iso';
-        await repo.createSegment(
-          SessionSegment(
-            id: segId,
-            sessionId: 'sess-iso',
-            orderIndex: 0,
-            segmentType: 'main',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        effId = 'eff-iso';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effId,
-            segmentId: segId,
-            orderIndex: 0,
-            effortKind: 'drill',
-            exerciseId: 'ex-plank',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createTimedInstance(
-          TimedInstance(
-            id: 'ti-iso',
-            effortId: effId,
-            entryIndex: 0,
-            actualDurationSecs: 60,
-            state: TimedState.finished,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // Sports session
-        await repo.createSession(
-          TrainingSession(
-            id: 'sess-sport',
-            ownerUserId: 'user-1',
-            startedAtMs: today.millisecondsSinceEpoch,
-            endedAtMs: today
-                .add(const Duration(hours: 1))
-                .millisecondsSinceEpoch,
-            modality: 'sports',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        segId = 'seg-sport';
-        await repo.createSegment(
-          SessionSegment(
-            id: segId,
-            sessionId: 'sess-sport',
-            orderIndex: 0,
-            segmentType: 'main',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        effId = 'eff-sport';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effId,
-            segmentId: segId,
-            orderIndex: 0,
-            effortKind: 'round',
-            exerciseId: 'ex-boxing',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await repo.createTimedInstance(
-          TimedInstance(
-            id: 'ti-sport',
-            effortId: effId,
-            entryIndex: 0,
-            actualDurationSecs: 180,
-            state: TimedState.finished,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        await pumpStatsScreen(tester, repo);
-
-        // Verify all headers are present in correct order
-        expect(find.text('STRENGTH'), findsOneWidget);
-        expect(find.text('CARDIO'), findsOneWidget);
-        expect(find.text('ISOMETRIC'), findsOneWidget);
-        expect(find.text('SPORTS'), findsOneWidget);
-        // HOW DID IT FEEL section has been removed (Phase 4)
-        expect(find.text('HOW DID IT FEEL'), findsNothing);
-
-        // Verify ordering by checking y-coordinates
-        final strengthHeader = tester.getRect(find.text('STRENGTH'));
-        final cardioHeader = tester.getRect(find.text('CARDIO'));
-        final isometricHeader = tester.getRect(find.text('ISOMETRIC'));
-        final sportsHeader = tester.getRect(find.text('SPORTS'));
-
-        expect(
-          strengthHeader.top,
-          lessThan(cardioHeader.top),
-          reason: 'STRENGTH should be above CARDIO',
-        );
-        expect(
-          cardioHeader.top,
-          lessThan(isometricHeader.top),
-          reason: 'CARDIO should be above ISOMETRIC',
-        );
-        expect(
-          isometricHeader.top,
-          lessThan(sportsHeader.top),
-          reason: 'ISOMETRIC should be above SPORTS',
-        );
-      },
-    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -6524,8 +4562,11 @@ void main() {
         expect(c1, ramp.step1);
         expect(c3, ramp.step3);
         expect(c5, ramp.step5);
-        expect({c1, c3, c5}, hasLength(3),
-            reason: 'ratings 1, 3 and 5 must be visibly different');
+        expect(
+          {c1, c3, c5},
+          hasLength(3),
+          reason: 'ratings 1, 3 and 5 must be visibly different',
+        );
       },
     );
   });
@@ -11832,173 +9873,6 @@ void main() {
     });
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // LiveSessionScreen — the phone rendering a session the wrist is running
-  // ══════════════════════════════════════════════════════════════════════════
-
-  group('LiveSessionScreen', () {
-    Future<void> pumpLiveSession(
-      WidgetTester tester, {
-      required LiveSessionMirrorState liveSession,
-      MockWorkoutRepository? repo,
-      String weightUnit = 'kg',
-    }) async {
-      final repository = repo ?? await _freshRepo();
-      final settingsState = SettingsState(repository, fakePreferencesService());
-      await settingsState.initialize();
-      await settingsState.setPreferredWeightUnit(weightUnit);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: LiveSessionScreen(
-            liveSession: liveSession,
-            workoutState: WorkoutState(repository),
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('S-001 renders the wrist\'s ladder and where it is', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(currentExerciseIndex: 1),
-      );
-
-      expect(find.byKey(const Key('live_session_screen')), findsOneWidget);
-      for (final slot in liveSessionSlots()) {
-        expect(find.text(slot['name']! as String), findsWidgets);
-      }
-      expect(find.textContaining('2 of 3'), findsOneWidget);
-    });
-
-    testWidgets('S-004 renders logged entries in the saved weight unit', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          entries: [liveSessionEntry('e-1', reps: 5, loadKg: 80)],
-        ),
-      );
-
-      expect(find.text('5 × 80 kg'), findsOneWidget);
-    });
-
-    testWidgets('S-004 the same entry reads in lbs after the unit changes', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          entries: [liveSessionEntry('e-1', reps: 5, loadKg: 80)],
-        ),
-        weightUnit: 'lbs',
-      );
-
-      expect(find.text('5 × 176.4 lbs'), findsOneWidget);
-    });
-
-    testWidgets('renders the completion state once the session is finished', (
-      WidgetTester tester,
-    ) async {
-      final liveSession = liveWatchSession(
-        entries: [liveSessionEntry('e-1'), liveSessionEntry('e-2')],
-      );
-      await pumpLiveSession(tester, liveSession: liveSession);
-
-      await tester.tap(find.byKey(const Key('live_session_finish')));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('live_session_completed')), findsOneWidget);
-      expect(find.byKey(const Key('live_session_add_exercise')), findsNothing);
-      expect(
-        find.byKey(const Key('live_session_finish')),
-        findsNothing,
-        reason: 'a finished session offers nothing left to manage',
-      );
-    });
-
-    // A session the watch has joined but has no exercises in yet is
-    // reachable — it is what a wrist-started session looks like before the
-    // first push, and what is left after the last exercise is removed. The
-    // screen has to stay usable in it: the two ways out are adding an
-    // exercise and finishing.
-    testWidgets('an empty ladder still offers both ways out', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          exercises: const [],
-          currentExerciseIndex: 0,
-        ),
-      );
-
-      expect(find.textContaining('No exercises'), findsOneWidget);
-      expect(find.text('Waiting for the wrist'), findsOneWidget);
-      expect(
-        find.byKey(const Key('live_session_add_exercise')),
-        findsOneWidget,
-        reason:
-            'with no exercises the ladder can only be rebuilt by adding '
-            'one — the action must survive the empty state',
-      );
-      expect(find.byKey(const Key('live_session_finish')), findsOneWidget);
-    });
-
-    // Effort kinds other than `set` carry no reps or load. A timed entry
-    // reads as its duration, and anything the screen cannot summarise still
-    // has to say something rather than render blank.
-    testWidgets('a timed entry reads as its duration', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          entries: [
-            {
-              'entryId': 'e-timed',
-              'eventId': 'e-timed',
-              'kind': 'timed',
-              'loggedAt': '2026-07-13T06:00:00Z',
-              'sessionExerciseId': 'sx-plank',
-              'exerciseId': 'ex-sx-plank',
-              'startedAt': '2026-07-13T06:00:00Z',
-              'endedAt': '2026-07-13T06:01:30Z',
-            },
-          ],
-        ),
-      );
-
-      expect(find.text('1:30'), findsOneWidget);
-    });
-
-    testWidgets('an entry with nothing to summarise still reads', (
-      WidgetTester tester,
-    ) async {
-      await pumpLiveSession(
-        tester,
-        liveSession: liveWatchSession(
-          entries: [
-            {
-              'entryId': 'e-bare',
-              'eventId': 'e-bare',
-              'kind': 'set',
-              'loggedAt': '2026-07-13T06:00:00Z',
-              'sessionExerciseId': 'sx-bench',
-              'exerciseId': 'ex-sx-bench',
-            },
-          ],
-        ),
-      );
-
-      expect(find.text('Logged'), findsOneWidget);
-    });
-  });
 }
 
 /// Test-only [NavigatorObserver] that records the most recent

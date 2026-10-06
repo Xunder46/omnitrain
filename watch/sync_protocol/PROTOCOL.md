@@ -137,7 +137,9 @@ Notes that follow from the schemas:
 
 1. The watch MUST NOT edit or delete existing records. It appends new
    observations and MAY reflect corrections the phone sends, but it never
-   originates a mutation of anything already recorded.
+   originates a mutation of anything already recorded. The phone holds the
+   session's records too, and MAY add entries it logged, which arrive in its
+   `session_snapshot`.
 2. The phone MUST be authoritative for session structure: adding, removing,
    reordering, and swapping exercises. Only the phone sends `structure_change`.
 3. When a structure change removes the exercise the watch is currently on, the
@@ -233,6 +235,11 @@ the fields below are the only values derived from them that appear on the wire.
   wrist ended the session, the payload's `at` when a `session_lifecycle` from
   the phone did, and the envelope's `sentAt` when a `session_snapshot` from the
   phone did.
+- **Phone-logged entries.** The phone logs sets too, and mints their ids itself:
+  `entry-<sessionExerciseId>-<n>`, where `n` is the entry's ordinal among the
+  sets logged in that slot, with `eventId` equal to `entryId` as it is on the
+  wrist. A phone id names the same entry on every projection, and cannot collide
+  with the UUIDs a wrist mints.
 - **Summary fields.** Each travels only on the kinds in the table; anywhere
   else it is a `semantic_violation`, in an `observations_up` event and in a
   `session_snapshot` entry alike. A value is absent when nothing was measured,
@@ -266,7 +273,14 @@ correction carries no distance
   snapshot MUST replace structure, status, position, revision, and timer state.
   When it names the session the receiver holds, its entries MUST be merged by
   `entryId` rather than replacing the local set, so observations the
-  snapshot's sender has not seen are not lost.
+  snapshot's sender has not seen are not lost; an `entryId` the receiver already
+  holds MUST NOT be stored a second time.
+- A `session_snapshot`'s `entries` are the entries its sender logged: a receiver
+  MUST NOT add them back under a second `entryId`, and MUST NOT read a snapshot
+  as a claim about entries its sender did not log. Entries are ordered by
+  `loggedAt`, then by `entryId` where two share an instant.
+  `fixtures/valid/session_snapshot_with_entries.json` is the shape, and
+  `fixtures/reconciliation/phone_entries_merge.json` pins the merge.
 - A snapshot that names a session other than the one the receiver holds is not
   a merge. It MUST replace the held session wholesale — structure, status,
   position, revision, timers, and entries — so entries never merge across
@@ -399,3 +413,4 @@ one pull request — never edit a fixture to match an implementation.
 | 1 | 2026-07-13 | First published protocol: seven message families, the authority rules, wall-clock timer state, snapshot reconciliation |
 | 1 (amended) | 2026-09-25 | Session capture: the `preferences_down` message; the `effort_rating` and `session_end` event kinds; the heart-rate, steps, pause and set-block summary fields; the session-switch rule; the resend rule. Additive, as the `receipt` addition was: both clients ship from this repository in one release, v1 is unreleased, and no receiver that predates the change exists. No existing fixture changed |
 | 1 (amended) | 2026-09-27 | Session capture: the `distanceSource` summary field on a `timed` entry that also carries `distanceMeters`. Additive for the same reason as the 2026-09-25 amendment; optional in this release, PR 3c makes it required when the watch sends it. No existing fixture changed |
+| 1 (amended) | 2026-10-05 | Phone-logged entries: authority rule 1 states that the phone MAY add entries it logged, which arrive in its `session_snapshot`; a snapshot's `entries` are the sender's own and are ordered by `loggedAt` then `entryId`; entries merge by `entryId`, and an `entryId` a receiver already holds is not stored a second time; the id a phone mints for a set it logged is `entry-<sessionExerciseId>-<n>` with `eventId` equal to it. The wire shape does not change — `session_snapshot` already requires `entries` and envelope already carries every metric a set needs — so no schema and no version change. Additive for the same reason as the 2026-09-25 amendment; no existing fixture changed. `fixtures/valid/session_snapshot_with_entries.json` is the shape and `fixtures/reconciliation/phone_entries_merge.json` pins the merge |

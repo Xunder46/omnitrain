@@ -32,6 +32,7 @@ import 'state/settings/settings_state.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
+import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
 import 'state/watch/watch_sync_wiring.dart';
 import 'core/utils/timer_alert_service.dart';
@@ -330,7 +331,6 @@ Future<Widget> runStartup({
     profileState,
   );
 
-  final workoutState = WorkoutState(repository, healthSync: healthSyncService);
   final routineState = RoutineState(repository);
   final calendarState = CalendarState(repository);
   final periodState = PeriodState(repository);
@@ -345,6 +345,11 @@ Future<Widget> runStartup({
   // seen-flag from frame 1 (no flicker of the auto-show).
   final nutritionPrimerState = NutritionPrimerState(repository);
   await nutritionPrimerState.init();
+  // One-shot Stats primer state. Hydrated eagerly, exactly like the
+  // Nutrition primer, so the first Stats tap from Home consults the
+  // persisted seen-flag from frame 1.
+  final statsPrimerState = StatsPrimerState(repository);
+  await statsPrimerState.init();
   final timerAlertService = createTimerAlertService();
   await timerAlertService.initialize();
   final restNotificationService =
@@ -357,10 +362,6 @@ Future<Widget> runStartup({
   final routineSessionService = RoutineSessionService(repository);
   final sessionSummaryService = SessionSummaryService(repository);
   final exerciseLibraryService = ExerciseLibraryService(repository);
-  final exerciseLibraryState = ExerciseLibraryState(
-    service: exerciseLibraryService,
-    workoutState: workoutState,
-  );
 
   // The watch graph, when this platform has a watch to talk to. Null on web,
   // desktop, and Android (the Wear OS client is a later plan), and null when the
@@ -377,6 +378,24 @@ Future<Widget> runStartup({
       debugPrint('Watch transport unavailable: $error');
       debugPrintStack(stackTrace: stackTrace);
     },
+  );
+
+  // Built after the watch graph: the graph's recovery handle is what lets an
+  // Edit Session Discard keep a watch entry that arrived while the screen was
+  // open (D-811).
+  final workoutState = WorkoutState(
+    repository,
+    healthSync: healthSyncService,
+    watchLateEntryRecovery: watchSync?.lateEntryRecovery,
+  );
+
+  // The session the wrist is running becomes this phone's own (D-2): the graph
+  // adopts a snapshot into the state built just above, once the mirror has
+  // reconciled it.
+  watchSync?.adoption.bindWorkoutState(workoutState);
+  final exerciseLibraryState = ExerciseLibraryState(
+    service: exerciseLibraryService,
+    workoutState: workoutState,
   );
 
   // Build-metadata for the Settings footer.
@@ -406,11 +425,10 @@ Future<Widget> runStartup({
     nutritionState: nutritionState,
     foodLibraryState: foodLibraryState,
     nutritionPrimerState: nutritionPrimerState,
+    statsPrimerState: statsPrimerState,
     exerciseLibraryState: exerciseLibraryState,
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,
-    liveSession: watchSync?.mirror,
-    watchSessionRatings: watchSync?.ratings,
   );
 }

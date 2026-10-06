@@ -3,8 +3,7 @@
 ///
 /// One sheet for every phone surface that asks: the Session Summary's
 /// automatic post-workout prompt and its EFFORT row's add/change control
-/// (Stats PR 1), and the Watch Session screen's question after the phone's own
-/// Finish (Stats PR 2, D-139). Where the answer goes is the caller's —
+/// (Stats PR 1). Where the answer goes is the caller's —
 /// [EffortRatingSheet.onRated] — so the sheet itself holds no state beyond the
 /// tile the user picked and writes nothing.
 ///

@@ -11,32 +11,34 @@ the keyboard, not for an agent.
 
 ## 1. Where things actually stand
 
-The wrist logic is finished and tested. The wrist *app* does not exist.
+The wrist logic is finished and tested. The wrist *app* now exists and hosts it.
 
-Verified 2026-09-21:
+Verified 2026-10-04:
 
 | | Apple Watch | Wear OS |
 |---|---|---|
 | Client logic | `watch/watchos/Sources/WatchSessionEngine/` (Swift) | `lib/watch/` (Dart) |
-| Tests | 241 passing (`swift test`, 2026-09-26), also run by the pre-release gate on a Mac | covered in the Dart suite |
-| App shell | **template only** — `ios/OmniTrain Watch App/` exists, still calling the Xcode template's `ContentView` (§3.6) | **none** — no production `main()` |
-| Build target | **exists**, `WatchSessionEngine` not yet linked (§3.5) | **none** — Gradle has only `:app` |
+| Tests | `swift test` on a Mac, also run by the pre-release gate; 0 failures required | covered in the Dart suite |
+| App shell | `ios/OmniTrain Watch App/` — the start surface, the logging surface, and a radio (§3.6) | **none** — no production `main()` |
+| Build target | **exists**; the target links the `WatchSessionEngine` package — building the watch scheme (§5) is the proof | **none** — Gradle has only `:app` |
 | Transport | implemented (`lib/core/platform/`) | **none** |
+| Wrist store | **in-memory only** — nothing logged survives a relaunch | — |
 
-Both wrist clients are libraries with nothing to run them in. The four
-`*_debug_main.dart` files are QA harnesses, not the app.
+The Apple shell is the only thing that hosts a wrist client. The four
+`*_debug_main.dart` files are QA harnesses, not the app, and the Wear OS client
+still has no host at all.
 
 **Scope**: Apple Watch first. Wear OS is deferred to a separate cloning job
 once the Apple path is proven on hardware — see §4.
 
 The phone half is wired: `lib/main.dart` builds the watch graph through
-`createWatchSync` and passes its mirror (`liveSession`) and its effort-rating
-handle (`watchSessionRatings`) to the app — both null on a platform with no
-watch. Verified by the S-006 tests in `test/watch_transport_test.dart`.
+`createWatchSync` — null on a platform with no watch. No phone screen consumes
+the mirror yet. Verified by the S-006 tests in `test/watch_transport_test.dart`
+(`the production graph is not built where no watch exists`).
 
-**What this means practically**: you cannot install anything on a watch today.
-The first milestone is not a feature — it is getting the watch app shell onto
-hardware with the engine linked in. Everything else follows from that.
+**What this means practically**: the first milestone — a watch app shell hosting
+the engine — is built and awaiting its first run on a paired simulator (§5,
+Level 3). Everything else follows from that.
 
 ---
 
@@ -47,13 +49,14 @@ do work an agent could have done.
 
 ### An agent can do these (all plain text, all in-repo)
 
-- [ ] The Swift `@main` App type and SwiftUI scene for watchOS.
+- [x] The Swift `@main` App type and SwiftUI scene for watchOS (§3.6).
 - [ ] `Info.plist` and `.entitlements` edits — these are plain XML.
 - [x] The watchOS platform entry in `watch/watchos/Package.swift`.
 - [x] The transport Dart interface implementation and the Swift bridge code
   (`lib/core/platform/`; `watch_connectivity` is imported in exactly one file).
-- [x] The phone-side wiring: `main.dart` → `liveSession`, and the `routines_down`
-  producer. Watch-initiated: the wrist asks, the phone answers
+- [x] The phone-side wiring: `createWatchSync` bound to the running `WorkoutState`
+  through the adoption bridge, and the `routines_down` producer.
+  Watch-initiated: the wrist asks, the phone answers
   (`docs/plans/2026-09-21-13-watch-integration-shipping.md`, D-7).
 
 (Deferred with Wear OS: the Dart wrist entry point, the Gradle module strategy,
@@ -155,24 +158,47 @@ in the portal:
 
 ### 3.5 Link the engine
 
-The Swift package at `watch/watchos/` exists precisely for this —
-`Package.swift` says so: *"the Xcode watch target depends on this package and
-adds the app entry point and the transport."*
+The watch target already links the `WatchSessionEngine` package from `watch/watchos/`.
 
-Target → General → Frameworks, Libraries, and Embedded Content → **+** → Add
-Package Dependency → Add Local… → select `watch/watchos/`. Add the
-`WatchSessionEngine` library product.
+### 3.6 The entry point and the shell
 
-**One catch**: `Package.swift` declares `platforms: [.macOS(.v13)]` only, so the
-package can `swift test` on your Mac. Adding a watchOS platform entry is a
-one-line change an agent can make, and it must happen before the watch target
-will link it.
+Written, by Phases 1–4 of the shell-bridge plan:
 
-### 3.6 Write the entry point
+- `ios/OmniTrain Watch App/OmniTrainApp.swift` — the `@main` App type.
+- `ios/OmniTrain Watch App/ContentView.swift` — `WatchAppHost`, which owns the
+  store, the engine, the start paths, the phone preferences, the radio, the
+  bridge, the outward sink and the orchestrator, plus the three surfaces it
+  renders in order: the owed rating question alone, while one is unanswered;
+  the logging surface while the session is active and holds at least one
+  exercise; and the start surface (`WatchStartView`, in the package, with its
+  exercise picker). The logging surface logs the current exercise's own effort —
+  a set, a timed hold, a round or a drill, chosen from the exercise's
+  capabilities — and hosts End and the exercise picker. An ended session can no
+  longer be logged into
+  (`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
+  Logged rows leave through `WatchEmitForwarder` over the connectivity bridge —
+  the outward sink wired in this PR;
+  `WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder` proves
+  they arrive in emission order.
+- `ios/OmniTrain Watch App/OmniTrainWatchConnectivity.swift` — the one file in
+  the target that imports `WatchConnectivity`: the real `WCSession` conformance
+  behind the package's `WatchConnectivitySession` seam.
 
-Create the `@main` App type in the watch target. It should present the existing
-`WatchStartView` from the package and own the `WCSession` delegate. This is code
-— hand it to an agent once the target exists.
+The watch `xcodebuild` in §5 is what proves these compile; the S-102 to S-113
+tests in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`
+are what prove the logic they host.
+
+**What the wrist cannot do yet.** The store is in memory: `WatchAppHost` builds
+`InMemoryWatchSessionStore`, so a relaunch or force-quit on the wrist loses the
+session and any unanswered rating question. That is the "durable wrist store"
+item the shell-bridge plan moved out of scope
+(`docs/plans/2026-10-04-14-watch-shell-bridge-plan/2026-10-04-14-watch-shell-bridge-plan.md`);
+QA step 17 needs it. Two further gaps: the wrist labels the load it dials in
+kilograms even when the phone's saved unit is pounds — the wire value is always
+kilograms, so the phone's history and conversions stay correct — and a Sync
+while a rest countdown is running stops that countdown and its milestone
+haptic, because the phone's answer carries no timers (D-26).
 
 ---
 
@@ -216,14 +242,16 @@ regression introduced by your work.
 flutter test
 ```
 
-Expected: **2973 passed, 1 skipped** (2026-09-26).
+Expected: **all passed, no failures.** Read the counts off the run rather than
+against a number here.
 
 ```bash
 cd watch/watchos && swift test
 ```
 
-Expected: **241 tests, 0 failures.** `bash scripts/pre_release_check.sh` runs
-this too on a Mac, and a red suite blocks the release; on a host that cannot
+Expected: **0 failures.** The count grows with every scenario added, so read it
+off the run rather than against a number here. `bash scripts/pre_release_check.sh`
+runs this too on a Mac, and a red suite blocks the release; on a host that cannot
 build the package it logs a skip instead.
 
 **Neither suite compiles the watch UI.** `swift test` runs on macOS, and every
@@ -287,7 +315,42 @@ Everything above passes today with no transport at all. Only this level can
 tell you the integration is real.
 
 **Setup**: an Apple Watch paired to an iPhone, both on the same Apple ID, both
-unlocked, the phone app installed and launched at least once.
+unlocked, the phone app installed and launched at least once. Boot the iPhone 17
+Pro simulator and the Apple Watch Series 11 (42mm) simulator and pair them, or use
+a real pair. Foreground the phone app and the watch app before each sync. On the
+phone, create a routine first for the reference-data steps below.
+
+**The one-session walkthrough.** The phone and the wrist share one session: sync
+is manual, and whichever device holds the session the other is looking at is the
+one on screen. Both apps must be foregrounded and reachable for a sync to cross; a
+backgrounded app on either end is the usual reason nothing arrives.
+
+**(a) The phone's session reaches the wrist.** Start a Free session on the phone
+and add two or three exercises. On the watch, tap **Sync** (the routines action).
+The watch's list fills with the phone's exercises, in the phone's order, and the
+session on screen is the phone's session.
+**(b) A change on the phone arrives on the next sync.** Add an exercise on the
+phone. Nothing happens on the watch by itself — tap **Sync** on the watch and the
+added exercise appears in its list.
+**(c) The wrist's session reaches the phone.** From a fresh state (nothing running
+on either device), start **Free workout** on the watch and pick an exercise. Tap
+**Sync** on the watch. The phone's home shows it as a session in progress, and
+opening it shows the regular session screen with the wrist's exercise.
+**(d) Different sessions on both devices: each keeps its own.** With a session
+running on the phone, start one on the watch (or the other way round) and sync. The
+phone keeps the session it was running and does not adopt the wrist's; the wrist
+keeps its own. Nothing is merged, and no history entry is invented.
+**(e) Finishing on the phone ends the wrist's session at its next sync.** Finish
+the phone's session from the regular session screen. Nothing is sent to the watch
+at that moment. Tap **Sync** on the watch: the wrist's session ends, and the phone's
+calendar holds exactly one entry for it.
+**(f) Finishing on the watch.** Answering the wrist's own End closes the session
+on the phone as well, with one history entry and the rating the wrist gave.
+**(g) Sets the phone logged reach the wrist at its Sync — (owner), not yet run.**
+Log two sets on the phone's regular session screen, in a session that is also on
+the watch. With the phone app in the foreground, tap **Sync** on the watch: the
+watch's logging screen shows both sets, in the phone's order. The doubling
+check: a set logged on the watch earlier is not duplicated by that Sync.
 
 **The walkthrough** — each step maps to a protocol rule that is already
 enforced in code, so a failure points at the transport, not the logic:
@@ -299,20 +362,25 @@ enforced in code, so a failure points at the transport, not the logic:
 2. **Reference data arrives when the watch asks for it.** Trigger the sync
    action *on the wrist*. The routine list should populate. Confirm it does
    **not** populate on its own when you merely launch the phone app — an
-   automatic refresh here is a defect, not a convenience. *This is the
-   `routines_down` path that currently has no phone-side producer at all, so
-   it is the first thing to build and the first to break.*
+   automatic refresh here is a defect, not a convenience. The phone side of this
+   path exists (`WatchSyncRequestHandler` answers the request; tested by
+   `test/watch_transport_test.dart` and `test/watch_reference_sync_test.dart`),
+   so a failure here points at pairing or at the radio, not at a missing
+   producer.
 3. **A routine renders the way the routine defines it.** Start a routine
    containing a Plank on the wrist. It must show the effort kind the routine
    declares, not one the watch re-derived from capabilities. This is the
    specific disagreement that exists in the code today.
 4. **Start a session on the phone.** The watch should mirror it: same exercises,
-   same order, same current slot.
-5. **Log a set on the wrist.** It appears on the phone. Do not expect the phone
-   to have asked permission — the protocol says always-accept-watch-observations.
-6. **Change structure on the phone** (add, swap, reorder, delete an exercise).
-   The watch follows. A swap must keep the slot; a delete must leave already
-   logged entries intact.
+   same order, same current slot. Step *(a)* of the one-session walkthrough is
+   this one, and *(b)* is the same session after an edit on the phone.
+5. **A session on each device stays where it started.** With the phone's session
+   running, start one on the watch and sync: the phone keeps its own and the wrist
+   keeps its own (step *(d)* above). No merge, no stray history entry.
+6. **The wrist's own session becomes the phone's.** From a fresh state, start
+   **Free workout** on the watch, pick an exercise and sync: the phone's home shows
+   a session in progress and opens it in the regular session screen (step *(c)*
+   above).
 7. **Try to change structure on the wrist.** You should not be able to. Phone
    owns structure is a MUST in `watch/sync_protocol/PROTOCOL.md`.
 8. **Go offline.** Turn on Airplane Mode on the phone mid-session. Keep logging
@@ -333,13 +401,13 @@ enforced in code, so a failure points at the transport, not the logic:
     "in progress" after you force-quit is the specific bug to hunt.
 14. **Check Apple Health.** The session should appear there once, not twice.
 
-Steps 15–20 check the session effort rating and the heart-rate and step capture
-(`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). The
-logic is in the package and tested, but nothing hosts it on a wrist until the
-shipping plan's Phase 7 (the app shell) and Phase 8 (the HealthKit bindings)
-land — see that plan's O-1 and O-2.
+Steps 15–18 check the session effort rating: 15, 16 and 18 run on the shipped
+shell, 17 needs PR 4's durable store. Steps 19–20 check the heart-rate and step
+capture and stay with the shipping plan's Phase 8 (the HealthKit bindings) — see
+that plan's O-2
+(`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`).
 
-15. **The wrist asks how hard it was** *(needs Phase 7)*. Turn Settings →
+15. **The wrist asks how hard it was.** Turn Settings →
     Effort Rating on, on the phone, then sync from the wrist. Log a set on the
     wrist and end the session there. The wrist asks "How hard was this
     session?" from 1 to 5, and only an answer closes it — no skip, back or
@@ -351,14 +419,18 @@ land — see that plan's O-1 and O-2.
     phone and sync from the wrist: ending a session asks nothing, and the
     phone's Summary offers Add rating. A wrist that has never synced does not
     ask either. A session with nothing logged is never asked about.
-17. **The question survives a kill.** End a session on the wrist and
-    force-quit the watch app while the question shows. Relaunch: the question
-    comes back before anything else, and one answer records one rating.
-18. **Only the device that ended it asks.** With a session live on both, press
-    Finish on the phone's Watch Session screen: the phone asks and the wrist
-    does not. Answer 3; after the wrist syncs, the Summary shows 3 — the
-    phone's answer wins over anything the wrist sends. End a live session on
-    the wrist instead: the phone shows it completed and asks nothing.
+17. **The question survives a kill** *(needs the durable store — PR 4)*. End a
+    session on the wrist and force-quit the watch app while the question shows.
+    Relaunch: the question comes back before anything else, and one answer
+    records one rating. Not runnable yet: the shipped shell's store is in
+    memory, so the force-quit discards the session and the owed question. The
+    package restores the question from a store that outlives the process
+    (`WatchEffortRatingTests.testS215AKillDuringThePromptAsksAgainAndRecordsOneAnswer`);
+    only the store is missing.
+18. **Finishing on either device.** Finish on the phone and sync from the wrist:
+    the wrist's session ends and the phone holds one entry (step *(e)* above).
+    Finish on the wrist and sync: the phone's copy ends through its ordinary
+    finish with the rating the wrist gave (step *(f)* above).
 19. **Heart rate and steps reach the phone** *(needs Phase 8)*. With heart-rate
     and motion permission granted, run a session with a run, three rounds of a
     sports exercise and a block of sets. After sync the phone holds an average
@@ -372,11 +444,44 @@ land — see that plan's O-1 and O-2.
     computed as it is logged, so a sample that arrives after that is missing
     from them — the shipping plan's Phase 8 item 4 decides whether to wait.
 
+### The wrist's own logging (PR 2b)
+
+This walkthrough exercises the wrist logging surface. It has not been run on
+hardware yet.
+
+1. **Start a workout on the wrist and pick an exercise.** Tap **Free workout**.
+   A Free workout starts with no exercise, so the picker comes up first; pick
+   one and the logging screen appears with that exercise's value rows. Dial 3
+   reps and tap **Log**: the row is accepted and the rest countdown starts.
+2. **The set is on the phone at the moment it is logged.** Phone app in the
+   foreground and reachable. Without touching the wrist, the phone's session for
+   this wrist session shows the set. The phone must show it before any Sync —
+   only an untouched wrist proves the set is handed over as it is logged.
+   Nothing is sent on a timer.
+3. **End and answer once.** Turn Settings → Effort Rating on, on the phone, and
+   sync from the wrist. On the wrist tap **End**; the question appears alone —
+   no skip, back or swipe. Answer 4. The phone's calendar holds one entry for
+   the session and its Summary shows 4 / 5.
+4. **A workout logged with the phone out of reach catches up at the next Sync.**
+   Start another wrist workout and log a set with the phone in Airplane Mode.
+   Nothing arrives. Turn Airplane Mode off, foreground the phone app and tap
+   **Sync** on the wrist: the set lands exactly once.
+
+Two known gaps this walkthrough must not be read as failing on: a Sync while a
+rest countdown runs stops that countdown (the wrist adopts the answer's empty
+timers as authoritative — the reconciliation fixture `timer_cleared.json`,
+replayed by `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`),
+and the load label is always in kg, whatever unit the phone is set to
+(`WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`
+holds the kilogram payload underneath). A force-quit loses the session and
+any owed question (step 17).
+
 ### What "QA passed" means
 
 Levels 1 and 2 green, plus every step at Level 3 on real paired hardware —
-steps 15–20 as soon as shipping-plan Phases 7 and 8 make them runnable.
-Anything less and the integration is still a test-suite reality.
+steps 15–18 now, steps 19–20 once shipping-plan Phase 8 makes them runnable, and
+step 17 once PR 4's durable store lands. Anything less and the integration is
+still a test-suite reality.
 
 ---
 
@@ -388,8 +493,8 @@ Anything less and the integration is still a test-suite reality.
    existing `WatchStartView` rendering on the wrist with seeded data.
 3. Only then build the transport. You will have somewhere to run it and a way
    to see it fail.
-4. Wire the phone side (`main.dart` → `liveSession`) and the `routines_down`
-   producer.
+4. Wire the phone side (`createWatchSync`, its adoption bridge bound to the
+   running `WorkoutState`) and the `routines_down` producer.
 5. Run Level 3 on hardware. **This is the gate.** Apple Watch is not done until
    every step passes on a paired device.
 6. Only after that: the Wear OS cloning job, as its own plan.

@@ -31,13 +31,11 @@ import '../../state/nutrition_state.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
+import '../../state/stats/stats_primer_state.dart';
 import '../../state/exercise/exercise_library_state.dart';
-import '../../state/watch/live_session_mirror_state.dart';
-import '../../state/watch/watch_session_inbox.dart';
-import '../../widgets/session/live_session_entry_point.dart';
-import '../session/live_session_screen.dart';
 import '../nutrition/nutrition_screen.dart';
 import '../nutrition/widgets/nutrition_primer_sheet.dart';
+import '../stats/widgets/stats_primer_sheet.dart';
 
 /// Hub-sheet layout constants used to size the destination grid against the
 /// sheet's fully-open height.
@@ -71,9 +69,6 @@ const double hubTileNaturalAspectRatio = 1.1;
 /// this the tile has no room for a label at all.
 const double hubMinTileHeight = 56.0;
 
-/// Gap between the live-session entry point and the TRAIN label.
-const double liveSessionEntryGap = 12.0;
-
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
@@ -89,18 +84,15 @@ class HomeScreen extends StatefulWidget {
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
   final NutritionPrimerState nutritionPrimerState;
+
+  /// The one-shot Stats primer's seen state. Optional and nullable so every
+  /// existing construction site (app, onboarding, tests) keeps compiling; only
+  /// `lib/main.dart` passes it. With a null state the 'Stats' tile pushes the
+  /// page directly and the page's explanation surfaces stay off (D-2020).
+  final StatsPrimerState? statsPrimerState;
+
   final ExerciseLibraryState exerciseLibraryState;
   final AppVersionInfo? appVersionInfo;
-
-  /// The session running on the wrist, when there is one. Null in builds with
-  /// no watch sync — the panel then has nothing to surface, and nothing is
-  /// reserved for it.
-  final LiveSessionMirrorState? liveSession;
-
-  /// Where the Watch Session screen records the phone's own effort rating
-  /// for the wrist session it finished (D-139); null exactly when
-  /// [liveSession] is.
-  final WatchSessionRatings? watchSessionRatings;
 
   HomeScreen({
     super.key,
@@ -117,10 +109,9 @@ class HomeScreen extends StatefulWidget {
     required this.nutritionState,
     required this.foodLibraryState,
     required this.nutritionPrimerState,
+    this.statsPrimerState,
     required this.exerciseLibraryState,
     this.appVersionInfo,
-    this.liveSession,
-    this.watchSessionRatings,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -148,10 +139,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       widget.workoutState.checkForInProgressSession();
       _resumeCheckDone = true;
     }
-
-    // A watch session can start, move on, or end while this panel is on screen;
-    // the entry point shows it or does not, and the reserved height follows.
-    widget.liveSession?.addListener(_onLiveSessionChanged);
 
     // Initialize last seen date for rollover detection
     _initializeLastSeenDate();
@@ -219,38 +206,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    widget.liveSession?.removeListener(_onLiveSessionChanged);
     _sheetController.dispose();
     _sheetExtent.removeListener(_onSheetExtentChanged);
     _sheetExtent.dispose();
     _hintController.dispose();
     super.dispose();
-  }
-
-  /// A watch session started, moved, or ended: the entry point and the height
-  /// reserved for it both follow from that.
-  void _onLiveSessionChanged() {
-    if (mounted) setState(() {});
-  }
-
-  /// The session running on the wrist, or null when there is nothing to
-  /// surface. A session the phone has closed is not live: the panel stops
-  /// offering it the moment Finish lands.
-  LiveSessionMirrorState? get _liveWatchSession {
-    final session = widget.liveSession;
-    return session != null && session.isActive ? session : null;
-  }
-
-  void _openLiveSession(LiveSessionMirrorState liveSession) {
-    OmniNavigator.push(
-      context,
-      (_) => LiveSessionScreen(
-        liveSession: liveSession,
-        workoutState: widget.workoutState,
-        settingsState: widget.settingsState,
-        watchSessionRatings: widget.watchSessionRatings,
-      ),
-    );
   }
 
   /// Initial-load coroutine. Uses `Future.microtask` (not
@@ -420,6 +380,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Open the Stats screen. The first Stats tap from Home auto-shows the
+  /// one-shot primer over Home (D-2021), marks it seen when the sheet's
+  /// future completes by any means (D-2022), then pushes the page. With no
+  /// injected state the tap pushes the page directly and the page's
+  /// explanation surfaces stay off.
+  Future<void> _openStatsScreen() async {
+    if (widget.statsPrimerState?.shouldShowPrimer == true) {
+      await _showStatsPrimer();
+    }
+    if (!mounted) return;
+    OmniNavigator.push(
+      context,
+      (_) => StatsScreen(
+        workoutState: widget.workoutState,
+        settingsState: widget.settingsState,
+        showPrimerHelp: widget.statsPrimerState != null,
+      ),
+    );
+  }
+
+  /// Show the [StatsPrimerSheet] over the home screen. Unlike the Nutrition
+  /// primer, the seen flag is marked when the `showModalBottomSheet` future
+  /// completes — the `Got it` CTA, a swipe-down and a barrier tap all count
+  /// (D-2022). The sheet is built with no `onDismiss`, so it never marks.
+  Future<void> _showStatsPrimer() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: const StatsPrimerSheet(),
+        );
+      },
+    );
+    unawaited(widget.statsPrimerState!.markSeen());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -453,15 +454,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 // accurate across accessibility settings.
                 final textScale = MediaQuery.textScalerOf(context).scale(1.0);
                 final titleHeight = 30.0 * textScale;
-                // The live-session entry point, when a watch session is live.
-                // Nothing is reserved for a panel with nothing to surface.
-                // The block's height is the widget's own budget, asked for
-                // rather than restated here.
-                final liveSession = _liveWatchSession;
-                final liveSessionBlock = liveSession == null
-                    ? 0.0
-                    : LiveSessionEntryPoint.budgetHeight(textScale) +
-                          liveSessionEntryGap;
                 // Measured card natural total height at
                 // `textScaler = 1.0` is 112 px (the card
                 // has no internal slack to compress, per
@@ -479,7 +471,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                 // Total content height at natural sizes.
                 final totalNatural =
-                    liveSessionBlock +
                     titleHeight +
                     titleToGridGap +
                     naturalGridHeight +
@@ -505,16 +496,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (liveSession != null) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: LiveSessionEntryPoint(
-                          liveSession: liveSession,
-                          onTap: () => _openLiveSession(liveSession),
-                        ),
-                      ),
-                      const SizedBox(height: liveSessionEntryGap),
-                    ],
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 0.0),
                       child: Column(
@@ -1166,13 +1147,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Stats',
         icon: Icons.query_stats,
-        onTap: () => OmniNavigator.push(
-          context,
-          (_) => StatsScreen(
-            workoutState: widget.workoutState,
-            settingsState: widget.settingsState,
-          ),
-        ),
+        onTap: _openStatsScreen,
       ),
       _MaintenanceItem(
         title: 'Calendar',

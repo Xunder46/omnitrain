@@ -11,13 +11,12 @@ import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
-import 'state/watch/live_session_mirror_state.dart';
-import 'state/watch/watch_session_inbox.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/utils/rest_notification_service.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
+import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
 
 import 'features/home/home_screen.dart';
@@ -39,18 +38,14 @@ class MyApp extends StatelessWidget {
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
   final NutritionPrimerState nutritionPrimerState;
+
+  /// Optional and nullable so only `lib/main.dart` has to pass it; every other
+  /// construction site keeps compiling unchanged (D-2020).
+  final StatsPrimerState? statsPrimerState;
   final ExerciseLibraryState exerciseLibraryState;
   final TimerAlertService timerAlertService;
   final RestNotificationService restNotificationService;
   final AppVersionInfo? appVersionInfo;
-
-  /// The session running on the wrist, when this build has watch sync wired up.
-  /// Null otherwise, and the home panel reserves nothing for it.
-  final LiveSessionMirrorState? liveSession;
-
-  /// Where the phone records its own effort rating for a wrist session, from
-  /// the same watch graph as [liveSession]; null exactly when that is.
-  final WatchSessionRatings? watchSessionRatings;
 
   MyApp({
     super.key,
@@ -68,11 +63,10 @@ class MyApp extends StatelessWidget {
     required this.nutritionState,
     required this.foodLibraryState,
     required this.nutritionPrimerState,
+    this.statsPrimerState,
     required this.exerciseLibraryState,
     required this.timerAlertService,
     this.appVersionInfo,
-    this.liveSession,
-    this.watchSessionRatings,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -143,6 +137,7 @@ class MyApp extends StatelessWidget {
                   nutritionState: nutritionState,
                   foodLibraryState: foodLibraryState,
                   nutritionPrimerState: nutritionPrimerState,
+                  statsPrimerState: statsPrimerState,
                   exerciseLibraryState: exerciseLibraryState,
                   restNotificationService: restNotificationService,
                   appVersionInfo: appVersionInfo,
@@ -162,10 +157,9 @@ class MyApp extends StatelessWidget {
                   nutritionState: nutritionState,
                   foodLibraryState: foodLibraryState,
                   nutritionPrimerState: nutritionPrimerState,
+                  statsPrimerState: statsPrimerState,
                   restNotificationService: restNotificationService,
                   appVersionInfo: appVersionInfo,
-                  liveSession: liveSession,
-                  watchSessionRatings: watchSessionRatings,
                 ),
         );
       },

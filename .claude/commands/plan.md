@@ -34,5 +34,8 @@ exists and each phase carries:
 A phase missing any of these cannot be verified mechanically downstream. Send it
 back **once** with that specific reason rather than accepting it.
 
+Then run the `pr-scope-guard` skill. An over-budget plan becomes an index plan plus
+the first PR's plan before anything is built.
+
 Report: the plan file path, the phase list with its owning agent, and the named
 next handoff.

@@ -9,6 +9,10 @@
 //   S-005 the timer's end moment is the same           → `S-005 ...`
 //   S-006 joining a phone session from the watch       → `S-006 ...`
 //   S-007 forced redelivery produces no duplicates     → `S-007 ...`
+//   S-31/S-32/S-39 the phone's own sets in the answer it asserts
+//                                                      → `S-31 ...`
+//         (watch-session-sync PR 3,
+//         `docs/plans/2026-10-05-15d-watch-session-sync-pr3-plan.md`, D-31/D-34)
 //   S-251 a snapshot of another session replaces it    → `S-251 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-130; S-252 is the S-008 group, which stays unchanged)
@@ -996,5 +1000,88 @@ void main() {
         }
       });
     }
+  });
+
+  group('S-31 the phone\'s own sets in the answer it asserts', () {
+    /// A mirror whose answer is composed by [projection] — the phone's own
+    /// session, entries and all (D-11), rather than this mirror's copy of what
+    /// the wrist sent.
+    ({LiveSessionMirrorState mirror, _RecordingTransport transport}) phoneWith(
+      Map<String, Object?> answer,
+    ) {
+      final transport = _RecordingTransport();
+      final mirror = LiveSessionMirrorState(
+        transport: transport,
+        snapshot: _snapshotPayload(exercises: [_slot('sx-bench')]),
+        validator: loadProtocolValidator(),
+        clock: () => DateTime.utc(2026, 7, 13, 6),
+        idFactory: () => 'msg-projection',
+        projection: (incoming) async => answer,
+      );
+      return (mirror: mirror, transport: transport);
+    }
+
+    final clock = TestClock(DateTime.utc(2026, 7, 13, 6));
+
+    test('S-32/S-39 an entry-only difference is not re-asserted', () async {
+      final ladder = [_slot('sx-bench')];
+      final answer = _snapshotPayload(
+        exercises: ladder,
+        entries: [_setEvent(clock, entryId: 'entry-sx-bench-0')],
+      );
+      final session = phoneWith(answer);
+
+      for (var attempt = 0; attempt < 2; attempt++) {
+        await session.mirror.receive(_snapshot(exercises: ladder));
+      }
+
+      expect(
+        session.transport.sent,
+        isEmpty,
+        reason:
+            'S-32 an entry the wrist does not hold yet is not a disagreement — '
+            'entries merge by id — so the phone has nothing to correct, '
+            'however often the same snapshot arrives (D-39, D-34)',
+      );
+      expect(
+        objectsOf(session.mirror.state['entries']),
+        isEmpty,
+        reason: 'the mirror still holds what the wrist sent, not the answer',
+      );
+    });
+
+    test('S-31 a ladder the phone disagrees with is answered with its sets', () async {
+      final session = phoneWith(
+        _snapshotPayload(
+          revision: 4,
+          exercises: [_slot('sx-bench'), _slot('sx-squat')],
+          entries: [
+            _setEvent(clock, entryId: 'entry-sx-bench-0'),
+            _setEvent(clock, entryId: 'entry-sx-squat-1', slot: 'sx-squat'),
+          ],
+        ),
+      );
+
+      await session.mirror.receive(
+        _snapshot(exercises: [_slot('sx-bench')]),
+      );
+
+      expect(
+        session.transport.sent,
+        hasLength(1),
+        reason: 'the wrist is a slot behind, so the phone asserts what it holds',
+      );
+      final sent = asObject(asObject(session.transport.sent.single)['payload']);
+      expect(_slotIdsIn(sent['exercises']), ['sx-bench', 'sx-squat']);
+      expect(
+        [
+          for (final entry in objectsOf(sent['entries'])) entry['entryId'],
+        ],
+        ['entry-sx-bench-0', 'entry-sx-squat-1'],
+        reason:
+            'S-31 the ladder the phone asserts carries the sets it logged in '
+            'it (D-31/D-34), so a wrist that drifted gets them back',
+      );
+    });
   });
 }

@@ -7,8 +7,14 @@ library;
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
+import '../models/cardio_efficiency_drift.dart';
 import '../models/exercise_metric.dart';
+import '../models/fuel_summary.dart';
+import '../models/instrument_list.dart';
+import '../models/interference.dart';
+import '../models/progression_rate.dart';
 import '../models/stats_progress.dart';
+import '../models/training_load.dart';
 import '../utils/date_utils.dart';
 import '../utils/distance_source.dart';
 import '../utils/entry_rows.dart';
@@ -27,7 +33,7 @@ import '../utils/observation_grouper.dart';
 /// 400-session history several minutes, on the main isolate, which is an
 /// ANR on Android and a watchdog kill on iOS.
 ///
-/// Building this snapshot costs one pass per store — six bulk reads
+/// Building this snapshot costs one pass per store — seven bulk reads
 /// total, regardless of history size — and every subsequent lookup is a
 /// map hit. The traversal logic in this service is unchanged; only where
 /// it reads from moved.
@@ -42,6 +48,7 @@ class _HistoryIndex {
     required this.observationsByEffort,
     required this.timedInstancesByEffort,
     required this.roundInstancesByEffort,
+    required this.sensorByTarget,
   });
 
   final List<TrainingSession> sessions;
@@ -50,6 +57,13 @@ class _HistoryIndex {
   final Map<String, List<EffortObservation>> observationsByEffort;
   final Map<String, List<TimedInstance>> timedInstancesByEffort;
   final Map<String, List<RoundInstance>> roundInstancesByEffort;
+
+  /// Every sensor summary on the device, keyed `'<scope>|<targetId>'`. A
+  /// summary's target is unique within its scope, so the pair is the key.
+  final Map<String, SensorSummary> sensorByTarget;
+
+  SensorSummary? sensorFor(String scope, String targetId) =>
+      sensorByTarget['$scope|$targetId'];
 
   List<SessionSegment> segmentsOf(String sessionId) =>
       segmentsBySession[sessionId] ?? const <SessionSegment>[];
@@ -94,6 +108,14 @@ class StatsProgressService {
     final observations = await _repository.getObservationsByEffort();
     final timedInstances = await _repository.getTimedInstancesByEffort();
     final roundInstances = await _repository.getRoundInstancesByEffort();
+    final sensorSummaries = await _repository.getSensorSummariesBySession();
+
+    final sensorByTarget = <String, SensorSummary>{};
+    for (final summaries in sensorSummaries.values) {
+      for (final summary in summaries) {
+        sensorByTarget['${summary.scope}|${summary.targetId}'] = summary;
+      }
+    }
 
     final index = _HistoryIndex(
       sessions: sessions,
@@ -102,6 +124,7 @@ class StatsProgressService {
       observationsByEffort: observations,
       timedInstancesByEffort: timedInstances,
       roundInstancesByEffort: roundInstances,
+      sensorByTarget: sensorByTarget,
     );
     _historyIndex = index;
     return index;
@@ -114,20 +137,10 @@ class StatsProgressService {
     return exercise;
   }
 
-  /// Maximum number of top lifts to include in [StatsProgressData.topLifts].
+  /// The cap on the lifts whose full history the PR scan walks. Not a
+  /// display list: the Stats screen shows the resulting PRs, not the
+  /// lifts themselves.
   static const int kTopLiftCount = 3;
-
-  /// Maximum number of top cardio activities to include in
-  /// [StatsProgressData.topCardio].
-  static const int kTopCardioCount = 2;
-
-  /// Maximum number of top isometric exercises to include in
-  /// [StatsProgressData.topIsometric].
-  static const int kTopIsometricCount = 2;
-
-  /// Maximum number of top sports exercises to include in
-  /// [StatsProgressData.topSports].
-  static const int kTopSportsCount = 2;
 
   /// Maximum number of recent PRs to return in [StatsProgressData.recentPRs].
   static const int kRecentPRCount = 5;
@@ -139,42 +152,57 @@ class StatsProgressService {
   /// constant changes the window everywhere it applies.
   static const int kRecentTrainingDaysWindow = 14;
 
-  /// Recency floor (calendar days) for Strength and Cardio top-slot
-  /// selection. An exercise whose most-recent training day is
-  /// older than this many days ago is dropped from the displayed
-  /// top slots — even when its historical frequency is high — so
-  /// currently-trained work takes precedence over stale work.
+  /// Recency floor (calendar days) for top-lift selection. An
+  /// exercise whose most-recent training day is older than this many
+  /// days ago is dropped from the displayed top slots — even when
+  /// its historical frequency is high — so currently-trained work
+  /// takes precedence over stale work.
   ///
   /// 30 days is generous enough that a weekly or biweekly rotation
   /// does not flicker a lift in and out between sessions; dropping
-  /// out signals genuine abandonment, not normal spacing. Applies
-  /// symmetrically to Strength and Cardio selection
+  /// out signals genuine abandonment, not normal spacing
   /// (`docs/plans/stats-summary-fix-pack-plan.md`,
   /// Item 3). Trend charts and PR lists for exercises that DO
   /// appear are unaffected — only which exercises fill the top-N
   /// slots is filtered.
   static const int kTopExerciseRecencyDays = 30;
 
-  /// Default "visible window" hint for the NUTRITION card. The card
-  /// now scrolls through **full** history (the scrollable
+  /// Default "visible window" hint for the nutrition trend. The trend
+  /// screen scrolls through **full** history (the scrollable
   /// `ScrollableTrendChart` shows as much as fits and lets the user
   /// drag for older days). The constant stays as a soft default
-  /// for callers that want a fixed window; the card itself uses
+  /// for callers that want a fixed window; the trend screen uses
   /// `days: null`.
   static const int kNutritionTrendDays = 10;
 
-  /// Compute all progress data for the Stats screen.
+  /// Window length, in calendar days, over which the Fuel row averages
+  /// intake and counts logged days. Seven days matches the weekly
+  /// cadence a user reasons about their eating in.
+  static const int kFuelWindowDays = 7;
+
+  /// How far back the Fuel row looks for any logged food before it hides
+  /// itself entirely.
   ///
-  /// Complexity: O(sessions × segments × efforts + food rows in window).
-  /// Acceptable for any foreseeable on-device history without caching in v1.
+  /// Deliberately longer than [kFuelWindowDays]: the row compares the
+  /// current window against the previous one, so a user who has logged
+  /// nothing in the last seven days still sees a meaningful previous-week
+  /// average instead of an empty row. Much wider and the row would
+  /// describe the past rather than the present.
+  static const int kFuelVisibilityDays = 14;
+
+  /// Compute the Stats screen's lift progress and personal records.
+  ///
+  /// Returns the lifts the PR scan covers ([StatsProgressData.topLifts]),
+  /// the most-recent PRs and the window that selected the lifts.
+  /// Complexity: O(sessions × segments × efforts). Acceptable for any
+  /// foreseeable on-device history without caching in v1.
   Future<StatsProgressData> computeProgressData() async {
     final allSessions = (await _loadHistory()).sessions;
     final completed = allSessions.where((s) => s.endedAtMs != null).toList();
 
     // Resolve the current-state window for exercise SELECTION.
     // Trends and PRs use the full `completed` list — only the
-    // bucket that drives the "who appears in Strength/Cardio"
-    // decision is windowed.
+    // bucket that decides which lifts enter the PR scan is windowed.
     final periods = await _repository.getPeriods();
     final window = resolveWindow(
       periods: periods,
@@ -187,22 +215,13 @@ class StatsProgressService {
     // exerciseId → { training-day → max reps } (bodyweight sets)
     // Populated by `_processSetEffort` for entries with weight == 0.
     // The reps axis lets bodyweight movements compete for the
-    // Strength top slots on the same training-frequency basis as
+    // lift top slots on the same training-frequency basis as
     // loaded lifts (`docs/plans/stats-summary-fix-pack-plan.md`,
     // Item 2).
     final repsByExercise = <String, Map<DateTime, _RepsDay>>{};
 
-    // exerciseId → { training-day → accumulated _CardioDay }
-    final cardioByExercise = <String, Map<DateTime, _CardioDay>>{};
-
-    // exerciseId → { training-day → accumulated _DrillDay }
-    final drillByExercise = <String, Map<DateTime, _DrillDay>>{};
-
-    // exerciseId → { training-day → accumulated _RoundDay }
-    final roundByExercise = <String, Map<DateTime, _RoundDay>>{};
-
     for (final session in completed) {
-      if (!_sessionInWindow(session, window)) continue;
+      if (!_sessionInWindow(session, window.fromMs, window.toMs)) continue;
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(
         session.startedAtMs,
       );
@@ -224,12 +243,6 @@ class StatsProgressService {
                 setsByExercise,
                 repsByExercise,
               );
-            case 'timed':
-              await _processTimedEffort(effort, sessionDay, cardioByExercise);
-            case 'drill':
-              await _processDrillEffort(effort, sessionDay, drillByExercise);
-            case 'round':
-              await _processRoundEffort(effort, sessionDay, roundByExercise);
             default:
               break;
           }
@@ -239,13 +252,7 @@ class StatsProgressService {
 
     // Resolve exercise names for all referenced exercise IDs.
     final nameCache = <String, String>{};
-    for (final id in {
-      ...setsByExercise.keys,
-      ...repsByExercise.keys,
-      ...cardioByExercise.keys,
-      ...drillByExercise.keys,
-      ...roundByExercise.keys,
-    }) {
+    for (final id in {...setsByExercise.keys, ...repsByExercise.keys}) {
       if (!nameCache.containsKey(id)) {
         final exercise = await _exerciseById(id);
         nameCache[id] = exercise?.name ?? id;
@@ -273,42 +280,6 @@ class StatsProgressService {
       kTopLiftCount,
       nameCache,
     );
-    // Cardio training days come from the cardio accumulator map;
-    // the helper expects `Map<String, Set<DateTime>>`, so project
-    // the inner DateTime keys into a Set here.
-    final cardioTrainingDays = <String, Set<DateTime>>{
-      for (final entry in cardioByExercise.entries)
-        entry.key: entry.value.keys.toSet(),
-    };
-    final topCardioIds = _selectTopNWithRecencyFloor(
-      cardioTrainingDays,
-      kTopCardioCount,
-      nameCache,
-    );
-
-    // Drill and round training days come from their respective accumulator maps;
-    // the helper expects `Map<String, Set<DateTime>>`, so project the inner
-    // DateTime keys into a Set here.
-    final drillTrainingDays = <String, Set<DateTime>>{
-      for (final entry in drillByExercise.entries)
-        entry.key: entry.value.keys.toSet(),
-    };
-    final topIsometricIds = _selectTopNWithRecencyFloor(
-      drillTrainingDays,
-      kTopIsometricCount,
-      nameCache,
-    );
-
-    final roundTrainingDays = <String, Set<DateTime>>{
-      for (final entry in roundByExercise.entries)
-        entry.key: entry.value.keys.toSet(),
-    };
-    final topSportsIds = _selectTopNWithRecencyFloor(
-      roundTrainingDays,
-      kTopSportsCount,
-      nameCache,
-    );
-
     // Trends and PRs are FULL-HISTORY for the selected exercises
     // — the window only decided who appears. Walk the unfiltered
     // `completed` list once and aggregate per-selected-exercise
@@ -321,19 +292,6 @@ class StatsProgressService {
       completed,
       topLiftIds,
     );
-    final fullCardioByExercise = await _buildFullCardioForExercises(
-      completed,
-      topCardioIds,
-    );
-    final fullDrillByExercise = await _buildFullDrillForExercises(
-      completed,
-      topIsometricIds,
-    );
-    final fullRoundByExercise = await _buildFullRoundForExercises(
-      completed,
-      topSportsIds,
-    );
-
     // Build LiftProgress + collect PRs.
     final topLifts = <LiftProgress>[];
     final allPRs = <StatsPR>[];
@@ -476,90 +434,9 @@ class StatsProgressService {
 
     final recentPRs = sortedPRs.take(kRecentPRCount).toList();
 
-    // Build CardioProgress.
-    final topCardio = <CardioProgress>[];
-    for (final exerciseId in topCardioIds) {
-      final name = nameCache[exerciseId] ?? exerciseId;
-      final dayMap = fullCardioByExercise[exerciseId] ?? const {};
-      final days = dayMap.keys.toList()..sort();
-
-      final trend = <CardioTrendPoint>[];
-      for (final day in days) {
-        final cd = dayMap[day]!;
-        trend.add(
-          CardioTrendPoint(
-            date: day,
-            durationSecs: cd.durationSecs,
-            distanceM: cd.distanceM,
-            paceSecPerKm: cd.paceSecPerKm,
-            distanceEstimated: cd.distanceEstimated,
-          ),
-        );
-      }
-
-      topCardio.add(CardioProgress(exerciseName: name, trend: trend));
-    }
-
-    // Build DrillProgress (isometric).
-    final topIsometric = <DrillProgress>[];
-    for (final exerciseId in topIsometricIds) {
-      final name = nameCache[exerciseId] ?? exerciseId;
-      final dayMap = fullDrillByExercise[exerciseId] ?? const {};
-      final days = dayMap.keys.toList()..sort();
-
-      final trend = <CardioTrendPoint>[];
-      for (final day in days) {
-        final dd = dayMap[day]!;
-        trend.add(
-          CardioTrendPoint(
-            date: day,
-            durationSecs: dd.durationSecs,
-            distanceM: null,
-            paceSecPerKm: null,
-          ),
-        );
-      }
-
-      topIsometric.add(DrillProgress(exerciseName: name, trend: trend));
-    }
-
-    // Build RoundProgress (sports).
-    final topSports = <RoundProgress>[];
-    for (final exerciseId in topSportsIds) {
-      final name = nameCache[exerciseId] ?? exerciseId;
-      final dayMap = fullRoundByExercise[exerciseId] ?? const {};
-      final days = dayMap.keys.toList()..sort();
-
-      final trend = <CardioTrendPoint>[];
-      for (final day in days) {
-        final rd = dayMap[day]!;
-        trend.add(
-          CardioTrendPoint(
-            date: day,
-            durationSecs: rd.durationSecs,
-            distanceM: null,
-            paceSecPerKm: null,
-          ),
-        );
-      }
-
-      topSports.add(RoundProgress(exerciseName: name, trend: trend));
-    }
-
-    // Nutrition trend (NUTRITION card). Pure-Dart aggregation that
-    // depends only on the repository — identical on Hive (web) and
-    // any future native SQLite implementation. The card scrolls
-    // through full history, so the service is called with
-    // `days: null` to remove the 10-day cap.
-    final nutritionTrend = await computeNutritionTrend(days: null);
-
     return StatsProgressData(
       topLifts: topLifts,
-      topCardio: topCardio,
-      topIsometric: topIsometric,
-      topSports: topSports,
       recentPRs: recentPRs,
-      nutritionTrend: nutritionTrend,
       window: window,
     );
   }
@@ -587,6 +464,498 @@ class StatsProgressService {
       completedSessions: completedSessions,
       durationMs: durationMs,
     );
+  }
+
+  /// The Mix layer's whole payload: the window's bar, the user's usual split,
+  /// the two counts and the weekly strip (D-916, D-917).
+  ///
+  /// One walk of the cached history snapshot serves all three reads — the
+  /// window's sessions, the baseline's and the strip's — so the screen pays for
+  /// no extra repository read (D-919). Null when the window holds no time at
+  /// all: there is nothing to split, and a bar of nothing is not a bar (D-914).
+  ///
+  /// The measure is load only when the baseline is rated enough and the window
+  /// is rated enough; otherwise it is time (D-908). The baseline is the 12
+  /// calendar blocks before the window's start day and never uses
+  /// [startOfWeek]; that setting moves the strip's weeks and nothing else
+  /// (D-934, D-935).
+  Future<MixLayerData?> computeMixLayer({
+    required StatsWindow window,
+    required DateTime now,
+    required String startOfWeek,
+  }) async {
+    final history = await _loadHistory();
+
+    final fromDay = localMidnightDay(window.fromMs);
+    final baselineStarts = baselineBlockStarts(fromDay);
+    final baselineEndMs = fromDay.millisecondsSinceEpoch;
+
+    final currentWeekStart = OmniDateUtils.startOfWeek(
+      now,
+      startOfWeek: startOfWeek,
+    );
+    final weekStarts = [
+      for (var i = kMixStripWeeks - 1; i >= 0; i--)
+        DateTime(
+          currentWeekStart.year,
+          currentWeekStart.month,
+          currentWeekStart.day - i * 7,
+        ),
+    ];
+
+    return _mixPayload(
+      history: history,
+      fromMs: window.fromMs,
+      toMs: window.toMs,
+      baselineStarts: baselineStarts,
+      baselineEndMs: baselineEndMs,
+      weekStarts: weekStarts,
+      startOfWeek: startOfWeek,
+    );
+  }
+
+  /// The Mix payload for the period `[fromMs, toMs]` — the same figures the Mix
+  /// layer shows for the equivalent window, with no weekly strip (D-1204).
+  ///
+  /// The period is whatever bounds the caller passes — the Modality Mix Shift
+  /// rule asks for its own shift period, the Fuel vs Load rule asks for a
+  /// 21-day one — so its baseline is the 12 calendar blocks before its own start
+  /// day and its measure gate is the same one the layer applies (D-1203). The
+  /// strip is the layer's alone: the period has no `now` to anchor it to, so
+  /// [MixLayerData.weeks] is empty.
+  Future<MixLayerData?> computeMixPeriod({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) async {
+    final history = await _loadHistory();
+
+    final fromDay = localMidnightDay(fromMs);
+    return _mixPayload(
+      history: history,
+      fromMs: fromMs,
+      toMs: toMs,
+      baselineStarts: baselineBlockStarts(fromDay),
+      baselineEndMs: fromDay.millisecondsSinceEpoch,
+      weekStarts: const [],
+      startOfWeek: 'monday',
+    );
+  }
+
+  /// The saved start-of-week setting, as the service reads it (D-1704).
+  ///
+  /// Reads the same `preferred_start_of_week` preference `SettingsState`
+  /// writes and normalizes it the same way — `'sunday'`/`'sun'` to Sunday,
+  /// everything else to Monday — so the weeks this service returns are the
+  /// user's own calendar weeks.
+  Future<String> startOfWeekSetting() async {
+    final saved = await _repository.getPreferenceString(
+      'preferred_start_of_week',
+      defaultValue: 'monday',
+    );
+    final normalized = saved?.toLowerCase().trim();
+    return normalized == 'sunday' || normalized == 'sun' ? 'sunday' : 'monday';
+  }
+
+  /// Every completed calendar week's load, oldest first (D-1702, D-1703).
+  ///
+  /// One walk of the cached history snapshot: each completed session is
+  /// bucketed by the week of its own start, and the week's load is the sum of
+  /// [_sessionSplit]'s load — the same figure the Mix layer renders, so the
+  /// weekly load is shared and never re-derived (D-1714). The weeks run from
+  /// the earliest completed session's week through the week before `now`'s,
+  /// with empty weeks present as `loadMinutes: 0, hasRatedSession: false`; the
+  /// week containing `now` is never returned, whatever it holds. An empty
+  /// history yields an empty list. The weeks are the user's calendar weeks, so
+  /// the saved start-of-week setting moves their boundaries (D-1704).
+  Future<List<WeeklyLoad>> weeklyLoads({required DateTime now}) async {
+    final history = await _loadHistory();
+    final startOfWeek = await startOfWeekSetting();
+
+    final loadByWeekStartMs = <int, double>{};
+    final ratedWeekStartsMs = <int>{};
+    int? earliestWeekStartMs;
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final weekStart = OmniDateUtils.startOfWeek(
+        DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+        startOfWeek: startOfWeek,
+      );
+      final weekStartMs = weekStart.millisecondsSinceEpoch;
+      final split = _sessionSplit(history, session);
+      loadByWeekStartMs[weekStartMs] =
+          (loadByWeekStartMs[weekStartMs] ?? 0.0) +
+          split.loadBySection.values.fold<double>(0, (a, b) => a + b);
+      if (session.sessionFeeling != null) ratedWeekStartsMs.add(weekStartMs);
+      if (earliestWeekStartMs == null || weekStartMs < earliestWeekStartMs) {
+        earliestWeekStartMs = weekStartMs;
+      }
+    }
+
+    if (earliestWeekStartMs == null) return const [];
+
+    final currentWeekStart = OmniDateUtils.startOfWeek(
+      now,
+      startOfWeek: startOfWeek,
+    );
+    final weeks = <WeeklyLoad>[];
+    var weekStart = DateTime.fromMillisecondsSinceEpoch(earliestWeekStartMs);
+    while (weekStart.millisecondsSinceEpoch <
+        currentWeekStart.millisecondsSinceEpoch) {
+      final weekStartMs = weekStart.millisecondsSinceEpoch;
+      weeks.add(
+        WeeklyLoad(
+          weekStart: weekStart,
+          loadMinutes: loadByWeekStartMs[weekStartMs] ?? 0.0,
+          hasRatedSession: ratedWeekStartsMs.contains(weekStartMs),
+        ),
+      );
+      weekStart = DateTime(weekStart.year, weekStart.month, weekStart.day + 7);
+    }
+    return weeks;
+  }
+
+  /// One [InterferenceSession] per completed session in the cached history,
+  /// ordered by start and then by id (D-1316).
+  ///
+  /// The walk is the signal layer's only read: it carries each session's
+  /// rating, its Sports load in load minutes, whether it holds a Resistance
+  /// effort, and the best each exercise reached. The Sports load comes from
+  /// [_sessionSplit], the same split the Mix layer renders, so the two surfaces
+  /// cannot disagree (D-1317). One pass over the cached history index — no
+  /// second repository read.
+  Future<List<InterferenceSession>> interferenceSessions() async {
+    final history = await _loadHistory();
+
+    final logsBySession = <String, Map<String, List<_ExerciseLog>>>{};
+    final exerciseIds = <String>{};
+    final hasSetEffort = <String, bool>{};
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final byExercise = <String, List<_ExerciseLog>>{};
+      var hasSet = false;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (_sectionForKind(effort.effortKind) ==
+              ExerciseSection.resistance) {
+            hasSet = true;
+          }
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null) continue;
+          exerciseIds.add(exerciseId);
+          (byExercise[exerciseId] ??= <_ExerciseLog>[]).add(
+            _ExerciseLog(
+              session: session,
+              effort: effort,
+              dayMs: localMidnightDay(
+                DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+              ).millisecondsSinceEpoch,
+            ),
+          );
+        }
+      }
+      logsBySession[session.id] = byExercise;
+      hasSetEffort[session.id] = hasSet;
+    }
+
+    final repsAxis = await _repsAxisExercises(exerciseIds);
+
+    final walk = <InterferenceSession>[];
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final byExercise = logsBySession[session.id] ?? const {};
+
+      final bests = <String, double>{};
+      for (final entry in byExercise.entries) {
+        final section = _sectionForLogs(entry.value);
+        if (section == null) continue;
+        final value = await _nativeValueFor(
+          entry.value,
+          section,
+          repsAxis.contains(entry.key),
+        );
+        if (value == null || value.value <= 0) continue;
+        bests[entry.key] = value.value;
+      }
+
+      final split = _sessionSplit(history, session);
+      walk.add(
+        InterferenceSession(
+          id: session.id,
+          startMs: session.startedAtMs,
+          endMs: session.endedAtMs!,
+          rating: session.sessionFeeling,
+          sportsLoadMinutes:
+              split.loadBySection[ExerciseSection.sports] ?? 0.0,
+          hasSetEffort: hasSetEffort[session.id] ?? false,
+          bests: bests,
+        ),
+      );
+    }
+
+    walk.sort((a, b) {
+      final byStart = a.startMs.compareTo(b.startMs);
+      return byStart != 0 ? byStart : a.id.compareTo(b.id);
+    });
+    return walk;
+  }
+
+  /// One walk of [history] serving the window's bar, the baseline's and the
+  /// strip's (D-916, D-917, D-919).
+  ///
+  /// [weekStarts] is the strip's own week starts, oldest first; an empty list
+  /// means no strip at all. Null when the window holds no time at all: there is
+  /// nothing to split, and a bar of nothing is not a bar (D-914).
+  MixLayerData? _mixPayload({
+    required _HistoryIndex history,
+    required DateTime fromMs,
+    required DateTime toMs,
+    required List<DateTime> baselineStarts,
+    required int baselineEndMs,
+    required List<DateTime> weekStarts,
+    required String startOfWeek,
+  }) {
+    final windowTime = <ExerciseSection, double>{};
+    final windowLoad = <ExerciseSection, double>{};
+    var windowTimeSeconds = 0.0;
+    var unratedTimeSeconds = 0.0;
+    var unratedSessionCount = 0;
+
+    final baselineLoad = <ExerciseSection, double>{};
+    final ratedBaselineBlocks = <int>{};
+
+    final weekTime = <int, Map<ExerciseSection, double>>{};
+    final weekLoad = <int, Map<ExerciseSection, double>>{};
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final startMs = session.startedAtMs;
+
+      final split = _sessionSplit(history, session);
+
+      if (_sessionInWindow(session, fromMs, toMs)) {
+        _addAll(windowTime, split.timeBySection);
+        _addAll(windowLoad, split.loadBySection);
+        windowTimeSeconds += split.timeSeconds;
+        if (session.sessionFeeling == null) {
+          unratedSessionCount++;
+          unratedTimeSeconds += split.timeSeconds;
+        }
+      }
+
+      if (startMs < baselineEndMs) {
+        final block = _baselineBlockFor(baselineStarts, startMs);
+        if (block != null) {
+          _addAll(baselineLoad, split.loadBySection);
+          if (session.sessionFeeling != null) ratedBaselineBlocks.add(block);
+        }
+      }
+
+      final weekIndex = _weekIndexFor(weekStarts, startMs, startOfWeek);
+      if (weekIndex != null) {
+        _addAll(
+          weekTime[weekIndex] ??= <ExerciseSection, double>{},
+          split.timeBySection,
+        );
+        _addAll(
+          weekLoad[weekIndex] ??= <ExerciseSection, double>{},
+          split.loadBySection,
+        );
+      }
+    }
+
+    if (windowTimeSeconds <= 0) return null;
+
+    final ratedBaselineWeeks = ratedBaselineBlocks.length;
+    final measure =
+        ratedBaselineWeeks >= kTrainingLoadMinRatedWeeks &&
+            unratedTimeSeconds / windowTimeSeconds <=
+                kTrainingLoadMaxUnratedShare
+        ? MixMeasure.load
+        : MixMeasure.time;
+
+    final measureBySection = measure == MixMeasure.load
+        ? windowLoad
+        : _minutesBySection(windowTime);
+    final baselineTotal = baselineLoad.values.fold<double>(0, (a, b) => a + b);
+
+    return MixLayerData(
+      measure: measure,
+      segments: mixSegments(measureBySection),
+      baselineSegments: measure == MixMeasure.load && baselineTotal > 0
+          ? mixSegments(baselineLoad)
+          : const [],
+      unratedSessionCount: unratedSessionCount,
+      ratedBaselineWeeks: ratedBaselineWeeks,
+      weeks: [
+        for (var i = 0; i < weekStarts.length; i++)
+          _mixWeek(
+            weekStart: weekStarts[i],
+            measure: measure,
+            timeBySection: weekTime[i] ?? const {},
+            loadBySection: weekLoad[i] ?? const {},
+            inProgress: i == weekStarts.length - 1,
+          ),
+      ],
+    );
+  }
+
+  /// One strip week, in the measure the bar uses (D-917).
+  static MixWeek _mixWeek({
+    required DateTime weekStart,
+    required MixMeasure measure,
+    required Map<ExerciseSection, double> timeBySection,
+    required Map<ExerciseSection, double> loadBySection,
+    required bool inProgress,
+  }) {
+    final bySection = measure == MixMeasure.load
+        ? loadBySection
+        : _minutesBySection(timeBySection);
+    return MixWeek(
+      weekStart: weekStart,
+      segments: mixSegments(bySection),
+      measure: bySection.values.fold<double>(0, (a, b) => a + b),
+      inProgress: inProgress,
+    );
+  }
+
+  /// The same split in minutes, so the time measure reads in the unit the
+  /// surface labels it with (D-916).
+  static Map<ExerciseSection, double> _minutesBySection(
+    Map<ExerciseSection, double> secondsBySection,
+  ) => {
+    for (final entry in secondsBySection.entries) entry.key: entry.value / 60.0,
+  };
+
+  /// One completed session's time and load, split by section (D-1317).
+  ///
+  /// The Mix walk and the interference walk both read a session's Sports load
+  /// from here, so the layer's bar and the signal's figure cannot disagree.
+  /// [session] must be completed: the split needs its end.
+  _SessionSplit _sessionSplit(_HistoryIndex history, TrainingSession session) {
+    final measured = _measuredSecsFor(history, session);
+    final dominant = _dominantSectionFor(history, session);
+    final durationSecs = session.isRolling
+        ? 0
+        : ((session.endedAtMs! - session.startedAtMs) / 1000).round();
+    final timeBySection = sessionTimeByModality(
+      durationSecs: durationSecs,
+      isRolling: session.isRolling,
+      measuredSecs: measured,
+      dominantSection: dominant,
+    );
+    return _SessionSplit(
+      timeBySection: timeBySection,
+      loadBySection: sessionLoadByModality(
+        timeByModality: timeBySection,
+        rating: session.sessionFeeling,
+      ),
+    );
+  }
+
+  /// The measured active seconds of [session] per modality (D-903).
+  ///
+  /// The effort's kind decides which instance store to read — never a literal
+  /// kind string, always [_sectionForKind] (D-902). A `set` effort measures
+  /// nothing: its time is the session's remainder.
+  Map<ExerciseSection, double> _measuredSecsFor(
+    _HistoryIndex history,
+    TrainingSession session,
+  ) {
+    final measured = <ExerciseSection, double>{};
+    for (final segment in history.segmentsOf(session.id)) {
+      for (final effort in history.effortsOf(segment.id)) {
+        final section = _sectionForKind(effort.effortKind);
+        if (section == null) continue;
+        switch (section) {
+          case ExerciseSection.cardio:
+          case ExerciseSection.isometric:
+            for (final instance in history.timedInstancesOf(effort.id)) {
+              if (instance.state != TimedState.finished) continue;
+              measured[section] =
+                  (measured[section] ?? 0) + instance.actualDurationSecs;
+            }
+          case ExerciseSection.sports:
+            for (final instance in history.roundInstancesOf(effort.id)) {
+              if (instance.state != RoundState.finished) continue;
+              if (instance.startedAtMs <= 0) continue;
+              if (instance.finishedAtMs == null) continue;
+              measured[section] =
+                  (measured[section] ?? 0) + instance.actualDurationSecs;
+            }
+          case ExerciseSection.resistance:
+            break;
+        }
+      }
+    }
+    return measured;
+  }
+
+  /// The section [session]'s efforts most often belong to, ties resolving in
+  /// [ExerciseSection] declaration order (D-905).
+  ///
+  /// An effort with no exercise still counts: the mapping is by kind, and the
+  /// session's own shape is what the remainder falls back to.
+  ExerciseSection? _dominantSectionFor(
+    _HistoryIndex history,
+    TrainingSession session,
+  ) {
+    final counts = <ExerciseSection, int>{};
+    for (final segment in history.segmentsOf(session.id)) {
+      for (final effort in history.effortsOf(segment.id)) {
+        final section = _sectionForKind(effort.effortKind);
+        if (section == null) continue;
+        counts[section] = (counts[section] ?? 0) + 1;
+      }
+    }
+
+    ExerciseSection? winner;
+    var winnerCount = 0;
+    for (final section in ExerciseSection.values) {
+      final count = counts[section] ?? 0;
+      if (count > winnerCount) {
+        winner = section;
+        winnerCount = count;
+      }
+    }
+    return winner;
+  }
+
+  /// The index of the baseline block holding [startMs], or null when it falls
+  /// outside every block (D-934).
+  static int? _baselineBlockFor(List<DateTime> starts, int startMs) {
+    for (var i = starts.length - 1; i >= 0; i--) {
+      if (starts[i].millisecondsSinceEpoch <= startMs) return i;
+    }
+    return null;
+  }
+
+  /// The index of the strip week holding [startMs], or null when the session
+  /// started before the strip's first week (D-917).
+  static int? _weekIndexFor(
+    List<DateTime> weekStarts,
+    int startMs,
+    String startOfWeek,
+  ) {
+    final weekStart = OmniDateUtils.startOfWeek(
+      DateTime.fromMillisecondsSinceEpoch(startMs),
+      startOfWeek: startOfWeek,
+    );
+    final weekStartMs = weekStart.millisecondsSinceEpoch;
+    for (var i = weekStarts.length - 1; i >= 0; i--) {
+      if (weekStarts[i].millisecondsSinceEpoch == weekStartMs) return i;
+    }
+    return null;
+  }
+
+  static void _addAll(
+    Map<ExerciseSection, double> target,
+    Map<ExerciseSection, double> source,
+  ) {
+    for (final entry in source.entries) {
+      target[entry.key] = (target[entry.key] ?? 0) + entry.value;
+    }
   }
 
   /// One summary per exercise logged in at least one completed session that
@@ -689,6 +1058,298 @@ class StatsProgressService {
       return byName != 0 ? byName : a.exerciseId.compareTo(b.exerciseId);
     });
     return summaries;
+  }
+
+  // ── The Progression Rate's samples ─────────────────────────────────────────
+
+  /// Every exercise-session the Progression Rate compares: one sample per
+  /// completed session and exercise that logged a `set` effort in it, whatever
+  /// the session's modality, ordered by exercise and then by session start.
+  ///
+  /// The value is the exercise's own metric read over that session's set
+  /// efforts alone, by the same native-value rule and the same axis
+  /// classification the Instruments rows and the progress series use — no
+  /// second value rule. The read rides the cached history index, so a load
+  /// pays for no extra repository read.
+  Future<List<ProgressionSample>> progressionSamples() async {
+    final history = await _loadHistory();
+
+    final groupsByExercise = <String, Map<String, _ProgressionGroup>>{};
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      final dayMs = OmniDateUtils.startOfDayMs(
+        DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+      );
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null || effort.effortKind != 'set') continue;
+          final bySession = groupsByExercise[exerciseId] ??=
+              <String, _ProgressionGroup>{};
+          (bySession[session.id] ??= _ProgressionGroup(
+            exerciseId: exerciseId,
+            sessionStartMs: session.startedAtMs,
+          )).logs.add(
+            _ExerciseLog(session: session, effort: effort, dayMs: dayMs),
+          );
+        }
+      }
+    }
+    if (groupsByExercise.isEmpty) return const <ProgressionSample>[];
+
+    final repsAxis = await _repsAxisExercises(groupsByExercise.keys.toSet());
+
+    final groups = <_ProgressionGroup>[];
+    for (final entry in groupsByExercise.entries) {
+      final sessions = entry.value.values.toList()
+        ..sort((a, b) => a.sessionStartMs.compareTo(b.sessionStartMs));
+      groups.addAll(sessions);
+    }
+    groups.sort((a, b) {
+      final byExercise = a.exerciseId.compareTo(b.exerciseId);
+      return byExercise != 0
+          ? byExercise
+          : a.sessionStartMs.compareTo(b.sessionStartMs);
+    });
+
+    // Independent reads, issued together rather than one per session.
+    final values = await Future.wait([
+      for (final group in groups)
+        _resistanceValue(group.logs, repsAxis.contains(group.exerciseId)),
+    ]);
+
+    return [
+      for (var i = 0; i < groups.length; i++)
+        ProgressionSample(
+          exerciseId: groups[i].exerciseId,
+          sessionStartMs: groups[i].sessionStartMs,
+          value: values[i].value,
+        ),
+    ];
+  }
+
+  // ── The Instruments list ───────────────────────────────────────────────────
+
+  /// The window's work, grouped into the sections the Instruments list shows.
+  ///
+  /// A section's rank is the number of distinct days in the window on which an
+  /// effort of that kind was logged, so the list leads with the biggest block
+  /// of work rather than with a fixed order. A section appears only when it has
+  /// a row, and a row appears for every exercise the window yields — including
+  /// one whose value is the zero fallback, which shows the zero figure and no
+  /// sparkline. Rows sort by training days, then name, then id.
+  ///
+  /// Each row also carries the same exercise's value over the immediately
+  /// preceding range of the same calendar length, when the two are comparable,
+  /// plus the cadence and heart-rate figures its section reads.
+  Future<List<InstrumentSectionData>> computeInstrumentSections({
+    required StatsWindow window,
+  }) async {
+    final fromMs = window.fromMs.millisecondsSinceEpoch;
+    final toMs = window.toMs.millisecondsSinceEpoch;
+
+    final current = await computeExerciseMetrics(fromMs: fromMs, toMs: toMs);
+    if (current.isEmpty) return const <InstrumentSectionData>[];
+
+    final previousRange = previousRangeFor(window);
+    final previous = await computeExerciseMetrics(
+      fromMs: previousRange.fromMs,
+      toMs: previousRange.toMs,
+    );
+    final previousByExercise = <String, ExerciseMetricSummary>{
+      for (final summary in previous) summary.exerciseId: summary,
+    };
+
+    final dayCounts = await _sectionTrainingDayCounts(fromMs, toMs);
+
+    final bySection = <ExerciseSection, List<InstrumentRow>>{};
+    for (final summary in current) {
+      final previousSummary = previousByExercise[summary.exerciseId];
+      final comparable =
+          previousSummary != null &&
+          previousSummary.best.metric == summary.best.metric;
+      final sensors = await _sensorFiguresFor(summary, fromMs, toMs);
+      (bySection[summary.section] ??= <InstrumentRow>[]).add(
+        InstrumentRow(
+          // A value nothing was readable for is the zero fallback: the row
+          // still appears, but it has no series to draw.
+          summary: summary.best.value <= 0
+              ? ExerciseMetricSummary(
+                  exerciseId: summary.exerciseId,
+                  name: summary.name,
+                  section: summary.section,
+                  best: summary.best,
+                  points: const <ExerciseMetricPoint>[],
+                  lastTrainedMs: summary.lastTrainedMs,
+                  sessionCount: summary.sessionCount,
+                )
+              : summary,
+          previousValue: comparable ? previousSummary.best : null,
+          cadenceStepsPerMin: sensors.cadenceStepsPerMin,
+          averageHeartRateBpm: sensors.averageHeartRateBpm,
+        ),
+      );
+    }
+
+    final sections = <InstrumentSectionData>[];
+    for (final entry in bySection.entries) {
+      final rows = entry.value
+        ..sort((a, b) {
+          final byDays = b.summary.points.length.compareTo(
+            a.summary.points.length,
+          );
+          if (byDays != 0) return byDays;
+          final byName = a.summary.name.compareTo(b.summary.name);
+          return byName != 0
+              ? byName
+              : a.summary.exerciseId.compareTo(b.summary.exerciseId);
+        });
+      sections.add(
+        InstrumentSectionData(
+          section: entry.key,
+          rows: rows,
+          trainingDayCount: dayCounts[entry.key] ?? 0,
+        ),
+      );
+    }
+
+    sections.sort((a, b) {
+      final byDays = b.trainingDayCount.compareTo(a.trainingDayCount);
+      return byDays != 0 ? byDays : a.section.index.compareTo(b.section.index);
+    });
+    return sections;
+  }
+
+  /// The range immediately before [window], of the same calendar length.
+  ///
+  /// The arithmetic is on calendar days, never on a duration: a DST transition
+  /// inside the range would otherwise shorten or widen it by an hour. The
+  /// window's own day count comes from its local-midnight bounds, inclusive.
+  static ({int fromMs, int toMs}) previousRangeFor(StatsWindow window) {
+    final from = window.fromMs;
+    final to = window.toMs;
+    final dayCount =
+        DateTime.utc(
+          to.year,
+          to.month,
+          to.day,
+        ).difference(DateTime.utc(from.year, from.month, from.day)).inDays +
+        1;
+    return (
+      fromMs: DateTime(
+        from.year,
+        from.month,
+        from.day - dayCount,
+      ).millisecondsSinceEpoch,
+      toMs: from.millisecondsSinceEpoch - 1,
+    );
+  }
+
+  /// The number of distinct days in `[fromMs, toMs]` on which an effort of each
+  /// section's kind was logged — the section ordering rank.
+  ///
+  /// The day key is the local-midnight day of the session's start, an effort
+  /// with no exercise is skipped, and only completed sessions count.
+  Future<Map<ExerciseSection, int>> _sectionTrainingDayCounts(
+    int fromMs,
+    int toMs,
+  ) async {
+    final history = await _loadHistory();
+    final daysBySection = <ExerciseSection, Set<int>>{};
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      if (session.startedAtMs < fromMs || session.startedAtMs > toMs) continue;
+      final dayMs = OmniDateUtils.startOfDayMs(
+        DateTime.fromMillisecondsSinceEpoch(session.startedAtMs),
+      );
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (effort.exerciseId == null) continue;
+          final section = _sectionForKind(effort.effortKind);
+          if (section == null) continue;
+          (daysBySection[section] ??= <int>{}).add(dayMs);
+        }
+      }
+    }
+
+    return <ExerciseSection, int>{
+      for (final entry in daysBySection.entries) entry.key: entry.value.length,
+    };
+  }
+
+  /// The cadence and heart-rate figures [summary]'s row carries, read from the
+  /// sensor summaries of the exercise's own instances in the window.
+  ///
+  /// Cadence is Cardio only: the steps summed over the timed instances that
+  /// carry a step count, divided by the minutes of exactly those instances.
+  /// Heart rate is the mean over the timed (Cardio) or round (Sports) instance
+  /// summaries that carry a reading; Resistance and Isometric rows never show
+  /// one. Neither figure is rendered when no summary carries it.
+  Future<({int? cadenceStepsPerMin, int? averageHeartRateBpm})>
+  _sensorFiguresFor(ExerciseMetricSummary summary, int fromMs, int toMs) async {
+    final section = summary.section;
+    if (section != ExerciseSection.cardio &&
+        section != ExerciseSection.sports) {
+      return (cadenceStepsPerMin: null, averageHeartRateBpm: null);
+    }
+
+    final history = await _loadHistory();
+    final instanceScope = section == ExerciseSection.cardio
+        ? SensorSummary.scopeTimedInstance
+        : SensorSummary.scopeRoundInstance;
+
+    var steps = 0;
+    var stepsDurationSecs = 0;
+    var heartRateSum = 0.0;
+    var heartRateCount = 0;
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      if (session.startedAtMs < fromMs || session.startedAtMs > toMs) continue;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (effort.exerciseId != summary.exerciseId) continue;
+          if (_sectionForKind(effort.effortKind) != section) continue;
+
+          if (section == ExerciseSection.cardio) {
+            for (final instance in history.timedInstancesOf(effort.id)) {
+              final sensor = history.sensorFor(instanceScope, instance.id);
+              final instanceSteps = sensor?.steps;
+              if (instanceSteps == null) continue;
+              steps += instanceSteps;
+              stepsDurationSecs += instance.actualDurationSecs;
+            }
+            for (final instance in history.timedInstancesOf(effort.id)) {
+              final avg = history
+                  .sensorFor(instanceScope, instance.id)
+                  ?.avgHeartRateBpm;
+              if (avg == null) continue;
+              heartRateSum += avg;
+              heartRateCount++;
+            }
+          } else {
+            for (final instance in history.roundInstancesOf(effort.id)) {
+              final avg = history
+                  .sensorFor(instanceScope, instance.id)
+                  ?.avgHeartRateBpm;
+              if (avg == null) continue;
+              heartRateSum += avg;
+              heartRateCount++;
+            }
+          }
+        }
+      }
+    }
+
+    return (
+      cadenceStepsPerMin: stepsDurationSecs > 0
+          ? (steps / (stepsDurationSecs / 60.0)).round()
+          : null,
+      averageHeartRateBpm: heartRateCount > 0
+          ? (heartRateSum / heartRateCount).round()
+          : null,
+    );
   }
 
   // ── The native value, per section ──────────────────────────────────────────
@@ -1076,136 +1737,6 @@ class StatsProgressService {
     }
   }
 
-  Future<void> _processTimedEffort(
-    SegmentEffort effort,
-    DateTime sessionDay,
-    Map<String, Map<DateTime, _CardioDay>> cardioByExercise,
-  ) async {
-    final exerciseId = effort.exerciseId;
-    if (exerciseId == null) return;
-
-    final history = await _loadHistory();
-    final timedInstances = [...history.timedInstancesOf(effort.id)]
-      ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
-    final totalDuration = timedInstances
-        .where((t) => t.state == TimedState.finished)
-        .fold<int>(0, (sum, t) => sum + t.actualDurationSecs);
-
-    if (totalDuration <= 0) return;
-
-    // Each entry owns its own distance row (D-324). The day's totals count
-    // every distance that belongs to an entry — a leftover no entry owns counts
-    // nowhere (D-321) — and the pace counts only finished entries that have
-    // one, so an entry that was never finished contributes its distance to the
-    // total but no time and no pace distance (D-309).
-    final paired = DistancePairing.forEntries(
-      distanceRows: history.observationsOf(effort.id),
-      entryCount: timedInstances.length,
-    );
-
-    var dayDistanceM = 0.0;
-    var paceDurationSecs = 0;
-    var paceDistanceM = 0.0;
-    var estimated = false;
-    for (var i = 0; i < paired.length; i++) {
-      final row = paired[i];
-      final metres = row?.valueReal ?? 0.0;
-      if (metres <= 0) continue;
-
-      dayDistanceM += metres;
-      if (DistanceSource.isEstimated(row?.valueSource)) estimated = true;
-      if (timedInstances[i].state != TimedState.finished) continue;
-
-      paceDurationSecs += timedInstances[i].actualDurationSecs;
-      paceDistanceM += metres;
-    }
-
-    final newDistanceM = dayDistanceM > 0 ? dayDistanceM : null;
-
-    final dayMap = cardioByExercise.putIfAbsent(exerciseId, () => {});
-    final existing = dayMap[sessionDay];
-
-    if (existing == null) {
-      dayMap[sessionDay] = _CardioDay(
-        durationSecs: totalDuration,
-        distanceM: newDistanceM,
-        paceDurationSecs: paceDurationSecs,
-        paceDistanceM: paceDistanceM,
-        distanceEstimated: estimated,
-      );
-    } else {
-      dayMap[sessionDay] = _CardioDay(
-        durationSecs: existing.durationSecs + totalDuration,
-        distanceM: (existing.distanceM != null || newDistanceM != null)
-            ? (existing.distanceM ?? 0.0) + (newDistanceM ?? 0.0)
-            : null,
-        paceDurationSecs: existing.paceDurationSecs + paceDurationSecs,
-        paceDistanceM: existing.paceDistanceM + paceDistanceM,
-        distanceEstimated: existing.distanceEstimated || estimated,
-      );
-    }
-  }
-
-  /// Process a drill effort (isometric): sum hold times per day.
-  /// Per D-6, multiple holds on the same day produce one aggregated
-  /// point with the total hold time (sum).
-  Future<void> _processDrillEffort(
-    SegmentEffort effort,
-    DateTime sessionDay,
-    Map<String, Map<DateTime, _DrillDay>> drillByExercise,
-  ) async {
-    final exerciseId = effort.exerciseId;
-    if (exerciseId == null) return;
-
-    final timedInstances = (await _loadHistory()).timedInstancesOf(effort.id);
-    final totalDuration = timedInstances
-        .where((t) => t.state == TimedState.finished)
-        .fold<int>(0, (sum, t) => sum + t.actualDurationSecs);
-
-    if (totalDuration <= 0) return;
-
-    final dayMap = drillByExercise.putIfAbsent(exerciseId, () => {});
-    final existing = dayMap[sessionDay];
-
-    if (existing == null) {
-      dayMap[sessionDay] = _DrillDay(durationSecs: totalDuration);
-    } else {
-      dayMap[sessionDay] = _DrillDay(
-        durationSecs: existing.durationSecs + totalDuration,
-      );
-    }
-  }
-
-  /// Process a round effort (sports): sum round times per day.
-  /// Per D-6, multiple rounds on the same day produce one aggregated
-  /// point with the total round time (sum).
-  Future<void> _processRoundEffort(
-    SegmentEffort effort,
-    DateTime sessionDay,
-    Map<String, Map<DateTime, _RoundDay>> roundByExercise,
-  ) async {
-    final exerciseId = effort.exerciseId;
-    if (exerciseId == null) return;
-
-    final timedInstances = (await _loadHistory()).timedInstancesOf(effort.id);
-    final totalDuration = timedInstances
-        .where((t) => t.state == TimedState.finished)
-        .fold<int>(0, (sum, t) => sum + t.actualDurationSecs);
-
-    if (totalDuration <= 0) return;
-
-    final dayMap = roundByExercise.putIfAbsent(exerciseId, () => {});
-    final existing = dayMap[sessionDay];
-
-    if (existing == null) {
-      dayMap[sessionDay] = _RoundDay(durationSecs: totalDuration);
-    } else {
-      dayMap[sessionDay] = _RoundDay(
-        durationSecs: existing.durationSecs + totalDuration,
-      );
-    }
-  }
-
   /// Returns the top-[n] exercise IDs ordered by distinct training-day count
   /// (descending), with alphabetical name as a tiebreaker. Applies
   /// the recency floor ([kTopExerciseRecencyDays]) so any candidate
@@ -1219,10 +1750,8 @@ class StatsProgressService {
   ///
   /// The selection input is a `Map<String, Set<DateTime>>` of
   /// `exerciseId → training days`; the function does not care
-  /// whether those days came from the weight axis, the reps axis,
-  /// or the cardio axis — selection is identical across all three.
-  /// Used symmetrically for Strength and Cardio so the two sections
-  /// behave consistently.
+  /// whether those days came from the weight axis or the reps axis —
+  /// selection is identical across both.
   List<String> _selectTopNWithRecencyFloor(
     Map<String, Set<DateTime>> data,
     int n,
@@ -1317,6 +1846,32 @@ class StatsProgressService {
       DateTime.fromMillisecondsSinceEpoch(todayMs),
     );
 
+    return _nutritionPointsInRange(fromMs: fromMs, toMs: toMs);
+  }
+
+  /// The per-day nutrition series for `[fromMs, toMs]` — the same days, sums
+  /// and rounding [computeNutritionTrend] produces for the span it resolves,
+  /// but for bounds the caller names (D-1419).
+  ///
+  /// Both bounds are inclusive and both are compared against
+  /// [ConsumedFood.dateMs] (the day key, local midnight), so a caller whose
+  /// `toMs` falls mid-day still sees that day's row. The caller owns the
+  /// calendar arithmetic: a period read passes a period's own start and end,
+  /// where the trend read passes today-relative bounds.
+  Future<List<NutritionTrendPoint>> nutritionSeries({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) => _nutritionPointsInRange(
+    fromMs: fromMs.millisecondsSinceEpoch,
+    toMs: toMs.millisecondsSinceEpoch,
+  );
+
+  /// The one walk both reads share: rows in `[fromMs, toMs]`, grouped by day
+  /// key, macros scaled per row and rounded once per day, days ascending.
+  Future<List<NutritionTrendPoint>> _nutritionPointsInRange({
+    required int fromMs,
+    required int toMs,
+  }) async {
     final rows = await _repository.getConsumedFoodsInRange(fromMs, toMs);
     if (rows.isEmpty) return const [];
 
@@ -1358,6 +1913,183 @@ class StatsProgressService {
           ),
         )
         .toList();
+  }
+
+  /// The stored protein target for each local day in `[fromMs, toMs]`, keyed by
+  /// local midnight — the same key the protein rule uses. A day inherits the
+  /// most recent target stored on or before it; a day before any stored target
+  /// is absent, never zero. Resolved one day at a time through
+  /// [WorkoutRepository.getNutritionTargetForDate], so no repository method is
+  /// added for it (D-1519).
+  Future<Map<DateTime, double>> proteinTargetsByDay({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) async {
+    final targets = <DateTime, double>{};
+    final from = DateTime(fromMs.year, fromMs.month, fromMs.day);
+    final to = DateTime(toMs.year, toMs.month, toMs.day);
+    // Calendar arithmetic, never a Duration, so a DST shift cannot skip or
+    // repeat a day.
+    var day = from;
+    while (!day.isAfter(to)) {
+      final target = await _repository.getNutritionTargetForDate(
+        day.millisecondsSinceEpoch,
+      );
+      if (target != null) targets[day] = target.protein;
+      day = DateTime(day.year, day.month, day.day + 1);
+    }
+    return targets;
+  }
+
+  /// The number of completed sessions starting in `[fromMs, toMs]` that hold at
+  /// least one Resistance effort (D-1510).
+  ///
+  /// An in-progress session, a session starting outside the range, and a
+  /// session carrying only cardio, isometric or sports efforts are excluded —
+  /// the same `_sectionForKind` rule `interferenceSessions` applies.
+  Future<int> resistanceSessionCount({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) async {
+    final history = await _loadHistory();
+    var count = 0;
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      if (!_sessionInWindow(session, fromMs, toMs)) continue;
+      var hasResistance = false;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (_sectionForKind(effort.effortKind) ==
+              ExerciseSection.resistance) {
+            hasResistance = true;
+            break;
+          }
+        }
+        if (hasResistance) break;
+      }
+      if (hasResistance) count++;
+    }
+    return count;
+  }
+
+  /// The latest recorded bodyweight in kilograms, or null when none is on file
+  /// or its unit is not the canonical `unit-kg` (D-1511).
+  Future<double?> latestBodyWeightKg() async {
+    final entry = await _repository.getLatestMeasurement('bodyweight');
+    if (entry == null || entry.unitId != MetricIds.unitKg) return null;
+    return entry.value;
+  }
+
+  /// The Fuel row's figures: intake averaged over logged days, split by
+  /// whether the day carried a completed session, against the day's target.
+  ///
+  /// Returns `null` when nothing has been logged within
+  /// [kFuelVisibilityDays] — the row is hidden rather than shown empty,
+  /// matching the NUTRITION card's behaviour.
+  ///
+  /// Averages divide by the number of **logged** days in the group, never
+  /// by the window length: a week with three logged days is a three-day
+  /// mean, so skipping a day of logging does not read as having eaten
+  /// nothing. A group with no logged day yields `null` rather than `0`,
+  /// and the widget renders that as an absence.
+  ///
+  /// A day is a training day when a **completed** session started on it —
+  /// the same `endedAtMs != null` rule the rest of this service applies.
+  /// An in-progress session does not move today's food into the training
+  /// bucket.
+  Future<FuelSummary?> computeFuelSummary() async {
+    final points = await computeNutritionTrend(days: kFuelVisibilityDays);
+    if (points.isEmpty) return null;
+
+    final todayMs = OmniDateUtils.todayMidnightMs();
+    final today = DateTime.fromMillisecondsSinceEpoch(todayMs);
+    // Calendar arithmetic rather than `subtract(Duration(days: n))` for the
+    // DST reason documented on `computeNutritionTrend`.
+    final windowStart = DateTime(
+      today.year,
+      today.month,
+      today.day - (kFuelWindowDays - 1),
+    );
+    final previousStart = DateTime(
+      today.year,
+      today.month,
+      today.day - (2 * kFuelWindowDays - 1),
+    );
+
+    final window = <NutritionTrendPoint>[];
+    final previous = <NutritionTrendPoint>[];
+    for (final p in points) {
+      if (!p.date.isBefore(windowStart)) {
+        window.add(p);
+      } else if (!p.date.isBefore(previousStart)) {
+        previous.add(p);
+      }
+    }
+
+    final trainingDays = await _trainingDayKeys(windowStart, today);
+    final training = <NutritionTrendPoint>[];
+    final rest = <NutritionTrendPoint>[];
+    for (final p in window) {
+      if (trainingDays.contains(OmniDateUtils.startOfDayMs(p.date))) {
+        training.add(p);
+      } else {
+        rest.add(p);
+      }
+    }
+
+    final target = await _repository.getNutritionTargetForDate(todayMs);
+
+    return FuelSummary(
+      loggedDays: window.length,
+      caloriesAverage: _averageOf(window, (p) => p.calories.toDouble()),
+      proteinAverage: _averageOf(window, (p) => p.protein.toDouble()),
+      previousCaloriesAverage: _averageOf(
+        previous,
+        (p) => p.calories.toDouble(),
+      ),
+      previousProteinAverage: _averageOf(previous, (p) => p.protein.toDouble()),
+      trainingCaloriesAverage: _averageOf(
+        training,
+        (p) => p.calories.toDouble(),
+      ),
+      trainingProteinAverage: _averageOf(training, (p) => p.protein.toDouble()),
+      restCaloriesAverage: _averageOf(rest, (p) => p.calories.toDouble()),
+      restProteinAverage: _averageOf(rest, (p) => p.protein.toDouble()),
+      targetCalories: target?.calories ?? 0,
+      targetProtein: target?.protein ?? 0,
+    );
+  }
+
+  /// Mean of [pick] over [points], or `null` when there is no point to
+  /// average. Dividing by the group's own length — never by a window
+  /// length — is what keeps unlogged days out of the denominator.
+  static double? _averageOf(
+    List<NutritionTrendPoint> points,
+    double Function(NutritionTrendPoint) pick,
+  ) {
+    if (points.isEmpty) return null;
+    var total = 0.0;
+    for (final p in points) {
+      total += pick(p);
+    }
+    return total / points.length;
+  }
+
+  /// Epoch-ms of every day in `[from, to]` on which a completed session
+  /// started.
+  Future<Set<int>> _trainingDayKeys(DateTime from, DateTime to) async {
+    final sessions = (await _loadHistory()).sessions;
+    final days = <int>{};
+    for (final s in sessions) {
+      if (s.endedAtMs == null) continue;
+      final day = OmniDateUtils.startOfDayMs(
+        DateTime.fromMillisecondsSinceEpoch(s.startedAtMs),
+      );
+      if (day < OmniDateUtils.startOfDayMs(from)) continue;
+      if (day > OmniDateUtils.startOfDayMs(to)) continue;
+      days.add(day);
+    }
+    return days;
   }
 
   /// Epley 1-rep-max estimate: weight × (1 + reps / 30).
@@ -1509,8 +2241,8 @@ class StatsProgressService {
   // ── Window resolution (current-state window for exercise selection) ───────
 
   /// Resolves the [StatsWindow] used to select which exercises
-  /// appear in the Strength and Cardio sections. Both sections
-  /// always share one window in a given load.
+  /// enter the PR scan. Every caller shares one window in a given
+  /// load.
   ///
   /// Selection rule (executed in order):
   /// 1. If today is inside any [TrainingPeriod] that contains at
@@ -1606,13 +2338,16 @@ class StatsProgressService {
     );
   }
 
-  /// True when [session]'s `startedAtMs` falls within the
-  /// [StatsWindow] date range. The window is inclusive on both
-  /// ends; the helper centralizes the boundary check so the
-  /// selection iteration and the future consumers all agree.
-  static bool _sessionInWindow(TrainingSession session, StatsWindow window) {
-    return session.startedAtMs >= window.fromMs.millisecondsSinceEpoch &&
-        session.startedAtMs <= window.toMs.millisecondsSinceEpoch;
+  /// True when [session]'s `startedAtMs` falls within `[fromMs, toMs]`. The
+  /// range is inclusive on both ends; the helper centralizes the boundary check
+  /// so the selection iteration and the future consumers all agree.
+  static bool _sessionInWindow(
+    TrainingSession session,
+    DateTime fromMs,
+    DateTime toMs,
+  ) {
+    return session.startedAtMs >= fromMs.millisecondsSinceEpoch &&
+        session.startedAtMs <= toMs.millisecondsSinceEpoch;
   }
 
   /// Builds a per-selected-exercise full-history set trend map.
@@ -1691,107 +2426,6 @@ class StatsProgressService {
           final exId = effort.exerciseId;
           if (exId == null || !selected.contains(exId)) continue;
           await _processSetEffort(effort, sessionDay, setsSentinel, result);
-        }
-      }
-    }
-    return result;
-  }
-
-  /// Builds a per-selected-exercise full-history cardio trend map.
-  /// See [_buildFullSetsForExercises] for the parallel contract.
-  Future<Map<String, Map<DateTime, _CardioDay>>> _buildFullCardioForExercises(
-    List<TrainingSession> completed,
-    List<String> exerciseIds,
-  ) async {
-    final result = <String, Map<DateTime, _CardioDay>>{};
-    if (exerciseIds.isEmpty) return result;
-    final selected = exerciseIds.toSet();
-    for (final session in completed) {
-      if (session.endedAtMs == null) continue;
-      final sessionDt = DateTime.fromMillisecondsSinceEpoch(
-        session.startedAtMs,
-      );
-      final sessionDay = DateTime(
-        sessionDt.year,
-        sessionDt.month,
-        sessionDt.day,
-      );
-      final segments = (await _loadHistory()).segmentsOf(session.id);
-      for (final segment in segments) {
-        final efforts = (await _loadHistory()).effortsOf(segment.id);
-        for (final effort in efforts) {
-          if (effort.effortKind != 'timed') continue;
-          final exId = effort.exerciseId;
-          if (exId == null || !selected.contains(exId)) continue;
-          await _processTimedEffort(effort, sessionDay, result);
-        }
-      }
-    }
-    return result;
-  }
-
-  /// Builds a per-selected-exercise full-history drill trend map.
-  /// Filters by `effortKind == 'drill'` and sums hold times per day.
-  /// See [_buildFullCardioForExercises] for the parallel contract.
-  Future<Map<String, Map<DateTime, _DrillDay>>> _buildFullDrillForExercises(
-    List<TrainingSession> completed,
-    List<String> exerciseIds,
-  ) async {
-    final result = <String, Map<DateTime, _DrillDay>>{};
-    if (exerciseIds.isEmpty) return result;
-    final selected = exerciseIds.toSet();
-    for (final session in completed) {
-      if (session.endedAtMs == null) continue;
-      final sessionDt = DateTime.fromMillisecondsSinceEpoch(
-        session.startedAtMs,
-      );
-      final sessionDay = DateTime(
-        sessionDt.year,
-        sessionDt.month,
-        sessionDt.day,
-      );
-      final segments = (await _loadHistory()).segmentsOf(session.id);
-      for (final segment in segments) {
-        final efforts = (await _loadHistory()).effortsOf(segment.id);
-        for (final effort in efforts) {
-          if (effort.effortKind != 'drill') continue;
-          final exId = effort.exerciseId;
-          if (exId == null || !selected.contains(exId)) continue;
-          await _processDrillEffort(effort, sessionDay, result);
-        }
-      }
-    }
-    return result;
-  }
-
-  /// Builds a per-selected-exercise full-history round trend map.
-  /// Filters by `effortKind == 'round'` and sums round times per day.
-  /// See [_buildFullCardioForExercises] for the parallel contract.
-  Future<Map<String, Map<DateTime, _RoundDay>>> _buildFullRoundForExercises(
-    List<TrainingSession> completed,
-    List<String> exerciseIds,
-  ) async {
-    final result = <String, Map<DateTime, _RoundDay>>{};
-    if (exerciseIds.isEmpty) return result;
-    final selected = exerciseIds.toSet();
-    for (final session in completed) {
-      if (session.endedAtMs == null) continue;
-      final sessionDt = DateTime.fromMillisecondsSinceEpoch(
-        session.startedAtMs,
-      );
-      final sessionDay = DateTime(
-        sessionDt.year,
-        sessionDt.month,
-        sessionDt.day,
-      );
-      final segments = (await _loadHistory()).segmentsOf(session.id);
-      for (final segment in segments) {
-        final efforts = (await _loadHistory()).effortsOf(segment.id);
-        for (final effort in efforts) {
-          if (effort.effortKind != 'round') continue;
-          final exId = effort.exerciseId;
-          if (exId == null || !selected.contains(exId)) continue;
-          await _processRoundEffort(effort, sessionDay, result);
         }
       }
     }
@@ -1887,6 +2521,92 @@ class StatsProgressService {
           ..sort((a, b) => a.date.compareTo(b.date));
     return NutritionAdherence(actuals: actuals, targetLine: targetLine);
   }
+
+  /// The eligible cardio efforts whose instance started in `[fromMs, toMs]`,
+  /// ordered by start (D-1802, D-1816).
+  ///
+  /// An effort is eligible when all of these hold:
+  ///
+  /// - its session is completed (`endedAtMs != null`);
+  /// - its effort kind is `timed`;
+  /// - its instance is finished and its measured duration is above zero;
+  /// - the distance paired to that instance is above zero and its source is
+  ///   not the watch's estimate ([DistanceSource.isEstimated]);
+  /// - the instance's own `timed_instance` sensor summary carries an average
+  ///   heart rate above zero.
+  ///
+  /// The span is the caller's: this method applies no window decision of its
+  /// own, so the rule can ask for the whole span it needs and apply its own
+  /// boundaries. Ties on start are broken by instance id, so the order is
+  /// stable across stores.
+  Future<List<CardioEffort>> cardioEfforts({
+    required DateTime fromMs,
+    required DateTime toMs,
+  }) async {
+    final history = await _loadHistory();
+    final from = fromMs.millisecondsSinceEpoch;
+    final to = toMs.millisecondsSinceEpoch;
+
+    final found = <({TimedInstance instance, CardioEffort effort})>[];
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (effort.effortKind != 'timed') continue;
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null) continue;
+
+          final instances = [...history.timedInstancesOf(effort.id)]
+            ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+          final paired = DistancePairing.forEntries(
+            distanceRows: history.observationsOf(effort.id),
+            entryCount: instances.length,
+          );
+
+          for (var i = 0; i < instances.length; i++) {
+            final instance = instances[i];
+            if (instance.state != TimedState.finished) continue;
+            if (instance.startedAtMs < from || instance.startedAtMs > to) {
+              continue;
+            }
+            final secs = instance.actualDurationSecs;
+            if (secs <= 0) continue;
+
+            final row = paired[i];
+            final metres = row?.valueReal ?? 0.0;
+            if (metres <= 0) continue;
+            if (DistanceSource.isEstimated(row?.valueSource)) continue;
+
+            final avg = history
+                .sensorFor(SensorSummary.scopeTimedInstance, instance.id)
+                ?.avgHeartRateBpm;
+            if (avg == null || avg <= 0) continue;
+
+            final exercise = await _exerciseById(exerciseId);
+            found.add((
+              instance: instance,
+              effort: CardioEffort(
+                exerciseId: exerciseId,
+                exerciseName: exercise?.name ?? exerciseId,
+                start: DateTime.fromMillisecondsSinceEpoch(instance.startedAtMs),
+                durationSecs: secs,
+                distanceMetres: metres,
+                avgHeartRateBpm: avg,
+              ),
+            ));
+          }
+        }
+      }
+    }
+
+    found.sort((a, b) {
+      final byStart = a.instance.startedAtMs.compareTo(b.instance.startedAtMs);
+      if (byStart != 0) return byStart;
+      return a.instance.id.compareTo(b.instance.id);
+    });
+    return [for (final entry in found) entry.effort];
+  }
 }
 
 class _SetTuple {
@@ -1894,6 +2614,23 @@ class _SetTuple {
   final int reps;
 
   const _SetTuple({required this.weight, required this.reps});
+}
+
+/// One completed session's time and load, split by section (D-1317).
+class _SessionSplit {
+  const _SessionSplit({
+    required this.timeBySection,
+    required this.loadBySection,
+  });
+
+  /// Active seconds per section.
+  final Map<ExerciseSection, double> timeBySection;
+
+  /// Load minutes per section — zero throughout when the session is unrated.
+  final Map<ExerciseSection, double> loadBySection;
+
+  double get timeSeconds =>
+      timeBySection.values.fold<double>(0, (a, b) => a + b);
 }
 
 /// One effort an exercise was logged under, with the session it belongs to and
@@ -1913,49 +2650,14 @@ class _ExerciseLog {
   });
 }
 
-class _CardioDay {
-  final int durationSecs;
-  final double? distanceM;
+/// One exercise's `set` efforts inside one completed session, with the
+/// session's start — the unit the Progression Rate compares.
+class _ProgressionGroup {
+  _ProgressionGroup({required this.exerciseId, required this.sessionStartMs});
 
-  /// The finished entries that carry a distance: their `actualDurationSecs`
-  /// summed, and their distances summed in metres. The day's pace is the first
-  /// divided by the second in kilometres; the totals above count every
-  /// finished entry and every stored distance, so the two are not the same
-  /// sum (D-309).
-  final int paceDurationSecs;
-  final double paceDistanceM;
-
-  /// True when any distance counted in [distanceM] is an estimate (D-317).
-  final bool distanceEstimated;
-
-  const _CardioDay({
-    required this.durationSecs,
-    required this.distanceM,
-    this.paceDurationSecs = 0,
-    this.paceDistanceM = 0.0,
-    this.distanceEstimated = false,
-  });
-
-  /// The pace this day's entries imply, or null when none of them carries a
-  /// distance.
-  double? get paceSecPerKm =>
-      paceDistanceM > 0 ? paceDurationSecs / (paceDistanceM / 1000.0) : null;
-}
-
-/// Per-day isometric drill-time accumulator (sum of all hold times on that day).
-/// Mirrors _CardioDay structure: holds summed duration in seconds.
-class _DrillDay {
-  final int durationSecs;
-
-  const _DrillDay({required this.durationSecs});
-}
-
-/// Per-day sports round-time accumulator (sum of all round times on that day).
-/// Mirrors _CardioDay structure: holds summed duration in seconds.
-class _RoundDay {
-  final int durationSecs;
-
-  const _RoundDay({required this.durationSecs});
+  final String exerciseId;
+  final int sessionStartMs;
+  final List<_ExerciseLog> logs = <_ExerciseLog>[];
 }
 
 /// Per-day reps-axis accumulator for a single exercise. Carries

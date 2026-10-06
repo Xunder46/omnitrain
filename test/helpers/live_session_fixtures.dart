@@ -1,11 +1,8 @@
-// Shared fixtures for the phone's live watch session — the mirror, a ladder,
-// entries, and a transport that records what the phone emits.
-//
-// Plan: `docs/plans/2026-07-13-10-c2-phone-manage-bridge-live-sessions-plan.md`.
+// A transport for tests that only need to know what the phone sent: it records
+// what the phone emitted and carries nothing.
 //
 // The wire itself is proven in `test/phone_manage_bridge_test.dart`, where both
-// devices are real. Widget and flow tests only need to know what the phone was
-// shown and what it sent, so the transport here carries nothing.
+// devices are real.
 
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 
@@ -33,65 +30,3 @@ class RecordingMirrorTransport implements WatchMirrorTransport {
   @override
   Future<void> requestSnapshot() async => snapshotRequests++;
 }
-
-/// A ladder in the protocol's `sessionExercise` shape, as the phone sends it.
-List<Map<String, Object?>> liveSessionSlots() => [
-  liveSessionSlot('sx-bench', 'Barbell Bench Press'),
-  liveSessionSlot('sx-plank', 'Plank', capabilities: const ['time', 'hold']),
-  liveSessionSlot('sx-squat', 'Goblet Squat'),
-];
-
-/// The slot ids of a ladder, in order.
-List<String> slotIdsOf(Iterable<Map<String, Object?>> exercises) => [
-  for (final slot in exercises) slot['sessionExerciseId']! as String,
-];
-
-Map<String, Object?> liveSessionSlot(
-  String slotId,
-  String name, {
-  List<String> capabilities = const ['sets', 'reps', 'load'],
-}) => {
-  'sessionExerciseId': slotId,
-  'exerciseId': 'ex-$slotId',
-  'name': name,
-  'capabilities': capabilities,
-};
-
-/// One `set` entry as the wrist reports it.
-Map<String, Object?> liveSessionEntry(
-  String entryId, {
-  String slot = 'sx-bench',
-  int reps = 5,
-  double loadKg = 80,
-  String loggedAt = '2026-07-13T06:00:00Z',
-}) => {
-  'entryId': entryId,
-  'eventId': entryId,
-  'kind': 'set',
-  'loggedAt': loggedAt,
-  'sessionExerciseId': slot,
-  'exerciseId': 'ex-$slot',
-  'reps': reps,
-  'loadKg': loadKg,
-};
-
-/// A live watch session as the phone's mirror holds it.
-LiveSessionMirrorState liveWatchSession({
-  String status = 'active',
-  int revision = 7,
-  int currentExerciseIndex = 0,
-  List<Map<String, Object?>>? exercises,
-  List<Map<String, Object?>> entries = const [],
-  WatchMirrorTransport? transport,
-}) => LiveSessionMirrorState(
-  transport: transport ?? RecordingMirrorTransport(),
-  snapshot: {
-    'sessionId': 's-live-ui',
-    'status': status,
-    'revision': revision,
-    'currentExerciseIndex': currentExerciseIndex,
-    'exercises': exercises ?? liveSessionSlots(),
-    'entries': entries,
-    'timers': const <String, Object?>{},
-  },
-);

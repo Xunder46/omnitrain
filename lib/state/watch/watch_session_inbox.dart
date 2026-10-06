@@ -80,7 +80,26 @@ abstract interface class WatchSessionRatings {
   Future<bool> recordPhoneRating(String watchSessionId, int rating);
 }
 
-class WatchSessionInbox implements WatchSessionRatings {
+/// What an Edit Session Discard may do to a wrist session's inbox: recover
+/// the entries that arrived while the screen was open (D-802, D-804).
+///
+/// [WatchSessionInbox] is the one implementation. The restore receives this
+/// narrow type rather than the inbox, so nothing else about staging and
+/// applying what the wrist sends is in its reach.
+abstract interface class WatchLateEntryRecovery {
+  /// Recovers the session's inbox rows that were applied after
+  /// [appliedAtSnapshot] was read: un-marks exactly those rows and runs one
+  /// ordinary import pass, which re-materialises them (D-802, D-804).
+  ///
+  /// Writes nothing else — no row is created, deleted or edited by the
+  /// recovery itself. A session with no such row is left untouched.
+  Future<void> recoverEntriesAppliedSince(
+    String watchSessionId,
+    Set<String> appliedAtSnapshot,
+  );
+}
+
+class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
   WatchSessionInbox({
     required WorkoutRepository repository,
     WatchMirrorTransport? transport,
@@ -89,6 +108,9 @@ class WatchSessionInbox implements WatchSessionRatings {
     String Function()? idFactory,
     Future<void> Function()? onHistoryChanged,
     void Function(Object error, StackTrace stack)? onFailure,
+    bool Function(String sessionId)? phoneOwnsSession,
+    Future<void> Function(String sessionId, List<String> effortIds)?
+    onSessionRowsChanged,
   }) : _repository = repository,
        _transport = transport,
        _validator = validator,
@@ -96,6 +118,8 @@ class WatchSessionInbox implements WatchSessionRatings {
        _newId = idFactory ?? _uuid,
        _onHistoryChanged = onHistoryChanged,
        _onFailure = onFailure ?? _report,
+       _phoneOwnsSession = phoneOwnsSession,
+       _onSessionRowsChanged = onSessionRowsChanged,
        _importer = WatchSessionImporter(
          repository: repository,
          clock: clock ?? _utcNow,
@@ -125,6 +149,18 @@ class WatchSessionInbox implements WatchSessionRatings {
   final Future<void> Function()? _onHistoryChanged;
   final void Function(Object error, StackTrace stack) _onFailure;
   final WatchSessionImporter _importer;
+
+  /// Whether a session id is one the phone owns as its own current session —
+  /// the mirror adopted it off the wrist (D-2). Asked of the adoption bridge,
+  /// which is the one place that question is answered. Null (a test, a build
+  /// with no session state) imports every session the ordinary way.
+  final bool Function(String sessionId)? _phoneOwnsSession;
+
+  /// Called once per settled session whose merge wrote rows, with the efforts
+  /// it wrote — the live session refresh (D-17). Null (a test, a build with no
+  /// session state) refreshes nothing.
+  final Future<void> Function(String sessionId, List<String> effortIds)?
+  _onSessionRowsChanged;
 
   /// The fields each staged kind must carry to become history — the ones the
   /// `observations_up` schema requires of it. A snapshot entry is held only to
@@ -309,6 +345,41 @@ class WatchSessionInbox implements WatchSessionRatings {
   }
 
   // ---------------------------------------------------------------------------
+  // Recovering what arrived during an Edit Session
+  // ---------------------------------------------------------------------------
+
+  /// Un-marks the session's late rows and runs one ordinary import pass
+  /// (D-802, D-804).
+  ///
+  /// The late rows are the applied ones whose `entryId` is not in
+  /// [appliedAtSnapshot] — the watermark the edit snapshot recorded. One
+  /// rule, no origin or kind filter: a late wrist entry, a late phone
+  /// correction and a late phone deletion are all recovered the same way.
+  /// Nothing is written when there is no late row.
+  @override
+  Future<void> recoverEntriesAppliedSince(
+    String watchSessionId,
+    Set<String> appliedAtSnapshot,
+  ) async {
+    try {
+      final rows = await _repository.getWatchInboxEntriesForSession(
+        watchSessionId,
+      );
+      final late = [
+        for (final row in rows)
+          if (row.appliedAtMs != null && !appliedAtSnapshot.contains(row.entryId))
+            row.entryId,
+      ];
+      if (late.isEmpty) return;
+
+      await _repository.clearWatchInboxApplied(late);
+      await _settle({watchSessionId});
+    } catch (error, stack) {
+      _onFailure(error, stack);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Applying and acknowledging
   // ---------------------------------------------------------------------------
 
@@ -352,9 +423,18 @@ class WatchSessionInbox implements WatchSessionRatings {
     final receipted = <String>[];
     var changed = false;
     for (final sessionId in sessionIds) {
-      final pass = await _importer.apply(sessionId);
+      final pass = await _importer.apply(
+        sessionId,
+        phoneOwnsSession: _phoneOwnsSession?.call(sessionId) ?? false,
+      );
       receipted.addAll(pass.appliedEntryIds);
       changed = changed || pass.historyChanged;
+      // The merge wrote rows into the phone's own live session: refresh exactly
+      // the efforts it wrote, before anything downstream sees the receipt
+      // (D-17). A pass that wrote nothing names no effort and refreshes nothing.
+      if (pass.changedEffortIds.isNotEmpty) {
+        await _onSessionRowsChanged?.call(sessionId, pass.changedEffortIds);
+      }
     }
     for (final entryId in redelivered) {
       if (entryId is! String || receipted.contains(entryId)) continue;

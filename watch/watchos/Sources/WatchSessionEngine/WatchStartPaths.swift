@@ -40,6 +40,69 @@ public enum WatchStartSurfaceCopy {
     /// The user's explicit action — the only thing that asks the phone for
     /// anything.
     public static let syncLabel = "Sync routines"
+
+    /// Said only when the wrist has *observed* the phone out of reach (D-8),
+    /// never on a cold start, which has asked nothing.
+    ///
+    /// Deliberately not a contract value like the two above: the Wear OS client
+    /// reads the same contract file and has no transport, so it has no
+    /// reachability to say this about. It moves into
+    /// `watch/contract/watch_start_paths_contract.json` if that client ever
+    /// ships one.
+    public static let unreachableLabel = "Phone not reachable"
+}
+
+/// What the wrist knows about the phone's radio: nothing yet, or one of the two
+/// answers it has observed (D-8).
+///
+/// The distinction is the point of the type. "The phone is unreachable" and
+/// "nobody has asked the radio yet" are the same `false` to a flag that starts
+/// false, and a sentence drawn from the second would lie on every launch.
+public enum WatchPhoneReachability: Equatable {
+    /// No answer has arrived yet. A cold start is this until the radio's
+    /// activation reports where it stands.
+    case unknown
+
+    /// The radio reported the phone reachable.
+    case reachable
+
+    /// The radio reported the phone unreachable.
+    case unreachable
+
+    /// The state the radio's answer means. The platform has no "unknown" — a
+    /// `Bool` can only be an observation — so the third state belongs to the
+    /// host, before the first answer arrives.
+    public static func observed(reachable: Bool) -> WatchPhoneReachability {
+        reachable ? .reachable : .unreachable
+    }
+}
+
+/// What the start surface says about the phone (D-8, D-9), as a value rather
+/// than a view so the rule is testable on the desktop toolchain.
+public struct WatchPhoneStatus {
+    public let reachability: WatchPhoneReachability
+
+    public init(reachability: WatchPhoneReachability) {
+        self.reachability = reachability
+    }
+
+    /// The sentence about the phone, or nil when there is nothing honest to say.
+    /// Only an observed unreachable phone earns one.
+    public var sentence: String? {
+        switch reachability {
+        case .unknown, .reachable:
+            return nil
+        case .unreachable:
+            return WatchStartSurfaceCopy.unreachableLabel
+        }
+    }
+
+    /// Whether the surface offers the user the sync action.
+    ///
+    /// Always, while a transport exists: a disabled button explains nothing, and
+    /// a phone out of reach now may be back in reach when the user taps (D-9).
+    /// A watch with no transport passes no action at all, so no button appears.
+    public var offersSync: Bool { true }
 }
 
 /// The exercises the wrist may offer without reaching the phone (S-003).
@@ -66,6 +129,79 @@ public func deriveFallbackExercises(
     }
 
     return offered
+}
+
+/// One row of the exercise picker: an exercise the wrist may log, and whether
+/// the live session already holds it.
+///
+/// The two cases exist because the same exercise can legitimately sit on the
+/// ladder twice — a superset benches in two slots — so a row keyed by exercise
+/// id alone would collapse the pair and leave the second slot unreachable. A row
+/// carries its own `id`: the slot id when the session holds it, the exercise id
+/// otherwise.
+public enum WatchExercisePickerRow: Equatable {
+    /// Already on the session's ladder, in the slot named.
+    case inSession(slotId: String, exercise: WatchCatalogExercise)
+
+    /// Not on the ladder yet; picking it appends a slot.
+    case available(WatchCatalogExercise)
+
+    /// What the picker keys rows by.
+    public var id: String {
+        switch self {
+        case .inSession(let slotId, _): return slotId
+        case .available(let exercise): return exercise.exerciseId
+        }
+    }
+
+    public var name: String {
+        switch self {
+        case .inSession(_, let exercise), .available(let exercise): return exercise.name
+        }
+    }
+
+    public var exerciseId: String {
+        switch self {
+        case .inSession(_, let exercise), .available(let exercise): return exercise.exerciseId
+        }
+    }
+
+    /// Whether picking this row moves the session rather than growing it.
+    public var isInSession: Bool {
+        switch self {
+        case .inSession: return true
+        case .available: return false
+        }
+    }
+}
+
+/// The picker's rows: the session's own ladder first and in its order, then
+/// every exercise the wrist could add, minus the ones the ladder already shows.
+///
+/// An exercise already on the ladder appears once, as its in-session row, so
+/// picking it moves the user to it instead of adding a duplicate — while a
+/// second slot for the same exercise still gets a row of its own.
+public func derivePickerRows(
+    sessionExercises: [[String: Any]],
+    fallback: [WatchCatalogExercise]
+) -> [WatchExercisePickerRow] {
+    var rows: [WatchExercisePickerRow] = []
+    var onLadder = Set<String>()
+
+    for slot in sessionExercises {
+        guard let exercise = WatchCatalogExercise(slot: slot) else { continue }
+        rows.append(.inSession(
+            slotId: (slot["sessionExerciseId"] as? String) ?? exercise.slotId,
+            exercise: exercise
+        ))
+        onLadder.insert(exercise.exerciseId)
+    }
+
+    for exercise in fallback where !onLadder.contains(exercise.exerciseId) {
+        rows.append(.available(exercise))
+    }
+
+    return rows
 }
 
 /// What happened to a reference-data message — `routines_down` or `foods_down`.
@@ -241,6 +377,29 @@ public final class WatchSessionStartPaths {
             atIndex: atIndex,
             moveTo: true
         )
+    }
+
+    /// The picker's rows for the live session: what the user is on, then what
+    /// they could add. Derived on every read rather than cached, so a push that
+    /// arrived while the picker was open is already in the list the user sees.
+    public var pickerRows: [WatchExercisePickerRow] {
+        derivePickerRows(
+            sessionExercises: engine.session?.exercises ?? [],
+            fallback: fallbackExercises
+        )
+    }
+
+    /// Picking a row: a slot the session already holds moves the user to it, and
+    /// an exercise it does not appends one. Nil when the slot is gone by the
+    /// time the tap lands, which changes nothing.
+    @discardableResult
+    public func selectExercise(_ row: WatchExercisePickerRow) async -> WatchSessionRecord? {
+        switch row {
+        case .inSession(let slotId, _):
+            return await engine.selectExercise(slotId: slotId)
+        case .available(let exercise):
+            return await addExerciseToSession(exercise)
+        }
     }
 
     // MARK: - Derived state

@@ -208,6 +208,59 @@ extension SessionCoreIOMethods on SessionCore {
     }
   }
 
+  /// Re-reads the named efforts into the live session state, then notifies
+  /// once — the refresh a merge of wrist rows runs so the regular session
+  /// screen shows them at once (D-17).
+  ///
+  /// Unlike [loadSessionData] this re-reads only the named efforts and clears
+  /// nothing: an effort it does not name, and every timer already running, is
+  /// left exactly as it was, so a rest or exercise timer survives the refresh.
+  Future<void> refreshEfforts(Iterable<String> effortIds) async {
+    _clearError();
+
+    try {
+      for (final effortId in effortIds) {
+        final effort = _findEffort(effortId);
+
+        _observations[effortId] = await _repository.getEffortObservations(
+          effortId,
+        );
+
+        if (effort == null) continue;
+
+        if (effort.effortKind == 'round') {
+          _timerManager.setRoundInstances(
+            effortId,
+            await _repository.getRoundInstances(effortId),
+          );
+        }
+
+        if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
+          _timerManager.setTimedInstances(
+            effortId,
+            await _repository.getTimedInstances(effortId),
+          );
+        }
+
+        _timerManager.setEntryRests(
+          effortId,
+          await _repository.getEntryRests(effortId),
+        );
+
+        if (effort.exerciseId != null) {
+          final exercise = await _repository.getExerciseById(
+            effort.exerciseId!,
+          );
+          if (exercise != null) _exerciseCache[exercise.id] = exercise;
+        }
+      }
+
+      _notify();
+    } catch (e) {
+      _setError('Failed to refresh efforts: $e');
+    }
+  }
+
   Future<void> populateSessionFromManifest(
     RoutineSessionManifest manifest,
   ) async {

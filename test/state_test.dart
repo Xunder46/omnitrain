@@ -81,7 +81,7 @@ Future<TrainingSession> _seedCompletedSetSession(
 
   await repo.createObservation(
     EffortObservation(
-      id: 'obs-reps-$sessionId',
+      id: 'obs-$effortId-0-reps',
       effortId: effortId,
       metricId: 'metric-reps',
       valueInt: reps,
@@ -91,7 +91,7 @@ Future<TrainingSession> _seedCompletedSetSession(
   );
   await repo.createObservation(
     EffortObservation(
-      id: 'obs-weight-$sessionId',
+      id: 'obs-$effortId-0-weight',
       effortId: effortId,
       metricId: 'metric-weight',
       valueReal: weight,
@@ -102,6 +102,115 @@ Future<TrainingSession> _seedCompletedSetSession(
 
   return session;
 }
+
+/// Fixed wall-clock stamp for the draft fixtures below; only its ordering
+/// matters.
+const int _draftAtMs = 1700000000000;
+
+/// A session→segment→exercise→effort fixture whose stored rows are supplied in
+/// the order the store must return them (S-1311–S-1315). Unlike
+/// [_seedCompletedSetSession] this leaves the rows to the caller, so a fixture
+/// can put a later entry's row first. The ids are `seg-<sessionId>`,
+/// `eff-<sessionId>` and `ex-<sessionId>`.
+Future<void> _seedDraftFixture(
+  MockWorkoutRepository repo, {
+  required String sessionId,
+  required String effortKind,
+  required String exerciseName,
+  List<String> capabilities = const ['time'],
+  int entryCount = 0,
+  int targetDurationSecs = 600,
+  List<EffortObservation> rows = const [],
+}) async {
+  final segId = 'seg-$sessionId';
+  final effortId = 'eff-$sessionId';
+  final exerciseId = 'ex-$sessionId';
+
+  await repo.createSession(
+    TrainingSession(
+      id: sessionId,
+      ownerUserId: 'u-1',
+      startedAtMs: _draftAtMs,
+      endedAtMs: _draftAtMs + 3600000,
+      createdAtMs: _draftAtMs,
+      updatedAtMs: _draftAtMs,
+    ),
+  );
+  await repo.createSegment(
+    SessionSegment(
+      id: segId,
+      sessionId: sessionId,
+      orderIndex: 0,
+      segmentType: 'main',
+      createdAtMs: _draftAtMs,
+      updatedAtMs: _draftAtMs,
+    ),
+  );
+  await repo.createExercise(
+    Exercise(
+      id: exerciseId,
+      name: exerciseName,
+      capabilities: capabilities,
+      createdAtMs: _draftAtMs,
+      updatedAtMs: _draftAtMs,
+    ),
+  );
+  await repo.createEffort(
+    SegmentEffort(
+      id: effortId,
+      segmentId: segId,
+      orderIndex: 0,
+      effortKind: effortKind,
+      exerciseId: exerciseId,
+      createdAtMs: _draftAtMs,
+      updatedAtMs: _draftAtMs,
+    ),
+  );
+
+  for (var i = 0; i < entryCount; i++) {
+    await repo.createTimedInstance(
+      TimedInstance(
+        id: 'ti-$effortId-$i',
+        effortId: effortId,
+        entryIndex: i,
+        targetDurationSecs: targetDurationSecs,
+        actualDurationSecs: targetDurationSecs,
+        startedAtMs: _draftAtMs,
+        finishedAtMs: _draftAtMs + targetDurationSecs * 1000,
+        state: TimedState.finished,
+        createdAtMs: _draftAtMs,
+        updatedAtMs: _draftAtMs,
+      ),
+    );
+  }
+
+  for (final row in rows) {
+    await repo.createObservation(row);
+  }
+}
+
+/// One stored row of [effortId], named the way the app's own writers name them:
+/// `obs-<effortId>-<number>-<metricKey>` (D-324). The id — not the argument
+/// order — is what carries the entry number.
+EffortObservation _draftRow(
+  String effortId,
+  int number,
+  String metricKey, {
+  required String metricId,
+  double? real,
+  int? integer,
+  bool? boolean,
+  int createdAtMs = _draftAtMs,
+}) => EffortObservation(
+  id: 'obs-$effortId-$number-$metricKey',
+  effortId: effortId,
+  metricId: metricId,
+  valueReal: real,
+  valueInt: integer,
+  valueBool: boolean,
+  createdAtMs: createdAtMs,
+  updatedAtMs: createdAtMs,
+);
 
 void main() {
   // ══════════════════════════════════════════════════════════════════════════
@@ -1747,7 +1856,8 @@ void main() {
       );
 
       test(
-        'getExercisesWithEntries omits extra-weight for legacy timed entry',
+        'getExercisesWithEntries omits extra-weight for a timed entry with no '
+        'extra-weight row',
         () async {
           final repo = await _freshRepo();
           final state = WorkoutState(repo);
@@ -1761,7 +1871,7 @@ void main() {
           final effortId = await state.addExerciseToSession(timedExercise);
           final sessionId = state.currentSession!.id;
 
-          // Simulate a legacy entry: delete the extra-weight companion observation.
+          // Simulate an entry with no extra-weight row: delete the companion.
           final allObs = await repo.getEffortObservations(effortId);
           final ewObs = allObs
               .where((o) => o.metricId == 'metric-extra-weight')
@@ -1940,6 +2050,280 @@ void main() {
           );
         },
       );
+    });
+
+    // ── Routine drafts read each entry's own row (S-1311–S-1315) ─────────
+    group('routine draft reads the entry its row belongs to', () {
+      test('S-1311: a timed draft reads entry 1\'s own row when the store '
+          'returns rows out of entry order', () async {
+        final repo = await _freshRepo();
+        await _seedDraftFixture(
+          repo,
+          sessionId: 's-1311',
+          effortKind: 'timed',
+          exerciseName: 'Easy Run',
+          entryCount: 2,
+          rows: [
+            // Entry 1's row is stored first, so a reader taking the store's
+            // first row gets 12.0 instead of entry 0's 5.0.
+            _draftRow(
+              'eff-s-1311',
+              1,
+              'extra-weight',
+              metricId: MetricIds.extraWeight,
+              real: 12.0,
+            ),
+            _draftRow(
+              'eff-s-1311',
+              0,
+              'extra-weight',
+              metricId: MetricIds.extraWeight,
+              real: 5.0,
+            ),
+          ],
+        );
+
+        final state = WorkoutState(repo);
+        await state.loadHistoricalSession('s-1311');
+
+        final draft = state.buildTemplateDraftExercises().single;
+        final extraWeight = draft.targets.firstWhere(
+          (t) => t.metricId == MetricIds.extraWeight,
+        );
+        expect(
+          extraWeight.valueReal,
+          5.0,
+          reason: 'the draft must read entry 0\'s own row, not the first '
+              'row the store happened to return',
+        );
+
+        final entries =
+            state.getExercisesWithEntries().single['entries']
+                as List<Map<String, dynamic>>;
+        expect(entries.map((e) => e['extra-weight']).toList(), [5.0, 12.0]);
+      });
+
+      test('S-1312: the same holds for a drill effort', () async {
+        final repo = await _freshRepo();
+        await _seedDraftFixture(
+          repo,
+          sessionId: 's-1312',
+          effortKind: 'drill',
+          exerciseName: 'Band Assist Hold',
+          entryCount: 2,
+          rows: [
+            _draftRow(
+              'eff-s-1312',
+              1,
+              'extra-weight',
+              metricId: MetricIds.extraWeight,
+              real: -10.0,
+            ),
+            _draftRow(
+              'eff-s-1312',
+              0,
+              'extra-weight',
+              metricId: MetricIds.extraWeight,
+              real: -20.0,
+            ),
+          ],
+        );
+
+        final state = WorkoutState(repo);
+        await state.loadHistoricalSession('s-1312');
+
+        final draft = state.buildTemplateDraftExercises().single;
+        final extraWeight = draft.targets.firstWhere(
+          (t) => t.metricId == MetricIds.extraWeight,
+        );
+        expect(extraWeight.valueReal, -20.0);
+      });
+
+      test('S-1313: a set draft uses numbered groups, not createdAtMs', () async {
+        final repo = await _freshRepo();
+        // Three sets whose rows are stamped newest-first, and stored in entry
+        // order. Only the number in each row's id identifies the entry.
+        await _seedDraftFixture(
+          repo,
+          sessionId: 's-1313',
+          effortKind: 'set',
+          exerciseName: 'Back Squat',
+          capabilities: const ['reps', 'load'],
+          rows: [
+            _draftRow(
+              'eff-s-1313',
+              0,
+              'reps',
+              metricId: MetricIds.reps,
+              integer: 5,
+              createdAtMs: _draftAtMs + 3000,
+            ),
+            _draftRow(
+              'eff-s-1313',
+              0,
+              'weight',
+              metricId: MetricIds.weight,
+              real: 10.0,
+              createdAtMs: _draftAtMs + 3001,
+            ),
+            _draftRow(
+              'eff-s-1313',
+              1,
+              'reps',
+              metricId: MetricIds.reps,
+              integer: 6,
+              createdAtMs: _draftAtMs + 2000,
+            ),
+            _draftRow(
+              'eff-s-1313',
+              1,
+              'weight',
+              metricId: MetricIds.weight,
+              real: 20.0,
+              createdAtMs: _draftAtMs + 2001,
+            ),
+            _draftRow(
+              'eff-s-1313',
+              2,
+              'reps',
+              metricId: MetricIds.reps,
+              integer: 7,
+              createdAtMs: _draftAtMs + 1000,
+            ),
+            _draftRow(
+              'eff-s-1313',
+              2,
+              'weight',
+              metricId: MetricIds.weight,
+              real: 30.0,
+              createdAtMs: _draftAtMs + 1001,
+            ),
+          ],
+        );
+
+        final state = WorkoutState(repo);
+        await state.loadHistoricalSession('s-1313');
+
+        final draft = state.buildTemplateDraftExercises().single;
+        expect(
+          [
+            for (final t in draft.targets) (t.metricId, t.setIndex, t.valueInt, t.valueReal),
+          ],
+          [
+            (MetricIds.reps, 0, 5, null),
+            (MetricIds.weight, 0, null, 10.0),
+            (MetricIds.reps, 1, 6, null),
+            (MetricIds.weight, 1, null, 20.0),
+            (MetricIds.reps, 2, 7, null),
+            (MetricIds.weight, 2, null, 30.0),
+          ],
+          reason: 'the targets follow the entry numbers, not createdAtMs',
+        );
+      });
+
+      test('S-1314: a round effort\'s draft is unchanged', () async {
+        final repo = await _freshRepo();
+        await _seedDraftFixture(
+          repo,
+          sessionId: 's-1314',
+          effortKind: 'round',
+          exerciseName: 'Boxing Rounds',
+          capabilities: const ['rounds'],
+        );
+        for (var i = 0; i < 3; i++) {
+          await repo.createRoundInstance(
+            RoundInstance(
+              id: 'ri-eff-s-1314-$i',
+              effortId: 'eff-s-1314',
+              roundIndex: i,
+              plannedDurationSecs: 90,
+              actualDurationSecs: 90,
+              completed: true,
+              state: RoundState.finished,
+              createdAtMs: _draftAtMs,
+              updatedAtMs: _draftAtMs,
+            ),
+          );
+        }
+
+        final state = WorkoutState(repo);
+        await state.loadHistoricalSession('s-1314');
+
+        final draft = state.buildTemplateDraftExercises().single;
+        expect(draft.effortKind, 'round');
+        expect(
+          [for (final t in draft.targets) (t.metricId, t.valueInt, t.valueReal)],
+          [(MetricIds.rounds, 3, null), (MetricIds.roundDuration, 90, null)],
+        );
+      });
+
+      test('S-1315: an effort with no distance invents no row and no target',
+          () async {
+        final repo = await _freshRepo();
+        await _seedDraftFixture(
+          repo,
+          sessionId: 's-1315',
+          effortKind: 'timed',
+          exerciseName: 'Easy Run',
+          entryCount: 2,
+        );
+
+        final state = WorkoutState(repo);
+        await state.loadHistoricalSession('s-1315');
+
+        final distanceEntries = state.getEffortDistanceEntries('eff-s-1315');
+        expect(distanceEntries, hasLength(2));
+        expect(distanceEntries.every((e) => e.row == null), isTrue);
+        expect(distanceEntries.map((e) => e.metres).toList(), [0.0, 0.0]);
+        expect(
+          state
+              .getObservationsForEffort('eff-s-1315')
+              .where((o) => o.metricId == MetricIds.distance),
+          isEmpty,
+          reason: 'no distance row is invented for an entry that holds none',
+        );
+
+        final draft = state.buildTemplateDraftExercises().single;
+        expect(
+          [for (final t in draft.targets) t.metricId],
+          [MetricIds.duration],
+          reason: 'a timed template carries no distance and no extra-weight '
+              'target when the effort holds none',
+        );
+      });
+
+      test('S-1315: an effort with no rows falls back to EffortDefaults',
+          () async {
+        final repo = await _freshRepo();
+        await _seedDraftFixture(
+          repo,
+          sessionId: 's-1315b',
+          effortKind: 'set',
+          exerciseName: 'Back Squat',
+          capabilities: const ['reps', 'load'],
+        );
+
+        final state = WorkoutState(repo);
+        await state.loadHistoricalSession('s-1315b');
+
+        final draft = state.buildTemplateDraftExercises().single;
+        expect(
+          [for (final t in draft.targets) (t.metricId, t.valueInt, t.valueReal)],
+          [
+            (MetricIds.reps, 10, null),
+            (MetricIds.weight, null, 0.0),
+          ],
+        );
+      });
+
+      test('S-1315: a session with no efforts yields no draft', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'resistance_lifting');
+
+        expect(state.buildTemplateDraftExercises(), isEmpty);
+        expect(state.getExercisesWithEntries(), isEmpty);
+      });
     });
 
     // ── Exercise set/round/drill previousValues carry-forward ────────────
@@ -2490,8 +2874,13 @@ void main() {
           // Capture the start timestamp so we can compute the expected end.
           final startMs = state.getEntryRests(effortId).first.restStartMs;
           await Future<void>.delayed(const Duration(milliseconds: 5));
+          // Bracket the pause between two wall-clock reads: the pause time is
+          // stamped somewhere inside this interval however slow the machine
+          // is, so the assertions below do not depend on how long it took.
+          final beforePauseMs = DateTime.now().millisecondsSinceEpoch;
           await state.pauseRest(effortId, 0);
-          // Wait well past the start while the rest is paused.
+          final afterPauseMs = DateTime.now().millisecondsSinceEpoch;
+          // Wait well past the pause while the rest is paused.
           await Future<void>.delayed(const Duration(milliseconds: 30));
           final wallNow = DateTime.now().millisecondsSinceEpoch;
           await state.recordRestEnd(effortId, 0);
@@ -2501,10 +2890,12 @@ void main() {
           // The recorded restEndMs must be the pause time, not wallNow,
           // because the user did nothing during the paused interval.
           expect(rest.restEndMs!, lessThan(wallNow));
-          // And it must be at or shortly after the start (we paused ~5 ms
-          // after start). The point: pause-time is captured faithfully.
+          // The pause time is captured faithfully: it was stamped inside the
+          // pause call's own interval, never later (a wall-clock end would
+          // land at or after wallNow, 30 ms past afterPauseMs).
           expect(rest.restEndMs!, greaterThanOrEqualTo(startMs));
-          expect(rest.restEndMs! - startMs, lessThan(20));
+          expect(rest.restEndMs!, greaterThanOrEqualTo(beforePauseMs));
+          expect(rest.restEndMs!, lessThanOrEqualTo(afterPauseMs));
           // The rest is no longer paused after ending.
           expect(rest.restIsPaused, isFalse);
           expect(rest.restPausedAtMs, isNull);

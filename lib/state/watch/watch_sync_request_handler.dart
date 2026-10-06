@@ -88,11 +88,23 @@ class WatchSyncRequestHandler {
 
   /// The answer to the wrist's "give me your session".
   ///
-  /// A phone with no ladder says nothing rather than sending an empty one: an
-  /// empty session is not a state, and the snapshot would replace the ladder the
-  /// wrist is actually working through (PROTOCOL.md, "Idempotency and
-  /// reconciliation").
+  /// The phone's own session comes first when it has one: the wrist is asking
+  /// what the phone is working through, and this mirror's copy is the wrist's
+  /// reflection of it, not the phone's state (D-11). Only a phone with no
+  /// session of its own — or whose session is not the one the wrist named
+  /// (D-10) — falls back to what it converged with the wrist.
+  ///
+  /// A phone with no ladder at all says nothing rather than sending an empty
+  /// one: an empty session is not a state, and the snapshot would replace the
+  /// ladder the wrist is actually working through (PROTOCOL.md, "Idempotency
+  /// and reconciliation").
   Future<bool> _sendSnapshot() async {
+    final projection = await _mirror.projectedSession();
+    if (projection != null) {
+      await _mirror.sendState(projection);
+      return true;
+    }
+
     if (_mirror.exercises.isEmpty) return false;
 
     await _mirror.sendSnapshot();

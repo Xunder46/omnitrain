@@ -77,7 +77,7 @@ Future<TrainingSession> _buildCompletedSession(
 
   await repo.createObservation(
     EffortObservation(
-      id: 'obs-reps-$sessionId',
+      id: 'obs-$effortId-0-reps',
       effortId: effortId,
       metricId: 'metric-reps',
       valueInt: reps,
@@ -87,7 +87,7 @@ Future<TrainingSession> _buildCompletedSession(
   );
   await repo.createObservation(
     EffortObservation(
-      id: 'obs-weight-$sessionId',
+      id: 'obs-$effortId-0-weight',
       effortId: effortId,
       metricId: 'metric-weight',
       valueReal: weightKg,

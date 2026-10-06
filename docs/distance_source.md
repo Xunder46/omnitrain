@@ -7,7 +7,7 @@
 (`EntryRows.distanceEntries` in `lib/core/utils/entry_rows.dart`, reached from
 state through `WorkoutState.getEffortDistanceEntries`; `DistancePairing` in
 `lib/core/utils/distance_source.dart` is the thin delegate older callers use),
-what the stored source resolves to (`DistanceSource`, same file), and the
+what a stored source means (`DistanceSource`, same file), and the
 writes that give a distance its source: `SessionCore.setEntryDistance` /
 `confirmEntryDistance` in `lib/state/workout/session_core_entry.dart`,
 delegated from `WorkoutState`, and `WatchSessionImporter` in
@@ -30,11 +30,19 @@ the schema refuses it at insert; both mirrors of the same rule are listed under
 Invariants below.
 
 `DistanceSource` is the only place that says what a stored source means:
-`resolve` maps a missing source to `entered`, and `isEstimated` answers whether
-a value is an estimate. Verified by `test/distance_source_test.dart` (`S-801`).
-`StatsProgressService` marks a training day as estimated when any distance
-counted in that day's total is one, and the Stats card renders that mark.
-Verified by `test/stats_distance_estimate_test.dart` (`S-832`–`S-835`).
+`isEstimated` answers whether a value is an estimate. A distance that holds a
+value always carries a source, so nothing ever has to substitute one for a
+missing source. Verified by `test/distance_source_test.dart` (`S-1301`).
+`StatsProgressService` marks an exercise's value as estimated when any distance
+behind it is one, and the Instruments list renders that mark. Verified by
+`test/instrument_list_screen_test.dart` (`S-1001`). The same service's
+cardio-efficiency read admits an effort only when its paired distance is above
+zero and its stored source is not the estimate, so a row carrying no source at
+all is eligible and an estimated row is not; a correction that changes the
+stored source changes that verdict. Verified by
+`test/cardio_efficiency_service_test.dart` (`Mock — cardioEfforts` › `the
+eligibility table` › `a estimated distance with a heart rate`, `S-2504 a
+correction to entered makes the effort eligible`).
 
 `DistancePairing` is how the source-aware code decides which distance row
 belongs to which entry. It delegates to `EntryRows` in
@@ -44,8 +52,8 @@ ordered by the number in their id, then `createdAtMs`, then id — not by the
 order a store happens to return them in. The Session Summary's rows build from
 the same list (`WorkoutState.getEffortDistanceEntries`, D-328), and the Stats
 pace reads the same pairing, so a row on screen and the row a write reaches are
-the same entry. A row past the last entry is a leftover: it pairs with nothing,
-it counts nowhere, and nothing deletes it.
+the same entry. A row placed past the last entry belongs to no entry: it pairs
+with nothing, it counts nowhere, and nothing deletes it.
 
 `SessionCore` owns the writes the phone makes to a distance: `setEntryDistance`
 stores a value and `confirmEntryDistance` re-records the value an entry already
@@ -60,9 +68,12 @@ When the edited entry has no row of its own, the write first fills every
 earlier unpaired entry with a zero-valued row, numbering them upward, so the
 row the edit writes is the *k*-th and lands on the entry the user chose. A new
 row is numbered above every row the effort holds, so a row is never written over
-a stored one. On an effort that is not timed, the entries are the distance rows
-themselves — the rows a stored distance keeps visible, which have no timed
-instance behind them.
+a stored one. Verified by `test/distance_source_test.dart` (`S-807`),
+`test/entry_identity_test.dart` (`S-864`) and
+`test/row_invariants_guard_test.dart` (`S-883`). Only a `timed` effort has
+distance entries: a distance belongs to a timed entry, and a distance row
+stored on another effort kind is not one. Verified by
+`test/distance_source_test.dart` (`S-1303`).
 
 The Session Summary's DISTANCE section is the one phone surface that calls
 `setEntryDistance` and `confirmEntryDistance`: the live screen and Edit Session
@@ -77,10 +88,10 @@ means is this document's.
 
 ## Rationale
 
-**Why a missing source reads as `entered`.** The Summary writes `entered`, and
-the watch import stores the source the watch sent, or `entered` when it sent
-none, because a watch that sends no source dialled the distance by hand.
-Verified by `test/distance_source_import_test.dart` (S-876, S-877).
+**Why the import treats an absent wire source as `entered`.** The watch import
+stores the source the watch sent, or `entered` when it sent none, because a
+watch that sends no source dialled the distance by hand. Verified by
+`test/distance_source_import_test.dart` (`S-876`, `S-877`).
 
 **Why confirming flips the source.** A stored `estimated` or `gps` value is
 something a machine produced. The moment a person looks at that number and
@@ -105,7 +116,8 @@ number it carries, and the fill keeps the rows a session already holds in the
 order their entries are in. Writing the missing rows as zero-valued,
 source-less rows keeps a later write's number free and costs nothing visible: a
 zero distance is absence, not a value. Verified by `test/distance_source_test.dart`
-(`S-807`).
+(`S-807`), `test/entry_identity_test.dart` (`S-864`) and
+`test/row_invariants_guard_test.dart` (`S-883`).
 
 ## Invariants
 
@@ -116,10 +128,9 @@ zero distance is absence, not a value. Verified by `test/distance_source_test.da
   `test/db_seed_test.dart` (`Distance source schema contract (D-301 / D-311)`).
 - `toMap` and the schema agree: every key the model writes is a column.
   Verified by `test/db_seed_test.dart` (same group).
-- A row stored without the key reads back as null, resolves to `entered`, is
-  not estimated, and round-trips through both repositories — including across a
-  Hive restart. Verified by `test/distance_source_test.dart` (`S-801`,
-  `S-802`).
+- A row stored without the key reads back as null, is not estimated, and
+  round-trips through both repositories — including across a Hive restart.
+  Verified by `test/distance_source_test.dart` (`S-1301`, `S-802`).
 - Every field-by-field copy of an observation forwards the source, so a copy
   never turns an estimate into an entered value or the reverse. Verified by
   `test/distance_source_test.dart` (`S-804 copies keep the source`, and the
@@ -132,22 +143,23 @@ zero distance is absence, not a value. Verified by `test/distance_source_test.da
 - Pairing is order-independent and pairs entry *k* with its own row for every
   entry. Verified by `test/distance_source_test.dart` (`S-808`).
 - Entries with no row of their own are filled in position before the edited
-  entry is written. Verified by `test/distance_source_test.dart` (`S-807`).
+  entry is written. Verified by `test/distance_source_test.dart` (`S-807`),
+  `test/entry_identity_test.dart` (`S-864`) and
+  `test/row_invariants_guard_test.dart` (`S-883`).
 - A distance's source survives a repository restart and an Edit Session
   snapshot and restore. Verified by `test/distance_source_test.dart` (`S-802`,
   `S-805`) and `test/session_summary_distance_test.dart` (`S-821`).
-- A reader of a distance resolves its source through `DistanceSource` rather
-  than testing the stored string, so a legacy row marks nothing and a reader
-  cannot invent a fourth meaning. Stats' estimate marking is
-  `test/stats_distance_estimate_test.dart` (`S-832`–`S-835`).
+- A reader of a distance reads the stored source and asks `DistanceSource` only
+  whether it is an estimate; no reader substitutes a source for a missing one.
+  Verified by `test/distance_source_test.dart` (`S-1301`) and the Instruments
+  list's estimate marking in `test/instrument_list_screen_test.dart` (`S-1001`).
 - A distance row belongs to the entry the number in its id names, in any order
   a store returns rows in, and the Summary's write and the Stats reader agree
-  on that pairing. Verified by `test/distance_source_test.dart` (`S-808`),
-  `test/entry_rows_test.dart` (`S-844`) and
-  `test/stats_distance_estimate_test.dart` (`S-831`).
-- A row past the last entry is a leftover: it pairs with no entry, counts in no
-  total, and stays stored. Verified by `test/entry_identity_test.dart`
-  (`S-858`).
+  on that pairing. Verified by `test/distance_source_test.dart` (`S-808`) and
+  `test/entry_rows_test.dart` (`S-844`).
+- A row placed past the last entry belongs to no entry: it pairs with no entry,
+  counts in no total, and stays stored. Verified by
+  `test/entry_identity_test.dart` (`S-858`).
 
 ## Vocabulary
 
@@ -155,12 +167,10 @@ zero distance is absence, not a value. Verified by `test/distance_source_test.da
   `gps` (the watch's GPS measured it), `entered` (a person typed or dialled it)
   or `estimated` (the watch platform estimated it). Only `estimated` is marked
   where a distance is displayed.
-- **Legacy distance** — a stored distance with no source key at all. It reads
-  as `entered`.
 - **Paired row** — the distance row an entry owns, as `DistancePairing`
   computes it. An entry with no distance has no paired row and reads as
   absence, never as zero.
-- **Leftover row** — a distance row placed past the last entry. No entry owns
+- **Unpaired row** — a distance row placed past the last entry. No entry owns
   it, so no reader counts it.
 - **Entry number** — the number an entry's rows carry in their ids. It is how
   the rest of the app addresses an entry (see

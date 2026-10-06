@@ -1732,7 +1732,8 @@ void main() {
         'which keeps its distance', () async {
       final (repository, inbox, _, workout) = await imported();
       final run = effortOf('sx-run', 'ex-run', 'timed');
-      await workout.addEntry(run, previousValues: {'distance': 5000.0});
+      await workout.addEntry(run);
+      await workout.setEntryDistance(run, 1, 5000.0);
       expect(
         (await observationAt(repository, run, 1, 'distance'))?.valueReal,
         5000.0,

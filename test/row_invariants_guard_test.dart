@@ -3,7 +3,9 @@
 // every step that no effort holds a leftover, stray or unsourced row (D-339).
 //
 // Scenarios S-883 – S-887 of
-// `docs/plans/2026-09-27-03b-stats-pr3b-distance-source-import-plan.md`.
+// `docs/plans/2026-09-27-03b-stats-pr3b-distance-source-import-plan.md`, and
+// S-1304 of
+// `docs/plans/2026-10-02-03a3-stats-pr3a3-phone-cleanup-plan.md`.
 // The invariants are `test/helpers/row_invariants.dart`. The import builders are
 // this file's own copies, as the plan requires (never an import across test
 // files).
@@ -308,6 +310,33 @@ void main() {
           reason: 'S-883 a zero distance carries no source',
         );
 
+        // A caller that still passes a distance in `previousValues` — the shape
+        // the retired carry-forward read — must not seed a positive distance
+        // with no source (S-1304).
+        await state.addEntry(run, previousValues: {'distance': 2500.0});
+        await check('2c addEntry(run, previousValues: {distance: 2500})');
+        expect(
+          state.getEffortDistanceEntries(run).last.metres,
+          0.0,
+          reason:
+              'S-1304 a new entry starts at zero, whatever the caller passed',
+        );
+        expect(
+          (await repo.getEffortObservations(run))
+              .where(
+                (row) =>
+                    row.metricId == MetricIds.distance &&
+                    (row.valueReal ?? 0) > 0 &&
+                    row.valueSource == null,
+              )
+              .toList(),
+          isEmpty,
+          reason: 'S-1304 no positive distance row is left without a source',
+        );
+
+        await state.deleteEntry(run, 3);
+        await check('2d deleteEntry(run, 3)');
+
         await state.deleteEntry(run, 0);
         await check('3 deleteEntry(run, 0)');
 
@@ -316,6 +345,11 @@ void main() {
 
         await state.updateEntryValue(run, 1, 'extra-weight', 5.0);
         await check('5 updateEntryValue(run, 1, extra-weight)');
+        expect(
+          _extraWeights(state, run, entries: 3),
+          [0.0, 5.0, 0.0],
+          reason: 'S-883 the fill keeps the 5 kg on entry 1',
+        );
 
         await state.deleteEntry(run, 1);
         await check('6 deleteEntry(run, 1)');

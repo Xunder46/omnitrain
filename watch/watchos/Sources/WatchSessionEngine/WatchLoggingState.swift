@@ -190,7 +190,14 @@ public final class WatchLoggingState {
     // MARK: - What the view is showing
 
     /// Whether there is an exercise in progress to log against.
-    public var canLog: Bool { engine.session != nil && slot != nil }
+    ///
+    /// An ended session is not a surface to log into (D-23): the engine keeps
+    /// accepting rows for a finished session — a `session_end` and an
+    /// `effort_rating` are appended after the finish — so the guard lives here,
+    /// where the logging surface asks.
+    public var canLog: Bool {
+        engine.session?.status == WatchSessionStatus.active && slot != nil
+    }
 
     /// The name of the exercise being logged, when there is one.
     public var exerciseName: String? { slot?["name"] as? String }

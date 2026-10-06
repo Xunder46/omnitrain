@@ -66,10 +66,12 @@ non-overlapping training periods).
 | [Profile & Measurements](profile_and_measurements.md) | Profile identity, avatar flow, body measurement logging, and history chart behavior |
 | [Theme & Settings](theme_and_settings.md) | Theme system, measurement/calendar preferences, timer alerts, workout toggles, and Settings screen behavior |
 | [Rolling Sessions](rolling_sessions.md) | Rolling/continuous free session format, segment block grouping, isRolling flag, and inline start-sheet guidance |
-| [Stats Screen](stats_screen.md) | All-time aggregates (Sessions / Time / Streak), scrollable Strength e1RM and volume trends, scrollable Cardio pace + distance (or duration) trends, all-time Recent PRs, and a full-history NUTRITION card with a Calories / Macros segmented toggle. Each section's top-N exercise list is selected from a "current-state window" (active training period or last 14 training days) while the trend charts themselves use the selected exercise's full history. |
+| [Stats Screen](stats_screen.md) | The all-time aggregate card (Sessions / Time / Streak), the Instruments list (one section per kind of work, one row per exercise, enumerating the work in the current window), and the Fuel row (intake averaged over its own logged-days window, split by training and rest days). The Instruments list is selected from a "current-state window" (active training period or the most recent training days). Its header opens [Records & Trends](records_and_trends.md). |
 | [Records & Trends](records_and_trends.md) | Per-exercise all-time bests, grouped by effort kind, with a search field and one exercise's progress page (best, series, recent training days). Reached from the Stats header's chart icon. |
 | [Stats Best-Load Investigation](stats_best_load_investigation.md) | Investigation finding (2026-08-16), not a feature doc. Traces every computation that produces a per-exercise best/heaviest-load figure and every surface that displays one. Records what the deleted Records section's "Heaviest load" actually computed (one set's `weight × reps`), which mislabeled figures are still live (Recent PRs and the session-summary PR line show an *estimated* 1RM as a bare weight), and why rep records came out uniformly `10` (a persisted default, not a cap). |
-| **Nutrition** — no dedicated feature doc yet | ⚠️ Nutrition shipped but never got its own feature document. Until one exists, the behavior is spread across [Navigation & Screens](navigation_and_screens.md) (the four nutrition screens and their flows), [Nutrition State](state_management/nutrition_state.md) (`NutritionState`, `FoodLibraryState`, `NutritionPrimerState`), [Nutrition Widgets](widget_catalog/nutrition_widgets.md) and [Home Screen & Nutrition Cards](widget_catalog/home_screen.md), [Data Models](data_models.md#nutrition-models), and [DB Integration](db_integration.md). |
+| [Training Load & Mix](training_load.md) | The pure definitions behind the training-load figures — session load, the effort-to-modality rule, the per-modality time and load splits, the segment rounding and order, the baseline period's calendar blocks, and the week-start helper. The single home for the arithmetic a caller imports rather than restates. |
+| [Signals](signals.md) | The pure Signals framework (`lib/core/models/signals.dart`, `lib/core/services/signals/`) and `SignalsService`: the rated-baseline gate, the card cap and priority rule, the quiet line, the kind vocabulary, the `Signal` contract, and the repository-backed dismissal store with its local-calendar-day window and pruning. |
+| [Nutrition](nutrition.md) | Daily food and water logging, the food library and the shipped catalog, nutrition targets, the full-history trend with its target line, and the first-run primer. Behaviour owner for the nutrition screens. |
 
 ### Release & Operations
 | Document | Description | Status |
@@ -82,13 +84,14 @@ non-overlapping training periods).
 | Document | Description |
 |----------|-------------|
 | [Navigation & Screens](navigation_and_screens.md) | Complete screen map, navigation flow, dependency injection pattern |
-| [State Management & Services](state_management.md) | **Index** — ChangeNotifier classes, service classes, dependency graph. Split into [Workout](state_management/workout_state.md), [Nutrition](state_management/nutrition_state.md), [Routine/Calendar/Home/Profile/Settings](state_management/app_state.md), and [Services & Utilities](state_management/services_and_utils.md) |
+| [State Management & Services](state_management.md) | **Index** — ChangeNotifier classes, service classes, dependency graph. Split into [Workout](state_management/workout_state.md), [Nutrition](state_management/nutrition_state.md), [Routine/Calendar/Home/Profile/Settings](state_management/app_state.md), [Services & Utilities](state_management/services_and_utils.md), and [The Watch Surface](state_management/watch_surface.md) |
 | [Data Models](data_models.md) | All domain models — sessions, exercises, templates, measurements, relationships |
 | [Constants & Configuration](constants_reference.md) | Modalities, capabilities, metrics, effort kinds, intents, design tokens |
 | [DB Integration](db_integration.md) | Database setup, schema, seed data, dual-backend strategy |
 | [Widget Catalog](widget_catalog.md) | **Index** — reusable UI components. Split into [Layout & Inputs](widget_catalog/layout_and_inputs.md), [Home & Nutrition Cards](widget_catalog/home_screen.md), [Session/Pickers](widget_catalog/session_widgets.md), [Nutrition Widgets](widget_catalog/nutrition_widgets.md), and [Routine/Profile/Brand](widget_catalog/feature_primitives.md) |
 | [Rest Tracking](rest_tracking.md) | Wall-clock rest tracking architecture, EntryRest model, DB-backed rest records between sets |
 | [Watch Session Capture](watch_session_capture.md) | How a session run on the watch becomes phone history — what the wrist sends (session end, effort rating, heart-rate and step summaries, the preferences it asks by), the watch session inbox, the import, rating precedence, the phone-ended rating question, tombstones, receipts, history liveness |
+| [Watch Session Sync](watch_session_sync.md) | The one-session model across the two devices — which session becomes the phone's, both directions of ending, the conflict rule, and what does not sync |
 | [Navigation Contract](navigation_contract.md) | The single source of truth for screen-level navigation. Enforced by `test/navigation_contract_enforcement_test.dart`; raw `MaterialPageRoute` / `PageRouteBuilder` outside `lib/core/navigation/` is a build break. The historical migration audit lives under [history/route-migration-audit.md](history/route-migration-audit.md). |
 
 ---
@@ -129,7 +132,7 @@ lib/
 │   ├── settings/         # SettingsScreen
 │   ├── splash/           # OmniSplashScreen (disabled)
 │   ├── startup/          # StartupFailureScreen
-│   ├── stats/            # StatsScreen + widgets/ (ScrollableTrendChart)
+│   ├── stats/            # StatsScreen + widgets/ (ScrollableTrendChart, StatsPrimerSheet)
 │   └── workout/          # (empty — reserved)
 ├── mock/                 # SeedData for development
 ├── state/
@@ -140,6 +143,7 @@ lib/
 │   ├── profile/          # ProfileState (profile + measurement flows)
 │   ├── routine/          # RoutineState (template CRUD)
 │   ├── settings/         # SettingsState (theme, unit, and preference state)
+│   ├── stats/            # StatsPrimerState (one-shot primer seen-flag)
 │   ├── workout/          # WorkoutState (session lifecycle)
 │   ├── nutrition_state.dart     # NutritionState (targets, consumed log, water)
 │   └── food_library_state.dart  # FoodLibraryState (catalog + groups + personal library)

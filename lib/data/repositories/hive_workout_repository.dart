@@ -2925,10 +2925,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   /// A copied row's id (D-329): its source id with the effort id replaced, so
-  /// the copy's entries stay addressable like any other. Nothing else about the
-  /// id changes — a 3a suffix stays, because dropping it would put two copied
-  /// rows on one id and merge them (F-8). A source row that carries no entry
-  /// number, or belongs to another effort, keeps a fresh unique id.
+  /// the copy's entries stay addressable like any other. A source row that
+  /// carries no entry number, or belongs to another effort, keeps a fresh
+  /// unique id.
   String _clonedRowId(
     String sourceId, {
     required String sourceEffortId,
@@ -3129,6 +3128,17 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<void> clearWatchInboxApplied(Iterable<String> entryIds) async {
+    for (final entryId in entryIds.toSet()) {
+      final raw = _watchInboxBox.get(entryId);
+      if (raw == null) continue;
+      final staged = WatchInboxEntry.fromMap(_asStringMap(raw));
+      if (staged.appliedAtMs == null) continue;
+      await _watchInboxBox.put(entryId, staged.unapplied().toMap());
+    }
+  }
+
+  @override
   Future<List<String>> getWatchSessionIdsWithUnappliedEnd() async {
     final ends = _watchInboxBox.values
         .map(_asStringMap)
@@ -3160,6 +3170,21 @@ class HiveWorkoutRepository implements WorkoutRepository {
     return true;
   }
 
+  /// The order both sensor-summary reads use: scope (in
+  /// `SensorSummary.scopes` order), then `windowStartMs`, then `targetId`.
+  ///
+  /// One comparator for the single-session read and the bulk read, so the two
+  /// orders cannot drift (D-513).
+  static int _compareSensorSummaries(SensorSummary a, SensorSummary b) {
+    final byScope = SensorSummary.scopes
+        .indexOf(a.scope)
+        .compareTo(SensorSummary.scopes.indexOf(b.scope));
+    if (byScope != 0) return byScope;
+    final byStart = a.windowStartMs.compareTo(b.windowStartMs);
+    if (byStart != 0) return byStart;
+    return a.targetId.compareTo(b.targetId);
+  }
+
   @override
   Future<List<SensorSummary>> getSensorSummariesForSession(
     String sessionId,
@@ -3169,16 +3194,21 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .where((m) => m['session_id'] == sessionId)
         .map(SensorSummary.fromMap)
         .toList();
-    summaries.sort((a, b) {
-      final byScope = SensorSummary.scopes
-          .indexOf(a.scope)
-          .compareTo(SensorSummary.scopes.indexOf(b.scope));
-      if (byScope != 0) return byScope;
-      final byStart = a.windowStartMs.compareTo(b.windowStartMs);
-      if (byStart != 0) return byStart;
-      return a.targetId.compareTo(b.targetId);
-    });
+    summaries.sort(_compareSensorSummaries);
     return summaries;
+  }
+
+  @override
+  Future<Map<String, List<SensorSummary>>> getSensorSummariesBySession() async {
+    final grouped = <String, List<SensorSummary>>{};
+    for (final raw in _sensorSummariesBox.values) {
+      final summary = SensorSummary.fromMap(_asStringMap(raw));
+      (grouped[summary.sessionId] ??= <SensorSummary>[]).add(summary);
+    }
+    for (final summaries in grouped.values) {
+      summaries.sort(_compareSensorSummaries);
+    }
+    return grouped;
   }
 
   /// D-131: every summary carries its session, so none outlives it.

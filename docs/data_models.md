@@ -62,13 +62,13 @@ Ordering contract:
 
 **`valueSource`.** A distance observation records where its value came from:
 `gps`, `entered` or `estimated`, or nothing at all. It is the only field of its
-kind — no other metric may carry a source — and an absent source means the row
-was written by a path that did not record one, which reads as `entered`. The
-model refuses a source on any other metric and a value outside that
-vocabulary, and the schema's CHECK mirrors it. Which entry a distance belongs
-to and who may change it are the subject of
-[Distance Source & Pairing](distance_source.md). Verified by
-`test/distance_source_test.dart` and `test/db_seed_test.dart`.
+kind — no other metric may carry a source. A distance that holds a value always
+carries a source; a zero distance carries none, because zero is absence, and
+nothing reads an absent source as `entered`. The model refuses a source on any
+other metric and a value outside that vocabulary, and the schema's CHECK
+mirrors it. Which entry a distance belongs to and who may change it are the
+subject of [Distance Source & Pairing](distance_source.md). Verified by
+`test/distance_source_test.dart` (`S-1301`) and `test/db_seed_test.dart`.
 
 **Observation Layout by Effort Kind:**
 
@@ -260,7 +260,7 @@ Used by the post-workout summary screen (not persisted):
 | `SessionSummary` | `lib/core/models/session_summary.dart` | Computed session stats | **Active** — read by the summary screen |
 | `SessionGroupMetrics` | same | Per-group summary card metrics (count + effort time or volume) | **Active** — drives the group cards |
 | `ExerciseSummary` | same | Per-exercise stats | **Active** — used by the summary service. Carries `bestWeight` (volume stat), `bestE1RM` (weight-axis PR stat for loaded sets), and `bestReps` (reps-axis PR stat for bodyweight sets). `bestE1RM` and `bestReps` are populated only for `effortKind == 'set'` efforts; an exercise on the weight axis has a non-null `bestE1RM`, an exercise on the reps axis has a non-null `bestReps`, never both. See `docs/plans/stats-summary-fix-pack-plan.md` Items 1 and 2. |
-| `PRAchievement` | same | New personal records | **Active** — inline PR rows on the group cards. Weight-axis (Epley e1RM, `StatsProgressService.epley1RM`) and reps-axis (max reps in a single set, `StatsProgressService.getAllTimeBestReps`) variants both surface here, distinguished by `metricLabel` (`'e1RM'` or `'reps'`). One entry per exercise per session — duplicate rows from cloned blocks are collapsed. Shared source of truth with the in-workout toast and the Stats screen (`docs/plans/stats-summary-fix-pack-plan.md` PR 1 + Item 2). |
+| `PRAchievement` | same | New personal records | **Active** — inline PR rows on the group cards. Weight-axis (Epley e1RM, `StatsProgressService.epley1RM`) and reps-axis (max reps in a single set, `StatsProgressService.getAllTimeBestReps`) variants both surface here, distinguished by `metricLabel` (`'e1RM'` or `'reps'`). One entry per exercise per session — duplicate rows from cloned blocks are collapsed. Shared source of truth with the in-workout toast and with the PR list in [Records & Trends](records_and_trends.md); the Stats screen renders no PRs (`test/records_and_trends_screen_test.dart`). See `docs/plans/stats-summary-fix-pack-plan.md` PR 1 + Item 2. |
 | `GroupDelta` | same | Per-group comparison chip data vs previous session | **Active** — the per-group progress chip on each group card |
 | `VolumeComparison` | same | Delta vs previous session | **Retained in model, not rendered.** The earlier standalone volume-comparison surface on the summary was removed; progress feedback now lives as per-group `GroupDelta` chips (see [Session Summary](session_summary.md)). The model class is preserved because the summary service still constructs one internally and tests pin the type. |
 | `SessionTemplateDraft` | same | Draft for save-as-routine | **Active** — the "Save as Routine" flow |
@@ -371,6 +371,32 @@ Derived getters:
     `73 * (3 / 1) = 219`.
 
 Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
+
+### FuelSummary
+
+`FuelSummary` (`lib/core/models/fuel_summary.dart`) is a **derived, never
+persisted** plain-Dart value type: no box, schema file or seed file holds one. It
+is built by `StatsProgressService.computeFuelSummary()` for the Stats screen's
+Fuel row and discarded with it. Verified by `test/fuel_row_screen_test.dart`.
+
+Its defining invariant is that every figure is an average over **logged days
+only** — a window with three logged days is a three-day mean, not a window-length
+one — and that absence is never zero. A window with nothing logged inside the
+service's visibility floor yields `null` from the service rather than a summary of
+zeros, and any individual figure with no data reads the Fuel row's absent marker
+instead of `0`.
+
+Logged days are split by whether a completed session started that day: the
+training side and the rest side are each averaged over their own days, so the
+split covers the same logged days the overall average does.
+
+The summary carries the window's logged-day count; the window's calories and
+protein averages and the preceding range's; the training and rest split of each;
+and the day's calorie and protein targets, with `hasCalorieTarget` /
+`hasProteinTarget` reporting which are set. The row compares
+an average against the target where one is set and against the previous range
+otherwise. The window it averages over is the service's own (`kFuelWindowDays`),
+not the Stats screen's selected training period.
 
 ---
 
@@ -492,10 +518,16 @@ independent of arrival order, and durable.
 Invariants:
 - **Put-if-absent by entry id.** The first copy is the record; a redelivered
   or altered copy never replaces it (`D-132 stages put-if-absent: …`).
-- **Applied once, never deleted.** A row keeps its first applied stamp
-  (`D-132 marks rows applied in one batch; …`). Applied rows are the tombstones
-  that keep history the user deleted from being re-created, so no history
-  delete cascades into the inbox (`D-132 the inbox survives deleteSession: …`).
+- **Applied once, never deleted, with one exception.** A row keeps its first
+  applied stamp (`D-132 marks rows applied in one batch; …`). Applied rows are
+  the tombstones that keep history the user deleted from being re-created, so
+  no history delete cascades into the inbox
+  (`D-132 the inbox survives deleteSession: …`). The exception is a Discard
+  that has to recover an entry which arrived while the Edit Session screen was
+  open: the stamp is unset on exactly that entry, so the next import pass
+  re-materialises it. The repository half is `clearWatchInboxApplied`
+  (`test/watch_capture_repository_parity_test.dart`, `S-1412`); the Discard is
+  `test/watch_session_edit_restore_late_entry_test.dart` (S-1401).
 - **The payload is frozen.** The event is held as its JSON encoding; the map a
   caller reads is a fresh copy, and a payload that is not a JSON object is
   refused (`D-132 a staged payload is JSON, …`).
@@ -514,30 +546,21 @@ Ids are never renumbered, so an id built from an entry's current display positio
 entry's rows. `EntryRows` in `lib/core/utils/entry_rows.dart` holds that rule for the phone's own
 readers and writers. One path builds its own ids instead: the watch import (below).
 
-**The routine-template defaults read rows without the rule.** Saving a session as a routine
-(`SessionSummaryBuilder.buildTemplateDraftExercises` in `lib/state/workout/session_summary_builder.dart`)
-drafts a timed or drill entry's extra-weight target from `_observations[effort.id].first`, and a set
-effort's targets from its rows sorted by `createdAtMs`, not by the number in each row's id. A row a
-store returns out of entry order, or a companion row created after the one it pairs with, can draft a
-template from the wrong entry's value. Exercised, but not pinned against reordering, by
-`test/state_test.dart` (`buildTemplateDraftExercises includes extra-weight target for timed`) and
-`test/services_test.dart` (`saveRoutineFromDraft`).
-
-
-**The rule.** An id is `obs-<effortId>-<n>-<metricKey>`, optionally followed by `-<digits>`. The
-metric keys are the values of `MetricIds.metricIdToKey`; an effort id may itself contain dashes, so
-only the number-key suffix is matched. Rows are ordered by number, then `createdAtMs`, then id; rows
-with no number follow in the store's own order. `set` entries are the groups of rows sharing a
-number, in ascending number; on an effort any of whose rows has no number, the sequential grouping
-of the legacy data applies instead. `timed` and `drill` entries are their `TimedInstance` records,
+**The rule.** An id is `obs-<effortId>-<n>-<metricKey>`. The metric keys are the values of
+`MetricIds.metricIdToKey`; an effort id may itself contain dashes, so
+only the number-key suffix is matched. Rows are ordered by number, then `createdAtMs`, then id; a
+row with no number belongs to no entry and sorts last, in the store's own order, so the order stays
+total. `set` entries are the groups of rows sharing a number, in ascending number; a row with no
+number is in no group, is ignored by every reader and stays stored — there is no sequential
+grouping of unnumbered rows. `timed` and `drill` entries are their `TimedInstance` records,
 and entry *k*'s row of each companion metric is the *k*-th row of that metric. A row placed past the
-last entry is a **leftover**: it belongs to no entry, it is ignored by every reader, and nothing
+last entry belongs to no entry: it is ignored by every reader, and nothing
 deletes it.
 
 **Numbering new rows.** A new row takes 1 + the highest number the effort holds, or 0 when it holds
-none. That covers each new set, timed or hold entry, and every row a distance write creates. No
-suffix is ever minted; an existing suffixed id reads as its number. A copied block's rows are named
-for the effort they were copied into, keeping the source's own number and metric key.
+none. That covers each new set, timed or hold entry, and every row a distance write creates. A
+copied block's rows are named for the effort they were copied into, keeping the source's own number
+and metric key.
 
 **The watch import is separate.** `WatchSessionImporter` numbers its own rows densely by entry
 position and reads ids with `EntryRows.parseId`; the phone's rule and the import's numbering are
@@ -546,7 +569,10 @@ compatible (the import appends at the highest number plus 1). Verified by
 own rows in an imported effort, and by `test/row_invariants_guard_test.dart` (S-887).
 
 The phone's own rule is verified by `test/entry_rows_test.dart` (`S-841`–`S-847`) and
-`test/entry_identity_test.dart` (`S-851`–`S-860`, `S-862`–`S-864`); the distance half is
+`test/entry_identity_test.dart` (`S-851`–`S-858`, `S-860`, `S-862`–`S-864`); an unnumbered row is in
+no entry and no delete reaches it (`S-1307` in `test/utils_test.dart`, `S-1308` in
+`test/entry_identity_test.dart`); a routine draft reads each entry's own row (`S-1311`–`S-1313` in
+`test/state_test.dart`); the distance half is
 [Distance Source & Pairing](distance_source.md)'s.
 
 ---
@@ -578,6 +604,47 @@ SensorSummary ──→ TrainingSession (owner, every scope)
 WatchInboxEntry  (keyed by entry id; references no history row, never cascaded)
 ```
 
+### The Instruments list value types
+
+`InstrumentSectionData` and `InstrumentRow` (`lib/core/models/instrument_list.dart`) are **derived, never persisted**: no box, schema file or seed file holds them. An `InstrumentSectionData` owns the section's ordered rows and the distinct-training-day count that ranked it; an `InstrumentRow` owns one exercise's `ExerciseMetricSummary` (its value and its series), the same exercise's value over the preceding range when the two are comparable, and the cadence and heart-rate figures its section reads. They are built by `StatsProgressService.computeInstrumentSections` and discarded with it. Verified by `test/instrument_list_service_test.dart` (S-1007).
+
+---
+
+### The training-load value types
+
+`MixMeasure`, `MixSegment`, `MixWeek` and `MixLayerData`
+(`lib/core/models/training_load.dart`) are **derived, never persisted**: no box,
+schema file or seed file holds them. `MixLayerData` owns one read's whole
+payload — the measure its figures are in, the window's segments, its baseline's
+segments, the two counts a surface reports, and the weekly strip. A `MixWeek`
+owns one week of that strip, and a `MixSegment` owns one modality's share of a
+bar: its exact measure and its rounded percentage, which are separate values so
+a width is never drawn from a rounded figure. The file also owns the pure
+arithmetic that builds them, so no caller restates the rule. Verified by
+`test/training_load_test.dart`.
+
+---
+
+### The Signals value types
+
+`SignalKind`, `SignalCard` and `SignalsData` (`lib/core/models/signals.dart`) are
+**derived, never persisted**: no box, schema file or seed file holds them. A
+`SignalKind` is the one classification a card carries; a `SignalCard` is one
+signal's proposal — its kind, its rank within that kind, and the copy it
+contributes; a `SignalsData` is the framework's answer for one load, holding the
+selected cards or the quiet-line state when none qualified. The only part of a
+signal that outlives a load is its dismissal, which is keyed by the signal's id
+in the repository preference store rather than by any of these types. Verified by
+`test/signals_framework_test.dart`.
+
+`ProgressionSample` and `ProgressionRate` (`lib/core/models/progression_rate.dart`)
+are **derived, never persisted** in the same way: a `ProgressionSample` is one
+exercise's best on its own metric in one completed session, and a `ProgressionRate`
+is the two windows' counts, exact rates and display percentages. The module also
+owns the two windows, the qualification test and the card's copy builder; it takes
+`now` as an argument, so it reads no clock and no repository. Verified by
+`test/progression_rate_test.dart` and `test/progression_samples_service_test.dart`.
+
 ---
 
 ## Code References
@@ -588,6 +655,11 @@ WatchInboxEntry  (keyed by entry id; references no history row, never cascaded)
 | Session summary models | `lib/core/models/session_summary.dart` |
 | Routine manifest models | `lib/core/models/routine_session_manifest.dart` |
 | Exercise metric and totals value types | `lib/core/models/exercise_metric.dart` |
+| Instruments list value types | `lib/core/models/instrument_list.dart` |
+| Training-load value types | `lib/core/models/training_load.dart` |
+| Signals value types | `lib/core/models/signals.dart` |
+| Progression Rate value types | `lib/core/models/progression_rate.dart` |
+| Fuel summary value type | `lib/core/models/fuel_summary.dart` |
 | Exercise extensions | `lib/core/utils/exercise_helpers.dart` |
 | SQLite schema | `scripts/sqlite_schema.sql` |
 

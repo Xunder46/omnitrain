@@ -9,15 +9,20 @@ liveness. It describes the phone half —
 (`WatchSessionImporter`), `lib/core/utils/logged_entry_rows.dart`
 (`LoggedEntryRows`) — their wiring in
 `lib/state/watch/watch_incoming_router.dart` and
-`lib/state/watch/watch_sync_wiring.dart`, and the phone's own question after
-it finishes a wrist session (`lib/features/session/live_session_screen.dart`,
-`lib/widgets/session/effort_rating_sheet.dart`). The stored models (`WatchInboxEntry`,
+`lib/state/watch/watch_sync_wiring.dart`, the Edit Session restore that brings
+back an entry which arrived while the screen was open
+(`lib/state/workout/session_core_lifecycle.dart`), the screen that captures the
+snapshot that restore reads (`lib/features/session/workout_session_screen.dart`),
+and the question the phone's Summary asks about an imported session
+(`lib/widgets/session/effort_rating_sheet.dart`). Which session is whose, and
+what ending a session on either device does, is
+[Watch Session Sync](watch_session_sync.md). The stored models (`WatchInboxEntry`,
 `SensorSummary`) belong to [Data Models](data_models.md); the wire format is
 `watch/sync_protocol/PROTOCOL.md` ("Session capture"); the live mirror is in
-[Services & Utilities](state_management/services_and_utils.md). "The wrist half"
+[The Watch Surface](state_management/watch_surface.md). "The wrist half"
 covers what the watchOS package (`watch/watchos/Sources/WatchSessionEngine/`)
 sends for the import; its sensors and the summaries computed from them are in
-[Services & Utilities](state_management/services_and_utils.md) ("Watch Sensors
+[The Watch Surface](state_management/watch_surface.md) ("Watch Sensors
 and the Platform Workout").
 
 ---
@@ -29,14 +34,15 @@ and the Platform Workout").
 | Staging what a wrist sends: effort entries, the effort rating and the session end, from `observations_up` and from a wrist `session_snapshot` | `WatchSessionInbox.receive`, which `WatchIncomingRouter` calls before the mirror and the nutrition bridge |
 | Staging the phone's own corrections and deletions of wrist entries | `WatchInboxStagingTransport`, the mirror's transport in `createWatchSync` |
 | The phone's own effort rating for a wrist session | `WatchSessionInbox.recordPhoneRating` |
-| Asking for it after the phone's own Finish | `LiveSessionScreen`, through `EffortRatingSheet` — the Session Summary's sheet — and `WatchSessionRatings`, the one inbox capability a screen receives; `createWatchSync` returns it in `WatchSyncGraph`, and `MyApp` and `HomeScreen` thread it beside the mirror |
+| Asking for the rating, after the fact | The Session Summary's `EffortRatingSheet` — its automatic prompt and its EFFORT row both open it — writing through `WorkoutState.updateSessionFeeling` |
 | Turning staged rows into history | `WatchSessionImporter.apply`, a service over `WorkoutRepository` only |
 | Keeping the rows the user added to an imported effort | `WatchSessionImporter`, which tells its own rows from the user's by the stamp every imported row carries |
 | The measured heart rate and steps, once imported | `SensorSummary` rows, one per target; why they are not `metric-heart-rate` observations is [Data Models](data_models.md)'s |
-| The phone's settings the wrist asks by | `WatchSyncRequestHandler`, which answers every wrist sync with `preferences_down` built by `WatchReferenceSync` from `SettingsState` — see [Services & Utilities](state_management/services_and_utils.md) |
+| The phone's settings the wrist asks by | `WatchSyncRequestHandler`, which answers every wrist sync with `preferences_down` built by `WatchReferenceSync` from `SettingsState` — see [The Watch Surface](state_management/watch_surface.md) |
 | The rows one logged entry becomes | `LoggedEntryRows`, shared with the phone's own logging in `SessionCore` |
 | Acknowledging what was applied | `WatchSessionInbox`, through the one receipt builder, `WatchNutritionLogBridge.receiptFor` |
 | Finishing an import the phone had not run when it stopped | `WatchSessionInbox.resume`, called once by `createWatchSync` |
+| Recovering a wrist entry that arrived while an Edit Session was open | `WatchLateEntryRecovery`, the inbox capability `SessionCore.restoreSessionSnapshot` calls on Discard; `createWatchSync` returns it in `WatchSyncGraph` and `lib/main.dart` hands it to `WorkoutState` |
 | Keeping history surfaces current | `createWatchSync`'s `onHistoryChanged`, which `lib/main.dart` points at `CalendarState.refresh` |
 
 ## Rationale
@@ -58,7 +64,12 @@ identical rows.
 **Why an import waits for the session end.** Only the wrist's `session_end`
 says whether a session completed or was abandoned, when it started and ended,
 and what it measured over the whole of it. Rows staged before it wait; rows
-arriving after it top the imported session up.
+arriving after it top the imported session up. A session the phone already holds
+as its own is the exception: the wrist's effort rows merge into the efforts that
+session already has as they arrive, with no end to wait for, and its end then
+adds only what the phone's session does not have — its rating, and its
+heart-rate summary, an abandoned end included. Verified by
+`test/watch_session_merge_test.dart` (`S-9`, `D-19`).
 
 **Why the rating and the end are observations of their own.** The wrist
 re-sends only observations the phone has not acknowledged; it never re-sends a
@@ -71,7 +82,7 @@ receipt names them, and their ids derive from the session (PROTOCOL.md,
 **Where the measurements travel.** Each timed, round and hold entry carries its
 own heart rate, and a timed entry its steps; the session's heart rate and each
 set block's travel in the `session_end`. Why they are computed on the wrist, and
-when, is [Services & Utilities](state_management/services_and_utils.md)'s
+when, is [The Watch Surface](state_management/watch_surface.md)'s
 ("Watch Sensors and the Platform Workout").
 
 **Why the rows a user added to an imported effort are never touched.** An
@@ -91,7 +102,10 @@ import independent of arrival order.
 **Why applied rows are kept.** An applied staged row is never materialised
 again, so it is also the record that history the user deleted — a session, an
 effort or one entry — was once there. That is what stops a later sync from
-re-creating it. Nothing deletes a staged row.
+re-creating it. Nothing deletes a staged row. The one exception is an Edit
+Session Discard: an entry that arrived while the screen was open is not in the
+snapshot the Discard restores, so the restore un-marks exactly that entry and
+runs one ordinary import pass to bring it back; the pass re-stamps it applied.
 
 **Why receipts wait for application.** A receipt tells the wrist it may drop an
 observation. Sent on arrival, it would let the wrist prune an entry the phone
@@ -117,16 +131,16 @@ the live session. Wrapping its transport lets the inbox see exactly what the
 wrist is sent, and stage it before the message leaves, without the mirror
 knowing history exists.
 
-**Why the phone's answer goes through the inbox.** When the phone finishes a
-wrist session, that session is not history yet: it becomes history when the
-wrist's `session_end` arrives, at the wrist's next sync. So the answer is
-staged as the phone's own rating and wins at import, or is written to the
-session directly if the import has already landed. A screen is handed only
-`WatchSessionRatings`, so recording a rating is all it can do to the inbox.
+**Why a phone rating goes through the inbox.** When the phone rates a wrist
+session that is not history yet, the rating is staged as the phone's own and wins
+at import; once the import has landed it is written to the session directly. One
+answer either way, which the import's own tests pin
+(`test/watch_session_import_test.dart`,
+`the phone’s own rating (D-138, D-139 state half)`).
 
 **Why the phone asks with the Summary's sheet.** One sheet for every phone
-surface that asks means the phone never asks a different question from the
-one the wrist asks, which the capture contract pins for both.
+surface that asks means the phone never asks a different question from the one
+the wrist asks, which the capture contract pins for both.
 
 ## Invariants
 
@@ -171,11 +185,13 @@ one the wrist asks, which the capture contract pins for both.
   `test/watch_capture_contract_test.dart` (`S-272`), which imports every case of
   `watch/contract/watch_capture_contract.json` on both and compares them row for
   row.
-- **Only the device that ended a live-mirrored session asks how hard it was.**
-  The phone's own Finish of a running session with something logged asks when
-  the Effort Rating setting is on, and only an answer closes the question; a
-  session the wrist completed is shown closed and asks nothing. Verified by
-  `test/live_session_effort_rating_test.dart` (`S-281` to `S-284`, `A-62`).
+- **Only the device that ended a session asks how hard it was.** The phone's own
+  Finish of a session with something logged asks when the Effort Rating setting
+  is on, and only an answer closes the question; a session the wrist completed is
+  shown closed and asks nothing, and the wrist's answer is the finished session's
+  one rating. Verified by `S-4` and `S-5` in `test/watch_session_finish_test.dart`,
+  and — for the phone's own rating — by the `the phone's own rating (D-138, D-139
+  state half)` group in `test/watch_session_import_test.dart` (`S-281`, `S-284`).
 - **Receipts name only applied entries.** Verified by `S-261` (`receipts are
   sent after the rows exist`) and `S-266` (a late entry is acknowledged and
   dropped).
@@ -183,6 +199,16 @@ one the wrist asks, which the capture contract pins for both.
   only when they carry the fields their kind requires.** A nutrition quick-log
   stays with the nutrition bridge. Verified by the `what the inbox stages`
   group in `test/watch_session_import_test.dart`.
+- **A wrist entry that arrived while an Edit Session was open survives
+  Discard.** The restore un-marks exactly the entries applied after the
+  snapshot's watermark and runs one import pass, so the entry returns as the
+  wrist sent it while the user's own edits are still discarded; the un-mark is
+  durable, so a pass that does not complete leaves the row to the next pass for
+  that session — the wrist re-sending it, or the start-up pass for a session
+  whose end has not been applied. A snapshot taken with no watermark recovers
+  nothing, and a session with no late entry is left untouched. Verified by
+  `test/watch_session_edit_restore_late_entry_test.dart` (`S-1401` to `S-1410`,
+  `S-1413`, `S-1414`) and the screen's own watermark capture (`S-1415`).
 
 ## The wrist half
 

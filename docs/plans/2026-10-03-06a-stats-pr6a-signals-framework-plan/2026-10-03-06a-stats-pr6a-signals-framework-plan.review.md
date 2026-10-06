@@ -1,0 +1,26 @@
+# Code Review — Stats PR 6 (6a + 6b + 5c), round 1
+
+> Plans: `2026-10-03-06a-stats-pr6a-signals-framework-plan.md` and `2026-10-03-06b-stats-pr6b-progression-rate-plan.md`.
+> **Verdict: CHANGES REQUESTED.** 0 CRITICAL, 4 WARNING, 2 SUGGEST.
+
+## Findings
+
+1. minor `lib/features/stats/stats_screen.dart` (~line 130): the load reads the dismissal store twice (once for `resolveSignals`, again inside `SignalsService.evaluateCandidates`). Fix: give `evaluateCandidates` an OPTIONAL named parameter `dismissedAtMs` (keep the old behaviour when it is omitted so Phase 1's service tests pass unchanged) and pass the map the screen already loaded; the store is then read once per load.
+2. minor `stats_screen.dart` (~line 192): two rapid dismissals fire two concurrent `unawaited(persistDismissals(...))` writes; completion order is not guaranteed, so a dismissal can be lost. Fix: serialise the writes with a single in-flight tail future in the screen state (each dismissal chains `service.persistDismissals(<the latest held map>)` after the previous one; never throws). Test on MOCK in `test/signals_layer_screen_test.dart`: two stub cards, tap dismiss on both in quick succession (two taps before any settle), then `settleStore` and assert the store holds BOTH ids. Show it fails under an inverse edit (make the persist write the older map / drop the chain) and restore exactly.
+3. minor `test/signals_layer_screen_test.dart` (header comment, ~line 8): says `buildSignalRegistry()` "is empty in this PR"; 6b registered `ProgressionRateSignal`. Rewrite the comment to describe the stub-injection seam (`StatsScreen(signals: [...])`) without the empty-registry claim.
+4. minor `docs/navigation_and_screens.md` (the `StatsScreen` row): add the Signals layer (between the Mix layer and the ALL TIME card; appears only when the Mix load baseline is ready) with a link to `signals.md`.
+5. nit `docs/signals.md` (~line 82): remove the restated key value; name only `kSignalDismissalsKey`.
+6. nit `docs/stats_screen.md` (~line 156): do not paste the card's copy template; point at `progressionRateCopy` (in `lib/core/models/progression_rate.dart`) and the test that asserts the strings (`test/progression_rate_signal_screen_test.dart`, S-1801).
+7. **Missing test S-1714 (reviewer warning; also required by the pack's item 8: "a test that the Home screen renders no signal content").** Add it per the plan's S-1714: with a gate-met fixture and both stubs registered via the screen seam elsewhere, build the Home screen and assert no `signals_layer`, no `signal_card_*`, no `signals_quiet_line` and no `SIGNALS` text on Home. Find how existing tests pump Home (search `test/` for the Home screen class, e.g. `HomeScreen` in `lib/features/home/`) and reuse their harness; Mock repository only if Home does any write. If Home's build needs heavy wiring, a source guard is an acceptable fallback ONLY IF the pump proves infeasible after two honest attempts: scan `lib/features/home/**` for imports of `signals` / `signals_layer` / `SignalsService` and assert none, and say in the evidence file why the pump was not possible. Tick S-1714 in the plan register as covered, naming the test.
+
+## Fix round 1 — result list
+
+1. **FIXED** — `SignalsService.evaluateCandidates` takes optional named `dismissedAtMs`; the screen passes the map it already loaded, so the store is read once per load. Omitting it keeps `loadDismissals()`, so Phase 1 service tests are unchanged. → `gateway.sh test test/signals_service_test.dart` green.
+2. **FIXED** — dismissals chain on one in-flight tail (`_signalsWriteTail`) writing `store = next`, never throwing. New Mock test `two taps before any settle persist both ids` (group `S-1709 two rapid dismissals`) asserts both ids persist; proven red under an inverse edit (persist the older map) at `signals_layer_screen_test.dart:946`, restored exactly. → `gateway.sh test --plain-name "two taps before any settle persist both ids" test/signals_layer_screen_test.dart` green.
+3. **FIXED** — `test/signals_layer_screen_test.dart` header comment rewritten to describe the stub-injection seam (`StatsScreen(signals: [...])`); the empty-registry claim is removed.
+4. **FIXED** — `docs/navigation_and_screens.md` `StatsScreen` row names the Signals layer between Mix and ALL TIME, shown only when the Mix load baseline is ready, and links `signals.md`.
+5. **FIXED** — `docs/signals.md` names `kSignalDismissalsKey` only; the restated key value is gone.
+6. **FIXED** — `docs/stats_screen.md` points at `progressionRateCopy` (`lib/core/models/progression_rate.dart`) and the S-1801 test instead of pasting the copy template.
+7. **FIXED (missing S-1714)** — `S-1714 renders no signal content` added to the HomeScreen group in `test/screen_widget_test.dart`; S-1714's register entry now names it under `**Covered by:**`. The read-count clause is not separately asserted (Home has no signals seam; `MockWorkoutRepository` exposes no read counter).
+
+Verification: `gateway.sh lint` → `196 issues found.`; the four signal test files → `+89: All tests passed!`; `test/docs_indexing_contract_test.dart` → `+9: All tests passed!`; full `gateway.sh test` → `+3548 ~1: All tests passed!` (baseline `+3546 ~1`, +2 = the two new tests).

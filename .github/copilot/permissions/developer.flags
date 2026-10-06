@@ -1,2 +1,2 @@
-# Developer: edits lib/, test/, docs/ and the plan's progress; runs checks through the gateway.
+# Developer: writes anywhere in the repo except the paths common.flags denies.
 --allow-tool=write

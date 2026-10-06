@@ -244,6 +244,60 @@ void main() {
     }
   });
 
+  group('S-31 phone-logged entries', () {
+    final fixture = _readJson(
+      'fixtures/valid/session_snapshot_with_entries.json',
+    );
+    final entries = _objectsIn(_payloadOf(fixture)['entries']);
+
+    test('the phone\'s snapshot carries its own entries and conforms', () {
+      expect(
+        _validator.validateEnvelope(fixture).map((r) => r.toString()).toList(),
+        isEmpty,
+      );
+      expect(
+        entries.map((entry) => entry['entryId']),
+        equals(<String>['entry-slot-bench-0', 'entry-slot-bench-1']),
+      );
+
+      final state = _reconcilerFor(fixture).convergedState();
+
+      expect(
+        (state['entries']! as List).map((entry) => _asObject(entry)['entryId']),
+        equals(<String>['entry-slot-bench-0', 'entry-slot-bench-1']),
+        reason: 'a receiver materialises every entry the answer carries',
+      );
+    });
+
+    test('an entry names its slot, its exercise, its set and its log time', () {
+      expect(
+        entries.first,
+        equals(<String, Object?>{
+          'entryId': 'entry-slot-bench-0',
+          'eventId': 'entry-slot-bench-0',
+          'kind': 'set',
+          'loggedAt': '2026-10-05T10:05:00Z',
+          'sessionExerciseId': 'slot-bench',
+          'exerciseId': 'ex-bench',
+          'reps': 8,
+          'loadKg': 60,
+        }),
+      );
+      expect(
+        _slotIds(_objectsIn(_payloadOf(fixture)['exercises'])),
+        contains(entries.first['sessionExerciseId']),
+        reason: 'an entry must name a slot the snapshot carries',
+      );
+      expect(entries.last['loadKg'], 62.5);
+      expect(entries.last['loggedAt'], '2026-10-05T10:10:00Z');
+      expect(
+        entries.first['eventId'],
+        equals(entries.first['entryId']),
+        reason: 'a phone entry\'s eventId is its entryId',
+      );
+    });
+  });
+
   test('S-002 duplicate delivery: replaying a stream changes nothing', () {
     final scenario = _readJson(
       'fixtures/reconciliation/duplicate_delivery.json',

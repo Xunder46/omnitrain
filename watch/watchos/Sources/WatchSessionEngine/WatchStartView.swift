@@ -56,6 +56,21 @@ public struct WatchSearchOnPhoneHint: View {
     }
 }
 
+/// "The phone is not there" — said only once the radio has observed it
+/// unreachable (D-8), so a cold start says nothing rather than something it has
+/// not learned.
+public struct WatchPhoneUnreachableHint: View {
+    public static let label = WatchStartSurfaceCopy.unreachableLabel
+
+    public init() {}
+
+    public var body: some View {
+        Label(Self.label, systemImage: "iphone.slash")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+    }
+}
+
 /// Where a session begins on the wrist, and what the user is handed when it
 /// does: the session to log against, never a screen to find.
 public struct WatchStartView: View {
@@ -71,6 +86,16 @@ public struct WatchStartView: View {
     /// Asks the phone for the routines. Nil leaves the button off the screen —
     /// the app owns the transport, not this view.
     private let onRequestSync: (() -> Void)?
+
+    /// What the radio last said about the phone. Unknown until the host has
+    /// observed something, which is what keeps a cold start from claiming the
+    /// phone is unreachable before anyone asked (D-8).
+    private let phoneReachability: WatchPhoneReachability
+
+    /// Bumped by the host on every arrival. The paths are a plain class that
+    /// publishes nothing, so this is the value whose change re-runs the picker's
+    /// body and makes it re-read the session it is showing.
+    private let revision: Int
 
     /// Wrist-scale inset. The phone's spacing tokens are sized for a full-width
     /// screen; this surface carries its own value rather than scaling one down.
@@ -90,12 +115,22 @@ public struct WatchStartView: View {
         paths: WatchSessionStartPaths,
         onSessionStarted: @escaping (WatchSessionRecord) -> Void,
         onOpenNutrition: (() -> Void)? = nil,
-        onRequestSync: (() -> Void)? = nil
+        onRequestSync: (() -> Void)? = nil,
+        phoneReachability: WatchPhoneReachability = .unknown,
+        revision: Int = 0
     ) {
         self.paths = paths
         self.onSessionStarted = onSessionStarted
         self.onOpenNutrition = onOpenNutrition
         self.onRequestSync = onRequestSync
+        self.phoneReachability = phoneReachability
+        self.revision = revision
+    }
+
+    /// What this surface says about the phone, from the one rule that decides it
+    /// (D-8, D-9).
+    private var phoneStatus: WatchPhoneStatus {
+        WatchPhoneStatus(reachability: phoneReachability)
     }
 
     public var body: some View {
@@ -119,10 +154,13 @@ public struct WatchStartView: View {
                 }
                 .buttonStyle(.bordered)
 
-                if let onRequestSync {
+                if let onRequestSync, phoneStatus.offersSync {
                     Button(Self.syncLabel, action: onRequestSync)
                         .buttonStyle(.bordered)
                 }
+
+                // D-8: said only once the radio has observed it.
+                if phoneStatus.sentence != nil { WatchPhoneUnreachableHint() }
 
                 WatchNoAutomaticSyncHint()
 
@@ -136,7 +174,7 @@ public struct WatchStartView: View {
             .padding(Self.surfaceInset)
         }
         .sheet(isPresented: $pickingExercise) {
-            WatchExercisePickerView(paths: paths) { session in
+            WatchExercisePickerView(paths: paths, revision: revision) { session in
                 pickingExercise = false
                 onSessionStarted(session)
             }
@@ -158,39 +196,58 @@ public struct WatchStartView: View {
     }
 }
 
-/// The exercise picker for a free workout: the fallback list, and nothing else.
+/// The exercise picker for a free workout: what the session already holds, then
+/// what the wrist can add to it.
 ///
 /// The full catalog deliberately never reaches the wrist, so this is not a
-/// search screen — it is a short list of what the watch knows it can log. When
-/// the phone is reachable, the screen says where the rest lives and waits for
-/// the push.
+/// search screen — it is a short list of what the watch knows it can log. An
+/// exercise the phone pushed into the live session appears here as the session's
+/// own row, so it is selectable rather than merely present; an exercise already
+/// on the ladder is offered once, as the row that moves the user to it, and not
+/// again as one that would add a second copy. When the phone is reachable, the
+/// screen says where the rest lives and waits for the push.
 public struct WatchExercisePickerView: View {
     private let paths: WatchSessionStartPaths
+
+    /// Bumped by the host on every arrival. The rows come from a plain class that
+    /// publishes nothing, so a push that lands while the picker is open shows up
+    /// only because this value changed and the body ran again.
+    private let revision: Int
+
     private let onExerciseAdded: (WatchSessionRecord) -> Void
 
     public init(
         paths: WatchSessionStartPaths,
+        revision: Int = 0,
         onExerciseAdded: @escaping (WatchSessionRecord) -> Void
     ) {
         self.paths = paths
+        self.revision = revision
         self.onExerciseAdded = onExerciseAdded
     }
 
     public var body: some View {
-        let exercises = paths.fallbackExercises
+        let rows = paths.pickerRows
 
         return ScrollView {
             VStack(spacing: 4) {
-                if exercises.isEmpty {
+                if rows.isEmpty {
                     Text("No exercises yet. Search on the phone and send one over.")
                         .font(.footnote)
                         .multilineTextAlignment(.center)
                 } else {
-                    ForEach(exercises, id: \.exerciseId) { exercise in
-                        Button(exercise.name) {
-                            Task { await add(exercise) }
+                    ForEach(rows, id: \.id) { row in
+                        if row.isInSession {
+                            Button(row.name) {
+                                Task { await select(row) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        } else {
+                            Button(row.name) {
+                                Task { await select(row) }
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.bordered)
                     }
                 }
 
@@ -200,8 +257,11 @@ public struct WatchExercisePickerView: View {
         }
     }
 
-    private func add(_ exercise: WatchCatalogExercise) async {
-        onExerciseAdded(await paths.addExerciseToSession(exercise))
+    /// A row the session holds moves the user to it; one it does not appends a
+    /// slot. Either way the session is what the screen is handed next.
+    private func select(_ row: WatchExercisePickerRow) async {
+        guard let session = await paths.selectExercise(row) else { return }
+        onExerciseAdded(session)
     }
 }
 

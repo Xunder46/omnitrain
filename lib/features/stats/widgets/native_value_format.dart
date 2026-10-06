@@ -60,6 +60,44 @@ String? formatNativeSecondary(NativeValue value, SettingsState settings) {
   return formatNativeMetric(metric, secondary, settings);
 }
 
+/// The name a [NativeValue]'s second figure reads under, or null when the
+/// metric carries no second figure. It is the metric that names it, not the
+/// screen, so a secondary figure never reads two ways.
+String? nativeSecondaryLabel(NativeMetric? metric) {
+  switch (metric) {
+    case NativeMetric.duration:
+      return 'Total hold';
+    case NativeMetric.roundMinutes:
+      return 'Total time';
+    case NativeMetric.estimatedOneRepMax:
+    case NativeMetric.reps:
+    case NativeMetric.pace:
+    case NativeMetric.hold:
+    case NativeMetric.rounds:
+    case null:
+      return null;
+  }
+}
+
+/// The change between an exercise's window value and its previous range's
+/// value, as a user reads it: an arrow and the signed magnitude, or an em dash
+/// when there is nothing to compare.
+///
+/// The sign is the raw numeric sign of [delta] — no per-metric exception, so a
+/// slower pace (a larger seconds-per-kilometre) reads `↑`. The magnitude is
+/// formatted by [formatNativeMetric]'s own per-metric rule, so a change and the
+/// figure above it read in one unit.
+String formatNativeChange(
+  NativeMetric metric,
+  double delta,
+  SettingsState settings,
+) {
+  if (delta == 0) return '—';
+  final arrow = delta > 0 ? '↑' : '↓';
+  final sign = delta > 0 ? '+' : '-';
+  return '$arrow $sign${formatNativeMetric(metric, delta.abs(), settings)}';
+}
+
 /// The number [metric] plots: [value] converted the same way
 /// [formatNativeMetric] converts it, so a chart's axis and the figure above it
 /// read in one unit. Only [NativeMetric.pace] is stored in a unit the user does

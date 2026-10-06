@@ -165,17 +165,16 @@ mode, and fired on a strict `>` against both the standing best and the session's
 **File**: `lib/widgets/session/effort_rating_sheet.dart`
 
 The session effort rating question, for every phone surface that asks it: the Session Summary's
-automatic prompt and its EFFORT row's add/change control, and the Watch Session screen after the
-phone's own Finish. `EffortRatingSheet.show` decides only whether the question must be answered
-(`mustAnswer`); where the answer goes is the caller's `onRated`, so the sheet writes nothing and
-each caller keeps its own owner of the rating — `WorkoutState` for a session in history,
-`WatchSessionRatings` for a wrist session that may not be history yet.
+automatic prompt and its EFFORT row's add/change control. `EffortRatingSheet.show` decides only
+whether the question must be answered (`mustAnswer`); where the answer goes is the caller's
+`onRated`, so the sheet writes nothing and the caller owns the rating — `WorkoutState` for a
+session in history.
 
-**Shared, so both devices ask one question.** The question, the scale and the end labels are held
+**Shared, so both copies ask one question.** The question, the scale and the end labels are held
 to `watch/contract/watch_effort_rating_contract.json`, the file the wrist's copy is held to.
-Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`). The rules each caller
-applies are in [Session Summary](../session_summary.md) ("Effort Rating Capture") and
-[Watch Session Capture](../watch_session_capture.md).
+Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`). The rules the
+session-summary caller applies are in [Session Summary](../session_summary.md) ("Effort Rating
+Capture"); the wrist's own ask is in [Watch Session Capture](../watch_session_capture.md).
 
 ---
 
@@ -209,27 +208,6 @@ exercises by relevance.
 Pushed from `SessionOverviewScreen`, `WorkoutSessionScreen`,
 `RoutineSetupScreen`, and the save-as-routine sheet on
 `SessionSummaryScreen`.
-
-The pop contract above holds only while no `liveSession` is supplied. Given one,
-the picker writes into the wrist's session and pops without a selection;
-`liveSessionInsertIndex` and `liveSessionSwapSlotId` choose between joining the
-ladder at a position and replacing what a slot holds, and a swap keeps the slot
-identity the ladder already has. Held by `test/interaction_flow_test.dart`,
-group `Phone manage-bridge for live sessions`.
-
-Sending to the watch is not a special case of selection — the two outcomes are
-disjoint, and only one is reachable per picker instance.
-
-### `LiveSessionEntryPoint`
-
-**File**: `lib/widgets/session/live_session_entry_point.dart`
-
-One-line way into the session running on the wrist, for the home panel. Shows
-the exercise the wrist is on and how many entries have been logged, read
-straight from `LiveSessionMirrorState` rather than from a copy. Presentation
-only: the caller owns the tap destination. Rendered only while a watch session
-is active — see `docs/navigation_and_screens.md` for the optional threading that
-makes a watch-less build lay out unchanged.
 
 ### `MetricChooserDialog`
 

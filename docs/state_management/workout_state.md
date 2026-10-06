@@ -20,8 +20,19 @@ _sessionCore     = SessionCore(
   notify: notifyListeners,
   timerManager: _timerManager,
   exerciseLibrary: _exerciseLibrary,
+  lateEntryRecovery: watchLateEntryRecovery,
 );
 ```
+
+The constructor also takes an optional `watchLateEntryRecovery`, the watch
+graph's `WatchLateEntryRecovery` handle, which the session core's restore calls
+on Discard so a wrist entry that arrived while the screen was open is not lost.
+It is null when the platform has no watch, and a null handle leaves the restore
+behaving exactly as it did before. Because the handle comes from the watch
+graph, `lib/main.dart` builds `WorkoutState` after `createWatchSync` and builds
+`ExerciseLibraryState` after both. Verified by
+`test/watch_session_edit_restore_late_entry_test.dart` (`S-1401` to `S-1410`,
+`S-1414`).
 
 Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListeners()` calls still fire once from the single `ChangeNotifier` that consumers subscribe to. No consumer screen or test changes are required.
 
@@ -75,6 +86,7 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 |--------|---------|
 | `createNewSession({modality, title, intent, routineTemplateId, isRolling})` | Creates session + segment; `isRolling` (bool, default `false`) sets `TrainingSession.isRolling` |
 | `loadSessionData()` | Loads exercises, efforts, observations for current session |
+| `refreshEfforts(effortIds)` | Re-reads only the named efforts' observations, instances and entry rests from the repository — a refresh, not a reload, so a running timer survives. Used by the watch merge (`docs/watch_session_sync.md`, D-17); verified by `test/watch_session_merge_test.dart`'s S-16 |
 | `loadHistoricalSession(session)` | Loads a previously completed session for review/edit mode; sets `_currentModalityConfig` correctly from `session.modality` |
 | `endSession()` | Marks session as ended (`endedAtMs`); idempotent — no-op if session already has `endedAtMs`. After a successful save, delegates to the injected `HealthSyncService` (no-op when not injected or when the health write toggle is off) |
 | `clearSession()` | Removes session reference from state (doesn't delete data) |
@@ -98,16 +110,16 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 
 | Method | Purpose |
 |--------|---------|
-| `addEntry(effortId, {previousValues})` | Creates a new set/interval/round/drill. The optional `previousValues` map carries forward metrics from the prior entry into the new observation rows / round instance — see the per-effort-kind table below. Keys not present fall back to the app-wide defaults in `lib/core/constants/effort_defaults.dart` and `workout_constants.dart`. The carry-forward is read-only on the prior entry — `previousValues` only seeds the new entry's defaults, it does not mutate prior observations. The `_addSet` caller in `workout_session_screen.dart` populates `previousValues` from the prior entry in `getExercisesWithEntries()` so each new set/interval/round/drill pre-fills with the prior values (June 2026, exercise-set-last-value-plan). |
+| `addEntry(effortId, {previousValues})` | Creates a new set/interval/round/drill. The optional `previousValues` map carries forward metrics from the prior entry into the new observation rows / round instance — see the per-effort-kind table below. A distance is never carried forward: a new timed entry starts at 0 m with no source (D-702). Keys not present fall back to the app-wide defaults in `lib/core/constants/effort_defaults.dart` and `workout_constants.dart`. The carry-forward is read-only on the prior entry — `previousValues` only seeds the new entry's defaults, it does not mutate prior observations. The `_addSet` caller in `workout_session_screen.dart` populates `previousValues` from the prior entry in `getExercisesWithEntries()` so each new set/interval/round/drill pre-fills with the prior values (June 2026, exercise-set-last-value-plan). Verified by `test/row_invariants_guard_test.dart` (`S-1304`) |
 
 | `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately; preserves all existing fields — `rpeRating`, `restDurationMs`, and, for every metric but distance, `valueSource`. A distance row's source is instead derived from the value written: `entered` for a positive value that has none, none for a zero (clearing it), and an existing source kept otherwise. The row it writes is the one entry *k* owns ([Entry Identity](../data_models.md#entry-identity), D-324), so an edit lands on the entry the user chose; a set's missing extra weight is created with that set's own number, and a hold's or a timed entry's missing predecessors are filled first. Verified by `test/entry_identity_test.dart` (`S-853`, `S-857`, `S-863`, `S-864`); the distance-source derivation by `test/distance_source_test.dart` (`S-804` (a)) and `test/row_invariants_guard_test.dart` (`S-883` steps 2a, 2b) |
 | `deleteLastEntry(effortId)` | Removes last set |
 | `deleteEntry(effortId, entryIndex)` | Removes exactly the rows entry *k* owns and nothing else — for a set, the *k*-th group; for a timed or hold entry, delegated to `deleteTimedEntry`. No row is renamed (D-326). Verified by `test/entry_identity_test.dart` (`S-851`, `S-852`, `S-860`) |
 | `markSetSkipped(effortId, entryIndex)` | Marks set as explicitly skipped with `valueInt: 0, valueBool: true`; survives reload via `_isSetLogged` check. Addresses entry *k* by the same rule as `updateEntryValue`. Verified by `test/entry_identity_test.dart` (`S-854`) |
-| `setEntryDistance(effortId, entryIndex, metres)` | Records a distance with source `entered` (zero removes it); an existing row keeps its id and `createdAtMs`, and earlier unpaired entries are filled first, numbered upward. A new row is numbered above every row the effort holds, so it never overwrites a stored one. Verified by `test/distance_source_test.dart` (`S-805`–`S-807`) and `test/entry_identity_test.dart` (`S-845`, `S-856`) |
+| `setEntryDistance(effortId, entryIndex, metres)` | Records a distance with source `entered` (zero removes it); an existing row keeps its id and `createdAtMs`, and earlier unpaired entries are filled first, numbered upward. A new row is numbered above every row the effort holds, so it never overwrites a stored one. Verified by `test/distance_source_test.dart` (`S-805`–`S-807`), `test/entry_identity_test.dart` (`S-845`, `S-856`, `S-864`) and `test/row_invariants_guard_test.dart` (`S-883`) |
 | `confirmEntryDistance(effortId, entryIndex)` | Re-records the metres an entry already holds, keeping them exactly, and flips the source to `entered`. Verified by `test/distance_source_test.dart` (`S-806`) |
 
-| `getEffortDistanceEntries(effortId)` | The effort's distance entries, each with its own row or none (D-328). The Summary builds its DISTANCE rows from this and the distance writes address the same list, so a row on screen and the row an edit lands on are the same entry. Verified by `test/entry_identity_summary_test.dart` (`S-858`, `S-859`) |
+| `getEffortDistanceEntries(effortId)` | The effort's distance entries, each with its own row or none (D-328). Only a `timed` effort has any: a distance belongs to a timed entry, so any other effort kind returns an empty list (D-703). The Summary builds its DISTANCE rows from this and the distance writes address the same list, so a row on screen and the row an edit lands on are the same entry. Verified by `test/entry_identity_summary_test.dart` (`S-858`) and `test/session_summary_distance_test.dart` (`S-1303`) |
 
 Both distance writes report failures through the same error channel as the
 other observation methods, and the entry-pairing rule they share with the
@@ -120,7 +132,7 @@ Summary and Stats lives in [Distance Source & Pairing](../distance_source.md).
 |--------|--------|
 | `populateSessionFromManifest(manifest)` | Loads exercises from `RoutineSessionManifest` |
 | `computeSessionSummary()` | Returns `SessionSummary`; counts `RoundState.finished` rounds (both natural completion and early-end logged rounds; not-started/active/paused are excluded) |
-| `buildTemplateDraftExercises()` | Returns `List<SessionTemplateExercise>` for save-as-routine |
+| `buildTemplateDraftExercises()` | Returns `List<SessionTemplateExercise>` for save-as-routine. Each target reads the entry's own row through `EntryRows`; a `timed`/`drill` template carries no distance target (`S-1311`–`S-1315` in `test/state_test.dart`) |
 
 ---
 

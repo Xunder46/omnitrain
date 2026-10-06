@@ -11,6 +11,7 @@ import '../../data/repositories/workout_repository.dart';
 import 'exercise_library.dart';
 import 'session_core.dart';
 import 'timer_manager.dart';
+import '../watch/watch_session_inbox.dart';
 
 /// Thin facade over SessionCore, TimerManager, and ExerciseLibrary.
 /// Preserves the full public surface of WorkoutState — no consumer changes needed.
@@ -24,7 +25,15 @@ class WorkoutState extends ChangeNotifier {
 
   /// [healthSync] is optional so existing construction sites (tests stand
   /// in for most of them) keep working; `main.dart` always injects one.
-  WorkoutState(this._repository, {HealthSyncService? healthSync}) {
+  ///
+  /// [watchLateEntryRecovery] is optional for the same reason: a build with
+  /// no watch, and every test that does not exercise the recovery, passes
+  /// nothing and the restore behaves exactly as it did before (D-803).
+  WorkoutState(
+    this._repository, {
+    HealthSyncService? healthSync,
+    WatchLateEntryRecovery? watchLateEntryRecovery,
+  }) {
     _timerManager = TimerManager(
       _repository,
       notify: notifyListeners,
@@ -46,6 +55,7 @@ class WorkoutState extends ChangeNotifier {
       timerManager: _timerManager,
       exerciseLibrary: _exerciseLibrary,
       healthSync: healthSync,
+      lateEntryRecovery: watchLateEntryRecovery,
     );
     _timerManager.bindObservations(_sessionCore.observationsMap);
   }
@@ -92,8 +102,17 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.getAllSessions();
   Future<List<TrainingSession>> getSessionsByDateRange(int fromMs, int toMs) =>
       _sessionCore.getSessionsByDateRange(fromMs, toMs);
-  SessionEditSnapshot? snapshotSessionState() =>
-      _sessionCore.snapshotSessionState();
+  SessionEditSnapshot? snapshotSessionState({
+    Set<String>? watchEntryIdsAppliedAtSnapshot,
+  }) => _sessionCore.snapshotSessionState(
+    watchEntryIdsAppliedAtSnapshot: watchEntryIdsAppliedAtSnapshot,
+  );
+
+  /// The `entryId` of every applied inbox row of the current session — the
+  /// watermark an edit snapshot taken now carries (D-801). Read before the
+  /// session's rows are loaded.
+  Future<Set<String>> appliedWatchEntryIds() =>
+      _sessionCore.appliedWatchEntryIds();
 
   Future<void> resetSessionTimerStart() =>
       _sessionCore.resetSessionTimerStart();
@@ -116,6 +135,13 @@ class WorkoutState extends ChangeNotifier {
   Future<void> loadHistoricalSession(String sessionId) =>
       _sessionCore.loadHistoricalSession(sessionId);
   Future<void> loadSessionData() => _sessionCore.loadSessionData();
+
+  /// Re-reads the named efforts' rows into the live session, notifying once.
+  /// A merge of wrist rows uses this so the session screen shows them without
+  /// reloading the session or stopping a running timer (`loadSessionData`
+  /// clears both timer managers; this does not).
+  Future<void> refreshEfforts(Iterable<String> effortIds) =>
+      _sessionCore.refreshEfforts(effortIds);
   Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) =>
       _sessionCore.populateSessionFromManifest(manifest);
   Future<void> endSession() => _sessionCore.endSession();

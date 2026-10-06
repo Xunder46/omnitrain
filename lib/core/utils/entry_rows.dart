@@ -16,13 +16,12 @@ library;
 import '../../data/models/models.dart';
 import '../constants/metric_ids.dart';
 
-/// One set entry: the rows that carry its number, or — on the legacy fallback
-/// — the rows of one sequential group of a store that has no numbers.
+/// One set entry: the rows that carry its number.
 class SetRows {
   const SetRows(this.number, this.rows);
 
-  /// The entry number these rows carry, or null on the legacy fallback.
-  final int? number;
+  /// The entry number these rows carry.
+  final int number;
 
   final List<EffortObservation> rows;
 
@@ -80,10 +79,10 @@ abstract final class EntryRows {
       MetricIds.metricIdToKey.values.toList()
         ..sort((a, b) => b.length.compareTo(a.length));
 
-  /// The id pattern: `obs-<effortId>-<n>-<metricKey>`, optionally followed by
-  /// the `-<digits>` a 3a write appended when an id was taken (D-313).
+  /// The id pattern: `obs-<effortId>-<n>-<metricKey>` (D-324). A suffix is not
+  /// part of the shape, so a suffixed id carries no number (D-704).
   static final RegExp _idPattern = RegExp(
-    '^obs-.*-(\\d+)-(${_metricKeys.join('|')})(?:-\\d+)?\$',
+    '^obs-.*-(\\d+)-(${_metricKeys.join('|')})\$',
   );
 
   /// [id]'s entry number and metric key, or null when it does not follow the
@@ -101,7 +100,8 @@ abstract final class EntryRows {
   static int? numberInId(String id) => parseId(id)?.number;
 
   /// [rows] in entry order (D-324): by entry number, then by the order the row
-  /// was written. Rows with no number follow, in the store's own order.
+  /// was written. A row with no number belongs to no entry and sorts last, in
+  /// the store's own order, so the order stays total (D-705).
   static List<EffortObservation> ordered(Iterable<EffortObservation> rows) {
     final listed = rows.indexed.toList()
       ..sort((a, b) {
@@ -114,14 +114,19 @@ abstract final class EntryRows {
   }
 
   /// The row each entry owns of [metricId], in entry order: `paired[0]` is the
-  /// first entry's row, or null when it has none. A row past the last entry is
-  /// a leftover: it pairs with nothing and is ignored (D-321, D-322).
+  /// first entry's row, or null when it has none. Only numbered rows pair; a
+  /// row placed past the last entry belongs to no entry: it pairs with nothing
+  /// and is ignored (D-321, D-322, D-713).
   static List<EffortObservation?> companions({
     required Iterable<EffortObservation> rows,
     required String metricId,
     required int entryCount,
   }) {
-    final metricRows = ordered(rows.where((row) => row.metricId == metricId));
+    final metricRows = ordered(
+      rows.where(
+        (row) => row.metricId == metricId && numberInId(row.id) != null,
+      ),
+    );
     final paired = List<EffortObservation?>.filled(entryCount, null);
     for (var i = 0; i < entryCount && i < metricRows.length; i++) {
       paired[i] = metricRows[i];
@@ -147,14 +152,14 @@ abstract final class EntryRows {
   }
 
   /// The effort's set entries, in entry order (D-324): entry k is the k-th
-  /// group of rows that share a number. An effort any of whose rows has no
-  /// number keeps the sequential grouping its store implies (legacy).
+  /// group of rows that share a number, in ascending number. A row with no
+  /// number belongs to no entry: it is in no group, is ignored by every reader
+  /// and stays stored (D-705).
   static List<SetRows> setGroups(Iterable<EffortObservation> rows) {
-    final listed = rows.toList();
     final byNumber = <int, List<EffortObservation>>{};
-    for (final row in listed) {
+    for (final row in rows) {
       final number = numberInId(row.id);
-      if (number == null) return _sequentialGroups(listed);
+      if (number == null) continue;
       (byNumber[number] ??= []).add(row);
     }
 
@@ -170,27 +175,18 @@ abstract final class EntryRows {
   /// [effortId]'s distance entries (D-328).
   ///
   /// A `timed` effort's entries are its timed instances, so an entry keeps its
-  /// place whether or not a distance was recorded. On any other kind the rows
-  /// are the entries themselves, and only those that hold a distance appear —
-  /// the data-safety rows of D-319 have no instance behind them.
+  /// place whether or not a distance was recorded. Any other kind has no
+  /// distance entries at all: a distance belongs to a timed entry, and a row
+  /// stored on another kind is not one (D-703).
   static List<DistanceEntry> distanceEntries({
     required Iterable<EffortObservation> rows,
-    required bool timed,
     required int instanceCount,
   }) {
-    final List<EffortObservation?> entries = timed
-        ? companions(
-            rows: rows,
-            metricId: MetricIds.distance,
-            entryCount: instanceCount,
-          )
-        : ordered(
-            rows.where(
-              (row) =>
-                  row.metricId == MetricIds.distance &&
-                  (row.valueReal ?? 0) > 0,
-            ),
-          );
+    final entries = companions(
+      rows: rows,
+      metricId: MetricIds.distance,
+      entryCount: instanceCount,
+    );
 
     return [
       for (var i = 0; i < entries.length; i++)
@@ -209,33 +205,5 @@ abstract final class EntryRows {
 
     final byCreated = a.createdAtMs.compareTo(b.createdAtMs);
     return byCreated != 0 ? byCreated : a.id.compareTo(b.id);
-  }
-
-  /// Today's grouping for an effort that has no numbers to group by: a group
-  /// ends where a metric repeats, and only a group that holds both reps and
-  /// weight is an entry.
-  static List<SetRows> _sequentialGroups(List<EffortObservation> rows) {
-    final groups = <SetRows>[];
-    var current = <EffortObservation>[];
-    var seenMetrics = <String>{};
-
-    void flush() {
-      if (current.isEmpty) return;
-      if (seenMetrics.contains(MetricIds.reps) &&
-          seenMetrics.contains(MetricIds.weight)) {
-        groups.add(SetRows(null, current));
-      }
-      current = [];
-      seenMetrics = {};
-    }
-
-    for (final row in rows) {
-      if (seenMetrics.contains(row.metricId)) flush();
-      seenMetrics.add(row.metricId);
-      current.add(row);
-    }
-    flush();
-
-    return groups;
   }
 }

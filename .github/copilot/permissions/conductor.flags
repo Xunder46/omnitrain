@@ -1,2 +1,3 @@
-# Planner: writes plan files only.
+# Planner: writes plan folders only (docs/plans/**). In OmniTrain every doc lives under docs/, and
+# feature docs are updated by the implementers, so the bundle default (plans + docs) is narrowed here.
 --allow-tool=write(docs/plans/**)

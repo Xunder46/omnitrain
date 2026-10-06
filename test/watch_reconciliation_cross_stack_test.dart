@@ -125,6 +125,66 @@ void main() {
     });
   }
 
+  test('S-31 a snapshot\'s own entries are absorbed by both stacks, once each',
+      () async {
+    final fixture = fixtures.firstWhere(
+      (fixture) => (fixture['name']! as String).contains('adds the entries'),
+    );
+    final snapshot = _asObject(fixture['snapshot']);
+    final phone = SyncSessionReconciler.fromSnapshot(_payloadOf(snapshot));
+    final engine = WatchSessionEngine(
+      InMemoryWatchSessionStore(),
+      clock: () => _now,
+    );
+    await engine.applyMessage(snapshot);
+
+    final named = <String>[
+      for (final entry in _objectsIn(_payloadOf(snapshot)['entries']))
+        entry['entryId']! as String,
+    ];
+
+    for (final message in _streamOf(fixture)) {
+      phone.applyMessage(message);
+      if (message['type'] == 'observations_up') continue;
+      await engine.applyMessage(message);
+      if (message['type'] == 'session_snapshot') {
+        named.addAll([
+          for (final entry in _objectsIn(_payloadOf(message)['entries']))
+            entry['entryId']! as String,
+        ]);
+      }
+    }
+
+    final phoneEntryIds = _objectsIn(phone.convergedState()['entries'])
+        .map((entry) => entry['entryId'])
+        .toList(growable: false);
+    final watchEntryIds =
+        engine.entries.map((entry) => entry.entryId).toList(growable: false);
+
+    expect(
+      named.toSet(),
+      equals(<String>{'entry-slot-bench-0', 'entry-slot-bench-1'}),
+      reason: 'the fixture names a held id and an id the wrist does not hold',
+    );
+    expect(
+      watchEntryIds,
+      containsAll(named.toSet()),
+      reason: 'the wrist stores the id it does not hold and does not double '
+          'the one it already has',
+    );
+    expect(
+      phoneEntryIds,
+      containsAll(named.toSet()),
+      reason: 'the phone holds the entries its own answers carry',
+    );
+    expect(
+      watchEntryIds.length,
+      watchEntryIds.toSet().length,
+      reason: 'no entry may be stored twice',
+    );
+    expect(phoneEntryIds.length, phoneEntryIds.toSet().length);
+  });
+
   test('S-009 removing the current exercise leaves both stacks on the next one',
       () async {
     final fixture = fixtures.firstWhere(

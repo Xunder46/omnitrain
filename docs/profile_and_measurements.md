@@ -18,7 +18,7 @@ Primary capabilities:
 
 - `HomeScreen` maintenance sheet:
   - Profile tile pushes `ProfileScreen`
-  - Stats tile pushes `StatsScreen` (all-time aggregates, scrollable strength + cardio trends, Recent PRs, NUTRITION card — see [Stats Screen](stats_screen.md))
+  - Stats tile pushes `StatsScreen` (all-time aggregates, the Instruments list, the Fuel row — see [Stats Screen](stats_screen.md))
   - Settings tile pushes `SettingsScreen` (preferences, sounds & alerts, Effort Rating toggle, theme grid, version footer — see [Theme & Settings](theme_and_settings.md))
 - `ProfileScreen` depends on `ProfileState` via constructor injection
 
@@ -128,7 +128,7 @@ opening their respective editors.
 
 - Renders inside the shared `ScrollableTrendChart` wrapper (pinned
   y-axis column on the left, horizontally scrollable plot on the
-  right — same primitive used by the stats screen).
+  right).
 - Loads the **full** history (no `take(10)` cap). The chart shows
   the 8 most recent days by default and older days are reachable
   by horizontal scroll.
