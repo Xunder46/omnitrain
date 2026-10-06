@@ -6,7 +6,7 @@
 /// written together, so they share a stamp. This file turns a slot's groups into
 /// wire entries — minting the id (`entry-<sessionExerciseId>-<n>`, D-33), writing
 /// the group's stamp as the protocol's UTC instant (D-36), and leaving out what
-/// the wire cannot carry (D-40).
+/// the wire cannot carry (D-60).
 ///
 /// The provenance rule lives here too (D-34): a group a live watch-inbox row
 /// claims by stamp is the wrist's own and is **not** projected. The wrist
@@ -17,10 +17,11 @@
 /// `WatchSessionAdoptionBridge.projectSession`.
 ///
 /// Verified by `test/watch_session_projection_test.dart` (S-31, S-33, S-34,
-/// S-36, S-37, S-39, S-40, S-42, S-43).
+/// S-36, S-37, S-39, S-40, S-43, S-59, S-60).
 library;
 
 import '../utils/entry_rows.dart';
+import 'wire_limits.dart';
 import 'wire_timestamps.dart';
 
 abstract final class PhoneEntries {
@@ -110,14 +111,16 @@ abstract final class PhoneEntries {
   }
 
   /// One group as the wire spells an entry, or null when the wire cannot carry
-  /// it (D-40). `reps` has a minimum of 1, and the phone writes a skipped set as
-  /// reps 0, so that rule alone omits it — there is no field to say a set was
-  /// skipped (`additionalProperties: false`). `loadKg` has a minimum of 0, and
-  /// the phone stores a negative weight for a band-assisted set, so a set with a
-  /// negative weight is omitted too (S-42). A rejected entry rejects the
-  /// **whole** snapshot, so an entry that cannot be rendered is omitted, never
-  /// placeheld. A set's added weight is not sent either: the wire's extra load
-  /// is a hold's.
+  /// it (D-60). The omissions are exactly two: `reps` has a minimum of 1 and the
+  /// phone writes a skipped set as reps 0, and `loadKg` has a minimum of
+  /// [WireLimits.minLoadKg] — a band-assisted set is stored negative and is
+  /// carried with its sign, while a weight below the floor is left out. A
+  /// rejected entry rejects the **whole** snapshot, so an entry that cannot be
+  /// rendered is omitted, never placeheld (S-59, S-60).
+  ///
+  /// A weight of zero (or no weight at all) is carried without a `loadKg` key:
+  /// the wire keeps "no load" and "load 0" indistinguishable, as it always has.
+  /// A set's added weight is not sent either: the wire's extra load is a hold's.
   static Map<String, Object?>? _entry({
     required String sessionExerciseId,
     required String exerciseId,
@@ -128,10 +131,10 @@ abstract final class PhoneEntries {
     if (reps < 1) return null;
 
     final weightKg = (set['weight'] as double?) ?? 0.0;
-    if (weightKg < 0) return null;
+    if (weightKg < WireLimits.minLoadKg) return null;
 
     final entryId = 'entry-$sessionExerciseId-${group.number}';
-    return <String, Object?>{
+    final entry = <String, Object?>{
       'entryId': entryId,
       'eventId': entryId,
       'kind': setKind,
@@ -141,7 +144,8 @@ abstract final class PhoneEntries {
       'sessionExerciseId': sessionExerciseId,
       'exerciseId': exerciseId,
       'reps': reps,
-      'loadKg': weightKg,
     };
+    if (weightKg != 0) entry['loadKg'] = weightKg;
+    return entry;
   }
 }

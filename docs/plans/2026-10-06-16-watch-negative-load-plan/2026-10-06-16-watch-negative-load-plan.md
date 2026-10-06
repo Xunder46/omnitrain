@@ -313,40 +313,40 @@ manifest). If a check ignores a path argument it runs the whole suite; the gate 
 `watch/sync_protocol/PROTOCOL.md`.
 
 ### Phase 2: the phone (@developer)
-1. [ ] Add `lib/core/sync_protocol/wire_limits.dart`: `abstract final class WireLimits` with
+1. [x] Add `lib/core/sync_protocol/wire_limits.dart`: `abstract final class WireLimits` with
    `static const double minLoadKg = -200.0;`, a doc comment naming D-59, the three schema sites it
    mirrors and the test that keeps them equal. · `WireLimits.minLoadKg`
-2. [ ] Change `PhoneEntries._entry` in `lib/core/sync_protocol/phone_entries.dart` (~112–150): keep
+2. [x] Change `PhoneEntries._entry` in `lib/core/sync_protocol/phone_entries.dart` (~112–150): keep
    the `reps < 1` omission, replace the negative-load omission with
    `if (weightKg < WireLimits.minLoadKg) return null;`, carry the value verbatim (D-60), add the
    `wire_limits.dart` import, and rewrite the doc comment above it (it cites D-40/S-42 and states a
    negative load is not carried) to cite D-58/D-60 and S-58/S-60. · `PhoneEntries._entry`
-3. [ ] Change the correction validity in `_effectiveEntry` in
+3. [x] Change the correction validity in `_effectiveEntry` in
    `lib/core/services/watch_session_importer.dart` (~1505) from `value >= 0` to
    `value >= WireLimits.minLoadKg` for `'loadKg'`, leaving `reps`/`durationMs`/`distanceMeters` alone,
    and add the import (D-63). · `_effectiveEntry`
-4. [ ] Add `test/watch_wire_limits_test.dart`: read `envelope.schema.json` and
+4. [x] Add `test/watch_wire_limits_test.dart`: read `envelope.schema.json` and
    `messages/structure_change.schema.json`, pull the three `loadKg` minimums from the decoded JSON (no
    regex over raw text), and assert each equals `WireLimits.minLoadKg` and differs from `0`; one test
    per site so a single reverted minimum fails by name. · `'S-061 the three schema loadKg floors are the one constant'`
-5. [ ] Rewrite the S-42 test in `test/watch_session_projection_test.dart` (~1428–1480) as two tests,
+5. [x] Rewrite the S-42 test in `test/watch_session_projection_test.dart` (~1428–1480) as two tests,
    S-59 and S-60: the `_Set` fixture grows the rows listed in those scenarios (including `-200`,
    `-200.1`, `-240` and a `weightKg 0.0` row), the skipped row still vanishes, and the assertions
    decode the payload into `entryId → loadKg` instead of matching substrings. · `'S-59'`, `'S-60'`
-6. [ ] Add `test/watch_session_import_test.dart` cases: `'S-58'` — one wrist `set` event at
+6. [x] Add `test/watch_session_import_test.dart` cases: `'S-58'` — one wrist `set` event at
    `loadKg: -20` lands with `weightKg == -20.0` and the summary volume is `-160`; `'S-63'` — the
    next-set carry-over reads a negative last-logged load back; extend the `S-267 live corrections
    carry into history` group with `'S-65'` — corrections of `-20` and `-200` land and `-240` is
    refused, the entry keeping its previous value. Reuse the group's `_set(entryId, {…})` helper. · `'S-58'`, `'S-63'`, `'S-65'`
-7. [ ] Add `test/watch_reconciliation_cross_stack_test.dart` test `'S-67'`: replay
+7. [x] Add `test/watch_reconciliation_cross_stack_test.dart` test `'S-67'`: replay
    `reconciliation/band_assist_carried.json`, then assert the phone's converged entries map
    `entryId → loadKg` equals the fixture's `expected` values and the wrist engine's
    `entries` (a `WatchObservationRecord`, `payload['loadKg']`) carry the same ids and values once
    each. · `'S-67 digits survive a re-carried snapshot'`
-8. [ ] Extend `test/watch_reference_sync_test.dart` with `'S-66'`: a routine whose `weight` target is
+8. [x] Extend `test/watch_reference_sync_test.dart` with `'S-66'`: a routine whose `weight` target is
    `-20` (then `-200`) produces a `routines_down` message that validates, and one at `-240` that
    does not; assert the built target JSON carries the sign. · `'S-66'`
-9. [ ] Rewrite the "**A set the wire cannot carry is omitted.**" bullet in
+9. [x] Rewrite the "**A set the wire cannot carry is omitted.**" bullet in
    `docs/watch_session_sync.md` (~176–186): an assisted set now travels; only a row with no reps and
    a weighted row below −200 kg are omitted; name the tests that pin it
    (`test/watch_session_projection_test.dart` S-59/S-60) and cite D-58/D-60, and drop the band-assist
@@ -474,7 +474,11 @@ analytics services, `scripts/sqlite_schema.sql`, `lib/core/sync_protocol/sync_pr
   `PROTOCOL.md` states the floor + a `1 (amended)` version row; no validator or `lib/`/Swift change.
   Fixtures 85/0, cross-stack 19/0, full suite 3963 passed / 1 skipped / 0 failed, `swift-test` 294/0,
   lint 196 (baseline). Red-first (76 passed / 9 failed) and five mutations recorded in the evidence file.
-- [ ] Phase 2 — not started.
+- [x] Phase 2 — Complete. `WireLimits.minLoadKg = -200.0` (new) plus `PhoneEntries._entry` flooring there
+  and omitting a zero load (D-58/D-60), the importer's correction floor (D-63); S-59/S-60 replace S-42,
+  S-58/S-63/S-65/S-66 and `test/watch_wire_limits_test.dart` added, the `docs/watch_session_sync.md`
+  bullet rewritten. Five suites 112/0, full suite 3973 passed / 1 skipped / 0 failed (+10 = the new tests),
+  lint 196 (baseline, none in a touched file), invariant clean, six mutations (A–F) in the evidence file.
 - [ ] Phase 3 — not started.
 
 ## Assumption Log
@@ -493,6 +497,18 @@ analytics services, `scripts/sqlite_schema.sql`, `lib/core/sync_protocol/sync_pr
   Its `expected` lists the three entries by `loggedAt` (10:05, 10:07, 10:10) with each held id keeping
   its first value, which is what `SyncSessionReconciler.convergedState()` returns and what
   `test/live_mirroring_test.dart` replays through both engines. No wrist-side edit was needed.
+
+- **A-P2-1 — D-60 made a pre-existing S-2 assertion false.** `S-2 a running phone session is answered
+  with its own ladder` asserted a zero-load row's `loadKg == 0.0`; D-60 omits that key. Options: keep the
+  key at `0.0` (contradicts D-60, and the wire keeps "no load" and "load 0" indistinguishable anyway) or
+  assert the key is absent. Chose absent — one assertion, the rest of S-2 untouched.
+- **A-P2-2 — S-65's fixture needs an advancing clock, not a real one.** Corrections are stamped by the
+  inbox clock, and a later correction of the *same* metric only wins on a strictly later stamp, so with
+  the file's fixed `_phoneNow` the second correction was a no-op and S-65 passed alone but failed in the
+  full run. `_inbox` gained an optional `clock` parameter and S-65 advances a second between messages.
+- **A-P2-3 — the S-67 assertion was already in place.** Step 7 predicted adding it, but Phase 1's
+  A-P1-1 landed it as `S-67 a re-stated assist is neither duplicated nor zeroed` (cross-stack 19/0), not
+  under the plan's working name. Left as it is; no new test written.
 
 ## Feedback
 

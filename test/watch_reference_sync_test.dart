@@ -276,6 +276,84 @@ void main() {
     });
   });
 
+  group('S-66 an assisted routine reaches the wrist', () {
+    /// One routine whose only planned effort benches 3×5 at [weightKg].
+    Future<Map<String, Object?>> assistedMessage(num weightKg) async {
+      await _addTemplate(
+        repository,
+        id: 'routine-assist',
+        name: 'Assisted Bench',
+        segmentIds: ['seg-assist'],
+      );
+      await _addEffort(
+        repository,
+        id: 'eff-assist',
+        segmentId: 'seg-assist',
+        orderIndex: 0,
+        effortKind: 'set',
+        exerciseId: 'exercise-goblet-squat',
+        targets: [
+          {'metric': 'metric-sets', 'int': 3},
+          {'metric': 'metric-reps', 'int': 5},
+          {'metric': 'metric-weight', 'min': weightKg},
+        ],
+      );
+
+      return (await WatchReferenceSync.buildRoutinesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      ))!;
+    }
+
+    /// The one effort's planned targets, as the wrist read them back.
+    Map<String, Object?> plannedTargets(Map<String, Object?> message) =>
+        WatchRoutinesDown.fromEnvelope(
+          message,
+        ).routines.single.efforts.single.targets;
+
+    test('S-66 a −20 kg plan validates and lands on the wrist as −20', () async {
+      final message = await assistedMessage(-20);
+
+      expect(
+        _rejections(message),
+        isEmpty,
+        reason: 'S-66 an assisted plan is a plan, not a message to reject',
+      );
+      expect(
+        plannedTargets(message)['loadKg'],
+        -20,
+        reason: 'S-66 the assist is not zeroed on the way out',
+      );
+    });
+
+    test('S-66 a −200 kg plan validates and lands as the floor', () async {
+      final message = await assistedMessage(-200);
+
+      expect(_rejections(message), isEmpty, reason: 'S-66 the floor is legal');
+      expect(
+        plannedTargets(message)['loadKg'],
+        -200,
+        reason: 'S-66 the floor travels as itself',
+      );
+    });
+
+    test('S-66 a −240 kg plan is refused on the targets gate', () async {
+      final message = await assistedMessage(-240);
+      final rejections = _rejections(message);
+
+      expect(
+        rejections.map((rejection) => rejection.code).toSet(),
+        contains('constraint_violation'),
+        reason: 'S-66 below the floor is refused, never clamped',
+      );
+      expect(
+        rejections.map((rejection) => rejection.path).toList(),
+        contains(contains('loadKg')),
+        reason: 'S-66 the refusal names the planned load',
+      );
+    });
+  });
+
   group('S-007 the fallback list covers what the routines reference', () {
     test('S-007 an exercise used twice is listed once', () async {
       await _addTemplate(

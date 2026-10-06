@@ -3,7 +3,9 @@
 // Plan: `docs/plans/2026-10-05-15a-watch-session-sync-pr1-plan/` (S-2, S-6, S-8,
 // D-10, D-11) and `docs/plans/2026-10-05-15d-watch-session-sync-pr3-plan/` (the
 // phone's own sets ride the answer: S-31, S-32, S-33, S-34, S-35, S-36, S-37,
-// S-38, S-39, S-40, S-41, S-42, S-43, D-35).
+// S-38, S-39, S-40, S-41, S-43, D-35) and the negative-load plan
+// (`docs/plans/2026-10-06-16-watch-negative-load-plan/`: S-59, S-60, D-58,
+// D-60).
 // Scenario mapping:
 //   S-2 a phone session surfaces at a watch-initiated sync → `S-2 ...`
 //   S-8 phone edits reach the wrist at sync               → `S-8 ...`
@@ -18,9 +20,15 @@
 //   S-39 the projection is deterministic, and does not echo → `S-39 ...`
 //   S-40 two sessions do not share entries                → `S-40 ...`
 //   S-41 the wrist's own set survives an answer           → `S-41 ...`
-//   S-42 an entry the wire cannot carry is omitted        → `S-42 ...`
 //   S-43 the phone is unreachable at Sync                 → `S-43 ...`
 //   S-35/D-35 an edit reaches the wrist, a delete does not → `S-35 ...`
+//   S-59 a snapshot carries the assist, and omits only the
+//        row without reps                                 → `S-59 ...`
+//   S-60 the floor is carried, one step below it is not   → `S-60 ...`
+//
+// S-42's "an entry the wire cannot carry is omitted" is now S-59/S-60: a
+// band-assisted set is carried with its sign, and only a row with no reps or a
+// load below the wire floor is omitted (D-58, D-60).
 //
 // The phone side is the graph `createWatchSync` builds, over a fake radio: the
 // answer's shape, its revision, its entries and where it comes from are the
@@ -155,6 +163,15 @@ List<String> _entryIds(Map<String, Object?> payload) => [
   for (final entry in _objects(payload['entries']))
     entry['entryId']! as String,
 ];
+
+/// The answer's entries as `entryId → loadKg`, decoded — never matched as a
+/// substring, so `-200` and `-200.1` cannot be confused (S-60). An entry with no
+/// `loadKg` reads null: the wire keeps "no load" and "load 0" indistinguishable
+/// (D-60).
+Map<String, double?> _loadsById(Map<String, Object?> payload) => {
+  for (final entry in _objects(payload['entries']))
+    entry['entryId']! as String: entry['loadKg'] as double?,
+};
 
 /// One set of a fixture slot: what its rows carry, and when they were written.
 typedef _Set = ({int reps, double loadKg, bool skipped, int atMs});
@@ -531,7 +548,13 @@ void main() {
               'wire entry yet (D-39)',
         );
         expect(_objects(payload['entries']).single['reps'], 10);
-        expect(_objects(payload['entries']).single['loadKg'], 0.0);
+        expect(
+          _objects(payload['entries']).single.containsKey('loadKg'),
+          isFalse,
+          reason:
+              'D-60 a zero weight still sends no `loadKg`: the wire keeps "no '
+              'load" and "load 0" indistinguishable',
+        );
         expect(payload['timers'], isEmpty);
         expect(reportedFailure, isNull);
       },
@@ -1432,53 +1455,99 @@ void main() {
       );
     });
 
-    test('S-42 a set the wire cannot carry is omitted', () async {
+    test('S-59 a snapshot carries the assist, and omits only the row without '
+        'reps', () async {
       await seed('sess-1', [
-        (reps: 0, loadKg: 0.0, skipped: true, atMs: _at(1)),
+        (reps: 8, loadKg: -20.0, skipped: false, atMs: _at(1)),
         (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(2)),
-        // The crown clamps weight to −200..999, and a band-assisted set is
-        // stored negative (F1).
-        (reps: 8, loadKg: -20.0, skipped: false, atMs: _at(3)),
+        (reps: 0, loadKg: 0.0, skipped: true, atMs: _at(3)),
       ]);
 
       await radio.fromWrist(WatchTransportRequest.snapshotFrame());
       await _settle();
       final answer = radio.lastOfType('session_snapshot');
       final payload = _payload(answer);
-      expect(
-        _entryIds(payload),
-        ['entry-slot-bench-1'],
-        reason:
-            'S-42 a skipped set has no wire shape — the schema has no field to '
-            'say so and `reps` has a minimum of 1 — and a band-assisted set has '
-            'none either, `loadKg` having a minimum of 0, so both are left out, '
-            'never placeheld (D-40)',
-      );
-      final sent = _objects(payload['entries']).single;
-      expect(sent['reps'], 8);
-      expect(sent['loadKg'], 60.0);
 
+      expect(
+        _loadsById(payload),
+        {'entry-slot-bench-0': -20.0, 'entry-slot-bench-1': 60.0},
+        reason:
+            'S-59 a band-assisted set travels with its sign and its value, '
+            'verbatim: not rounded, not re-signed, not converted. The skipped '
+            'row has no wire shape — the schema has no field to say so and '
+            '`reps` has a minimum of 1 — so it is left out, never placeheld '
+            '(D-60)',
+      );
       expect(
         loadProtocolValidator().validateEnvelope(answer),
         isEmpty,
         reason:
-            'S-42 a `reps: 0` or a negative-`loadKg` entry would be a '
-            'rejection, and a rejected entry costs the whole snapshot: omitting '
-            'it is what keeps the answer conformant',
+            'S-59 a `reps: 0` entry would be a rejection, and a rejected entry '
+            'costs the whole snapshot: omitting it is what keeps the answer '
+            'conformant, and the assist is conformant as it stands',
+      );
+
+      expect(await engine.applyMessage(answer), isTrue);
+      expect(
+        [
+          for (final entry in engine.entries)
+            (entry.entryId, entry.payload['loadKg']),
+        ],
+        [
+          ('entry-slot-bench-0', -20.0),
+          ('entry-slot-bench-1', 60.0),
+        ],
+        reason:
+            'S-59 the wrist holds the assist at −20 kg, and nothing becomes 0 '
+            'or +20 on the way',
+      );
+    });
+
+    test('S-60 the floor is carried, one step below it is not', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: -200.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: -200.1, skipped: false, atMs: _at(2)),
+        (reps: 8, loadKg: -240.0, skipped: false, atMs: _at(3)),
+        (reps: 1, loadKg: 0.0, skipped: false, atMs: _at(4)),
+      ]);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final answer = radio.lastOfType('session_snapshot');
+      final payload = _payload(answer);
+
+      expect(
+        _entryIds(payload),
+        ['entry-slot-bench-0', 'entry-slot-bench-3'],
+        reason:
+            'S-60 −200 kg is the last value the wire carries; −200.1 and −240 '
+            'are below the floor and are omitted rather than clamped into range '
+            '(D-58, D-60)',
       );
       expect(
-        jsonEncode(payload['entries']),
-        isNot(contains('-20')),
+        _loadsById(payload),
+        {'entry-slot-bench-0': -200.0, 'entry-slot-bench-3': null},
         reason:
-            'F1 the negative weight is nowhere in the answer, under any field: '
-            '`extraLoadKg` is a hold\'s load, not a set\'s',
+            'S-60 the floor itself is carried exactly, and the zero-weight row '
+            'is carried with no `loadKg` key at all (D-60)',
+      );
+      expect(
+        _objects(payload['entries']).last.containsKey('loadKg'),
+        isFalse,
+        reason:
+            'S-60 the wire never claims "load 0": a zero weight sends no key',
+      );
+      expect(
+        loadProtocolValidator().validateEnvelope(answer),
+        isEmpty,
+        reason: 'S-60 a below-floor entry would be a rejection (S-65)',
       );
 
       expect(await engine.applyMessage(answer), isTrue);
       expect(
         [for (final entry in engine.entries) entry.entryId],
-        ['entry-slot-bench-1'],
-        reason: 'the wrist holds the set that could be carried, and no other',
+        ['entry-slot-bench-0', 'entry-slot-bench-3'],
+        reason: 'S-60 the wrist holds the floor and the unloaded set, no other',
       );
     });
 

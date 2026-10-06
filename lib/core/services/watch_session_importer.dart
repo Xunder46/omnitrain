@@ -23,6 +23,7 @@ library;
 
 import '../constants/block_types.dart';
 import '../constants/metric_ids.dart';
+import '../sync_protocol/wire_limits.dart';
 import '../utils/entry_rows.dart';
 import '../utils/logged_entry_rows.dart';
 import '../../data/models/models.dart';
@@ -1502,7 +1503,9 @@ class _Entry {
         final value = values[field];
         final valid = switch (field) {
           'reps' => value is int && value >= 1,
-          'loadKg' => value is num && value >= 0,
+          // A correction to a band-assisted set carries its sign; below the
+          // wire's floor it is refused rather than clamped (D-63).
+          'loadKg' => value is num && value >= WireLimits.minLoadKg,
           _ => _ms(value) != null,
         };
         if (!valid) continue;

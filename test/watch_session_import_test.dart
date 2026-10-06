@@ -19,6 +19,12 @@
 //   S-273 empty completed session               → `S-273 ...`
 //   S-274 shape parity with phone logging       → `S-274 ...`
 //   S-281, S-284 the phone-rating API (state)   → `S-281 ...`, `S-284 ...`
+//
+// Negative load (band assist):
+//   S-58 a −20 kg set imports and sums negative → `S-58 ...`
+//   S-63 the phone reads the negative back      → `S-63 ...`
+//   S-65 corrections down to the −200 kg floor  → `S-65 ...`
+// Plan: `docs/plans/2026-10-06-16-watch-negative-load-plan/` (D-59, D-63).
 // S-272 (Hive ↔ Mock) is `test/watch_capture_contract_test.dart`.
 //
 // Every value the full-case tests expect is the capture contract's own
@@ -41,6 +47,8 @@ import 'package:omnitrain/state/watch/watch_incoming_router.dart';
 import 'package:omnitrain/state/watch/watch_nutrition_log_bridge.dart';
 import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
+import 'package:omnitrain/state/workout/session_summary_builder.dart';
+import 'package:omnitrain/state/workout/timer_manager.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
 import 'helpers/sync_protocol_harness.dart';
@@ -63,13 +71,14 @@ WatchSessionInbox _inbox(
   WorkoutRepository repository,
   CaptureTransport transport, {
   Future<void> Function()? onHistoryChanged,
+  DateTime Function()? clock,
 }) {
   var ids = 0;
   return WatchSessionInbox(
     repository: repository,
     transport: transport,
     validator: loadProtocolValidator(),
-    clock: () => _phoneNow,
+    clock: clock ?? () => _phoneNow,
     idFactory: () => 'msg-phone-${++ids}',
     onHistoryChanged: onHistoryChanged,
     // A failure inside the inbox fails the test where it happened.
@@ -733,6 +742,129 @@ void main() {
     });
   });
 
+  group('S-58 a band assist crosses into history with its sign', () {
+    test('S-58 a set logged at −20 kg imports at −20 kg and sums −160', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, 's-58', [
+        _set('e-58', loggedAt: '2026-09-25T10:10:00.000Z', reps: 8, loadKg: -20),
+        _end(
+          's-58',
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:20:00.000Z',
+        ),
+      ]);
+
+      final bench = WatchSessionImporter.effortIdFor(
+        's-58',
+        'sx-bench',
+        'ex-bench',
+        'set',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'reps'))?.valueInt,
+        8,
+        reason: 'S-58 the wrist’s eight reps land',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -20.0,
+        reason: 'S-58 the assist is not clamped to zero on the way in',
+      );
+
+      final session = (await repository.getSession('s-58'))!;
+      final segments = await repository.getSessionSegments('s-58');
+      final efforts = <String, List<SegmentEffort>>{};
+      final observations = <String, List<EffortObservation>>{};
+      for (final segment in segments) {
+        final segmentEfforts = await repository.getSegmentEfforts(segment.id);
+        efforts[segment.id] = segmentEfforts;
+        for (final effort in segmentEfforts) {
+          observations[effort.id] = await repository.getEffortObservations(
+            effort.id,
+          );
+        }
+      }
+      final summary = SessionSummaryBuilder(
+        timerManager: TimerManager(
+          repository,
+          notify: () {},
+          setError: (_) {},
+          clearError: () {},
+        ),
+        observations: observations,
+        efforts: efforts,
+        segments: segments,
+        exerciseCache: const {},
+      ).buildSessionSummary(session);
+      expect(
+        summary.totalVolume,
+        -160.0,
+        reason: 'S-58 the summary counts 8 reps of a −20 kg assist as −160',
+      );
+    });
+
+    test('S-63 the phone reads the negative load back, and a set with no '
+        'history keeps the default', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, 's-63', [
+        _set('e-63', loggedAt: '2026-09-25T10:10:00.000Z', reps: 8, loadKg: -20),
+        _end(
+          's-63',
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:20:00.000Z',
+        ),
+      ]);
+
+      // What the logging screen seeds the dial from: the exercise's last
+      // logged set, read back through the phone's own history path.
+      final history = WorkoutState(repository);
+      await history.loadHistoricalSession('s-63');
+      final logged = history
+          .getExercisesWithEntries()
+          .firstWhere((row) => row['exerciseId'] == 'ex-bench');
+      final lastSet = (logged['entries']! as List).last as Map;
+      expect(
+        lastSet['reps'],
+        8,
+        reason: 'S-63 the last logged set is the one the dial carries',
+      );
+      expect(
+        lastSet['weight'],
+        -20.0,
+        reason: 'S-63 the assist carries over negative, not as 0 kg or a target',
+      );
+
+      // An exercise with no history has nothing to carry, so the existing
+      // default stands — a negative carry-over must not invent one.
+      await seedExercise(
+        repository,
+        id: 'ex-row',
+        name: 'Barbell Row',
+        capabilities: ['sets', 'reps', 'load'],
+      );
+      final fresh = WorkoutState(repository);
+      await fresh.createNewSession();
+      final effortId = await fresh.addExerciseToSession(
+        (await repository.getExerciseById('ex-row'))!,
+      );
+      await fresh.addEntry(effortId);
+      final added = fresh
+          .getExercisesWithEntries()
+          .firstWhere((row) => row['exerciseId'] == 'ex-row');
+      expect(
+        ((added['entries']! as List).last as Map)['weight'],
+        0.0,
+        reason: 'S-63 no history → the existing default, not a negative',
+      );
+    });
+  });
+
   group('S-267 live corrections carry into history', () {
     /// The mirror holding s-cap-1 live, with its outgoing corrections staged
     /// through [inbox] before they reach [transport].
@@ -890,6 +1022,80 @@ void main() {
         (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
         90.0,
         reason: 'S-267 the user’s own edit of the weight stays',
+      );
+    });
+
+    test('S-65 a band assist corrects down to the floor and no further', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      // Corrections are stamped by the inbox's clock, and a later correction of
+      // the same metric only wins on a strictly later stamp: a fixed clock would
+      // make the second correction a no-op, which is not what the wire does.
+      var now = _phoneNow;
+      final inbox = _inbox(repository, transport, clock: () => now);
+      final mirror = liveMirror(inbox, transport);
+      final bench = WatchSessionImporter.effortIdFor(
+        _capId,
+        'sx-bench',
+        'ex-bench',
+        'set',
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-neg', loggedAt: '2026-09-25T10:10:00.000Z', loadKg: 60),
+        _end(
+          _capId,
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:20:00.000Z',
+        ),
+      ]);
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        60.0,
+        reason: 'S-65 the wrist logged 60 kg',
+      );
+
+      now = now.add(const Duration(seconds: 1));
+      await mirror.correctEntry('e-neg', {'loadKg': -20});
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -20.0,
+        reason: 'S-65 a −20 kg assist is a correction the phone may make',
+      );
+
+      now = now.add(const Duration(seconds: 1));
+      await mirror.correctEntry('e-neg', {'loadKg': -200});
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -200.0,
+        reason: 'S-65 the floor itself is a correction the phone may make',
+      );
+
+      now = now.add(const Duration(seconds: 1));
+      final below = await mirror.correctEntry('e-neg', {'loadKg': -240});
+      final decision = SyncProtocolValidator.evaluateOrAccept(
+        loadProtocolValidator(),
+        below,
+      );
+      expect(
+        decision.accepted,
+        isFalse,
+        reason: 'S-65 a −240 kg assist is below the wire floor',
+      );
+      expect(
+        decision.rejectionCodes,
+        contains('constraint_violation'),
+        reason: 'S-65 the schema names the refusal',
+      );
+      expect(
+        [for (final rejection in decision.rejections) rejection.path],
+        contains(contains('loadKg')),
+        reason: 'S-65 the refusal points at the load',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -200.0,
+        reason: 'S-65 a correction below the floor leaves the last value',
       );
     });
   });

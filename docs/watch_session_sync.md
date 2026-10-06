@@ -177,12 +177,18 @@ remains out is listed below.
   reps are below 1, has no place in the protocol's `set` shape
   (`additionalProperties: false`, `reps` ≥ 1), so it is left out of the answer
   and stays on the phone — and a set's added weight goes with it, `extraLoadKg`
-  being a hold's load. A set logged with a negative weight (band assist) is not
-  carried to the watch either: `loadKg` has a minimum of 0 and a `set` has no
-  negative-load field, so a band-assisted set stays on the phone. A rejected
-  entry would reject the whole snapshot
+  being a hold's load. A set the wire *can* carry is carried with its sign: a
+  band-assisted set reaches the wrist as a negative `loadKg`, down to the wire's
+  floor of −200 kg (D-58). The floor is one number — `WireLimits.minLoadKg`,
+  which the three schema minimums, the projection and the wrist's dial all state
+  (D-59) — so a weighted row *below* it is omitted like any other the wire cannot
+  carry, and a row with no load is carried without a `loadKg` key at all (D-60). A
+  rejected entry would reject the whole snapshot
   (`test/watch_session_projection_test.dart`,
-  `S-42 a set the wire cannot carry is omitted`).
+  `S-59 a snapshot carries the assist, and omits only the row without reps`;
+  `S-60 the floor is carried, one step below it is not`;
+  `test/watch_wire_limits_test.dart`,
+  `S-061 the three schema loadKg floors are the one constant`).
 - **Only sets are carried.** D-39 projects `set` entries only: a `timed`, `hold`
   or `round` effort contributes nothing to `entries`, while the ladder still
   carries its slot (`test/watch_session_projection_test.dart`,
