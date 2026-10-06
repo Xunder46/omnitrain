@@ -386,8 +386,8 @@ Pinned here so the next planner does not re-decide them; PR 2b's own plan holds 
 - Host `WatchLoggingView`, `WatchEndSessionView` and `WatchEffortRatingView` in
   `ios/OmniTrain Watch App/ContentView.swift` over the in-memory store, replacing
   `startedPlaceholder(session:)`; build `WatchLoggingState` and `WatchEffortRatingState`, restore the
-  owed prompt at launch, and give the engine the `onEmit` sink it does not have today (nothing the
-  wrist emits leaves the wrist now).
+  owed prompt at launch, and pass the engine the `onEmit` sink that already existed unused — PR 2b's
+  D-21 wires it (what the wrist emits now leaves the wrist).
 - Prune confirmed rows only while no session is active; the durable store stays PR 4.
 - Owner walkthrough steps 15–19 become runnable; `docs/watch-app-setup-and-qa.md` step (f) and
   `docs/state_management/watch_surface.md`'s "the wrist shell's second surface" change with it.

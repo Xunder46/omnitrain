@@ -194,3 +194,105 @@ Two decisions, both in the plan's Assumption Log as A-8 and A-9: the logging bra
 session to be active **and** hold at least one exercise (the brief's override of D-24 — a Free
 workout has no slot, so it stays on the start surface until one lands), and the picker sheet closes
 itself on the pick that switched the exercise.
+
+## Phase 3 — the docs (no source file changed)
+
+Four docs, all predicted, plus the plan's Progress and this file. The shell was read as shipped
+(`ContentView.swift`): the three-way branch, the D-21 build order (`WatchEmitForwarder` over the
+connectivity bridge), the in-memory store, and the default units.
+
+| File | What the change makes true |
+|---|---|
+| `docs/watch-app-setup-and-qa.md` | §1's table row says "logging surface", not "the session's slot list"; §3.6 describes the three surfaces in branch order, the effort kinds the logging surface logs, End and the picker on it, and the sink (with `WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder`); §3.6's "not a logging screen" and "one thing the shell still does not have" are replaced by "What the wrist cannot do yet" — the in-memory store (D-27), the kg label, and a Sync stopping a rest countdown (D-26); steps 15–18 lose the Phase 7 condition (15's `*(needs Phase 7)*` deleted), 17 gains `*(needs the durable store — PR 4)*` with the test that proves the mechanism, 19–20 keep Phase 8; step *(f)* is present tense; "What QA passed means" reads 15–18 now / 19–20 after Phase 8 / 17 after PR 4; a four-step *(owner, not yet run)* walkthrough is added before it |
+| `docs/state_management/watch_surface.md` | §"The wrist shell's second surface" is no longer a placeholder: the package's logging view for the current exercise's effort kind, the rest countdown a logged set starts (`WatchLoggingTimersTests.testS005…`), rows leaving as logged (`WatchEmitForwarderTests…`), no logging into an ended session (`WatchLoggingSurfacesTests.testS029…`), and the relaunch loss plus the two smaller gaps. An edit of the existing section, no section added (file stays far under 52 KB) |
+| `docs/watch_session_sync.md` | "What does not sync" opens by saying wrist logging is no longer on the list (`watch_session_merge_test.dart` `S-9`/`S-19`, `watch_session_finish_test.dart` `S-4`) and adds four bullets: relaunch loss, no sensor samples, a Sync stopping a rest countdown (D-26), the kg label. The pre-existing bullets stand |
+| `docs/plans/2026-10-05-15-watch-session-sync-index.md` | The PR 2b row's present-tense consequence corrected to "was dropped until this PR wired it" (the planner's own correction and the plan link were already in place — verified, not rewritten) |
+
+Every behaviour sentence names an existing test by class and method, read from the test files; the
+known-limit sentences (kg label, stopped countdown, relaunch loss, no sensor samples) are plain.
+
+### Residue sweep (read-only search tool; every hit outside the live docs explained)
+
+| Pattern | Hits in live docs (`docs/*.md`, `docs/state_management/`) | Hits elsewhere |
+|---|---|---|
+| `startedPlaceholder\|not a logging screen\|sink it lacks` | none | `docs/plans/2026-10-05-15c-…-plan.md` (this plan's own Phase 2 item and sweep text), `docs/plans/2026-10-05-15b-…-plan.md:388`, `docs/plans/2026-10-04-14-watch-shell-bridge-plan.evidence.md:380,387` (that unit's record), `docs/plans/2026-10-01-04c2-…-plan.md:678` ("opens the trend screen, not a logging screen" — unrelated) |
+| `needs Phase 7` | none | `docs/plans/2026-10-05-15c-…-plan.md:330,332,351` (this plan's own Phase 3 item text) |
+| `import .*hive_workout_repository` over `lib/state lib/features lib/widgets lib/core` | no matches (invariant clean) | — |
+
+Plans are history and stay, per the brief.
+
+### Green runs
+
+| Check | Result |
+|---|---|
+| `gateway.sh swift-test` (full) | `Executed 267 tests, with 0 failures (0 unexpected) in 1.043 (1.063) seconds`, exit 0 — the Phase 2 count exactly (no package file changed) |
+| `gateway.sh test` (full) | `01:38 +3913 ~1: All tests passed!`, exit 0 — the baseline (D-28), and it includes `test/docs_indexing_contract_test.dart`, so the 64 KiB ceiling and the content prohibitions hold on the two guarded docs. Re-run after the last sentence was added to §5 of the QA guide: `01:38 +3913 ~1: All tests passed!`, same counts |
+| `gateway.sh lint` | `196 issues found. (ran in 3.1s)`, exit 1 — the plan's baseline 196 / 0; every line is a pre-existing info notice and none names a file this phase touched |
+| `gateway.sh git-diff --stat` | `docs/state_management/watch_surface.md | 24 +++++-`, `docs/watch-app-setup-and-qa.md | 98 +++++----`, `docs/watch_session_sync.md | 23 ++++`, `.../2026-10-05-15-watch-session-sync-index.md | 2 +-` — 4 files, docs only, and the plan file separately (`17 insertions(+), 1 deletion(-)`, Progress and Assumption Log) |
+
+No source file was changed, so this phase has no red-first run: the plan's D-28 records that Phase 3
+is docs-only and the suite counts are unchanged.
+
+Not run by this agent, and said so in the docs: the walkthrough is the **owner's** and is marked
+*not yet run* — the governor could not tap through the simulator (no Screen Recording permission), so
+no doc claims it passed.
+
+## Fix round 1 — the review's bounded findings (F-1, F-2, F-3, F-4, F-5, F-7, F-8)
+
+One pass over `<plan>.review.md`'s seven findings, on the same uncommitted tree. **F-6 (the deferred
+`revision` bump) and F-9 (the Dart twin's `canLog`) were not touched** — the brief excludes them.
+
+| Finding | Change | What the change makes true |
+|---|---|---|
+| F-1 | `docs/watch-app-setup-and-qa.md` walkthrough step 2 | The step no longer taps Sync: the phone must show the set with the wrist untouched, with the line "The phone must show it before any Sync — only an untouched wrist proves the set is handed over as it is logged". Sync stays in step 4, where a re-send is the point. Matches the plan's owner step 5 |
+| F-2 | `docs/watch_session_sync.md` — the "Nothing starts, changes or finishes without a sync" bullet | Deleted. Replaced by "**Starting a session, changing exercises and converging two sessions still need a manual Sync.**", which points at `test/watch_session_projection_test.dart` (`S-2`) / `test/watch_session_merge_test.dart` for what needs a Sync and at `WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder` for what does not. The bullet no longer contradicts the paragraph twelve lines above it (tests named were read out of the files, not invented) |
+| F-3 | `docs/watch-app-setup-and-qa.md` §Level 1 | The dated count is gone: "Expected: **all passed, no failures.** Read the counts off the run rather than against a number here." The 0-failures form elsewhere is untouched |
+| F-4 | `docs/plans/2026-10-05-15b-…-plan.md:387-391` | The clause now reads "pass the engine the `onEmit` sink that already existed unused — PR 2b's D-21 wires it (what the wrist now emits leaves the wrist)". The planner's own correction blockquote above it (`:378-385`) already said the sink exists; the item below it was what still read as the opposite. Sweep output below |
+| F-5 | `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingSurfacesTests.swift` — `testS029aAPhoneCompletionClosesTheLoggingSurface` (`:424-466`), plus `phoneLifecycle` promoted from a `RatingHarness` method to a free function beside `preferencesDown`/`instant` (`WatchEffortRatingTests.swift:32-44`, its two call sites updated) | S-29a is covered: an active session ended by the phone's `session_lifecycle(completed)` frame. Red→green below |
+| F-7 | `ios/OmniTrain Watch App/ContentView.swift:214-216` | `.onDisappear { pickingExercise = false }` on the logging surface's `NavigationStack`, so a picker left open when the surface goes away (End, or the switch to the owed question) cannot reappear over the next session. One modifier, `@State` on the same `struct ContentView`; **the Swift build is the governor's** — this file is not compiled by any check this agent may run, so what is claimed here is a reading, not an observation |
+| F-8 | `docs/watch_session_sync.md` (four new limit sentences) and `docs/watch-app-setup-and-qa.md` (the two known gaps and the walkthrough's heading) | Relaunch bullet: the future-PR clause ("a durable wrist store is a separate item") deleted, limit kept. Countdown bullet: pointed at `timer_cleared.json` / `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`. Sensor bullet: re-phrased to the shell ("The watch app wires no sensor source", `ContentView.swift:69` builds no recorder) and pointed at `WatchSensorRecordingTests` / `test/watch_sensor_recording_test.dart` for the layer that does exist. Units bullet: re-titled "The wrist labels load in kilograms", naming the absent unit preferences and pointing at `WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`, which holds the kilogram payload. QA guide: the same pointer added to the kg gap, and the heading's `*(owner, not yet run)*` tags removed ("It has not been run on hardware yet") |
+
+### F-4 sweep output (the grep the plan cites, run scoped to `docs/plans/*2026-10-05-15*`)
+
+Pattern `sink it lacks|does not have today`:
+
+| File:line | Line |
+|---|---|
+| `…/2026-10-05-15c-…-plan.evidence.md:218` | this line's own `startedPlaceholder\|not a logging screen\|sink it lacks` sweep row |
+| `…/2026-10-05-15c-…-plan.review.md:30` | F-4's finding, quoting the 15b bullet |
+| `…/2026-10-05-15c-…-plan.md:211` | the plan's own citation of the grep |
+| `…/2026-10-05-15c-…-plan.md:345` | the plan's Phase 3 item 4, quoting the index's old wording |
+| `…/2026-10-05-15c-…-plan.md:350` | the plan's Phase 3 residue-sweep item |
+
+**No hit in the 15b plan, and none in the series index**: every remaining hit is this PR's own plan
+text, its review or this file, all of them quoting the phrase rather than claiming the engine lacks a
+sink. So S-28a's second half now holds in the sense that matters — no live document says the sink is
+missing — and the row above records the quotation hits honestly instead of claiming an empty grep.
+
+### F-5 red → green (one mutation, reverted exactly)
+
+Mutation: in `WatchLoggingState.swift`, `canLog`'s D-23 condition removed — `engine.session?.status
+== WatchSessionStatus.active && slot != nil` → `slot != nil` (the pre-D-23 form).
+
+| Run | Command | Observed |
+|---|---|---|
+| Red | `gateway.sh swift-test` | `Executed 268 tests, with 8 failures (0 unexpected) in 1.061 (1.078) seconds`, exit 1. Four are the new test — `WatchLoggingSurfacesTests.swift:449` "XCTAssertFalse failed - S-29a a session the phone ended is not a surface to log into", `:453` "XCTAssertTrue failed" (`fields` non-empty), `:457` "failed - logging into a phone-ended session must throw", `:461` "XCTAssertEqual failed: (\"3\") is not equal to (\"2\") - the refused log appended no observation row". The other four are the pre-existing `testS029AnEndedSessionCannotBeLoggedInto` (`:409,410,414,418`) — expected, same guard |
+| Restore | `gateway.sh git-diff -- watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift` | empty output, exit 0 — the file is byte-identical to its committed state |
+| Green | `gateway.sh swift-test` | `Executed 268 tests, with 0 failures (0 unexpected) in 0.961 (0.980) seconds`, exit 0 |
+
+The brief's parenthetical for F-5 quotes the post-D-23 line as the "original"; the pre-D-23 form is
+`slot != nil` alone (the PR's own Phase 1 evidence, "one-condition edit"), and that is what the
+mutation used. Logged as A-14.
+
+### Fix-round green runs
+
+| Check | Result |
+|---|---|
+| `gateway.sh swift-test` | `Executed 268 tests, with 0 failures (0 unexpected) in 0.961 (0.980) seconds`, exit 0 — the baseline 267 plus S-29a |
+| `gateway.sh test` | `01:40 +3913 ~1: All tests passed!`, exit 0 (`.work/gateway/test-20261005-230601-2650.log`) — the baseline (D-28) exactly, over the final tree, including `test/docs_indexing_contract_test.dart` with the two edited docs, this plan and this file. An earlier run of the same check on the same code (`01:39 +3913 ~1`) cleared the doc edits before the plan and evidence were appended |
+| `gateway.sh lint` | `196 issues found. (ran in 5.4s)`, exit 1 — the plan's baseline 196 / 0, every line a pre-existing info notice, none in a file this round touched. No Dart file changed after this run |
+
+Not run by this agent: the watch app's `xcodebuild` (the governor's), so F-7's `.onDisappear` and the
+whole shell remain compiled-nowhere claims until the governor builds the scheme.
+
+

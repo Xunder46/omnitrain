@@ -362,10 +362,26 @@ the fallback list minus what the ladder already shows behind them. Verified by
 
 #### The wrist shell's second surface
 
-Once a session is open, the shell's second surface is the session's own exercise
-list with the current one marked — still a placeholder, with no logging surface.
-The shell keeps an in-memory store, so nothing logged on the wrist survives a
-relaunch.
+Once a session is open, the shell's second surface is the package's logging view
+for the current exercise: the exercise's own effort kind — a set, a timed hold, a
+round or a drill — with the value rows that effort needs, End leading the
+toolbar and the exercise picker behind a list button. A logged set starts a rest
+countdown of the surface's own length
+(`WatchLoggingTimersTests.testS005LoggingASetStartsARestCountdownOfTheSurfaceLength`).
+
+Logged rows leave the wrist as they are logged: the engine's emissions go to
+`WatchEmitForwarder` over the connectivity bridge, in emission order, and a
+refused frame is reported once and dropped without disturbing the frames behind
+it (`WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder`,
+`…testEveryRefusedFrameIsReportedOnceAndDropped`). An ended session is no longer
+a logging surface
+(`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
+
+The shell keeps an in-memory store, so a relaunch loses the session and any
+unanswered rating question; the durable wrist store is a separate item. Two
+smaller gaps: the wrist labels load in kilograms whatever the phone's unit
+preference says, and a Sync stops a rest countdown the wrist is running, because
+the phone's answer carries no timers (D-26).
 
 ### `WatchSyncRequestHandler`
 

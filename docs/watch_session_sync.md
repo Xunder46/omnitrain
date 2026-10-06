@@ -119,6 +119,16 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 
 ## What does not sync
 
+Wrist logging is not on this list any more: a set logged on the wrist reaches
+the phone's live session as a row of the effort the phone's slot already has
+(`test/watch_session_merge_test.dart`, `S-9 a wrist set reaches the live phone
+session`), a wrist end closes the phone's copy
+(`test/watch_session_finish_test.dart`,
+`S-4 the wrist ends its session, roster of logged sets first`), and a set logged
+while the phone was out of reach arrives at the wrist's next sync
+(`test/watch_session_merge_test.dart`, `S-19 a set logged while the phone was out
+of reach`). What remains out is listed below.
+
 - **Sets logged on the phone are not carried to the wrist.** The phone answers a
   sync with its ladder and its own place, and never with an entry: the answer's
   `entries` is always empty, so a set the phone logs stays on the phone. Verified
@@ -128,10 +138,14 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
   answer the phone composes carries its own current index and its own timers, not
   the wrist's (`test/watch_session_projection_test.dart`,
   `S-2 a running phone session is answered with its own ladder`).
-- **Nothing starts, changes or finishes without a sync.** Every message in this
-  model is either the wrist's request or the phone's answer to it; the phone's own
-  finish is the worked example, and it sends nothing
-  (`test/watch_session_finish_test.dart`, `S-5 …`).
+- **Starting a session, changing exercises and converging two sessions still
+  need a manual Sync.** The phone's ladder, its place and its timers arrive only
+  in its answer to a wrist Sync (`test/watch_session_projection_test.dart`,
+  `S-2 a running phone session is answered with its own ladder`), and the phone
+  adopts a wrist session from the snapshot it asks for at a Sync
+  (`test/watch_session_merge_test.dart`). What a settled set and the wrist's End
+  do without one is listed above
+  (`WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder`).
 - **Per-effort heart-rate summaries are attached only where the import places
   an effort** (`WatchSessionImporter._attachSetBlockSummary`, reached from
   `WatchSessionImporter._placeEffort`). A merge into a session the phone owns
@@ -142,6 +156,23 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
   from a `session_lifecycle` naming the held session
   (`test/watch_session_finish_test.dart`,
   `a lifecycle naming another session changes nothing`).
+- **Nothing logged on the wrist survives a relaunch.** The shell's store is in
+  memory, so quitting or force-quitting the watch app loses the session, its
+  logged rows and any owed rating question before a sync can carry them.
+- **No sensor samples are collected.** The watch app wires no sensor source, so
+  a session it logs carries no heart-rate or step values of its own; the
+  recording layer exists and is exercised only by its own suites
+  (`WatchSensorRecordingTests`, `test/watch_sensor_recording_test.dart`).
+- **A Sync stops a rest countdown running on the wrist.** The phone's answer
+  projects no timers and the wrist adopts that as authoritative, so a countdown
+  under a Sync loses its remaining-time line and its milestone haptic (D-26).
+  Held by the reconciliation fixture `timer_cleared.json`, replayed by
+  `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`.
+- **The wrist labels load in kilograms.** The shell hands the surfaces no unit
+  preferences, so the rows read kg whatever the phone's saved unit is, while the
+  payload is always kilograms on the wire, which keeps the phone's history and
+  its conversions correct
+  (`WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`).
 - **A session discarded on the phone can come back from the wrist.** A discard
   deletes the row, so the phone has nothing left to recognise; a wrist that still
   holds that session offers it again at its next sync and the phone adopts it as

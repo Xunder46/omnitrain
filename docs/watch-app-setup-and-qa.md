@@ -19,7 +19,7 @@ Verified 2026-10-04:
 |---|---|---|
 | Client logic | `watch/watchos/Sources/WatchSessionEngine/` (Swift) | `lib/watch/` (Dart) |
 | Tests | `swift test` on a Mac, also run by the pre-release gate; 0 failures required | covered in the Dart suite |
-| App shell | `ios/OmniTrain Watch App/` — the start surface, the session's slot list once one starts, and a radio (§3.6) | **none** — no production `main()` |
+| App shell | `ios/OmniTrain Watch App/` — the start surface, the logging surface, and a radio (§3.6) | **none** — no production `main()` |
 | Build target | **exists**; the target links the `WatchSessionEngine` package — building the watch scheme (§5) is the proof | **none** — Gradle has only `:app` |
 | Transport | implemented (`lib/core/platform/`) | **none** |
 | Wrist store | **in-memory only** — nothing logged survives a relaunch | — |
@@ -167,11 +167,19 @@ Written, by Phases 1–4 of the shell-bridge plan:
 - `ios/OmniTrain Watch App/OmniTrainApp.swift` — the `@main` App type.
 - `ios/OmniTrain Watch App/ContentView.swift` — `WatchAppHost`, which owns the
   store, the engine, the start paths, the phone preferences, the radio, the
-  bridge and the orchestrator, plus the two surfaces it renders: the start
-  surface (`WatchStartView`, in the package, with its exercise picker) and, once
-  a session is open, the session's own exercise list with the current one
-  marked. The second is deliberately not a logging screen — no sets, no End, no
-  rating prompt.
+  bridge, the outward sink and the orchestrator, plus the three surfaces it
+  renders in order: the owed rating question alone, while one is unanswered;
+  the logging surface while the session is active and holds at least one
+  exercise; and the start surface (`WatchStartView`, in the package, with its
+  exercise picker). The logging surface logs the current exercise's own effort —
+  a set, a timed hold, a round or a drill, chosen from the exercise's
+  capabilities — and hosts End and the exercise picker. An ended session can no
+  longer be logged into
+  (`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
+  Logged rows leave through `WatchEmitForwarder` over the connectivity bridge —
+  the outward sink wired in this PR;
+  `WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder` proves
+  they arrive in emission order.
 - `ios/OmniTrain Watch App/OmniTrainWatchConnectivity.swift` — the one file in
   the target that imports `WatchConnectivity`: the real `WCSession` conformance
   behind the package's `WatchConnectivitySession` seam.
@@ -181,10 +189,16 @@ tests in
 `watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`
 are what prove the logic they host.
 
-**One thing the shell still does not have**: a durable store. `WatchAppHost`
-builds an in-memory one, so a session does not survive a relaunch on the wrist.
-That is the "durable wrist store" item the shell-bridge plan moved out of scope
-(`docs/plans/2026-10-04-14-watch-shell-bridge-plan/2026-10-04-14-watch-shell-bridge-plan.md`).
+**What the wrist cannot do yet.** The store is in memory: `WatchAppHost` builds
+`InMemoryWatchSessionStore`, so a relaunch or force-quit on the wrist loses the
+session and any unanswered rating question. That is the "durable wrist store"
+item the shell-bridge plan moved out of scope
+(`docs/plans/2026-10-04-14-watch-shell-bridge-plan/2026-10-04-14-watch-shell-bridge-plan.md`);
+QA step 17 needs it. Two further gaps: the wrist labels the load it dials in
+kilograms even when the phone's saved unit is pounds — the wire value is always
+kilograms, so the phone's history and conversions stay correct — and a Sync
+while a rest countdown is running stops that countdown and its milestone
+haptic, because the phone's answer carries no timers (D-26).
 
 ---
 
@@ -228,7 +242,8 @@ regression introduced by your work.
 flutter test
 ```
 
-Expected: **3881 passed, 1 skipped** (2026-10-04).
+Expected: **all passed, no failures.** Read the counts off the run rather than
+against a number here.
 
 ```bash
 cd watch/watchos && swift test
@@ -329,11 +344,8 @@ keeps its own. Nothing is merged, and no history entry is invented.
 the phone's session from the regular session screen. Nothing is sent to the watch
 at that moment. Tap **Sync** on the watch: the wrist's session ends, and the phone's
 calendar holds exactly one entry for it.
-**(f) Finishing on the watch.** Answering the wrist's own Finish closes the
-session on the phone as well, with one history entry and the rate the wrist asked
-for — but only once the wrist can log and finish a session from its own screen,
-which its logging unit brings. Until then, use *(e)* to see the same outcome from
-the other end.
+**(f) Finishing on the watch.** Answering the wrist's own End closes the session
+on the phone as well, with one history entry and the rating the wrist gave.
 
 **The walkthrough** — each step maps to a protocol rule that is already
 enforced in code, so a failure points at the transport, not the logic:
@@ -384,13 +396,13 @@ enforced in code, so a failure points at the transport, not the logic:
     "in progress" after you force-quit is the specific bug to hunt.
 14. **Check Apple Health.** The session should appear there once, not twice.
 
-Steps 15–20 check the session effort rating and the heart-rate and step capture
-(`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). The
-logic is in the package and tested, but nothing hosts it on a wrist until the
-shipping plan's Phase 7 (the app shell) and Phase 8 (the HealthKit bindings)
-land — see that plan's O-1 and O-2.
+Steps 15–18 check the session effort rating: 15, 16 and 18 run on the shipped
+shell, 17 needs PR 4's durable store. Steps 19–20 check the heart-rate and step
+capture and stay with the shipping plan's Phase 8 (the HealthKit bindings) — see
+that plan's O-2
+(`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`).
 
-15. **The wrist asks how hard it was** *(needs Phase 7)*. Turn Settings →
+15. **The wrist asks how hard it was.** Turn Settings →
     Effort Rating on, on the phone, then sync from the wrist. Log a set on the
     wrist and end the session there. The wrist asks "How hard was this
     session?" from 1 to 5, and only an answer closes it — no skip, back or
@@ -402,14 +414,18 @@ land — see that plan's O-1 and O-2.
     phone and sync from the wrist: ending a session asks nothing, and the
     phone's Summary offers Add rating. A wrist that has never synced does not
     ask either. A session with nothing logged is never asked about.
-17. **The question survives a kill.** End a session on the wrist and
-    force-quit the watch app while the question shows. Relaunch: the question
-    comes back before anything else, and one answer records one rating.
+17. **The question survives a kill** *(needs the durable store — PR 4)*. End a
+    session on the wrist and force-quit the watch app while the question shows.
+    Relaunch: the question comes back before anything else, and one answer
+    records one rating. Not runnable yet: the shipped shell's store is in
+    memory, so the force-quit discards the session and the owed question. The
+    package restores the question from a store that outlives the process
+    (`WatchEffortRatingTests.testS215AKillDuringThePromptAsksAgainAndRecordsOneAnswer`);
+    only the store is missing.
 18. **Finishing on either device.** Finish on the phone and sync from the wrist:
     the wrist's session ends and the phone holds one entry (step *(e)* above).
     Finish on the wrist and sync: the phone's copy ends through its ordinary
-    finish with the rate the wrist asked for, once the wrist can finish a session
-    from its own screen (step *(f)* above).
+    finish with the rating the wrist gave (step *(f)* above).
 19. **Heart rate and steps reach the phone** *(needs Phase 8)*. With heart-rate
     and motion permission granted, run a session with a run, three rounds of a
     sports exercise and a block of sets. After sync the phone holds an average
@@ -423,11 +439,44 @@ land — see that plan's O-1 and O-2.
     computed as it is logged, so a sample that arrives after that is missing
     from them — the shipping plan's Phase 8 item 4 decides whether to wait.
 
+### The wrist's own logging (PR 2b)
+
+This walkthrough exercises the wrist logging surface. It has not been run on
+hardware yet.
+
+1. **Start a workout on the wrist and pick an exercise.** Tap **Free workout**.
+   A Free workout starts with no exercise, so the picker comes up first; pick
+   one and the logging screen appears with that exercise's value rows. Dial 3
+   reps and tap **Log**: the row is accepted and the rest countdown starts.
+2. **The set is on the phone at the moment it is logged.** Phone app in the
+   foreground and reachable. Without touching the wrist, the phone's session for
+   this wrist session shows the set. The phone must show it before any Sync —
+   only an untouched wrist proves the set is handed over as it is logged.
+   Nothing is sent on a timer.
+3. **End and answer once.** Turn Settings → Effort Rating on, on the phone, and
+   sync from the wrist. On the wrist tap **End**; the question appears alone —
+   no skip, back or swipe. Answer 4. The phone's calendar holds one entry for
+   the session and its Summary shows 4 / 5.
+4. **A workout logged with the phone out of reach catches up at the next Sync.**
+   Start another wrist workout and log a set with the phone in Airplane Mode.
+   Nothing arrives. Turn Airplane Mode off, foreground the phone app and tap
+   **Sync** on the wrist: the set lands exactly once.
+
+Two known gaps this walkthrough must not be read as failing on: a Sync while a
+rest countdown runs stops that countdown (the wrist adopts the answer's empty
+timers as authoritative — the reconciliation fixture `timer_cleared.json`,
+replayed by `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`),
+and the load label is always in kg, whatever unit the phone is set to
+(`WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`
+holds the kilogram payload underneath). A force-quit loses the session and
+any owed question (step 17).
+
 ### What "QA passed" means
 
 Levels 1 and 2 green, plus every step at Level 3 on real paired hardware —
-steps 15–20 as soon as shipping-plan Phases 7 and 8 make them runnable.
-Anything less and the integration is still a test-suite reality.
+steps 15–18 now, steps 19–20 once shipping-plan Phase 8 makes them runnable, and
+step 17 once PR 4's durable store lands. Anything less and the integration is
+still a test-suite reality.
 
 ---
 

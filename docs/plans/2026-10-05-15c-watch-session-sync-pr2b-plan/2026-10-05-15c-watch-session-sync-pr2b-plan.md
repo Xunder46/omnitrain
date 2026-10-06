@@ -442,7 +442,22 @@ else is not.
   observed. The watch `xcodebuild` is the **governor's** and the end-to-end walkthrough is the
   **owner's**; this agent ran neither. Signature audit of every package call site in
   `<plan>.evidence.md`)
-- [ ] Phase 3 — docs, walkthrough, residue sweep
+- [x] Phase 3 — docs, walkthrough, residue sweep — **Complete** (2026-10-05, developer: the four
+  predicted docs only; the wrist's own logging now documented as shipped, the two gaps stated plainly
+  in §3.6, the numbered owner walkthrough added (not run), residue greps empty. `swift-test` 267 / 0,
+  `flutter test` `+3913 ~1` 0 failures, `flutter analyze` 196 / 0 (exit 1 on the pre-existing info
+  notices, unchanged). `git-diff --stat` 4 files, docs only. Footprint in `<plan>.evidence.md`)
+- [x] Fix round 1 — the review's seven bounded findings (F-1, F-2, F-3, F-4, F-5, F-7, F-8; F-6 and
+  F-9 deliberately untouched) — **Complete** (2026-10-05, developer: the Sync tap out of the QA
+  walkthrough's step 2, the false "without a sync" bullet deleted and reconciled with the paragraph
+  above it, the dated 3881 count deleted, the 15b plan's stale sink clause corrected (its cited grep
+  now hits only quotations of the phrase), S-29a's test added — red under the reverted D-23 condition
+  (268 / 8 failures, four of them the new test) and green after the exact restore (268 / 0, and an
+  empty `git-diff` on the source file), `pickingExercise` cleared when the logging surface
+  disappears, and the four new limits plus the two known gaps pointed at the tests that hold them.
+  `flutter test` `+3913 ~1` 0 failures, `flutter analyze` 196 / 0. F-7's `.onDisappear` is compiled
+  by nothing this agent may run — the watch `xcodebuild` is the governor's. Details, sweep output and
+  the red→green table in `<plan>.evidence.md`; assumptions A-14…A-17 below)
 - Planner: plan written, series index corrected (S-28a's index half).
 
 ## Assumption Log
@@ -482,6 +497,36 @@ RATIFIED — promote to a D-x — or REVERT — open a remediation item.)
 - **Developer A-9 — the picker sheet closes itself on the pick that moved the session.** The package
   gives no "sheet dismissed" signal, and leaving it up would hide the surface it just switched to.
   Chose `onExerciseAdded` → `pickingExercise = false` plus `noteSurfaceChange()`. Vetoable.
+- **Developer A-10 — "step 14's parenthetical" is step 15's.** Phase 3 item 1 names a step-14
+  "(needs Phase 7)" parenthetical; step 14 has none, and step 15 carries the only one in the file.
+  Chose to read them as the same parenthetical (an off-by-one in the plan) and remove it there.
+- **Developer A-11 — the index's PR 2b row needed a tense fix beyond the planner's correction.** Its
+  "every frame is dropped today" clause was made false by Phase 2. Chose the one-clause correction
+  ("was dropped until this PR wired it"); the Status and Next-handoff lines are the planner's.
+- **Developer A-12 — the QA guide's §1 table row and "What QA passed means" are in scope.** Item 1
+  names §3.6 and the steps, but both would otherwise still describe the wrist as a slot list and
+  claim steps 15–20 as runnable together. Chose to correct them to keep the file self-consistent.
+- **Developer A-13 — the walkthrough is a Level 3 section of its own.** Item 1 asks for "one short,
+  numbered owner walkthrough"; chose a four-step *(owner, not yet run)* section before "What QA
+  passed means", closing with the two known gaps, rather than folding it into steps 15–18. (Its
+  `*(owner, not yet run)*` tags are gone in fix round 1 — see A-15.)
+- **Developer A-14 — F-5's mutation is the D-23 condition reverted, not a new guard.** The brief's
+  parenthetical quotes the post-D-23 line as the "original"; the pre-D-23 form is `slot != nil` alone
+  (this PR's own Phase 1 evidence calls D-23 a one-condition edit). Chose that revert, which turns
+  S-029 and S-029a red together, then restored it exactly (empty `git-diff` on the file).
+- **Developer A-15 — F-7 is in this round although the review filed it as a follow-up PR.** The fix
+  brief lists it among the seven findings, so the brief governs. Chose the review's own suggestion —
+  one `.onDisappear { pickingExercise = false }` on the logging surface — over resetting it at every
+  surface switch. The Swift build is the governor's; F-8's `*(owner, not yet run)*` tags go with it.
+- **Developer A-16 — the sensor and unit limits are stated as shell limitations, with a pointer.**
+  The package's recording layer exists and does respect injected unit preferences, so the true claim
+  is about the shell: `ContentView.swift` builds `WatchLoggingState(engine:)` with no recorder and no
+  units. Chose to say that and point at `WatchSensorRecordingTests` / `testS007APoundPreferenceSteps
+  InPoundsStoredInKilograms` rather than to keep describing behaviour. Vetoable.
+- **Developer A-17 — F-4's sweep is reported with its remaining hits, not as an empty grep.** After
+  the 15b correction the cited grep hits only this plan, its review and its evidence, each quoting the
+  phrase. Chose to paste those hits and say why they are quotations, since an "empty" claim would be
+  false. Vetoable.
 
 ## Open questions
 
@@ -507,4 +552,14 @@ Owner-facing; each with the default this plan proceeds on.
 
 ## Feedback
 
-[empty]
+- **Review 1 (`@code-reviewer`, Copilot edition): CHANGES_REQUESTED** —
+  `2026-10-05-15c-watch-session-sync-pr2b-plan.review.md`. Fix checklist for this PR, one round:
+  F-1 `docs/watch-app-setup-and-qa.md:452` (drop the Sync tap from step 2 — it cannot fail, and it
+  contradicts owner step 5), F-2 `docs/watch_session_sync.md:141` (delete the false "without a sync"
+  claim), F-3 `docs/watch-app-setup-and-qa.md:245` (delete the stale 3881 count), F-4
+  `2026-10-05-15b-…-plan.md:389` (S-28a's grep still hits), F-8 (`docs/watch_session_sync.md:155-166`
+  and `docs/watch-app-setup-and-qa.md:441+`: point the limits at tests, drop the PR-4/Phase-8 tags),
+  F-5 (`WatchLoggingSurfacesTests.swift:392`: add the S-29a fixture — the phone-ended session).
+  Follow-up PR, planned not absorbed: F-6 (the deferred `revision` bump in `ContentView.swift:106-109`)
+  and F-9 (the Dart twin's `canLog`). F-7 (`pickingExercise` surviving the surface) was filed here as a
+  follow-up and fixed in fix round 1 instead — the fix brief lists it among the seven findings (A-15).

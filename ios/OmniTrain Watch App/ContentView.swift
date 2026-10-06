@@ -210,5 +210,8 @@ struct ContentView: View {
                     }
                 }
         }
+        // The picker is a presentation, not the screen: a session that ends
+        // underneath it must not leave it owed when the surface comes back.
+        .onDisappear { pickingExercise = false }
     }
 }

@@ -29,6 +29,19 @@ func preferencesDown(_ asks: Bool, generatedAt: String, messageId: String? = nil
     ]
 }
 
+/// The phone's `session_lifecycle`, as the phone builds it.
+func phoneLifecycle(_ state: String, sessionId: String, at time: String) -> [String: Any] {
+    [
+        "protocolVersion": SyncProtocolValidator.protocolVersion,
+        "messageId": "msg-phone-\(state)-\(time)",
+        "sessionId": sessionId,
+        "type": "session_lifecycle",
+        "origin": "phone",
+        "sentAt": time,
+        "payload": ["state": state, "at": time],
+    ]
+}
+
 /// An instant from its wire form.
 func instant(_ text: String) -> Date {
     (try? parseUtcIso(text)) ?? Date(timeIntervalSince1970: 0)
@@ -126,17 +139,6 @@ final class RatingHarness {
             .filter { ($0["payload"] as? [String: Any])?["state"] as? String == state }
     }
 
-    func phoneLifecycle(_ state: String, sessionId: String, at time: String) -> [String: Any] {
-        [
-            "protocolVersion": SyncProtocolValidator.protocolVersion,
-            "messageId": "msg-phone-\(state)-\(time)",
-            "sessionId": sessionId,
-            "type": "session_lifecycle",
-            "origin": "phone",
-            "sentAt": time,
-            "payload": ["state": state, "at": time],
-        ]
-    }
 }
 
 final class WatchEffortRatingTests: XCTestCase {
@@ -296,7 +298,7 @@ final class WatchEffortRatingTests: XCTestCase {
 
         wrist.clock.now = instant("2026-09-25T10:21:00Z")
         _ = try await wrist.engine.applyMessage(
-            wrist.phoneLifecycle("completed", sessionId: "s-r-2", at: "2026-09-25T10:20:00Z")
+            phoneLifecycle("completed", sessionId: "s-r-2", at: "2026-09-25T10:20:00Z")
         )
 
         XCTAssertFalse(wrist.rating.isPromptOwed, "S-216 a completion from the phone never owes a prompt")
@@ -360,7 +362,7 @@ final class WatchEffortRatingTests: XCTestCase {
 
         wrist.clock.now = instant("2026-09-25T10:15:00Z")
         _ = try await wrist.engine.applyMessage(
-            wrist.phoneLifecycle("started", sessionId: "s-r-1", at: "2026-09-25T10:15:00Z")
+            phoneLifecycle("started", sessionId: "s-r-1", at: "2026-09-25T10:15:00Z")
         )
         try await wrist.logSet("e-2", at: "2026-09-25T10:16:00Z")
         await wrist.end(at: "2026-09-25T10:20:00Z")
