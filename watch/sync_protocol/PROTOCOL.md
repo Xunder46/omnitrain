@@ -281,6 +281,25 @@ correction carries no distance
   `loggedAt`, then by `entryId` where two share an instant.
   `fixtures/valid/session_snapshot_with_entries.json` is the shape, and
   `fixtures/reconciliation/phone_entries_merge.json` pins the merge.
+- A snapshot naming an `entryId` the receiver already holds MUST be read as its
+  sender's current values for that entry: the receiver MUST re-state the entry
+  from the snapshot's payload — the correction the sender made is what it shows
+  — and MUST NOT store a second row or rewrite the record it already holds.
+  Only the watch re-states: for an id it holds it takes the values the phone's
+  snapshot carries for it. A phone that receives a watch snapshot keeps the
+  values it already holds for an id — its model does not re-state, because the
+  watch does not edit existing records (authority rule 1) — and the phone's
+  answer carries the watch's own values for the watch's own entries, so a
+  re-statement of one is a no-op. Verified by the wrist-side tests in
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift`
+  (`testS35AReStatementShowsThePhonesNewValueAndLeavesTheRow`,
+  `testASecondEditWinsOverTheFirst`), by the phone-side half of the two stacks'
+  agreement in `test/watch_reconciliation_cross_stack_test.dart` (`S-35 a held id
+  the phone edited is re-stated on the wrist, not resaved`: the wrist shows the
+  new value, the phone its own), and, for the Dart twin,
+  `test/watch_session_projection_test.dart`
+  (`S-35 a re-statement is append-only and doubles nothing`,
+  `S-35 a second edit wins over the first`).
 - A snapshot that names a session other than the one the receiver holds is not
   a merge. It MUST replace the held session wholesale — structure, status,
   position, revision, timers, and entries — so entries never merge across
@@ -414,3 +433,4 @@ one pull request — never edit a fixture to match an implementation.
 | 1 (amended) | 2026-09-25 | Session capture: the `preferences_down` message; the `effort_rating` and `session_end` event kinds; the heart-rate, steps, pause and set-block summary fields; the session-switch rule; the resend rule. Additive, as the `receipt` addition was: both clients ship from this repository in one release, v1 is unreleased, and no receiver that predates the change exists. No existing fixture changed |
 | 1 (amended) | 2026-09-27 | Session capture: the `distanceSource` summary field on a `timed` entry that also carries `distanceMeters`. Additive for the same reason as the 2026-09-25 amendment; optional in this release, PR 3c makes it required when the watch sends it. No existing fixture changed |
 | 1 (amended) | 2026-10-05 | Phone-logged entries: authority rule 1 states that the phone MAY add entries it logged, which arrive in its `session_snapshot`; a snapshot's `entries` are the sender's own and are ordered by `loggedAt` then `entryId`; entries merge by `entryId`, and an `entryId` a receiver already holds is not stored a second time; the id a phone mints for a set it logged is `entry-<sessionExerciseId>-<n>` with `eventId` equal to it. The wire shape does not change — `session_snapshot` already requires `entries` and envelope already carries every metric a set needs — so no schema and no version change. Additive for the same reason as the 2026-09-25 amendment; no existing fixture changed. `fixtures/valid/session_snapshot_with_entries.json` is the shape and `fixtures/reconciliation/phone_entries_merge.json` pins the merge |
+| 1 (amended) | 2026-10-06 | Entries a snapshot re-carries: an `entryId` the receiver already holds is re-stated from the snapshot's payload — the receiver shows the sender's current values, stores no second row, and leaves the record it holds unrewritten. Only the watch re-states, taking for an id it holds the values the snapshot carries; a phone keeps the values it already holds, and the answer carries the watch's own values for the watch's own entries, so a re-statement of one is a no-op. The wire shape does not change — no schema and no version change — and no existing fixture changed: the re-statement is pinned by the wrist-side tests `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift` (`testS35AReStatementShowsThePhonesNewValueAndLeavesTheRow`, `testASecondEditWinsOverTheFirst`) and the Dart twin's `test/watch_session_projection_test.dart` (`S-35 a re-statement is append-only and doubles nothing`). Additive for the same reason as the 2026-09-25 amendment |

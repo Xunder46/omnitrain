@@ -2,8 +2,8 @@
 //
 // Plan: `docs/plans/2026-10-05-15a-watch-session-sync-pr1-plan/` (S-2, S-6, S-8,
 // D-10, D-11) and `docs/plans/2026-10-05-15d-watch-session-sync-pr3-plan/` (the
-// phone's own sets ride the answer: S-31, S-32, S-33, S-34, S-36, S-37, S-38,
-// S-39, S-40, S-42, S-43, D-38).
+// phone's own sets ride the answer: S-31, S-32, S-33, S-34, S-35, S-36, S-37,
+// S-38, S-39, S-40, S-41, S-42, S-43, D-35).
 // Scenario mapping:
 //   S-2 a phone session surfaces at a watch-initiated sync → `S-2 ...`
 //   S-8 phone edits reach the wrist at sync               → `S-8 ...`
@@ -17,9 +17,10 @@
 //   S-38 the wrist adopts a session it does not hold      → `S-38 ...`
 //   S-39 the projection is deterministic, and does not echo → `S-39 ...`
 //   S-40 two sessions do not share entries                → `S-40 ...`
+//   S-41 the wrist's own set survives an answer           → `S-41 ...`
 //   S-42 an entry the wire cannot carry is omitted        → `S-42 ...`
 //   S-43 the phone is unreachable at Sync                 → `S-43 ...`
-//   D-38 an edit and a delete do not reach the wrist      → `D-38 ...`
+//   S-35/D-35 an edit reaches the wrist, a delete does not → `S-35 ...`
 //
 // The phone side is the graph `createWatchSync` builds, over a fake radio: the
 // answer's shape, its revision, its entries and where it comes from are the
@@ -32,6 +33,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -40,6 +42,7 @@ import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/watch_nutrition_log_bridge.dart';
 import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
@@ -950,6 +953,156 @@ void main() {
       );
     });
 
+    test('S-35 a re-statement is append-only and doubles nothing', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        await engine.applyMessage(radio.lastOfType('session_snapshot')),
+        isTrue,
+      );
+      expect(
+        [for (final entry in engine.entries) entry.payload['loadKg']],
+        [60.0, 62.5],
+        reason: 'the fixture: the wrist holds the phone\'s first set at 60 kg',
+      );
+
+      // The phone corrects its first set: 60.0 kg -> 65.0 kg, same row group.
+      final weightId = LoggedEntryRows.observationId('slot-bench', 0, 'weight');
+      final storedWeight = (await repository.getEffortObservations(
+        'slot-bench',
+      )).firstWhere((row) => row.id == weightId);
+      await repository.updateObservation(
+        EffortObservation(
+          id: storedWeight.id,
+          effortId: storedWeight.effortId,
+          metricId: storedWeight.metricId,
+          unitId: storedWeight.unitId,
+          valueReal: 65.0,
+          createdAtMs: storedWeight.createdAtMs,
+          updatedAtMs: _at(3),
+        ),
+      );
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final edited = radio.lastOfType('session_snapshot');
+      expect(await engine.applyMessage(edited), isTrue);
+      expect(
+        await engine.applyMessage(edited),
+        isTrue,
+        reason:
+            'S-35 the very same re-statement a second time is not an error, and '
+            'the wrist keys it on the `entryId` the phone wrote (D-33)',
+      );
+
+      expect(
+        [for (final entry in engine.entries) entry.payload['loadKg']],
+        [65.0, 62.5],
+        reason:
+            'S-35 the wrist holds the id, so the snapshot re-states it and the '
+            'projection shows the corrected weight (D-35)',
+      );
+      expect(
+        engine.observations,
+        hasLength(2),
+        reason:
+            'S-35 a re-statement folds into the projection over the row the '
+            'wrist already wrote: nothing is appended, so a re-delivered edit '
+            'cannot double the set',
+      );
+      expect(
+        [
+          for (final row in engine.observations)
+            if (row.entryId == 'entry-slot-bench-0') row.payload['loadKg'],
+        ],
+        [60.0],
+        reason: 'S-35 the stored row is never rewritten (append-only)',
+      );
+      expect(
+        [for (final row in engine.observations) row.confirmedAt],
+        everyElement(isNotNull),
+        reason: 'S-35 a re-stated id is still a receipt for the row it names',
+      );
+      expect(engine.pendingObservations(), isEmpty);
+      expect(reportedFailure, isNull);
+    });
+
+    test('S-35 a re-statement of a deleted id stays deleted', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      await engine.applyMessage(radio.lastOfType('session_snapshot'));
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+      );
+
+      // The phone drops the second set: a structure change naming an entry that
+      // is not an edit to it.
+      expect(
+        await engine.applyMessage(<String, Object?>{
+          'protocolVersion': SyncProtocolValidator.protocolVersion,
+          'messageId': 'msg-change-1',
+          'sessionId': 'sess-1',
+          'type': 'structure_change',
+          'origin': 'phone',
+          'sentAt': _atIso(3),
+          'payload': <String, Object?>{
+            'changeId': 'chg-1',
+            'changes': [
+              <String, Object?>{
+                'kind': 'delete_entry',
+                'entryId': 'entry-slot-bench-1',
+              },
+            ],
+          },
+        }),
+        isTrue,
+      );
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0'],
+        reason: 'the delete drops the id from the projection',
+      );
+
+      // An answer that still names the deleted id: the wrist holds the row, so
+      // the snapshot re-states it — and a re-statement of a deleted id stays
+      // deleted, because the projection drops deleted ids before it reads the
+      // corrections.
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        _entryIds(_payload(radio.lastOfType('session_snapshot'))),
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+        reason: 'the fixture: the phone still holds the set the wrist dropped',
+      );
+      expect(
+        await engine.applyMessage(radio.lastOfType('session_snapshot')),
+        isTrue,
+      );
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0'],
+        reason:
+            'S-35 a re-statement does not resurrect a deletion: the phone owns '
+            'the delete, and the id stays dropped',
+      );
+      expect(
+        [for (final entry in engine.observations) entry.entryId],
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+        reason: 'the row is not un-stored either; only the projection hides it',
+      );
+    });
+
     test('S-33 the wrist\'s own set is not sent back to it', () async {
       await phoneSets(secondAtMs: _at(2), thirdAtMs: _at(3), wristAlsoLogged: true);
       expect(
@@ -1108,6 +1261,99 @@ void main() {
             'holds is one the phone stated',
       );
       expect(engine.pendingObservations(), isEmpty);
+    });
+
+    test('S-41 the wrist\'s own set survives an answer with no phone entries',
+        () async {
+      // The phone holds `sess-1`, and the only rows in it are the ones the
+      // importer wrote for a set the wrist logged: a live inbox row claims
+      // them, so they are the wrist's (D-34) and the phone has no entry of its
+      // own to send.
+      await seed('sess-1', [
+        (reps: 5, loadKg: 55.0, skipped: false, atMs: _at(2)),
+      ]);
+      await _SessionFixture.stageImportedSet(
+        repository,
+        'sess-1',
+        'slot-bench',
+        entryId: _wristEntryId,
+        loggedAtMs: _at(2),
+      );
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        _payload(radio.lastOfType('session_snapshot'))['entries'],
+        isEmpty,
+        reason:
+            'S-41 the fixture: everything the phone holds came from the wrist, '
+            'so the answer carries no entry',
+      );
+      expect(
+        await engine.applyMessage(radio.lastOfType('session_snapshot')),
+        isTrue,
+      );
+
+      // The wrist logs that set itself, as it did before the sync.
+      await wristLogsItsOwnSet();
+      radio.sent.clear();
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final answer = radio.lastOfType('session_snapshot');
+      expect(
+        _payload(answer)['entries'],
+        isEmpty,
+        reason:
+            'S-41 the phone\'s only set is the wrist\'s own, and it is never '
+            'echoed back to its author (D-34)',
+      );
+
+      expect(await engine.applyMessage(answer), isTrue);
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        [_wristEntryId],
+        reason:
+            'S-41 the wrist\'s row survives a merge of nothing: no answer takes '
+            'away what the wrist wrote itself',
+      );
+      expect(
+        engine.observations,
+        hasLength(1),
+        reason: 'S-41 and it is still one row, not two',
+      );
+      expect(
+        engine.pendingObservations(),
+        hasLength(1),
+        reason:
+            'S-41 an answer naming no entry confirms none, so the snapshot is '
+            'not the receipt for a row the wrist logged',
+      );
+
+      // What does receipt it: the phone's `receipt`, the path that already
+      // acknowledges observations the phone has recorded.
+      expect(
+        await engine.applyMessage(
+          WatchNutritionLogBridge.receiptFor(
+            entryIds: const [_wristEntryId],
+            sentAt: DateTime.fromMillisecondsSinceEpoch(_at(3), isUtc: true),
+            messageId: 'msg-receipt-1',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        [_wristEntryId],
+        reason: 'S-41 the receipt changes what the wrist owes, not what it holds',
+      );
+      expect(
+        engine.entries.single.confirmedAt,
+        isNotNull,
+        reason: 'S-41 the receipt path confirms the wrist\'s own row',
+      );
+      expect(engine.pendingObservations(), isEmpty);
+      expect(reportedFailure, isNull);
     });
 
     test('S-39 the projection is deterministic, and an echo is not sent', () async {
@@ -1363,8 +1609,7 @@ void main() {
       );
     });
 
-    test('D-38 an edit leaves the wrist\'s copy and a delete is not sent',
-        () async {
+    test('S-35 an edit reaches the wrist and a delete is not sent', () async {
       await seed('sess-1', [
         (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
         (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
@@ -1408,9 +1653,9 @@ void main() {
         ],
         [65.0, 62.5],
         reason:
-            'D-38 the edit is the phone\'s state: the projection still names '
-            'both sets, the edited one with the corrected weight — it omits '
-            'nothing it should carry',
+            'S-35 the edit rides the phone\'s state: the projection names both '
+            'sets, the edited one with the corrected weight — it omits nothing '
+            'it should carry (D-35)',
       );
       expect(
         await engine.applyMessage(edited),
@@ -1420,14 +1665,20 @@ void main() {
         [
           for (final entry in engine.entries) entry.payload['loadKg'],
         ],
+        [65.0, 62.5],
+        reason:
+            'S-35 the wrist holds the id already, so the snapshot re-states it: '
+            'the projection shows the phone\'s current value (D-35)',
+      );
+      expect(
+        [
+          for (final entry in engine.observations) entry.payload['loadKg'],
+        ],
         [60.0, 62.5],
         reason:
-            'D-38 the wrist keeps the weight it received: `_storeSnapshotEntry` '
-            'returns on an `entryId` it already holds, so a re-statement is '
-            'absorbed, never applied (the same once-each rule '
-            '`test/watch_reconciliation_cross_stack_test.dart`, "S-31 a '
-            'snapshot\'s own entries are absorbed by both stacks, once each", '
-            'pins on the wrist\'s own store)',
+            'S-35 the store stays append-only: the row the wrist wrote when the '
+            'entry first arrived is never rewritten, and a re-stated id appends '
+            'nothing, so the set is never doubled',
       );
 
       // A delete: the phone drops the set it logged second.
@@ -1454,6 +1705,80 @@ void main() {
         reason:
             'D-38 the wrist holds a row the phone no longer names until its own '
             'session is replaced: nothing in the answer takes it away',
+      );
+    });
+
+    test('S-35 a second edit wins over the first', () async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
+      ]);
+
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      expect(
+        await engine.applyMessage(radio.lastOfType('session_snapshot')),
+        isTrue,
+      );
+
+      final weightId = LoggedEntryRows.observationId('slot-bench', 0, 'weight');
+
+      // One edit: the phone rewrites its first set's weight, syncs, and the
+      // answer is applied to the wrist — the way the shipping app does it.
+      Future<void> editAndSync(double loadKg, int atMs) async {
+        final stored = (await repository.getEffortObservations('slot-bench'))
+            .firstWhere((row) => row.id == weightId);
+        await repository.updateObservation(
+          EffortObservation(
+            id: stored.id,
+            effortId: stored.effortId,
+            metricId: stored.metricId,
+            unitId: stored.unitId,
+            valueReal: loadKg,
+            createdAtMs: stored.createdAtMs,
+            updatedAtMs: atMs,
+          ),
+        );
+        await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+        await _settle();
+        expect(
+          await engine.applyMessage(radio.lastOfType('session_snapshot')),
+          isTrue,
+        );
+      }
+
+      await editAndSync(65.0, _at(3));
+      expect(
+        [for (final entry in engine.entries) entry.payload['loadKg']],
+        [65.0, 62.5],
+        reason: 'S-35 the first edit reaches the wrist (60 -> 65)',
+      );
+
+      // The second edit is the one that matters: the wrist already holds 65,
+      // so a fold order that let the earlier correction win would keep
+      // showing it instead of the phone's newest value.
+      await editAndSync(70.0, _at(4));
+      expect(
+        [for (final entry in engine.entries) entry.payload['loadKg']],
+        [70.0, 62.5],
+        reason:
+            'S-35/D-35 the newest snapshot is authoritative: a set edited '
+            'twice (60 -> 65 -> 70) shows 70 on the wrist, not the first '
+            'correction',
+      );
+      expect(
+        engine.observations
+            .where((row) => row.recordId == 'entry-slot-bench-0')
+            .length,
+        1,
+        reason: 'S-35 one row per id however many times the phone re-states it',
+      );
+      expect(
+        [for (final entry in engine.observations) entry.payload['loadKg']],
+        [60.0, 62.5],
+        reason:
+            'S-35 the store stays append-only: the second edit rewrites no '
+            'stored row and doubles no set',
       );
     });
 

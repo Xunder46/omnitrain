@@ -350,7 +350,10 @@ on the phone as well, with one history entry and the rating the wrist gave.
 Log two sets on the phone's regular session screen, in a session that is also on
 the watch. With the phone app in the foreground, tap **Sync** on the watch: the
 watch's logging screen shows both sets, in the phone's order. The doubling
-check: a set logged on the watch earlier is not duplicated by that Sync.
+check: a set logged on the watch earlier is not duplicated by that Sync. Then
+edit one of those sets on the phone (change the weight), tap **Sync** on the
+watch again: the watch shows the new weight on that same set, not a third set.
+Deleting a set on the phone is **not** carried — it stays on the watch.
 
 **The walkthrough** — each step maps to a protocol rule that is already
 enforced in code, so a failure points at the transport, not the logic:

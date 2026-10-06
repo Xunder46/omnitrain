@@ -69,6 +69,26 @@ no value comes from a clock or a counter. Verified by
 `test/live_mirroring_test.dart`
 (`S-31 a ladder the phone disagrees with is answered with its sets`).
 
+**D-35 — a set edited on the phone is re-stated on the wrist at the next Sync.**
+A set edited on the phone shows its new value on the watch at the next Sync, still
+as one set: an `entryId` the wrist already holds is *re-stated* from the answer —
+the wrist shows the phone's corrected values, stores no second row, and leaves the
+row it already holds unrewritten. Only the watch re-states: for an id it already
+holds it takes the values the answer carries. A phone that receives a watch
+snapshot keeps the values it already holds for an id — the watch does not edit
+existing records (authority rule 1), so the phone's model does not re-state — and
+the answer carries the watch's own values for the watch's own entries, so a
+re-statement of one is a no-op. Verified by `test/watch_session_projection_test.dart`
+(`S-35 an edit reaches the wrist and a delete is not sent`,
+`S-35 a re-statement is append-only and doubles nothing`,
+`S-35 a second edit wins over the first`), by the two stacks' agreement in
+`test/watch_reconciliation_cross_stack_test.dart`
+(`S-35 a held id the phone edited is re-stated on the wrist, not resaved`), and on
+the native watchOS client by `WatchPhoneEntriesTests`
+(`testS35AReStatementShowsThePhonesNewValueAndLeavesTheRow`,
+`testASecondEditWinsOverTheFirst`) in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift`.
+
 **D-10 — a conflict resolves to "each keeps its own".** A phone already running a
 session refuses to adopt another, and a wrist session the phone is not in is left
 alone. A refusal is the rule working, not an error: it is reported once per
@@ -174,15 +194,10 @@ remains out is listed below.
   `S-39 the projection is deterministic, and an echo is not sent`;
   `test/live_mirroring_test.dart`,
   `S-32/S-39 an entry-only difference is not re-asserted`).
-- **An edit to a set already on the wrist does not update the wrist's copy.**
-  The phone states a set once, when it first reaches the wrist; editing the
-  phone's row afterwards changes nothing on the wrist, which keeps the values it
-  received (`test/watch_session_projection_test.dart`,
-  `D-38 an edit leaves the wrist's copy and a delete is not sent`).
 - **A delete does not reach the wrist.** A set deleted on the phone stays on the
   wrist until the wrist's own session is replaced
   (`test/watch_session_projection_test.dart`,
-  `D-38 an edit leaves the wrist's copy and a delete is not sent`).
+  `S-35 an edit reaches the wrist and a delete is not sent`).
 - **The wrist's own start, current exercise and timers are not carried.** The
   answer the phone composes carries its own current index and its own timers, not
   the wrist's (`test/watch_session_projection_test.dart`,

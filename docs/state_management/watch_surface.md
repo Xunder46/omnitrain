@@ -70,7 +70,9 @@ snapshot is answered with is composed on demand from the session the regular
 screen is running — the session-adoption bridge projects `WorkoutState` into
 protocol shape, the ladder and the `set` entries the phone logged together. The
 wrist's snapshot merge stores the entries it does not already hold beside its
-own, so a set the phone logged reaches the wrist at its Sync (D-31, D-33).
+own, so a set the phone logged reaches the wrist at its Sync (D-31, D-33) — and
+a set edited on the phone is updated on the wrist at the next Sync, re-stated
+from the answer while the wrist's stored row is left unrewritten (D-35).
 Its slots are that session's efforts, a slot id is the effort's
 own row id, and its revision rises only when the ladder changes, so the wrist's
 replace-structure rule accepts a real edit and stays silent on a replay of a
@@ -79,8 +81,15 @@ no session of its own to speak from: nothing bound, no session running, or a
 snapshot naming a session this phone is not in. `projectedSession` is what a
 snapshot request is answered with, and `sendState` sends a composed answer.
 Verified by `test/watch_session_projection_test.dart` (`S-2`, `S-8`, `S-6`,
-`S-31 the phone's own sets arrive as entries`, and the
-revision-rises-only-with-the-ladder case);
+`S-31 the phone's own sets arrive as entries`,
+`S-35 an edit reaches the wrist and a delete is not sent`,
+`S-35 a re-statement is append-only and doubles nothing`, and the
+revision-rises-only-with-the-ladder case), the wrist-side
+`WatchPhoneEntriesTests.testS35AReStatementShowsThePhonesNewValueAndLeavesTheRow`
+in `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift`, and
+the two stacks' agreement on a re-stated id in
+`test/watch_reconciliation_cross_stack_test.dart`
+(`S-35 a held id the phone edited is re-stated on the wrist, not resaved`);
 `test/watch_transport_test.dart`'s `S-003` group covers the copy's fallback.
 
 `WatchMirrorTransport` is the phone's half of the transport contract: `send`

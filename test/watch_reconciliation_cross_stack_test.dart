@@ -185,6 +185,73 @@ void main() {
     expect(phoneEntryIds.length, phoneEntryIds.toSet().length);
   });
 
+  test('S-35 a held id the phone edited is re-stated on the wrist, not resaved',
+      () async {
+    // The shared fixture re-carries `entry-slot-bench-0` with the same values,
+    // so its single `expected` block — the phone's converged state, which keeps
+    // the first value it stored for a held id — cannot show the divergence a
+    // real edit produces. The edit is made here, on the fixture as it is read:
+    // same id, same row group, a new weight.
+    final fixture = fixtures.firstWhere(
+      (fixture) => (fixture['name']! as String).contains('adds the entries'),
+    );
+    final stream = jsonDecode(jsonEncode(_streamOf(fixture)))! as List;
+    for (final message in stream.cast<Map<String, Object?>>()) {
+      if (message['type'] != 'session_snapshot') continue;
+      for (final entry in _objectsIn(_payloadOf(message)['entries'])) {
+        if (entry['entryId'] == 'entry-slot-bench-0') entry['loadKg'] = 65;
+      }
+    }
+
+    final snapshot = _asObject(fixture['snapshot']);
+    final phone = SyncSessionReconciler.fromSnapshot(_payloadOf(snapshot));
+    final engine = WatchSessionEngine(
+      InMemoryWatchSessionStore(),
+      clock: () => _now,
+    );
+    await engine.applyMessage(snapshot);
+
+    for (final message in stream.cast<Map<String, Object?>>()) {
+      phone.applyMessage(message);
+      if (message['type'] == 'observations_up') continue;
+      await engine.applyMessage(message);
+    }
+
+    Map<String, Object?> entryOf(String id) => _objectsIn(
+      phone.convergedState()['entries'],
+    ).firstWhere((entry) => entry['entryId'] == id);
+
+    final wrist = {
+      for (final entry in engine.entries) entry.entryId: entry.payload,
+    };
+
+    expect(
+      wrist['entry-slot-bench-0']!['loadKg'],
+      65,
+      reason:
+          'S-35 the wrist holds the id, so the answer re-states it: the wrist '
+          'shows the weight the phone has now',
+    );
+    expect(
+      entryOf('entry-slot-bench-0')['loadKg'],
+      60,
+      reason:
+          'D-35 the phone keeps the first value it stored for a held id; only '
+          'the wrist re-states, which is why the two stacks diverge here',
+    );
+    expect(
+      wrist.keys.toList()..sort(),
+      ['entry-slot-bench-0', 'entry-slot-bench-1'],
+      reason: 'S-35 a re-statement neither appends a row nor drops one',
+    );
+    expect(wrist['entry-slot-bench-1']!['loadKg'], 62.5);
+    expect(
+      engine.observations.map((observation) => observation.entryId).toList(),
+      ['entry-slot-bench-0', 'entry-slot-bench-1'],
+      reason: 'S-35 the store is append-only: exactly one row per held id',
+    );
+  });
+
   test('S-009 removing the current exercise leaves both stacks on the next one',
       () async {
     final fixture = fixtures.firstWhere(

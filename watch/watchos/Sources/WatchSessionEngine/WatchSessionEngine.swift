@@ -714,10 +714,20 @@ public final class WatchSessionEngine {
 
     /// Stores an entry the phone sent, in the shape the wrist shows it. Nothing
     /// is emitted: the phone is the source, and the receipt is `entries`.
+    ///
+    /// An `entryId` the wrist already holds is **re-stated**: the snapshot's
+    /// payload folds into the projection `entries` reads, exactly as a
+    /// `correct_entry` does, and the stored observation row is left alone — the
+    /// log stays append-only, so re-stating a set the phone edited neither
+    /// rewrites the row nor doubles it. The phone, receiving, keeps the first
+    /// value it stored for an id it holds; only the wrist re-states.
     private func storeSnapshotEntry(_ sessionId: String, _ entry: [String: Any]) async {
-        guard let entryId = entry["entryId"] as? String,
-              !storedObservations.contains(where: { $0.recordId == entryId })
-        else { return }
+        guard let entryId = entry["entryId"] as? String else { return }
+        if storedObservations.contains(where: { $0.recordId == entryId }) {
+            entryCorrections[entryId] = (entryCorrections[entryId] ?? [:])
+                .merging(entry) { _, corrected in corrected }
+            return
+        }
 
         let stored = await store.append(
             .observation(

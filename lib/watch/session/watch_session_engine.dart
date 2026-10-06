@@ -694,12 +694,25 @@ class WatchSessionEngine {
 
   /// Stores an entry the phone sent, in the shape the wrist shows it. Nothing
   /// is emitted: the phone is the source, and the receipt is [entries].
+  ///
+  /// An `entryId` the wrist already holds is **re-stated**: the snapshot's
+  /// payload folds into the projection [entries] reads, exactly as a
+  /// `correct_entry` does, and the stored observation row is left alone — the
+  /// log stays append-only, so re-stating a set the phone edited neither
+  /// rewrites the row nor doubles it. The phone, receiving, keeps the first
+  /// value it stored for an id it holds; only the wrist re-states.
   Future<void> _storeSnapshotEntry(
     String sessionId,
     Map<String, Object?> entry,
   ) async {
     final entryId = entry['entryId']! as String;
-    if (_observations.any((row) => row.recordId == entryId)) return;
+    if (_observations.any((row) => row.recordId == entryId)) {
+      _entryCorrections[entryId] = {
+        ...?_entryCorrections[entryId],
+        ...entry,
+      };
+      return;
+    }
 
     final stored = await _store.append(
       WatchObservationRecord(
