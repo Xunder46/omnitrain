@@ -53,6 +53,22 @@ Map<String, Object?> _slot(String id, List<String> capabilities) => {
   'capabilities': capabilities,
 };
 
+/// One `session_lifecycle` from the phone — its own way of saying the session
+/// is over.
+Map<String, Object?> _phoneLifecycle(
+  String sessionId, {
+  String state = WatchLifecycleState.completed,
+  String messageId = 'msg-phone-lifecycle',
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'session_lifecycle',
+  'origin': 'phone',
+  'sentAt': '2026-07-13T17:01:00Z',
+  'payload': {'state': state, 'at': '2026-07-13T17:01:00Z'},
+};
+
 Map<String, Object?> _asObject(Object? value) =>
     (value as Map).cast<String, Object?>();
 
@@ -495,6 +511,80 @@ void main() {
       expect(orphan.canLog, isFalse);
       expect(orphan.fields, isEmpty);
       expect(orphan.log, throwsStateError);
+    });
+
+    test('S-52 the wrist\'s own End closes the logging surface', () async {
+      final store = InMemoryWatchSessionStore();
+      final engine = WatchSessionEngine(
+        store,
+        clock: clock.call,
+        onEmit: emitted.add,
+        validator: _validator(),
+      );
+      await engine.createSession(
+        modality: null,
+        exercises: [_slot('sx-free', ['reps', 'load'])],
+      );
+      final surface = WatchLoggingState(engine: engine, clock: clock.call);
+      await surface.log();
+
+      await engine.finishSession();
+      expect(engine.session!.status, WatchSessionStatus.completed);
+
+      // The count after the end includes the `session_end` row the engine
+      // appends; the refused log must add nothing to it.
+      final afterEnd = (await store.readAll()).observations.length;
+
+      expect(
+        surface.canLog,
+        isFalse,
+        reason: 'a finished session is not a surface to log into',
+      );
+      expect(surface.fields, isEmpty);
+
+      await expectLater(surface.log(), throwsStateError);
+      expect(
+        (await store.readAll()).observations.length,
+        afterEnd,
+        reason: 'the refused log appended no observation row',
+      );
+    });
+
+    test('S-52 a session the phone ended is not a surface to log into', () async {
+      final store = InMemoryWatchSessionStore();
+      final engine = WatchSessionEngine(
+        store,
+        clock: clock.call,
+        onEmit: emitted.add,
+        validator: _validator(),
+      );
+      await engine.createSession(
+        modality: null,
+        exercises: [_slot('sx-free', ['reps', 'load'])],
+      );
+      final surface = WatchLoggingState(engine: engine, clock: clock.call);
+      await surface.log();
+      final sessionId = engine.session!.sessionId;
+
+      clock.advance(const Duration(minutes: 1));
+      expect(await engine.applyMessage(_phoneLifecycle(sessionId)), isTrue);
+      expect(engine.session!.status, WatchSessionStatus.completed);
+
+      final afterEnd = (await store.readAll()).observations.length;
+
+      expect(
+        surface.canLog,
+        isFalse,
+        reason: 'S-52 a session the phone ended is not a surface to log into',
+      );
+      expect(surface.fields, isEmpty);
+
+      await expectLater(surface.log(), throwsStateError);
+      expect(
+        (await store.readAll()).observations.length,
+        afterEnd,
+        reason: 'the refused log appended no observation row',
+      );
     });
   });
 

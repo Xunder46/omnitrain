@@ -179,8 +179,10 @@ class WatchLoggingState {
   // What the screen is showing
   // ---------------------------------------------------------------------------
 
-  /// Whether there is an exercise in progress to log against.
-  bool get canLog => _engine.session != null && _slot != null;
+  /// Whether there is an exercise in progress to log against. A session that is
+  /// over — ended here or by the phone — is not a surface to log into (D-55).
+  bool get canLog =>
+      _engine.session?.status == WatchSessionStatus.active && _slot != null;
 
   /// The modality the session was started in, or null for free training.
   String? get modality => _engine.session?.modality;

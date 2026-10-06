@@ -323,6 +323,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         do {
             try data.write(to: tempURL)
         } catch {
+            try? FileManager.default.removeItem(at: tempURL)
             return false
         }
 

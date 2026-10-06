@@ -377,6 +377,89 @@ final class WatchSessionEngineTests: XCTestCase {
         XCTAssertTrue(relaunched.observations.isEmpty)
     }
 
+    // MARK: - S-48 / G3 a pruned row takes its lens with it
+
+    func testS48APrunedRowTakesItsCorrectionWithIt() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+
+        for entryId in ["e-1", "e-2", "e-3"] {
+            try await engine.appendObservation(setEvent(harness.clock, entryId: entryId))
+        }
+        _ = try await engine.applyMessage(
+            structureChangeMessage(
+                changeId: "chg-correct-1",
+                changes: [
+                    ["kind": "correct_entry", "entryId": "e-1", "correction": ["loadKg": 70.0]]
+                ]
+            )
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "e-1" }?.payload["loadKg"] as? Double,
+            70,
+            "S-48 the phone's correction is what the wrist shows"
+        )
+        _ = await engine.confirmObservations(["e-1", "e-2"])
+
+        let pruned = await engine.pruneConfirmed()
+        XCTAssertEqual(Set(pruned), ["e-1", "e-2"], "S-48 the confirmed rows are the ones dropped")
+
+        _ = try await engine.applyMessage(
+            snapshotMessage(
+                messageId: "msg-resend-1",
+                sessionId: harness.sessionId,
+                revision: 7,
+                entries: [entryMap("e-1", at: utcIso(testInstant()), loadKg: 60)]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["e-1", "e-3"],
+            "S-48 the re-carried id is a fresh row again, and the unconfirmed entry is untouched"
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "e-1" }?.payload["loadKg"] as? Double,
+            60,
+            "S-48/G3 a pruned row takes its correction with it: the fresh row shows what was delivered, not 70"
+        )
+    }
+
+    func testS48APrunedRowTakesItsDeletionMarkerWithIt() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        try await engine.appendObservation(setEvent(harness.clock, entryId: "e-1"))
+
+        _ = try await engine.applyMessage(
+            structureChangeMessage(
+                changeId: "chg-delete-1",
+                changes: [["kind": "delete_entry", "entryId": "e-1"]]
+            )
+        )
+        XCTAssertTrue(engine.entries.isEmpty, "S-48 the phone's deletion hides the entry")
+
+        _ = await engine.confirmObservations(["e-1"])
+        let pruned = await engine.pruneConfirmed()
+        XCTAssertEqual(pruned, ["e-1"], "S-48 the deleted row is still a stored row, so a prune drops it")
+
+        _ = try await engine.applyMessage(
+            snapshotMessage(
+                messageId: "msg-resend-2",
+                sessionId: harness.sessionId,
+                revision: 8,
+                entries: [entryMap("e-1", at: utcIso(testInstant()), loadKg: 60)]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["e-1"],
+            "S-48/G3 the deletion marker went with the pruned row, so a re-carried id is shown again"
+        )
+    }
+
     // MARK: - Timer derivation
 
     func testTimerMathFollowsTheClockAcrossEveryState() throws {
@@ -507,6 +590,62 @@ final class WatchSessionEngineTests: XCTestCase {
             "origin": "phone",
             "sentAt": at,
             "payload": ["state": state, "at": at],
+        ]
+    }
+
+    /// A phone entry, as a snapshot carries it.
+    private func entryMap(_ entryId: String, at loggedAt: String, loadKg: Double) -> [String: Any] {
+        [
+            "entryId": entryId,
+            "eventId": entryId,
+            "kind": "set",
+            "loggedAt": loggedAt,
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-sx-bench",
+            "reps": 8,
+            "loadKg": loadKg,
+        ]
+    }
+
+    /// One `session_snapshot` from the phone, over the wrist's own session.
+    private func snapshotMessage(
+        messageId: String,
+        sessionId: String,
+        revision: Int,
+        entries: [[String: Any]]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": sessionId,
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:30:00Z",
+            "payload": [
+                "sessionId": sessionId,
+                "revision": revision,
+                "status": WatchSessionStatus.active,
+                "currentExerciseIndex": 0,
+                "exercises": [exercise("sx-bench")],
+                "entries": entries,
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ]
+    }
+
+    /// One `structure_change` from the phone, over the wrist's own session.
+    private func structureChangeMessage(
+        changeId: String,
+        changes: [[String: Any]]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-\(changeId)",
+            "sessionId": "s-watch-1",
+            "type": "structure_change",
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:30:00Z",
+            "payload": ["changeId": changeId, "changes": changes],
         ]
     }
 

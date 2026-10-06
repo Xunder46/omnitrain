@@ -304,3 +304,154 @@ Critical: 0 | Warnings: 2 | Suggestions: 2
 → G1 with PR 4b's prune cases, G3 to the planner's ledger; G2 and G4 optional.
 
 VERDICT: APPROVE
+
+# Code review 3 (PR 4b)
+
+Base `e4adc3f` · reviewed the uncommitted PR 4b working tree (10 files, +764/−48): G3 (D-52) and F-9
+(D-55) on both stacks, the 4a re-review's G1/G2 (G4 is paperwork), and their docs. The un-scoped
+held-id check (D-53, S-56, AC11) is dropped out of this PR; the drop is sound — nothing was left
+half-applied.
+Layers in scope: the Swift package (`watch/watchos`), the Dart twin (`lib/watch/`), `docs/`,
+`docs/plans/`. Skipped: the Dart models, persistence, state, features, widgets and core layers, and
+the watch shell (`ios/OmniTrain Watch App`) — this round changes no file in any of them.
+Diff vs Predicted Files: conforms, with the one recorded deviation (the two test files A-47 names).
+
+## Answers to the brief's five questions
+
+**1. G3 — does clearing the correction/deletion lens break any reader?** No. Each stack has exactly
+two read sites for the lens, both inside the projection (Swift `WatchSessionEngine.swift:198,200`,
+Dart `watch_session_engine.dart:215,216`); the other sites the plan's impact row names
+(Swift `:727,821,825,826`, Dart `:710,871,881,882`) are the `correct_entry` / `delete_entry` writers,
+and `:65,66` / `:105,106` are the declarations. I re-grepped both stacks and found no unlisted
+reader. The projection applies the lens **only to rows still in the observation list**, so an id that
+was just pruned is absent and clearing its entry cannot change any row the projection returns —
+`sessionSnapshot`, the surface's rows and `pendingObservations()` all consume that one projection.
+`confirmObservations` reads the raw list, not the lens. The single behaviour change is D-52's intent:
+a re-carried id is appended fresh and now reads as what was delivered (S-48). Before the fix a stale
+correction overrode a row that no longer existed, and a stale deletion marker hid a fresh one — both
+strictly worse. **Residual, latent, documented:** after a prune drops a deletion marker, an entry the
+phone has since re-carried shows again until the next Sync; the only producer of `delete_entry` is a
+test (PR 3's D-38), and D-50 already states this consequence for the lens as a whole.
+
+**2. F-9 — does the stricter `canLog` break any caller?** No. `canLog` (`lib/watch/logging/watch_logging_state.dart:184`)
+has three readers (`:317` in `fields`, `:600` in `log`, `lib/watch/logging/watch_logging_screen.dart:311`
+as the disabled flag) and four test readers (`test/watch_logging_surfaces_test.dart:511,539,576,643`).
+All four still assert what they asserted: `:511` (an orphan surface) and `:643` (an active session)
+are unchanged in outcome, `:539`/`:576` are the new S-52 pair. No test pins the old permissiveness.
+The two debug entrypoints that log without the guard (`lib/watch/debug/watch_session_debug_surface.dart:223`,
+`lib/state/watch/live_session_mirror_debug_main.dart:371`) call the engine directly and are untouched.
+`WatchSessionStatus` has active/completed/abandoned and no paused state, so `== active` is exactly the
+Swift rule (D-23) with no case to miss.
+
+**3. Are the new tests non-vacuous?** Yes, on the evidence I read myself.
+*S-48* (`WatchSessionEngineTests.swift:382,429`; `test/watch_session_engine_test.dart` group at `:565`)
+builds the scenario's own fixture — a corrected entry, plus a deletion marker in the second case, then
+the prune — and asserts the re-carried id reads as delivered; deleting the lens loop
+(`WatchSessionEngine.swift:1514-1517`, `watch_session_engine.dart:1371-1374`) makes all four red, which
+is the only thing that proves the loop is load-bearing. Both loops are present at those lines and
+iterate the ids the store reported dropped.
+*S-52* (`test/watch_logging_surfaces_test.dart:512+`) asserts the ended-session refusal on a surface
+that still holds a slot, so the old `canLog` rule fails it — the pair is red under the mutation the
+evidence records.
+*G2* (`WatchFileStoreTests.swift:851`) is the one case that really reaches `compact`'s cleanup: the
+directory is writable, so the staging write succeeds, and the target is made `UF_IMMUTABLE`, so
+`replaceItemAt` fails. It asserts its own unwritability precondition first, then that the prune
+returned `[]` (the replace truly failed), that the file's bytes are unchanged and that no `.tmp`
+remains; removing the `try? removeItem` at `FileWatchSessionStore.swift:338` reddens exactly that one
+assertion. A-47 is right that the `.tmp`-absent clause inside F2/G1 is vacuous (an unwritable
+directory means no staging file is ever created) — which is why G2's new shape is the one that
+matters. No changed test uses a trivial fixture, and none asserts a paraphrase of its scenario.
+
+**4. Are the docs true?** Yes for every claim I could check; one clause is broader than the code —
+H1. `docs/state_management/watch_surface.md`'s new invariant bullet (`:684-694`) and its S-52 citation
+on the "an ended session is no longer a logging surface" sentence (`:388-393`) name tests that exist
+by exact group and test name and assert what the bullet claims. No live doc claims the Dart twin can
+log into an ended session: `canLog` appears in no `docs/` file outside `docs/plans/`, and
+`docs/watch-app-setup-and-qa.md:178` cites only the Swift case, so it is not made false. The plan's
+"the wrist's record file is never trimmed" line stays true (D-51, pruning still unscheduled).
+
+**5. Is the plan paperwork clean?** Almost. Dropped items kept their ids and are consistently marked
+(D-53; S-56 at `:223`; AC11 at `:110`; Phase 4 steps 3/4/7 at `:269-273`; A-44) and no id was reused.
+A-43…A-47 read true against the code and tests, including A-47's vacuity observation, which is exactly
+what I found. Status, Progress, the Phase 4/5 verification notes and the planned-touched table agree
+with each other and with the diff: `:278` and `:339-340` claim the same counts I measured, `:305`
+("`FileWatchSessionStore.swift` unchanged") is true — it is not in the diff — and `:286`/`:347` state
+the same residue sweeps as clean. Two label/line defects: H2 and H3.
+
+## Findings
+
+**H1 · warning · `watch/watchos/Sources/WatchSessionEngine/FileWatchSessionStore.swift:328-330`
+(vs `docs/state_management/watch_surface.md:687-692`)**
+The invariant reads "a prune that cannot be written … [leaves] no staging file left in the store's
+directory", but `compact`'s staging-write failure path returns `false` without removing a possibly
+partial `watch-session.jsonl.tmp`; only the replace-failure path (`:338`) cleans up, and the three
+cited cases cannot reach the write path with a file to remove (the directory is unwritable, so none is
+created — A-47). The residue is harmless (the next compact truncates the same path) and re-review G2's
+first half — "`try?` remove the temp on the write-failure path too" — was not applied, so the sentence
+is stronger than the code. Not blocking, and the same grading review 2 gave it.
+Fix: either add `try? FileManager.default.removeItem(at: tempURL)` to that catch — then the sentence is
+exactly true — or drop the staging-file clause and keep the claim to what the named cases verify.
+Guard: the G2 case family, extended to assert `.tmp`-absence after a staging write that leaves a
+partial file (e.g. a `Data`-backed failing write), so the clause cannot quietly become false again.
+→ @developer (one line) or @planner (the sentence).
+
+**H2 · suggestion · plan `:6-7`, `:43`, `:64` vs `:286`, `:347`**
+The same two labels name two different defect sets: `:6` and D-53 call the un-scoped held-id check
+"G2" and mark it dropped, while `:286`/`:347` close "G2" as `testG2AFailedReplaceLeavesNoTemporaryFile`
+over code that already behaved; `:6` counts the re-review's items as "G1, G3 and G4" while D-52 calls
+the lens cleanup "G3" and `:347` calls the ledger amendment "G3". A reader cannot tell from D-53 what
+was dropped, or from `:6` whether the `.tmp` case was dropped or closed.
+Fix: name the dropped item by its defect and decision ("the un-scoped held-id check, D-53") rather than
+by a label, and leave G1–G4 to the re-review's numbering. → governor/planner.
+
+**H3 · suggestion · plan `:119`**
+The impact row's `canLog` reader lines (`test/watch_logging_surfaces_test.dart:495,553`) no longer
+point at the readers: this change shifted that file by sixteen lines, and the readers are now
+`:511`, `:539`, `:576` and `:643`. The readers are right, the coordinates are not, so a later reader
+checking `:495` finds an unrelated line.
+Fix: refresh the two line numbers in the row. → governor/planner.
+
+## Verification
+
+- `.github/copilot/scripts/macos/gateway.sh test` → **3949 passing / 1 skipped / 0 failing**, exit 0
+  (`test-20261006-144931-59095.log`: `01:38 +3949 ~1: All tests passed!`) — the plan's Phase 4 claim
+  to the case (3945 baseline + 4).
+- `.github/copilot/scripts/macos/gateway.sh swift-test` → **294 passing / 0 failing**, exit 0
+  (`swift-test-20261006-144931-59094.log`) — also to the case (290 + 4: the two S-48 cases, G1, G2).
+- `gateway.sh lint` was not re-run: the brief mandates one `test` run, and Phase 4's 196 issues /
+  0 errors over a diff that adds no new analyzer surface is consistent with the notice count in the
+  files I read.
+- Both fixes are present at the lines the plan cites, symmetrically (`D-52` comments in both stacks),
+  and the mutation evidence (Swift 6 red, Dart 4 red, all restored) matches what I read in the
+  assertions — the red evidence is mutation-based because the fixes landed before their tests.
+- Acceptance criteria re-checked: AC6 (S-48) and AC10 (S-52) are met on both stacks; AC11 is
+  explicitly dropped with D-53 and leaves no half-applied code (`storeSnapshotEntry` /
+  `_storeSnapshotEntry` are absent from the diff).
+- Direction 2 of the predicted-files diff: the only predicted files untouched are
+  `WatchPhoneEntriesTests.swift` and `test/watch_session_projection_test.dart`, which are dropped step
+  7's — planned out, not unfinished.
+
+DOC FALSIFICATION: ✅ PASS (1 live doc changed — `docs/state_management/watch_surface.md`; derived by
+grepping `docs/` for the touched surface, where it is the only non-plan file that mentions the prunes,
+`canLog` or a pruned row. No `docs/` file carries a scope declaration, so rule (4) nominally implicates
+the whole set; I read every doc the grep surfaced and found no other claim a prune lens survives, that
+the Dart twin can log into an ended session, or that a failed prune leaves no file. H1 is one clause
+over-broad, not a false statement about shipped behaviour.)
+DOC STANDARD: ✅ PASS — the added bullet names its tests, adds no walkthrough, no value restated from a
+constant, no copied code; it states relationships (lens, store) and points at the tests for behaviour.
+IMPACT: **PASS** — both rows re-grepped (`entryCorrections`/`deletedEntryIds`, `canLog`), the readers
+are all present, none changed its input, output or persisted shape, and I found no unlisted reader.
+H3 is the row's stale coordinates, not a missing reader.
+DECISIONS: **PASS (6)** — D-52 (both stacks, exactly as written), D-53 (drop verified unreachable: the
+stores dedupe on `(recordType, recordId)` store-wide), D-55 (the rule now matches the Swift client),
+D-50 (consequence stated), D-51 (no pruning caller added), D-54 (unchanged here). **N/A (6)** — D-43…
+D-49, D-56, D-57 belong to the 4a half, reviewed in reviews 1–2.
+Assumption Log: **RATIFY** A-43 (the ledger amendments are D-52's and D-55's, not D-47/D-51's),
+**RATIFY** A-44, **RATIFY** A-45, **RATIFY** A-46, **RATIFY** A-47 — with the rider in H1 that the
+unfixed write path is what makes its `.tmp` clause unreachable rather than false.
+
+Critical: 0 | Warnings: 1 | Suggestions: 2
+→ @developer: H1 (one line, or the sentence); @planner: H2, H3 (plan text only). None of the three
+needs another review round, and the id sets are stable.
+
+VERDICT: APPROVE

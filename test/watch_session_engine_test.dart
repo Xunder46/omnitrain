@@ -68,6 +68,63 @@ Map<String, Object?> _setEvent(
   'loadKg': 80,
 };
 
+/// One entry as the wire spells a `set` — the shape a snapshot hands back for
+/// an id the wrist no longer holds.
+Map<String, Object?> _entry(String entryId, {int loadKg = 80}) => {
+  'entryId': entryId,
+  'eventId': entryId,
+  'kind': 'set',
+  'loggedAt': '2026-07-13T06:00:00Z',
+  'sessionExerciseId': 'sx-bench',
+  'exerciseId': 'ex-sx-bench',
+  'reps': 8,
+  'loadKg': loadKg,
+};
+
+/// One `session_snapshot` from the phone, over the wrist's own session.
+Map<String, Object?> _snapshot(
+  String sessionId, {
+  required String messageId,
+  required int revision,
+  required List<Map<String, Object?>> entries,
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'session_snapshot',
+  'origin': 'phone',
+  'sentAt': '2026-07-13T06:30:00Z',
+  'payload': <String, Object?>{
+    'sessionId': sessionId,
+    'revision': revision,
+    'status': WatchSessionStatus.active,
+    'currentExerciseIndex': 0,
+    'exercises': [_exercise('sx-bench')],
+    'entries': entries,
+    'timers': <String, Object?>{},
+  },
+};
+
+/// One `structure_change` from the phone, over the wrist's own session.
+Map<String, Object?> _structureChange(
+  String sessionId, {
+  required String changeId,
+  required List<Map<String, Object?>> changes,
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': 'msg-$changeId',
+  'sessionId': sessionId,
+  'type': 'structure_change',
+  'origin': 'phone',
+  'sentAt': '2026-07-13T06:30:00Z',
+  'payload': <String, Object?>{'changeId': changeId, 'changes': changes},
+};
+
+/// The value the projection shows for one entry's field — what the wrist's
+/// surfaces read, as opposed to the row that was appended.
+Object? _shown(WatchSessionEngine engine, String entryId, String field) =>
+    engine.entries.firstWhere((entry) => entry.entryId == entryId).payload[field];
+
 String _iso(DateTime instant) =>
     '${instant.toUtc().toIso8601String().split('.').first}Z';
 
@@ -502,6 +559,121 @@ void main() {
       final relaunched = await harness.runningEngine();
       expect(await relaunched.pruneConfirmed(), ['e-1']);
       expect(relaunched.observations, isEmpty);
+    });
+  });
+
+  group('S-48 a pruned row takes its lens with it (G3)', () {
+    test('a pruned entry takes the phone\'s correction with it', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      for (final entryId in ['e-1', 'e-2', 'e-3']) {
+        await engine.appendObservation(
+          _setEvent(harness.clock, entryId: entryId),
+        );
+      }
+      expect(
+        await engine.applyMessage(
+          _structureChange(
+            harness.sessionId,
+            changeId: 'chg-correct-1',
+            changes: [
+              {
+                'kind': 'correct_entry',
+                'entryId': 'e-1',
+                'correction': {'loadKg': 70},
+              },
+            ],
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        _shown(engine, 'e-1', 'loadKg'),
+        70,
+        reason: 'S-48 the phone\'s correction is what the wrist shows',
+      );
+      await engine.confirmObservations(['e-1', 'e-2']);
+
+      expect(
+        (await engine.pruneConfirmed()).toSet(),
+        {'e-1', 'e-2'},
+        reason: 'S-48 the confirmed rows are the ones dropped',
+      );
+
+      expect(
+        await engine.applyMessage(
+          _snapshot(
+            harness.sessionId,
+            messageId: 'msg-resend-1',
+            revision: 7,
+            entries: [_entry('e-1', loadKg: 60)],
+          ),
+        ),
+        isTrue,
+      );
+
+      expect(engine.entries.map((entry) => entry.entryId), [
+        'e-1',
+        'e-3',
+      ], reason: 'S-48 the re-carried id is a fresh row, and the unconfirmed entry is untouched');
+      expect(
+        _shown(engine, 'e-1', 'loadKg'),
+        60,
+        reason:
+            'S-48/G3 a pruned row takes its correction with it: the fresh row '
+            'shows what was delivered, not 70',
+      );
+    });
+
+    test('a pruned entry takes the phone\'s deletion marker with it', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.appendObservation(_setEvent(harness.clock, entryId: 'e-1'));
+
+      await engine.applyMessage(
+        _structureChange(
+          harness.sessionId,
+          changeId: 'chg-delete-1',
+          changes: [
+            {'kind': 'delete_entry', 'entryId': 'e-1'},
+          ],
+        ),
+      );
+      expect(
+        engine.entries,
+        isEmpty,
+        reason: 'S-48 the phone\'s deletion hides the entry',
+      );
+
+      await engine.confirmObservations(['e-1']);
+      expect(await engine.pruneConfirmed(), [
+        'e-1',
+      ], reason: 'S-48 the deleted row is still a stored row, so a prune drops it');
+
+      await engine.applyMessage(
+        _snapshot(
+          harness.sessionId,
+          messageId: 'msg-resend-2',
+          revision: 8,
+          entries: [_entry('e-1', loadKg: 60)],
+        ),
+      );
+
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['e-1'],
+        reason:
+            'S-48/G3 the deletion marker went with the pruned row, so a '
+            're-carried id is shown again',
+      );
     });
   });
 

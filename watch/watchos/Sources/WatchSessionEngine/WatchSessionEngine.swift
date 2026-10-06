@@ -1509,6 +1509,13 @@ public final class WatchSessionEngine {
         let pruned = await store.pruneConfirmed()
         let dropped = Set(pruned)
         storedObservations.removeAll { dropped.contains($0.recordId) }
+        // D-52: a pruned row takes its projection lens with it. A correction or
+        // deletion marker left behind would override or hide the fresh row when
+        // the same id is re-carried.
+        for recordId in dropped {
+            entryCorrections.removeValue(forKey: recordId)
+            deletedEntryIds.remove(recordId)
+        }
         return pruned
     }
 

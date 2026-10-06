@@ -172,6 +172,12 @@ final class WatchFileStoreTests: XCTestCase {
         directory.appendingPathComponent("watch-session.jsonl")
     }
 
+    /// The staging file `compact` writes before it replaces the real one — the
+    /// name is the store's, spelled here because a leftover is a defect (G2).
+    private var temporaryFileURL: URL {
+        directory.appendingPathComponent("watch-session.jsonl.tmp")
+    }
+
     private func fileLines() throws -> [String] {
         try Data(contentsOf: fileURL).split(separator: 0x0A).map { String(decoding: $0, as: UTF8.self) }
     }
@@ -750,6 +756,10 @@ final class WatchFileStoreTests: XCTestCase {
             fileFamilyJSON(before),
             "F2 the file is untouched"
         )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: temporaryFileURL.path),
+            "G2 a compaction whose write failed leaves no temporary file behind"
+        )
 
         try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: directory.path)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
@@ -764,6 +774,143 @@ final class WatchFileStoreTests: XCTestCase {
         XCTAssertFalse(
             after.observations.contains { $0.recordId == "o-1" },
             "F2 and the dropped row is gone"
+        )
+    }
+
+    /// G1: the same for the sensor prune — a compact that cannot be written
+    /// drops nothing, from the cache or from the file.
+    func testG1APruneOfSensorSamplesThatCannotBeWrittenPrunesNothing() async throws {
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        let store = FileWatchSessionStore(directory: directory)
+        _ = await store.append(fileSessionRow("s-1", at: at))
+        for recordId in ["sen-1", "sen-2"] {
+            _ = await store.append(
+                .sensorSample(
+                    WatchSensorSampleRecord(
+                        recordId: recordId,
+                        sessionId: "s-file",
+                        recordedAt: at,
+                        kind: WatchSensorKind.heartRate,
+                        value: 128
+                    )
+                )
+            )
+        }
+        let before = await store.readAll()
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+        try? FileManager.default.setAttributes([.immutable: true], ofItemAtPath: directory.path)
+        let lockedDirectory = directory.path
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: lockedDirectory)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: lockedDirectory)
+        }
+        XCTAssertThrowsError(
+            try Data("probe".utf8).write(to: directory.appendingPathComponent("probe")),
+            "G1 the directory must actually be unwritable, or this case proves nothing"
+        )
+
+        let pruned = await store.pruneSensorSamples(["s-file"])
+        XCTAssertEqual(pruned, [], "G1 a sensor prune that cannot be written drops nothing")
+        let cached = await store.readAll()
+        XCTAssertEqual(
+            fileFamilyJSON(cached),
+            fileFamilyJSON(before),
+            "G1 the cache still reads the pre-prune rows"
+        )
+        let onDisk = await FileWatchSessionStore(directory: directory).readAll()
+        XCTAssertEqual(
+            fileFamilyJSON(onDisk),
+            fileFamilyJSON(before),
+            "G1 the file is untouched"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: temporaryFileURL.path),
+            "G2 a compaction whose write failed leaves no temporary file behind"
+        )
+
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: directory.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+
+        let prunedNow = await store.pruneSensorSamples(["s-file"])
+        XCTAssertEqual(
+            prunedNow,
+            ["sen-1", "sen-2"],
+            "G1 once the directory is writable again the prune drops the samples"
+        )
+        let after = await store.readAll()
+        XCTAssertTrue(after.sensorSamples.isEmpty, "G1 and the dropped rows are gone")
+    }
+
+    /// G2: a compaction that cannot replace the file must not leave its staging
+    /// file behind, whichever half of the write failed.
+    ///
+    /// The directory stays writable here, so the staging file is written and the
+    /// *replace* is what fails — the half of `compact` the unwritable-directory
+    /// cases above never reach.
+    func testG2AFailedReplaceLeavesNoTemporaryFile() async throws {
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        let store = FileWatchSessionStore(directory: directory)
+        _ = await store.append(fileSessionRow("s-1", at: at))
+        _ = await store.append(
+            .observation(
+                WatchObservationRecord(
+                    recordId: "o-1",
+                    sessionId: "s-file",
+                    recordedAt: at,
+                    kind: WatchObservationKind.set,
+                    payload: ["entryId": "o-1"]
+                )
+            )
+        )
+        _ = await store.append(
+            .confirmation(
+                WatchConfirmationRecord(
+                    recordId: "c-1",
+                    sessionId: "s-file",
+                    recordedAt: at,
+                    observationIds: ["o-1"]
+                )
+            )
+        )
+        let before = await store.readAll()
+        let bytesBefore = try Data(contentsOf: fileURL)
+
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: fileURL.path)
+        let lockedFile = fileURL.path
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: lockedFile)
+        }
+        XCTAssertThrowsError(
+            try Data("probe".utf8).write(to: fileURL),
+            "G2 the file must actually be unpreservable-by-replace, or this case proves nothing"
+        )
+
+        let pruned = await store.pruneConfirmed()
+        XCTAssertEqual(pruned, [], "G2 a prune whose replace failed drops nothing")
+        let cached = await store.readAll()
+        XCTAssertEqual(
+            fileFamilyJSON(cached),
+            fileFamilyJSON(before),
+            "G2 the cache still reads the pre-prune rows"
+        )
+        XCTAssertEqual(
+            try Data(contentsOf: fileURL),
+            bytesBefore,
+            "G2 the file is untouched"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: temporaryFileURL.path),
+            "G2 a compaction whose replace failed leaves no temporary file behind"
+        )
+
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: fileURL.path)
+
+        let prunedNow = await store.pruneConfirmed()
+        XCTAssertEqual(
+            prunedNow,
+            ["o-1"],
+            "G2 once the file can be replaced the prune drops the confirmed row"
         )
     }
 

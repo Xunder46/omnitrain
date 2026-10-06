@@ -404,4 +404,133 @@ after the S-53 sentence:
 It states only the F1 fact the brief asks for; the prune paths have no production caller yet (D-51), so
 their failure mode is not documented (A-42).
 
+## PR 4b — a pruned row takes its lens with it (G3) and the Dart twin refuses an ended session (F-9)
+
+Every number below is observed output from a gateway check, not inference.
+
+### Baselines (before this PR's edits)
+
+| Check | Baseline | After |
+|---|---|---|
+| `.github/copilot/scripts/macos/gateway.sh swift-test` | 290 passing / 0 failing | **294 passing / 0 failing** (+4) |
+| `.github/copilot/scripts/macos/gateway.sh test` | 3945 passing / 1 skipped / 0 failing | **3949 passing / 1 skipped / 0 failing** (+4) |
+| `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues / 0 errors | **196 issues / 0 errors** (unchanged) |
+
+### The three fixes
+
+| # | Defect | File | Change |
+|---|---|---|---|
+| G3 | a pruned row left its correction behind, so a re-carried id read through a lens from a row that is gone | `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`, `pruneConfirmed()` | for each dropped id: `entryCorrections.removeValue(forKey:)` and `deletedEntryIds.remove(_:)`, with the D-52 comment (+7 lines) |
+| G3 | the same defect on the Dart engine | `lib/watch/session/watch_session_engine.dart`, `pruneConfirmed()` | the same per-id loop (+7 lines) |
+| F-9 | the Dart logging surface accepted a session that was no longer active | `lib/watch/logging/watch_logging_state.dart`, `canLog` | `_engine.session?.status == WatchSessionStatus.active && _slot != null` (D-55); 6 lines changed, 2 deleted |
+
+`FileWatchSessionStore.swift` is **absent from the diff** — byte-identical to HEAD. G1's and G2's
+behaviours (a prune that cannot be written returns an empty dropped list and leaves the cache alone;
+`compact` removes its staging file when the replace fails, `:336`) already existed; they gained guards,
+not code (A-47).
+
+### New cases (8)
+
+watchOS, 4: `testS48APrunedRowTakesItsCorrectionWithIt`, `testS48APrunedRowTakesItsDeletionMarkerWithIt`
+(`WatchSessionEngineTests.swift`), `testG1APruneOfSensorSamplesThatCannotBeWrittenPrunesNothing`,
+`testG2AFailedReplaceLeavesNoTemporaryFile` (`WatchFileStoreTests.swift`).
+
+Dart, 4: two in the new group `S-48 a pruned row takes its lens with it (G3)`
+(`test/watch_session_engine_test.dart`), and `S-52 the wrist's own End closes the logging surface` with
+`S-52 a session the phone ended is not a surface to log into` (`test/watch_logging_surfaces_test.dart`).
+
+The two S-48 watchOS cases are the mirror of the Dart pair, and the two S-52 Dart cases the mirror of
+`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto` / `…testS029aAPhoneCompletionClosesTheLoggingSurface`.
+
+### Red → green (mutation round)
+
+G3's and F-9's guards are new tests over code that was then fixed, and G1/G2 pin behaviour the store
+already had, so the red evidence is a mutation round on the fixed tree: each mutation applied alone,
+the affected cases run, the **exact** original restored, the run repeated green. No step ends with a
+mutation applied.
+
+| # | Mutation | Observed red |
+|---|---|---|
+| Swift a | the `for id in dropped` lens loop removed from `pruneConfirmed()` | **2 failures** — S-48 correction at `:422` (`"70.0" is not equal to "60.0"`), S-48 deletion at `:456` (`"[]" is not equal to "[\"e-1\"]"`) |
+| Swift b | `guard compact(survivors) else { return [] }` reverted to `_ = compact(survivors)` in the sensor prune | **3 failures** — G1 at `:814`, `:816`, `:836` |
+| Swift c | `try? FileManager.default.removeItem(at: tempURL)` removed from `compact` (the G2 site) | **1 failure** — G2 at `:902` |
+| Dart a | the lens loop removed from `pruneConfirmed()` | **2 failures** — S-48 correction at `:623`, S-48 deletion at `:670` |
+| Dart b | `canLog` back to the slot-only rule | **2 failures** — S-52 wrist End at `:538`, S-52 phone completion at `:575` |
+
+With all three Swift mutations in place the package reported `Executed 294 tests, with 6 failures` (the
+290 others green); with both Dart mutations in place the two test files reported 4 failures out of 39
+cases. The first Swift attempt at mutation b was itself a no-op and was corrected before the run that
+produced the 3 failures above — a mutation that changes nothing is not evidence.
+
+Restores verified by `git-diff --stat`: `FileWatchSessionStore.swift` absent (0 diff vs HEAD),
+`watch_session_engine.dart` +7, `watch_logging_state.dart` 6 changed / 2 deleted, and the Swift engine
++7.
+
+### Final green (after the doc and plan edits)
+
+`swift-test` — `Executed 294 tests, with 0 failures (0 unexpected) in 1.054 (1.074) seconds`, exit 0,
+log `.work/gateway/swift-test-20261006-143625-40875.log`.
+
+`test` (the whole Flutter suite) — `01:39 +3949 ~1: All tests passed!`, exit 0. Run twice: once after
+the doc bullet and plan edits (`.work/gateway/test-20261006-143639-41081.log`) and again over the
+finished tree after the last doc sentence and the evidence file itself
+(`.work/gateway/test-20261006-144121-46732.log`) — both `+3949 ~1`. Baseline 3945, so +4 and no
+previously passing case red.
+
+Targeted, the brief's three files — `test/watch_session_engine_test.dart`,
+`test/watch_logging_surfaces_test.dart`, `test/watch_session_projection_test.dart`: `+71: All tests
+passed!`, exit 0 (0 failing).
+
+`lint` — `196 issues found. (ran in 3.0s)`, exit 1 on the repo's pre-existing info notices, the same
+196 as the baseline; none of the four Dart files this PR touched appears in the log
+(`.work/gateway/lint-20261006-143837-45907.log`).
+
+`docs_indexing_contract_test.dart` — 9 cases, 0 failing, exit 0, run alone both before and after the
+last doc edit (the new bullet and the appended sentence are inside the 64 KiB ceiling and add no link).
+
+The invariant grep for `import .*hive_workout_repository` under `lib/state`, `lib/features`,
+`lib/widgets` and `lib/core` returns nothing — the four paths were checked, and this PR's Dart edits
+are in `lib/watch/`.
+
+### Footprint
+
+`.github/copilot/scripts/macos/gateway.sh git-diff --stat`, whole tree including the plan and the doc:
+
+```
+ ...-06-15e-watch-session-sync-pr4-plan.evidence.md | 121 +++++++++++++++
+ .../2026-10-06-15e-watch-session-sync-pr4-plan.md  |  95 ++++++------
+ docs/state_management/watch_surface.md             |  16 +-
+ lib/watch/logging/watch_logging_state.dart         |   6 +-
+ lib/watch/session/watch_session_engine.dart        |   7 +
+ test/watch_logging_surfaces_test.dart              |  90 +++++++++++
+ test/watch_session_engine_test.dart                | 172 +++++++++++++++++++++
+ .../WatchSessionEngine/WatchSessionEngine.swift    |   7 +
+ .../WatchFileStoreTests.swift                      | 147 ++++++++++++++++++
+ .../WatchSessionEngineTests.swift                  | 139 +++++++++++++++++
+ 10 files changed, 753 insertions(+), 47 deletions(-)
+```
+
+Read before the plan edit this run the tree showed 9 files / 628 insertions, the difference being the
+evidence file and the plan's own lines. `FileWatchSessionStore.swift` is absent from both lists.
+
+### Residue sweeps
+
+`canLog` across `docs/` returns only plan and review files: no live feature doc ever claimed the Dart
+twin's old rule. The one live sentence that states the rule — "An ended session is no longer a logging
+surface" in `docs/state_management/watch_surface.md` — cited the Swift shell's test alone, so the three
+lines added there now name the Dart pair as well; F-9 makes that sentence true of both stacks, and the
+doc rule wants a test per platform.
+
+`lens` across `docs/` returns the plan folder's three files, the unrelated
+`docs/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md`, the D-50 sentence at
+`docs/state_management/watch_surface.md:407`, and the new bullet's own citations. Nothing in `docs/`
+still describes a prune as keeping the corrected row's lens.
+
+### Not run
+
+`flutter run` and an `xcodebuild` watchOS-simulator launch are unavailable to a Copilot-mode agent, so
+nothing here is a statement about feel or about the app target compiling; the governor or the owner
+exercises the wrist surface.
+
+
 

@@ -388,7 +388,9 @@ refused frame is reported once and dropped without disturbing the frames behind
 it (`WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder`,
 `…testEveryRefusedFrameIsReportedOnceAndDropped`). An ended session is no longer
 a logging surface
-(`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
+(`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`; on the Dart twin,
+`test/watch_logging_surfaces_test.dart`'s `S-52 the wrist's own End closes the logging surface`
+and `S-52 a session the phone ended is not a surface to log into`).
 
 The shell builds an append-only file store, `FileWatchSessionStore`, over the
 app's Application Support directory (`watch-session/`), so a relaunch brings back
@@ -682,6 +684,18 @@ wrist created — its `session_end` is acknowledged, pruned or not. Verified by
 storage API`) and by watchOS
 `WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule` and
 the `S-237` cases in `WatchSensorRecordingTests`.
+- **A prune that cannot be written replaces nothing, and a pruned row takes its
+lens with it.** The file keeps its rows and the cache keeps reading them, with no
+staging file left in the store's directory (`WatchFileStoreTests`
+`testF2APruneThatCannotBeWrittenPrunesNothing`,
+`testG1APruneOfSensorSamplesThatCannotBeWrittenPrunesNothing`,
+`testG2AFailedReplaceLeavesNoTemporaryFile`). A pruned row also takes the
+correction the phone sent for that id and any deletion marker against it (D-52),
+so a re-carried id reads as what was delivered instead of through a lens left
+over from a row that is gone
+(`WatchSessionEngineTests.testS48APrunedRowTakesItsCorrectionWithIt` and
+`…testS48APrunedRowTakesItsDeletionMarkerWithIt`; `test/watch_session_engine_test.dart`
+group `S-48 a pruned row takes its lens with it (G3)`).
 - **Timers travel as wall-clock timestamps.** A countdown is never sent;
 either end derives it, which is what keeps a timer correct through a
 suspension or a reconnect. Verified by `test/live_mirroring_test.dart`

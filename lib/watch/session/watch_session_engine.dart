@@ -1368,6 +1368,13 @@ class WatchSessionEngine {
     _observations.removeWhere(
       (observation) => dropped.contains(observation.recordId),
     );
+    // D-52: a pruned row takes its projection lens with it. A correction or
+    // deletion marker left behind would override or hide the fresh row when the
+    // same id is re-carried.
+    for (final recordId in dropped) {
+      _entryCorrections.remove(recordId);
+      _deletedEntryIds.remove(recordId);
+    }
     return pruned;
   }
 
