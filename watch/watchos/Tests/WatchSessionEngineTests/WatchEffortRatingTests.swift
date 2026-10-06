@@ -13,6 +13,8 @@
 //  same storage and restored.
 //
 
+import Combine
+import Foundation
 import XCTest
 
 @testable import WatchSessionEngine
@@ -52,7 +54,7 @@ func instant(_ text: String) -> Date {
 /// also how a relaunch after a kill is simulated.
 final class RatingHarness {
     let clock: TestClock
-    let store = InMemoryWatchSessionStore()
+    let store: WatchSessionStore
 
     /// Everything every engine built over this store emitted, in order.
     private(set) var emitted: [[String: Any]] = []
@@ -64,9 +66,10 @@ final class RatingHarness {
     private(set) var preferences: WatchPhonePreferences!
     private(set) var rating: WatchEffortRatingState!
 
-    init(sessionIds: [String] = ["s-r-1"]) {
+    init(sessionIds: [String] = ["s-r-1"], store: WatchSessionStore = InMemoryWatchSessionStore()) {
         clock = TestClock(instant("2026-09-25T09:00:00Z"))
         self.sessionIds = sessionIds
+        self.store = store
     }
 
     @discardableResult
@@ -139,6 +142,118 @@ final class RatingHarness {
             .filter { ($0["payload"] as? [String: Any])?["state"] as? String == state }
     }
 
+}
+
+/// A `WatchSessionStore` that wraps the in-memory store and can be armed so the
+/// next `append` suspends until `resume()` (S-55). Everything else passes
+/// straight through, so a test can pause exactly one commit in flight.
+final class SuspendingStore: WatchSessionStore {
+    private let inner = InMemoryWatchSessionStore()
+    private let lock = NSLock()
+
+    private var armed = false
+    private var suspendedFlag = false
+    private var resumeRequested = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    /// Arms the next `append` to suspend until `resume()`.
+    func arm() {
+        lock.lock()
+        armed = true
+        lock.unlock()
+    }
+
+    /// Whether an armed `append` is currently inside the store, suspended.
+    var suspended: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return suspendedFlag
+    }
+
+    /// Lets an armed `append` continue — before or after it reaches the wait.
+    func resume() {
+        lock.lock()
+        if let waiting = continuation {
+            continuation = nil
+            suspendedFlag = false
+            lock.unlock()
+            waiting.resume()
+            return
+        }
+        resumeRequested = true
+        lock.unlock()
+    }
+
+    func append(_ record: StoredWatchRecord) async -> StoredWatchRecord {
+        if beginAppend() && !alreadyResumed() {
+            await withCheckedContinuation { continuation in
+                if let pending = register(continuation) { pending.resume() }
+            }
+        }
+        return await inner.append(record)
+    }
+
+    func readAll() async -> WatchStoreContents { await inner.readAll() }
+
+    func pruneConfirmed() async -> [String] { await inner.pruneConfirmed() }
+
+    func pruneSensorSamples(_ sessionIds: [String]) async -> [String] {
+        await inner.pruneSensorSamples(sessionIds)
+    }
+
+    /// Consumes the arm and marks the store suspended, if it was armed.
+    private func beginAppend() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let shouldSuspend = armed
+        armed = false
+        if shouldSuspend { suspendedFlag = true }
+        return shouldSuspend
+    }
+
+    /// True — clearing the wait — when `resume()` arrived before the append did.
+    private func alreadyResumed() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard resumeRequested else { return false }
+        resumeRequested = false
+        suspendedFlag = false
+        return true
+    }
+
+    /// Files the continuation, or hands it straight back if `resume()` already came.
+    private func register(
+        _ continuation: CheckedContinuation<Void, Never>
+    ) -> CheckedContinuation<Void, Never>? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard resumeRequested else {
+            self.continuation = continuation
+            return nil
+        }
+        resumeRequested = false
+        suspendedFlag = false
+        return continuation
+    }
+}
+
+/// The state the surface was in at each notification it delivered, recorded
+/// from the sink itself.
+final class RatingNotificationLog {
+    private let lock = NSLock()
+    private var seen: [(ended: Bool, owed: Bool)] = []
+
+    func record(ended: Bool, owed: Bool) {
+        lock.lock()
+        seen.append((ended: ended, owed: owed))
+        lock.unlock()
+    }
+
+    var observations: [(ended: Bool, owed: Bool)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return seen
+    }
 }
 
 final class WatchEffortRatingTests: XCTestCase {
@@ -478,6 +593,102 @@ final class WatchEffortRatingTests: XCTestCase {
         await wrist.end(at: "2026-09-25T10:10:00Z")
 
         XCTAssertFalse(wrist.rating.isPromptOwed, "S-220 the phone deleted the only set, so nothing is asked")
+    }
+
+    // MARK: - S-55 a slow commit still shows the settled state
+
+    /// Spins until `condition` holds or `limit` yields have passed: a bounded
+    /// poll, never an unbounded wait.
+    private func spin(until condition: () -> Bool, limit: Int = 100_000) async -> Bool {
+        var spins = 0
+        while !condition() && spins < limit {
+            await Task.yield()
+            spins += 1
+        }
+        return condition()
+    }
+
+    func testS55ASlowCommitStillShowsTheOwedQuestion() async throws {
+        let store = SuspendingStore()
+        let wrist = await RatingHarness(store: store).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        await wrist.start(at: "2026-09-25T10:00:00Z")
+        try await wrist.logSet("e-1", at: "2026-09-25T10:05:00Z")
+
+        let log = RatingNotificationLog()
+        var cancellables: Set<AnyCancellable> = []
+        wrist.rating.objectWillChange
+            .sink { _ in
+                log.record(
+                    ended: wrist.engine.session?.status != WatchSessionStatus.active,
+                    owed: wrist.rating.isPromptOwed
+                )
+            }
+            .store(in: &cancellables)
+
+        store.arm()
+        let ending = Task { await wrist.end(at: "2026-09-25T10:10:00Z") }
+
+        let reached = await spin(until: { store.suspended })
+        XCTAssertTrue(reached, "S-55 the End's commit is in flight")
+        XCTAssertTrue(
+            log.observations.isEmpty,
+            "S-55 the notification must wait for the commit it announces"
+        )
+
+        store.resume()
+        await ending.value
+
+        let seen = log.observations
+        XCTAssertFalse(seen.isEmpty, "S-55 the settled state is announced")
+        for observation in seen {
+            XCTAssertTrue(observation.ended, "S-55 every notification sees the session ended")
+            XCTAssertTrue(observation.owed, "S-55 every notification sees the prompt owed")
+        }
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-55 the question is up")
+    }
+
+    func testS55ASlowAnswerNotifiesAfterTheRatingIsRecorded() async throws {
+        let store = SuspendingStore()
+        let wrist = await RatingHarness(store: store).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        await wrist.start(at: "2026-09-25T10:00:00Z")
+        try await wrist.logSet("e-1", at: "2026-09-25T10:05:00Z")
+        await wrist.end(at: "2026-09-25T10:10:00Z")
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-55 the question is owed")
+
+        wrist.rating.select(3)
+
+        let log = RatingNotificationLog()
+        var cancellables: Set<AnyCancellable> = []
+        wrist.rating.objectWillChange
+            .sink { _ in
+                log.record(
+                    ended: wrist.engine.session?.status != WatchSessionStatus.active,
+                    owed: wrist.rating.isPromptOwed
+                )
+            }
+            .store(in: &cancellables)
+
+        store.arm()
+        let answering = Task { try await wrist.rating.confirm() }
+
+        let reached = await spin(until: { store.suspended })
+        XCTAssertTrue(reached, "S-55 the answer's commit is in flight")
+        XCTAssertTrue(
+            log.observations.isEmpty,
+            "S-55 the notification must wait for the answer to be recorded"
+        )
+
+        store.resume()
+        _ = try await answering.value
+
+        let seen = log.observations
+        XCTAssertFalse(seen.isEmpty, "S-55 the recorded answer is announced")
+        for observation in seen {
+            XCTAssertFalse(observation.owed, "S-55 every notification sees the rating recorded")
+        }
+        XCTAssertFalse(wrist.rating.isPromptOwed, "S-55 nothing is owed after the answer")
     }
 
     // MARK: - The contract and the way out

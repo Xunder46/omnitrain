@@ -238,12 +238,12 @@ status — the Wear OS client still has no host.
 **Phase 1 verification notes (Conductor, date):** —
 
 ### Phase 2: The shell and the rating surface (@developer) — PR 4a
-1. [ ] `ios/OmniTrain Watch App/ContentView.swift` `init()` (`:56`): build `FileWatchSessionStore(directory:)` from `FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("watch-session", isDirectory: true)` in place of `InMemoryWatchSessionStore()`, leaving the D-21 build-order comment and every other line as they are.
-2. [ ] `WatchEffortRating.swift`: move `objectWillChange.send()` in `end()` to after `finishSession()` and `noteOwedPrompt` (D-54) — symbol: `WatchEffortRatingState.end`.
-3. [ ] `WatchEffortRating.swift`: the same move in `confirm()`, after `engine.recordEffortRating` — symbol: `WatchEffortRatingState.confirm`.
-4. [ ] Add S-55 to `WatchEffortRatingTests.swift` with a suspending store stub (a `WatchSessionStore` whose `append` waits on a continuation), asserting every notification sees a settled state — red before step 2.
-5. [ ] Add S-47's store-level half to `WatchEffortRatingTests.swift` alongside `testS215AKillDuringThePromptAsksAgainAndRecordsOneAnswer`, over `FileWatchSessionStore` rather than a shared object.
-6. [ ] Read the whole diff for a shell line that assumes a non-suspending store; the only two are the two fixed here (the bump after End and the bump after an answer).
+1. [x] `ios/OmniTrain Watch App/ContentView.swift` `init()` (`:56`): build `FileWatchSessionStore(directory:)` from `FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("watch-session", isDirectory: true)` in place of `InMemoryWatchSessionStore()`, leaving the D-21 build-order comment and every other line as they are.
+2. [x] `WatchEffortRating.swift`: move `objectWillChange.send()` in `end()` to after `finishSession()` and `noteOwedPrompt` (D-54) — symbol: `WatchEffortRatingState.end`.
+3. [x] `WatchEffortRating.swift`: the same move in `confirm()`, after `engine.recordEffortRating` — symbol: `WatchEffortRatingState.confirm`.
+4. [x] Add S-55 to `WatchEffortRatingTests.swift` with a suspending store stub (a `WatchSessionStore` whose `append` waits on a continuation), asserting every notification sees a settled state — red before step 2.
+5. [x] No store-level S-47 half here — **DROPPED** by the Phase 2 brief; Phase 1's `testS47TheOwedRatingQuestionSurvivesTheKill` proves S-47 over the file store already (see A-35).
+6. [x] Read the whole diff for a shell line that assumes a non-suspending store; the only two are the two fixed here (the bump after End and the bump after an answer).
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh swift-test` (275 + Phase 1's cases, 0 failing), `.github/copilot/scripts/macos/gateway.sh lint` (196 issues, 0 errors), `.github/copilot/scripts/macos/gateway.sh test` (3945 passing / 1 skipped / 0 failing)
 **Predicted Files**: `ios/OmniTrain Watch App/ContentView.swift`, `watch/watchos/Sources/WatchSessionEngine/WatchEffortRating.swift`, `watch/watchos/Tests/WatchSessionEngineTests/WatchEffortRatingTests.swift`
 **Governor/owner steps (not agent-runnable):** the governor builds the watch scheme (`xcodebuild`, the shell file is outside the Swift package, so `swift-test` cannot compile it); the owner then runs `docs/watch-app-setup-and-qa.md` step 17 and the two kill steps (11 and the wrist-logging walkthrough's force-quit), which is the only check that observes the shipped shell.
@@ -329,7 +329,7 @@ Dependents that only read a touched surface (no edit): `WatchSessionStartPaths.s
 | Phase | State |
 |---|---|
 | 1 — the file store (4a) | **complete** — `swift-test` 284 passing / 0 failing (275 baseline + 9 new), `test` 3945 passing / 0 failing, `lint` 196 issues / 0 errors (unchanged); S-44…S-47, S-49…S-51, S-53, S-54 green; S-004 green unedited; S-48 deferred to 4b (A-30); evidence in `.evidence.md` |
-| 2 — the shell and the rating surface (4a) | not started |
+| 2 — the shell and the rating surface (4a) | **complete** — `swift-test` 286 passing / 0 failing (284 baseline + 2 new S-55 cases), `lint` 196 issues / 0 errors (unchanged; no Dart file touched); S-55 red before the fix and red under both mutations (a: 3 failures, b: 2); the shell's store swap and `engine.restore()` are written but compiled only by the governor's `xcodebuild`; evidence in `.evidence.md` |
 | 3 — docs, walkthrough and the sweep for 4a | not started |
 | 4 — the engine's bookkeeping, both stacks (4b) | not started |
 | 5 — docs for 4b | not started |
@@ -346,6 +346,9 @@ Dependents that only read a touched surface (no edit): `WatchSessionStartPaths.s
 | A-31 | 1 | S-45's plan fixture drives `WatchSyncOrchestrator.sync()`; the brief names the relaunched engine's `pendingObservations()`. Chosen: the brief's observable — the same "what does the relaunched engine re-send" one layer below the transport, and the transport layer is already covered elsewhere. |
 | A-32 | 1 | S-44's plan fixture names loads 60/60/62.5 kg; the brief prescribes the suite's shared `setEvent` helper. Chosen: the shared helper (reps 5, 80 kg), because the scenario's outcome is that the payload survives the process, not what the payload says. |
 | A-33 | 1 | S-51's plan fixture is S-44's store with two more sets; the brief prescribes five rows plus a re-append of a stored id. Chosen: the brief's fixture, and a prune-then-append stage was added, because the brief's five mutations cannot tell "highest stored sequence + 1" from "row count + 1" and a prune is the only thing that separates them (mutation f). |
+| A-34 | 2 | Governor finding the plan missed: `WatchAppHost.restore()` restored `paths`, `preferences` and `rating` but never `engine`, while every harness calls `engine.restore()` first. Chosen: call `await engine.restore()` first in `restore()`, matching the harnesses, so a relaunch over the file store shows the rows it already holds. |
+| A-35 | 2 | The brief drops the plan's Phase 2 step 5 (a store-level S-47 half over `FileWatchSessionStore`): Phase 1's `testS47TheOwedRatingQuestionSurvivesTheKill` already proves S-47 over the file store. Chosen: drop it, and mark the step so the plan and the run agree. |
+| A-36 | 2 | In S-55 the armed `append` is the first one after `arm()`, so End suspends inside `engine.finishSession()` rather than at the prompt's own append. Chosen: keep it — the scenario asserts the notification's position relative to the whole commit, and both mutations still turn the cases red. |
 
 ## Feedback
 

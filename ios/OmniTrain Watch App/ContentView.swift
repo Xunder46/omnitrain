@@ -13,9 +13,9 @@ import WatchSessionEngine
 /// Owns the engine, its store, its start paths and its radio for the life of the
 /// app.
 ///
-/// One deliberate gap remains: the store is in-memory. The Swift package ships no
-/// persistent store, so nothing logged here survives a relaunch yet. The radio
-/// below is real, so a sync and a push do arrive.
+/// The store is an append-only file in the app's Application Support directory,
+/// so what the wrist logged survives a relaunch. The radio below is real, so a
+/// sync and a push do arrive.
 @MainActor
 final class WatchAppHost: ObservableObject {
     let engine: WatchSessionEngine
@@ -53,7 +53,10 @@ final class WatchAppHost: ObservableObject {
         // then the engine that hands its emissions to that sink. The package's
         // own harnesses record emissions in a separate array and never hand them
         // to a bridge, so theirs is not the order to copy.
-        let store = InMemoryWatchSessionStore()
+        let storeDirectory = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("watch-session", isDirectory: true)
+        let store = FileWatchSessionStore(directory: storeDirectory)
         let session = OmniTrainWatchConnectivity(onSendFailure: reportWatchRadioFailure)
         let bridge = WatchConnectivityBridge(session: session, onFailure: reportWatchRadioFailure)
         let forwarder = WatchEmitForwarder(transport: bridge, onFailure: reportWatchRadioFailure)
@@ -115,6 +118,7 @@ final class WatchAppHost: ObservableObject {
     /// End still owes. Empty on a fresh install, because all three only arrive
     /// when the user asks the phone for them.
     func restore() async {
+        await engine.restore()
         await paths.restore()
         await preferences.restore()
         await rating.restore()
