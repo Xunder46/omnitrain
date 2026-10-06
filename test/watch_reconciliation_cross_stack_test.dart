@@ -252,6 +252,60 @@ void main() {
     );
   });
 
+  test('S-67 a re-stated assist is neither duplicated nor zeroed', () async {
+    final fixture = _asObject(
+      jsonDecode(
+        File(
+          '${Directory.current.path}/$_fixtures/band_assist_carried.json',
+        ).readAsStringSync(),
+      ),
+    );
+    final snapshot = _asObject(fixture['snapshot']);
+    final phone = SyncSessionReconciler.fromSnapshot(_payloadOf(snapshot));
+    final engine = WatchSessionEngine(
+      InMemoryWatchSessionStore(),
+      clock: () => _now,
+    );
+    await engine.applyMessage(snapshot);
+
+    for (final message in _streamOf(fixture)) {
+      phone.applyMessage(message);
+      // The wrist's own product: it logged that assist, and a device does not
+      // apply its own observations back onto itself.
+      if (message['type'] == 'observations_up') continue;
+      await engine.applyMessage(message);
+    }
+
+    const expectedLoads = <String, Object?>{
+      'entry-slot-bench-0': -20,
+      'B7D3E1F2-9A4C-4D6E-8F10-2A3B4C5D6E7F': -22.5,
+      'entry-slot-bench-1': -200,
+    };
+
+    expect(
+      {
+        for (final entry in _objectsIn(phone.convergedState()['entries']))
+          entry['entryId']! as String: entry['loadKg'],
+      },
+      equals(expectedLoads),
+      reason: 'S-67 the phone converges on the assist it held, the assist the '
+          'wrist logged and the new floor set — none zeroed, none re-signed',
+    );
+    expect(
+      {
+        for (final entry in engine.entries)
+          entry.entryId: entry.payload['loadKg'],
+      },
+      equals(expectedLoads),
+      reason: 'S-67 the wrist shows the same three ids with the same loads',
+    );
+    expect(
+      engine.entries.map((entry) => entry.entryId).toSet().length,
+      engine.entries.length,
+      reason: 'S-67 a re-statement stores no second row',
+    );
+  });
+
   test('S-009 removing the current exercise leaves both stacks on the next one',
       () async {
     final fixture = fixtures.firstWhere(

@@ -259,39 +259,39 @@ signal fires: **no PR series and no index plan** — one PR (Q1).
 ## Iteration 1
 
 ### Phase 1: the contract (@dba)
-1. [ ] Widen both `loadKg` minimums in `watch/sync_protocol/schemas/envelope.schema.json` from
+1. [x] Widen both `loadKg` minimums in `watch/sync_protocol/schemas/envelope.schema.json` from
    `{ "type": "number", "minimum": 0 }` to `minimum: -200` — `$defs.entry.loadKg` (line ~199) and
    `$defs.metricTargets.loadKg` (line ~138) — each with a `description`: a set's load in kilograms,
    negative for a band- or partner-assisted set, floored at −200 (the phone's editor bound), the floor
    shared by an entry, a target and a correction (D-58). · `$defs.entry.loadKg`, `$defs.metricTargets.loadKg`
-2. [ ] Widen `$defs.correction.loadKg` in `watch/sync_protocol/schemas/messages/structure_change.schema.json`
+2. [x] Widen `$defs.correction.loadKg` in `watch/sync_protocol/schemas/messages/structure_change.schema.json`
    (line ~38) from `{ "type": "number", "minimum": 0 }` to `minimum: -200` (D-58). · `$defs.correction.loadKg`
-3. [ ] Add `watch/sync_protocol/fixtures/valid/observations_up_band_assist.json` (copy
+3. [x] Add `watch/sync_protocol/fixtures/valid/observations_up_band_assist.json` (copy
    `valid/observations_up_distance_and_load.json`: keep one `timed` row, add `set` events for
    `sx-bench`/`ex-bench` at `loadKg: -20`, `reps` 8, and `loadKg: -200`, `reps` 5) and
    `valid/session_snapshot_band_assist.json` (copy `valid/session_snapshot_with_entries.json`, slot
    `slot-bench`, entries at `loadKg: -20` and `-200`). · `evt-assist-1`, `entry-slot-bench-0`
-4. [ ] Add `valid/structure_change_band_assist.json` (copy `valid/structure_change.json`, add two
+4. [x] Add `valid/structure_change_band_assist.json` (copy `valid/structure_change.json`, add two
    `correct_entry` changes — `{ "loadKg": -20 }` and `{ "loadKg": -200 }` — and nothing else) and
    `valid/routines_down_band_assist.json` (copy `valid/routines_down.json`, bench `targets.loadKg`
    `-20`, goblet squat `-200`). · `correct_entry`, `eff-bench`
-5. [ ] Add `fixtures/reconciliation/band_assist_carried.json` per S-67, on the
+5. [x] Add `fixtures/reconciliation/band_assist_carried.json` per S-67, on the
    `phone_entries_merge.json` shape: `name`, `description`, `snapshot`, `stream` (two messages),
    `expected`, every envelope at `protocolVersion: 1`, and no remaining-time field anywhere (S-003).
    · `band_assist_carried`
-6. [ ] Add `fixtures/invalid/observations_up_load_below_floor.json`: S-58's shape with `loadKg: -240`,
+6. [x] Add `fixtures/invalid/observations_up_load_below_floor.json`: S-58's shape with `loadKg: -240`,
    registered as `expectedCode: "constraint_violation"`. · `evt-assist-1`
-7. [ ] Register all six new fixtures in `fixtures/manifest.json`: the five valid ones under `valid`
+7. [x] Register all six new fixtures in `fixtures/manifest.json`: the five valid ones under `valid`
    (`type`, and `scenario` `S-58`/`S-59`/`S-65`/`S-66`), the reconciliation one under `scenarios`
    (`scenario: "S-67"` and a `property`), the invalid one under `invalid` with the exact
    `expectedReasonContains` **your validator emits** — the run prints it, do not guess the wording, and
    the watchOS suite reads the same manifest. · `manifest.json`
-8. [ ] State the floor in `PROTOCOL.md`: in the entry-metrics bullet (line ~129) and in a new
+8. [x] State the floor in `PROTOCOL.md`: in the entry-metrics bullet (line ~129) and in a new
    `1 (amended) | 2026-10-06` row in `## Version history` — a set's `loadKg` MAY be negative down to
    −200 (a band or partner assist), the same floor applies to a routine target and to a correction,
    below −200 MUST be rejected, `protocolVersion` unchanged (D-66); reference the new fixture.
    · `PROTOCOL.md`
-9. [ ] Change no validator: `SyncProtocolValidator` is a generic schema walker with no `loadKg` code,
+9. [x] Change no validator: `SyncProtocolValidator` is a generic schema walker with no `loadKg` code,
    and the phase passes with it untouched. · `SyncProtocolValidator`
 
 **Done Criteria** (run until green):
@@ -469,14 +469,30 @@ analytics services, `scripts/sqlite_schema.sql`, `lib/core/sync_protocol/sync_pr
 
 ## Progress
 
-- [ ] Phase 1 — not started.
+- [x] Phase 1 — Complete. Three `loadKg` floors widened to `-200` (envelope ×2, structure_change ×1), six
+  new fixtures registered (S-58/S-59/S-65/S-66 valid, S-67 reconciliation, one invalid below the floor),
+  `PROTOCOL.md` states the floor + a `1 (amended)` version row; no validator or `lib/`/Swift change.
+  Fixtures 85/0, cross-stack 19/0, full suite 3963 passed / 1 skipped / 0 failed, `swift-test` 294/0,
+  lint 196 (baseline). Red-first (76 passed / 9 failed) and five mutations recorded in the evidence file.
 - [ ] Phase 2 — not started.
 - [ ] Phase 3 — not started.
 
 ## Assumption Log
 
-(Implementers append: decision made, options considered, choice and why. The Planner marks each
-RATIFIED — promoted to a D-x — or REVERT — opening a remediation item. Empty until the first run.)
+- **A-P1-1 — the scenario assertions land in two test files Phase 1 does not predict.**
+  The brief directs tests for every scenario, but the Predicted Files list only schemas, fixtures,
+  manifest and `PROTOCOL.md`. Options: rely on the generic fixture loop (no S-id-named guard) or add
+  the assertions. Chose the assertions, in `test/sync_protocol_fixtures_test.dart` (S-58/S-59/S-65/S-66)
+  and `test/watch_reconciliation_cross_stack_test.dart` (S-67). Both are files the plan's Files Affected
+  names as readers that "must stay green".
+- **A-P1-2 — one stack-neutral rejection substring in the manifest.**
+  The Dart validator emits `expected at least -200, found -240` and the Swift validator the same text,
+  so the invalid fixture's `expectedReasonContains` is `expected at least -200` (not the full sentence).
+  Options: pin the full sentence (fails on the watchOS run) or the shared prefix. Chose the prefix.
+- **A-P1-3 — the S-67 reconciliation fixture converges on the phone's own order.**
+  Its `expected` lists the three entries by `loggedAt` (10:05, 10:07, 10:10) with each held id keeping
+  its first value, which is what `SyncSessionReconciler.convergedState()` returns and what
+  `test/live_mirroring_test.dart` replays through both engines. No wrist-side edit was needed.
 
 ## Feedback
 

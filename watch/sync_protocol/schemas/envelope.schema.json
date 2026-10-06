@@ -137,7 +137,8 @@
         },
         "loadKg": {
           "type": "number",
-          "minimum": 0
+          "minimum": -200,
+          "description": "The effort's load target in kilograms. Negative for a band- or partner-assisted effort, floored at -200 kg — the bound the phone's set editor enforces. A value below the floor is invalid."
         },
         "holdMs": {
           "type": "integer",
@@ -198,7 +199,8 @@
         },
         "loadKg": {
           "type": "number",
-          "minimum": 0
+          "minimum": -200,
+          "description": "The set's load in kilograms. Negative for a band- or partner-assisted set, floored at -200 kg — the same floor a routine target and a correction carry. A value below the floor is invalid."
         },
         "startedAt": {
           "$ref": "#/$defs/timestamp"

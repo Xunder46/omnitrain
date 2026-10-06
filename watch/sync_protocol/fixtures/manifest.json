@@ -41,6 +41,29 @@
       "path": "valid/session_snapshot_with_entries.json",
       "type": "session_snapshot",
       "scenario": "S-31"
+    },
+    {
+      "path": "valid/observations_up_band_assist.json",
+      "type": "observations_up",
+      "scenario": "S-58",
+      "note": "A set's loadKg may be negative down to -200 kg (a band or partner assist); `evt-assist-1` carries -20 and `evt-assist-2` the floor -200."
+    },
+    {
+      "path": "valid/session_snapshot_band_assist.json",
+      "type": "session_snapshot",
+      "scenario": "S-59",
+      "note": "The phone's snapshot carries an assisted set verbatim: `entry-slot-bench-0` is -20 kg and `entry-slot-bench-1` the floor -200 kg."
+    },
+    {
+      "path": "valid/structure_change_band_assist.json",
+      "type": "structure_change",
+      "scenario": "S-65"
+    },
+    {
+      "path": "valid/routines_down_band_assist.json",
+      "type": "routines_down",
+      "scenario": "S-66",
+      "note": "A routine target may be negative too: `eff-bench` targets -20 kg and `eff-goblet-squat` the floor -200 kg."
     }
   ],
   "invalid": [
@@ -278,6 +301,14 @@
       "scenario": "S-875",
       "expectedCode": "unexpected_field",
       "expectedReasonContains": "distanceMeters"
+    },
+    {
+      "path": "invalid/observations_up_load_below_floor.json",
+      "type": "observations_up",
+      "scenario": "S-58",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least -200",
+      "note": "The floor is shared by every loadKg the protocol defines; -240 kg is below it and MUST be refused, not clamped."
     }
   ],
   "scenarios": [
@@ -350,6 +381,11 @@
       "path": "reconciliation/phone_entries_merge.json",
       "scenario": "S-31",
       "property": "a snapshot adds the entries the phone logged, once each, and replaces structure"
+    },
+    {
+      "path": "reconciliation/band_assist_carried.json",
+      "scenario": "S-67",
+      "property": "a re-stated band-assisted set is neither duplicated nor zeroed"
     }
   ]
 }

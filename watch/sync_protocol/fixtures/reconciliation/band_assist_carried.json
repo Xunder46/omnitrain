@@ -1,0 +1,166 @@
+{
+  "protocolVersion": 1,
+  "name": "A re-stated band-assisted set keeps its sign and value",
+  "description": "The phone holds a session whose first bench set is band-assisted at -20 kg and answers a snapshot request. The wrist logs its own assisted set at -22.5 kg under its own id, then the phone answers again with the entries it now holds: the assist it already carried, the wrist's own assisted set, and a new far-assist set at the floor of -200 kg. Because both stacks merge entries by entryId and re-state a held id rather than storing a second row, the assist neither duplicates nor becomes zero or positive: the phone converges on one row per id with the values the phone holds, and the wrist shows the same three ids with the load each one carries.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-band-assist-snapshot-1",
+    "sessionId": "sess-1",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-10-06T10:06:00Z",
+    "payload": {
+      "sessionId": "sess-1",
+      "revision": 40,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "slot-bench",
+          "exerciseId": "ex-bench",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "entry-slot-bench-0",
+          "eventId": "entry-slot-bench-0",
+          "kind": "set",
+          "loggedAt": "2026-10-06T10:05:00Z",
+          "sessionExerciseId": "slot-bench",
+          "exerciseId": "ex-bench",
+          "reps": 8,
+          "loadKg": -20
+        }
+      ],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-band-assist-obs-1",
+      "sessionId": "sess-1",
+      "type": "observations_up",
+      "origin": "watch",
+      "sentAt": "2026-10-06T10:08:00Z",
+      "payload": {
+        "events": [
+          {
+            "eventId": "B7D3E1F2-9A4C-4D6E-8F10-2A3B4C5D6E7F",
+            "entryId": "B7D3E1F2-9A4C-4D6E-8F10-2A3B4C5D6E7F",
+            "kind": "set",
+            "loggedAt": "2026-10-06T10:07:00Z",
+            "sessionExerciseId": "slot-bench",
+            "exerciseId": "ex-bench",
+            "reps": 6,
+            "loadKg": -22.5
+          }
+        ]
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-band-assist-snapshot-2",
+      "sessionId": "sess-1",
+      "type": "session_snapshot",
+      "origin": "phone",
+      "sentAt": "2026-10-06T10:12:00Z",
+      "payload": {
+        "sessionId": "sess-1",
+        "revision": 41,
+        "status": "active",
+        "currentExerciseIndex": 0,
+        "exercises": [
+          {
+            "sessionExerciseId": "slot-bench",
+            "exerciseId": "ex-bench",
+            "name": "Barbell Bench Press",
+            "capabilities": ["sets", "reps", "load"]
+          }
+        ],
+        "entries": [
+          {
+            "entryId": "entry-slot-bench-0",
+            "eventId": "entry-slot-bench-0",
+            "kind": "set",
+            "loggedAt": "2026-10-06T10:05:00Z",
+            "sessionExerciseId": "slot-bench",
+            "exerciseId": "ex-bench",
+            "reps": 8,
+            "loadKg": -20
+          },
+          {
+            "eventId": "B7D3E1F2-9A4C-4D6E-8F10-2A3B4C5D6E7F",
+            "entryId": "B7D3E1F2-9A4C-4D6E-8F10-2A3B4C5D6E7F",
+            "kind": "set",
+            "loggedAt": "2026-10-06T10:07:00Z",
+            "sessionExerciseId": "slot-bench",
+            "exerciseId": "ex-bench",
+            "reps": 6,
+            "loadKg": -22.5
+          },
+          {
+            "entryId": "entry-slot-bench-1",
+            "eventId": "entry-slot-bench-1",
+            "kind": "set",
+            "loggedAt": "2026-10-06T10:10:00Z",
+            "sessionExerciseId": "slot-bench",
+            "exerciseId": "ex-bench",
+            "reps": 5,
+            "loadKg": -200
+          }
+        ],
+        "timers": {}
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "sess-1",
+    "status": "active",
+    "revision": 41,
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "entry-slot-bench-0",
+        "eventId": "entry-slot-bench-0",
+        "kind": "set",
+        "loggedAt": "2026-10-06T10:05:00Z",
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "reps": 8,
+        "loadKg": -20
+      },
+      {
+        "eventId": "B7D3E1F2-9A4C-4D6E-8F10-2A3B4C5D6E7F",
+        "entryId": "B7D3E1F2-9A4C-4D6E-8F10-2A3B4C5D6E7F",
+        "kind": "set",
+        "loggedAt": "2026-10-06T10:07:00Z",
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "reps": 6,
+        "loadKg": -22.5
+      },
+      {
+        "entryId": "entry-slot-bench-1",
+        "eventId": "entry-slot-bench-1",
+        "kind": "set",
+        "loggedAt": "2026-10-06T10:10:00Z",
+        "sessionExerciseId": "slot-bench",
+        "exerciseId": "ex-bench",
+        "reps": 5,
+        "loadKg": -200
+      }
+    ],
+    "timers": {}
+  }
+}

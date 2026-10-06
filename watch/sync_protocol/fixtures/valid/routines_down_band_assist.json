@@ -1,0 +1,66 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-routines-assist",
+  "type": "routines_down",
+  "origin": "phone",
+  "sentAt": "2026-10-06T09:00:00Z",
+  "payload": {
+    "generatedAt": "2026-10-06T09:00:00Z",
+    "routines": [
+      {
+        "routineId": "routine-push-a",
+        "name": "Push A",
+        "updatedAt": "2026-10-05T09:00:00Z",
+        "segments": [
+          {
+            "segmentId": "seg-main",
+            "name": "Main",
+            "efforts": [
+              {
+                "effortId": "eff-bench",
+                "exerciseId": "ex-barbell-bench-press",
+                "exerciseName": "Barbell Bench Press",
+                "effortKind": "set",
+                "capabilities": ["sets", "reps", "load"],
+                "targets": { "sets": 3, "reps": 5, "loadKg": -20 }
+              },
+              {
+                "effortId": "eff-goblet-squat",
+                "exerciseId": "ex-goblet-squat",
+                "exerciseName": "Goblet Squat",
+                "effortKind": "set",
+                "capabilities": ["sets", "reps", "load"],
+                "targets": { "sets": 3, "reps": 8, "loadKg": -200 }
+              },
+              {
+                "effortId": "eff-plank",
+                "exerciseId": "ex-plank",
+                "exerciseName": "Plank",
+                "effortKind": "timed",
+                "capabilities": ["time", "hold"],
+                "targets": { "holdMs": 60000 }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "fallbackExercises": [
+      {
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      },
+      {
+        "exerciseId": "ex-goblet-squat",
+        "name": "Goblet Squat",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ]
+  }
+}
