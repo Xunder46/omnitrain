@@ -134,16 +134,67 @@ After every edit (both engines, all test files, `PROTOCOL.md`, the plan and this
 | `grep import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
 | gateway `git-diff --stat` | 11 files, +1183 / −25: the seven phase files, `PROTOCOL.md` (step 10), the S-40 line, and the plan + this file. **No fixture changed** — the brief's "stop and report if the fixture pins the old rule" case did not arise: `fixtures/reconciliation/session_switch.json` has the receiver holding a **finished** session, which is exactly D-78's counter-case, so it still converges (`WatchLiveMirroringTests.testEveryReconciliationFixtureConverges` is green) |
 
-## Red → green (a bug-fix test must fail without its fix)
+## Phase 3A — the phone's push (S-70 … S-76, S-80, S-81, S-83, S-84)
+
+The push is one seam, `WatchSessionAutoPush` (`lib/state/watch/watch_session_auto_push.dart`), bound
+in `lib/main.dart` beside the adoption bind and reached from `WatchSyncGraph.autoPush`. It listens to
+`WorkoutState`, coalesces every notification inside a trailing 250 ms window into at most one frame,
+compares the frame's canonical encoding with the last one it sent, and re-baselines after every frame
+the phone applies from the wrist (D-82). The end rules read the mirrored session's own repository row,
+never the current-session pointer (D-81).
+
+| Command | Output |
+|---|---|
+| gateway `test test/watch_session_auto_push_test.dart` | `+13: All tests passed!` — 13 passed, 0 failed (exit 0) |
+| gateway `test test/watch_session_projection_test.dart` | `+30: All tests passed!` — 30 passed, 0 failed (exit 0) |
+| gateway `test test/watch_session_finish_test.dart` | `+8: All tests passed!` — 8 passed, 0 failed (exit 0) |
+| gateway `test` (full) | `+4004 ~1: All tests passed!` — 4004 passed, ~1 skipped, 0 failed (exit 0; `.work/gateway/test-20261006-194505-53273.log`, re-run after the doc edits at `.work/gateway/test-20261006-195104-60091.log`, same count) |
+| gateway `lint` | `196 issues found. (ran in 2.6s)` — 0 errors, none in a touched file (the first run showed 4 in the new test file: two `unnecessary_import`, two `unused_import`; removed) |
+| gateway `swift-test` | `Executed 315 tests, with 0 failures (0 unexpected)` (exit 0; no Swift source changed) |
+| gateway `git-diff --name-only` | `lib/main.dart`, `lib/state/watch/live_session_mirror_state.dart`, `lib/state/watch/watch_sync_wiring.dart`, `test/watch_session_finish_test.dart`, `test/watch_session_projection_test.dart`, `watch/sync_protocol/PROTOCOL.md` — all Predicted Files, plus the governor's `PROTOCOL.md` addition; the two new files (`lib/state/watch/watch_session_auto_push.dart`, `test/watch_session_auto_push_test.dart`) are both predicted and untracked |
+| `grep import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
+
+Two fixture facts the register did not anticipate and the tests now pin: a logged set writes **two**
+observation rows (reps and weight), so counting the phone's entries means filtering
+`MetricIds.reps`; and entry numbering is "highest existing group + 1", so with the wrist's two merged
+sets in groups 0 and 2 the phone's next set is numbered **3** (S-80 asserts `entry-sx-1-3`).
+
+### Mutations (each applied to source, seen red, restored exactly, re-run green)
+
+| # | Mutant | Files it turned red | Restored |
+|---|---|---|---|
+| a | the payload-equality gate off — `_baseline = encoded;` unconditional | 6: S-70, S-74, S-80, S-81 (replay), S-83, S-84 | yes |
+| b | `projectedSession()` back to `projection(null)` (slot 0) | 1: S-76 — `Expected: <2> Actual: <0>` | yes |
+| c | `abandoned` keyed on the current-session pointer instead of the mirrored row | 1: S-84 — an `abandoned` lifecycle emitted while browsing history | yes |
+| d | `await push.rebaseline()` removed from `onIncoming` | 1: S-80 — 3 snapshots instead of 2 | yes |
+| e | the trailing window ignored — `scheduleMicrotask(() => unawaited(flush()))` in `_onChanged` | 4: S-72 (2 lifecycle frames), S-73 (2), S-75 (2 snapshots), S-81 lifecycle ("Too many elements") | yes |
+
+Mutation (e) needed three attempts, and the honest record is that the first two were not mutations of
+the observed behaviour. A synchronous `unawaited(flush())` in `_onChanged` composes its payload before
+the repository writes are visible and sends **zero** frames — every test reports `Actual: []`, which
+is a fixture artifact, not the window's absence. `Timer(Duration.zero, …)` coalesces the whole burst
+exactly as the 250 ms window does, so all 13 stayed green. Only the microtask form — one frame per
+microtask batch — actually removes the coalescing and is red. The original line
+`_window = Timer(_debounce, () => unawaited(flush()));` was restored and the file re-run green.
+
+### The register's place in the plan is taken over by a place-only frame (A-10, A-11)
+
+`projectedSession()` passes `{'payload': {'currentExerciseIndex': …}}`: the projection reads the place
+out of `incoming['payload']['currentExerciseIndex']`, and the mirror's own payload carries the
+placeholder's `sessionId`, which the D-10 gate rejects — so the literal `_projection?.call(state)`
+yields a null session and no push. Mutation (b) is the difference in one line. S-76 sits in
+`test/watch_session_projection_test.dart` (A-11); `test/live_mirroring_test.dart` was not changed.
+
+### Red → green (a bug-fix test must fail without its fix)
 
 | Scenario | What was stashed | Failing run | Passing run |
 |---|---|---|---|
-| S-76 (D-77) | the `projectedSession()` place-keeping change | | |
+| S-76 (D-77) | the `projectedSession()` place-keeping change (mutation b) | 1 failed / 29 green (`Expected: <2> Actual: <0>`) | 30 passed, 0 failed |
 | S-77 (D-78) | the foreign-snapshot refusal (Dart M1; Swift a) | Dart: `--plain-name S-77` 1 failed / 2 green. Swift: two S-77 tests red, 9 assertions | Dart 42 passed, Swift 315 passed, both 0 failed |
 | S-78 (D-79) | the session guard in the lifecycle path (Dart M2; Swift c) | Dart: `--plain-name S-78` 2 failed / 3 green. Swift: 2 tests red | as above |
 | S-79 (D-80) | the timer-ownership test (Dart M3; Swift d) | Dart: `--plain-name S-79` 1 failed / 1 green. Swift: 1 test red (3 failures) | as above |
 | S-81 (D-78/D-79) | the refusals above are the ones S-81's re-delivery case rides on; no separate mutant — see the Phase 2 section | — | as above |
-| S-74 (D-76) | the payload-equality gate | | |
+| S-74 (D-76) | the payload-equality gate (mutation a; also red for S-70, S-80, S-81, S-83, S-84) | 6 failed / 7 green | 13 passed, 0 failed |
 
 ## Residue sweeps
 
@@ -152,7 +203,7 @@ After every edit (both engines, all test files, `PROTOCOL.md`, the plan and this
 | copy removed from all three sources | grep `noAutoSyncLabel` under `lib/`, `test/`, `watch/` | |
 | the hint widget cannot return | grep `NoAutomaticSyncHint` under `lib/`, `test/`, `watch/` | |
 | no doc still claims sync is manual | grep (list the terms used) in `docs/` | |
-| nothing outside the Predicted Files changed | `.github/copilot/scripts/macos/gateway.sh git-diff develop --name-only` | |
+| nothing outside the Predicted Files changed | `.github/copilot/scripts/macos/gateway.sh git-diff develop --name-only` | Phase 3A: `lib/main.dart`, `lib/state/watch/live_session_mirror_state.dart`, `lib/state/watch/watch_sync_wiring.dart`, `test/watch_session_finish_test.dart`, `test/watch_session_projection_test.dart` — all predicted — plus `watch/sync_protocol/PROTOCOL.md` (the governor's addition). The two new files are predicted and untracked. `test/live_mirroring_test.dart` is unchanged (A-11) |
 | no concrete persistence in state/UI/core | grep `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
 | the refusal can only run first | grep `captureSessionEnd` in `WatchSessionEngine.swift` | 5 hits: the definition (`:1221`), three call sites (`:467` snapshot, `:567` lifecycle, `:950` local end), and the comment at `:457` recording that the snapshot call sits *after* the refusal |
 

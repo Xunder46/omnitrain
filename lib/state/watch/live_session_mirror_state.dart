@@ -270,13 +270,24 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The phone's own session as a protocol state, composed on demand from the
   /// bound session state (D-11) — the ladder a wrist snapshot is answered with.
   ///
+  /// Composed for the place the receiver last reported: the projection reads
+  /// that place out of the payload of the frame it is handed, and this is the
+  /// frame — the receiver's own position and nothing else, which is what the
+  /// account below carries. A phone that answered with slot 0 would yank a wrist
+  /// on exercise 3 back to exercise 1, and the payload composed here is also
+  /// what the phone pushes on its own (D-77). It names no session: a frame
+  /// without one is not the D-10 disagreement case, so a phone in its own
+  /// session still speaks for it.
+  ///
   /// Null when the phone has no session of its own to speak from; the caller
   /// falls back to what this mirror holds, which is all a phone with no bound
   /// session has.
   Future<Map<String, Object?>?> projectedSession() async {
     final projection = _projection;
     if (projection == null) return null;
-    return projection(null);
+    return projection(<String, Object?>{
+      'payload': <String, Object?>{'currentExerciseIndex': currentExerciseIndex},
+    });
   }
 
   /// The phone's live session as a protocol message — the answer to a snapshot

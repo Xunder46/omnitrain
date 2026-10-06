@@ -711,6 +711,74 @@ void main() {
     );
   });
 
+  group('S-76 a manual Sync answers with the wrist\'s own place', () {
+    test('S-76 the answer carries the position the wrist is on', () async {
+      await engine.createSession(
+        modality: null,
+        exercises: [
+          _slot('sl-1', 'ex-bench', 'Bench Press', ['sets', 'reps', 'load']),
+          _slot('sl-2', 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          _slot('sl-3', 'ex-deadlift', 'Deadlift', ['sets', 'reps', 'load']),
+        ],
+      );
+      final wristSessionId = engine.session!.sessionId;
+
+      // The phone adopts the wrist's session (S-1), so both ladders are the
+      // same three slots and the phone's own place is still its first slot.
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+      expect(phoneSlots(), ['sl-1', 'sl-2', 'sl-3']);
+      expect(phoneState.currentSession?.id, wristSessionId);
+
+      // The wrist works through its ladder and tells the phone where it got to.
+      await engine.advanceExercise();
+      await engine.advanceExercise();
+      expect(engine.session!.currentExerciseIndex, 2);
+      radio.sent.clear();
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+      expect(
+        graph.mirror.currentExerciseIndex,
+        2,
+        reason: 'the fixture: the phone converged on the wrist\'s position',
+      );
+
+      // The wrist taps Sync.
+      radio.sent.clear();
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+
+      final answer = radio.lastOfType('session_snapshot');
+      final payload = _payload(answer);
+      expect(payload['sessionId'], wristSessionId);
+      expect(_slotIds(payload), ['sl-1', 'sl-2', 'sl-3']);
+      expect(
+        payload['currentExerciseIndex'],
+        2,
+        reason:
+            'S-76 the answer carries the place the wrist reported, so a manual '
+            'Sync does not yank it back to its first exercise (D-77). Without '
+            'the fix it carries 0, the phone\'s own place',
+      );
+      expect(
+        engine.session!.currentExerciseIndex,
+        2,
+        reason: 'S-76 the wrist is still where it was',
+      );
+      expect(
+        engine.session!.currentExercise!['sessionExerciseId'],
+        'sl-3',
+        reason: 'S-76 and on the exercise it was on',
+      );
+      expect(
+        phoneState.currentSession?.id,
+        wristSessionId,
+        reason: 'S-76 the answer is composed from the phone\'s own session',
+      );
+      expect(reportedFailure, isNull);
+    });
+  });
+
   group('D-10 the phone never asserts a session it is not in', () {
     test('S-6 a wrist session this phone is not in is left alone', () async {
       await phoneState.createNewSession(modality: null);

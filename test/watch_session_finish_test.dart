@@ -6,7 +6,7 @@
 // Phase 4 — D-5, D-8, G1, G2, G3.
 // Scenario mapping:
 //   S-4 the wrist ends its own session        → `S-4 ...` (both arrival orders)
-//   S-5 the phone's finish, rewritten by G2   → `S-5 ...`
+//   S-5 the phone's finish is pushed (D-81)   → `S-5 ...`
 //   G1 never resurrect a finished session     → `G1 ...`, `G1 counter-case ...`
 //   the wrist's sets merge into the session   → `a set logged on the watch ...`
 //     the phone holds, once (PR 2a)
@@ -26,6 +26,7 @@ import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
+import 'package:omnitrain/state/watch/watch_session_auto_push.dart';
 import 'package:omnitrain/state/watch/watch_incoming_router.dart';
 import 'package:omnitrain/state/watch/watch_nutrition_log_bridge.dart';
 import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
@@ -410,10 +411,16 @@ void main() {
     );
   });
 
-  test('S-5 the phone\'s own finish is not reported, and the wrist is answered '
+  test('S-5 the phone\'s own finish is reported, and the wrist is answered '
       'at its next sync', () async {
     final repository = await _repository();
     final phone = await _phone(repository);
+    final push = WatchSessionAutoPush(
+      mirror: phone.mirror,
+      getSession: repository.getSession,
+    )..bindWorkoutState(phone.state);
+    addTearDown(push.dispose);
+
     await phone.router.receive(_snapshot());
     expect(phone.state.hasActiveSession, isTrue);
 
@@ -421,12 +428,24 @@ void main() {
     await phone.state.endSession();
     expect(phone.state.currentSession?.endedAtMs, isNotNull);
 
+    // The window closes: the phone reports its own finish (D-81).
+    await push.flush();
+
+    final reported = phone.lifecycles;
     expect(
-      phone.transport.sent,
-      isEmpty,
-      reason:
-          'G2 the phone never reports its own finish: sync is manual, and the '
-          'wrist learns the session is over from its next snapshot answer',
+      [for (final envelope in reported) envelope['sessionId']],
+      ['s-w1'],
+      reason: 'S-5 the push names the session the mirror holds',
+    );
+    expect(
+      [(reported.single['payload']! as Map)['state']],
+      [WatchLifecycleState.completed],
+      reason: 'S-5 the phone\'s finish ends the wrist\'s copy',
+    );
+    expect(
+      phone.mirror.status,
+      WatchSessionStatus.completed,
+      reason: 'S-5 the mirror converges with the lifecycle it sent',
     );
 
     // The wrist, still running its copy, syncs again.
@@ -438,18 +457,26 @@ void main() {
     final answered = phone.lifecycles;
     expect(
       [for (final envelope in answered) envelope['sessionId']],
-      ['s-w1'],
-      reason: 'G1/S-5 the answer names the session the wrist is still in',
+      ['s-w1', 's-w1'],
+      reason:
+          'G1/S-5 the wrist\'s next sync is answered with the end as well, on '
+          'top of the one the push already sent',
     );
     expect(
-      [(answered.single['payload']! as Map)['state']],
+      [(answered.last['payload']! as Map)['state']],
       [WatchLifecycleState.completed],
       reason: 'S-5 the wrist\'s copy is ended for it',
     );
     expect(
-      phone.transport.ofType('session_snapshot'),
-      isEmpty,
-      reason: 'S-5 the phone asserts no ladder for a session it has finished',
+      [
+        for (final envelope in phone.transport.ofType('session_snapshot'))
+          (envelope['payload']! as Map)['status'],
+      ],
+      [WatchSessionStatus.completed],
+      reason:
+          'S-5 the phone asserts no ladder of its own for a session it has '
+          'finished: the one snapshot is the mirror\'s own copy, re-asserted '
+          'because the wrist still reports it as active',
     );
 
     expect(

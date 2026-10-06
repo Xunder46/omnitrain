@@ -372,6 +372,38 @@ correction carries no distance
   request with nothing`) and by watchOS
   `WatchLiveMirroringTests.testASnapshotRequestIsAnsweredOnce` and
   `WatchLiveMirroringTests.testASessionlessWatchAnswersNothing`.
+- The phone MAY send a `session_snapshot` of the session it is in without being
+  asked, so a change the user makes on the phone reaches the wrist on its own
+  rather than at the wrist's next sync. Such a frame carries the position the
+  receiver last reported, never the sender's own first slot, so a wrist on its
+  third exercise is not moved back to its first. Verified by
+  `test/watch_session_auto_push_test.dart` (`S-71 the push reports the wrist's
+  position, not slot 0`) and by `test/watch_session_projection_test.dart`
+  (`S-76 the answer carries the position the wrist is on`).
+- A push MUST NOT re-send a payload equal to the one it last sent: a state that
+  notifies without changing anything the peer can see MUST NOT produce a frame,
+  and a burst of changes inside one window MUST be composed into one. The
+  comparison is over the payload's encoding, so a `revision` that does not move
+  is not a reason to speak and one that moves is not a reason to stay silent.
+  Verified by `test/watch_session_auto_push_test.dart` (`S-74 five
+  notifications without a change push nothing`, `S-75 three changes inside the
+  window are one frame`, `S-75 the trailing window closes by itself`).
+- A frame the phone applied from the wrist MUST NOT be pushed back: applying a
+  peer's frame re-composes the payload and stores it as the last-sent one
+  without sending, so a push is never a reply to the wrist's own news. Verified
+  by `test/watch_session_auto_push_test.dart` (`S-80 the wrist's own set and
+  its snapshot are not answered with a push`).
+- A push the transport cannot carry is dropped: the failure is reported and the
+  push MUST NOT queue it, retry it, or hold any user-visible state for it.
+  Catching up is the peers' own reconciliation, not a queue. Verified by
+  `test/watch_session_auto_push_test.dart` (`S-83 a failed send is reported
+  once, changes nothing, and is not retried`).
+- A push re-delivered MUST change nothing: it is an ordinary snapshot or
+  lifecycle, so re-applying one MUST NOT write a second row, a second entry, or
+  a second end. Verified by `test/watch_session_auto_push_test.dart` (`S-81 the
+  same snapshot twice writes nothing new on the wrist`, `S-81 the same
+  lifecycle twice ends the wrist's copy once`, `S-81 the same observation twice
+  leaves the phone unchanged and pushes nothing`).
 - A snapshot MUST NOT be answered with a snapshot that says the same thing:
   agreeing peers stay silent, or two connected devices would answer each other
   for ever. This is the phone's rule to apply, and it applies to the phone
@@ -391,6 +423,17 @@ correction carries no distance
   status wins. A session reported `started` after an abandon is live again;
   `completed` and `abandoned` are terminal until a later lifecycle message
   says otherwise.
+- The phone MUST report its own finish. A session the phone has ended (its
+  record carries an end) MUST be announced with `completed`, and one the phone
+  discarded (its record is gone) with `abandoned`, once each. What is announced
+  is the session the two devices share, read from that session's own record:
+  a past session the user opens on the phone MUST NOT be read as the shared one
+  ending, and MUST NOT be announced. Verified by
+  `test/watch_session_auto_push_test.dart` (`S-72 finishing on the phone ends
+  the wrist's copy, once`, `S-73 discarding on the phone abandons the wrist's
+  copy, once`, `S-84 opening a past session pushes nothing for the live one`)
+  and by `test/watch_session_finish_test.dart` (`S-5 the phone's own finish is
+  reported, and the wrist is answered at its next sync`).
 - `revision` increases by one per applied structure change, so two clients can
   tell at a glance whether they are looking at the same session shape.
 - Applying the same event stream twice MUST produce the same end state as
@@ -484,3 +527,4 @@ one pull request — never edit a fixture to match an implementation.
 | 1 (amended) | 2026-10-06 | Entries a snapshot re-carries: an `entryId` the receiver already holds is re-stated from the snapshot's payload — the receiver shows the sender's current values, stores no second row, and leaves the record it holds unrewritten. Only the watch re-states, taking for an id it holds the values the snapshot carries; a phone keeps the values it already holds, and the answer carries the watch's own values for the watch's own entries, so a re-statement of one is a no-op. The wire shape does not change — no schema and no version change — and no existing fixture changed: the re-statement is pinned by the wrist-side tests `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift` (`testS35AReStatementShowsThePhonesNewValueAndLeavesTheRow`, `testASecondEditWinsOverTheFirst`) and the Dart twin's `test/watch_session_projection_test.dart` (`S-35 a re-statement is append-only and doubles nothing`). Additive for the same reason as the 2026-09-25 amendment |
 | 1 (amended) | 2026-10-06 | A band-assisted set: a `loadKg` MAY be negative down to -200 kg — a band or partner assist, a load below bodyweight — on an entry, a routine target and a correction alike. A value below -200 kg MUST be rejected as invalid, not clamped into range. The floor is the bound the phone's set editor already enforces, so the wire refuses no set the phone can produce. No new field, no schema shape change beyond the widened minimum, and no version change: only what is accepted widens, so nothing a v1 client accepted becomes invalid. No existing fixture changed. `fixtures/valid/observations_up_band_assist.json`, `fixtures/valid/session_snapshot_band_assist.json`, `fixtures/valid/structure_change_band_assist.json` and `fixtures/valid/routines_down_band_assist.json` are the shapes and `fixtures/invalid/observations_up_load_below_floor.json` is the refusal, pinned by `test/sync_protocol_fixtures_test.dart` (`S-58 an assisted set on the observations wire`, `S-59 the band-assisted set travels with its sign`, `S-65/S-66 one floor for a correction and a target`) and by `test/watch_reconciliation_cross_stack_test.dart` (`S-67 a re-stated assist is neither duplicated nor zeroed`) |
 | 1 (amended) | 2026-10-06 | The wrist's session-acceptance rules: a `session_snapshot` naming another session is refused whole while the wrist holds an `active` session of its own with a non-empty ladder — nothing applied, no row written, nothing emitted, and no session end captured for the session it names — while a wrist holding nothing, holding a session that has already ended, or holding one whose ladder is empty adopts it as before; `session_lifecycle`, `timer_state`, `structure_change` and `exercise_push` are refused when their `sessionId` is not the id of the session the receiver holds; and a snapshot stops only the timer kinds its own sender wrote, so a countdown the receiver started keeps running, while a kind the snapshot carries as `null` is still cleared and a kind it carries running is still adopted. No new field, no schema change, no version change — no existing fixture changed — and the rules are pinned by `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift` (`testS77AForeignSnapshotChangesNothingAndSaysNothing`, `testS77ARefusedSnapshotDoesNotEndASessionTheWristCreatedEarlier`, `testS78ALifecycleForAnotherSessionConcernsNobodyHere`, `testS78AnAdvancedPositionForAnotherSessionMovesNothing`, `testS78AStructureChangeForAnotherSessionWritesNoRow`, `testS78AnExercisePushForAnotherSessionLandsNowhere`, `testS78TimerStateForAnotherSessionAdoptsNoTimer`), by `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift` (`testS79ASnapshotLeavesTheWristsCountdownRunningAndStopsThePhones`, `testS79AKindNamedNullIsStillCleared`), and by the Dart twin's `test/watch_session_engine_test.dart` (`S-77 a snapshot for another session changes nothing and says nothing`, `S-78 a lifecycle for another session concerns nobody here`) and `test/watch_logging_timers_test.dart` (`S-79 a snapshot leaves the wrist's countdown running and stops the phone's own`). Additive for the same reason as the 2026-09-25 amendment |
+| 1 (amended) | 2026-10-06 | The phone's own push: the phone MAY send a `session_snapshot` of the session it is in without being asked, carrying the position the receiver last reported rather than its own first slot; a payload equal to the one last sent is not re-sent, a burst of changes inside one window composes into one frame, a frame the phone applied from the wrist is re-baselined rather than answered, a push the transport cannot carry is dropped rather than queued, and a push re-delivered changes nothing. The phone also MUST report its own finish — `completed` for a session it ended, `abandoned` for one it discarded — read from that session's own record, so a past session the user opens is not the shared one ending. No new field, no schema change, no version change, and no existing fixture changed. Pinned by `test/watch_session_auto_push_test.dart` (`S-70 the phone's own set is pushed as one snapshot, and the wrist's own set is not sent back`, `S-71 the push reports the wrist's position, not slot 0`, `S-72 finishing on the phone ends the wrist's copy, once`, `S-73 discarding on the phone abandons the wrist's copy, once`, `S-74 five notifications without a change push nothing`, `S-75 three changes inside the window are one frame`, `S-75 the trailing window closes by itself`, `S-80 the wrist's own set and its snapshot are not answered with a push`, `S-81 the same snapshot twice writes nothing new on the wrist`, `S-81 the same lifecycle twice ends the wrist's copy once`, `S-81 the same observation twice leaves the phone unchanged and pushes nothing`, `S-83 a failed send is reported once, changes nothing, and is not retried`, `S-84 opening a past session pushes nothing for the live one`), by `test/watch_session_projection_test.dart` (`S-76 the answer carries the position the wrist is on`) and by `test/watch_session_finish_test.dart` (`S-5 the phone's own finish is reported, and the wrist is answered at its next sync`). Additive for the same reason as the 2026-09-25 amendment |

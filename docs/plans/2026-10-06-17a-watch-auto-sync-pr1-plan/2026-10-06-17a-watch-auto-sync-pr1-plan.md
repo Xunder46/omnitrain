@@ -642,7 +642,8 @@ routine/preference sync tests, and `test/phone_manage_bridge_test.dart`.
 
 - [x] PR 1a / Phase 1 — the contract amendment and the copy — tests 3979 passed / ~1 skipped, 0 failed; swift 302 / 0; lint 196 / 0 (steps 1 and 9 deferred by governor, A-1/A-2)
 - [x] PR 1a / Phase 2 — the wrist's acceptance rules — tests 3990 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0; targeted Dart 42 / 0 (`watch_session_engine_test` + `watch_logging_timers_test`); projection file 29 / 0; red→green shown for S-77, S-78 and S-79 on both stacks (steps 1–9 plus the governor's step 10, `PROTOCOL.md`)
-- [ ] PR 1b / Phase 3 — the phone's push
+- [x] PR 1b / Phase 3A — the phone's push (steps 1–8) — tests 4004 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0; push file 13 / 0; projection file 30 / 0; finish file 8 / 0; mutations a–e red and restored; `PROTOCOL.md` amended (the governor addition)
+- [ ] PR 1b / Phase 3B — the behaviour docs and the residue sweep (steps 9–11)
 
 ## Assumption Log
 
@@ -693,6 +694,33 @@ ratifies it into a D-x or reverts it with a remediation item.
    running on the wrist at a Sync loses its remaining-time line", held by `timer_cleared.json`)
    described the pre-D-80 rule; the fixture still passes because the kind it clears is one the phone
    wrote. The brief forbids editing that doc in Phase 2 — Phase 3's rewrite owns the correction.
+
+10. **A-10 — the place is delivered as a place-only frame (developer, 2026-10-06).** The brief's
+    literal `_projection?.call(state)` cannot deliver the receiver's place: the projection reads it
+    from `incoming['payload']['currentExerciseIndex']`, and `state` is the mirror's bare payload, so
+    slot 0 comes back. `projectedSession()` passes `{'payload': {'currentExerciseIndex': …}}` instead;
+    it names no session, so the D-10 gate does not reject it (passing the mirror's payload does, and
+    then S-70's push is null). Mutation (b) pins the difference.
+11. **A-11 — S-76 lives in `test/watch_session_projection_test.dart` (developer, 2026-10-06).**
+    Predicted Files also named `test/live_mirroring_test.dart`, but that harness's mirror has a
+    projection fake and no bound `WorkoutState`, so the request-answer path over the real projection
+    is only reachable in the projection file. `live_mirroring_test.dart` is unchanged and green.
+12. **A-12 — S-83's two clauses contradict each other; the note was followed (developer,
+    2026-10-06).** One says a failed send still becomes the baseline, the other that the payload stays
+    owed. A payload kept for a retry that D-83 forbids is dead state, so the baseline is updated after
+    the attempt and the same state is not attempted twice. The test asserts exactly that.
+13. **A-13 — tests close the window with `flush()`, not by waiting (developer, 2026-10-06).** Only
+    `S-75 the trailing window closes by itself` builds a push with a 5 ms window and polls to a
+    deadline, so no test depends on a real-clock threshold. The production default stays 250 ms.
+14. **A-14 — two fixtures are reached differently from the register's wording (developer,
+    2026-10-06).** S-71's index 1 comes from the wrist advancing and re-syncing rather than from a
+    pre-set ladder, and S-75's burst adds catalog exercises through the session path, so its slots
+    carry derived ids (`effort-…-2`) instead of the plan's literal `sx-3`/`sx-4`; the assertions name
+    the ids the fixture produced. The expected outcomes are unchanged.
+15. **A-15 — the flipped S-5 observes two `completed` frames (developer, 2026-10-06).** The first is
+    the push's; the second is the mirror's G1 answer to the wrist's stale re-assertion, which the
+    brief's second half keeps. That file builds its own `WatchSessionAutoPush` because its harness
+    drives a `CaptureTransport` rather than the graph's radio.
 
 ## Open questions
 

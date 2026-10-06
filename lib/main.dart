@@ -393,6 +393,9 @@ Future<Widget> runStartup({
   // adopts a snapshot into the state built just above, once the mirror has
   // reconciled it.
   watchSync?.adoption.bindWorkoutState(workoutState);
+  // The phone's own session reaches the wrist by itself (D-75): the graph's one
+  // push listens to the same state.
+  watchSync?.autoPush.bindWorkoutState(workoutState);
   final exerciseLibraryState = ExerciseLibraryState(
     service: exerciseLibraryService,
     workoutState: workoutState,

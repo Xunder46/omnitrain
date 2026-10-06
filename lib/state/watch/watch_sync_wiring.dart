@@ -32,6 +32,7 @@ import 'live_session_mirror_state.dart';
 import 'watch_incoming_router.dart';
 import 'watch_nutrition_log_bridge.dart';
 import 'watch_session_adoption_bridge.dart';
+import 'watch_session_auto_push.dart';
 import 'watch_session_inbox.dart';
 import 'watch_sync_request_handler.dart';
 
@@ -63,6 +64,7 @@ class WatchSyncGraph {
     required this.ratings,
     required this.lateEntryRecovery,
     required this.adoption,
+    required this.autoPush,
   });
 
   /// The session running on the wrist, as the phone mirrors it.
@@ -81,6 +83,10 @@ class WatchSyncGraph {
   /// Where the session the wrist is running becomes the phone's own: the app
   /// binds its `WorkoutState` to this once it has built it (D-2).
   final WatchSessionAdoptionBridge adoption;
+
+  /// The one object that pushes the phone's own session to the watch: the app
+  /// binds the same `WorkoutState` to it (D-75).
+  final WatchSessionAutoPush autoPush;
 }
 
 /// Builds the phone's watch graph and answers the handles the app keeps on it,
@@ -165,14 +171,24 @@ Future<WatchSyncGraph?> createWatchSync({
     settings: settingsState,
     clock: clock,
   );
+  // Built after the mirror, from the same repository the graph already holds:
+  // the push reads the mirrored session's own row — never the current-session
+  // pointer — to decide whether that session has ended (D-75, D-81).
+  final push = WatchSessionAutoPush(
+    mirror: mirror,
+    getSession: repository.getSession,
+  );
 
   resolved.onIncoming((frame) async {
     final request = WatchTransportRequest.nameOf(frame);
     if (request != null) {
       await requests.handle(request);
-      return;
+    } else {
+      await router.receive(frame);
     }
-    await router.receive(frame);
+    // A frame the phone applied from the wrist is not news to push back (D-82):
+    // the rows it just brought in become the baseline rather than a send.
+    await push.rebaseline();
   });
 
   await inbox.resume();
@@ -181,5 +197,6 @@ Future<WatchSyncGraph?> createWatchSync({
     ratings: inbox,
     lateEntryRecovery: inbox,
     adoption: adoption,
+    autoPush: push,
   );
 }
