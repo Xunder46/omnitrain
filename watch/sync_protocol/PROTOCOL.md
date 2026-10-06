@@ -218,7 +218,16 @@ between devices.
 
 A `timer_state` message is authoritative for every timer kind it names. A kind
 carrying `null` clears that timer. A `session_snapshot` is authoritative for
-timer state as a whole; kinds it omits are cleared.
+timer state as a whole; kinds it omits are cleared, except a kind whose newest
+row the snapshot's sender did not write — a snapshot speaks for the countdowns
+it started, and MUST NOT stop one the receiver started itself. A kind carrying
+`null` in a snapshot is cleared even so. Verified by
+`watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift`
+(`testS79ASnapshotLeavesTheWristsCountdownRunningAndStopsThePhones`,
+`testS79AKindNamedNullIsStillCleared`) and, for the Dart twin, by
+`test/watch_logging_timers_test.dart` (`S-79 a snapshot leaves the wrist's
+countdown running and stops the phone's own`, `S-79 a kind named null is still
+cleared`).
 
 ## Session capture (normative)
 
@@ -312,6 +321,39 @@ correction carries no distance
   sessions. The receiver adopts it and MUST NOT answer it: re-assertion (below)
   is for a snapshot of the session the receiver holds.
   `fixtures/reconciliation/session_switch.json` pins it.
+- The one exception to that replacement is the wrist mid-workout: a snapshot
+  naming another session MUST be refused whole while the wrist holds an
+  `active` session of its own with a non-empty ladder — nothing applied, no row
+  written, nothing emitted, and no session end captured for the session the
+  snapshot names. What the user is in the middle of is not interrupted by a
+  frame that is not about it. A wrist holding nothing, holding a session that
+  has already ended (`completed` or `abandoned`), or holding a session whose
+  ladder is empty adopts the snapshot as above. Verified by
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`
+  (`testS77AForeignSnapshotChangesNothingAndSaysNothing`,
+  `testS77ARefusedSnapshotDoesNotEndASessionTheWristCreatedEarlier`), with the
+  counter-cases `testS77TheSameSnapshotAppliesOnceTheWristHasFinished` and
+  `testS77AWristWithAnEmptyLadderReservesNothing`, and, for the Dart twin, by
+  `test/watch_session_engine_test.dart` (`S-77 a snapshot for another session
+  changes nothing and says nothing`, `S-77 counter-case the same snapshot
+  applies once the wrist has finished`, `S-77 counter-case a wrist with an
+  empty ladder reserves nothing`).
+- Session-scoped frames name the session they are about. A receiver MUST
+  refuse a `session_lifecycle`, `timer_state`, `structure_change` or
+  `exercise_push` whose `sessionId` is not the id of the session it holds —
+  nothing applied, no row written, no answer sent — because a frame about
+  another session is not news about this one. Verified by
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`
+  (`testS78ALifecycleForAnotherSessionConcernsNobodyHere`,
+  `testS78AnAdvancedPositionForAnotherSessionMovesNothing`,
+  `testS78AStructureChangeForAnotherSessionWritesNoRow`,
+  `testS78AnExercisePushForAnotherSessionLandsNowhere`,
+  `testS78TimerStateForAnotherSessionAdoptsNoTimer`) and, for the Dart twin, by
+  `test/watch_session_engine_test.dart` (`S-78 a lifecycle for another session
+  concerns nobody here`, `S-78 an advanced position for another session moves
+  nothing`, `S-78 timer state for another session adopts no timer`,
+  `S-78 a structure change for another session writes no row`,
+  `S-78 an exercise push for another session lands nowhere`).
 - Between snapshots, incremental messages keep the two sides aligned. A device
   that reconnects MUST resume from the last snapshot it reconciled, then replay
   the observations it accumulated while apart.
@@ -441,3 +483,4 @@ one pull request — never edit a fixture to match an implementation.
 | 1 (amended) | 2026-10-05 | Phone-logged entries: authority rule 1 states that the phone MAY add entries it logged, which arrive in its `session_snapshot`; a snapshot's `entries` are the sender's own and are ordered by `loggedAt` then `entryId`; entries merge by `entryId`, and an `entryId` a receiver already holds is not stored a second time; the id a phone mints for a set it logged is `entry-<sessionExerciseId>-<n>` with `eventId` equal to it. The wire shape does not change — `session_snapshot` already requires `entries` and envelope already carries every metric a set needs — so no schema and no version change. Additive for the same reason as the 2026-09-25 amendment; no existing fixture changed. `fixtures/valid/session_snapshot_with_entries.json` is the shape and `fixtures/reconciliation/phone_entries_merge.json` pins the merge |
 | 1 (amended) | 2026-10-06 | Entries a snapshot re-carries: an `entryId` the receiver already holds is re-stated from the snapshot's payload — the receiver shows the sender's current values, stores no second row, and leaves the record it holds unrewritten. Only the watch re-states, taking for an id it holds the values the snapshot carries; a phone keeps the values it already holds, and the answer carries the watch's own values for the watch's own entries, so a re-statement of one is a no-op. The wire shape does not change — no schema and no version change — and no existing fixture changed: the re-statement is pinned by the wrist-side tests `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift` (`testS35AReStatementShowsThePhonesNewValueAndLeavesTheRow`, `testASecondEditWinsOverTheFirst`) and the Dart twin's `test/watch_session_projection_test.dart` (`S-35 a re-statement is append-only and doubles nothing`). Additive for the same reason as the 2026-09-25 amendment |
 | 1 (amended) | 2026-10-06 | A band-assisted set: a `loadKg` MAY be negative down to -200 kg — a band or partner assist, a load below bodyweight — on an entry, a routine target and a correction alike. A value below -200 kg MUST be rejected as invalid, not clamped into range. The floor is the bound the phone's set editor already enforces, so the wire refuses no set the phone can produce. No new field, no schema shape change beyond the widened minimum, and no version change: only what is accepted widens, so nothing a v1 client accepted becomes invalid. No existing fixture changed. `fixtures/valid/observations_up_band_assist.json`, `fixtures/valid/session_snapshot_band_assist.json`, `fixtures/valid/structure_change_band_assist.json` and `fixtures/valid/routines_down_band_assist.json` are the shapes and `fixtures/invalid/observations_up_load_below_floor.json` is the refusal, pinned by `test/sync_protocol_fixtures_test.dart` (`S-58 an assisted set on the observations wire`, `S-59 the band-assisted set travels with its sign`, `S-65/S-66 one floor for a correction and a target`) and by `test/watch_reconciliation_cross_stack_test.dart` (`S-67 a re-stated assist is neither duplicated nor zeroed`) |
+| 1 (amended) | 2026-10-06 | The wrist's session-acceptance rules: a `session_snapshot` naming another session is refused whole while the wrist holds an `active` session of its own with a non-empty ladder — nothing applied, no row written, nothing emitted, and no session end captured for the session it names — while a wrist holding nothing, holding a session that has already ended, or holding one whose ladder is empty adopts it as before; `session_lifecycle`, `timer_state`, `structure_change` and `exercise_push` are refused when their `sessionId` is not the id of the session the receiver holds; and a snapshot stops only the timer kinds its own sender wrote, so a countdown the receiver started keeps running, while a kind the snapshot carries as `null` is still cleared and a kind it carries running is still adopted. No new field, no schema change, no version change — no existing fixture changed — and the rules are pinned by `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift` (`testS77AForeignSnapshotChangesNothingAndSaysNothing`, `testS77ARefusedSnapshotDoesNotEndASessionTheWristCreatedEarlier`, `testS78ALifecycleForAnotherSessionConcernsNobodyHere`, `testS78AnAdvancedPositionForAnotherSessionMovesNothing`, `testS78AStructureChangeForAnotherSessionWritesNoRow`, `testS78AnExercisePushForAnotherSessionLandsNowhere`, `testS78TimerStateForAnotherSessionAdoptsNoTimer`), by `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift` (`testS79ASnapshotLeavesTheWristsCountdownRunningAndStopsThePhones`, `testS79AKindNamedNullIsStillCleared`), and by the Dart twin's `test/watch_session_engine_test.dart` (`S-77 a snapshot for another session changes nothing and says nothing`, `S-78 a lifecycle for another session concerns nobody here`) and `test/watch_logging_timers_test.dart` (`S-79 a snapshot leaves the wrist's countdown running and stops the phone's own`). Additive for the same reason as the 2026-09-25 amendment |

@@ -38,6 +38,49 @@ Map<String, Object?> _slot(String id, List<String> capabilities) => {
   'capabilities': capabilities,
 };
 
+/// A countdown as a phone frame carries it: the shape, not the row.
+Map<String, Object?> _timerJson(
+  String kind, {
+  required String startedAt,
+  int? plannedDurationMs,
+}) => {
+  'kind': kind,
+  'state': WatchTimerState.running,
+  'startedAt': startedAt,
+  'plannedDurationMs': plannedDurationMs,
+};
+
+Map<String, Object?> _frame(
+  String type,
+  String sessionId,
+  String messageId,
+  Map<String, Object?> payload,
+) => {
+  'protocolVersion': 1,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': type,
+  'origin': 'phone',
+  'sentAt': '2026-07-13T17:00:00Z',
+  'payload': payload,
+};
+
+/// The phone's whole account of the session, timers included.
+Map<String, Object?> _snapshotFrame(
+  String sessionId,
+  String messageId, {
+  required Map<String, Object?> timers,
+  List<Map<String, Object?>> exercises = const [],
+}) => _frame('session_snapshot', sessionId, messageId, {
+  'sessionId': sessionId,
+  'revision': 1,
+  'status': WatchSessionStatus.active,
+  'currentExerciseIndex': 0,
+  'exercises': exercises,
+  'entries': const [],
+  'timers': timers,
+});
+
 void main() {
   late _Clock clock;
   late WatchSessionStore store;
@@ -266,5 +309,86 @@ void main() {
         );
       },
     );
+  });
+
+  group('S-79 each device owns only the countdown it started', () {
+    late String sessionId;
+
+    setUp(() async {
+      sessionId = engine.session!.sessionId;
+      // The phone's countdown: the row id is derived from the message that
+      // named it, which is what marks it as the sender's own (D-80).
+      await engine.applyMessage(
+        _frame('timer_state', sessionId, 'm-7', {
+          'timers': {
+            'round': _timerJson(
+              WatchTimerKind.round,
+              startedAt: '2026-07-13T16:59:50Z',
+              plannedDurationMs: 60000,
+            ),
+          },
+        }),
+      );
+      // The wrist's own countdown, started on the watch.
+      await engine.startTimer(
+        WatchTimerKind.rest,
+        plannedDurationMs: const Duration(seconds: 90).inMilliseconds,
+      );
+    });
+
+    test(
+      "S-79 a snapshot leaves the wrist's countdown running and stops the "
+      "phone's own",
+      () async {
+        final wristTimer = engine.timerFor(WatchTimerKind.rest)!;
+        expect(wristTimer.state, WatchTimerState.running);
+
+        await engine.applyMessage(
+          _snapshotFrame(
+            sessionId,
+            'snap-msg-1',
+            timers: const {},
+            exercises: [_slot('sx-bench', ['reps', 'sets', 'load'])],
+          ),
+        );
+
+        final rest = engine.timerFor(WatchTimerKind.rest)!;
+        expect(
+          rest.recordId,
+          wristTimer.recordId,
+          reason: 'the wrist started it, so the phone is not speaking about it',
+        );
+        expect(rest.state, WatchTimerState.running);
+        expect(rest.stoppedAt, isNull);
+
+        final round = engine.timerFor(WatchTimerKind.round)!;
+        expect(round.state, WatchTimerState.stopped);
+        expect(round.stoppedAt, clock.now);
+
+        expect(
+          [for (final row in (await store.readAll()).timers)
+            if (row.kind == WatchTimerKind.round) row.recordId],
+          ['tms-m-7-round', 'tms-snap-msg-1-round'],
+          reason: "the phone's own row is never rewritten: the stop is a row",
+        );
+      },
+    );
+
+    test('S-79 a kind named null is still cleared', () async {
+      await engine.applyMessage(
+        _snapshotFrame(
+          sessionId,
+          'snap-msg-2',
+          timers: const {'rest': null},
+          exercises: [_slot('sx-bench', ['reps', 'sets', 'load'])],
+        ),
+      );
+
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.stopped,
+        reason: 'a kind the phone names is a kind the phone is speaking about',
+      );
+    });
   });
 }

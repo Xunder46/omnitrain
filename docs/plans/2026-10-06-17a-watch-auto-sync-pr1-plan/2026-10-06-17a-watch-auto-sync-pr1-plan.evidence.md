@@ -19,7 +19,11 @@ output here; the plan holds no evidence.
 | 1 | gateway `test` (full) | 3979 passed, ~1 skipped, 0 failed | baseline 3980/~1 minus the one deleted Dart test |
 | 1 | gateway `swift-test` | 302 passed, 0 failed | |
 | 1 | gateway `lint` | 196 issues, 0 errors | same count as baseline; none in a touched file |
-| 2 | | | |
+| 2 | gateway `test test/watch_session_engine_test.dart test/watch_logging_timers_test.dart` | 42 passed, 0 failed | S-77 / S-78 / S-79 / S-81 |
+| 2 | gateway `test test/watch_session_projection_test.dart` | 29 passed, 0 failed | S-40's premise updated — why, in the Phase 2 section |
+| 2 | gateway `test` (full) | 3990 passed, ~1 skipped, 0 failed | baseline 3979 (~1 skipped) + 11 new Dart tests |
+| 2 | gateway `swift-test` | 315 passed, 0 failed | baseline 302 + 13 new Swift tests |
+| 2 | gateway `lint` | 196 issues, 0 errors | same count as baseline; none in a touched file |
 | 3 | | | |
 
 ## Phase 1 — the contract amendment and the copy (S-82)
@@ -62,13 +66,83 @@ The exact original was restored afterwards and both suites re-ran green (Dart 64
 | `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
 | `git-diff --stat` | 7 files, +29 / −100; all within the phase's Predicted Files minus `PROTOCOL.md` and the QA doc |
 
+## Phase 2 — wrist acceptance rules (S-77 / S-78 / S-79 / S-81)
+
+The same rules in both engines: D-78 (a snapshot naming another session is refused whole while the
+wrist runs its own), D-79 (a session-scoped phone frame may only name the session the wrist holds),
+D-80 (a countdown belongs to whoever started it). Step 10 (`PROTOCOL.md`) is the governor's: the
+session-switch bullet, the timer-state paragraph and the version history were amended to state all
+three, each citing tests that exist by name.
+
+Both engines enforce the refusal **before** anything is stored or emitted, and before the wrist's
+session-end bookkeeping runs — that ordering is what mutation (e) below pins.
+
+### Mutations — Dart engine (`lib/watch/session/watch_session_engine.dart`)
+
+| # | Original line | Mutant | Red | Green |
+|---|---|---|---|---|
+| M1 | `if (held != null &&` (`_applySnapshot`, the D-78 refusal) | `if (false && held != null &&` | `--plain-name S-77`: `1 failed` — `S-77 a snapshot for another session changes nothing and says nothing` → `Expected: false / Actual: <true>` … `the phone is in its own session`; both counter-cases (`once the wrist has finished`, `a wrist with an empty ladder reserves nothing`) stayed green | restored → 42 passed, 0 failed |
+| M2 | `if (!_guardSession(envelope)) return false;` in `_applyLifecycle` | `if (false) return false;` | `--plain-name S-78`: `2 failed` — `a lifecycle for another session concerns nobody here` and `an advanced position for another session moves nothing`, both `Expected: false / Actual: <true>` … `D-79`; the timer-state, structure-change and exercise-push S-78 tests stayed green (their guards live in other methods, untouched by the mutant) | restored → 42 passed, 0 failed |
+| M3 | `return authoritative && _senderWroteTimer(kind)` (`_timerActionFor`) | `return authoritative` | `--plain-name S-79`: `1 failed` — `S-79 a snapshot leaves the wrist's countdown running and stops the phone's own` → `Expected: 'af14f1c1-…' Actual: 'tms-snap-msg-1-rest'` … `the wrist started it, so the phone is not speaking about it`; `S-79 a kind named null is still cleared` stayed green | restored → 42 passed, 0 failed |
+
+Each original was restored exactly; `git-diff --stat -- lib/watch/session/watch_session_engine.dart`
+reports the same 58 changed lines (47 insertions, 11 deletions) before and after the three mutants.
+
+### Mutations — Swift engine (`watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`)
+
+| # | Mutant | Red | Green |
+|---|---|---|---|
+| a | the D-78 refusal removed from the snapshot path | both S-77 refusal tests red (9 assertion failures in total: stored rows, echoed messages and held position all moved); the two counter-case tests green | 315 passed, 0 failed after restore |
+| c | the D-79 guard removed from `applyLifecycle` | exactly `testS78ALifecycleForAnotherSessionConcernsNobodyHere` and `testS78AnAdvancedPositionForAnotherSessionMovesNothing` red | as above |
+| d | the unnamed-kind branch in `adoptTimers` back to `\|\| authoritative` | exactly `testS79ASnapshotLeavesTheWristsCountdownRunningAndStopsThePhones` red (3 failures); `testS79AKindNamedNullIsStillCleared` green | as above |
+| e | the refusal moved **after** `captureSessionEnd` | `testS77ARefusedSnapshotDoesNotEndASessionTheWristCreatedEarlier` → `XCTAssertEqual failed: ("1") is not equal to ("0") - a refused snapshot captures no end…` → `Executed 1 test, with 1 failure (0 unexpected)` | as above |
+
+Mutation (e) is invisible unless the wrist holds a **foreign-named session it created itself and has
+not ended**: `engine.observations` filters by the held session's id (`WatchSessionEngine.swift:129`),
+so an end appended for the *other* session cannot be seen through the accessor. The test therefore
+compares `harness.store.readAll().observations.count` across the refused frame. The plan's own S-77
+fixture (a wrist mid-workout on a session the phone created) cannot tell this mutant apart — its
+session is phone-sourced, so `captureSessionEnd` declines it anyway.
+
+### Pre-existing test updated: S-40 in `test/watch_session_projection_test.dart`
+
+The plan's Existing-Functionality Impact and the brief's candidate list did **not** name this file; it
+went red in the first full-suite run:
+
+```
+test/watch_session_projection_test.dart: S-31…S-43 … S-40 two sessions do not share entries [E]
+```
+
+(the run is `.work/gateway/test-20261006-183900-14280.log`, line 1331)
+
+It applied a foreign `sess-2` snapshot while the wrist held an active `sess-1` with entries — i.e. it
+pinned the wholesale-adoption rule D-78 supersedes, which the brief explicitly permits updating. The
+fix is one added `await engine.finishSession();` (plus a comment) after the `sess-1` assertions, which
+moves the switch into the D-78 counter-case; **every original assertion is unchanged** and the file
+runs 29 passed, 0 failed.
+
+### Final runs on the frozen tree
+
+After every edit (both engines, all test files, `PROTOCOL.md`, the plan and this file):
+
+| Command | Output |
+|---|---|
+| gateway `test` | `01:40 +3990 ~1: All tests passed!` — 3990 passed, ~1 skipped, 0 failed (exit 0) |
+| gateway `swift-test` | `Executed 315 tests, with 0 failures (0 unexpected)` (exit 0) |
+| gateway `lint` | `196 issues found. (ran in 1.6s)` — 0 errors; none in a touched file |
+| gateway `test test/watch_session_engine_test.dart test/watch_logging_timers_test.dart test/docs_indexing_contract_test.dart` | `+51: All tests passed!` |
+| `grep import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
+| gateway `git-diff --stat` | 11 files, +1183 / −25: the seven phase files, `PROTOCOL.md` (step 10), the S-40 line, and the plan + this file. **No fixture changed** — the brief's "stop and report if the fixture pins the old rule" case did not arise: `fixtures/reconciliation/session_switch.json` has the receiver holding a **finished** session, which is exactly D-78's counter-case, so it still converges (`WatchLiveMirroringTests.testEveryReconciliationFixtureConverges` is green) |
+
 ## Red → green (a bug-fix test must fail without its fix)
 
 | Scenario | What was stashed | Failing run | Passing run |
 |---|---|---|---|
 | S-76 (D-77) | the `projectedSession()` place-keeping change | | |
-| S-77 (D-78) | the foreign-snapshot refusal | | |
-| S-79 (D-80) | the timer-ownership rule | | |
+| S-77 (D-78) | the foreign-snapshot refusal (Dart M1; Swift a) | Dart: `--plain-name S-77` 1 failed / 2 green. Swift: two S-77 tests red, 9 assertions | Dart 42 passed, Swift 315 passed, both 0 failed |
+| S-78 (D-79) | the session guard in the lifecycle path (Dart M2; Swift c) | Dart: `--plain-name S-78` 2 failed / 3 green. Swift: 2 tests red | as above |
+| S-79 (D-80) | the timer-ownership test (Dart M3; Swift d) | Dart: `--plain-name S-79` 1 failed / 1 green. Swift: 1 test red (3 failures) | as above |
+| S-81 (D-78/D-79) | the refusals above are the ones S-81's re-delivery case rides on; no separate mutant — see the Phase 2 section | — | as above |
 | S-74 (D-76) | the payload-equality gate | | |
 
 ## Residue sweeps
@@ -79,6 +153,8 @@ The exact original was restored afterwards and both suites re-ran green (Dart 64
 | the hint widget cannot return | grep `NoAutomaticSyncHint` under `lib/`, `test/`, `watch/` | |
 | no doc still claims sync is manual | grep (list the terms used) in `docs/` | |
 | nothing outside the Predicted Files changed | `.github/copilot/scripts/macos/gateway.sh git-diff develop --name-only` | |
+| no concrete persistence in state/UI/core | grep `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
+| the refusal can only run first | grep `captureSessionEnd` in `WatchSessionEngine.swift` | 5 hits: the definition (`:1221`), three call sites (`:467` snapshot, `:567` lifecycle, `:950` local end), and the comment at `:457` recording that the snapshot call sits *after* the refusal |
 
 ## Historical note (do not edit the old file)
 

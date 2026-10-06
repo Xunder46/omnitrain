@@ -500,6 +500,15 @@ own timers); "phone rows" means what the phone's projection carries.
 `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift`,
 `test/watch_session_engine_test.dart`, `test/watch_logging_timers_test.dart`. Nothing else.
 
+**Status: Complete** (2026-10-06). Steps 1–9 done, plus the governor's step 10 (`PROTOCOL.md` amended:
+the session-switch exception, the session-scoped frame rule, timer ownership — each naming a test that
+exists). Red→green shown for S-77, S-78 and S-79 on both stacks; counts in the evidence file.
+`test/watch_session_projection_test.dart` needed one added line (S-40 pinned the superseded
+wholesale-adoption rule) — see A-5.
+**Handoff callout for Phase 3:** `docs/watch_session_sync.md`'s "the phone's rest timer is not carried"
+bullet is now true only of a countdown the *phone* started (A-9), and the wrist's end-capture rule has
+no Dart twin (A-8).
+
 ### Phase 3: The phone's push (@developer) — PR 1b
 
 1. [ ] New `lib/state/watch/watch_session_auto_push.dart`: `class WatchSessionAutoPush` — constructor
@@ -632,7 +641,7 @@ routine/preference sync tests, and `test/phone_manage_bridge_test.dart`.
 ## Progress
 
 - [x] PR 1a / Phase 1 — the contract amendment and the copy — tests 3979 passed / ~1 skipped, 0 failed; swift 302 / 0; lint 196 / 0 (steps 1 and 9 deferred by governor, A-1/A-2)
-- [ ] PR 1a / Phase 2 — the wrist's acceptance rules
+- [x] PR 1a / Phase 2 — the wrist's acceptance rules — tests 3990 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0; targeted Dart 42 / 0 (`watch_session_engine_test` + `watch_logging_timers_test`); projection file 29 / 0; red→green shown for S-77, S-78 and S-79 on both stacks (steps 1–9 plus the governor's step 10, `PROTOCOL.md`)
 - [ ] PR 1b / Phase 3 — the phone's push
 
 ## Assumption Log
@@ -654,6 +663,36 @@ ratifies it into a D-x or reverts it with a remediation item.
    and `testTheContractLabelsMatchWatchStartSurfaceCopy`, Dart `the sync action is offered only when
    the app can ask`); production code has none. The brief's step 7 (add the guard) wins over the
    Done Criteria's "returns nothing", which the guard itself cannot satisfy.
+4. **A-4 — `applyExercisePush` in the Dart twin returns `Future<WatchSessionRecord?>` (developer,
+   2026-10-06).** D-79 requires a refused push to land nowhere, and the old signature had no way to
+   say "nothing was inserted" without throwing; `null` is that answer. No caller distinguishes them
+   yet — Phase 3's push does not insert into the wrist's log — so no behaviour changed beyond the
+   refusal itself.
+5. **A-5 — `test/watch_session_projection_test.dart` (S-40) gained one line (developer,
+   2026-10-06).** It was not in Predicted Files or the brief's candidate list, but it applied a
+   foreign snapshot mid-session — it pinned the wholesale-adoption rule D-78 supersedes. Added
+   `await engine.finishSession();` so the switch happens in D-78's counter-case; every original
+   assertion and the file's 29 tests are unchanged and green.
+6. **A-6 — `Harness.clearEmitted()` added to the Swift test harness (developer, 2026-10-06).** The
+   S-77/S-78 tests must assert that a refused frame emits *nothing*, and `emitted` is `private(set)`
+   in the harness; a count-and-clear accessor was the smallest way to observe that without touching
+   production code.
+7. **A-7 — the ordering mutant (refusal after the wrist's end-capture) needed a stronger fixture than
+   S-77's (developer, 2026-10-06).** With the plan's fixture the mutant is invisible:
+   `engine.observations` filters by the held session's id, and the session the phone created is
+   phone-sourced, so `captureSessionEnd` declines it either way. The new Swift test gives the wrist a
+   foreign-named session it created itself and has not ended, and counts stored observations across
+   the refused frame.
+8. **A-8 — the wrist's end-capture rule is Swift-only, and Phase 2 does not change that (developer,
+   2026-10-06).** `captureSessionEnd` exists in the Swift engine and has no counterpart in the Dart
+   twin, so D-78's "before `captureSessionEnd`" ordering has nothing to precede there and the two
+   engines still agree on observable output. The gap predates this phase; adding it is a data-layer
+   change, so it is logged, not absorbed.
+9. **A-9 — one behaviour doc sentence is now true only of the phone's own countdown (developer,
+   2026-10-06).** `docs/watch_session_sync.md` ("The phone's rest timer is not carried … a countdown
+   running on the wrist at a Sync loses its remaining-time line", held by `timer_cleared.json`)
+   described the pre-D-80 rule; the fixture still passes because the kind it clears is one the phone
+   wrote. The brief forbids editing that doc in Phase 2 — Phase 3's rewrite owns the correction.
 
 ## Open questions
 
@@ -691,3 +730,12 @@ Technical questions (not owner-visible):
 3. **A snapshot's `revision` is stored, never compared** on the watch (`WatchSessionEngine.swift`
    `:470,518,569` set it, `:228` emits it; no comparison anywhere) — so the phone's revision travelling
    in a push cannot be rejected as stale. Recorded here because the push's payload carries it.
+4. **The wrist's end-capture rule has no Dart twin** (developer, 2026-10-06). `captureSessionEnd`
+   (D-119/D-120) exists only in `WatchSessionEngine.swift`; the Dart engine ends nothing on a snapshot,
+   so AC-11's "both engines carry every rule" is not literally true for it. Phase 2 does not widen the
+   gap — D-78's refusal simply has no end-capture to precede in Dart, and the observable results match
+   — but the two engines are not the same rule set here. A candidate for PR 2, or a decision that the
+   wrist's end-capture is deliberately Swift-only.
+5. **A ninth file changed outside the phase's Predicted Files** (developer, 2026-10-06): one line in
+   `test/watch_session_projection_test.dart` (A-5). Flagged for the reviewer rather than absorbed
+   silently.

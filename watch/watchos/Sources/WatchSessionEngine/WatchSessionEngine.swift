@@ -371,7 +371,7 @@ public final class WatchSessionEngine {
     @discardableResult
     public func applyExercisePush(_ envelope: [String: Any]) async throws -> WatchSessionRecord? {
         try requireConformingIncoming(envelope)
-        guard current != nil else { return nil }
+        guard guardSession(envelope) else { return nil }
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         return await insertExercise(
             (payload["exercise"] as? [String: Any]) ?? [:],
@@ -448,6 +448,20 @@ public final class WatchSessionEngine {
         let existing = current?.sessionId == sessionId ? current : nil
         let status = (payload["status"] as? String) ?? WatchSessionStatus.active
 
+        // A snapshot naming another session is refused whole while the wrist is
+        // running a workout of its own: the user is in the middle of it, and
+        // nothing — no end, no row, no message — may come of a frame that is not
+        // about it (D-78). The same snapshot still applies when the wrist holds
+        // nothing, or holds a session that has already ended: that is the
+        // ordinary case of the phone's next workout arriving. The guard runs
+        // before `captureSessionEnd`, so a refused snapshot ends nothing.
+        if let held = current,
+           held.status == WatchSessionStatus.active,
+           !held.exercises.isEmpty,
+           held.sessionId != sessionId {
+            return false
+        }
+
         // A phone snapshot can be what ends a session the wrist created; its
         // end is the moment the phone sent it (D-120).
         await captureSessionEnd(sessionId, status: status, endedAt: sentAt)
@@ -493,7 +507,8 @@ public final class WatchSessionEngine {
     /// swap keeps the slot's id so entries logged against it still point at it.
     private func applyStructureChange(_ envelope: [String: Any]) async -> Bool {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
-        guard let session = current,
+        guard guardSession(envelope),
+              let session = current,
               let changeId = payload["changeId"] as? String
         else { return false }
         guard appliedChangeIds.insert(changeId).inserted else { return false }
@@ -528,7 +543,7 @@ public final class WatchSessionEngine {
     /// Nothing is echoed back — the phone is telling the watch what it decided,
     /// and answering it with the same news would be noise.
     private func applyLifecycle(_ envelope: [String: Any]) async -> Bool {
-        guard let session = current else { return false }
+        guard guardSession(envelope), let session = current else { return false }
 
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         let state = payload["state"] as? String ?? ""
@@ -593,10 +608,10 @@ public final class WatchSessionEngine {
     /// cleared, the kinds it does not name are left alone (PROTOCOL.md, "Timer
     /// state"). Only a snapshot is authoritative for timer state as a whole.
     private func applyTimerState(_ envelope: [String: Any]) async -> Bool {
-        guard let sessionId = envelope["sessionId"] as? String,
+        guard guardSession(envelope),
+              let sessionId = envelope["sessionId"] as? String,
               let messageId = envelope["messageId"] as? String,
-              let sentAt = try? parseUtcIso(envelope["sentAt"]),
-              current != nil
+              let sentAt = try? parseUtcIso(envelope["sentAt"])
         else { return false }
 
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
@@ -611,8 +626,9 @@ public final class WatchSessionEngine {
 
     /// Adopts `timers` as the rows that apply. A kind the message names as null
     /// is cleared; a kind it does not name keeps whatever it had, unless the
-    /// message is a snapshot — only a snapshot is authoritative for timer state
-    /// as a whole (PROTOCOL.md, "Timer state").
+    /// message is a snapshot and the newest row of that kind is the sender's —
+    /// only a snapshot speaks for timer state as a whole, and even then only for
+    /// the countdowns it wrote itself (D-80) (PROTOCOL.md, "Timer state").
     ///
     /// Every row's id is derived from the message that named it, so re-delivery
     /// is a no-op and a relaunch cannot tell the difference.
@@ -627,7 +643,7 @@ public final class WatchSessionEngine {
         for kind in WatchTimerKind.all {
             let recordId = "\(Self.timerPrefix)\(messageId)-\(kind)"
             guard let timer = timers[kind], !(timer is NSNull) else {
-                if authoritative || timers.keys.contains(kind) {
+                if timers.keys.contains(kind) || (authoritative && senderWroteTimer(kind)) {
                     changed = await stopTimerFromMessage(
                         kind,
                         sessionId: sessionId,
@@ -1454,6 +1470,23 @@ public final class WatchSessionEngine {
             if newest.map({ timer.sequence > $0.sequence }) ?? true { newest = timer }
         }
         return newest
+    }
+
+    /// Whether a phone's session-scoped frame applies at all (D-79): it must
+    /// name the session the watch holds. A frame that names none, or names
+    /// another one, is refused whole — nothing applied, nothing stored, nothing
+    /// emitted.
+    private func guardSession(_ envelope: [String: Any]) -> Bool {
+        guard let held = current,
+              let sessionId = envelope["sessionId"] as? String
+        else { return false }
+        return sessionId == held.sessionId
+    }
+
+    /// Whether the newest row of `kind` is one a phone message wrote — the rows
+    /// whose id is derived from the message that named them (D-80).
+    private func senderWroteTimer(_ kind: String) -> Bool {
+        newestTimer(kind: kind)?.recordId.hasPrefix(Self.timerPrefix) ?? false
     }
 
     private func requireTimerKind(_ kind: String) throws {

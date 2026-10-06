@@ -361,10 +361,13 @@ class WatchSessionEngine {
   /// position it names, and the user stays on the exercise they were logging.
   ///
   /// A message the watch cannot read is refused whole — no half-applied edit.
-  Future<WatchSessionRecord> applyExercisePush(
+  /// A readable push that names a session the watch does not hold is dropped
+  /// (D-79): it is not queued, and nothing is created for it.
+  Future<WatchSessionRecord?> applyExercisePush(
     Map<String, Object?> envelope,
   ) async {
     _requireConformingIncoming(envelope);
+    if (!_guardSession(envelope)) return null;
     final payload = asJsonObject(envelope['payload']);
     return insertExercise(
       asJsonObject(payload['exercise']),
@@ -412,7 +415,7 @@ class WatchSessionEngine {
       case 'exercise_push':
         final before = _session;
         final after = await applyExercisePush(envelope);
-        return !identical(before, after);
+        return after != null && !identical(before, after);
       case 'receipt':
         _requireConformingIncoming(envelope);
         return _applyReceipt(envelope);
@@ -447,6 +450,20 @@ class WatchSessionEngine {
     final sentAt = parseUtcIso(envelope['sentAt']);
     final messageId = envelope['messageId']! as String;
     final existing = _session?.sessionId == sessionId ? _session : null;
+
+    // A snapshot naming another session is refused whole while the wrist is
+    // running a workout of its own: the user is in the middle of it, and
+    // nothing — no row, no message — may come of a frame that is not about it
+    // (D-78). The same snapshot still applies when the wrist holds nothing, or
+    // holds a session that has already ended: that is the ordinary case of the
+    // phone's next workout arriving.
+    final held = _session;
+    if (held != null &&
+        held.status == WatchSessionStatus.active &&
+        held.exercises.isNotEmpty &&
+        held.sessionId != sessionId) {
+      return false;
+    }
 
     final row = WatchSessionRecord(
       recordId: '$_snapshotPrefix$messageId',
@@ -492,6 +509,7 @@ class WatchSessionEngine {
     final payload = asJsonObject(envelope['payload']);
     final changeId = payload['changeId']! as String;
     final session = _session;
+    if (!_guardSession(envelope)) return false;
     if (session == null) return false; // structure without a session is nothing
     if (!_appliedChangeIds.add(changeId)) return false;
 
@@ -527,6 +545,7 @@ class WatchSessionEngine {
   /// and answering it with the same news would be noise.
   Future<bool> _applyLifecycle(Map<String, Object?> envelope) async {
     final session = _session;
+    if (!_guardSession(envelope)) return false;
     if (session == null) return false;
 
     final payload = asJsonObject(envelope['payload']);
@@ -566,8 +585,7 @@ class WatchSessionEngine {
   /// cleared, the kinds it does not name are left alone (PROTOCOL.md, "Timer
   /// state"). Only a snapshot is authoritative for timer state as a whole.
   Future<bool> _applyTimerState(Map<String, Object?> envelope) async {
-    final session = _session;
-    if (session == null) return false;
+    if (!_guardSession(envelope)) return false;
     final payload = asJsonObject(envelope['payload']);
     return _adoptTimers(
       asJsonObject(payload['timers']),
@@ -580,8 +598,9 @@ class WatchSessionEngine {
 
   /// Adopts [timers] as the rows that apply. A kind the message names as `null`
   /// is cleared; a kind it does not name keeps whatever it had, unless the
-  /// message is a snapshot — only a snapshot is authoritative for timer state
-  /// as a whole (PROTOCOL.md, "Timer state").
+  /// message is a snapshot and the newest row of that kind is the sender's —
+  /// only a snapshot speaks for timer state as a whole, and even then only for
+  /// the countdowns it wrote itself (D-80) (PROTOCOL.md, "Timer state").
   ///
   /// Every row's id is derived from the message that named it, so re-delivery is
   /// a no-op and a relaunch cannot tell the difference.
@@ -622,19 +641,36 @@ class WatchSessionEngine {
     return changed;
   }
 
-  /// What [timers] says about one kind: unnamed means "leave it" for an
-  /// incremental message and "stop it" for a snapshot, and a named `null` means
-  /// "stop it" either way.
-  static _TimerAction _timerActionFor(
+  /// What [timers] says about one kind: unnamed means "leave it" unless the
+  /// message is a snapshot and the row it would stop is the sender's own, and a
+  /// named `null` means "stop it" either way.
+  _TimerAction _timerActionFor(
     Map<String, Object?> timers, {
     required String kind,
     required bool authoritative,
   }) {
     if (!timers.containsKey(kind)) {
-      return authoritative ? _TimerAction.stop : _TimerAction.leaveAlone;
+      return authoritative && _senderWroteTimer(kind)
+          ? _TimerAction.stop
+          : _TimerAction.leaveAlone;
     }
     return timers[kind] == null ? _TimerAction.stop : _TimerAction.adopt;
   }
+
+  /// Whether a phone's session-scoped frame applies at all (D-79): it must name
+  /// the session the watch holds. A frame that names none, or names another
+  /// one, is refused whole — nothing applied, nothing stored, nothing emitted.
+  bool _guardSession(Map<String, Object?> envelope) {
+    final held = _session;
+    final sessionId = envelope['sessionId'];
+    if (held == null || sessionId is! String) return false;
+    return sessionId == held.sessionId;
+  }
+
+  /// Whether the newest row of [kind] is one a phone message wrote — the rows
+  /// whose id is derived from the message that named them (D-80).
+  bool _senderWroteTimer(String kind) =>
+      _newestTimer(kind: kind)?.recordId.startsWith(_timerPrefix) ?? false;
 
   /// A timer the phone told the watch about. It is not news back to the phone,
   /// so nothing is emitted: the phone already decided this.

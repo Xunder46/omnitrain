@@ -1428,6 +1428,11 @@ void main() {
       );
       expect(engine.session!.sessionId, 'sess-1');
 
+      // The user finishes sess-1 before the phone's next workout arrives: a wrist
+      // mid-session refuses a snapshot naming another session (D-78, S-77), and
+      // what this scenario is about is the switch that is still allowed.
+      await engine.finishSession();
+
       await seed('sess-2', [
         (reps: 6, loadKg: 40.0, skipped: false, atMs: _at(4)),
       ], slotId: 'slot-other');

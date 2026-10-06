@@ -292,6 +292,37 @@ final class WatchLiveMirroringTests: XCTestCase {
         )
     }
 
+    // MARK: - S-77 a foreign snapshot does not switch the wrist's session
+
+    /// The wrist is mid-workout on its own session and the phone answers with
+    /// its own. The wrist does not switch, and says nothing about it (D-78).
+    func testAForeignSnapshotDoesNotSwitchTheSessionAndEmitsNothing() async throws {
+        let harness = Harness(sessionId: "s-2")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-9")])
+        harness.clearEmitted()
+
+        let applied = try await engine.applyMessage(
+            sessionSnapshot(
+                sessionId: "s-1",
+                revision: 1,
+                status: WatchSessionStatus.active,
+                currentExerciseIndex: 0,
+                exercises: [exercise("sx-1")],
+                entries: [[String: Any]](),
+                timers: [String: Any]()
+            )
+        )
+
+        XCTAssertFalse(applied)
+        XCTAssertEqual(engine.session?.sessionId, "s-2")
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-9"]
+        )
+        XCTAssertTrue(harness.emitted.isEmpty, "a refused frame is answered with silence")
+    }
+
     // MARK: - Helpers
 
     private func replay(

@@ -120,6 +120,96 @@ Map<String, Object?> _structureChange(
   'payload': <String, Object?>{'changeId': changeId, 'changes': changes},
 };
 
+/// One `session_snapshot` for a session and a ladder of the caller's choosing —
+/// the shape a snapshot for the phone's *own* session has, which is what makes
+/// it the fixture S-77 needs.
+Map<String, Object?> _snapshotOf(
+  String sessionId, {
+  required String messageId,
+  String status = WatchSessionStatus.active,
+  List<Map<String, Object?>>? exercises,
+  List<Map<String, Object?>> entries = const <Map<String, Object?>>[],
+  Map<String, Object?> timers = const <String, Object?>{},
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'session_snapshot',
+  'origin': 'phone',
+  'sentAt': '2026-07-13T06:30:00Z',
+  'payload': <String, Object?>{
+    'sessionId': sessionId,
+    'revision': 0,
+    'status': status,
+    'currentExerciseIndex': 0,
+    'exercises': exercises ?? [_exercise('sx-bench')],
+    'entries': entries,
+    'timers': timers,
+  },
+};
+
+/// One `session_lifecycle` from the phone, naming the session it is about.
+Map<String, Object?> _lifecycleOf(
+  String sessionId, {
+  required String messageId,
+  required String state,
+  int? exerciseIndex,
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'session_lifecycle',
+  'origin': 'phone',
+  'sentAt': '2026-07-13T06:30:00Z',
+  'payload': <String, Object?>{
+    'state': state,
+    'at': '2026-07-13T06:30:00Z',
+    'exerciseIndex': ?exerciseIndex,
+  },
+};
+
+/// One `timer_state` from the phone, naming the session it is about.
+Map<String, Object?> _timerStateOf(
+  String sessionId, {
+  required String messageId,
+  required Map<String, Object?> timers,
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'timer_state',
+  'origin': 'phone',
+  'sentAt': '2026-07-13T06:30:00Z',
+  'payload': <String, Object?>{'timers': timers},
+};
+
+/// One `exercise_push` from the phone, naming the session it is about.
+Map<String, Object?> _exercisePush(
+  String sessionId, {
+  required String messageId,
+  required String slot,
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'exercise_push',
+  'origin': 'phone',
+  'sentAt': '2026-07-13T06:30:00Z',
+  'payload': <String, Object?>{
+    'insertAtIndex': 1,
+    'exercise': _exercise(slot),
+  },
+};
+
+/// A running `rest` timer as the wire spells one.
+Map<String, Object?> _runningRest(String startedAt) => {
+  'kind': 'rest',
+  'state': 'running',
+  'startedAt': startedAt,
+  'accumulatedPauseMs': 0,
+  'plannedDurationMs': 90000,
+};
+
 /// The value the projection shows for one entry's field — what the wrist's
 /// surfaces read, as opposed to the row that was appended.
 Object? _shown(WatchSessionEngine engine, String entryId, String field) =>
@@ -807,6 +897,242 @@ void main() {
         }
       },
     );
+  });
+
+  group('S-77 the wrist refuses a foreign snapshot, silently', () {
+    test(
+      'S-77 a snapshot for another session changes nothing and says nothing',
+      () async {
+        final harness = _Harness(sessionId: 's-2');
+        final engine = await harness.runningEngine();
+        await engine.createSession(
+          modality: 'resistance_lifting',
+          exercises: [_exercise('sx-9')],
+        );
+        await engine.startTimer(
+          WatchTimerKind.rest,
+          plannedDurationMs: const Duration(seconds: 90).inMilliseconds,
+        );
+        harness.emitted.clear();
+
+        final applied = await engine.applyMessage(
+          _snapshotOf(
+            's-1',
+            messageId: 'msg-p-1',
+            exercises: [_exercise('sx-1'), _exercise('sx-2')],
+            entries: [_entry('e-p1')],
+          ),
+        );
+
+        expect(applied, isFalse, reason: 'the phone is in its own session');
+        expect(engine.session!.sessionId, 's-2');
+        expect(engine.session!.status, WatchSessionStatus.active);
+        expect(
+          engine.session!.exercises.map((slot) => slot['sessionExerciseId']),
+          ['sx-9'],
+          reason: "the wrist is mid-workout; the phone's ladder is not its",
+        );
+        expect(
+          engine.entries.map((entry) => entry.entryId),
+          isNot(contains('e-p1')),
+          reason: 'a foreign snapshot brings no entries with it',
+        );
+        expect(
+          (await harness.store.readAll()).sessions,
+          hasLength(1),
+          reason: 'a refused snapshot writes no row of its own',
+        );
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.running,
+          reason: 'a refused frame is no reason for the wrist to stop anything',
+        );
+        expect(
+          harness.emitted,
+          isEmpty,
+          reason: 'no receipt, no answer, no lifecycle — nothing at all',
+        );
+      },
+    );
+
+    test(
+      'S-77 counter-case the same snapshot applies once the wrist has finished',
+      () async {
+        final harness = _Harness(sessionId: 's-2');
+        final engine = await harness.runningEngine();
+        await engine.createSession(
+          modality: 'resistance_lifting',
+          exercises: [_exercise('sx-9')],
+        );
+        await engine.finishSession();
+        harness.emitted.clear();
+
+        final snapshot = _snapshotOf(
+          's-1',
+          messageId: 'msg-p-1',
+          exercises: [_exercise('sx-1'), _exercise('sx-2')],
+        );
+
+        expect(
+          await engine.applyMessage(snapshot),
+          isTrue,
+          reason: "the phone's next workout is the ordinary case",
+        );
+        expect(engine.session!.sessionId, 's-1');
+        expect(engine.session!.status, WatchSessionStatus.active);
+        expect(
+          engine.session!.exercises.map((slot) => slot['sessionExerciseId']),
+          ['sx-1', 'sx-2'],
+        );
+      },
+    );
+
+    test(
+      'S-77 counter-case a wrist with an empty ladder reserves nothing',
+      () async {
+        final harness = _Harness(sessionId: 's-2');
+        final engine = await harness.runningEngine();
+        await engine.createSession(modality: null);
+
+        expect(
+          await engine.applyMessage(
+            _snapshotOf('s-1', messageId: 'msg-p-1'),
+          ),
+          isTrue,
+          reason: 'no exercise to interrupt means nothing to refuse',
+        );
+        expect(engine.session!.sessionId, 's-1');
+      },
+    );
+  });
+
+  group('S-78 a frame naming a session the wrist does not hold changes nothing', () {
+    late _Harness harness;
+    late WatchSessionEngine engine;
+
+    setUp(() async {
+      harness = _Harness(sessionId: 's-2');
+      engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: 'resistance_lifting',
+        exercises: [_exercise('sx-9')],
+      );
+      await engine.startTimer(
+        WatchTimerKind.rest,
+        plannedDurationMs: const Duration(seconds: 90).inMilliseconds,
+      );
+      harness.emitted.clear();
+    });
+
+    /// The frame is refused by the session guard: nothing applied, nothing
+    /// stored, nothing emitted — and `s-2` is untouched.
+    Future<void> refused(Map<String, Object?> frame) async {
+      final before = await harness.store.readAll();
+      expect(await engine.applyMessage(frame), isFalse, reason: 'D-79');
+      expect(engine.session!.sessionId, 's-2');
+      expect(engine.session!.status, WatchSessionStatus.active);
+      expect(
+        engine.session!.exercises.map((slot) => slot['sessionExerciseId']),
+        ['sx-9'],
+        reason: 'a frame naming another session is about another session',
+      );
+      expect(engine.session!.currentExerciseIndex, 0);
+      final after = await harness.store.readAll();
+      expect(after.sessions, hasLength(before.sessions.length));
+      expect(after.timers, hasLength(before.timers.length));
+      expect(harness.emitted, isEmpty);
+    }
+
+    test('S-78 a lifecycle for another session concerns nobody here', () async {
+      await refused(
+        _lifecycleOf(
+          's-1',
+          messageId: 'msg-life-1',
+          state: WatchLifecycleState.completed,
+        ),
+      );
+    });
+
+    test('S-78 an advanced position for another session moves nothing', () async {
+      await refused(
+        _lifecycleOf(
+          's-1',
+          messageId: 'msg-life-2',
+          state: WatchLifecycleState.exerciseAdvanced,
+          exerciseIndex: 0,
+        ),
+      );
+    });
+
+    test('S-78 timer state for another session adopts no timer', () async {
+      await refused(
+        _timerStateOf(
+          's-1',
+          messageId: 'msg-timers-1',
+          timers: {'rest': _runningRest('2026-07-13T06:29:50Z')},
+        ),
+        // The wrist's own countdown reads the wrist's own row, not the phone's.
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.recordId,
+        startsWith('rec-'),
+        reason: 'the wrist keeps its own row',
+      );
+    });
+
+    test('S-78 a structure change for another session writes no row', () async {
+      await refused(
+        _structureChange(
+          's-1',
+          changeId: 'chg-foreign-1',
+          changes: [
+            {'kind': 'remove_exercise', 'sessionExerciseId': 'sx-9'},
+          ],
+        ),
+      );
+    });
+
+    test('S-78 an exercise push for another session lands nowhere', () async {
+      await refused(
+        _exercisePush('s-1', messageId: 'msg-push-1', slot: 'sx-10'),
+      );
+    });
+  });
+
+  group('S-81 a re-delivered frame changes nothing', () {
+    test('S-81 the same snapshot twice leaves one row, one ladder', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: 'resistance_lifting',
+        exercises: [_exercise('sx-bench')],
+      );
+      final snapshot = _snapshotOf(
+        's-watch-1',
+        messageId: 'msg-replayed-1',
+        entries: [_entry('e-p1')],
+        timers: {'rest': _runningRest('2026-07-13T06:20:00Z')},
+      );
+
+      await engine.applyMessage(snapshot);
+      final once = await harness.store.readAll();
+
+      await engine.applyMessage(snapshot);
+      final twice = await harness.store.readAll();
+
+      expect(twice.sessions, hasLength(once.sessions.length));
+      expect(twice.timers, hasLength(once.timers.length));
+      expect(
+        twice.sessions.map((row) => row.recordId).toList(),
+        once.sessions.map((row) => row.recordId).toList(),
+        reason: 'the same message mints no second row id',
+      );
+      expect(
+        engine.session!.exercises.map((slot) => slot['sessionExerciseId']),
+        ['sx-bench'],
+      );
+      expect(engine.session!.status, WatchSessionStatus.active);
+    });
   });
 
   group('Timer derivation', () {

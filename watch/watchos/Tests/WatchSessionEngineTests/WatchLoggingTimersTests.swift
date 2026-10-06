@@ -522,4 +522,111 @@ final class WatchLoggingTimersTests: XCTestCase {
         )
         XCTAssertNotEqual(minimum, 0, "the floor is no longer zero")
     }
+
+    // MARK: - S-79 each device owns only the countdown it started
+
+    private func phoneFrame(
+        _ type: String,
+        sessionId: String,
+        messageId: String,
+        payload: [String: Any]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": sessionId,
+            "type": type,
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:00:00Z",
+            "payload": payload,
+        ]
+    }
+
+    private func snapshotOf(
+        _ sessionId: String,
+        messageId: String,
+        timers: [String: Any]
+    ) -> [String: Any] {
+        phoneFrame("session_snapshot", sessionId: sessionId, messageId: messageId, payload: [
+            "sessionId": sessionId,
+            "revision": 1,
+            "status": WatchSessionStatus.active,
+            "currentExerciseIndex": 0,
+            "exercises": [slot("sx-bench", capabilities: ["reps", "sets", "load"])],
+            "entries": [[String: Any]](),
+            "timers": timers,
+        ])
+    }
+
+    private func runningTimer(
+        _ kind: String,
+        startedAt: String,
+        plannedDurationMs: Int = 60_000
+    ) -> [String: Any] {
+        [
+            "kind": kind,
+            "state": WatchTimerState.running,
+            "startedAt": startedAt,
+            "plannedDurationMs": plannedDurationMs,
+        ]
+    }
+
+    func testS79ASnapshotLeavesTheWristsCountdownRunningAndStopsThePhones() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-bench")])
+        let sessionId = harness.sessionId
+
+        // The phone's countdown: its row id is derived from the message that
+        // named it, which is what marks it as the sender's own (D-80).
+        _ = try await engine.applyMessage(
+            phoneFrame("timer_state", sessionId: sessionId, messageId: "m-7", payload: [
+                "timers": [
+                    "round": runningTimer(WatchTimerKind.round, startedAt: "2026-07-13T05:59:50Z")
+                ]
+            ])
+        )
+        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90_000)
+        let wristTimer = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
+
+        _ = try await engine.applyMessage(snapshotOf(sessionId, messageId: "snap-msg-1", timers: [:]))
+
+        let rest = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
+        XCTAssertEqual(
+            rest.recordId,
+            wristTimer.recordId,
+            "the wrist started it, so the phone is not speaking about it"
+        )
+        XCTAssertEqual(rest.state, WatchTimerState.running)
+        XCTAssertNil(rest.stoppedAt)
+
+        let round = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(round.state, WatchTimerState.stopped)
+        XCTAssertEqual(round.stoppedAt, harness.clock.now)
+
+        let stored = await harness.store.readAll()
+        XCTAssertEqual(
+            stored.timers.filter { $0.kind == WatchTimerKind.round }.map(\.recordId),
+            ["tms-m-7-round", "tms-snap-msg-1-round"],
+            "the phone's own row is never rewritten: the stop is a row"
+        )
+    }
+
+    func testS79AKindNamedNullIsStillCleared() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-bench")])
+        let sessionId = harness.sessionId
+        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90_000)
+
+        _ = try await engine.applyMessage(
+            snapshotOf(sessionId, messageId: "snap-msg-2", timers: ["rest": NSNull()])
+        )
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped,
+            "a kind the phone names is a kind the phone is speaking about"
+        )
+    }
 }
