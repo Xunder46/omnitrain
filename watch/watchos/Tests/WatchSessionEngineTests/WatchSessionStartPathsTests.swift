@@ -352,19 +352,17 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(derived, WatchEffortKind.drill)
     }
 
-    /// S-010: sync is watch-initiated, and the start surface has to say so.
-    /// Both clients read the sentence from the contract, so neither can drift.
-    func testS010TheStartSurfaceCarriesTheNoAutomaticSyncLabel() throws {
+    /// S-82: the start surface's button reads "Sync", and neither the code nor
+    /// the contract carries a "No automatic sync" line any more.
+    func testS082TheStartSurfaceSaysSyncAndCarriesNoAutomaticSyncLabel() throws {
         let surface = try object(try startContract()["startSurface"])
 
-        XCTAssertEqual(
-            WatchStartSurfaceCopy.noAutoSyncLabel,
-            surface["noAutoSyncLabel"] as? String
-        )
+        XCTAssertEqual(WatchStartSurfaceCopy.syncLabel, "Sync")
         XCTAssertEqual(
             WatchStartSurfaceCopy.syncLabel,
             surface["syncLabel"] as? String
         )
+        XCTAssertNil(surface["noAutoSyncLabel"])
     }
 
     func testS001ARelaunchWithNoPhoneStillListsAndStartsTheRoutine() async throws {

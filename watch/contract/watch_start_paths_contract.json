@@ -239,8 +239,7 @@
     { "capabilities": ["hold"], "effortKind": "drill" }
   ],
   "startSurface": {
-    "noAutoSyncLabel": "No automatic sync",
-    "syncLabel": "Sync routines"
+    "syncLabel": "Sync"
   },
   "transportRequests": {
     "routines": { "request": "routines" },

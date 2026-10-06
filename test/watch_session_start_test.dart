@@ -1016,25 +1016,6 @@ void main() {
   });
 
   group('start surfaces', () {
-    testWidgets('the screen says there is no automatic sync', (tester) async {
-      watch = await harness.launch();
-      final surface = _asObject(_contract()['startSurface']);
-
-      await tester.pumpWidget(
-        MaterialApp(home: WatchStartScreen(paths: watch.paths)),
-      );
-
-      // Said whether or not anything has synced: it is the whole reason the
-      // routine list looks the way it does, and the only thing telling the user
-      // that asking is what changes it (D-7, S-010). The sentence comes from the
-      // shared contract, so the watchOS client says the same thing.
-      expect(
-        WatchStartScreen.noAutoSyncLabel,
-        surface['noAutoSyncLabel'],
-      );
-      expect(find.text(WatchStartScreen.noAutoSyncLabel), findsOneWidget);
-    });
-
     testWidgets('the sync action is offered only when the app can ask', (
       tester,
     ) async {
@@ -1042,7 +1023,11 @@ void main() {
       final surface = _asObject(_contract()['startSurface']);
       var requested = 0;
 
+      // S-82: the button reads "Sync" in both the code and the contract, and
+      // neither carries the removed no-automatic-sync line.
+      expect(WatchStartScreen.syncLabel, 'Sync');
       expect(WatchStartScreen.syncLabel, surface['syncLabel']);
+      expect(surface.containsKey('noAutoSyncLabel'), isFalse);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1061,7 +1046,7 @@ void main() {
         MaterialApp(home: WatchStartScreen(paths: watch.paths)),
       );
       expect(find.text(WatchStartScreen.syncLabel), findsNothing);
-      expect(find.text(WatchStartScreen.noAutoSyncLabel), findsOneWidget);
+      expect(find.text('No automatic sync'), findsNothing);
     });
 
     testWidgets('the start screen lists synced routines and starts one', (

@@ -398,7 +398,8 @@ own timers); "phone rows" means what the phone's projection carries.
 
 ### Phase 1: The contract amendment and the copy (@developer) — PR 1a
 
-1. [ ] Amend `watch/sync_protocol/PROTOCOL.md` additively — a dated `2026-10-06` section
+1. [ ] *(deferred by the governor — see A-1; `PROTOCOL.md` is not edited in Phase 1)* Amend
+   `watch/sync_protocol/PROTOCOL.md` additively — a dated `2026-10-06` section
    (`## 2026-10-06 — automatic session sync`), stating: a peer may send a `session_snapshot` without
    being asked (the phone does so whenever its own session changes, at most once per ~250 ms window);
    a snapshot keeps the receiver's position when the ladder is unchanged; a session-scoped frame
@@ -407,24 +408,26 @@ own timers); "phone rows" means what the phone's projection carries.
    (authoritative snapshots do not stop a kind the receiver started); the phone's session end is
    announced; frames are dropped, never queued. Each rule cites its plan id (`D-77`…`D-83`) and the
    test that proves it, per `docs/documentation_standard.md`. No version bump: v1 is unreleased.
-2. [ ] `watch/contract/watch_start_paths_contract.json`, `startSurface` block (~`:241`): delete the
+2. [x] `watch/contract/watch_start_paths_contract.json`, `startSurface` block (~`:241`): delete the
    `noAutoSyncLabel` key; set `"syncLabel": "Sync"`.
-3. [ ] `watch/watchos/Sources/WatchSessionEngine/WatchStartPaths.swift`: delete
+3. [x] `watch/watchos/Sources/WatchSessionEngine/WatchStartPaths.swift`: delete
    `WatchStartSurfaceCopy.noAutoSyncLabel` (`:38`); set `syncLabel = "Sync"` (`:42`).
-4. [ ] `watch/watchos/Sources/WatchSessionEngine/WatchStartView.swift`: delete the
+4. [x] `watch/watchos/Sources/WatchSessionEngine/WatchStartView.swift`: delete the
    `WatchNoAutomaticSyncHint` struct (`:33-42`) and its render line (`:165`).
-5. [ ] `lib/watch/start/watch_start_screen.dart`: delete the `noAutoSyncLabel` constant (`:60`), the
+5. [x] `lib/watch/start/watch_start_screen.dart`: delete the `noAutoSyncLabel` constant (`:60`), the
    `NoAutomaticSyncHint` class (`:265-275`) and its use (`:84`); set `syncLabel = 'Sync'` (`:64`).
-6. [ ] `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionStartPathsTests.swift` (`:355-370`):
+6. [x] `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionStartPathsTests.swift` (`:355-370`):
    drop the `noAutoSyncLabel` assertion, assert `syncLabel == "Sync"`.
-7. [ ] `watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`: replace the
+7. [x] `watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`: replace the
    `WatchNoAutomaticSyncHint()` presence assertion (`:488`) with its absence — the structural guard
    that the hint cannot come back — and drop the `noAutoSyncLabel` assertion (`:497`).
-8. [ ] `test/watch_session_start_test.dart`: delete the test "the screen says there is no automatic
+8. [x] `test/watch_session_start_test.dart`: delete the test "the screen says there is no automatic
    sync" (`:1019-1038`); in the sync-action test (`:1040-1067`) drop the `noAutoSyncLabel` lines
    (`:1032,1035,1055,1064`) and assert the new label; `test/watch_transport_test.dart:99` if it names
    the old string.
-9. [ ] `docs/watch-app-setup-and-qa.md`: the walkthrough step that says the watch reports no automatic
+9. [ ] *(deferred by the governor — see A-2; `docs/watch-app-setup-and-qa.md` is not edited in
+   Phase 1)* `docs/watch-app-setup-and-qa.md`: the walkthrough step that says the watch reports no
+   automatic
    sync and every step that treats tapping Sync as the way logging gets across — rewrite to say
    "logging is automatic; Sync recovers a device that was out of reach and refreshes the routine
    list"; the routine steps stay.
@@ -628,14 +631,29 @@ routine/preference sync tests, and `test/phone_manage_bridge_test.dart`.
 
 ## Progress
 
-- [ ] PR 1a / Phase 1 — the contract amendment and the copy
+- [x] PR 1a / Phase 1 — the contract amendment and the copy — tests 3979 passed / ~1 skipped, 0 failed; swift 302 / 0; lint 196 / 0 (steps 1 and 9 deferred by governor, A-1/A-2)
 - [ ] PR 1a / Phase 2 — the wrist's acceptance rules
 - [ ] PR 1b / Phase 3 — the phone's push
 
 ## Assumption Log
 
-Empty. Executors append here: the decision made, the options considered, and why — the Conductor
+Executors append here: the decision made, the options considered, and why — the Conductor
 ratifies it into a D-x or reverts it with a remediation item.
+
+1. **A-1 — `PROTOCOL.md` is not amended in Phase 1 (governor, 2026-10-06).** Phase 1 step 1 would
+   cite rules and tests that do not exist until Phases 2 and 3, and docs must not claim unshipped
+   behaviour; Phase 2 adds the wrist's rules and Phase 3 the phone's push, each citing the tests that
+   then exist. `watch/sync_protocol/PROTOCOL.md` is left untouched.
+2. **A-2 — the QA walkthrough is not rewritten in Phase 1 (governor, 2026-10-06).** Phase 1 step 9's
+   "logging is automatic" is true only after Phase 3, so `docs/watch-app-setup-and-qa.md` is left
+   untouched; a sentence there that quotes the removed label is left for Phase 3, which rewrites the
+   step anyway.
+3. **A-3 — the residue sweep keeps three deliberate absence guards.** `grep noAutoSyncLabel` /
+   `grep NoAutomaticSyncHint` under `lib/`, `test/`, `watch/` returns only the tests that assert the
+   string and the type are gone (Swift `testS082TheStartSurfaceSaysSyncAndCarriesNoAutomaticSyncLabel`
+   and `testTheContractLabelsMatchWatchStartSurfaceCopy`, Dart `the sync action is offered only when
+   the app can ask`); production code has none. The brief's step 7 (add the guard) wins over the
+   Done Criteria's "returns nothing", which the guard itself cannot satisfy.
 
 ## Open questions
 

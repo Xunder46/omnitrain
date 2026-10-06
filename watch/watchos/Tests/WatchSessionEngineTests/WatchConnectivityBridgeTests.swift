@@ -478,14 +478,14 @@ final class WatchConnectivityBridgeTests: XCTestCase {
 
         XCTAssertEqual(WatchStartSurfaceCopy.unreachableLabel, "Phone not reachable")
 
-        // The surface says it through that one constant, and keeps the
-        // no-automatic-sync sentence either way.
+        // The surface says it through that one constant, and carries no
+        // no-automatic-sync hint any more (S-82).
         let view = try String(
             contentsOf: Fixtures.sourcesRoot.appendingPathComponent("WatchStartView.swift"),
             encoding: .utf8
         )
         XCTAssertTrue(view.contains("WatchStartSurfaceCopy.unreachableLabel"))
-        XCTAssertTrue(view.contains("WatchNoAutomaticSyncHint()"))
+        XCTAssertFalse(view.contains("WatchNoAutomaticSyncHint"))
     }
 
     // MARK: - the two contract labels still match the package's copy
@@ -493,11 +493,11 @@ final class WatchConnectivityBridgeTests: XCTestCase {
     func testTheContractLabelsMatchWatchStartSurfaceCopy() throws {
         let surface = try bridgeObject(try bridgeContract()["startSurface"])
 
-        XCTAssertEqual(
-            surface["noAutoSyncLabel"] as? String,
-            WatchStartSurfaceCopy.noAutoSyncLabel
-        )
         XCTAssertEqual(surface["syncLabel"] as? String, WatchStartSurfaceCopy.syncLabel)
+
+        // The removed no-automatic-sync line is gone from the contract, not
+        // renamed (S-82).
+        XCTAssertNil(surface["noAutoSyncLabel"])
 
         // The unreachable sentence is deliberately not a contract value: the
         // Wear OS client reads the same file and has no transport, so it has no

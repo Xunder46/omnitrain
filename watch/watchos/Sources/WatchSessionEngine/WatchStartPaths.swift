@@ -30,21 +30,16 @@ import Foundation
 /// D-7 and S-010. They live here rather than on the SwiftUI view because the
 /// view is compiled only into a watch target, while the sentence itself is a
 /// product requirement on every client — and the Flutter client reads the same
-/// two strings from `watch/contract/watch_start_paths_contract.json`.
+/// string from `watch/contract/watch_start_paths_contract.json`.
 public enum WatchStartSurfaceCopy {
-    /// Said plainly because there is nothing to discover: nothing arrives on the
-    /// wrist unless its user asks, and a user who does not know that reads an
-    /// unchanged routine list as a broken phone.
-    public static let noAutoSyncLabel = "No automatic sync"
-
-    /// The user's explicit action — the only thing that asks the phone for
-    /// anything.
-    public static let syncLabel = "Sync routines"
+    /// The user's explicit action — recovering a device that was out of reach
+    /// and refreshing the routine list.
+    public static let syncLabel = "Sync"
 
     /// Said only when the wrist has *observed* the phone out of reach (D-8),
     /// never on a cold start, which has asked nothing.
     ///
-    /// Deliberately not a contract value like the two above: the Wear OS client
+    /// Deliberately not a contract value like the one above: the Wear OS client
     /// reads the same contract file and has no transport, so it has no
     /// reachability to say this about. It moves into
     /// `watch/contract/watch_start_paths_contract.json` if that client ever
