@@ -71,15 +71,18 @@ screen is running — the session-adoption bridge projects `WorkoutState` into
 protocol shape, the ladder and the `set` entries the phone logged together. The
 wrist's snapshot merge stores the entries it does not already hold beside its
 own, so a set the phone logged reaches the wrist at its Sync (D-31, D-33) — and
-a set edited on the phone is updated on the wrist at the next Sync, re-stated
-from the answer while the wrist's stored row is left unrewritten (D-35).
+a set edited on the phone is updated on the wrist at the next push or Sync,
+re-stated from the answer while the wrist's stored row is left unrewritten
+(D-35).
 Its slots are that session's efforts, a slot id is the effort's
 own row id, and its revision rises only when the ladder changes, so the wrist's
 replace-structure rule accepts a real edit and stays silent on a replay of a
 snapshot it already holds. This mirror's own copy answers only when the phone has
 no session of its own to speak from: nothing bound, no session running, or a
 snapshot naming a session this phone is not in. `projectedSession` is what a
-snapshot request is answered with, and `sendState` sends a composed answer.
+snapshot request is answered with, and `sendState` sends a composed answer; the
+same projection is what the automatic push sends when the phone's own session
+changes (D-75).
 Verified by `test/watch_session_projection_test.dart` (`S-2`, `S-8`, `S-6`,
 `S-31 the phone's own sets arrive as entries`,
 `S-35 an edit reaches the wrist and a delete is not sent`,
@@ -127,12 +130,14 @@ call, so one session closes as one record however many times Finish is tapped.
 The entries in it are the reconciler's — ordered by wall-clock `loggedAt`, so
 ordering does not depend on which device logged what.
 
-The phone's *ordinary* finish does not go through it: a session ended from the
-regular screen writes history and reports nothing, and the wrist learns at its
-next sync when its snapshot of that session is answered with the session's own
-`completed` lifecycle. The one production caller of `reportLifecycle` is that
-answer, in `WatchIncomingRouter`; see
+The phone's *ordinary* finish does not call it: a session ended from the regular
+screen writes history, and the end is announced the next time the push runs,
+because the push reads that session's own row and finds it ended (D-81). A wrist
+that ended its own session still learns at its next sync, when its snapshot of
+that session is answered with the session's own `completed` lifecycle; see
 [Watch Session Sync](../watch_session_sync.md). Verified by
+`test/watch_session_auto_push_test.dart`
+(`S-72 finishing on the phone ends the wrist's copy, once`) and
 `test/watch_session_finish_test.dart` (`S-5` and both of its `G1` cases).
 
 Two rules the bridge depends on, both already in `PROTOCOL.md`:
@@ -150,6 +155,32 @@ protocol's own schemas and against the shape
 `watch/sync_protocol/fixtures/valid/structure_change.json` pins; interleaved
 observations merging into one ordered record) and by
 `test/interaction_flow_test.dart` (`Phone manage-bridge for live sessions`).
+
+### `WatchSessionAutoPush`
+
+**File**: `lib/state/watch/watch_session_auto_push.dart`
+
+The one place a session is pushed from the phone (D-75). It binds the same
+`WorkoutState` the screen runs, restarts a trailing window on every notification
+and, when the window closes, composes the projection fresh and sends it only if
+its encoding differs from the last payload this push sent or baselined — so a
+rest-timer tick sends nothing and a burst of changes inside one window is one
+frame. Nothing is cached: the newest state is the one that matters. While the
+mirror holds a session as active, that session's own stored row decides its end
+— ended announces `completed`, gone announces `abandoned`, never the phone's
+current-session pointer. It adds no queue, no retry and no user-visible state: a
+send the transport cannot carry is dropped and leaves the phone undisturbed.
+`bindWorkoutState` is idempotent, `rebaseline()` takes the current session as the
+baseline while sending nothing (D-82), and `dispose()` unbinds.
+
+Verified by `test/watch_session_auto_push_test.dart`
+(`S-70 the phone's own set is pushed as one snapshot, and the wrist's own set is
+not sent back`, `S-71 the push reports the wrist's position, not slot 0`,
+`S-72 finishing on the phone ends the wrist's copy, once`,
+`S-73 discarding on the phone abandons the wrist's copy, once`,
+`S-74 five notifications without a change push nothing`,
+`S-75 three changes inside the window are one frame`,
+`S-84 opening a past session pushes nothing for the live one`).
 
 ### `WatchSyncOrchestrator`
 
@@ -332,9 +363,9 @@ reported failure instead of a silently dropped message. Verified by
 
 **Nothing is queued on the wrist either**, for the phone transport's own reason:
 a send that fails is reported and dropped, and recovery is the next `sync()`
-re-sending from storage. **Nothing is sent unsolicited** — the bridge answers a
-user action or nothing, which is what makes the surface's "no automatic sync"
-label true. Verified by `WatchConnectivityBridgeTests.testBridgeSendsNothingUntilAsked`
+re-sending from storage. **The bridge itself sends nothing unsolicited** — it
+answers a user action or nothing, so a Sync is still the only thing that asks the
+phone for an answer. Verified by `WatchConnectivityBridgeTests.testBridgeSendsNothingUntilAsked`
 and `…testASendThePlatformRefusesIsReported`.
 
 **Reachability is three-state, and starts unknown.** The wrist says the phone is
@@ -405,8 +436,10 @@ still shows the owed question by
 `WatchEffortRatingTests.testS55ASlowCommitStillShowsTheOwedQuestion` and
 `…testS55ASlowAnswerNotifiesAfterTheRatingIsRecorded`. Two smaller gaps: the
 wrist labels load in kilograms whatever the phone's unit preference says, and a
-Sync stops a rest countdown the wrist is running, because the phone's answer
-carries no timers (D-26). What a relaunch does not keep is the projection lens:
+countdown the phone wrote stops when a Sync arrives while one the wrist started
+keeps running, because the phone's answer carries no timers (D-26, D-80; on the
+Dart twin, `test/watch_logging_timers_test.dart`'s `S-79 a snapshot leaves the
+wrist's countdown running and stops the phone's own`). What a relaunch does not keep is the projection lens:
 a re-stated entry holds the phone's new value only until the process ends, and
 the stored first value shows again until the next Sync re-states it (D-50,
 `WatchFileStoreTests.testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync`).

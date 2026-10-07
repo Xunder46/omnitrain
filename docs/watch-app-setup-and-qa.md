@@ -191,9 +191,11 @@ are what prove the logic they host.
 
 **What the wrist cannot do yet.** Two gaps: the wrist labels the load it dials
 in kilograms even when the phone's saved unit is pounds — the wire value is
-always kilograms, so the phone's history and conversions stay correct — and a
-Sync while a rest countdown is running stops that countdown and its milestone
-haptic, because the phone's answer carries no timers (D-26).
+always kilograms, so the phone's history and conversions stay correct — and each
+device keeps only the countdown it started, so a Sync stops a countdown the phone
+wrote and leaves a wrist-started one running, because the phone's answer carries
+no timers (D-26, D-80; `test/watch_logging_timers_test.dart`,
+`S-79 a snapshot leaves the wrist's countdown running and stops the phone's own`).
 
 ---
 
@@ -315,48 +317,77 @@ Pro simulator and the Apple Watch Series 11 (42mm) simulator and pair them, or u
 a real pair. Foreground the phone app and the watch app before each sync. On the
 phone, create a routine first for the reference-data steps below.
 
-**The one-session walkthrough.** The phone and the wrist share one session: sync
-is manual, and whichever device holds the session the other is looking at is the
-one on screen. Both apps must be foregrounded and reachable for a sync to cross; a
-backgrounded app on either end is the usual reason nothing arrives.
+**The one-session walkthrough.** The phone and the wrist share one session:
+whatever the phone does to its own session is pushed to the wrist by itself,
+and the **Sync** button is what *asks the phone for an answer* — for a session
+the wrist started, for a catch-up after being out of reach, and for routines and
+the food list. Both apps must be foregrounded and reachable for anything to
+cross; a backgrounded app on either end is the usual reason nothing arrives.
 
-**(a) The phone's session reaches the wrist.** Start a Free session on the phone
-and add two or three exercises. On the watch, tap **Sync** (the routines action).
-The watch's list fills with the phone's exercises, in the phone's order, and the
-session on screen is the phone's session.
-**(b) A change on the phone arrives on the next sync.** Add an exercise on the
-phone. Nothing happens on the watch by itself — tap **Sync** on the watch and the
-added exercise appears in its list.
-**(c) The wrist's session reaches the phone.** From a fresh state (nothing running
-on either device), start **Free workout** on the watch and pick an exercise. Tap
-**Sync** on the watch. The phone's home shows it as a session in progress, and
-opening it shows the regular session screen with the wrist's exercise.
-**(d) Different sessions on both devices: each keeps its own.** With a session
-running on the phone, start one on the watch (or the other way round) and sync. The
-phone keeps the session it was running and does not adopt the wrist's; the wrist
-keeps its own. Nothing is merged, and no history entry is invented.
-**(e) Finishing on the phone ends the wrist's session at its next sync.** Finish
-the phone's session from the regular session screen. Nothing is sent to the watch
-at that moment. Tap **Sync** on the watch: the wrist's session ends, and the phone's
-calendar holds exactly one entry for it.
+**(a) The phone's session reaches the wrist by itself — (owner).** Start a Free
+session on the phone and add two or three exercises. With the watch app in the
+foreground, the watch's list fills with the phone's exercises, in the phone's
+order, without tapping **Sync**, and the session on screen is the phone's
+session. The push carries the phone's current place rather than the first slot
+(`test/watch_session_auto_push_test.dart`, `S-71 the push reports the wrist's
+position, not slot 0`), and a set logged on the phone arrives the same way
+(`S-70 the phone's own set is pushed as one snapshot, and the wrist's own set is
+not sent back`).
+**(b) A change on the phone arrives by itself — (owner).** Add an exercise on the
+phone. It appears on the watch without a Sync: a burst of changes inside one push
+is a single frame, and a rest-timer tick pushes nothing
+(`test/watch_session_auto_push_test.dart`,
+`S-75 three changes inside the window are one frame`,
+`S-74 five notifications without a change push nothing`).
+**(c) The wrist's session reaches the phone at a Sync.** From a fresh state
+(nothing running on either device), start **Free workout** on the watch and pick
+an exercise. Tap **Sync** on the watch — this is one of the things still on the
+button, because the phone adopts a wrist session only from the snapshot a Sync
+sends. The phone's home shows it as a session in progress, and opening it shows
+the regular session screen with the wrist's exercise.
+**(d) Different sessions on both devices: each keeps its own — (owner).** With a
+session running on the phone, start one on the watch (or the other way round) and
+sync. The phone keeps the session it was running and does not adopt the wrist's;
+the wrist keeps its own and takes nothing from the phone's frame either — it
+refuses a snapshot naming a session it is not in, silently
+(`test/watch_session_engine_test.dart`,
+`S-77 the wrist refuses a foreign snapshot, silently`). Nothing is merged,
+nothing about the other session is shown, and no history entry is invented.
+**(e) Finishing on the phone ends the wrist's session by itself — (owner).**
+Finish the phone's session from the regular session screen. With the watch app
+foregrounded the wrist's session ends on its own, without a Sync
+(`test/watch_session_auto_push_test.dart`,
+`S-72 finishing on the phone ends the wrist's copy, once`), and the phone's
+calendar holds exactly one entry for it. Discarding the phone's session abandons
+the wrist's copy the same way
+(`S-73 discarding on the phone abandons the wrist's copy, once`).
 **(f) Finishing on the watch.** Answering the wrist's own End closes the session
 on the phone as well, with one history entry and the rating the wrist gave.
-**(g) Sets the phone logged reach the wrist at its Sync — (owner), not yet run.**
-Log two sets on the phone's regular session screen, in a session that is also on
-the watch. With the phone app in the foreground, tap **Sync** on the watch: the
-watch's logging screen shows both sets, in the phone's order. The doubling
-check: a set logged on the watch earlier is not duplicated by that Sync. Then
-edit one of those sets on the phone (change the weight), tap **Sync** on the
-watch again: the watch shows the new weight on that same set, not a third set.
-Deleting a set on the phone is **not** carried — it stays on the watch.
+**(g) Sets the phone logged reach the wrist by themselves — (owner), not yet
+run.** Log two sets on the phone's regular session screen, in a session that is
+also on the watch. With the phone app in the foreground, the watch's logging
+screen shows both sets, in the phone's order, without tapping **Sync**
+(`test/watch_session_auto_push_test.dart`,
+`S-70 the phone's own set is pushed as one snapshot, and the wrist's own set is
+not sent back`). The doubling check: a set logged on the watch earlier is not
+duplicated by the frame. Then edit one of those sets on the phone (change the
+weight): an edit is expected to reach the watch at the next push or Sync — if it
+does not appear by itself, tap **Sync** and confirm it shows the new weight on
+that same set, not a third set, which is what the re-statement is proven to do
+(`test/watch_session_projection_test.dart`,
+`S-35 an edit reaches the wrist and a delete is not sent`). Deleting a set on the
+phone is **not** carried — it stays on the watch.
 
 **The walkthrough** — each step maps to a protocol rule that is already
 enforced in code, so a failure points at the transport, not the logic:
 
-1. **The watch says it does not auto-sync.** Before touching anything, confirm
-   the wrist shows the label stating there is no automatic sync. Sync is
-   user-initiated by design, and the label is what makes that honest rather
-   than a bug.
+1. **The button just says Sync.** Before touching anything, confirm the wrist's
+   start screen shows a **Sync** button and no line about automatic sync — the
+   line that promised the *absence* of automatic sync is gone, because part of it
+   is now automatic. Held by `test/watch_session_start_test.dart`
+   (`the sync action is offered only when the app can ask`: the button reads
+   `Sync` and no "No automatic sync" text renders) and, on the wrist,
+   `WatchSessionStartPathsTests.testS082TheStartSurfaceSaysSyncAndCarriesNoAutomaticSyncLabel`.
 2. **Reference data arrives when the watch asks for it.** Trigger the sync
    action *on the wrist*. The routine list should populate. Confirm it does
    **not** populate on its own when you merely launch the phone app — an
@@ -369,12 +400,16 @@ enforced in code, so a failure points at the transport, not the logic:
    containing a Plank on the wrist. It must show the effort kind the routine
    declares, not one the watch re-derived from capabilities. This is the
    specific disagreement that exists in the code today.
-4. **Start a session on the phone.** The watch should mirror it: same exercises,
-   same order, same current slot. Step *(a)* of the one-session walkthrough is
-   this one, and *(b)* is the same session after an edit on the phone.
+4. **Start a session on the phone.** The watch should mirror it by itself: same
+   exercises, same order, same current slot. Step *(a)* of the one-session
+   walkthrough is this one, and *(b)* is the same session after a change on the
+   phone.
 5. **A session on each device stays where it started.** With the phone's session
    running, start one on the watch and sync: the phone keeps its own and the wrist
-   keeps its own (step *(d)* above). No merge, no stray history entry.
+   keeps its own, showing nothing about the other's (step *(d)* above;
+   `test/watch_session_engine_test.dart`,
+   `S-77 the wrist refuses a foreign snapshot, silently`). No merge, no stray
+   history entry.
 6. **The wrist's own session becomes the phone's.** From a fresh state, start
    **Free workout** on the watch, pick an exercise and sync: the phone's home shows
    a session in progress and opens it in the regular session screen (step *(c)*
@@ -425,10 +460,12 @@ plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
     engine restores it from the store that outlives the process
     (`WatchEffortRatingTests.testS215AKillDuringThePromptAsksAgainAndRecordsOneAnswer`);
     the shipped shell builds that store on disk, so this runs on a paired device.
-18. **Finishing on either device.** Finish on the phone and sync from the wrist:
-    the wrist's session ends and the phone holds one entry (step *(e)* above).
-    Finish on the wrist and sync: the phone's copy ends through its ordinary
-    finish with the rating the wrist gave (step *(f)* above).
+18. **Finishing on either device.** Finish on the phone: the wrist's session ends
+    by itself, without a Sync (`test/watch_session_auto_push_test.dart`,
+    `S-72 finishing on the phone ends the wrist's copy, once`), and the phone
+    holds one entry (step *(e)* above). Finish on the wrist: the phone's copy ends
+    through its ordinary finish with the rating the wrist gave (step *(f)*
+    above).
 19. **Heart rate and steps reach the phone** *(needs Phase 8)*. With heart-rate
     and motion permission granted, run a session with a run, three rounds of a
     sports exercise and a block of sets. After sync the phone holds an average
@@ -480,9 +517,11 @@ hardware yet.
    Dialling back up to zero leaves a plain `0.0`, never a `-0.0`
    (`testS064AZeroLoadNeverPrintsASignedZero`).
 
-Two known gaps this walkthrough must not be read as failing on: a Sync while a
-rest countdown runs stops that countdown (the wrist adopts the answer's empty
-timers as authoritative — the reconciliation fixture `timer_cleared.json`,
+Two known gaps this walkthrough must not be read as failing on: each device keeps
+only the countdown it started, so a Sync stops a countdown the phone wrote and
+leaves a wrist-started one running (`test/watch_logging_timers_test.dart`,
+`S-79 a snapshot leaves the wrist's countdown running and stops the phone's own`;
+the phone-written case is the reconciliation fixture `timer_cleared.json`,
 replayed by `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`),
 and the load label is always in kg, whatever unit the phone is set to
 (`WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`

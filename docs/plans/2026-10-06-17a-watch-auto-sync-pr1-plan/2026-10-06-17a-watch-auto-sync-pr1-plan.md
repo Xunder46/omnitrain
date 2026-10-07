@@ -8,8 +8,8 @@
 > stands: Phase 2 lands with or before Phase 3). The split is scope, not design: the PR touches three
 > tracks and amends the contract, two soft signals under `.github/copilot/pr-scope-budget.md`.
 
-> Status: DRAFT (planned; no implementation started)
-> Next handoff: @developer (PR 1a, Phase 1)
+> Status: PR 1a and 1b built; outstanding: the owner walkthrough and the review
+> Next handoff: @code-reviewer (PR 1b, Phase 3B)
 > Series index: `docs/plans/2026-10-06-17-watch-auto-sync-index.md` (series contract D-70…D-74)
 > Binding conventions: `docs/global_conventions.md`; `watch/sync_protocol/PROTOCOL.md`;
 > `docs/documentation_standard.md`
@@ -643,7 +643,7 @@ routine/preference sync tests, and `test/phone_manage_bridge_test.dart`.
 - [x] PR 1a / Phase 1 — the contract amendment and the copy — tests 3979 passed / ~1 skipped, 0 failed; swift 302 / 0; lint 196 / 0 (steps 1 and 9 deferred by governor, A-1/A-2)
 - [x] PR 1a / Phase 2 — the wrist's acceptance rules — tests 3990 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0; targeted Dart 42 / 0 (`watch_session_engine_test` + `watch_logging_timers_test`); projection file 29 / 0; red→green shown for S-77, S-78 and S-79 on both stacks (steps 1–9 plus the governor's step 10, `PROTOCOL.md`)
 - [x] PR 1b / Phase 3A — the phone's push (steps 1–8) — tests 4004 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0; push file 13 / 0; projection file 30 / 0; finish file 8 / 0; mutations a–e red and restored; `PROTOCOL.md` amended (the governor addition)
-- [ ] PR 1b / Phase 3B — the behaviour docs and the residue sweep (steps 9–11)
+- [x] PR 1b / Phase 3B — the behaviour docs and the residue sweep (steps 9–11) — docs-only: no `lib/`, `test/` or `watch/` file changed and `PROTOCOL.md` untouched; docs guard 9 / 0; full suite 4004 passed / ~1 skipped / 0 failed; lint 196 / 0 (baseline); invariant grep empty; footprint 4 tracked docs + index, all predicted; every new behaviour sentence names a test (map in the evidence file)
 
 ## Assumption Log
 
@@ -721,6 +721,11 @@ ratifies it into a D-x or reverts it with a remediation item.
     the push's; the second is the mirror's G1 answer to the wrist's stale re-assertion, which the
     brief's second half keeps. That file builds its own `WatchSessionAutoPush` because its harness
     drives a `CaptureTransport` rather than the graph's radio.
+16. **A-16 — the series index's baseline claimed two wrist→phone actions were automatic (developer,
+    2026-10-06).** A wrist-started session and a wrist add emit frames, but the phone adopts a session
+    only from a `session_snapshot`, which the wrist sends only inside the Sync action — so both cells
+    now read "only the frame / only locally", the widened 17b row owns the fix, and three
+    phone→wrist cells that said "wait for a Sync" without naming a PR gained one.
 
 ## Open questions
 

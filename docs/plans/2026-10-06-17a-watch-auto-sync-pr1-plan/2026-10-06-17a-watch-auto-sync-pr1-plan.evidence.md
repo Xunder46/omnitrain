@@ -202,7 +202,7 @@ yields a null session and no push. Mutation (b) is the difference in one line. S
 |---|---|---|
 | copy removed from all three sources | grep `noAutoSyncLabel` under `lib/`, `test/`, `watch/` | |
 | the hint widget cannot return | grep `NoAutomaticSyncHint` under `lib/`, `test/`, `watch/` | |
-| no doc still claims sync is manual | grep (list the terms used) in `docs/` | |
+| no doc still claims sync is manual | two case-insensitive greps over `docs/` — sweep 1: `no automatic sync`, `sync stays manual`, `needs a manual sync tap`, `sync is manual`, `sync button is the only`, `you must tap`, `tapping sync`; sweep 2: `needs a sync`, `tap sync`, `pressing sync`, `sync button`, `manual sync` | two live hits, both intended: `docs/watch-app-setup-and-qa.md:389` (a QA step that *asserts* no "No automatic sync" text renders) and `docs/watch_session_sync.md:234` ("A few things still need the Sync button" — the true residue: a wrist-started session, out-of-reach catch-up, routines). Every other hit is in `docs/plans/` — history and the plan's own text. See Phase 3B |
 | nothing outside the Predicted Files changed | `.github/copilot/scripts/macos/gateway.sh git-diff develop --name-only` | Phase 3A: `lib/main.dart`, `lib/state/watch/live_session_mirror_state.dart`, `lib/state/watch/watch_sync_wiring.dart`, `test/watch_session_finish_test.dart`, `test/watch_session_projection_test.dart` — all predicted — plus `watch/sync_protocol/PROTOCOL.md` (the governor's addition). The two new files are predicted and untracked. `test/live_mirroring_test.dart` is unchanged (A-11) |
 | no concrete persistence in state/UI/core | grep `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
 | the refusal can only run first | grep `captureSessionEnd` in `WatchSessionEngine.swift` | 5 hits: the definition (`:1221`), three call sites (`:467` snapshot, `:567` lifecycle, `:950` local end), and the comment at `:457` recording that the snapshot call sits *after* the refusal |
@@ -212,3 +212,37 @@ yields a null session and no push. Mutation (b) is the difference in one line. S
 `docs/plans/2026-10-04-14-watch-shell-bridge-plan/…evidence.md:308` records a mutation check "delete
 `WatchNoAutomaticSyncHint()` from `WatchStartView.body`". That struct no longer exists after Phase 1;
 the row is history.
+
+## Phase 3B — the behaviour docs and the residue sweep (steps 9–11)
+
+Docs-only phase: no `lib/`, `test/` or `watch/` file changed, and `watch/sync_protocol/PROTOCOL.md` was
+not touched (the governor owns it — A-2). Every sentence added below names the test that proves it; the
+test names were read out of the files, not invented.
+
+### The doc → test map (what each new sentence cites)
+
+| Doc | Claim written | Test cited (file, exact name) |
+|---|---|---|
+| `docs/watch_session_sync.md` | a change to the phone's own session is pushed | `test/watch_session_auto_push_test.dart`: `S-70 the phone's own set is pushed as one snapshot, and the wrist's own set is not sent back`, `S-74 five notifications without a change push nothing`, `S-75 three changes inside the window are one frame` |
+| `docs/watch_session_sync.md` | the wrist is told when the phone ends or discards | `S-72 finishing on the phone ends the wrist's copy, once`, `S-73 discarding on the phone abandons the wrist's copy, once`, `S-84 opening a past session pushes nothing for the live one`, and the flipped `test/watch_session_finish_test.dart`: `S-5 the phone's own finish is reported, and the wrist is answered at its next sync` |
+| `docs/watch_session_sync.md` | browsing a past session sends nothing | `S-84 opening a past session pushes nothing for the live one` |
+| `docs/watch_session_sync.md` | what still needs the button | `test/watch_session_adoption_bridge_test.dart`: `S-1 a wrist snapshot becomes the phone's in-progress session`; `test/watch_session_engine_test.dart`: `S-77` group (`:902`); `test/watch_logging_timers_test.dart`: `S-79 a snapshot leaves the wrist's countdown running and stops the phone's own` |
+| `docs/watch_session_sync.md` | each device keeps its own rest countdown (D-26/D-80) | `S-79 …` above + `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges` over `timer_cleared.json` |
+| `docs/state_management/watch_surface.md` | the push reuses the same projection | the seven auto-push tests, above |
+| `docs/state_management/watch_surface.md` | the bridge sends nothing unsolicited | `WatchConnectivityBridgeTests.testBridgeSendsNothingUntilAsked` |
+| `docs/watch-app-setup-and-qa.md` | the button just says Sync, no auto-sync label | `test/watch_session_start_test.dart`: `the sync action is offered only when the app can ask`; Swift `WatchSessionStartPathsTests.testS082TheStartSurfaceSaysSyncAndCarriesNoAutomaticSyncLabel` |
+| `docs/watch-app-setup-and-qa.md` | a foreign snapshot is refused | `S-77 the wrist refuses a foreign snapshot, silently` |
+| `docs/watch-app-setup-and-qa.md` | an edit reaches the wrist, a delete does not | `test/watch_session_projection_test.dart`: `S-35 an edit reaches the wrist and a delete is not sent` |
+| `docs/watch-app-setup-and-qa.md` | finishing on the phone ends the wrist's session | `S-72 finishing on the phone ends the wrist's copy, once` |
+
+### Suites and checks (Phase 3B)
+
+| Check | Command | Result |
+|---|---|---|
+| docs indexing / size guard | `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart` | 9 passed, 0 failed — `All tests passed!`. Re-run *after* the last doc edit (this file included), so it covers the final state |
+| full suite | `.github/copilot/scripts/macos/gateway.sh test` | 4004 passed / ~1 skipped / 0 failed — `01:41 +4004 ~1: All tests passed!`. Run before the plan and evidence edits; those are docs-only and the guard above was re-run afterwards |
+| lint | `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues, exit 1 — the repo's pre-existing info notices, equal to the plan's baseline (196/0); none in a file this phase touched |
+| the invariant | grep `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
+| footprint | `.github/copilot/scripts/macos/gateway.sh git-diff --stat` | 6 tracked files, all docs and all predicted: the three behaviour docs (`docs/watch_session_sync.md` 125, `docs/watch-app-setup-and-qa.md` 139, `docs/state_management/watch_surface.md` 59), the series index (12), and the plan (11) + this evidence file (36). 265 insertions, 117 deletions. No `lib/`, `test/` or `watch/` file, and `watch/sync_protocol/PROTOCOL.md` is untouched |
+
+Swift was not re-run for this phase: no Swift file changed (Phase 2's 315/0 stands).
