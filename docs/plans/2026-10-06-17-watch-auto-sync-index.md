@@ -7,8 +7,9 @@
 > Supersedes: `docs/plans/2026-10-05-15-watch-session-sync-index.md` decision 4 ("Sync stays manual /
 > watch-initiated") and the tail of its decision 2 ("A later series adds auto-sync") — this is that series.
 > Numbering: **D-70…** / **S-70…** (D-58…D-69 = the parallel negative-load plan;
-> D-43…D-57 = watch-session-sync PR 4). PR 1 uses D-75…D-84 and S-70…S-84; D-85…/S-90… are reserved
-> for PR 2 and D-95…/S-100… for PR 3.
+> D-43…D-57 = watch-session-sync PR 4). PR 1 uses D-75…D-86 and S-70…S-88; PR 2 uses **D-90…D-102 and
+> S-100…S-115**; PR 3 therefore starts at **D-110… and S-130…** (its old D-95…/S-100… reservation is
+> now occupied by PR 2).
 
 ## Goal
 
@@ -84,7 +85,19 @@ names the two test files that pin it.
   `applicationContext`, `receivedApplicationContexts` and `contextStream` (it does **not** expose
   `transferUserInfo`) — so PR 2 must evaluate publishing each device's latest `session_snapshot` as an
   application context **first**, against the wrist-side catch-up it outlines today. PR 1 keeps
-  `sendMessage` for its push. Elaborated by PR 1's D-83.
+  `sendMessage` for its push. Elaborated by PR 1's D-83. **Amended 2026-10-06 (rev 2, PR 2):** the
+  evaluation was made and the answer is **no, not in PR 2** (PR 2's D-97) — the watch shell implements
+  `didReceiveMessage` only (no `didReceiveApplicationContext`, `ios/OmniTrain Watch App/OmniTrainWatchConnectivity.swift`),
+  a context is latest-wins, so it cannot carry the
+  ordered set of unacknowledged observations the protocol requires ("On sync, a wrist MUST re-send every
+  observation the phone has not acknowledged … in the order it stored them") — the newest replaces, it
+  does not extend, the backlog — and an entry-heavy session
+  risks the undocumented context size limit; both receiving halves would also be new platform surface
+  (the phone has no `contextStream` listener in `lib/core/platform/watch_connectivity_channel.dart`).
+  (WatchConnectivity does deliver the newest context to the peer when its app next runs — that is not
+  the reason.) PR 2 catches up over `sendMessage`, driven by the wrist's
+  existing storage replay and its reachability edge. The channel stays available for a later PR: a
+  latest-state context for the phone → watch direction alone is a viable later optimisation.
 - **D-72 — Routines, preferences and the food catalog stay watch-requested.** Automatic sync never
   carries reference data; the Sync button and the app's existing request paths own it.
 - **D-73 — Each device keeps its own rest countdown.** Incoming session state never stops a timer the
@@ -98,13 +111,13 @@ names the two test files that pin it.
 |---|---|---|---|
 | **17a (PR 1a)** | The contract amendment (PROTOCOL, 2026-10-06), the start-surface copy ("Sync"; "No automatic sync" deleted), the wrist's acceptance rules — D-78 refuses a foreign snapshot silently, D-79 guards every session-scoped apply, D-80 gives each device its own rest countdown — and the wrist's own rest countdown surviving a snapshot. | `watch/sync_protocol/` + `watch/contract/` + `watch/watchos/` + `lib/watch/` | *(nothing visible on its own: the wrist is made safe before the phone starts pushing. 1a ships with 1b; a release carrying the push without these rules is not shippable.)* |
 | **17a (PR 1b)** | The phone's push — one seam (D-75), the coalescing trigger (D-76), the place-keeping projection (D-77), the end pushed (D-81, keyed on the mirrored session's repository row), the re-baseline (D-82), dropped-never-queued (D-83) — and the behaviour docs. | `lib/` + `docs/` | **Work you do on the phone about the running session — add an exercise, log or correct a set, finish, discard — appears on the watch by itself.** The watch's own session is never taken away by the phone, and each device keeps its own rest countdown. Nothing needs tapping. |
-| **17b (PR 2)** | A device that was out of reach catches up by itself: on launch and when reachability returns, the wrist re-sends what it still owes and pulls the phone's state (one `catchUp()` on the wrist, reusing the Sync button's own path) — **and PR 2 must evaluate publishing the latest state as an application context first (D-71's amendment, "Transport")**; the wrist's two silent adds (its picker's "add an exercise", its own insert) start emitting **and the wrist sends its snapshot when it starts a session or changes its ladder rather than only inside the Sync action, so a wrist-started session and a wrist add become the phone's without the button (PR 17a does not close this: its push runs phone → watch only)**; the phone's own half of D-70 gains a counterpart for a wrist frame naming a session the phone holds (it must not let an automatic wrist frame take a session it is in); **bound the push's drain against a hung send (17a review 2, G6)** — a `send` that never answers holds the flush's drain set, so later pushes queue behind it, and 17b's catch-up is where a send timeout belongs. Routines stay manual. | `watch/watchos/` + `ios/` shell + `lib/` | **A watch that was out of range for a while catches up on its own when it is back** — nothing is lost and nothing needs tapping. **A session started on the watch, and an exercise added on the watch, reach the phone by themselves instead of at a Sync.** The Sync button remains the manual fallback. |
+| **17b (PR 2)** — **planned 2026-10-06**: `docs/plans/2026-10-06-17b-watch-auto-sync-pr2-plan/2026-10-06-17b-watch-auto-sync-pr2-plan.md` (D-90…D-103, S-100…S-115) | The wrist announces its own session: the engine emits its own `session_snapshot` on start and on a ladder change the **wrist's user** made (D-90/D-91), and a wrist-originated structure change now moves `revision` (D-101) — so a wrist-started session and a wrist add become the phone's without the button. The phone reconciles a wrist snapshot naming the session it already holds: **add-only**, in the snapshot's order, never a delete or a reorder, never re-adding a slot the phone removed, never clearing a timer (D-92/D-93/D-94/D-95 — 17a's `consider` returns `alreadyHeld` and drops the frame today). Catch-up by itself in both directions: the wrist on the reachability edge, gated on holding a session, one sync at a time via a tested `WatchSyncOrchestrator.catchUp(reachable:)` (D-96), and the phone on resume through a `WatchResumeSync` observer. **The application-context evaluation (D-71's amendment) is done and its outcome is D-97: not in PR 2** — the receiving halves would be new platform surface (no `didReceiveApplicationContext` in the shell, no `contextStream` listener on the phone), a context is latest-wins and so cannot carry the ordered owed observations the protocol requires, and the size limit is undocumented; a latest-state context for the phone → watch direction alone stays a viable later optimisation. Carried out of 17a's review: the push's drain bounded against a hung send (G6 → D-98) and the timer path's unhandled error (H5 → D-99); the Dart `captureSessionEnd` question closed as a recorded rule, not built (A-8 → D-100); the late-adoption push window closed by the phone-side resume trigger (F3/A-17 → D-96). Routines stay manual. Phases 1–4 are agent-built; Phase 5 (one call site in the watch shell) is governor-built. | `watch/watchos/` + `ios/` shell + `lib/` + `docs/` | **A watch that was out of range for a while catches up on its own when it is back** — nothing is lost and nothing needs tapping. **A session started on the watch, and an exercise added on the watch, reach the phone by themselves instead of at a Sync.** The Sync button remains the manual fallback. |
 | **17c (PR 3)** | What "any action" still cannot carry: a deletion reaching the wrist (`structure_change` `delete_entry`, no phone sender yet), the phone's `timed` / `hold` / `round` entries, a set the wire omits today (`skipped`, `extraLoadKg`), and the phone's rest timer (the 15-index's PR 5 row). | `lib/` + `watch/sync_protocol/` (+ `watch/watchos/` if a receiver rule is needed) | **Deleting a set on the phone removes it on the watch, and the other kinds of work the phone can log — holds, timed sets, rounds — show up there too.** |
 
 Each row's budget: 17a/1a = 2 phases (the contract + the `watch/` tracks), 17a/1b = 1 phase (`lib/` +
 docs) — one plan file, one set of ids (the governor's split note in the PR 1 plan). The governor split
 1a/1b on 2026-10-06 on three soft signals: the plan runs over 500 lines, it touches three tracks, and
-it amends the contract. PR 2 = 3 phases, 2 tracks; PR 3 = 3 phases, 2 tracks. All within
+it amends the contract. PR 2 = 5 phases (Phases 3 and 4 are the Dart and Swift halves of one workstream), 2 tracks; PR 3 = 3 phases, 2 tracks. All within
 `.github/copilot/pr-scope-budget.md`; the hard limits are 800 lines / 5 phases / 1500 production
 lines.
 
@@ -236,6 +249,7 @@ never hears about", so it belongs in this series, in its own PR, after the push 
 | `docs/state_management/watch_surface.md` | the "no automatic sync" claim (`:336`) and the D-11 sentence about `projectedSession` (`:81`) | 17a/1b |
 | `docs/watch-app-setup-and-qa.md` | walkthrough step 1 ("The watch says it does not auto-sync") and every step that says "tap Sync" as a *logging* step (`:345-380`); the recovery and routine steps stay but must say what they are for | 17a/1a |
 | `watch/sync_protocol/PROTOCOL.md` | the amendment of 2026-10-06 (a peer may send a session frame unasked; a frame applies only to the session it names; a receiver keeps its own session; timer ownership). v1 is unreleased, so it is additive with no version bump and no migration | 17a/1a, 17c |
+| `docs/watch_session_sync.md`, `docs/state_management/watch_surface.md`, `docs/watch-app-setup-and-qa.md` | after 17b: "Starting a session, changing exercises and converging two sessions still need a manual Sync"; the walkthrough's "the wrist's session reaches the phone at a Sync" step (`:342-345`) and its "catches up at the next Sync" note (`:500-503`); the wrist's own announcements and the add-only reconcile rule are stated where the adoption rules are. Also records 17b's D-102 heads-up (an unended wrist session keeps blocking a new phone session on the watch) | 17b |
 
 ## Folders and numbering
 
@@ -244,8 +258,10 @@ never hears about", so it belongs in this series, in its own PR, after the push 
 - `docs/plans/2026-10-06-17b-watch-auto-sync-pr2-plan/` — **used** by PR 2 when it is planned.
 - `docs/plans/2026-10-06-17c-watch-auto-sync-pr3-plan/` — **used** by PR 3 when it is planned.
 - None of the three is unused; nothing needs removing.
-- Decision and scenario numbers: series contract D-70…D-74; PR 1 D-75…D-84, S-70…S-84; PR 2 reserved
-  D-85… and S-90…; PR 3 reserved D-95… and S-100….
+- Decision and scenario numbers: series contract D-70…D-74; PR 1 D-75…D-86, S-70…S-88 (its iteration 2
+  consumed the old "PR 2 reserved D-85…/S-90…" range); PR 2 **D-90…D-103, S-100…S-115**; PR 3 must
+  therefore start at **D-110… and S-130…** — its old reservation (D-95…, S-100…) now collides with
+  PR 2 on both, so a PR 3 planner must not reuse those ids.
 
 ## Open questions (owner)
 
@@ -263,10 +279,22 @@ never hears about", so it belongs in this series, in its own PR, after the push 
 5. **The button's words.** "Sync" (the owner's decision); the watch's "No automatic sync" line goes
    **and is not replaced** — the button needs no subtitle, and "Phone not reachable" already covers the
    one case it is still for. "No routines yet. Sync with your phone to get them." stays. (PR 1's D-84.)
-6. **PR 2 — a device that was out of reach.** Recommended: a device that was out of reach receives the
-   latest state **by itself** when it is back (on launch, or when the connection returns, via
-   `updateApplicationContext` — D-71's amendment and the "Transport" section), and the Sync button
-   stays for forcing it. Alternative: it only catches up when you tap **Sync**.
+6. **PR 2 — a device that was out of reach.** **Answered 2026-10-06 (PR 2 planned):** a device that was
+   out of reach receives the latest state **by itself** when it is back — the wrist on the reachability
+   edge (gated on the wrist holding a session, one sync at a time), the phone on resume, both over the
+   existing radio (PR 2's D-96) — and the Sync button stays for forcing it. The application-context
+   route was evaluated and deferred (D-71 rev 2, PR 2's D-97). Alternative: it only catches up when you
+   tap **Sync**.
+7. **PR 2 — a wrist session left active.** Recommended: leave it (PR 2's D-102). While the wrist holds
+   its own active session it still refuses a phone session for a different id (D-78), so a session
+   started on the phone afterwards does not appear on the watch until the wrist's own session ends. The
+   alternative silently discards work done on the wrist. **Heads-up, not a defect** — no change planned.
+8. **PR 2 — what the wrist's automatic catch-up fetches.** Recommended: the whole Sync call (the session
+   *and* routines/settings), gated on the wrist holding a session, so a fresh wrist still fetches nothing
+   until asked. Alternative: a session-only sync, which would be a new request kind in the contract.
+9. **PR 2 — where a wrist-added exercise lands on the phone.** Recommended: appended after the phone's
+   known slots, in the wrist's order, never reordering the phone's own (the phone is the structure
+   authority). Alternative: inserted at the wrist's own index.
 
 ## Open questions (technical — not owner-visible)
 
