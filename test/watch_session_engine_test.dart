@@ -447,9 +447,11 @@ void main() {
           harness.clock.advance(const Duration(minutes: 1));
         }
 
-        // A session start announces itself; the three entries follow it.
+        // A session start announces itself — its lifecycle frame, then the
+        // snapshot the wrist now sends (D-91) — and the three entries follow.
         expect(harness.emitted.map((envelope) => envelope['type']), [
           'session_lifecycle',
+          'session_snapshot',
           'observations_up',
           'observations_up',
           'observations_up',
@@ -1319,6 +1321,120 @@ void main() {
       expect(
         remainingMs(restored, harness.clock.now),
         const Duration(minutes: 2, seconds: 15).inMilliseconds,
+      );
+    });
+  });
+
+  group('S-100 a wrist start announces its own shape', () {
+    test('S-100 a wrist start sends its lifecycle, then its own snapshot', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      final live = await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+
+      expect(harness.emitted.map((envelope) => envelope['type']), [
+        'session_lifecycle',
+        'session_snapshot',
+      ], reason: 'the snapshot follows the lifecycle frame (D-91)');
+      expect(
+        harness.emitted.map((envelope) => envelope['messageId']).toSet(),
+        hasLength(2),
+        reason: 'two frames need two message ids',
+      );
+      expect(
+        _asObject(harness.emitted.last['payload'])['sessionId'],
+        live.sessionId,
+        reason: 'the snapshot is about the session the wrist just started',
+      );
+    });
+  });
+
+  group('S-101 a wrist-added exercise is announced', () {
+    test(
+      'S-101 a wrist-added exercise arrives as a second snapshot with a moved revision',
+      () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        await engine.createSession(modality: null, exercises: const []);
+
+        final first = _asObject(
+          harness.emitted
+              .firstWhere((envelope) => envelope['type'] == 'session_snapshot')['payload'],
+        );
+        expect(first['exercises'], isEmpty, reason: 'the fixture starts empty');
+
+        await engine.insertExercise(_exercise('sx-c'));
+
+        final snapshots = harness.emitted
+            .where((envelope) => envelope['type'] == 'session_snapshot')
+            .toList();
+        expect(
+          snapshots,
+          hasLength(2),
+          reason: 'the start and the add, and nothing else (D-91)',
+        );
+        final second = _asObject(snapshots.last['payload']);
+        expect(
+          [
+            for (final slot in second['exercises']! as List)
+              _asObject(slot)['sessionExerciseId'],
+          ],
+          ['sx-c'],
+          reason: 'the second snapshot carries the ladder the wrist just built',
+        );
+        expect(
+          second['revision'],
+          greaterThan(first['revision']! as int),
+          reason: 'a shape the wrist changed itself moves the revision (D-101)',
+        );
+      },
+    );
+  });
+
+  group('S-104 the phone is never echoed', () {
+    test('S-104 nothing from the phone is announced back', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.appendObservation(_setEvent(harness.clock, entryId: 'e-1'));
+      harness.emitted.clear();
+
+      expect(
+        await engine.applyMessage(
+          _exercisePush(harness.sessionId, messageId: 'msg-push-1', slot: 'sx-row'),
+        ),
+        isTrue,
+      );
+      expect(
+        await engine.applyMessage(
+          _structureChange(
+            harness.sessionId,
+            changeId: 'chg-p-1',
+            changes: [
+              {'kind': 'delete_entry', 'entryId': 'e-1'},
+            ],
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        await engine.applyMessage(
+          _snapshotOf(harness.sessionId, messageId: 'msg-snap-1'),
+        ),
+        isTrue,
+      );
+
+      expect(
+        harness.emitted,
+        isEmpty,
+        reason:
+            'an edit the phone made is its own news: announcing it back would '
+            'be noise (D-91)',
       );
     });
   });

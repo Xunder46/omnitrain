@@ -435,6 +435,21 @@ a logging surface
 `test/watch_logging_surfaces_test.dart`'s `S-52 the wrist's own End closes the logging surface`
 and `S-52 a session the phone ended is not a surface to log into`).
 
+**The wrist announces its own session and its own adds (D-90, D-91).** The
+engine's own changes are mirrored to the phone without being asked: a start
+emits its lifecycle frame and then the session's own `session_snapshot`, and a
+slot the wrist puts into its ladder emits a second snapshot with the revision
+moved, because the shape is the wrist's own (D-101). A change that arrived from
+the phone is applied silently — an `exercise_push`, a `structure_change` and a
+snapshot emit nothing back. Verified on the Dart twin by
+`test/watch_session_engine_test.dart`
+(`S-100 a wrist start sends its lifecycle, then its own snapshot`,
+`S-101 a wrist-added exercise arrives as a second snapshot with a moved
+revision` and `S-104 nothing from the phone is announced back`) and by
+`WatchSessionEngineTests.testS100AWristStartSendsItsLifecycleThenItsOwnSnapshot`,
+`…testS101AWristAddedExerciseArrivesAsASecondSnapshotWithAMovedRevision` and
+`…testS104AnExercisePushFromThePhoneIsNeverAnnouncedBack`.
+
 The shell builds an append-only file store, `FileWatchSessionStore`, over the
 app's Application Support directory (`watch-session/`), so a relaunch brings back
 the session, its logged rows, a running rest countdown and any unanswered rating

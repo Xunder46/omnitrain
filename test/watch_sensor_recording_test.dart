@@ -790,8 +790,10 @@ void main() {
       );
       expect(
         emitted,
-        hasLength(1),
-        reason: 'starting a session tells the phone',
+        hasLength(2),
+        reason:
+            'starting a session tells the phone, with its lifecycle frame and '
+            'the snapshot that follows it (D-91)',
       );
 
       await watched.appendSensorSample(
@@ -801,7 +803,7 @@ void main() {
       expect(watched.sensorSamples, hasLength(1));
       expect(
         emitted,
-        hasLength(1),
+        hasLength(2),
         reason:
             'a reading adds nothing to the outbound stream: the sync protocol '
             'carries the logged effort, and the distance in it is the reading '

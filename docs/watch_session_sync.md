@@ -286,15 +286,25 @@ remains out is listed below.
   (`test/watch_logging_timers_test.dart`,
   `S-79 a snapshot leaves the wrist's countdown running and stops the phone's
   own`).
-- **A few things still need the Sync button.** A session started on the wrist,
-  and an exercise added on the wrist, reach the phone only at the wrist's own
-  Sync: the phone adopts a wrist session from a `session_snapshot`
+- **The wrist's own start and its own adds are announced (D-90, D-91).** A
+  session started on the wrist, and an exercise the wrist adds to its ladder,
+  reach the phone without being asked: the start emits its lifecycle frame and
+  then the session's own `session_snapshot`, and an add emits a second snapshot
+  whose revision has moved, because the shape is the wrist's own (D-101). A
+  change that arrived from the phone — a push, a structure change, a snapshot —
+  is applied silently and never announced back. The phone still adopts a wrist
+  session from a `session_snapshot`, never from the start lifecycle
   (`test/watch_session_adoption_bridge_test.dart`,
-  `S-1 a wrist snapshot becomes the phone's in-progress session`), and the wrist
-  sends its snapshot only inside `WatchSyncOrchestrator`, the Sync action — its
-  start emits only a lifecycle frame. A device that was out of reach catches up
-  the same way, and routines, preferences and the food catalog always do. When
-  both devices hold their own session, each keeps its own and is told nothing
+  `S-1 a wrist snapshot becomes the phone's in-progress session`). Verified by
+  `test/watch_session_engine_test.dart`
+  (`S-100 a wrist start sends its lifecycle, then its own snapshot`,
+  `S-101 a wrist-added exercise arrives as a second snapshot with a moved
+  revision` and `S-104 nothing from the phone is announced back`) and, on the
+  watch target, by `WatchSessionEngineTests.testS100AWristStartSendsItsLifecycleThenItsOwnSnapshot`,
+  `…testS101AWristAddedExerciseArrivesAsASecondSnapshotWithAMovedRevision` and
+  `…testS104AnExercisePushFromThePhoneIsNeverAnnouncedBack`. Routines,
+  preferences and the food catalog still travel by their own paths. When both
+  devices hold their own session, each keeps its own and is told nothing
   (`test/watch_session_engine_test.dart`,
   `S-77 the wrist refuses a foreign snapshot, silently`). The wrist's own place
   is the wrist's to report and the phone follows it, so the phone's own move of

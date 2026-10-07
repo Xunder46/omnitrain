@@ -20,6 +20,11 @@ output here; the plan holds no evidence.
 | 1 | gateway `test` (full) | 4020 passed, ~1 skipped, 0 failed | baseline 4013 (~1 skipped) + 7 new Dart tests |
 | 1 | gateway `lint` | 196 issues, 0 errors | same count as the baseline; `grep` over the log finds none in a touched file |
 | 1 | gateway `swift-test` | not run — no Swift file changed | `git diff --stat`: 3 `lib/` files, 3 test files, 1 doc |
+| 2B | gateway `prove-red e88a491 test test/watch_session_engine_test.dart` | `RED AT e88a491` — 31 executed, 28 passed / 3 failed | S-003, S-100, S-101; S-104 is proven by mutation instead (it asserts silence) |
+| 2B | gateway `test test/watch_session_engine_test.dart` (final state) | `+31: All tests passed!` (0 failed) | 28 pre-existing + 3 new tests |
+| 2B | gateway `test` (full, final) | 4023 passed, ~1 skipped, 0 failed | part A's 4020 + the 3 new Dart tests |
+| 2B | gateway `lint` | 196 issues, 0 errors | baseline count; `grep` over the log finds none in a touched file |
+| 2B | gateway `swift-test` | not run — no `.swift` file changed | `git diff --stat` below |
 
 ## Phase 1 — the phone accepts the wrist's additions (S-102…S-106, S-110, S-111)
 
@@ -171,3 +176,83 @@ checked to be a frame-list or frame-count assertion rather than a behaviour one:
 and `WatchSensorRecordingTests.swift:852/:858` (emitted count 1 → 2). Every other pre-existing test is
 type-filtered, calls `clearEmitted()`, or counts the orchestrator's own sends, which the new frame does
 not join — the full suite is the proof: no test outside these three changed or went red.
+
+## Phase 2B — the Dart twin announces its own session (S-100, S-101, S-104; steps 6, 10, 11)
+
+Base for this part: `e88a491`, which already carries part A's Swift half. This run's baselines are
+part A's: full `test` 4020 passed / ~1 skipped / 0 failed, `lint` 196 issues / 0 errors.
+
+`lib/watch/session/watch_session_engine.dart` is the only production file (+39/−4). `createSession`
+now returns `_appendSessionRow`'s live row and calls the new `_emitSnapshotIfConformant()` (which sits
+beside `_emitLifecycleIfConformant` and catches `on Exception` — `WatchEmissionRejected implements
+Exception`, so a bare catch was neither needed nor allowed; an `Error` still escapes).
+`insertExercise` gained `announce: bool = true` after `moveTo` and routes its update through
+`_transitionTo`, passing `revision: announce ? session.revision + 1 : null` and emitting only when
+announcing; `applyExercisePush` passes `announce: false`; `_transitionTo` gained `int? revision` and
+writes `revision ?? session.revision`, which preserves on a phone-originated change and moves the
+number by 1 on a wrist add (D-101).
+
+Step 11 turned out to need no diff, and that is not an omission: the only caller of
+`_emitLifecycleIfConformant` is `_appendSessionRow`, which is already the wrist-authorship path;
+`_applySnapshot` and `_applyStructureChange` write their rows without it and never call the new
+snapshot helper, which is exactly what keeps the phone's frames silent.
+
+### Red first, before implementation
+
+| Command | Result | Log |
+|---|---|---|
+| gateway `prove-red e88a491 test test/watch_session_engine_test.dart` | `gateway: prove-red: RED AT e88a491` (exit 1) — 31 executed, 28 passed / 3 failed: S-003 `:452`, S-100 `:1337`, S-101 `:1364` | `test-20261007-013706-83645.log` |
+
+The three base failures, each for the reason the test guards and not a compile or config problem:
+S-003's frame list is `['session_lifecycle','observations_up'×3]` with no snapshot;
+S-100 reads the same at `:1337` (`Expected: ['session_lifecycle','session_snapshot'] Actual:
+['session_lifecycle']`); S-101's `firstWhere` finds no `session_snapshot` at all — `Bad state: No
+element` at `:1364`.
+
+**S-104 is green at the base commit, and that is not a broken test:** it asserts *silence* on the
+phone's three frame kinds, which is already true at `e88a491`. `prove-red` therefore proves nothing
+for it, and it is proven by mutation (b) below instead. Recorded rather than papered over — see A-13.
+
+### Mutations — each guard shown red, then restored exactly
+
+Every mutation was applied alone and then reverted to the exact original; none was left applied, and
+the final full suite below is green with all three absent.
+
+| # | Mutation (original → mutant) | Observed | Log |
+|---|---|---|---|
+| a | `createSession`: the `_emitSnapshotIfConformant()` call removed | S-100, 1 test / 1 failure at `:1337`: `Expected: ['session_lifecycle','session_snapshot'] Actual: ['session_lifecycle']` | `test-20261007-013732-83942.log` |
+| b | `applyExercisePush`: `announce: false` → `announce: true` | S-104, 1 test / 1 failure: `Expected: empty` but one `session_snapshot` (`messageId 'msg-snapshot-rec-2'`, `revision: 1`, ladder `['sx-bench','sx-row']`) — the phone's own push echoed back | `test-20261007-013754-84195.log` |
+| c | `insertExercise`: `revision: announce ? session.revision + 1 : null` → `revision: null` | S-101, 1 test / 1 failure at `:1387`: `Expected: a value greater than <0> Actual: <0>` | `test-20261007-013808-84396.log` |
+
+(b) is the only proof S-104 has, and it is the one that matters: it shows the second snapshot's
+existence, not merely its count, and pins `revision: 1` as the value a wrist *add* moves.
+
+### Green
+
+| Command | Result | Log |
+|---|---|---|
+| gateway `test test/watch_session_engine_test.dart` (final state) | `+31: All tests passed!` — 28 pre-existing + 3 new | inline (under the 200-line summary threshold) |
+| gateway `test` (full, final) | `+4023 ~1: All tests passed!` — 4023 passed, ~1 skipped, 0 failed; part A's 4020 + the 3 new Dart tests | `test-20261007-015346-99046.log` |
+| gateway `test` (full, first attempt, before the pinned counts moved) | `+4022 ~1 -1: Some tests failed.` — the one failure is `test/watch_sensor_recording_test.dart`, "Sensor wiring a reading is stored without being sent anywhere", expecting `hasLength(1)` twice | `test-20261007-013822-84597.log` |
+| gateway `lint` | `196 issues found. (ran in 3.0s)`, 0 errors — the baseline count; a `grep` over the log for `watch_session_engine` / `watch_sensor_recording` finds nothing | `lint-20261007-014907-97566.log` |
+| gateway `swift-test` | not run — no `.swift` file changed | `git diff --stat` below |
+| `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches | — |
+
+### Blast radius: one pre-existing frame-count assertion
+
+`test/watch_sensor_recording_test.dart` carries two assertions that count the frames a wrist start
+emits and pinned `hasLength(1)`; with D-91 the start emits two, so both moved to `hasLength(2)` with
+their reasons renamed to D-91. Both are frame-count assertions, no behaviour assertion was touched,
+and this mirrors part A's `WatchSensorRecordingTests.swift` (A-11). The brief did not name the file,
+so it is logged as A-14.
+
+### Footprint and residue
+
+`gateway git-diff --stat`: `lib/watch/session/watch_session_engine.dart` +39, `test/watch_session_engine_test.dart` +118,
+`test/watch_sensor_recording_test.dart` ±8, `docs/watch_session_sync.md` 26, `docs/state_management/watch_surface.md` +15,
+the plan +35 and its evidence +83 — 7 files, 305 insertions, 19 deletions, nothing else, and no
+untracked file (`git-status` lists the 7 modified files and no scratch). The test file's diff is
+additions only apart from
+the S-003 comment and frame-list line, which is how the accidental mid-edit loss of the "Stopping a
+timer" group is shown to have left no residue: the file holds exactly its 28 pre-existing tests plus
+the 3 new ones, and `+31` is that file's whole run.

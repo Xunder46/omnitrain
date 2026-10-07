@@ -382,9 +382,22 @@ Dependents that only read a touched surface (no change expected; their tests are
   set 64 passed / 0 failed, full `test` 4020 passed / ~1 skipped / 0 failed (baseline 4013/~1 → +7),
   `lint` 196 issues / 0 errors with none in a touched file, `swift-test` not run (no Swift file
   changed). Evidence: `.evidence.md` §Phase 1.
-- [x] Phase 2 — the wrist announces its own session (@developer) — **Complete, part A only (steps 1–5, 7,
-  8, 9; 2026-10-07). Steps 6, 10 and 11 are part B and were not started: no `lib/` file and no doc
-  changed in this run.** `createSession` emits the lifecycle and then one `session_snapshot`;
+- [x] Phase 2 — the wrist announces its own session (@developer) — **Complete (2026-10-07), in two
+  parts: A (Swift half, steps 1–5, 7, 8, 9) and B (Dart twin and docs, steps 6, 10, 11).**
+  Part B (brief 17b-dev-2b-retry): the Dart twin mirrors part A — `createSession` emits one
+  `session_snapshot` after the lifecycle, `insertExercise(…, announce:)` emits and moves `revision` by
+  1 on a wrist add, `applyExercisePush` passes `announce: false`, `_transitionTo` gained
+  `revision: int?` (preserve), and `_emitSnapshotIfConformant` sits beside `_emitLifecycleIfConformant`
+  catching `Exception` (`WatchEmissionRejected implements Exception`). Steps 6 tests written first and
+  proven red at the base commit `e88a491` (S-100, S-101, and the S-003 frame list; S-104 asserts
+  silence so it is proven by mutation); step 10 updates the now-false Sync-button bullet in
+  `docs/watch_session_sync.md` and adds the matching paragraph to
+  `docs/state_management/watch_surface.md`; step 11 needed no diff (the lifecycle emitter sits in
+  `_appendSessionRow`, already the wrist path — no second edit was required). `test` 4023 passed /
+  ~1 skipped / 0 failed (part A's 4020 + 3 new tests), `lint` 196 issues / 0 errors with none in a
+  touched file, invariant check clean, `swift-test` not run (no `.swift` file changed). Evidence:
+  `.evidence.md` §Phase 2B.
+  Part A: `createSession` emits the lifecycle and then one `session_snapshot`;
   `insertExercise(…, announce:)` emits and moves `revision` by 1 on a wrist add, `applyExercisePush`
   passes `announce: false`, and `applyStructureChange`/`applySnapshot` are unchanged (step 4 needed no
   edit — none of them calls `transitionTo`). Step 5 verified, no edit: both start paths return
@@ -446,6 +459,23 @@ Executors append here: decision made, options considered, choice and why. The Co
 12. **A-12 — Phase 2's steps 6, 10 and 11 are part B, deferred with this run's scope (developer,
     2026-10-07).** The brief limits this run to the Swift half, so the Dart twin's mirror and the two
     doc statements are untouched; `docs/watch_session_sync.md` still owes the "automatic" wording.
+13. **A-13 — S-104 is proven by mutation, not by the base commit (developer, 2026-10-07, Phase 2B).**
+    The scenario asserts silence, which is already true at `e88a491`, so `prove-red` returns green for
+    it and proves nothing. Mutation (b) in the evidence's table does: `applyExercisePush` with
+    `announce: true` makes S-104 red, emitting a `session_snapshot` (`msg-snapshot-rec-2`,
+    `revision: 1`). The phone-originated `_applySnapshot` / `_applyStructureChange` paths keep their
+    half of S-104 green because they emit no lifecycle and never call the new helper. Recorded in the
+    evidence rather than strengthening an assertion the scenario does not state.
+14. **A-14 — `test/watch_sensor_recording_test.dart` was updated although the brief did not name it
+    (developer, 2026-10-07, Phase 2B).** Two assertions there count the frames a start emits and pin
+    `hasLength(1)`; D-91 makes that 2. Both are frame-count assertions, so the pinned counts moved to 2
+    with the reasons renamed to D-91, and no behaviour assertion was touched. This mirrors Phase 2A's
+    A-11 for the Swift file of the same name.
+15. **A-15 — the Dart twin's docs state the announcement rule only, and claim no catch-up (developer,
+    2026-10-07, Phase 2B).** Step 10's wording names D-90/D-91 and the six tests (three Dart, three
+    Swift), replaces the bullet that told the user to press Sync for the wrist's own changes, and says
+    nothing about the wrist pulling the phone's session — that arrives in Phases 3–5. Consistent with
+    A-8.
 
 ## Feedback
 

@@ -269,14 +269,15 @@ class WatchSessionEngine {
   ///
   /// The session-started lifecycle event leaves through the same sink as every
   /// other message, so the phone's live mirror learns about a wrist-started
-  /// session without being asked (S-006).
+  /// session without being asked (S-006). The snapshot follows that lifecycle
+  /// frame, carrying the session's shape (D-91, S-100).
   Future<WatchSessionRecord> createSession({
     required String? modality,
     String source = 'watch',
     List<Map<String, Object?>> exercises = const [],
   }) async {
     final now = _clock();
-    return _appendSessionRow(
+    final live = await _appendSessionRow(
       WatchSessionRecord(
         recordId: _newId(),
         sessionId: _newSessionId(),
@@ -290,6 +291,8 @@ class WatchSessionEngine {
       ),
       lifecycle: WatchLifecycleState.started,
     );
+    _emitSnapshotIfConformant();
+    return live;
   }
 
   /// Moves to the next exercise. The last exercise is the end of the ladder.
@@ -327,10 +330,15 @@ class WatchSessionEngine {
   /// moves the session to the new exercise, while a structure change the phone
   /// initiated leaves the user on the exercise they were logging — the rule the
   /// phone's reconciler applies to its own pushes.
+  ///
+  /// [announce] separates the wrist's own add from the phone's (D-91, D-101): the
+  /// watch announces a ladder change it made itself with a snapshot and a moved
+  /// revision, while a push the phone sent is applied silently.
   Future<WatchSessionRecord> insertExercise(
     Map<String, Object?> slot, {
     int? atIndex,
     bool moveTo = false,
+    bool announce = true,
   }) async {
     final session = _requireSession();
     final slotId = slot['sessionExerciseId'];
@@ -345,7 +353,7 @@ class WatchSessionEngine {
     );
     final exercises = [...session.exercises]..insert(index, slot);
 
-    return _transitionTo(
+    final live = await _transitionTo(
       currentExerciseIndex: _positionAfterInsert(
         currentIndex: session.currentExerciseIndex,
         insertedAt: index,
@@ -354,7 +362,10 @@ class WatchSessionEngine {
       ),
       exercises: exercises,
       lifecycle: null,
+      revision: announce ? session.revision + 1 : null,
     );
+    if (announce) _emitSnapshotIfConformant();
+    return live;
   }
 
   /// Applies an `exercise_push` from the phone: the slot it names lands at the
@@ -372,6 +383,7 @@ class WatchSessionEngine {
     return insertExercise(
       asJsonObject(payload['exercise']),
       atIndex: payload['insertAtIndex']! as int,
+      announce: false,
     );
   }
 
@@ -1012,11 +1024,15 @@ class WatchSessionEngine {
   /// Writes a new session row carrying [status] and [currentExerciseIndex].
   ///
   /// A state change appends rather than updates, which is what both keeps the
-  /// store append-only and makes the position survive a kill.
+  /// store append-only and makes the position survive a kill. [revision] moves
+  /// the structure counter when a shape change the wrist made itself needs
+  /// announcing; a change that is not the shape (a status or a position) keeps
+  /// the session's own revision (D-101).
   Future<WatchSessionRecord> _transitionTo({
     String? status,
     int? currentExerciseIndex,
     List<Map<String, Object?>>? exercises,
+    int? revision,
     required String? lifecycle,
   }) async {
     final session = _requireSession();
@@ -1032,6 +1048,7 @@ class WatchSessionEngine {
         currentExerciseIndex:
             currentExerciseIndex ?? session.currentExerciseIndex,
         exercises: exercises ?? session.exercises,
+        revision: revision ?? session.revision,
       ),
       lifecycle: lifecycle,
     );
@@ -1063,6 +1080,20 @@ class WatchSessionEngine {
         _validator?.validateEnvelope(envelope) ??
         const <SyncProtocolRejection>[];
     if (rejections.isNotEmpty) return;
+    _emit(envelope);
+  }
+
+  /// Announces the session's current shape to the phone (D-90): the snapshot
+  /// [sessionSnapshot] already builds. A snapshot this build cannot send is
+  /// dropped rather than blocking the session the user is in.
+  void _emitSnapshotIfConformant() {
+    final Map<String, Object?>? envelope;
+    try {
+      envelope = sessionSnapshot(); // throws on a non-conformant envelope
+    } on Exception {
+      return;
+    }
+    if (envelope == null) return;
     _emit(envelope);
   }
 
