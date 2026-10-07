@@ -34,10 +34,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
+import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/features/session/session_summary_screen.dart';
+import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
@@ -45,7 +50,9 @@ import 'package:omnitrain/watch/session/watch_records.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers/fake_preferences_service.dart';
-import 'helpers/watch_capture_import_harness.dart' show seedExercise;
+import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/watch_capture_import_harness.dart'
+    show importedEfforts, importedRows, importedSegment, seedExercise;
 import 'home_short_viewport_test.dart' show buildHomeScreen;
 
 final DateTime _now = DateTime.utc(2026, 10, 6, 9);
@@ -318,5 +325,189 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(phoneState.currentSession?.id, heldId);
     expect(skipped, [(held: heldId, offered: 's-w2')]);
+  });
+
+  /// The ladder the wrist sends once it has added `C` to the S-1 session.
+  Map<String, Object?> withC(String messageId) => _snapshot(
+    sessionId: 's-w1',
+    revision: 4,
+    exercises: [
+      _slot('sl-1', 'ex-bench'),
+      _slot('sl-2', 'ex-squat'),
+      _slot('sl-3', 'ex-deadlift'),
+    ],
+    messageId: messageId,
+  );
+
+  /// The two exercises the S-1 ladder's second and third slots name.
+  Future<void> seedLadderExercises() async {
+    await seedExercise(
+      repository,
+      id: 'ex-squat',
+      name: 'Back Squat',
+      capabilities: const ['sets', 'reps', 'load'],
+    );
+    await seedExercise(
+      repository,
+      id: 'ex-deadlift',
+      name: 'Deadlift',
+      capabilities: const ['sets', 'reps', 'load'],
+    );
+  }
+
+  /// Adopts the wrist's `[A, B]` session, so the phone holds it.
+  Future<SessionSegment> adoptHeldSession() async {
+    await seedLadderExercises();
+    await radio.fromWrist(
+      _snapshot(
+        sessionId: 's-w1',
+        revision: 3,
+        exercises: [_slot('sl-1', 'ex-bench'), _slot('sl-2', 'ex-squat')],
+        messageId: 'msg-held',
+      ),
+    );
+    return importedSegment(repository, 's-w1');
+  }
+
+  testWidgets('S-103 the same snapshot twice, and a stale copy after a removal',
+      (tester) async {
+    final segment = await adoptHeldSession();
+
+    // 1: the add. The phone's ladder grows by C.
+    var notifications = 0;
+    phoneState.addListener(() => notifications += 1);
+    await radio.fromWrist(withC('msg-s103-1'));
+    expect(
+      [
+        for (final effort in phoneState.getEffortsForSegment(segment.id))
+          effort.id,
+      ],
+      ['sl-1', 'sl-2', 'sl-3'],
+      reason: 'S-103 the slot the wrist added is appended',
+    );
+    expect(notifications, 1, reason: 'S-103 the add is one change');
+
+    // 2: the same ladder again. Every slot is one the phone has taken.
+    final afterFirstAdd = await importedRows(repository, 's-w1');
+    await radio.fromWrist(withC('msg-s103-2'));
+    expect(
+      [
+        for (final effort in phoneState.getEffortsForSegment(segment.id))
+          effort.id,
+      ],
+      ['sl-1', 'sl-2', 'sl-3'],
+      reason: 'S-103 a redelivery adds nothing',
+    );
+    expect(
+      await importedRows(repository, 's-w1'),
+      afterFirstAdd,
+      reason: 'S-103 and writes nothing',
+    );
+    expect(notifications, 1, reason: 'S-103 and notifies nothing');
+
+    // 3: the phone removes C through its own session API.
+    await phoneState.removeExerciseFromSession('sl-3');
+    expect(
+      [
+        for (final effort in phoneState.getEffortsForSegment(segment.id))
+          effort.id,
+      ],
+      ['sl-1', 'sl-2'],
+      reason: 'S-103 the removal is the phone\'s own decision',
+    );
+    final afterRemoval = notifications;
+
+    // 4: a stale copy of the ladder C was in. A reconcile reading only the
+    // phone's current ladder would append it back (D-93).
+    await radio.fromWrist(withC('msg-s103-3'));
+    expect(
+      [
+        for (final effort in phoneState.getEffortsForSegment(segment.id))
+          effort.id,
+      ],
+      ['sl-1', 'sl-2'],
+      reason:
+          'S-103 a slot the phone has seen and removed is not appended back by '
+          'a snapshot older than the removal',
+    );
+    expect(
+      [
+        for (final effort in await importedEfforts(repository, 's-w1'))
+          effort.id,
+      ],
+      ['sl-1', 'sl-2'],
+      reason: 'S-103 no second effort with C\'s id exists',
+    );
+    expect(
+      notifications,
+      afterRemoval,
+      reason:
+          'S-103 and the stale frame notifies nothing: the removal was the last '
+          'change the phone made',
+    );
+    expect(failures, isEmpty);
+  });
+
+  testWidgets('S-111 an append while the phone is on another screen',
+      (tester) async {
+    final segment = await adoptHeldSession();
+    expect(
+      phoneState.getEffortsForSegment(segment.id),
+      hasLength(2),
+      reason: 'S-111 the fixture starts at the two-slot ladder',
+    );
+
+    // The phone leaves the session screen for the session's summary — any
+    // screen that is not the live session screen does for this scenario.
+    final summarySettings = SettingsState(repository, fakePreferencesService());
+    await summarySettings.setShowFeelingSurvey(false);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SessionSummaryScreen(
+          workoutState: phoneState,
+          routineState: RoutineState(repository),
+          sessionSummaryService: SessionSummaryService(repository),
+          settingsState: summarySettings,
+          timerAlertService: FakeTimerAlertService(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    var notifications = 0;
+    phoneState.addListener(() => notifications += 1);
+
+    await radio.fromWrist(withC('msg-s111-add'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      [
+        for (final effort in phoneState.getEffortsForSegment(segment.id))
+          effort.id,
+      ],
+      ['sl-1', 'sl-2', 'sl-3'],
+      reason: 'S-111 the session\'s effort count grew by one',
+    );
+    expect(
+      notifications,
+      1,
+      reason:
+          'S-111 the mounted screen re-reads the session on one notification — '
+          'the append is one change',
+    );
+    expect(
+      find.byType(SessionSummaryScreen),
+      findsOneWidget,
+      reason: 'S-111 no screen change: the summary is still what is showing',
+    );
+    expect(
+      find.byType(WorkoutSessionScreen),
+      findsNothing,
+      reason: 'S-111 the append did not open the session screen',
+    );
+    expect(tester.takeException(), isNull);
+    expect(failures, isEmpty);
   });
 }

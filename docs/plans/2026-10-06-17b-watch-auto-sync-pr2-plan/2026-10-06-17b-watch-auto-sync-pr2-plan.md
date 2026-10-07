@@ -375,7 +375,13 @@ Dependents that only read a touched surface (no change expected; their tests are
 
 ## Progress
 
-- [ ] Phase 1 — the phone accepts the wrist's additions (@developer)
+- [x] Phase 1 — the phone accepts the wrist's additions (@developer) — **Complete** (2026-10-07). Steps
+  1–10 done: `appendSessionSlots` (`session_core_entry.dart:77`, delegated by `workout_state.dart`)
+  writes through the repository and reloads nothing; `_reconcile`/`_everSeen` append only what the
+  phone lacks, at its next free `orderIndex`; 7 new tests (S-102…S-106, S-110, S-111); the Done-Criteria
+  set 64 passed / 0 failed, full `test` 4020 passed / ~1 skipped / 0 failed (baseline 4013/~1 → +7),
+  `lint` 196 issues / 0 errors with none in a touched file, `swift-test` not run (no Swift file
+  changed). Evidence: `.evidence.md` §Phase 1.
 - [ ] Phase 2 — the wrist announces its own session (@developer)
 - [ ] Phase 3 — the Dart half: the push's bounds and the phone's resume trigger (@developer)
 - [ ] Phase 4 — the Swift half and the contract (@developer)
@@ -385,7 +391,34 @@ Dependents that only read a touched surface (no change expected; their tests are
 
 Executors append here: decision made, options considered, choice and why. The Conductor marks each **RATIFIED** (promoted to a D-x) or **REVERT** (remediation sub-phase).
 
-[empty]
+1. **A-1 — an addition takes the phone's next free `orderIndex`, not the snapshot's (developer,
+   2026-10-07).** D-92 forbids a reorder, and the snapshot's index makes a mid-ladder addition tie
+   with an existing slot and sort into the middle (the ladder read `['sl-1','sl-9','sl-2']`); among
+   themselves the additions keep the snapshot's order.
+2. **A-2 — the `held.contains(slotId)` half of `_reconcile`'s guard is redundant, and is kept
+   (developer, 2026-10-07).** `seen.addAll(held)` runs before the loop, so `!seen.add(slotId)` alone
+   covers the phone's own slots: mutation (e) leaves S-104 green either way, and only deleting the
+   whole line turns it red. Kept as the direct statement of the rule.
+3. **A-3 — S-105 expresses "a phone-side rename" through the exercise row's name (developer,
+   2026-10-07).** The session has no slot-rename API, so the phone's own edit is the exercise's name;
+   matching by `sessionExerciseId` is what keeps a snapshot from overwriting it.
+4. **A-4 — S-111 mounts the real `SessionSummaryScreen` (developer, 2026-10-07).** The scenario says
+   "while another screen is showing", so the test shows that screen rather than a stub; the append is
+   asserted through the session's effort count and one notification.
+5. **A-5 — S-103 and S-111 live in `test/watch_session_adoption_build_notify_test.dart` (developer,
+   2026-10-07)** per Phase 1 step 8, even though S-103 is not a build-time case: that file already
+   owns the "delivered while a screen is mounted" fixtures they build on.
+6. **A-6 — `test/helpers/repository_harness.dart`'s `seedExercise` drops capabilities, and the Phase 1
+   test works around it (developer, 2026-10-07).** `MockWorkoutRepository.createExercise` stores no
+   capabilities, so a harness-seeded exercise reads back with none and `_slotFor` returns null. The
+   bridge test calls `setExerciseCapabilities` (as `test/helpers/watch_capture_import_harness.dart`
+   does) rather than edit a helper other files share. It is a latent trap for any such test.
+7. **A-7 — S-106's mutation needs two lines (developer, 2026-10-07).** Reconciling before the conflict
+   guard is not observable on its own, because `appendSessionSlots` refuses a foreign session id; only
+   dropping that guard too makes the notify count 2 instead of 0. Recorded in the evidence.
+8. **A-8 — the new `docs/watch_session_sync.md` paragraph claims nothing about automatic arrival
+   (developer, 2026-10-07).** Per the brief and step 10 it states only the add-only rule (D-92/D-93),
+   names each test by its exact name, and leaves "reaches the phone by itself" to Phases 2 and 4.
 
 ## Feedback
 

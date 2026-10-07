@@ -113,6 +113,24 @@ reported as a failure` for the hook itself), by `test/watch_session_finish_test.
 `test/watch_session_projection_test.dart`
 (`S-6 a wrist session this phone is not in is left alone`).
 
+**A snapshot of the session the phone holds grows that session, add-only
+(D-92/D-93).** Whenever a wrist snapshot for the session the phone has already
+adopted arrives, the phone appends the slots it has not already taken, in the
+snapshot's order, after the slots it holds, and changes nothing else: no
+deletion, no reorder, no rename, no move of the position or the status, and no
+rest or timed timer cleared. The append is one notification, and a ladder that
+adds nothing writes nothing and notifies nothing. Verified by
+`test/watch_session_adoption_bridge_test.dart`
+(`S-102 a slot the wrist added to the held session is appended`,
+`S-104 a snapshot with no new slot changes nothing`,
+`S-105 a phone-side rename is not undone by a wrist snapshot`,
+`S-106 the phone's own session is not taken away`), by
+`test/watch_session_adoption_build_notify_test.dart`
+(`S-103 the same snapshot twice, and a stale copy after a removal` and
+`S-111 an append while the phone is on another screen`) and by
+`test/watch_session_rest_timer_append_test.dart`
+(`S-110 a running rest timer survives the append`).
+
 ## The two directions of ending
 
 **The wrist ends the session: the phone's copy ends too (D-5).** A wrist

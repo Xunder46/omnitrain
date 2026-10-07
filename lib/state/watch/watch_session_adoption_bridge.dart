@@ -129,6 +129,15 @@ class WatchSessionAdoptionBridge {
   /// ladder states the same revision, so a peer that has converged stays quiet.
   String? _projectedLadder;
 
+  /// Every slot id each held session has ever carried, by session (D-93): the
+  /// union of the ladders of the snapshots the phone has applied for it and of
+  /// the phone's own ladder at each [consider].
+  ///
+  /// A slot that leaves the phone's ladder stays in the set, so a stale wrist
+  /// snapshot carrying it appends nothing back. An entry lives only while the
+  /// phone holds the session; a session it has moved on from keeps none.
+  final Map<String, Set<String>> _everSeen = {};
+
   /// Binds the state an adopted session is published into. Until this is called
   /// [consider] adopts nothing: a build with no session state has nowhere to put
   /// one.
@@ -415,8 +424,22 @@ class WatchSessionAdoptionBridge {
 
     final held = target.currentSession;
     if (held != null && held.id == sessionId) {
+      // D-92: this phone holds the session, so the snapshot is not a fresh
+      // adoption — but a slot the wrist added since the adoption is one the
+      // phone's ladder grows by, add-only (D-92/D-93). Nothing else about the
+      // snapshot is acted on: no deletion, no reorder, no rename, and no move
+      // of the position or the status.
+      final additions = _reconcile(sessionId, converged);
+      if (additions.isNotEmpty) {
+        await target.appendSessionSlots(additions, sessionId: sessionId);
+      }
       return WatchSessionAdoption.alreadyHeld;
     }
+
+    // D-93: the ever-seen set belongs to a session the phone holds. Once it
+    // holds another one, nothing of the old session's set is worth keeping —
+    // the phone is not reconciling snapshots for it any more.
+    _everSeen.removeWhere((seenSessionId, _) => seenSessionId != held?.id);
 
     // D-10: only work logged in the session the phone holds makes the wrist's
     // one a conflict. An empty session is nothing to protect — the same way the
@@ -525,6 +548,83 @@ class WatchSessionAdoptionBridge {
       );
       orderIndex += 1;
     }
+
+    // The ladder the snapshot carries is one the phone now takes as its own, so
+    // every slot in it counts as seen (D-93).
+    _everSeen[sessionId] = _slotIds(converged);
+  }
+
+  /// The efforts [converged] adds to the session [sessionId] the phone holds,
+  /// in the snapshot's order — the append D-92 asks for, and nothing else.
+  ///
+  /// Add-only: nothing is removed, reordered or renamed, the position and the
+  /// status are not moved, and no timer is cleared — the phone's own rest and
+  /// timed timers keep running while its ladder grows. An empty result means
+  /// nothing is written and nothing is notified, which is what makes a
+  /// redelivery, a converged projection and a stale ladder reintroducing a slot
+  /// the phone already saw all silent.
+  ///
+  /// A slot is new when its id is not in the phone's ladder and no ladder the
+  /// phone has taken for this session carried it (D-93): the ladder of every
+  /// snapshot it has already applied, plus its own at each of these checks. That
+  /// second half is what keeps the phone's own additions from reading as the
+  /// wrist's, and what keeps a slot the phone added and then removed from being
+  /// appended back by a snapshot older than the removal.
+  ///
+  /// Each addition takes the next index after the phone's own last one, so the
+  /// snapshot's positions are not the phone's: an added slot the wrist placed
+  /// mid-ladder is still appended last, and every existing order stays where it
+  /// is. Among themselves the additions keep the snapshot's order.
+  List<SegmentEffort> _reconcile(
+    String sessionId,
+    Map<String, Object?> converged,
+  ) {
+    final target = _workoutState;
+    if (target == null) return const [];
+
+    final seen = _everSeen.putIfAbsent(sessionId, () => <String>{});
+    final held = <String>{};
+    var nextOrderIndex = 0;
+    for (final segment in target.segments) {
+      for (final effort in target.getEffortsForSegment(segment.id)) {
+        held.add(effort.id);
+        if (effort.orderIndex >= nextOrderIndex) {
+          nextOrderIndex = effort.orderIndex + 1;
+        }
+      }
+    }
+    seen.addAll(held);
+
+    final atMs = _clock().millisecondsSinceEpoch;
+    final segmentId = WatchSessionImporter.segmentIdFor(sessionId);
+    final additions = <SegmentEffort>[];
+    final slots = _slots(converged);
+    for (final slot in slots) {
+      final slotId = slot['sessionExerciseId'];
+      if (slotId is! String || slotId.isEmpty) continue;
+      if (held.contains(slotId) || !seen.add(slotId)) continue;
+      additions.add(
+        _effort(
+          slot,
+          segmentId: segmentId,
+          orderIndex: nextOrderIndex,
+          atMs: atMs,
+        ),
+      );
+      nextOrderIndex += 1;
+    }
+
+    return additions;
+  }
+
+  /// The non-empty slot ids of [converged].
+  Set<String> _slotIds(Map<String, Object?> converged) {
+    final ids = <String>{};
+    for (final slot in _slots(converged)) {
+      final slotId = slot['sessionExerciseId'];
+      if (slotId is String && slotId.isNotEmpty) ids.add(slotId);
+    }
+    return ids;
   }
 
   /// The converged ladder's slots, in order. The reconciler copies each slot

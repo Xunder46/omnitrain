@@ -65,6 +65,35 @@ extension SessionCoreEntryMethods on SessionCore {
     }
   }
 
+  /// Appends [efforts] to the segment each one names, then notifies once
+  /// (D-94).
+  ///
+  /// This is the write a wrist snapshot's add-only reconcile runs: the phone's
+  /// ladder grows by the slots the wrist added, and nothing else moves. The
+  /// session's `status` and position are untouched, and no timer is cleared —
+  /// it never calls [loadSessionData] or `clearAll`, so every running rest and
+  /// timed timer survives. Nothing is written for a session the phone is not
+  /// holding, or for an empty list.
+  Future<void> appendSessionSlots(
+    List<SegmentEffort> efforts, {
+    required String sessionId,
+  }) async {
+    if (efforts.isEmpty || _currentSession?.id != sessionId) return;
+
+    _clearError();
+
+    try {
+      for (final effort in efforts) {
+        await _repository.createEffort(effort);
+        _efforts.putIfAbsent(effort.segmentId, () => []).add(effort);
+      }
+
+      _notify();
+    } catch (e) {
+      _setError('Failed to append session slots: $e');
+    }
+  }
+
   Future<void> addEntry(
     String effortId, {
     Map<String, dynamic>? previousValues,
