@@ -88,7 +88,7 @@ snapshot keeps the values it already holds for an id — the watch does not edit
 existing records (authority rule 1), so the phone's model does not re-state — and
 the answer carries the watch's own values for the watch's own entries, so a
 re-statement of one is a no-op. Verified by `test/watch_session_projection_test.dart`
-(`S-35 an edit reaches the wrist and a delete is not sent`,
+(`S-35 an edit reaches the wrist and a delete is announced`,
 `S-35 a re-statement is append-only and doubles nothing`,
 `S-35 a second edit wins over the first`), by the two stacks' agreement in
 `test/watch_reconciliation_cross_stack_test.dart`
@@ -329,6 +329,15 @@ remains out is listed below.
   or `round` effort contributes nothing to `entries`, while the ladder still
   carries its slot (`test/watch_session_projection_test.dart`,
   `S-2 a running phone session is answered with its own ladder`).
+- **A set's weight rides as its total, and a skipped set does not ride at all.**
+  An entry's `loadKg` is the set's own total, whole: `extraLoadKg` is the
+  hold/drill path's added load
+  (`lib/core/sync_protocol/phone_entries.dart`), so a set's added weight reaches
+  the wrist as the set's total and never as a second number. A set with no reps
+  was never performed and the wire has no field to say so, so it is left out of
+  `entries` — never sent as a zero — while every other set of its slot still
+  rides (`test/watch_session_projection_test.dart`,
+  `S-59 a snapshot carries the assist, and omits only the row without reps`).
 - **An entry is asserted once, not re-asserted.** The answer's `entries` are
   byte-identical between two Syncs of an unchanged ladder, and the wrist's echo
   of that answer is not answered again — an entry-only difference is no
@@ -336,10 +345,26 @@ remains out is listed below.
   `S-39 the projection is deterministic, and an echo is not sent`;
   `test/live_mirroring_test.dart`,
   `S-32/S-39 an entry-only difference is not re-asserted`).
-- **A delete does not reach the wrist.** A set deleted on the phone stays on the
-  wrist until the wrist's own session is replaced
-  (`test/watch_session_projection_test.dart`,
-  `S-35 an edit reaches the wrist and a delete is not sent`).
+- **A delete reaches the wrist, and the wrist hides the entry rather than
+  dropping it.** The phone announces the deletion as a `structure_change` naming
+  the entry's own id, so a set removed on the phone leaves the session the wrist
+  is showing (`test/watch_session_auto_push_test.dart`,
+  `S-120 the push names the set the phone dropped, in a frame the wrist applies, before the snapshot that no longer carries it`;
+  `test/watch_session_projection_test.dart`,
+  `S-35 an edit reaches the wrist and a delete is announced`). The deletion is a
+  **lens over the projection**: the observation row stays — the store is
+  append-only — and the lens is durable, so a wrist restart does not bring the
+  set back (`test/watch_session_engine_test.dart`,
+  `S-124 the deleted set stays hidden across a restart`;
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`,
+  `testS124ADeletionSurvivesAWristRelaunch`). A snapshot that carries the id
+  clears its deletion, so a slot whose set was deleted and re-created under the
+  reused number converges (`test/watch_session_engine_test.dart`,
+  `S-125 the wrist shows the new set's own fields`, `S-125 an id the wrist never held is shown when a snapshot carries it`;
+  Swift twin, `testS125AReUsedNumberShowsTheNewEntrysOwnFields`), while a
+  snapshot that only repeats the row the wrist already holds leaves the deletion
+  standing (`test/watch_session_projection_test.dart`,
+  `S-35 a re-statement of a deleted id stays deleted`).
 - **The wrist's own start is not carried, and its place and timers are its own.**
   The phone adopts a wrist session from a snapshot, never from the wrist's start
   lifecycle (`test/watch_session_adoption_bridge_test.dart`,
@@ -414,9 +439,16 @@ remains out is listed below.
   not come back: a set the phone edited after it reached the wrist shows the
   phone's first
   value until the next Sync, because the correction lives only in memory
-  (`…testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync`); and,
-  by design, the wrist's record file is never trimmed — nothing is ever deleted
-  from it.
+  (`…testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync`). What
+  does come back is the **deletion lens** — the ids the phone has deleted ride on
+  the session row itself, so a relaunch reads them back and the same sets stay
+  hidden, while the watch's own corrections stay memory-only
+  (`WatchSessionEngineTests.testS124ADeletionSurvivesAWristRelaunch`,
+  `…testS124TheLensRidesOnTheRowsWrittenAfterIt`, and
+  `WatchFileStoreTests.testS124TheLensSurvivesAStoreReopen` in
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`). By
+  design the wrist's record file is never trimmed — the lens is the only thing a
+  deletion changes.
 - **No sensor samples are collected.** The watch app wires no sensor source, so
   a session it logs carries no heart-rate or step values of its own; the
   recording layer exists and is exercised only by its own suites

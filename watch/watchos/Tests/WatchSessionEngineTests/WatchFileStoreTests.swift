@@ -323,6 +323,56 @@ final class WatchFileStoreTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: fileURL), before, "S-53 the file is byte-identical")
     }
 
+    // MARK: - D-113 the lens on the stored session row
+
+    func testS124ASessionRowWrittenBeforeTheLensReadsAsAnEmptyOne() async throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        // A row as an older build wrote it: serialised before the field existed.
+        var json = fileSessionRow("s-1", at: at).toJson()
+        json.removeValue(forKey: "deletedEntryIds")
+        var bytes = Data((markerText + "\n").utf8)
+        bytes.append(try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]))
+        bytes.append(0x0A)
+        try bytes.write(to: fileURL)
+
+        let rows = await FileWatchSessionStore(directory: directory).readAll().sessions
+
+        XCTAssertEqual(rows.map(\.recordId), ["s-1"], "the row still reads")
+        XCTAssertEqual(
+            rows.first?.deletedEntryIds,
+            [],
+            "S-124 a row written before the lens existed decodes to an empty one, "
+                + "so an upgrade forgets no deletion it never knew"
+        )
+    }
+
+    func testS124TheLensSurvivesAStoreReopen() async throws {
+        let at = fileInstant("2026-10-06T12:00:00Z")
+        let first = FileWatchSessionStore(directory: directory)
+        let row = WatchSessionRecord(
+            recordId: "s-1",
+            sessionId: "s-file",
+            recordedAt: at,
+            startedAt: at,
+            modality: nil,
+            source: "watch",
+            status: WatchSessionStatus.active,
+            currentExerciseIndex: 0,
+            deletedEntryIds: ["entry-bench-1"]
+        )
+        _ = await first.append(.session(row))
+
+        let reopened = await FileWatchSessionStore(directory: directory).readAll().sessions
+
+        XCTAssertEqual(
+            reopened.first?.deletedEntryIds,
+            ["entry-bench-1"],
+            "S-124 the lens is on the row, so a fresh store over the same file "
+                + "reads it back"
+        )
+    }
+
     // MARK: - S-54 the two stores agree
 
     func testS54TheTwoStoresAgreeOnOneSequence() async throws {

@@ -28,9 +28,9 @@ Base branch: `develop`. Rebase point (commit): `<fill in>`. Recorded by: `<phase
 
 | File | Size | Note |
 |---|---|---|
-| `docs/watch_session_sync.md` | `<record>` | must stay under 52 KB (~64 KiB hard) |
-| `docs/state_management/watch_surface.md` | `<record>` | idem |
-| `watch/sync_protocol/PROTOCOL.md` | `<record>` | not a `docs/` file, but keep it tight |
+| `docs/watch_session_sync.md` | ≤ 50 KiB | **Not measurable directly**: the Copilot tool set here has no shell and no file-size tool (`ls`, `wc`, `git diff --stat` on a single path all print lines, not bytes). The bound is the contract's own: `test/docs_indexing_contract_test.dart` fails any file above 64 KiB and any file above `0.80 × 64 KiB` = **51,200 bytes**, and both assertions pass with this phase's edits in the tree (`+109 … All tests passed!`, log `.work/gateway/test-20261007-050706-52958.log`), so all three files are ≤ 51,200 bytes. A reviewer with a shell can print the exact bytes and tighten this row. |
+| `docs/state_management/watch_surface.md` | ≤ 50 KiB | idem |
+| `watch/sync_protocol/PROTOCOL.md` | ≤ 50 KiB | not a `docs/` file (the contract test walks `docs/` only, so it does **not** cover this one — the file is a table plus prose and the phase added one row), kept tight by hand |
 
 ## Phase 1 — the phone announces its deletions (@developer)
 
@@ -191,14 +191,31 @@ both twins and land with the Swift twin in Phase 3.
 
 ## Phase 3 — the Swift twin, PROTOCOL, docs (@developer)
 
+Executor: developer agent, 2026-10-07. Base commit `c4e29e5`.
+
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 1 | Swift `WatchSessionRecord.deletedEntryIds` + file store | | |
-| 2 | Swift engine: write/restore/clear/replace | | |
-| 3 | Swift S-124, S-125, S-126 | | |
-| 4 | PROTOCOL amendment (dated) | | |
-| 5 | `docs/watch_session_sync.md` rule + D-117 sentences + size | | |
-| 6 | `docs/state_management/watch_surface.md` + Progress | | |
+| 1 | Swift `WatchSessionRecord.deletedEntryIds` + file store | **done** | `WatchRecords.swift`: `deletedEntryIds: [String]` on the record, `= []` default in the init, carried by `withSequence`, new `withDeletedEntryIds(_:)`, emitted by `toJson()` and read back by `fromJson` (`(json["deletedEntryIds"] as? [String]) ?? []`, so a pre-lens row reads as `[]`). `FileWatchSessionStore` needed no change: it round-trips the record's own map. Rows written by `storeSessionRow` reach the file with the field — `WatchFileStoreTests.testS124TheLensSurvivesAStoreReopen`, and its sibling `…testS124ASessionRowWrittenBeforeTheLensReadsAsAnEmptyOne` (a row without the key decodes to an empty lens, no throw). |
+| 2 | Swift engine: write/restore/clear/replace | **done** | `WatchSessionEngine.swift`: the union is written in `storeSessionRow` (the funnel every session row passes through — Phase 2's Assumption 1 for the same reason), `restore()` seeds `deletedEntryIds` from `current`, `unhideTheIdTheSnapshotNames` is called from both the pre-row loop in `applySnapshot` (Phase 2's Assumption 2: the pre-lens clear, because the row appended by the snapshot is what `restore()` reads) and `storeSnapshotEntry`; `heldPayload` + `sameStamp` discriminate a merge (equal `loggedAt`, and the id leaves `replacedEntryIds`) from a replacement (differing `loggedAt` → `entryCorrections[entryId] = entry` and `replacedEntryIds.insert`); `projectedEntries` carries the replacement arm; `delete_entry` in `ladderAfter` and `pruneConfirmed` both drop the id from `replacedEntryIds`. |
+| 3 | Swift S-124, S-125, S-126 | **done** | 8 new tests, `+8` over the baseline. `WatchSessionEngineTests`: `…testS124ADeletionSurvivesAWristRelaunch`, `…testS124TheLensRidesOnTheRowsWrittenAfterIt`, `…testS125AReUsedNumberShowsTheNewEntrysOwnFields`, `…testS125AnIdTheWristNeverHeldIsShownByASnapshot`, `…testS35AReStatementOfADeletedIdStaysDeleted`, `…testS126AForeignDeleteIsRefusedAndARepeatIsANoOp`; `WatchFileStoreTests`: `…testS124ASessionRowWrittenBeforeTheLensReadsAsAnEmptyOne`, `…testS124TheLensSurvivesAStoreReopen`. `swift-test` `333 tests / 0 failures` (baseline 325 / 0). |
+| 4 | PROTOCOL amendment (dated) | **done** | `watch/sync_protocol/PROTOCOL.md`: one appended version-history row, `\| 1 (amended) \| 2026-10-07 \|`, carrying the three rules (a `delete_entry` names the entry's own id; a snapshot clears a deletion for any entry it carries **except** one the wrist holds at the same `loggedAt`; an entry whose `loggedAt` differs replaces the held one) and naming the 13 tests that pin them (8 Swift + 5 Dart). No schema, validator, fixture or contract JSON changed — the wire's shape is unchanged, which is why the amendment is a history row and not a version bump (D-118). |
+| 5 | `docs/watch_session_sync.md` rule + D-117 sentences + size | **done** | The delete bullet (`A delete does not reach the wrist`) is now the rule and names `S-120` (`test/watch_session_auto_push_test.dart`), `S-124`/`S-125` (`test/watch_session_engine_test.dart`) and `S-35`; the "What does not come back" tail states the deletion lens is **durable** while corrections stay memory-only and no observation row is ever deleted; D-117's two statements are one new bullet — a skipped set is not sent, and a set's weight rides as its total (size row above). |
+| 6 | `docs/state_management/watch_surface.md` + Progress | **done** | Two new invariants: a deletion is announced and lands before the snapshot that drops the row (S-120, S-126), and the ledger is memory-only while the lens is durable (S-124 ×2, `WatchFileStoreTests.testS124…Reopen`, S-35). The item's "add S-127's doc conformance note to `docs_indexing_contract_test.dart`'s area **if that test enumerates doc claims**" was checked: it enumerates none (it walks `docs/` for size, reachability, relative links, hex literals and flow walkthroughs — never claims), so no change was made there and S-127 stays the reviewer's. |
+
+### Mutation proofs (item 5's and item 3's guards)
+
+`prove-red` is unusable for this phase: the new tests exercise API that does not exist at the base
+commit (`deletedEntryIds`, `withDeletedEntryIds`), so they cannot compile without the change. The brief
+sanctions mutations instead. Each mutation was applied alone, run, then **restored exactly** — the
+final `git-diff --stat` lists only the 4 intended Swift files (`+477 / −1` over the phase's own edits,
+no stray file), and `swift-test` was re-run green after the last restore.
+
+| # | Guard | Original line | Mutated to | Verdict |
+|---|---|---|---|---|
+| a | the lens is durable across a relaunch (S-124) | `deletedEntryIds = Set(current?.deletedEntryIds ?? [])` (`WatchSessionEngine.swift`, `restore()`) | `deletedEntryIds = []` | **RED** — `testS124` **2 failures / 4 executed**: `…ADeletionSurvivesAWristRelaunch` `XCTAssertEqual failed: (["entry-bench-1", "entry-bench-2"]) is not equal to (["entry-bench-2"])` (`WatchSessionEngineTests.swift:516`) and `…TheLensRidesOnTheRowsWrittenAfterIt` (same assertion, `:563`) — the relaunch reads both sets back |
+| b | a snapshot re-stating a dead id at a **new** stamp replaces instead of merging (S-125) | `held != nil && !Self.sameStamp(held["loggedAt"], entry["loggedAt"])` | `held != nil && Self.sameStamp(...)` | **RED** — `testS125` **2 failures / 2 executed**: `XCTAssertNil failed: "60.0"` (`:620`) and `XCTAssertNil failed: "8"` (`:625`) — the dead set's `loadKg` and `reps` survive into the new set, i.e. the merge branch is what the replacement arm exists to avoid |
+| c | every session row — lifecycle rows included — carries the lens, not only the structure-change row (Phase 3 item 2, Phase 2 Assumption 1) | the union loop in `storeSessionRow` over `entryMaps` | the same loop skipping lifecycle kinds | **RED** — `testS124` **1 failure / 4 executed**, and it is `…TheLensRidesOnTheRowsWrittenAfterIt` (`:563`) alone: the ordinary relaunch case still answers with the older row's lens, which is exactly the fixturing difference between the two cases |
+| d | the tombstone survives a re-statement the wrist already holds (D-113.2 scoped; Phase 2 Assumption 3) | `if held != nil && Self.sameStamp(held["loggedAt"], entry["loggedAt"]) { return }` in `unhideTheIdTheSnapshotNames` | return removed — clear for every carried id | **RED** — **2 failures / 2 executed**: this phase's `…testS35AReStatementOfADeletedIdStaysDeleted` (`WatchSessionEngineTests.swift:708`) **and** the pre-existing twin `WatchPhoneEntriesTests.testS35AReStatementOfADeletedIdStaysDeleted` (`WatchPhoneEntriesTests.swift:202`) — the literal D-113.2 reading is what Open question 5 asks the owner to ratify |
 
 Done Criteria run (then the full suite):
 
@@ -209,15 +226,45 @@ Done Criteria run (then the full suite):
 .github/copilot/scripts/macos/gateway.sh test
 ```
 
-Final counts vs baseline: `<fill in — full flutter test and swift test, compared row by row with the
-Baselines table>`.
+```
+gateway: test (timeout 900s): flutter test test/docs_indexing_contract_test.dart test/watch_session_engine_test.dart test/watch_session_auto_push_test.dart test/watch_session_projection_test.dart
+00:00 +109: All tests passed!
+--- full output: .work/gateway/test-20261007-050706-52958.log
+
+gateway: swift-test
+Test Case '-[WatchSessionEngineTests.WatchSessionStartPathsTests testS082TheStartSurfaceSaysSyncAndCarriesNoAutomaticSyncLabel]' passed
+	 Executed 333 tests, with 0 failures (0 unexpected) in 1.226 (1.248) seconds
+--- full output: .work/gateway/swift-test-20261007-051010-58248.log
+
+gateway: lint
+196 issues found. (ran in 3.0s)   # 0 errors; every listed path is pre-existing — no issue in a file this phase touched
+
+gateway: test (timeout 900s): flutter test
+01:40 +4042 ~1: All tests passed!
+--- full output: .work/gateway/test-20261007-050725-53168.log
+
+invariant: grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core  →  nothing (I-2 holds)
+```
+
+Final counts vs baseline:
+
+| Check | This phase's run | Baselines table | Verdict |
+|---|---|---|---|
+| `swift-test` | `Executed 333 tests, with 0 failures (0 unexpected)` | `325 / 0` | `+8`, all new tests the phase added; 0 failures |
+| `test` (full) | `01:40 +4042 ~1: All tests passed!` | `+4036 ~1` (Phase 1's post-change run) | `+6` over Phase 1 — Phase 2's 6 Dart tests; **no regression**, nothing red |
+| `lint` | `196 issues found.` / 0 errors | `196 issues, 0 errors` | equal; no issue in a file this phase touched |
+| invariant | `grep -rln …hive_workout_repository…` → nothing | nothing | holds (I-2) |
 
 ## Parity check (I-1)
 
+There is **no cross-stack harness** for the lens in this PR — `test/watch_reconciliation_cross_stack_test.dart`
+has no `deletedEntryIds` case (checked: no match) — so parity is asserted by mirrored tests: each Swift
+case names the Dart case it mirrors and asserts the same outcome on the same fixture shape.
+
 | Frame sequence | Dart twin `entries` | Swift twin `entries` | Equal? |
 |---|---|---|---|
-| snapshot(2 entries) → delete(1) → restore | | | |
-| snapshot(2) → delete(2) → snapshot(2 re-created under a reused id) | | | |
+| snapshot(2 entries) → delete(1) → restore | `test/watch_session_engine_test.dart` `S-124 the deleted set stays hidden across a restart` — the relaunch reports only the surviving id, with the tombstone seeded from the newest row | `WatchSessionEngineTests.testS124ADeletionSurvivesAWristRelaunch` (and `…TheLensRidesOnTheRowsWrittenAfterIt` for the row the lens rides on) — `["entry-bench-2"]`, i.e. `entry-bench-1` stays hidden | **yes** — same hidden id, same surviving id, same `restore()` source (the newest session row) |
+| snapshot(2) → delete(2) → snapshot(2 re-created under a reused id) | `S-125 the wrist shows the new set's own fields` / `S-125 an id the wrist never held is shown when a snapshot carries it` — the new payload's `loadKg`/`reps`, not the dead set's | `WatchSessionEngineTests.testS125AReUsedNumberShowsTheNewEntrysOwnFields` / `…testS125AnIdTheWristNeverHeldIsShownByASnapshot` — asserting the dead set's `loadKg` 60.0 and `reps` 8 are **absent** (mutation b is exactly those two assertions going red) | **yes** — both stacks replace on a differing `loggedAt` and merge on an equal one, and both read an id the wrist never held as a plain new entry |
 
 ## Out-of-bounds writes found by the reviewer
 

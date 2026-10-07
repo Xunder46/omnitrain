@@ -65,6 +65,12 @@ public final class WatchSessionEngine {
     private var entryCorrections: [String: [String: Any]] = [:]
     private var deletedEntryIds: Set<String> = []
 
+    /// The ids whose held row the phone **replaced** rather than corrected: its
+    /// snapshot re-stated the id with a different `loggedAt`, which is a
+    /// different entry reusing a minted number (D-113.3). A correction merges
+    /// into the held payload; a replacement is the whole payload.
+    private var replacedEntryIds: Set<String> = []
+
     /// Every observation the phone has acknowledged, by record id — including
     /// the ones pruned since. A confirmation row outlives the observation it
     /// names, which is what lets "this session's end was acknowledged" and "this
@@ -117,6 +123,10 @@ public final class WatchSessionEngine {
                 .filter { $0.recordId.hasPrefix(Self.changePrefix) }
                 .map { String($0.recordId.dropFirst(Self.changePrefix.count)) }
         )
+
+        // D-113.1: the deletion lens is read back from the newest row, so a
+        // relaunch hides the same entries the killed process hid.
+        deletedEntryIds = Set(current?.deletedEntryIds ?? [])
     }
 
     // MARK: - Session state
@@ -199,6 +209,12 @@ public final class WatchSessionEngine {
             .map { observation in
                 guard let correction = entryCorrections[observation.entryId] else {
                     return observation
+                }
+                // D-113.3: a re-stated id with a new stamp **is** the whole
+                // entry, so the held row's keys it does not carry are gone with
+                // it.
+                if replacedEntryIds.contains(observation.entryId) {
+                    return observation.withPayload(correction)
                 }
                 return observation.withPayload(
                     observation.payload.merging(correction) { _, corrected in corrected }
@@ -478,6 +494,13 @@ public final class WatchSessionEngine {
             return false
         }
 
+        // D-113.2: an entry the snapshot carries exists, so its tombstone is
+        // cleared — here, before the row that records this state is written,
+        // since that row is what `restore` reads the lens back from.
+        for entry in entryMaps {
+            unhideTheIdTheSnapshotNames(entry)
+        }
+
         // A phone snapshot can be what ends a session the wrist created; its
         // end is the moment the phone sent it (D-120).
         await captureSessionEnd(sessionId, status: status, endedAt: sentAt)
@@ -753,11 +776,33 @@ public final class WatchSessionEngine {
     /// log stays append-only, so re-stating a set the phone edited neither
     /// rewrites the row nor doubles it. The phone, receiving, keeps the first
     /// value it stored for an id it holds; only the wrist re-states.
+    ///
+    /// A re-stated id whose `loggedAt` **differs** is a different entry wearing
+    /// a reused number, and replaces the held one outright (D-113.3). An id a
+    /// deletion had hidden is shown again, because the phone saying it is there
+    /// outranks the phone having said it was gone (D-113.2) — unless the
+    /// snapshot only repeats the entry the wrist already holds, stamp and all.
     private func storeSnapshotEntry(_ sessionId: String, _ entry: [String: Any]) async {
         guard let entryId = entry["entryId"] as? String else { return }
+        // D-113.2: the phone is the structure authority, so an entry its
+        // snapshot carries exists — whatever this watch was told about that id
+        // before.
+        unhideTheIdTheSnapshotNames(entry)
         if storedObservations.contains(where: { $0.recordId == entryId }) {
+            if let held = heldPayload(entryId),
+               !Self.sameStamp(held["loggedAt"], entry["loggedAt"]) {
+                // D-113.3: the phone mints the highest number + 1, so deleting
+                // the newest set of a slot and logging another reuses its id for
+                // a different entry. A merge would keep a field the new entry
+                // does not carry — the dead entry's Load. The correction is the
+                // whole entry.
+                entryCorrections[entryId] = entry
+                replacedEntryIds.insert(entryId)
+                return
+            }
             entryCorrections[entryId] = (entryCorrections[entryId] ?? [:])
                 .merging(entry) { _, corrected in corrected }
+            replacedEntryIds.remove(entryId)
             return
         }
 
@@ -776,10 +821,55 @@ public final class WatchSessionEngine {
         storedObservations.append(row)
     }
 
+    /// Shows `entry`'s id again — the tombstone it carried no longer stands —
+    /// when this snapshot entry outranks what the wrist holds (D-113.2).
+    ///
+    /// The phone is the structure authority, so an id its snapshot carries
+    /// exists — but a snapshot entry that only repeats the row the wrist already
+    /// holds, stamp and all, is the stale answer D-115 says the phone stops
+    /// sending, and the deletion the wrist was told about is newer than it: the
+    /// tombstone stays, and the projection keeps hiding the id. An id the wrist
+    /// holds no row for, or one whose `loggedAt` differs — D-113.3's
+    /// replacement — is the phone saying something new, and is shown again.
+    private func unhideTheIdTheSnapshotNames(_ entry: [String: Any]) {
+        guard let entryId = entry["entryId"] as? String else { return }
+        if let held = heldPayload(entryId), Self.sameStamp(held["loggedAt"], entry["loggedAt"]) {
+            return
+        }
+        deletedEntryIds.remove(entryId)
+    }
+
+    /// The payload `entries` shows for `entryId` right now, before any deletion
+    /// — the held row with the phone's correction folded in, or nil when the
+    /// wrist holds no row for it.
+    private func heldPayload(_ entryId: String) -> [String: Any]? {
+        for row in storedObservations where row.recordId == entryId {
+            guard let correction = entryCorrections[entryId] else { return row.payload }
+            return row.payload.merging(correction) { _, corrected in corrected }
+        }
+        return nil
+    }
+
+    /// Whether two wire `loggedAt` stamps name the same instant.
+    private static func sameStamp(_ a: Any?, _ b: Any?) -> Bool {
+        if a == nil, b == nil { return true }
+        guard let a = a as? String, let b = b as? String else { return false }
+        return a == b
+    }
+
     /// Writes a row a message produced, without announcing it back to the phone:
     /// the phone is the author of the news.
     private func storeSessionRow(_ row: WatchSessionRecord) async {
-        let stored = await store.append(.session(row))
+        // Every row carries the lens as it stands, not only the row a structure
+        // change writes: a lifecycle row appended after a delete would otherwise
+        // be the newest one, and `restore` would read an empty lens back from it
+        // (D-113.1).
+        var carried = row.deletedEntryIds
+        for id in deletedEntryIds.sorted() where !carried.contains(id) {
+            carried.append(id)
+        }
+
+        let stored = await store.append(.session(row.withDeletedEntryIds(carried)))
         current = mirrored(stored.sessionRow ?? row)
     }
 
@@ -855,6 +945,7 @@ public final class WatchSessionEngine {
             case "delete_entry":
                 let entryId = change["entryId"] as? String ?? ""
                 entryCorrections.removeValue(forKey: entryId)
+                replacedEntryIds.remove(entryId)
                 deletedEntryIds.insert(entryId)
             default:
                 continue
@@ -1584,6 +1675,7 @@ public final class WatchSessionEngine {
         // the same id is re-carried.
         for recordId in dropped {
             entryCorrections.removeValue(forKey: recordId)
+            replacedEntryIds.remove(recordId)
             deletedEntryIds.remove(recordId)
         }
         return pruned

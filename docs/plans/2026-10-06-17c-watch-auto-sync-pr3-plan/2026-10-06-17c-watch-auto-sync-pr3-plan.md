@@ -488,31 +488,31 @@ reason).
 
 ### Phase 3: The Swift twin, the contract and the docs (@developer)
 
-1. [ ] Add `deletedEntryIds` to `WatchSessionRecord`
+1. [x] Add `deletedEntryIds` to `WatchSessionRecord`
    (`watch/watchos/Sources/WatchSessionEngine/WatchRecords.swift`), defaulted, carried through its
    `Codable`/map round trip and the file store
    (`watch/watchos/Sources/WatchSessionEngine/FileWatchSessionStore.swift`). ·
    `WatchSessionRecord`, `FileWatchSessionStore`
-2. [ ] Mirror Phase 2's three rules in `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`:
+2. [x] Mirror Phase 2's three rules in `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`:
    `applyStructureChange` writes the union onto the appended session row; `restore()` seeds
    `deletedEntryIds` from the newest row; `storeSnapshotEntry` clears the tombstone for a carried id
    and replaces (rather than merges) when `loggedAt` differs. ·
    `WatchSessionEngine:applyStructureChange`, `WatchSessionEngine:restore`,
    `WatchSessionEngine:storeSnapshotEntry`
-3. [ ] Add the Swift halves of S-124, S-125 and S-126 to
+3. [x] Add the Swift halves of S-124, S-125 and S-126 to
    `watch/watchos/Tests/WatchSessionEngineTests/` (the engine suite and the file-store suite): a
    restart over the same store keeps the deletion, a reused id shows the new entry's own fields, and a
    foreign session's delete is refused. · `WatchSessionEngineTests`, `WatchFileStoreTests`
-4. [ ] Add one dated paragraph to `watch/sync_protocol/PROTOCOL.md` (D-118): the phone may delete an
+4. [x] Add one dated paragraph to `watch/sync_protocol/PROTOCOL.md` (D-118): the phone may delete an
    entry by `delete_entry` naming the entry's own id; a snapshot clears a deletion for any entry it
    carries; a snapshot entry whose `loggedAt` differs replaces the held one. · `watch/sync_protocol/PROTOCOL.md`
-5. [ ] Rewrite `docs/watch_session_sync.md`'s "A delete does not reach the wrist" bullet (line 339)
+5. [x] Rewrite `docs/watch_session_sync.md`'s "A delete does not reach the wrist" bullet (line 339)
    as the rule, naming the tests of S-120/S-124/S-125; add the one sentence that the **deletion lens**
    is persisted on the session row (keeping the "no observation row is ever deleted" sentence true);
    add D-117's plain statements ("a set you skip on the phone is not sent to the watch"; "a set's
    added weight is reported as the set's total, not separately"). Record the file's size. ·
    `docs/watch_session_sync.md`
-6. [ ] Add the two sentences of D-118 to `docs/state_management/watch_surface.md` (the push announces
+6. [x] Add the two sentences of D-118 to `docs/state_management/watch_surface.md` (the push announces
    deletions; the ledger is memory-only while the lens is durable), add S-127's doc conformance note
    to `test/docs_indexing_contract_test.dart`'s area if that test enumerates doc claims (read it
    first), and write Progress + the evidence table for this phase. ·
@@ -602,7 +602,14 @@ never sent to the phone (the wrist has no delete sender, and no rule here adds o
   - [x] 4 `_storeSnapshotEntry` clears the tombstone for a carried id (scoped — see the Assumption Log) and replaces the whole entry when `loggedAt` differs; `entries` folds the two arms differently
   - [x] 5 S-124 ×2, S-125 ×2, S-126 (second half) added; `watch_session_engine_test.dart` 36 passed / 0 failed
   - [x] 6 regression: four suites 141 passed / 0 failed, engine + projection 68 passed / 0 failed, full suite `+4042 ~1`, lint 196/0, I-2 clean; evidence + Progress below
-- [ ] Phase 3 — the Swift twin, PROTOCOL, docs
+- [x] Phase 3 — the Swift twin, PROTOCOL, docs — **Complete** (developer, 2026-10-07; base `c4e29e5`)
+  - [x] 1 `WatchSessionRecord.deletedEntryIds` — field, init default, `withSequence`, `withDeletedEntryIds`, `toJson`/`fromJson`; the file store round-trips it unchanged
+  - [x] 2 the three rules in `WatchSessionEngine` — union written in `storeSessionRow` (the row funnel), `restore()` seeds, `unhideTheIdTheSnapshotNames` + `sameStamp` clear/merge/replace, `delete_entry` and `pruneConfirmed` drop the replaced id
+  - [x] 3 the Swift halves of S-124 (×2 engine, ×2 file store), S-125 (×2), S-126 and S-35's stale re-statement; `swift test` 333 / 0 (baseline 325 / 0)
+  - [x] 4 `PROTOCOL.md` — one dated `1 (amended) | 2026-10-07` version-history row; no schema, validator or fixture change
+  - [x] 5 `docs/watch_session_sync.md` — the delete bullet is the rule, the lens is durable, D-117's two statements; four mutation proofs in the evidence file (`prove-red` cannot compile the new API at the base commit)
+  - [x] 6 `docs/state_management/watch_surface.md` — the two D-118 invariants and the stale S-35 pointer; the docs contract test enumerates no claims, so S-127 stays the reviewer's; evidence + this Progress
+  - [x] checks — four suites `+109`, full `test` `+4042 ~1`, `lint` 196 issues / 0 errors, invariant clean; the two unscheduled Swift suites (`WatchPhoneEntriesTests`, `WatchFileStoreTests`) are covered by the full `swift-test` run
 
 ## Assumption Log
 
@@ -662,6 +669,35 @@ Phase 2 (developer, 2026-10-07). Each entry: decision / options considered / why
    delete only reaches the *composed* session (the ledger is keyed by composed id, and a pass
    composing nothing returns before it announces), so a mirror-level delete alone cannot shrink the
    held set. Recorded because it is the only fixture that discriminates the ledger drop.
+
+Phase 3 (developer, 2026-10-07). Each entry: decision / options considered / why.
+
+1. **The union is written in `storeSessionRow`, not on the structure-change row alone.** Options: item
+   2's literal "the structure-change row", or the one funnel every session row passes through. Chose
+   the funnel, matching Phase 2's Assumption 1 and for the same reason: `restore()` seeds from the
+   *newest* row, so a lifecycle row appended after an ordinary frame would otherwise answer an empty
+   lens. Mutation c isolates that case.
+2. **D-113.2's scoped reading was carried into Swift unchanged.** Options: the literal rule (clear for
+   every carried id) or Phase 2's scoped one (clear only when the wrist holds no row for the id or the
+   `loggedAt` differs). Chose scoped: the literal reading turns the pre-existing
+   `WatchPhoneEntriesTests.testS35AReStatementOfADeletedIdStaysDeleted` red as well as this phase's
+   twin (mutation d), and Open question 5's default is the scoped rule. Reversible in one predicate
+   across both twins if the owner rules the other way.
+3. **A third doc was implicated by Phase 1's rename.** `docs/watch-app-setup-and-qa.md:384` still read
+   "Deleting a set on the phone is **not** carried" — false since Phase 1 — and named the pre-rename
+   test. Fixed in two lines (the pointer plus the outcome). Outside the phase's Predicted Files;
+   `docs/state_management/watch_surface.md:88` and `docs/watch_session_sync.md:91` carried the same
+   stale pointer and were fixed while those files were already open.
+4. **D-117's "added weight" sentence is written as structure, not as an unverified behaviour claim.**
+   No test pins the absence of `extraLoadKg` on a set's entry (the field is the hold/drill path's, and
+   the closest assertions only *show* it on a hold/drill), and the doc standard forbids a behaviour
+   sentence with no test behind it. The bullet therefore names the file that owns the field, and points
+   the one assertion it does make — a set's total rides `loadKg` verbatim and a rep-less row is left
+   out — at `S-59 …omits only the row without reps`.
+5. **`prove-red` is unusable this phase; four mutations are the proof.** The new tests exercise API
+   that does not exist at the base commit, so they cannot compile at `HEAD` and a red would mean
+   nothing. Each of the four guards was mutated alone, run, restored exactly (`git-diff --stat` back to
+   the phase's own 4 Swift files), and re-run green; the verdicts are in the evidence file.
 
 ## Feedback
 

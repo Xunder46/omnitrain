@@ -468,6 +468,311 @@ final class WatchSessionEngineTests: XCTestCase {
         )
     }
 
+    // MARK: - D-113 the durable deletion lens, and a snapshot's answer
+
+    /// A phone `set` entry as the wire carries it, with no load and no reps —
+    /// what a re-created bodyweight set wears.
+    private func bodyweightEntry(_ entryId: String, at loggedAt: String) -> [String: Any] {
+        [
+            "entryId": entryId,
+            "eventId": entryId,
+            "kind": "set",
+            "loggedAt": loggedAt,
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-sx-bench",
+        ]
+    }
+
+    func testS124ADeletionSurvivesAWristRelaunch() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s124-1",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-1",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["entry-bench-2"],
+            "S-124 the phone's deletion hides the set while the wrist runs"
+        )
+
+        let relaunched = await harness.runningEngine()
+
+        XCTAssertEqual(
+            relaunched.entries.map(\.entryId),
+            ["entry-bench-2"],
+            "S-124 the lens is read back from the newest session row: a wrist "
+                + "relaunch does not resurrect the deleted set"
+        )
+        XCTAssertEqual(
+            relaunched.observations.map(\.entryId),
+            ["entry-bench-1", "entry-bench-2"],
+            "I-3 the row is still stored — the lens hides it, nothing deletes it"
+        )
+    }
+
+    func testS124TheLensRidesOnTheRowsWrittenAfterIt() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s124-2",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-1",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+        // An ordinary frame after the delete: the newest row must still know.
+        _ = try await engine.applyMessage(
+            lifecycleFrame(
+                harness.sessionId,
+                messageId: "msg-life-s124",
+                state: WatchLifecycleState.exerciseAdvanced,
+                exerciseIndex: 0
+            )
+        )
+
+        let relaunched = await harness.runningEngine()
+
+        XCTAssertEqual(
+            relaunched.entries.map(\.entryId),
+            ["entry-bench-2"],
+            "S-124 the deletion is carried onto every later session row, so the "
+                + "newest one still speaks for it"
+        )
+    }
+
+    func testS125AReUsedNumberShowsTheNewEntrysOwnFields() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s125-1",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "entry-bench-2" }?.payload["loadKg"] as? Double,
+            60,
+            "the fixture: the wrist holds the set the phone is about to reuse"
+        )
+
+        // The phone deletes the newest set of the slot and logs another one,
+        // which its mint (highest number + 1) numbers `entry-bench-2` again —
+        // this time a bodyweight set with no load and no reps.
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-2",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-2"]]
+            )
+        )
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s125-2",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    bodyweightEntry("entry-bench-2", at: "2026-07-13T06:05:00Z"),
+                ]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["entry-bench-1", "entry-bench-2"],
+            "S-125 the snapshot clears the tombstone for the id it carries "
+                + "(D-113.2), and the new set sorts by its own loggedAt"
+        )
+        XCTAssertNil(
+            engine.entries.first { $0.entryId == "entry-bench-2" }?.payload["loadKg"],
+            "S-125 a differing loggedAt replaces the held entry outright: the "
+                + "deleted set's load does not survive on the new one (D-113.3)"
+        )
+        XCTAssertNil(
+            engine.entries.first { $0.entryId == "entry-bench-2" }?.payload["reps"],
+            "S-125 no field the phone did not send comes from the dead set"
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "entry-bench-1" }?.payload["loadKg"] as? Double,
+            60,
+            "S-125 the entry the snapshot re-stated unchanged keeps its values"
+        )
+    }
+
+    func testS125AnIdTheWristNeverHeldIsShownByASnapshot() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+
+        // The phone deletes an id this wrist has no row for: the frame names a
+        // set that never reached it.
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-2",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-2"]]
+            )
+        )
+        XCTAssertTrue(engine.entries.isEmpty, "the fixture: nothing is stored under that id yet")
+
+        // The phone then re-states the id as a live set — the reused number.
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s125-3",
+                exercises: [exercise("sx-bench")],
+                entries: [entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 40)]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["entry-bench-2"],
+            "S-125 a tombstone with no row behind it can never be answered for, "
+                + "so the snapshot that names the id shows it (D-113.2)"
+        )
+        XCTAssertEqual(
+            engine.entries.first?.payload["loadKg"] as? Double,
+            40,
+            "S-125 the entry shown is the phone's own, not a dead one"
+        )
+    }
+
+    func testS35AReStatementOfADeletedIdStaysDeleted() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s35-1",
+                exercises: [exercise("sx-bench")],
+                entries: [entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60)]
+            )
+        )
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "chg-delete-s35",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+        XCTAssertTrue(engine.entries.isEmpty, "the delete drops the id from the projection")
+
+        // An answer that still names the deleted id, stamp and all: the wrist
+        // holds the row, so the snapshot only repeats it — and a re-statement of
+        // a deleted id stays deleted (D-115, D-113.2).
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s35-2",
+                exercises: [exercise("sx-bench")],
+                entries: [entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60)]
+            )
+        )
+
+        XCTAssertTrue(
+            engine.entries.isEmpty,
+            "S-35 a re-statement does not resurrect a deletion: the phone owns "
+                + "the delete, and the id stays dropped"
+        )
+        XCTAssertEqual(
+            engine.observations.map(\.entryId),
+            ["entry-bench-1"],
+            "S-35 the row is not un-stored either; only the projection hides it"
+        )
+    }
+
+    func testS126AForeignDeleteIsRefusedAndARepeatIsANoOp() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s126-1",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+
+        let before = await harness.store.readAll()
+        let refused = try await engine.applyMessage(
+            structureChangeFrame(
+                "s-other",
+                changeId: "del-entry-bench-1",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+        XCTAssertFalse(refused, "D-79 a delete naming another session is refused")
+        let afterRefusal = await harness.store.readAll()
+        XCTAssertEqual(
+            afterRefusal.sessions.count,
+            before.sessions.count,
+            "S-126 a refused frame writes no session row"
+        )
+
+        let frame = structureChangeFrame(
+            harness.sessionId,
+            changeId: "del-entry-not-here",
+            changes: [["kind": "delete_entry", "entryId": "entry-not-here"]]
+        )
+        let applied = try await engine.applyMessage(frame)
+        XCTAssertTrue(applied, "the fixture: the first delivery applies")
+        let once = await harness.store.readAll()
+        let repeated = try await engine.applyMessage(frame)
+        XCTAssertFalse(repeated, "D-116 a frame re-delivered under the same changeId is a no-op")
+        let twice = await harness.store.readAll()
+
+        XCTAssertEqual(
+            twice.sessions.count,
+            once.sessions.count,
+            "S-126 the second delivery appends no row"
+        )
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["entry-bench-1", "entry-bench-2"],
+            "S-126 the held session is unchanged by either frame"
+        )
+    }
+
     // MARK: - Timer derivation
 
     func testTimerMathFollowsTheClockAcrossEveryState() throws {
