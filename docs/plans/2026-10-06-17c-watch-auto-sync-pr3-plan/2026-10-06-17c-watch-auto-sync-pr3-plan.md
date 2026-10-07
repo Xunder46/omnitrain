@@ -707,6 +707,14 @@ Phase 3 (developer, 2026-10-07). Each entry: decision / options considered / why
   Existing-Functionality Impact requires that family to stay green. Phase 2 shipped the scoped reading
   (Assumption Log 3) and is **Complete**; the planner should ratify that wording — or say the S-35
   guard is meant to flip, which is a one-predicate change (evidence mutation b).
+- **Reviewer, 2026-10-07 (round 1): CHANGES_REQUESTED.** The full findings, the guard each fix must
+  add, and the two escalations are in `2026-10-06-17c-watch-auto-sync-pr3-plan.review.md` under
+  "Code review 1". In short: (1) **blocker** — the Swift `transitionTo` writes its session row without
+  the deletion lens, so a wrist restart after a local action resurrects the deleted set (Dart is safe;
+  I-1/AC-5 fail on the twin, and four docs make a claim this falsifies); (2) **major** — AC-1's
+  `changeId: 'del-<entryId>'` cannot distinguish a second deletion of a reused id from a re-delivery,
+  so that deletion is swallowed on both stacks, and AC-1/D-116 need the planner's amendment. The
+  mechanical fixes are one bounded pass; no review → fix → review loop is proposed.
 - Otherwise empty.
 
 ## Open questions

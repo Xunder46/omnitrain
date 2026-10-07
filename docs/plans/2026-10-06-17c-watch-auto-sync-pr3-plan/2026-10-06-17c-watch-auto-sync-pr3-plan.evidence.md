@@ -270,3 +270,19 @@ case names the Dart case it mirrors and asserts the same outcome on the same fix
 
 `<reviewer fills — any file changed that is not in the phase's Predicted Files, and any predicted
 file left untouched>`
+
+**Filled 2026-10-07 (code-reviewer, review 1).**
+
+- Out of bounds, **justified**: `docs/watch-app-setup-and-qa.md` is not in any phase's Predicted
+  Files, but it carried the claim this PR makes false ("Deleting a set on the phone is **not**
+  carried"), so 4d required the edit. No other out-of-bounds write.
+- Predicted but untouched, with a stated reason: `FileWatchSessionStore.swift` and the three Dart
+  store files (`watch_session_store.dart`, `in_memory_watch_session_store.dart`,
+  `hive_watch_session_store.dart`) — the record's own map round trip already carries the field, so the
+  store needed no change. The phase's wording made those conditional ("only if the record's map round
+  trip lives there"), so this is not unfinished work.
+- **Falsified claim in this file, item 2**: "the union is written in `storeSessionRow` (the funnel
+  every session row passes through …)". `storeSessionRow` is the funnel for *message-driven* rows only;
+  `transitionTo` appends its own row directly (`WatchSessionEngine.swift:1080`) without the lens. That
+  is review finding F1, and it is why no Swift test in this phase can see the defect: every new Swift
+  fixture writes its later row from a message.
