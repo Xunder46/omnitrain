@@ -207,41 +207,138 @@ carries the one-line correction (Assumption Log 9).
 
 ## Phase 3 — docs, contract sentence, residue sweep (@developer)
 
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 1 | `docs/watch_session_sync.md` four kinds + the two omissions | | |
-| 2 | PROTOCOL dated sentence | | |
-| 3 | modality docs claim check | | |
-| 4 | residue sweep | | |
-| 5 | full suite + swift | | |
-| 6 | final table | | |
+### Item 0 — the `heldWristEntryIds` defect (found by the governor in Phase 2)
 
-Residue sweep output (paste both greps verbatim):
+Defect: for `timed`, `hold` and `round`, `heldWristEntryIds`
+(`lib/state/watch/watch_session_adoption_bridge.dart`) took
+`PhoneEntries.resolveRecordClaims(...)`'s **record** positions and applied them to `listed`, the list
+of **wrist rows** (one per stamp). A phone-logged record before the wrist's own shifted every later
+position by one, so the id read was the wrong row's or — when the wrist had fewer rows than the phone
+had records — `listed[index]` threw `RangeError`. The push pass calls this on every flush (including
+the S-123 seeding pass) and `AutoPush._pushOnce` catches `Exception` only, so the error escaped
+`flush()` and no deletion was announced again at all.
+
+Fix (one claim rule, shared by the projection and the ledger — 17c review F4): `resolveRecordClaims`
+now returns `({Set<int> records, Set<int> stamps})`, mirroring `resolveClaims` for sets; the three
+projections read `.records`, `heldWristEntryIds` reads `.stamps`.
+
+Tests (written first): `test/watch_session_adoption_bridge_test.dart`
+(`S-144 the ledger holds the row whose stamp claimed a record, not the record's position in the
+phone's list` — three slots: a timed slot with the phone's record at index 0 and the wrist's at
+index 1, a round slot of the same shape, and the counter-case with the wrist's record at index 0 and
+the phone's at index 1) and `test/watch_session_auto_push_test.dart`
+(`S-144 a phone-logged record before the wrist's own does not hide the deletion of the wrist's row` —
+a timed slot and a round slot, the phone logging first and the wrist second, both deletions announced,
+`failures` empty).
+
+prove-red, both new tests against the code without the change:
 
 ```
-grep -rn "BlockTypes.set" lib/state/watch lib/core/sync_protocol
-grep -rn "kindSet" lib/state/watch lib/data/models
+$ .github/copilot/scripts/macos/gateway.sh prove-red c3e8f22 test test/watch_session_adoption_bridge_test.dart test/watch_session_auto_push_test.dart
+RangeError (length): Invalid value: Only valid value is 0: 1
+  watch_session_adoption_bridge.dart 395:26 — WatchSessionAdoptionBridge.heldWristEntryIds
+RED AT c3e8f22 (exit 1) — 2 tests failed
+```
+
+That is the guarded defect itself, not a compile or setup error: the exception is thrown exactly where
+a record index is used as a row index, in both new tests.
+
+Green with the change:
+
+```
+$ .github/copilot/scripts/macos/gateway.sh test test/watch_session_adoption_bridge_test.dart test/watch_session_auto_push_test.dart
++55: All tests passed!
+```
+
+Mutation proof (the fix's two `resolveRecordClaims` reads, one at a time, each run against the same
+two test files, each reverted byte-exactly):
+
+| Mutation | Verdict |
+|---|---|
+| `heldWristEntryIds`'s `timed`/`hold` read back to `.records` | **RED** — `+53 -2: Some tests failed.`, both new tests fail with `RangeError (length): Invalid value: Only valid value is 0: 1` at `watch_session_adoption_bridge.dart 399:26 WatchSessionAdoptionBridge.heldWristEntryIds` |
+| `heldWristEntryIds`'s `round` read back to `.records` | **RED** — `+53 -2: Some tests failed.`, the same throw at the same line |
+| both restored | **GREEN** — `+55: All tests passed!`; `git-diff --stat` shows the file back at its 10 changed lines |
+
+The throw is the defect itself (a record index used as a row index), and each new test names the
+scenario it guards in its test name, so a regression fails by name.
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| 0 | the `heldWristEntryIds` defect, red-first | **done** | prove-red `RED AT c3e8f22` (RangeError at `:395`), `+55` green, mutation proof above |
+| 1 | `docs/watch_session_sync.md` four kinds + the two omissions | **done** | "What does not sync": the four-kinds bullet (S-140/S-141/S-142, S-145), the claim-rule bullet (D-133 + the S-144 ledger test), the omission bullet (S-143, D-132), the D-135/D-136 bullet, and the deletion bullet widened from "a set removed on the phone" to any kind (S-120, S-144 ×2, S-35). `git-diff --stat`: 39 changed lines, all inside that section. Size: see the note below |
+| 2 | PROTOCOL dated sentence | **done** | one row appended to the amendment table, `2026-10-07`, no schema/validator/version change; it names S-140/S-141/S-142/S-143/D-132/D-133, S-145, S-144 ×2 and the ledger test — every name grep-verified in its file (`watch/sync_protocol/PROTOCOL.md`, 1 changed line) |
+| 3 | modality docs claim check | **done — no claim existed, nothing changed** | grep `watch\|wrist` in `docs/modality_tracking.md` + `docs/modality_based_exercise_ui.md`: 13 hits, none says what the wrist receives (`modality_tracking.md:105–108` is start paths, `modality_based_exercise_ui.md:338–342` is the discard/ late-entry rule). Same check in `docs/watch-app-setup-and-qa.md` (`timed\|hold\|round\|non-set\|only sets`): its one kind-related sentence (`:175`, "a set, a timed hold, a round or a drill") is about the wrist's own logging surface and stays true |
+| 4 | residue sweep | **done** | both greps pasted below; every hit classified |
+| 5 | full suite + swift | **done** | final table below; no Swift production or test file changed in Phase 3, so `swift-test` was not re-run (it was 335 / 0 after Phase 2) |
+| 6 | Progress + final evidence table | **done** | plan Progress row and the final table below |
+
+Size of `docs/watch_session_sync.md`: `wc -c` is denied by policy in this run and no gateway check
+reports a file's byte size, so the number the brief quotes (~32.9 KB) stands as the base and the file's
+growth is bounded by its 39 changed lines; the ceiling that matters is enforced by
+`test/docs_indexing_contract_test.dart` (64 KiB, and the 52 KB band of `documentation_standard.md`),
+which is green in the final run below. `docs/state_management/watch_surface.md` was **not touched**
+(the brief's ~50,144 B against the 51,200 B ceiling).
+
+Residue sweep output (both greps verbatim; run with the repo's file tools since the shell is the
+gateway only):
+
+```
+BlockTypes.set in lib/state/watch, lib/core/sync_protocol
+  watch_session_adoption_bridge.dart:61:  BlockTypes.set,          ← inside `_declaredKinds` (set, timed, round, drill)
+  watch_session_adoption_bridge.dart:844: ?? BlockTypes.set;       ← the fallback kind when no modality config resolves
+
+kindSet in lib/state/watch, lib/data/models
+  models.dart:2618:  static const String kindSet = 'set';          ← the constant's definition
+  models.dart:2630:  kindSet,                                      ← inside the all-kinds list (set, timed, hold, round)
+  watch_session_inbox.dart:171: WatchInboxEntry.kindSet: ['sessionExerciseId', 'exerciseId', 'reps'],
+                                                                   ← a set row's required fields (set-specific rule)
+  watch_session_adoption_bridge.dart:71: WatchInboxEntry.kindSet,   ← inside `_claimKinds` (all four kinds)
 ```
 
 | Hit | Set-specific rule, or documented boundary? | Verdict |
 |---|---|---|
-| | | |
+| `watch_session_adoption_bridge.dart:61` (`_declaredKinds`) | boundary — the protocol's four `effortKind` values, all four listed | fine |
+| `watch_session_adoption_bridge.dart:71` (`_claimKinds`) | boundary — the four kinds a wrist row can claim a record for (D-133) | fine |
+| `watch_session_adoption_bridge.dart:844` | set-specific — the fallback kind for a slot with no modality config, unrelated to which kinds are projected | fine |
+| `models.dart:2618` / `:2630` | boundary — the constant and the list that contains all four kinds | fine |
+| `watch_session_inbox.dart:171` | set-specific — the fields a set row must carry | fine |
+
+No hit is a set-only gate on the projection, the ledger or the deletion path: `_entriesFor` dispatches
+per kind (`watch_session_adoption_bridge.dart`), the projections live per kind in
+`phone_entries.dart`, and the sweep contains no `if (kind == kindSet)`-shaped branch.
+
 
 ## Final counts vs baseline
 
-| Check | Baseline | After Phase 3 | Delta explained |
+| Check | Baseline (c3e8f22) | After Phase 3 | Delta explained |
 |---|---|---|---|
-| `.github/copilot/scripts/macos/gateway.sh test` | | | |
-| `.github/copilot/scripts/macos/gateway.sh swift-test` | | | |
-| `.github/copilot/scripts/macos/gateway.sh lint` | | | |
+| `.github/copilot/scripts/macos/gateway.sh test` (full) | `+4057 ~1: All tests passed!` | **`+4059 ~1: All tests passed!`** (exit 0, 1:42) | +2: item 0's two S-144 tests (`watch_session_adoption_bridge_test.dart`, `watch_session_auto_push_test.dart`); the `~1` skip is the same pre-existing one |
+| `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues / 0 errors (exit 1: the pre-existing info notices) | **196 issues / 0 errors** (exit 1, same notices) | none — a grep of the log for `phone_entries`, `watch_session_adoption_bridge`, `watch_session_auto_push` finds no hit, so no issue names a file this phase touched |
+| `… test test/docs_indexing_contract_test.dart` | green | **`+9: All tests passed!`** | the doc pass; includes "no documentation file is within the warning band of the ceiling" (the 52 KB band), "no document carries a step-by-step flow walkthrough" and "every relative link resolves" |
+| `.github/copilot/scripts/macos/gateway.sh swift-test` | 335 tests / 0 failures (after Phase 2) | **335 tests / 0 failures** (exit 0) | no `.swift` file changed in Phase 3 (`git-diff --stat` lists no `watch/watchos/**`), so the count is unchanged. Run anyway: the plan's Phase 3 Done Criteria names it. `xcodebuild` / a watchOS simulator stays out of scope for this role |
+| invariant: `import .*hive_workout_repository` in `lib/{state,features,widgets,core}` | none | **none** | — |
+
+Residue: no mutation was left applied. After the restore, `gateway.sh test` on the two S-144 files is
+`+55: All tests passed!` and `git-diff --stat` shows `watch_session_adoption_bridge.dart` back at its
+10 changed lines (the pre-mutation figure), with `phone_entries.dart` at 37. No scratch file was
+created.
 
 ## Parity check (I-1)
 
+I-1 wants the same payload from either store. The only per-store **payload** dump is for sets:
+`test/watch_session_projection_test.dart:2178` runs `S-31 both stores project the same entries` once
+per harness (`harnessFactories`) and compares `parity[harness.name] = jsonEncode(payload)` across the
+two stores. The three sequences below run on the Mock twin only — that file's `repository` is
+`MockWorkoutRepository()` (`:584`) and the S-140…S-143 group does not re-run per store — so their
+payload-level equality is *inferred* from row-level parity (`test/watch_capture_repository_parity_test.dart`,
+Hive ↔ Mock value-for-value) plus the projection being a pure read of those rows. It was **not
+separately observed**, and nothing in Phase 1–3 added a per-store dump for the new kinds.
+
 | Frame sequence | `HiveWorkoutRepository` payload | `MockWorkoutRepository` payload | Equal? |
 |---|---|---|---|
-| one `timed` instance | | | |
-| one `round` instance with pauses | | | |
-| one `hold` instance with an added weight | | | |
+| one `timed` instance | not dumped | `S-140 a phone timed entry reaches the wrist` | not separately observed |
+| one `round` instance with pauses | not dumped | `S-141 a round and a hold carry their own fields` | not separately observed |
+| one `hold` instance with an added weight | not dumped | `S-141 a round and a hold carry their own fields` | not separately observed |
 
 ## Out-of-bounds writes found by the reviewer
 

@@ -25,6 +25,7 @@
 //   S-122 an entry the wrist logged, imported and deleted → `S-122 ...`
 //   S-123 the first pass announces nothing (negative guard) → `S-123 ...`
 //   S-144 a timed, hold or round entry deleted on the phone → `S-144 ...`
+//   S-144 the record order does not shift the announced row → `S-144 the record order ...`
 //   S-126 another session's deletion changes nothing   → `S-126 ...`
 //   D-114 leaving a session and coming back re-seeds its ledger → `D-114 ...`
 //   F4 a flush never leaks and never announces twice   → `F4 ...`
@@ -2215,6 +2216,126 @@ void main() {
           reason:
               'I-3 the wrist\'s own rows are hidden, never deleted from the '
               'append-only log',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  // 17d Phase 3 item 0: a phone-logged record can stand before the record the
+  // importer wrote for a wrist row. The row's stamp still claims it, but the
+  // claim's answer is a position in the record list, not in the row list —
+  // read as a row index it names the wrong row, or throws a RangeError at the
+  // push pass and announces nothing at all (S-144).
+  group('S-144 the record order does not shift the id a deletion names', () {
+    test(
+      'S-144 a phone-logged record before the wrist\'s own does not hide the '
+      'deletion of the wrist\'s row',
+      () async {
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(
+              _firstSlot,
+              'ex-plank',
+              'Plank',
+              ['time'],
+              effortKind: 'timed',
+            ),
+            _slot(
+              _secondSlot,
+              'ex-burpee',
+              'Burpees',
+              ['rounds'],
+              effortKind: 'round',
+            ),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          phoneState.currentSession?.id,
+          's-1',
+          reason: 'the fixture: the phone adopted the wrist\'s session',
+        );
+
+        // The phone logs its own entry on both slots before the wrist logs on
+        // them, so each imported record stands after a phone-logged one
+        // (entryIndex 1).
+        await phoneState.addTimedEntry(_firstSlot, targetDurationSecs: 60);
+        await phoneState.startTimedEntry(_firstSlot, 0);
+        await phoneState.finishTimedEntry(_firstSlot, 0);
+        await phoneState.addRound(_secondSlot);
+        await phoneState.startRound(_secondSlot, 0);
+        await phoneState.completeRound(_secondSlot, 0);
+
+        Future<void> wristLogs(Map<String, Object?> entry) async {
+          await engine.appendObservation(entry);
+          await radio.fromWrist(wristFrames.last);
+          await _settle();
+        }
+
+        await wristLogs(<String, Object?>{
+          'entryId': _wristTimedEntryId,
+          'eventId': _wristTimedEntryId,
+          'kind': 'timed',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _firstSlot,
+          'exerciseId': 'ex-plank',
+          'startedAt': _atIso(1),
+          'endedAt': _atIso(2),
+        });
+        await wristLogs(<String, Object?>{
+          'entryId': _wristRoundEntryId,
+          'eventId': _wristRoundEntryId,
+          'kind': 'round',
+          'loggedAt': _atIso(4),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-burpee',
+          'startedAt': _atIso(3),
+          'endedAt': _atIso(4),
+          'roundNumber': 1,
+        });
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'S-123 the first pass seeds its ledger from what the phone holds '
+              'and announces nothing',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'the seed pass reads each wrist row\'s own record',
+        );
+
+        // Each delete removes the record the wrist's row imported — the slot's
+        // last, so the phone's own record keeps its entry id.
+        await phoneState.deleteTimedEntry(_firstSlot, 1);
+        await phoneState.deleteRound(_secondSlot, 1);
+        await graph.autoPush.flush();
+
+        final frames = radio.ofType('structure_change');
+        expect(
+          frames,
+          hasLength(2),
+          reason:
+              'S-121 one frame per vanished entry: the two imported records '
+              'are gone and each row they claimed is announced',
+        );
+        expect(
+          _sorted(<String>[
+            for (final frame in frames)
+              _objects(_payload(frame)['changes']).single['entryId']!
+                  as String,
+          ]),
+          _sorted(<String>[_wristTimedEntryId, _wristRoundEntryId]),
+          reason:
+              'S-144 each deletion names the row whose stamp claimed the '
+              'deleted record, wherever that record sat in the phone\'s list',
         );
         expect(failures, isEmpty);
       },

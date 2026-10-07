@@ -395,26 +395,32 @@ restored).
 
 ### Phase 3: Docs, the contract sentence, and the residue sweep (@developer)
 
-1. [ ] Rewrite `docs/watch_session_sync.md`'s "Only sets are carried" bullet (lines 328–338) to list the
+1. [x] Rewrite `docs/watch_session_sync.md`'s "Only sets are carried" bullet (lines 328–338) to list the
    four kinds and what each carries, naming the tests of S-140/S-141, and restate D-135/D-136 in plain
    words (one sentence each) with the test that proves each. Also widen the deletion bullet (`:348`)
    from "a set removed on the phone" to any kind, naming `S-144` (Assumption Log 9). Record the file's
-   size. · `docs/watch_session_sync.md`
-2. [ ] Add one dated sentence to `watch/sync_protocol/PROTOCOL.md`: which entry kinds the phone
+   size. · `docs/watch_session_sync.md` — done: the four kinds and what each carries (S-140/S-141/S-142/
+   S-143 tests named), one sentence each for D-135/D-136 with their test, the deletion bullet widened to
+   any kind naming S-144. The size is not measurable with this role's tools (`wc -c` is denied), so the
+   ceiling guard is `test/docs_indexing_contract_test.dart`, green (`+9`).
+2. [x] Add one dated sentence to `watch/sync_protocol/PROTOCOL.md`: which entry kinds the phone
    projects and from which record, with the id rule of D-131 (no schema change — the shapes already
    exist). · `watch/sync_protocol/PROTOCOL.md`
-3. [ ] If `docs/modality_tracking.md` or `docs/modality_based_exercise_ui.md` claims the wrist only
+3. [x] If `docs/modality_tracking.md` or `docs/modality_based_exercise_ui.md` claims the wrist only
    receives sets, correct that sentence in the same pass; otherwise record the read that proves no
-   such claim exists. · `docs/modality_tracking.md`, `docs/modality_based_exercise_ui.md`
-4. [ ] Residue sweep: run
+   such claim exists. · `docs/modality_tracking.md`, `docs/modality_based_exercise_ui.md` — no such
+   claim exists (read recorded in the evidence file); neither file was changed.
+4. [x] Residue sweep: run
    `grep -rn "BlockTypes.set" lib/state/watch lib/core/sync_protocol` and
    `grep -rn "kindSet" lib/state/watch lib/data/models` and paste both outputs in the evidence file;
    every remaining hit must be either a set-specific rule or documented as a boundary. ·
    the evidence file
-5. [ ] Full-suite gate: `.github/copilot/scripts/macos/gateway.sh test` (900 s) and
+5. [x] Full-suite gate: `.github/copilot/scripts/macos/gateway.sh test` (900 s) and
    `.github/copilot/scripts/macos/gateway.sh swift-test`; compare both counts against the baseline
-   recorded in the evidence file (do not assume the brief's numbers). · the evidence file
-6. [ ] Write Progress + the final evidence table and hand the plan to the reviewer. · the evidence file
+   recorded in the evidence file (do not assume the brief's numbers). · the evidence file — `+4059 ~1:
+   All tests passed!` against the baseline `+4057 ~1` (+2 = the two S-144 tests), `swift-test` 335/0 =
+   baseline, lint 196 issues / 0 errors = baseline (no issue names a touched file).
+6. [x] Write Progress + the final evidence table and hand the plan to the reviewer. · the evidence file
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh lint`;
 `.github/copilot/scripts/macos/gateway.sh test` (full, 900 s);
@@ -482,7 +488,17 @@ added weight stay off the wire by decision (D-135/D-136).
   D-134); two Phase-1 pins (D-133/D-132) in `test/watch_session_projection_test.dart`; regressions
   92 passed/0 failed; edited files 114 passed/0 failed. Evidence:
   `2026-10-07-17d-watch-auto-sync-pr4-plan.evidence.md`.
-- [ ] Phase 3 — docs, contract sentence, residue sweep
+- [x] Phase 3 — docs, contract sentence, residue sweep — **Complete**: (item 0) defect fixed —
+  `resolveRecordClaims` now returns `({Set<int> records, Set<int> stamps})` and `heldWristEntryIds`
+  reads `.stamps` (`watch_session_adoption_bridge.dart`), so a phone `timed`/`hold`/`round` row no
+  longer indexes the wrist's row list; two S-144 tests, prove-red **RED AT `c3e8f22`** (`RangeError
+  (length): … watch_session_adoption_bridge.dart 395:26`) then `+55`; (items 1–4) the four-kinds,
+  claim-rule, omission and D-135/D-136 bullets plus the widened deletion bullet in
+  `docs/watch_session_sync.md`, one dated amendment row in `watch/sync_protocol/PROTOCOL.md`, the
+  index doc's delete/17c/17d status cells, no stale modality-doc claim, residue sweeps clean;
+  (item 5) full suite `+4059 ~1: All tests passed!`, lint 196 issues/0 errors = baseline (no issue
+  names a touched file), `swift-test` 335/0 = baseline, `docs_indexing_contract_test.dart` `+9`. Evidence:
+  `2026-10-07-17d-watch-auto-sync-pr4-plan.evidence.md`.
 
 ## Assumption Log
 
@@ -520,6 +536,14 @@ added weight stay off the wire by decision (D-135/D-136).
 9. **Phase 3's doc pass must widen the deletion bullet too** (`docs/watch_session_sync.md:348`): after
    Phase 2 an entry of any kind deleted on the phone is announced, and `S-144` is the test that names
    it. Phase 2 did not edit that file (not in its Predicted Files). RATIFY?
+10. **`docs/watch_session_sync.md`'s size could not be measured** (brief item 1's "record the file's
+   size"): this role's shell is the gateway only and it has no size check, `wc -c` is denied. The
+   recorded guard is therefore `test/docs_indexing_contract_test.dart` (64 KiB ceiling, 52 KB warning
+   band, both green) plus the footprint: 39 changed lines in the file. RATIFY?
+11. **The evidence file's I-1 parity table is filled as "not separately observed"** for the three new
+   sequences: no per-store payload dump exists for `timed`/`round`/`hold` (the S-31 dump is sets-only),
+   so payload equality there is inferred from row-level Hive ↔ Mock parity plus the pure-read
+   projection. A per-store dump for the new kinds is a follow-up, not Phase 3 work. RATIFY?
 
 ## Feedback
 

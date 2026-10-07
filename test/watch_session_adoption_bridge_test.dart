@@ -24,6 +24,11 @@
 // claims are read in one pass over a slot's stamps.
 //   F4 two rows of one slot sharing a stamp hold one id → `F4 ...`
 //
+// Plan: `docs/plans/2026-10-07-17d-watch-auto-sync-pr4-plan/2026-10-07-17d-watch-auto-sync-pr4-plan.md`,
+// Phase 3 item 0 — D-133: a claimed record answers the row whose stamp claimed
+// it, whatever position the record holds in its own list.
+//   S-144 the ledger holds the row the claim names → `S-144 the ledger holds ...`
+//
 // Every snapshot arrives through the real `LiveSessionMirrorState` behind the
 // real `WatchIncomingRouter`, so the bridge reads the reconciler's own converged
 // output and the wiring is part of what these tests prove. Plain `test()`: no
@@ -1152,6 +1157,154 @@ void main() {
             'slot\'s one group: asking stamp by stamp instead names both rows, '
             'and the push then reads the second row as a set the phone still '
             'holds and never announces its deletion (D-112, S-122)',
+      );
+    },
+  );
+
+  // 17d Phase 3 item 0: `resolveRecordClaims` answers *record* positions, and
+  // the ledger holds one value per wrist row — so a claim must be read back
+  // through the row's own index. A phone-logged record can stand before the
+  // record the importer wrote for a wrist row: reading the record position as a
+  // row index then names the wrong row, or none at all when the wrist holds
+  // fewer rows than the phone holds records, and the push never announces the
+  // deletion that row needs (S-144).
+  test(
+    'S-144 the ledger holds the row whose stamp claimed a record, not the '
+    'record\'s position in the phone\'s list',
+    () async {
+      const at = 1780000000000;
+      const wristStamp = at + 60000;
+      final repository = await _repository();
+      await repository.createSession(
+        TrainingSession(
+          id: 's-1',
+          ownerUserId: LoggedEntryRows.ownerUserId,
+          startedAtMs: at,
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.createSegment(
+        LoggedEntryRows.defaultSegment(
+          id: 'segment-s-1',
+          sessionId: 's-1',
+          atMs: at,
+        ),
+      );
+      Future<void> slot(String id, String kind) => repository.createEffort(
+        SegmentEffort(
+          id: id,
+          segmentId: 'segment-s-1',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          effortKind: kind,
+          exerciseId: 'ex-bench',
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+
+      // A timed slot: the phone's own record (index 0) stands before the one
+      // the wrist's row imported (index 1).
+      await slot('sl-timed', BlockTypes.timed);
+      await repository.createTimedInstance(
+        timedInstance('sl-timed', 0, entryIndex: 0, durationSecs: 60)
+            .copyWith(createdAtMs: at),
+      );
+      await repository.createTimedInstance(
+        timedInstance(
+          'sl-timed',
+          1,
+          entryIndex: 1,
+          durationSecs: 30,
+          startedAtMs: wristStamp,
+          finishedAtMs: wristStamp + 30000,
+        ).copyWith(createdAtMs: wristStamp),
+      );
+
+      // A rounds slot with the same shape.
+      await slot('sl-round', BlockTypes.round);
+      await repository.createRoundInstance(
+        roundInstance('sl-round', 0).copyWith(createdAtMs: at),
+      );
+      await repository.createRoundInstance(
+        roundInstance(
+          'sl-round',
+          1,
+          startedAtMs: wristStamp,
+        ).copyWith(createdAtMs: wristStamp),
+      );
+
+      // The counter-case: the wrist's record (index 0) stands before the
+      // phone's own (index 1).
+      await slot('sl-counter', BlockTypes.timed);
+      await repository.createTimedInstance(
+        timedInstance(
+          'sl-counter',
+          0,
+          entryIndex: 0,
+          durationSecs: 60,
+          startedAtMs: wristStamp,
+          finishedAtMs: wristStamp + 60000,
+        ).copyWith(createdAtMs: wristStamp),
+      );
+      await repository.createTimedInstance(
+        timedInstance('sl-counter', 1, entryIndex: 1, durationSecs: 30)
+            .copyWith(createdAtMs: at),
+      );
+
+      final loggedAt = DateTime.fromMillisecondsSinceEpoch(
+        wristStamp,
+        isUtc: true,
+      ).toIso8601String();
+      for (final row in const [
+        (
+          entryId: 'row-timed',
+          slot: 'sl-timed',
+          kind: WatchInboxEntry.kindTimed,
+        ),
+        (
+          entryId: 'row-round',
+          slot: 'sl-round',
+          kind: WatchInboxEntry.kindRound,
+        ),
+        (
+          entryId: 'row-counter',
+          slot: 'sl-counter',
+          kind: WatchInboxEntry.kindTimed,
+        ),
+      ]) {
+        await repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: row.entryId,
+            watchSessionId: 's-1',
+            kind: row.kind,
+            origin: WatchInboxEntry.originWatch,
+            payload: <String, dynamic>{
+              'entryId': row.entryId,
+              'eventId': row.entryId,
+              'kind': row.kind,
+              'loggedAt': loggedAt,
+              'sessionExerciseId': row.slot,
+              'exerciseId': 'ex-bench',
+            },
+            receivedAtMs: at,
+          ),
+        );
+        await repository.markWatchInboxEntriesApplied([row.entryId], at);
+      }
+
+      final phone = await _phone(repository);
+
+      expect(
+        await phone.bridge.heldWristEntryIds('s-1'),
+        {'row-timed', 'row-round', 'row-counter'},
+        reason:
+            'S-144 the ledger holds each row whose stamp still claims a record '
+            'of its kind: the claim\'s record positions must be read back '
+            'through the rows, or the timed slot reads the second record\'s '
+            'position as a second row (RangeError) and no deletion of the '
+            'three is ever announced',
       );
     },
   );

@@ -351,7 +351,11 @@ class WatchSessionAdoptionBridge {
   /// `round` row the instance the importer wrote for it
   /// (`PhoneEntries.resolveRecordClaims` over `getTimedInstances` /
   /// `getRoundInstances`' `createdAtMs`, the record lists the projection reads
-  /// for the same kind).
+  /// for the same kind). Both claims come back as the position of the **row**
+  /// that did the claiming — `resolveClaims`/`resolveRecordClaims`' `stamps` —
+  /// because the ledger names rows: a record's position in the phone's list is
+  /// not a row's, and a phone-logged record can stand before the imported one
+  /// (S-144).
   ///
   /// The rows are the ones the projection narrows to ([_rowsOfKind]) and the
   /// claim rule is the one `PhoneEntries`' projections apply, over the same
@@ -379,7 +383,7 @@ class WatchSessionAdoptionBridge {
                 instance.createdAtMs,
             ],
             wristLoggedAtMs: stamps,
-          ),
+          ).stamps,
           // A `timed` and a `hold` row claim records of the same list: a hold is
           // the instance the wrist logged on an effort carrying the hold
           // capability, which the store keeps beside the timed ones (D-130).
@@ -389,7 +393,7 @@ class WatchSessionAdoptionBridge {
                 instance.createdAtMs,
             ],
             wristLoggedAtMs: stamps,
-          ),
+          ).stamps,
         };
         for (final index in claimed) {
           held.add(listed[index].entryId);

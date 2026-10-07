@@ -325,10 +325,34 @@ remains out is listed below.
   `S-60 the floor is carried, one step below it is not`;
   `test/watch_wire_limits_test.dart`,
   `S-061 the three schema loadKg floors are the one constant`).
-- **Only sets are carried.** D-39 projects `set` entries only: a `timed`, `hold`
-  or `round` effort contributes nothing to `entries`, while the ladder still
-  carries its slot (`test/watch_session_projection_test.dart`,
-  `S-2 a running phone session is answered with its own ladder`).
+- **All four entry kinds are carried: `set`, `timed`, `hold` and `round`.** D-39
+  projected `set` entries only; D-130 completes it — a slot's kind decides which
+  records it projects, so a `timed` or `hold` slot sends its `TimedInstance`s (the
+  window, and the distance the effort's metric carries) and a `round` slot its
+  `RoundInstance`s (its `roundNumber` and the time it spent paused), while the
+  ladder still carries every slot (`test/watch_session_projection_test.dart`,
+  `S-140 a phone timed entry reaches the wrist`,
+  `S-141 a round and a hold carry their own fields`,
+  `S-142 a wrist-logged entry of any kind is not doubled`;
+  `test/watch_session_engine_test.dart`,
+  `S-145 the twin applies the phone's timed, hold and round entries once each,
+  with the phone's fields, and a re-statement doubles nothing`).
+- **A kind's claim rule is its own.** A `timed` row claims a `timed` record and
+  never a `round` record written in the same millisecond, so neither kind is
+  doubled or lost (`test/watch_session_projection_test.dart`,
+  `D-133 a timed row never claims a round record written at the same millisecond`).
+  The push's ledger reads the same rule against the row a claim came from, so the
+  deletion it announces names the row the projection left out
+  (`test/watch_session_adoption_bridge_test.dart`,
+  `S-144 the ledger holds the row whose stamp claimed a record, not the record's
+  position in the phone's list`).
+- **An instance the wire cannot express is omitted, never faked.** An instance
+  that never started, and a window of no length, carry no entry at all; a
+  distance of exactly 0 is left out of the fields a `timed` entry would otherwise
+  carry, and so is the added weight of a hold held with nothing added
+  (`test/watch_session_projection_test.dart`,
+  `S-143 an unrepresentable instance is omitted, not faked`,
+  `D-132 a hold held with nothing added is projected without the field`).
 - **A set's weight rides as its total, and a skipped set does not ride at all.**
   An entry's `loadKg` is the set's own total, whole: `extraLoadKg` is the
   hold/drill path's added load
@@ -348,8 +372,13 @@ remains out is listed below.
 - **A delete reaches the wrist, and the wrist hides the entry rather than
   dropping it.** The phone announces the deletion as a `structure_change` naming
   the entry's own id, so a set removed on the phone leaves the session the wrist
-  is showing (`test/watch_session_auto_push_test.dart`,
+  is showing — and so does a `timed`, `hold` or `round` entry, the wrist's own
+  among them (`test/watch_session_auto_push_test.dart`,
   `S-120 the push names the set the phone dropped, in a frame the wrist applies, before the snapshot that no longer carries it`;
+  `S-144 a non-set entry the wrist logged leaves under the wrist's own id, and
+  one the phone logged under the id the phone minted`;
+  `S-144 a phone-logged record before the wrist's own does not hide the deletion
+  of the wrist's row`;
   `test/watch_session_projection_test.dart`,
   `S-35 an edit reaches the wrist and a delete is announced`). The deletion is a
   **lens over the projection**: the observation row stays — the store is

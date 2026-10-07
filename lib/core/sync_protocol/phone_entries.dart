@@ -117,7 +117,7 @@ abstract final class PhoneEntries {
 
     final entries = <Map<String, Object?>>[];
     for (var position = 0; position < instances.length; position++) {
-      if (claimed.contains(position)) continue;
+      if (claimed.records.contains(position)) continue;
       final instance = instances[position];
       final entry = _windowedEntry(
         sessionExerciseId: sessionExerciseId,
@@ -162,7 +162,7 @@ abstract final class PhoneEntries {
 
     final entries = <Map<String, Object?>>[];
     for (var position = 0; position < instances.length; position++) {
-      if (claimed.contains(position)) continue;
+      if (claimed.records.contains(position)) continue;
       final instance = instances[position];
       final roundNumber = instance.roundIndex + 1;
       if (roundNumber < 1) continue;
@@ -222,7 +222,7 @@ abstract final class PhoneEntries {
 
     final entries = <Map<String, Object?>>[];
     for (var position = 0; position < instances.length; position++) {
-      if (claimed.contains(position)) continue;
+      if (claimed.records.contains(position)) continue;
       final instance = instances[position];
       final entry = _windowedEntry(
         sessionExerciseId: sessionExerciseId,
@@ -292,25 +292,32 @@ abstract final class PhoneEntries {
   /// (`watch_session_importer.dart:926`), or a `RoundInstance`'s, written the
   /// same way (`:970`).
   ///
-  /// The indexes are positions in [createdAtMs], which is what lets a caller
-  /// holding one list of records map a claim back to the record it came from.
-  /// Two entries written in the same millisecond therefore leave the later
-  /// record unclaimed and projected rather than lost — the benign
-  /// under-projection [resolveClaims] documents, in the other direction.
-  static Set<int> resolveRecordClaims({
+  /// Both answers are indexes, as in [resolveClaims]: the positions in
+  /// [createdAtMs] the stamps claimed, and the positions in [wristLoggedAtMs]
+  /// that did the claiming. A caller iterating the records reads `records`; a
+  /// caller holding one **row** per stamp — the push's ledger, which has to name
+  /// the row the claim came from and indexes its own list that way — needs
+  /// `stamps`, because a record's position is not a row's. Two entries written
+  /// in the same millisecond therefore leave the later record unclaimed and
+  /// projected rather than lost — the benign under-projection [resolveClaims]
+  /// documents, in the other direction.
+  static ({Set<int> records, Set<int> stamps}) resolveRecordClaims({
     required List<int> createdAtMs,
     required List<int> wristLoggedAtMs,
   }) {
     final claimed = <int>{};
-    for (final stamp in wristLoggedAtMs) {
-      for (var index = 0; index < createdAtMs.length; index++) {
-        if (claimed.contains(index)) continue;
-        if (createdAtMs[index] != stamp) continue;
-        claimed.add(index);
+    final claiming = <int>{};
+    for (var index = 0; index < wristLoggedAtMs.length; index++) {
+      final stamp = wristLoggedAtMs[index];
+      for (var record = 0; record < createdAtMs.length; record++) {
+        if (claimed.contains(record)) continue;
+        if (createdAtMs[record] != stamp) continue;
+        claimed.add(record);
+        claiming.add(index);
         break;
       }
     }
-    return claimed;
+    return (records: claimed, stamps: claiming);
   }
 
   /// The stamp a group carries: the earliest `createdAtMs` among its rows.
