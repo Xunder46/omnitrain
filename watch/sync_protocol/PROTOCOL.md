@@ -428,9 +428,10 @@ correction carries no distance
   discarded (its record is gone) with `abandoned`, once each — once per session,
   so a second session ended in the same run is announced for itself, and so an end
   that a frame from the watch lands on inside the phone's own debounce window is
-  still announced. What is announced is the session the phone itself holds and has
-  told the watch about, named by the last session the phone itself composed and
-  read from that session's own record: a past session the user opens on the phone
+  still announced. What is announced is a session the phone itself composed and
+  told the watch about — announced by its own id, once, when its end is decided,
+  and read from that session's own record, however many such sessions are still
+  pending: a past session the user opens on the phone
   MUST NOT be read as the shared one ending,
   and MUST NOT be announced; a session the phone never held — one the wrist
   started on its own — MUST NOT be announced at all, whatever its record says;
@@ -443,7 +444,9 @@ correction carries no distance
   `S-86 the phone's own push does not end the wrist's live session`,
   `S-87 a frame the wrist sends inside the window does not lose the finish it
   landed in`, `S-87 a frame the wrist sends inside the window does not lose the
-  discard it landed in`) and by
+  discard it landed in`,
+  `S-88 browsing a past session and then finishing the live one inside one
+  window still announces the finish`) and by
   `test/watch_session_finish_test.dart` (`S-5 the phone's own finish is
   reported, and the wrist is answered at its next sync`).
 - `revision` increases by one per applied structure change, so two clients can

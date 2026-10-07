@@ -16,6 +16,7 @@
 //   S-85 every session in one run is announced once    → `S-85 ...`
 //   S-86 the phone never abandons a session it never held → `S-86 ...`
 //   S-87 a wrist frame inside the window loses no finish → `S-87 ...`
+//   S-88 browsing away does not lose a later finish   → `S-88 ...`
 //   F4 a flush never leaks and never announces twice   → `F4 ...`
 //   G2 an Error from the session read is not swallowed  → `G2 ...`
 //
@@ -1214,6 +1215,12 @@ void main() {
         await phoneState.createNewSession();
         final secondId = phoneState.currentSession!.id;
 
+        // The phone is already logging in the new session: a session with no
+        // rows of its own is one the projection cannot speak for, so a frame
+        // that re-baselines onto it would compose nothing and never reach the
+        // pending finish. (The discard variant carries the same effort.)
+        await add('ex-squat');
+
         // A frame from the wrist lands in that window. The shipping wiring
         // re-baselines the push after every applied frame (D-82), so the push
         // composes the phone's new session while the finish is still pending.
@@ -1312,6 +1319,68 @@ void main() {
           secondId,
           reason: 'S-87 the session the phone moved to is still pushed',
         );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-88 browsing away does not lose a later finish', () {
+    test(
+      'S-88 browsing a past session and then finishing the live one inside '
+      'one window still announces the finish',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        final pushesBefore = radio.ofType('session_snapshot').length;
+
+        // A finished session in the phone's history, which the user opens.
+        final start = _at(0);
+        await repository.createSession(
+          TrainingSession(
+            id: 'h-1',
+            ownerUserId: LoggedEntryRows.ownerUserId,
+            startedAtMs: start,
+            endedAtMs: start + 60000,
+            createdAtMs: start,
+            updatedAtMs: start + 60000,
+          ),
+        );
+
+        // The browse: the phone composes nothing of its own, and the live
+        // session's own row is still unended, so nothing is announced — the
+        // S-84 shape, which stays silent.
+        await phoneState.loadHistoricalSession('h-1');
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(pushesBefore),
+          reason: 'S-88 browsing history sends nothing (S-84)',
+        );
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'S-88 a past session the user reads is not an end: the live '
+              'session\'s own row is still unended (D-81)',
+        );
+
+        // Back to the live session, and finished with no flush in between: the
+        // end is decided while the phone composes nothing of its own.
+        await phoneState.loadHistoricalSession('s-1');
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        final ends = radio.ofType('session_lifecycle');
+        expect(
+          [for (final frame in ends) frame['sessionId']],
+          ['s-1'],
+          reason:
+              'S-88 a running session the phone merely stopped composing while '
+              'the user browsed keeps its pending end: finishing it afterwards '
+              'is announced once, not lost to the browse (D-81)',
+        );
+        expect(_payload(ends.single)['state'], WatchLifecycleState.completed);
         expect(failures, isEmpty);
       },
     );

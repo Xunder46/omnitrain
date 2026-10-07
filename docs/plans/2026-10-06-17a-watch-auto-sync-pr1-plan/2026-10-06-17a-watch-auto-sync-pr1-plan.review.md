@@ -330,3 +330,127 @@ structural guard, and none of the other items needs a decision. Everything else 
 — F6, F1's push path, F4's drain, the F2 rows — is verified against the code, not against the summary.
 Routing: G1, G2, G4, G6 → @developer; G3, G5 → @planner.
 **VERDICT: CHANGES_REQUESTED**
+
+---
+
+# Code review 3 (fix 2) — 2026-10-06
+
+Reviewed `git show HEAD` = `df5535c` ("fix 2") against the plan and the round-3 brief.
+
+Layers in scope: `lib/state/watch/` (1 file), `test/` (1 file), `docs/watch_session_sync.md`,
+`watch/sync_protocol/PROTOCOL.md`, this plan folder.
+Layers skipped: models, persistence, `lib/features/`, `lib/widgets/`, `lib/core/`, `watch/watchos/`
+(no changes).
+Diff vs the fix-2 footprint: **conforms** — 8 paths, all named by the brief, +545/−87; nothing out of
+bounds, nothing predicted but untouched.
+`gateway.sh test` → `01:46 +4012 ~1: All tests passed!` (**4012 passed, 1 skipped, 0 failed**, exit 0)
+— matches the evidence's pasted counts.
+`gateway.sh lint` → **196 issues, exit 1** = the recorded baseline; no issue in
+`watch_session_auto_push.dart` or `watch_session_sync.md`.
+Invariant check → **clean** (`import .*hive_workout_repository` under `lib/state|features|widgets|core`:
+no matches).
+
+## Findings
+
+🔴 **H1 CRITICAL** | `test/watch_session_auto_push_test.dart:1219` | The S-87 *finish* variant passes on
+the true pre-fix code, so its pasted red proves nothing about the fix | give the variant a phone effort
+before the frame (`await add('ex-squat')`, as the discard variant already does), re-take the red against
+the exact pre-fix text and correct the evidence table row | @developer
+*(Why: the variant ends the phone's session, starts a second empty one, sends the wrist frame, then adds
+an effort. At the frame the phone holds a session with no efforts, so the composition the push reads is
+empty and `rebaseline()` returns before it touches any id — the same early return stands in the pre-fix
+text, so the pre-fix line `_ownSessionId ??` is equally untouched. The pasted red (`Expected ['s-1'] /
+Actual []`) therefore needs a mutation that discards the id **before** that return — strictly stronger
+than pre-fix. The evidence's own justification that "the wrist frame really re-baselines onto it" is
+false for this fixture, and the paragraph two lines below admits the identical mistake in the discard
+variant's first version. The discard variant does carry the effort, so it *is* a genuine pre-fix red and
+G1's fix is guarded at least once. Consequence: the S-87 finish guarantee is the one G1's fix actually
+delivers and it is currently unproven; correcting the fixture should reproduce the already-pasted red.)*
+
+🟡 **H2 WARNING** | `lib/state/watch/watch_session_auto_push.dart:228` | The running-branch drop discards
+a pending id whenever the phone is not currently composing it, so browsing away and finishing inside one
+debounce window loses that end — something the pre-fix single id kept | drop only when the phone has
+moved to another live session of its own (the drop needs `currentId != null`), and add the guard:
+browse a past session → flush (id survives) → reopen the live session → end it without a flush in
+between → flush → exactly one `completed` | @developer
+*(Why: with no composition of its own `currentId` is null, and every running id then fails the
+`id != currentId` test. S-84's shape still sends nothing after the refinement, since a kept id is only
+announced when its row is decided.)*
+
+🟡 **H3 WARNING** | `2026-10-06-17a-watch-auto-sync-pr1-plan.md:18` | `S-87` is a real scenario — tested,
+cited by both docs and by the evidence — but is absent from the plan's scenario register, and the plan
+still describes the removed single-id field as the mechanism (D-85 `:139`, `:220`, `:571`, `:580`) |
+add S-87 to the register and restate D-85 in terms of the pending-end set | @planner
+
+🟡 **H4 WARNING** | `watch/sync_protocol/PROTOCOL.md:432` | "named by the last session the phone itself
+composed" is false once an older pending end is announced after a newer composition — which is exactly
+what the S-87 finish variant asserts | drop "the last": a session the phone itself composed is announced
+by its own id | @planner
+
+💡 **H5 SUGGEST** | `lib/state/watch/watch_session_auto_push.dart:99` | `flush()` also runs from the
+debounce timer, so an `Error` escaping `rebaseline()`/`_pushOnce` (e.g. the encode path) becomes an
+unhandled async error with no reader | catch and record it where the timer fires | @developer
+
+## Answers to the round-3 questions
+
+**1. Does the pending set hold in each shape?** (a) Yes — A is announced once, then B is pushed: the
+lifecycle frame is built before the snapshot in `_pushOnce`. (b) Yes — a discarded A (row gone) is
+announced `abandoned` once and B is pushed. (c) Bounded: ids enter only through the remembered
+composition and leave when decided, so the set holds the current id plus the ids of one pass. (d) Safe:
+re-remembering checks membership, and the announcement iterates a copy and removes per branch.
+**(e) Not in the browsing shape** — see H2: the drop is keyed on "is the phone composing this id right
+now", not on "has the phone moved on", so it can drop a live id whose end arrives later.
+
+**2. Is `currentId` the right value?** Yes, computed correctly: it is the id of the composition the
+snapshot itself is built from, null when the phone holds nothing, is browsing a past session, or has no
+renderable slots. The defect is not in the value but in what the consumer concludes from it — it reads
+"no own session" as "a different own session" (H2).
+
+**3. Is the narrowed catch safe?** Yes on production seams: the repository read can only raise an
+`Exception` (a missing row is a null, not a throw; the casts that could raise an `Error` mean a corrupt
+row is a genuine data fault), the transport reports failures through its callback instead of throwing,
+and nothing else on the path needs a non-`Exception` swallowed. The one seam that had relied on the
+swallow was the F4 test's own fake, changed to an `Exception` in this commit and pinned by G2.
+Residual risk is only H5 (a timer-driven flush surfacing an error with no reader).
+
+**4. Do the new tests prove their claims?** G2 does — the mutation that restores the broad catch turns
+it red. The discard variant does — it fails on the true pre-fix behaviour. **The finish variant does
+not** (H1), because its fixture never reaches the code the fix changed.
+
+**5. Are the documented sentences true, and are the cited test names exact?** All cited names exist
+verbatim (S-72, S-73, S-84, both S-85, S-86, both S-87, the F4 pair, G2, and the `watch_session_finish_test.dart`
+ones). `docs/watch_session_sync.md`'s D-81 paragraph and its two invariants are true post-fix — a
+decided end can only leave the set by being announced. `PROTOCOL.md`'s announced-finish bullet carries
+the one false clause (H4), in the sentence fix 2 rewrote.
+
+## Behavior checks
+
+ACCEPTANCE: ✅ PASS — the fix's criteria (G1, G2, G3, G5) are implemented as described; the S-87
+scenario's intent is implemented but its proof is not (H1).
+SCENARIOS: 🟡 WARNING — S-84, S-85, S-86, S-87 and F4/G2 all have tests that assert their stated
+outcome; the S-87 finish variant's fixture does not build what the scenario describes (H1), and S-87 is
+not in the plan's register (H3).
+TEST RUN: ✅ 4012 passed / 0 failed / 1 skipped, exit 0, observed. Red-first evidence: 🟡 the discard
+variant holds, the finish variant does not (H1). Handoff counts: ✅ present and accurate.
+DOC FALSIFICATION: ❌ REJECT — `PROTOCOL.md:432` (`the last session the phone itself composed`) → state
+the set rule, keeping its pointers at the S-87 tests.
+DOC FALSIFICATION: 🟡 WARNING — `docs/state_management/watch_surface.md:159` — incomplete: the
+`WatchSessionAutoPush` section still describes a single session id and stops its verified-by list at
+S-84 (no false claim).
+DOC STANDARD: ✅ PASS — the added sentences add no flow, visual, control, numeric or copied content and
+point at named tests. ✅ PASS on both changed docs.
+IMPACT: ✅ conforms — the push's public surface (`start`, `stop`, `rebaseline`) is unchanged, its only
+readers are the wiring and the state hook, and no unlisted reader exists.
+CONVENTIONS: ✅ PASS (repository boundary, layering, environment safety, design-system tokens, dead
+code, and the no-`hive` rule) — the touched state file imports only the interface and the transport
+seam. N/A (grouped): UI/design-system rules, schema/model rules, watch-client rules — no screen, model
+or Swift file changed.
+
+## Round summary
+
+Critical: 1 (H1) | Warnings: 3 (H2, H3, H4) | Suggestions: 1 (H5). Four substantive findings — inside
+the budget's six, so no split. One bounded fix round, no review → fix → review: H1 is a fixture line
+plus a re-taken red in the evidence, H2 is one condition plus one test, H4 is one clause, H3 is plan
+text. Each fix carries its guard (the corrected S-87 variant, the browse-and-finish test). Routing:
+H1, H2, H5 → @developer; H3, H4 → @planner.
+**VERDICT: CHANGES_REQUESTED**

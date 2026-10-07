@@ -165,10 +165,14 @@ The one place a session is pushed from the phone (D-75). It binds the same
 and, when the window closes, composes the projection fresh and sends it only if
 its encoding differs from the last payload this push sent or baselined — so a
 rest-timer tick sends nothing and a burst of changes inside one window is one
-frame. Nothing is cached: the newest state is the one that matters. While the
-mirror holds a session as active, that session's own stored row decides its end
-— ended announces `completed`, gone announces `abandoned`, never the phone's
-current-session pointer. It adds no queue, no retry and no user-visible state: a
+frame. Nothing is cached: the newest state is the one that matters. The pending
+ends are the sessions the phone itself composed whose end is not decided yet:
+each is announced by its own id, once, when its own stored row decides it — an
+ended row announces `completed`, a row that is gone announces `abandoned` —
+never the phone's current-session pointer, which browsing a past session
+repoints. A pending session that still runs is kept while the phone is not on
+another live session of its own, so browsing away and finishing it afterwards
+still announces its end. It adds no queue, no retry and no user-visible state: a
 send the transport cannot carry is dropped and leaves the phone undisturbed.
 `bindWorkoutState` is idempotent, `rebaseline()` takes the current session as the
 baseline while sending nothing (D-82), and `dispose()` unbinds.
@@ -180,7 +184,15 @@ not sent back`, `S-71 the push reports the wrist's position, not slot 0`,
 `S-73 discarding on the phone abandons the wrist's copy, once`,
 `S-74 five notifications without a change push nothing`,
 `S-75 three changes inside the window are one frame`,
-`S-84 opening a past session pushes nothing for the live one`).
+`S-84 opening a past session pushes nothing for the live one`,
+`S-85 two finishes and a discard are announced once each, under each session's
+own id`, `S-85 the end the wrist itself caused is not announced back at it`,
+`S-86 the phone's own push does not end the wrist's live session`,
+`S-87 a frame the wrist sends inside the window does not lose the finish it
+landed in`, `S-87 a frame the wrist sends inside the window does not lose the
+discard it landed in`,
+`S-88 browsing a past session and then finishing the live one inside one window
+still announces the finish`).
 
 ### `WatchSyncOrchestrator`
 

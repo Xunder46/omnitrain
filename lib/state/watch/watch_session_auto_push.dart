@@ -19,10 +19,11 @@
 ///    own workout moves onto a session this phone never held (F6). A row that
 ///    exists and ended → [LiveSessionMirrorState.completeSession] for it; a row
 ///    that is gone → [LiveSessionMirrorState.reportLifecycleFor] `abandoned` for
-///    it; a session still running is kept only while it is still the phone's
-///    current own session. Each id is dropped as it is announced, so each session
-///    in an app run is announced once (F1), and a frame the wrist sends inside
-///    the window cannot erase a finished session's pending announcement (S-87).
+///    it; a session still running is kept while it still runs and the phone is
+///    not on another live session of its own. Each id is dropped as it is
+///    announced, so each session in an app run is announced once (F1), and a
+///    frame the wrist sends inside the window cannot erase a finished session's
+///    pending announcement (S-87).
 ///    Never the phone's current-session pointer, which calendar browsing repoints
 ///    at a past session.
 /// 3. **Dropped, never queued** (D-83). The transport reports what it cannot
@@ -198,9 +199,9 @@ class WatchSessionAutoPush {
   /// Every pending id is decided on each pass, and dropped once it is, so one
   /// session is announced once per app run (F1). A session whose row ended is
   /// announced `completed`; one whose row is gone, `abandoned`; one that is still
-  /// running is kept only while it is still the phone's current own session —
-  /// [currentId] — because one the phone merely stopped composing while it runs
-  /// is not an end.
+  /// running is kept unless the phone has moved on to a different live session
+  /// of its own — [currentId] — because a session the phone merely stopped
+  /// composing while it runs is not an end (S-88).
   Future<void> _announceEnd(String? currentId) async {
     if (_pendingEnds.isEmpty) return;
     for (final sessionId in List<String>.of(_pendingEnds)) {
@@ -215,8 +216,13 @@ class WatchSessionAutoPush {
 
       final row = await _getSession(sessionId);
       if (row != null && row.endedAtMs == null) {
-        // Still running: it stays pending only while the phone still owns it.
-        if (sessionId != currentId) _pendingEnds.remove(sessionId);
+        // Still running: it stays pending unless the phone has moved on to a
+        // different live session of its own. Composing nothing at all — the
+        // user browsing a past session — is not moving on, so the end is kept
+        // for whenever it comes (S-88).
+        if (currentId != null && currentId != sessionId) {
+          _pendingEnds.remove(sessionId);
+        }
         continue;
       }
 

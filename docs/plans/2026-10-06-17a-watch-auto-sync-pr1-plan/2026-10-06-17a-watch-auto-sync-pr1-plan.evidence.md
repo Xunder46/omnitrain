@@ -368,7 +368,7 @@ brief's targeted set 38 passed / 0 failed.
 
 | Test | Fixture (what makes it adversarial) | Observed red |
 |---|---|---|
-| `S-87 a frame the wrist sends inside the window does not lose the finish it landed in` | the phone's session has entries, so the wrist frame's `rebaseline()` really re-baselines onto it | `Expected: ['s-1'] / Actual: []` — no lifecycle frame at all |
+| `S-87 a frame the wrist sends inside the window does not lose the finish it landed in` | the phone's session has entries, so the wrist frame's `rebaseline()` really re-baselines onto it — **corrected in fix round 3 (H1): the phone's *second* session had no effort rows, so `rebaseline()` composed nothing and the guard was never reached; the test now calls `await add('ex-squat')` before the frame, exactly as the discard variant does** | `Expected: ['s-1'] / Actual: []` — no lifecycle frame at all (the red below is the corrected fixture's; the earlier run was green for the wrong reason) |
 | `S-87 a frame the wrist sends inside the window does not lose the discard it landed in` | the phone's session is discarded, so its row is gone by the time the frame lands | `Expected: ['s-1'] / Actual: []` — the `abandoned` frame lost |
 
 **The discard variant needed a stronger fixture, and that is a finding.** `projectSession()` returns
@@ -420,3 +420,100 @@ recorded as an accepted limit in A-20 and filed under 17b in the series index, n
 | Swift | `.github/copilot/scripts/macos/gateway.sh swift-test` | 315 passed / 0 failed (no Swift file changed) |
 | lint | `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues, exit 1 — the baseline's pre-existing info notices; none in a file this round touched |
 | the invariant | grep `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
+
+## Review fix round 3 — H1 (a vacuous guard), H2 (a pending end lost to a browse), H3 (plan text), H4 (`PROTOCOL.md` wording), H5 (accepted limit)
+
+**H1 — the `S-87` *finish* variant never reached the code it guards.** `projectedSession()` answers null
+when the phone's own session holds no effort rows, and the finish variant moved to a fresh session that
+had none: the wrist frame's `rebaseline()` composed nothing, never reached `_remember`, and the test
+passed even with the pre-fix single-id behaviour. It now calls `await add('ex-squat')` before the frame,
+mirroring the discard variant, which is what makes the guard reachable; the fixture-table row in the
+fix-round-2 section above is corrected accordingly. The corrected variant is red under mutation (a)
+below and green on the shipped code.
+
+**H2 — a browse dropped a running pending end.** `_announceEnd` dropped a running id whenever it was
+not the id the push had just composed. When the user browsed a past session, the push composed nothing,
+`currentId` was null, and the live session's pending end was dropped — so finishing that session
+afterwards announced nothing to the wrist. The drop is now `currentId != null && currentId != sessionId`:
+composing nothing is not the phone moving on to another live session of its own. New guard `S-88`, and
+`docs/state_management/watch_surface.md` describes the rule.
+
+### Red → green (the new guard fails without the fix)
+
+`S-88` was run on the shipped code minus the fix, verbatim:
+
+```
+00:00 +0 -1: S-88 browsing away does not lose a later finish S-88 browsing a past session and then finishing the live one inside one window still announces the finish [E]
+  Expected: ['s-1']
+    Actual: []
+     Which: at location [0] is [] which shorter than expected
+  S-88 a running session the phone merely stopped composing while the user browsed keeps its pending end: finishing it afterwards is announced once, not lost to the browse (D-81)
+  test/watch_session_auto_push_test.dart 1375:9       main.<fn>.<fn>
+00:00 +0 -1: Some tests failed.
+```
+
+Green after the fix: `test/watch_session_auto_push_test.dart` 22 passed / 0 failed (21 → 22).
+
+### Mutations (each applied to source, seen red for the predicted reason, restored exactly, re-run green)
+
+| # | Mutation | Red run (verbatim) |
+|---|---|---|
+| a | `_remember` restored to the single-id form (`_pendingEnds..clear()..add(sessionId)`) — the fix-2 behaviour H1's corrected fixture now catches | below, `--plain-name "S-87"` — **both** variants |
+| b | the running-branch drop reverted to `if (sessionId != currentId)` — the H2 defect | below, `--plain-name "S-88"` |
+
+```
+00:00 +0 -1: S-87 a finish survives a wrist frame inside its window S-87 a frame the wrist sends inside the window does not lose the finish it landed in [E]
+  Expected: ['s-1']
+    Actual: []
+     Which: at location [0] is [] which shorter than expected
+  S-87 the finish the frame landed in is announced, under the session that finished: re-baselining the push onto the session the phone moved to must not erase a finish not yet said (D-81)
+  test/watch_session_auto_push_test.dart 1246:9       main.<fn>.<fn>
+00:00 +0 -2: S-87 a finish survives a wrist frame inside its window S-87 a frame the wrist sends inside the window does not lose the discard it landed in [E]
+  Expected: ['s-1']
+    Actual: []
+     Which: at location [0] is [] which shorter than expected
+  S-87 a session the phone discarded inside the window is abandoned once, not lost to the frame that landed in it
+  test/watch_session_auto_push_test.dart 1306:9       main.<fn>.<fn>
+00:00 +0 -2: Some tests failed.
+```
+
+```
+00:00 +0 -1: S-88 browsing away does not lose a later finish S-88 browsing a past session and then finishing the live one inside one window still announces the finish [E]
+  Expected: ['s-1']
+    Actual: []
+     Which: at location [0] is [] which shorter than expected
+  S-88 a running session the phone merely stopped composing while the user browsed keeps its pending end: finishing it afterwards is announced once, not lost to the browse (D-81)
+  test/watch_session_auto_push_test.dart 1375:9       main.<fn>.<fn>
+00:00 +0 -1: Some tests failed.
+```
+
+After each mutation the file was re-run at 22 passed / 0 failed and `git-diff` showed only the intended
+hunks back, so both were restored exactly.
+
+### Docs (H4, H5) and the plan (H3)
+
+| Doc | Sentence changed | Tests it now names |
+|---|---|---|
+| `watch/sync_protocol/PROTOCOL.md` | the announced-finish bullet said the wrist learns of "a session named by the last session the phone itself composed", which is false once the phone starts a second session: it now says a session **the phone itself composed and told the watch about** is announced **by its own id, once, when its end is decided** | `S-88 browsing a past session and then finishing the live one inside one window still announces the finish` |
+| `docs/watch_session_sync.md` (the D-81 paragraph and the "phone's finish and discard are announced" invariant) | the same set rule, plus the browse case | the same `S-88` test, alongside the `S-87` pair |
+| `docs/state_management/watch_surface.md` (`WatchSessionAutoPush`) | the pending-ends description (own id, once, kept while the session runs and the phone is not on another live session of its own) and the verified-by list, now naming `S-85` (both), `S-86`, `S-87` (both), `S-88` | the `S-85`/`S-86`/`S-87`/`S-88` tests |
+
+H3 — the plan's register now carries `S-87` (both variants) and `S-88` with their real fixtures, `D-85`
+is restated in pending-set terms (it still named `_ownSessionId`), and the numbering line, `AC-3`, the
+`Existing-Functionality Impact` row, Phase 3 step 2 and the pointer-trap note all follow it.
+
+H5 — a `flush()` driven by the debounce timer is not awaited, so a `getSession` that throws inside it
+surfaces as an unhandled async error rather than to a caller; recorded as an accepted limit in A-21 and
+filed under 17b, not fixed here.
+
+### Suites and checks (fix round 3)
+
+| Check | Command | Result |
+|---|---|---|
+| the push file | `.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart` | 22 passed / 0 failed |
+| the brief's targeted set | `.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart test/watch_session_finish_test.dart test/docs_indexing_contract_test.dart` | 39 passed / 0 failed |
+| full suite | `.github/copilot/scripts/macos/gateway.sh test` | 4013 passed / 1 skipped / 0 failed (4012 + the new `S-88`) |
+| Swift | `.github/copilot/scripts/macos/gateway.sh swift-test` | 315 passed / 0 failed (no Swift file changed) |
+| lint | `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues, exit 1 — the baseline's pre-existing info notices; no match for either file this round touched |
+| the invariant | grep `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
+| footprint | `.github/copilot/scripts/macos/gateway.sh git-diff --stat` | 7 paths: the push, its test, `PROTOCOL.md`, the two docs, the plan and this file (plus the reviewer's `.review.md`, which rides in the same commit) |

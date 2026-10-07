@@ -137,14 +137,17 @@ whichever session the mirror happens to be showing: a second session ended in th
 same run is announced for itself, a session the phone never held is not
 announced at all (S-85, S-86), and an end still pending when a frame from the
 wrist re-baselines the push onto a newer session is not lost to that frame
-(S-87). Verified by `test/watch_session_auto_push_test.dart`
+(S-87), nor is a pending end lost when the user browses a past session and
+finishes the live one afterwards (S-88). Verified by `test/watch_session_auto_push_test.dart`
 (`S-72 finishing on the phone ends the wrist's copy, once`,
 `S-85 two finishes and a discard are announced once each, under each session's
 own id`, `S-85 the end the wrist itself caused is not announced back at it`,
 `S-86 the phone's own push does not end the wrist's live session`,
 `S-87 a frame the wrist sends inside the window does not lose the finish it
 landed in`, `S-87 a frame the wrist sends inside the window does not lose the
-discard it landed in`) and
+discard it landed in`,
+`S-88 browsing a past session and then finishing the live one inside one window
+still announces the finish`) and
 `test/watch_session_finish_test.dart`
 (`S-5 the phone's own finish is reported, and the wrist is answered at its next
 sync`, `G1 a finished session is not adopted back after a restart`,
@@ -170,7 +173,9 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
   session repoints, and never a session the mirror shows but the phone refused.
   The id is forgotten once announced, so a second session ended in the same run is
   announced for itself, and a session whose end is still pending when a frame from
-  the wrist re-baselines the push is announced for itself too (S-87). Verified by
+  the wrist re-baselines the push is announced for itself too (S-87), and one that
+  is still running when the user browses a past session keeps its pending end until
+  it is finished (S-88). Verified by
   `test/watch_session_auto_push_test.dart`
   (`S-72 finishing on the phone ends the wrist's copy, once`,
   `S-73 discarding on the phone abandons the wrist's copy, once`,
@@ -180,7 +185,9 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
   `S-86 the phone's own push does not end the wrist's live session`,
   `S-87 a frame the wrist sends inside the window does not lose the finish it
   landed in`, `S-87 a frame the wrist sends inside the window does not lose the
-  discard it landed in`) and by
+  discard it landed in`,
+  `S-88 browsing a past session and then finishing the live one inside one window
+  still announces the finish`) and by
   `test/watch_session_finish_test.dart`
   (`S-5 the phone's own finish is reported, and the wrist is answered at its next
   sync`).
