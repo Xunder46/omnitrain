@@ -248,7 +248,10 @@ public final class WatchSessionEngine {
     ///
     /// The session-started lifecycle event leaves through the same sink as every
     /// other message, so the phone's live mirror learns about a wrist-started
-    /// session without being asked (S-006).
+    /// session without being asked (S-006). One snapshot follows it, carrying the
+    /// session's own shape: the lifecycle says the wrist started, the snapshot is
+    /// what the phone's mirror adopts, and the order is the frame order D-91 fixes
+    /// (S-100).
     @discardableResult
     public func createSession(
         modality: String?,
@@ -271,6 +274,7 @@ public final class WatchSessionEngine {
         let stored = await store.append(.session(row))
         let live = mirrored(stored.sessionRow ?? row)
         emitLifecycle(live, state: WatchLifecycleState.started)
+        emitSnapshot()
         return live
     }
 
@@ -332,11 +336,17 @@ public final class WatchSessionEngine {
     /// pick moves the session to the new exercise, while a structure change the
     /// phone initiated leaves the user on the exercise they were logging — the
     /// rule `lib/core/sync_protocol/session_reconciler.dart` applies to it.
+    ///
+    /// `announce` tells the wrist's own add from the phone's: the user's add
+    /// announces the new shape with a snapshot whose `revision` has moved, while
+    /// a slot the phone pushed applies quietly — the phone wrote it, so the phone
+    /// is the one that reports it (D-91).
     @discardableResult
     public func insertExercise(
         _ slot: [String: Any],
         atIndex: Int? = nil,
-        moveTo: Bool = false
+        moveTo: Bool = false,
+        announce: Bool = true
     ) async -> WatchSessionRecord {
         let session = requireSession()
         if let slotId = slot["sessionExerciseId"] as? String,
@@ -348,7 +358,7 @@ public final class WatchSessionEngine {
         var exercises = session.exercises
         exercises.insert(slot, at: index)
 
-        return await transitionTo(
+        let live = await transitionTo(
             currentExerciseIndex: Self.positionAfterInsert(
                 currentIndex: session.currentExerciseIndex,
                 insertedAt: index,
@@ -356,8 +366,11 @@ public final class WatchSessionEngine {
                 wasEmpty: session.exercises.isEmpty
             ),
             exercises: exercises,
-            lifecycle: nil
+            lifecycle: nil,
+            revision: announce ? session.revision + 1 : nil
         )
+        if announce { emitSnapshot() }
+        return live
     }
 
     /// Applies an `exercise_push` from the phone: the slot it names lands at the
@@ -367,7 +380,9 @@ public final class WatchSessionEngine {
     /// A readable push that arrives with no session to land in is dropped: a
     /// wrist that never started a workout has no ladder to put it on, and the
     /// next sync is what brings the two devices back together. The push is not
-    /// queued and nothing is created for it.
+    /// queued and nothing is created for it. It never announces itself back
+    /// either: the phone wrote the slot, and a wrist snapshot answering it would
+    /// be the wrist claiming a change it did not make (D-91).
     @discardableResult
     public func applyExercisePush(_ envelope: [String: Any]) async throws -> WatchSessionRecord? {
         try requireConformingIncoming(envelope)
@@ -375,7 +390,8 @@ public final class WatchSessionEngine {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         return await insertExercise(
             (payload["exercise"] as? [String: Any]) ?? [:],
-            atIndex: (payload["insertAtIndex"] as? NSNumber)?.intValue
+            atIndex: (payload["insertAtIndex"] as? NSNumber)?.intValue,
+            announce: false
         )
     }
 
@@ -935,12 +951,19 @@ public final class WatchSessionEngine {
     /// Writes a new session row carrying `status` and `currentExerciseIndex`.
     ///
     /// A state change appends rather than updates, which is what both keeps the
-    /// store append-only and makes the position survive a kill.
+    /// store append-only and makes the position survive a kill. `revision` is
+    /// carried over from the session being replaced unless the caller moves it:
+    /// the counter is the number the phone reads a shape by, so a change that is
+    /// not a shape change leaves it exactly where it was (D-101).
+    ///
+    /// - Parameter revision: the new row's revision, or nil to keep the current
+    ///   session's.
     private func transitionTo(
         status: String? = nil,
         currentExerciseIndex: Int? = nil,
         exercises: [[String: Any]]? = nil,
-        lifecycle: String?
+        lifecycle: String?,
+        revision: Int? = nil
     ) async -> WatchSessionRecord {
         let session = requireSession()
         let now = clock()
@@ -959,7 +982,8 @@ public final class WatchSessionEngine {
             source: session.source,
             status: status ?? session.status,
             currentExerciseIndex: currentExerciseIndex ?? session.currentExerciseIndex,
-            exercises: exercises ?? session.exercises
+            exercises: exercises ?? session.exercises,
+            revision: revision ?? session.revision
         )
 
         let stored = await store.append(.session(row))
@@ -982,6 +1006,19 @@ public final class WatchSessionEngine {
         }
         current = row
         return row
+    }
+
+    /// Announces the session's current shape to the phone.
+    ///
+    /// The wrist's own change is the wrist's to report, and the snapshot
+    /// `sessionSnapshot()` already builds is what the phone's mirror adopts — no
+    /// new frame type (D-90). Like a lifecycle announcement, a snapshot this
+    /// build cannot send is dropped rather than blocking the session the user is
+    /// in the middle of; the suites pin the shape.
+    private func emitSnapshot() {
+        guard let envelope = sessionSnapshot() else { return }
+        if let validator, !validator.validateEnvelope(envelope).isEmpty { return }
+        emit(envelope)
     }
 
     /// Tells the phone the session moved, when the protocol accepts the telling.

@@ -502,6 +502,50 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(payload["at"] as? String, utcIso(session.startedAt))
     }
 
+    // MARK: - S-100 a start path announces the session it starts
+
+    // D-91: the start paths start through the engine, so the frame the path
+    // already sent keeps its position and exactly one snapshot follows it — the
+    // wrist's own start, announced without being asked.
+    func testS100ARoutineStartSendsTheLifecycleFrameThenItsOwnSnapshot() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+
+        let session = try await harness.paths.startFromRoutine("routine-push-a")
+
+        let types = harness.emitted.compactMap { $0["type"] as? String }
+        XCTAssertEqual(Array(types.suffix(2)), ["session_lifecycle", "session_snapshot"])
+        XCTAssertEqual(harness.emitted("session_lifecycle").count, 1)
+        let snapshot = try XCTUnwrap(harness.emitted("session_snapshot").first)
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(snapshot).isEmpty,
+            "the announcement is a frame the phone can read"
+        )
+        XCTAssertEqual(snapshot["sessionId"] as? String, session.sessionId)
+        let payload = try object(snapshot["payload"])
+        XCTAssertEqual(payload["status"] as? String, WatchSessionStatus.active)
+        XCTAssertEqual(
+            (payload["exercises"] as? [[String: Any]])?
+                .compactMap { $0["sessionExerciseId"] as? String },
+            session.exercises.compactMap { $0["sessionExerciseId"] as? String }
+        )
+    }
+
+    func testS100AFreeStartSendsTheLifecycleFrameThenItsOwnEmptySnapshot() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        let session = await harness.paths.startFreeWorkout()
+
+        let types = harness.emitted.compactMap { $0["type"] as? String }
+        XCTAssertEqual(Array(types.suffix(2)), ["session_lifecycle", "session_snapshot"])
+        let snapshot = try XCTUnwrap(harness.emitted("session_snapshot").first)
+        XCTAssertEqual(snapshot["sessionId"] as? String, session.sessionId)
+        let payload = try object(snapshot["payload"])
+        XCTAssertEqual((payload["exercises"] as? [[String: Any]])?.count, 0)
+    }
+
     func testS006AFreeWorkoutEmitsTheSameEventAndARelaunchDoesNotReEmitIt() async throws {
         let harness = WatchStartHarness()
         await harness.launch()

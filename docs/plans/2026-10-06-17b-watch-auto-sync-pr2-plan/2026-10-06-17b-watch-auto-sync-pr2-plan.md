@@ -382,7 +382,18 @@ Dependents that only read a touched surface (no change expected; their tests are
   set 64 passed / 0 failed, full `test` 4020 passed / ~1 skipped / 0 failed (baseline 4013/~1 → +7),
   `lint` 196 issues / 0 errors with none in a touched file, `swift-test` not run (no Swift file
   changed). Evidence: `.evidence.md` §Phase 1.
-- [ ] Phase 2 — the wrist announces its own session (@developer)
+- [x] Phase 2 — the wrist announces its own session (@developer) — **Complete, part A only (steps 1–5, 7,
+  8, 9; 2026-10-07). Steps 6, 10 and 11 are part B and were not started: no `lib/` file and no doc
+  changed in this run.** `createSession` emits the lifecycle and then one `session_snapshot`;
+  `insertExercise(…, announce:)` emits and moves `revision` by 1 on a wrist add, `applyExercisePush`
+  passes `announce: false`, and `applyStructureChange`/`applySnapshot` are unchanged (step 4 needed no
+  edit — none of them calls `transitionTo`). Step 5 verified, no edit: both start paths return
+  `engine.createSession(…)` and `addExerciseToSession` takes the default `announce`. Step 8 needed no
+  frame-count edit; the start-path file gained two new S-100 tests instead, and
+  `WatchSensorRecordingTests.swift` was updated although the brief did not name it (its emitted count is
+  1 → 2). `swift-test` 322 passed / 0 failed (baseline 315/0; +5 engine, +2 start-path tests), `lint`
+  196 issues / 0 errors with none in a touched file, invariant check clean. Evidence: `.evidence.md`
+  §Phase 2A.
 - [ ] Phase 3 — the Dart half: the push's bounds and the phone's resume trigger (@developer)
 - [ ] Phase 4 — the Swift half and the contract (@developer)
 - [ ] Phase 5 — the watch shell starts the catch-up (@governor, built)
@@ -419,6 +430,22 @@ Executors append here: decision made, options considered, choice and why. The Co
 8. **A-8 — the new `docs/watch_session_sync.md` paragraph claims nothing about automatic arrival
    (developer, 2026-10-07).** Per the brief and step 10 it states only the add-only rule (D-92/D-93),
    names each test by its exact name, and leaves "reaches the phone by itself" to Phases 2 and 4.
+9. **A-9 — `transitionTo`'s new `revision` defaults to *preserve*, not to the letter of today's
+   behaviour (developer, 2026-10-07, Phase 2A).** The brief's "a phone-originated change keeps exactly
+   today's revision behaviour" is read as "emits nothing and does not move the number"; a wrist add is
+   then the only writer (`session.revision + 1`). Today's code builds every row with no revision at all
+   — i.e. a reset to 0 on each wrist transition — which D-101's "preserves" contradicts.
+10. **A-10 — S-101 computes `revision` 0 → 1, while the plan's flow text says "2" (developer,
+    2026-10-07, Phase 2A).** The scenario's stated outcome needs only "strictly greater", which the test
+    asserts; the fixture's `revision: 1` belongs to the phone's payload, not the wrist's start.
+    Recorded rather than silently reconciled in either direction.
+11. **A-11 — `WatchSensorRecordingTests.swift` was updated although the brief's item list did not name
+    it (developer, 2026-10-07, Phase 2A).** Two of its assertions count the frames a start emits (1 → 2);
+    D-91 changes that count, so the file is inside the change's blast radius, and the brief names only
+    the emit-forwarder file.
+12. **A-12 — Phase 2's steps 6, 10 and 11 are part B, deferred with this run's scope (developer,
+    2026-10-07).** The brief limits this run to the Swift half, so the Dart twin's mirror and the two
+    doc statements are untouched; `docs/watch_session_sync.md` still owes the "automatic" wording.
 
 ## Feedback
 

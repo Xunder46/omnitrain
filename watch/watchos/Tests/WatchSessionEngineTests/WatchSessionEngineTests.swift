@@ -220,10 +220,14 @@ final class WatchSessionEngineTests: XCTestCase {
             harness.clock.advance(60)
         }
 
-        // A session start announces itself; the three entries follow it.
+        // A session start announces itself — the lifecycle frame, then the
+        // snapshot carrying the ladder (D-91) — and the three entries follow both.
         XCTAssertEqual(
             harness.emitted.map { $0["type"] as? String },
-            ["session_lifecycle", "observations_up", "observations_up", "observations_up"]
+            [
+                "session_lifecycle", "session_snapshot",
+                "observations_up", "observations_up", "observations_up",
+            ]
         )
 
         // Killed before anything left the watch: the replay rebuilds the same
@@ -1227,5 +1231,169 @@ final class WatchSessionEngineTests: XCTestCase {
             ["sx-bench"]
         )
         XCTAssertEqual(engine.session?.status, WatchSessionStatus.active)
+    }
+
+    // MARK: - S-100/S-101/S-104 the wrist announces its own structure (D-91, D-101)
+
+    /// The `session_snapshot` frames the wrist emitted from its own sink, in
+    /// order — the frames the phone's adoption reads.
+    private func wristSnapshots(_ harness: Harness) -> [[String: Any]] {
+        harness.emitted.filter { $0["type"] as? String == "session_snapshot" }
+    }
+
+    private func snapshotPayload(_ frame: [String: Any]) -> [String: Any] {
+        (frame["payload"] as? [String: Any]) ?? [:]
+    }
+
+    /// The `sessionExerciseId`s a snapshot's ladder carries, in order.
+    private func snapshotLadder(_ frame: [String: Any]) -> [String] {
+        (snapshotPayload(frame)["exercises"] as? [[String: Any]] ?? [])
+            .compactMap { $0["sessionExerciseId"] as? String }
+    }
+
+    private func snapshotRevision(_ frame: [String: Any]) -> Int? {
+        snapshotPayload(frame)["revision"] as? Int
+    }
+
+    func testS100AWristStartSendsItsLifecycleThenItsOwnSnapshot() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [exercise("sx-a"), exercise("sx-b")]
+        )
+
+        XCTAssertEqual(
+            harness.emitted.map { $0["type"] as? String },
+            ["session_lifecycle", "session_snapshot"],
+            "D-91 the frame the start already sent keeps its place and the snapshot follows it, one each"
+        )
+
+        let lifecycle = try XCTUnwrap(harness.emitted.first)
+        let snapshot = try XCTUnwrap(harness.emitted.last)
+        XCTAssertEqual(lifecycle["sessionId"] as? String, "s-watch-1")
+        XCTAssertEqual(snapshot["sessionId"] as? String, "s-watch-1")
+        XCTAssertNotEqual(
+            lifecycle["messageId"] as? String,
+            snapshot["messageId"] as? String,
+            "two announcements, two identities: each is re-deliverable on its own"
+        )
+        XCTAssertEqual(snapshotLadder(snapshot), ["sx-a", "sx-b"], "the ladder the phone adopts")
+        XCTAssertEqual(snapshotPayload(snapshot)["status"] as? String, WatchSessionStatus.active)
+        XCTAssertEqual(snapshotPayload(snapshot)["currentExerciseIndex"] as? Int, 0)
+        XCTAssertEqual(snapshotRevision(snapshot), engine.session?.revision)
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(snapshot).isEmpty,
+            "a telling this build could not send would be dropped, so what the sink got is a frame the protocol accepts"
+        )
+    }
+
+    func testS101AWristAddedExerciseArrivesAsASecondSnapshotWithAMovedRevision() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        // S-101's fixture: a free session started with no exercise at all, then
+        // the user's own pick.
+        _ = await engine.createSession(modality: nil, exercises: [])
+        let first = try XCTUnwrap(wristSnapshots(harness).first, "the free start announces itself")
+        XCTAssertEqual(snapshotLadder(first).count, 0, "the ladder the wrist started with, empty")
+        let before = try XCTUnwrap(snapshotRevision(first))
+
+        _ = await engine.insertExercise(exercise("sx-c"), moveTo: true)
+
+        let snapshots = wristSnapshots(harness)
+        XCTAssertEqual(snapshots.count, 2, "the wrist's own add is announced once, and nothing else is")
+        let second = try XCTUnwrap(snapshots.last)
+        XCTAssertEqual(snapshotLadder(second), ["sx-c"])
+        XCTAssertEqual(
+            snapshotPayload(second)["currentExerciseIndex"] as? Int,
+            0,
+            "the user's own add moves the session onto the exercise they just added"
+        )
+        XCTAssertGreaterThan(
+            try XCTUnwrap(snapshotRevision(second)),
+            before,
+            "D-101 a wrist-originated structural change moves the revision"
+        )
+        XCTAssertEqual(
+            snapshotRevision(second),
+            engine.session?.revision,
+            "the snapshot carries the number the row holds"
+        )
+        XCTAssertTrue(Harness.validator().validateEnvelope(second).isEmpty)
+    }
+
+    func testS104AStructureChangeFromThePhoneIsNeverAnnouncedBack() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [exercise("sx-a"), exercise("sx-b")]
+        )
+        harness.clearEmitted()
+
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                "s-watch-1",
+                changeId: "chg-phone-1",
+                changes: [["kind": "remove_exercise", "sessionExerciseId": "sx-b"]]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-a"],
+            "the change really applied, so the silence below is not a refused frame's"
+        )
+        XCTAssertTrue(
+            harness.emitted.isEmpty,
+            "D-91 the phone is the structure authority: a change it wrote is not announced back at it"
+        )
+    }
+
+    func testS104AnExercisePushFromThePhoneIsNeverAnnouncedBack() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-a")])
+        harness.clearEmitted()
+
+        _ = try await engine.applyMessage(
+            exercisePushFrame("s-watch-1", messageId: "msg-push-1", slot: "sx-c")
+        )
+
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-a", "sx-c"],
+            "the push landed and left the user where they were"
+        )
+        XCTAssertTrue(
+            harness.emitted.isEmpty,
+            "D-91 an `exercise_push` applies with `announce: false`: the phone wrote it, so the phone hears nothing"
+        )
+    }
+
+    func testS104ASnapshotFromThePhoneIsNeverAnsweredWithTheWristsOwn() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-a")])
+        harness.clearEmitted()
+
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                "s-watch-1",
+                messageId: "msg-snap-1",
+                exercises: [exercise("sx-a"), exercise("sx-b")]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-a", "sx-b"],
+            "the snapshot applied"
+        )
+        XCTAssertTrue(
+            harness.emitted.isEmpty,
+            "D-91 a snapshot is answered with silence: answering it would be a snapshot the phone did not ask for"
+        )
     }
 }

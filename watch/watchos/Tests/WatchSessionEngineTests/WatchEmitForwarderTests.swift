@@ -119,9 +119,12 @@ final class WatchEmitForwarderTests: XCTestCase {
         await forwarder.drain()
 
         // The rest timer the log started rides between the set and the session
-        // end, so it is part of the order the sink must preserve.
+        // end, so it is part of the order the sink must preserve. The start's
+        // own snapshot (D-91) follows the lifecycle frame the start already sent
+        // and is enqueued behind it like any other frame.
         let expectedFrames = [
             "session_lifecycle",
+            "session_snapshot",
             "observations_up",
             "timer_state",
             "observations_up",

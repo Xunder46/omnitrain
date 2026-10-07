@@ -849,14 +849,16 @@ class WatchSensorRecordingTests: XCTestCase {
     func testAReadingIsStoredWithoutBeingSentAnywhere() async throws {
         let engine = await harness.runningEngine()
         _ = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
-        XCTAssertEqual(harness.emitted.count, 1, "starting a session tells the phone")
+        // Two frames, not one: D-91 has the start send its lifecycle and then the
+        // snapshot the phone adopts the session from.
+        XCTAssertEqual(harness.emitted.count, 2, "starting a session tells the phone")
 
         await engine.appendSensorSample(kind: WatchSensorKind.heartRate, value: 132)
 
         XCTAssertEqual(engine.sensorSamples.count, 1)
         XCTAssertEqual(
             harness.emitted.count,
-            1,
+            2,
             "a reading adds nothing to the outbound stream: the sync protocol "
                 + "carries the logged effort, and the distance in it is the reading "
                 + "that survived"
