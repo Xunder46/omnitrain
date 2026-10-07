@@ -50,6 +50,32 @@ private final class SendRace {
     }
 }
 
+/// Holds the sleeper task of one bounded send so the send can cancel it (F5).
+///
+/// The send may settle before the sleeper is stored, so a cancel that arrives
+/// first is remembered and applied at the store.
+private final class SleeperHandle {
+    private let lock = NSLock()
+    private var task: Task<Void, Never>?
+    private var cancelledFirst = false
+
+    func store(_ task: Task<Void, Never>) {
+        lock.lock()
+        let cancelledFirst = self.cancelledFirst
+        if !cancelledFirst { self.task = task }
+        lock.unlock()
+        if cancelledFirst { task.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelledFirst = true
+        let task = self.task
+        lock.unlock()
+        task?.cancel()
+    }
+}
+
 /// Turns the engine's `WatchMessageSink` into sends over a `WatchSyncTransport`.
 public final class WatchEmitForwarder {
     /// Hands one frame over. Throwing means this frame is refused; it is
@@ -126,8 +152,10 @@ public final class WatchEmitForwarder {
     /// completed within `timeout` seconds (D-98).
     ///
     /// The loser of the race is abandoned rather than awaited: a send that never
-    /// returns must not hold the serial chain. Nothing is retried — the row the
-    /// frame came from is still owed and the next sync re-sends it from storage.
+    /// returns must not hold the serial chain. The winner cancels the loser's
+    /// sleeper, so a settled send leaves no task waiting out the timeout. Nothing
+    /// is retried — the row the frame came from is still owed and the next sync
+    /// re-sends it from storage.
     static func bounded(
         _ envelope: [String: Any],
         via send: @escaping ([String: Any]) async throws -> Void,
@@ -135,22 +163,29 @@ public final class WatchEmitForwarder {
     ) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let race = SendRace()
+            let sleeper = SleeperHandle()
             Task {
                 do {
                     try await send(envelope)
-                    if race.claim() { continuation.resume() }
+                    if race.claim() {
+                        sleeper.cancel()
+                        continuation.resume()
+                    }
                 } catch {
-                    if race.claim() { continuation.resume(throwing: error) }
+                    if race.claim() {
+                        sleeper.cancel()
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
-            Task {
+            sleeper.store(Task {
                 do {
                     try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 } catch {
                     return
                 }
                 if race.claim() { continuation.resume(throwing: WatchSendTimeout(seconds: timeout)) }
-            }
+            })
         }
     }
 

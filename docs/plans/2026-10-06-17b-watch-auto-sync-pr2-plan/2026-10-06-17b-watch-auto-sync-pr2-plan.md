@@ -51,7 +51,7 @@ The wrist does **not** emit on finish, abandon, select, advance, a logged entry,
 In `WatchSessionAdoptionBridge.consider` (`lib/state/watch/watch_session_adoption_bridge.dart:418`, the `alreadyHeld` branch) the phone now reconciles before returning `alreadyHeld`. For each slot in the snapshot's `payload.exercises` whose `sessionExerciseId` is (a) absent from the phone's ladder for that session and (b) absent from the session's ever-seen set (D-93), the phone appends **one** effort: `id` = the slot's `sessionExerciseId` (as `_effort` already does, `:547`), `exerciseId`, `name` and `capabilities` from the slot, `effortKind` by the existing rule (`_effort`, `:541`), `segmentId` = the segment `_adopt` created for that session (`WatchSessionImporter.segmentIdFor(sessionId)`, `:515`), and `orderIndex`/`topLevelOrderIndex` = the slot's index in the snapshot's ladder. The phone never deletes, reorders, renames or re-kinds a slot from a wrist snapshot, never writes an entry from one (entries are the importer's business), and never changes `currentExerciseIndex` or `status`. A snapshot naming no slot the phone lacks changes nothing and notifies nothing.
 
 ### D-93 — A slot the phone removed is never re-added
-The **ever-seen set** for a session is the union of (a) every `sessionExerciseId` in the ladder of every snapshot the phone has applied for that session and (b) every `sessionExerciseId` in the phone's own ladder for that session at each `consider`. A slot that leaves the phone's ladder therefore stays in the set and a stale wrist snapshot carrying it appends nothing. Known residual (documented, not hidden): a slot the phone created itself *and* removed between two `consider` calls is not in the set, so a wrist snapshot composed in that window could resurrect it. The window is one debounce (250 ms) wide and needs a phone-side add, a phone-side remove, and a wrist snapshot in between; if the reviewer judges it material, the fix is a slot-id ledger fed by the phone's own structural writes — a remediation sub-phase, not a redesign.
+The **ever-seen set** for a session is the union of (a) every `sessionExerciseId` in the ladder of every snapshot the phone has applied for that session and (b) every `sessionExerciseId` in the phone's own ladder for that session at each `consider`. A slot that leaves the phone's ladder therefore stays in the set and a stale wrist snapshot carrying it appends nothing. Known residual (documented, not hidden): a slot the phone created itself *and* removed between two `consider` calls is not in the set, so a wrist snapshot composed in that window could resurrect it. The window is one debounce (250 ms) wide and needs a phone-side add, a phone-side remove, and a wrist snapshot in between; if the reviewer judges it material, the fix is a slot-id ledger fed by the phone's own structural writes — a remediation sub-phase, not a redesign. A **second residual is the set's own lifetime**: `_everSeen` is memory-only and its entry is dropped as soon as the phone holds another session (Phase 1 step 3 clears the session's entry when a different one is adopted), so leaving the session and coming back — or relaunching the app — re-opens the window for a slot the phone removed. AC-5 therefore holds only while the phone holds that session continuously. The same durable slot ledger, fed by the phone's own structural writes and surviving both, closes both residuals; it is recorded as a follow-up (A-27), not built here.
 
 ### D-94 — The append is timer-safe and notifies once
 The new efforts reach the held session through one new `WorkoutState` method (`appendSessionSlots(List<SessionEffort> efforts, {required String sessionId})`, `lib/state/workout/session_core_entry.dart`, beside `addExerciseToSession` `:161`). It inserts into the session's segment, preserves `status`, `currentExerciseIndex`, the segment's own timers and **every running rest/timed timer**, and calls `notifyListeners()` exactly once. It must not call `loadSessionData` or `clearAll` (`lib/state/workout/session_core_io.dart`) — those clear timers (D-26/D-80).
@@ -120,7 +120,7 @@ Only the invariants that bite here. Project-wide rules stay in `docs/global_conv
 | AC-2 | An exercise added on the wrist after adoption appears on the phone, in the wrist's order, exactly once | S-102, S-103 |
 | AC-3 | A wrist snapshot naming no new slot changes nothing and notifies nothing | S-104, S-105 |
 | AC-4 | A phone holding its own active session is unaffected by a wrist snapshot for another session | S-106, S-115 |
-| AC-5 | A stale wrist snapshot cannot re-add a slot the phone removed | S-103 |
+| AC-5 | A stale wrist snapshot cannot re-add a slot the phone removed — **while the phone holds that session continuously**: the ever-seen set is memory-only and its entry is dropped as soon as the phone holds another session, so a switch-away-and-return or a relaunch re-opens the window (known limit; a durable slot ledger is a follow-up, A-27) | S-103 |
 | AC-6 | The wrist syncs once per reachability edge, only while it holds a session, and never twice at once | S-107, S-108 |
 | AC-7 | The phone asks for a sync once per resume | S-109 |
 | AC-8 | An append from a wrist snapshot clears no running timer and moves no position | S-110, S-111 |
@@ -188,7 +188,7 @@ Fixtures are explicit. `MockWorkoutRepository` + plain `test()` for Dart; the Sw
 - Trigger: the snapshot arrives.
 - Flow: reconcile finds no unknown slot; the mirror's `_shapeDiffers` is false for the answer it would give.
 - Expected outcome: no effort added, no reorder, no notification from the bridge, and no answer frame sent to the wrist.
-- **Red without the change because** `_shapeDiffers` compares `revision` (`live_session_mirror_state.dart:566`), so the fixture's moved `revision` makes the mirror answer the wrist with the phone's snapshot — the assertion that no answer frame is sent fails. (With the `revision` left unchanged every assertion passes on today's code and the scenario proves nothing, so the moved-`revision` fixture is the one to use.)
+- **Passes vacuously at the base; red only under mutation (A-13, A-24).** Every assertion here is that something does *not* happen — no effort written, no reorder, no notification, no frame composed by the reconcile — and all of that is already true of code that never appends, so `prove-red` at the base returns green and the scenario proves nothing on its own (`.evidence.md` §Phase 1). Its guard is `_reconcile`'s own line, and it is proven by mutation (e′) — the whole `held`/`seen` guard deleted, which re-orders the phone's own efforts and turns S-104 red; the same-shaped silence assertions in the Dart twin and the wrist engine are proven by mutation (b) (`applyExercisePush` with `announce: true`, which echoes the phone's own push back).
 - Edge case of: S-102.
 
 ### S-105: A phone-side rename is not undone by a wrist snapshot
@@ -369,6 +369,7 @@ Dependents that only read a touched surface (no change expected; their tests are
 - **Why no new frame type**: PROTOCOL's snapshot is already the shape the phone's adoption reads, and a new type would need a validator rule, a version note and a phone reader — for the same bytes.
 - **Why the emission sits after the existing frame**: every existing assertion about "the frame a start emits" keeps its index; the new frame is appended.
 - **`revision` on the wrist**: today a wrist-side ladder change does not move it (only `applySnapshot` and `applyStructureChange` write it). D-101 makes the wrist's own change move it, which is what a reader of `revision` needs and what PROTOCOL's rule implies. If a test elsewhere asserts a fixed revision after a wrist-side change, that test is asserting the defect and its update is expected.
+- **Follow-up, not this PR (F3, A-27)**: the ever-seen set (D-93) is memory-only and per-held-session, so a switch-away-and-return or an app relaunch re-opens the resurrection window AC-5 closes. The durable slot ledger — fed by the phone's own structural writes and surviving both — closes it, and is planned as its own PR rather than grown onto this one.
 - **Baselines (2026-10-06, 17a's evidence)**: `flutter test` 4013 passed / 1 skipped / 0 failed; `flutter analyze` 196 issues / 0 errors (non-zero exit is normal for this repo); `swift test` in `watch/watchos` 315 passed / 0 failed. Compare, do not assume.
 - **Test traps**: plain `test()` for state; `testWidgets` under FakeAsync never resolves a real `await Future.delayed` or Hive write — run widget tests Mock-first; a red Mock group can leave its Hive group hanging behind it, so fix the red group instead of re-running the file.
 - **Carried from 17a's review** (all four land in functions this plan already touches): G6/A-20 → D-98, H5/A-21 → D-99, A-8/F5 → D-100, and the late-adoption push window (F3/A-17) → D-96's phone-side resume trigger.
@@ -449,6 +450,20 @@ Dependents that only read a touched surface (no change expected; their tests are
   not automatic (the first fetch on a fresh watch, routines/settings, a manual retry; D-96). The gate
   and the guard stay in `catchUp`. Step 3's `xcodebuild` for a watchOS simulator remains the
   governor's own check.
+- [x] Fix round 1 for code review 1 — F1–F8 (@developer) — **Complete** (2026-10-07). F2 (the one
+  blocking item): the clause that had the wrist's catch-up ask for the phone's state is deleted — the
+  gate means the wrist holds a session and `sync` then hands over its own snapshot, while the request
+  branch is the no-session branch the gate excludes; the S-107/S-108 pointers stay. F6: the S-104
+  parentheticals now name all three tests, in `docs/watch_session_sync.md` and in both places in
+  `watch/sync_protocol/PROTOCOL.md`. F7: the D-102 paragraph states the non-empty-ladder condition and
+  names `testS77AWristWithAnEmptyLadderReservesNothing`. F1: the S-104 scenario note now says it passes
+  vacuously at the base and is proven by mutation (e′)/(b). F3: AC-5, D-93 and the add-only paragraph
+  state the memory-only, per-held-session boundary, and the durable slot ledger is a Notes follow-up.
+  F4 and F8: comment-only (A-24) — no behaviour change, because routing those failures through the
+  graph's failure hook is a design change the review did not ask for. F5: `bounded` cancels its sleeper
+  when the send wins the race. Checked: `swift-test` 325 passed / 0 failed, `test` 4030 passed / ~1
+  skipped / 0 failed, `docs_indexing_contract_test.dart` 9 passed / 0 failed, `lint` 196 issues / 0
+  errors with none in a touched file, the invariant grep clean. Evidence: `.evidence.md` §Fix round 1.
 
 ## Assumption Log
 
@@ -567,9 +582,38 @@ Executors append here: decision made, options considered, choice and why. The Co
     module, so a test-local `GatedTransport` was added there (a named type in a test file, not a
     scratch file) rather than duplicating the harness in the mirroring file.
 
+24. **A-24 — F4 and F8 are answered in comments, not in code (developer, 2026-10-07, fix round 1).**
+    The review offers "route the failure to the hook" or "note it"; routing a failed `appendSessionSlots`
+    through the watch graph's `onFailure` — and deduplicating a timed-out pass's second report — are
+    behaviour changes the review did not require. The comments state what happens instead: a UI-level
+    error on the state's own channel with the slots staying seen for that run, and a possible second
+    report with no state effect (the baseline is stored before the send, D-83).
+25. **A-25 — F2's clause is deleted whole, not narrowed (developer, 2026-10-07, fix round 1).** The
+    review recommends a deletion and the false half is "asks for the phone's state"; the sentence now
+    states the exchange the gate actually produces — the wrist hands the phone the session it holds —
+    and PROTOCOL carries the re-send rule, so keeping half the clause would invite the same misreading.
+26. **A-26 — two of the fix list's pointers are off (developer, 2026-10-07, fix round 1).** F1's
+    `plan:223` resolves to the S-104 *scenario note* at `:191` — `:223` is S-108's, which already said
+    the test is vacuous. F6's `PROTOCOL.md:384-396` resolves to `:392` (the bullet) and, for the
+    sentence quoted, to `:560` (the dated amendment row); both now name all three S-104 tests.
+27. **A-27 — F3's boundary is documented and the durable ledger stays a follow-up (developer,
+    2026-10-07, fix round 1).** AC-5, D-93 and the add-only paragraph of `docs/watch_session_sync.md`
+    now state that the ever-seen set is memory-only and per-held-session, so a switch-away-and-return or
+    a relaunch re-opens the window; the doc sentence claims no test, because none exists for it. The
+    ledger is a Notes follow-up, which is the review's second option.
+
 ## Feedback
 
-[empty]
+- Code review 1 (2026-10-07): one blocking item, `docs/watch_session_sync.md:181-182` (F2 — the
+  wrist's catch-up does not ask for the phone's state while it holds a session). Full findings, the eight
+  ordered answers and the check results are in `2026-10-06-17b-watch-auto-sync-pr2-plan.review.md`.
+- Fix checklist for the next handoff: (1) F2, one clause deleted; (2) optionally F1 (plan:223 wording),
+  F4 (`appendSessionSlots` failure path), F5 (sleeper task), F6/F7 (doc pointers and the D-102 ladder
+  condition), F8 (double `onFailure` report) — none of these is blocking.
+- Fixes landed for review 1 (2026-10-07, @developer): all eight — F2 (the false clause deleted), plus
+  F1, F3, F4, F5, F6, F7 and F8; A-24…A-27 record the choices, and the round's results are in
+  `2026-10-06-17b-watch-auto-sync-pr2-plan.evidence.md` §Fix round 1. F3's *durable ever-seen ledger*
+  remains a follow-up plan, not a fix in this PR (Notes, A-27).
 
 ## Open questions
 

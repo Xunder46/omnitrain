@@ -119,7 +119,11 @@ adopted arrives, the phone appends the slots it has not already taken, in the
 snapshot's order, after the slots it holds, and changes nothing else: no
 deletion, no reorder, no rename, no move of the position or the status, and no
 rest or timed timer cleared. The append is one notification, and a ladder that
-adds nothing writes nothing and notifies nothing. Verified by
+adds nothing writes nothing and notifies nothing. (Known limit, and no test
+claims it: the slot ids this rule remembers live in memory only and are forgotten
+as soon as the phone holds another session, so leaving the session and coming
+back — or relaunching the app — re-opens the window in which a stale wrist
+snapshot can bring back a slot the phone removed.) Verified by
 `test/watch_session_adoption_bridge_test.dart`
 (`S-102 a slot the wrist added to the held session is appended`,
 `S-104 a snapshot with no new slot changes nothing`,
@@ -178,8 +182,8 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 
 **The wrist catches up when the phone comes back in reach (D-96).** When the radio
 reports the phone reachable again and the wrist holds a session, the wrist runs
-the same catch-up the Sync button runs — it re-sends what the phone has not
-acknowledged and asks for the phone's state — once, without the user pressing
+the same catch-up the Sync button runs — it hands the phone the session it holds,
+and of the phone's state it asks nothing — once, without the user pressing
 anything. A trigger that arrives while one is already running is dropped: never
 queued, never cancelling the running one. A wrist that holds no session does
 nothing by itself, so routines, preferences and the food catalog still wait for
@@ -223,13 +227,16 @@ retry. A session's own changes travel by themselves in both directions (D-90,
 D-91, D-96).
 
 **A wrist session left running keeps a new phone session off the watch (D-102).**
-While the wrist holds an active session, a snapshot the phone sends for a
-different session is refused whole and silently, so a session the user starts on
-the phone afterwards does not appear on the watch until the wrist's own session
-is ended there. This is how "each keeps its own" behaves — the alternative would
-silently discard work done on the wrist — so it is a consequence of the rule, not
-a defect. Pinned by
-`WatchSessionEngineTests.testS77AForeignSnapshotChangesNothingAndSaysNothing` in
+While the wrist holds an active session **with a non-empty ladder**, a snapshot
+the phone sends for a different session is refused whole and silently, so a
+session the user starts on the phone afterwards does not appear on the watch until
+the wrist's own session is ended there. (A wrist whose own ladder is empty has
+nothing to interrupt, so it takes the phone's session instead.) This is how "each
+keeps its own" behaves — the alternative would silently discard work done on the
+wrist — so it is a consequence of the rule, not a defect. Pinned by
+`WatchSessionEngineTests.testS77AForeignSnapshotChangesNothingAndSaysNothing`,
+with the empty-ladder counter-case
+`WatchSessionEngineTests.testS77AWristWithAnEmptyLadderReservesNothing`, in
 `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 
 ## Invariants
@@ -359,8 +366,11 @@ remains out is listed below.
   `S-101 a wrist-added exercise arrives as a second snapshot with a moved
   revision` and `S-104 nothing from the phone is announced back`) and, on the
   watch target, by `WatchSessionEngineTests.testS100AWristStartSendsItsLifecycleThenItsOwnSnapshot`,
-  `…testS101AWristAddedExerciseArrivesAsASecondSnapshotWithAMovedRevision` and
-  `…testS104AnExercisePushFromThePhoneIsNeverAnnouncedBack`. Routines,
+  `…testS101AWristAddedExerciseArrivesAsASecondSnapshotWithAMovedRevision`, and — for
+  the three frames a change from the phone can arrive as —
+  `…testS104AnExercisePushFromThePhoneIsNeverAnnouncedBack`,
+  `…testS104AStructureChangeFromThePhoneIsNeverAnnouncedBack` and
+  `…testS104ASnapshotFromThePhoneIsNeverAnsweredWithTheWristsOwn`. Routines,
   preferences and the food catalog still travel by their own paths. When both
   devices hold their own session, each keeps its own and is told nothing
   (`test/watch_session_engine_test.dart`,

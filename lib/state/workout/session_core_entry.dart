@@ -74,6 +74,11 @@ extension SessionCoreEntryMethods on SessionCore {
   /// it never calls [loadSessionData] or `clearAll`, so every running rest and
   /// timed timer survives. Nothing is written for a session the phone is not
   /// holding, or for an empty list.
+  ///
+  /// A failed append is reported on the state's own error channel — a UI-level
+  /// error the session screens show — and does not reach the watch graph's
+  /// failure hook; because the caller marks a slot seen before it is written,
+  /// nothing retries it for the rest of this run.
   Future<void> appendSessionSlots(
     List<SegmentEffort> efforts, {
     required String sessionId,

@@ -426,3 +426,50 @@ After each mutation the exact original line was restored and the test re-run gre
 Footprint: 8 files — 2 Swift sources, 2 Swift test files, `PROTOCOL.md`, 2 docs, 1 shell file
 (`git-diff --stat`: 359 insertions, 15 deletions). No scratch file was created, so none had to be
 deleted, and no formatter was run.
+
+## Fix round 1 — the eight review findings (F1…F8), 2026-10-07
+
+Brief: `.work/watch-autosync/brief-17b-fix-1.md`. Base commit `54d2470` (swift 325 / 0; flutter
++4030 ~1; analyze 196 / 0).
+
+Docs, comments and one Swift guard; no behaviour change and no new test. `prove-red` therefore cannot
+apply to the prose (deleting prose is not a guard), so the findings are verified by reading and by the
+existing suites; the one guard that is code — F5's sleeper cancellation — is proven by the same S-112
+mutation Phase 4 used, re-run here.
+
+### The one guard that changed (F5)
+
+| Test | Mutation applied | Verdict |
+|---|---|---|
+| `WatchEmitForwarderTests.testS112AHungSendCannotWedgeTheQueue` | `enqueue`: `try await WatchEmitForwarder.bounded(envelope, via: send, within: timeout)` → `try await send(envelope)` (the bound removed) | RED AT: `XCTAssertEqual failed: ("0") is not equal to ("1") - the wedged send is reported exactly once`; 1 executed / 1 failed in 5.19 s — the hung send's own delay, i.e. no bound fired |
+
+The exact original line was restored before the full run below.
+
+### Green
+
+| Command | Result | Log |
+|---|---|---|
+| gateway `swift-test --filter WatchEmitForwarderTests` | `Executed 6 tests, with 0 failures` — includes `testS112AHungSendCannotWedgeTheQueue`, which passes with the cancellation in place | inline |
+| gateway `swift-test --filter testS112AHungSendCannotWedgeTheQueue` (mutation applied) | `Executed 1 test, with 1 failure` | inline |
+| gateway `swift-test` (full, after the restore) | `Executed 325 tests, with 0 failures` — 325 passed, 0 failed; the Phase 4 count unchanged | `swift-test-20261007-031456-75524.log` |
+| gateway `test test/docs_indexing_contract_test.dart` | `+9: All tests passed!` — the ceiling, links and reachability clauses | inline |
+| gateway `test` (full) | `+4030 ~1: All tests passed!` — 4030 passed, ~1 skipped, 0 failed; unchanged (no Dart behaviour changed) | `test-20261007-031502-75633.log` |
+| gateway `lint` | `196 issues found.` — 0 errors, the baseline count; `grep` over the log finds no line for `session_core_entry.dart` or `watch_session_auto_push.dart` and none carrying `error •` | `lint-20261007-031724-80474.log` |
+| `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches | — |
+
+### What each finding changed
+
+| Finding | File | The edit |
+|---|---|---|
+| F2 (blocking) | `docs/watch_session_sync.md` | "it re-sends what the phone has not acknowledged and asks for the phone's state" deleted; the catch-up sentence now says the wrist hands the phone the session it holds. The S-107/S-108 pointers are unchanged |
+| F1 | plan, the S-104 note | "Red without the change because …" replaced: it passes vacuously at the base and is proven by mutation (e′) / (b) |
+| F3 | plan AC-5, D-93 and Notes; `docs/watch_session_sync.md` | the ever-seen set's memory-only, per-held-session boundary stated in all three; the add-only paragraph marks it a known limit and claims no test; the durable ledger is a follow-up in Notes |
+| F4 | `lib/state/workout/session_core_entry.dart` | doc comment only: a failed append surfaces on the state's error channel, not the watch graph's failure hook, and the slot is not retried this run |
+| F5 | `WatchEmitForwarder.swift` | `bounded` keeps its sleeper in a `SleeperHandle` and whichever task wins the race cancels it, so a settled send leaves no task waiting out the timeout; the sleeper's timeout path is unchanged |
+| F6 | `PROTOCOL.md` (the snapshot-rules bullet and the 2026-10-06 amendment row), `docs/watch_session_sync.md` | all three S-104 tests named: `…AnExercisePushFromThePhoneIsNeverAnnouncedBack`, `…AStructureChangeFromThePhoneIsNeverAnnouncedBack`, `…ASnapshotFromThePhoneIsNeverAnsweredWithTheWristsOwn` |
+| F7 | `docs/watch_session_sync.md` | the D-102 paragraph states the non-empty-ladder condition and names the counter-case `testS77AWristWithAnEmptyLadderReservesNothing` |
+| F8 | `lib/state/watch/watch_session_auto_push.dart` | comment only: a timed-out pass may report again on its own later failure — a second report for one pass, no state effect |
+
+Footprint: 6 files (`git-diff --stat`: 111 insertions, 27 deletions) — the two docs and `PROTOCOL.md`,
+two source comments, one Swift source, and the plan. No scratch file was created and no formatter was
+run.

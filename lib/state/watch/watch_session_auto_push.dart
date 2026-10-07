@@ -141,7 +141,9 @@ class WatchSessionAutoPush {
         // when the timeout expires, so a hung send cannot wedge every later
         // push. A timed-out pass is reported, never thrown, never retried and
         // never queued — its baseline was already stored before the send, so
-        // nothing is re-sent for the same payload (D-83).
+        // nothing is re-sent for the same payload (D-83). The abandoned pass is
+        // not cancelled, so it may also report on its own later failure: a
+        // second report for the one pass, with no other effect.
         await _pushOnce().timeout(
           _sendTimeout,
           onTimeout: () {
