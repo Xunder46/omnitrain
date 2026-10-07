@@ -343,3 +343,33 @@ separately observed**, and nothing in Phase 1–3 added a per-store dump for the
 ## Out-of-bounds writes found by the reviewer
 
 `<reviewer fills>`
+
+## Fix round 1 (2026-10-07) — the review's doc and parity findings (@developer)
+
+Item: `.work/watch-17d/brief-fix-1.md`, F1–F8. No product (`lib/`) change remains: the one `lib/` mutation used as
+F6's proof was restored exactly, and `git-diff --stat` does not list `phone_entries.dart`.
+
+Targeted runs while working (`.github/copilot/scripts/macos/gateway.sh test test/watch_session_projection_test.dart --plain-name <filter>`):
+- `"S-31"` → `+24: All tests passed!` (exit 0) — twice: before and after the mutation.
+- `"both stores pair"` with the mutation applied → exit 1, RED on both harnesses (below).
+
+F6's proof — the change is test-only and HEAD already holds the production code, so `prove-red HEAD test …` would
+report GREEN AT and prove nothing; the brief prescribes a mutation instead:
+- Original line (restored exactly, byte-for-byte): `lib/core/sync_protocol/phone_entries.dart`, `PhoneEntries.projectTimed` — `extra: _distanceFields(distances[position]),`
+- Mutated to: `extra: _distanceFields(distances[instances.length - 1 - position]),`
+- Verdict — RED on both stores, for the reason the test guards:
+  - `Mock — S-31 the answer is the same on both stores` → `Expected: [100.0, 500.0] Actual: [500.0, 100.0]` at `test/watch_session_projection_test.dart:2330:9` ("each timed entry carries the distance row at its own position (`distances[position]`), whichever store holds the rows")
+  - `Hive — S-31 the answer is the same on both stores` → the identical failure
+- Restored → `"S-31"` `+24: All tests passed!`; `git-diff --stat` shows no `phone_entries.dart` (mutation fully reverted).
+
+| Check | Baseline (HEAD) | Fix round 1 | Delta |
+|---|---|---|---|
+| `test` (full) | `+4059 ~1: All tests passed!` | **`+4061 ~1: All tests passed!`** (exit 0, 1:40) | +2: `S-31 both stores pair each kind's rows the same way` on Mock and Hive |
+| `lint` | 196 issues / 0 errors | **196 issues / 0 errors** (exit 1, the pre-existing info notices) | none; a grep of the log for `watch_session_projection_test`, `phone_entries`, `watch_session_adoption_bridge`, `watch_session_auto_push` finds no hit |
+| `test test/docs_indexing_contract_test.dart` | green | **`+9: All tests passed!`** | the doc pass; includes "no documentation file is within the warning band of the ceiling" (the 52 KB band) over `docs/` |
+| invariant: `import .*hive_workout_repository` in `lib/{state,features,widgets,core}` | none | **none** | — |
+| `swift-test` | 335 / 0 | not run | no `.swift` file changed (`git-diff --stat` lists no `watch/watchos/**`) |
+
+This supersedes the "not separately observed" column of the I-1 table above: all three kinds are now dumped per
+store inside the one test (`parity[harness.name]` for Mock and Hive), so the payload equality the positional pairing
+needs is observed, not inferred.

@@ -2222,6 +2222,140 @@ void main() {
         expect(payload['timers'], isEmpty);
         parity[harness.name] = jsonEncode(payload);
       });
+
+      test('S-31 both stores pair each kind\'s rows the same way', () async {
+        await seedExercise(
+          store,
+          id: 'ex-plank',
+          name: 'Plank',
+          capabilities: ['time', 'hold'],
+        );
+        await seedExercise(
+          store,
+          id: 'ex-burpee',
+          name: 'Burpees',
+          capabilities: ['rounds', 'time'],
+        );
+        final state = WorkoutState(store);
+        await _SessionFixture.seedEfforts(store, state, 'sess-2', [
+          (
+            slotId: 'slot-plank',
+            exerciseId: 'ex-plank',
+            effortKind: 'timed',
+            write: () async {
+              await store.createTimedInstance(
+                timedInstance(
+                  'slot-plank',
+                  0,
+                  durationSecs: 60,
+                  entryIndex: 0,
+                  startedAtMs: _at(1),
+                  finishedAtMs: _at(2),
+                ),
+              );
+              await store.createObservation(
+                distanceRow('slot-plank', 0, 100, atMs: _at(2)),
+              );
+              await store.createTimedInstance(
+                timedInstance(
+                  'slot-plank',
+                  1,
+                  durationSecs: 60,
+                  entryIndex: 1,
+                  startedAtMs: _at(3),
+                  finishedAtMs: _at(4),
+                ),
+              );
+              await store.createObservation(
+                distanceRow('slot-plank', 1, 500, atMs: _at(4)),
+              );
+            },
+          ),
+          (
+            slotId: 'slot-burpee',
+            exerciseId: 'ex-burpee',
+            effortKind: 'round',
+            write: () async {
+              await store.createRoundInstance(
+                roundInstance(
+                  'slot-burpee',
+                  0,
+                ).copyWith(totalPausedDurationMs: 5000),
+              );
+              await store.createRoundInstance(roundInstance('slot-burpee', 1));
+            },
+          ),
+          (
+            slotId: 'slot-hold',
+            exerciseId: 'ex-plank',
+            effortKind: 'drill',
+            write: () async {
+              await store.createTimedInstance(
+                timedInstance('slot-hold', 0, durationSecs: 30, entryIndex: 0),
+              );
+              await store.createObservation(
+                extraWeightRow('slot-hold', 0, 12, atMs: fixtureRowAt(0)),
+              );
+            },
+          ),
+        ]);
+
+        final bridge = WatchSessionAdoptionBridge(repository: store);
+        bridge.bindWorkoutState(state);
+        final payload = await bridge.projectSession(null);
+
+        expect(payload, isNotNull);
+        expect(_slotIds(payload!).toSet(), {
+          'slot-plank',
+          'slot-burpee',
+          'slot-hold',
+        });
+        expect(
+          _entryIds(payload).toSet(),
+          {
+            'entry-slot-plank-0',
+            'entry-slot-plank-1',
+            'entry-slot-burpee-0',
+            'entry-slot-burpee-1',
+            'entry-slot-hold-0',
+          },
+          reason:
+              'S-31 the phone\'s timed, round and hold records ride the answer '
+              'the same way on either store',
+        );
+        final entries = {
+          for (final entry in _objects(payload['entries']))
+            entry['entryId']! as String: entry,
+        };
+        expect(
+          [
+            entries['entry-slot-plank-0']!['distanceMeters'],
+            entries['entry-slot-plank-1']!['distanceMeters'],
+          ],
+          [100.0, 500.0],
+          reason:
+              'each timed entry carries the distance row at its own position '
+              '(`distances[position]`), whichever store holds the rows',
+        );
+        expect(
+          entries['entry-slot-hold-0']!['extraLoadKg'],
+          12.0,
+          reason:
+              'a hold carries the added-weight row at its own position '
+              '(`extraLoads[position]`), whichever store holds the rows',
+        );
+        expect(
+          [
+            entries['entry-slot-burpee-0']!['roundNumber'],
+            entries['entry-slot-burpee-0']!['pausedMs'],
+            entries['entry-slot-burpee-1']!['roundNumber'],
+            entries['entry-slot-burpee-1']!.containsKey('pausedMs'),
+          ],
+          [1, 5000, 2, false],
+          reason: 'S-31 the two rounds pair the same way on either store',
+        );
+        parity[harness.name] = jsonEncode(payload);
+      });
     });
   }
 

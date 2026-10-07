@@ -94,9 +94,11 @@ invalid entry fails the whole snapshot on both receivers (both validators reject
 - an instance that never started (`startedAtMs == 0` and no `finishedAtMs`) — nothing happened;
 - a window whose `endedAt` is not after its `startedAt` (the schema/minimum rule);
 - a distance that is not `> 0` (never `distanceMeters: 0`);
-- a `hold`'s `extraLoadKg` of exactly 0 (the schema's exclusive minimum);
-- a round whose `roundIndex + 1 < 1` — impossible by construction, listed so the guard is explicit;
-- a `loggedAt` below the wire minimum (the same floor a set already respects).
+- a round whose `roundIndex + 1 < 1` — impossible by construction, listed so the guard is explicit.
+
+Amended 2026-10-07 (review 1, F4): the `hold`'s `extraLoadKg`-of-0 bullet folded into Assumption 2 and
+the `loggedAt`-wire-minimum bullet struck — `WireLimits` holds `minLoadKg` alone and no validator
+enforces a `loggedAt` floor.
 
 No `null` placeholder, no `0`, no fabricated duration. A phone entry that is omitted is a known limit
 and is stated in the doc (Phase 3), not a silent loss: the wrist's own entry list already shows what
@@ -108,9 +110,10 @@ the wrist itself logged.
 from `kindSet` to `timed`, `hold` and `round` rows: the phone must not send back an entry the wrist
 itself logged, under a phone-minted id (that is the doubling defect of the 15-series F3 evidence).
 
-- The claim read is `WatchSessionAdoptionBridge._wristRowStamps`
-  (`lib/state/watch/watch_session_adoption_bridge.dart:271`), which today **skips** every row whose
-  `kind != WatchInboxEntry.kindSet`; Phase 1 removes that filter and matches per kind
+- The claim read was `WatchSessionAdoptionBridge._wristRowStamps`
+  (`lib/state/watch/watch_session_adoption_bridge.dart:271`), which **skipped** every row whose
+  `kind != WatchInboxEntry.kindSet`; Phase 1 removed that filter and matches per kind, split into the
+  read `_rowsOfKind`/`_stampsOf` (`:314`/`:324`) *(amended 2026-10-07, review 1, F5)*
   (`WatchInboxEntry.kindTimed` / `kindHold` / `kindRound` — add the constants beside `kindSet` at
   `lib/data/models/models.dart:2618` if they do not exist, in the same PR and in the `@dba`-routed
   layer).
@@ -218,7 +221,7 @@ band (`test/docs_indexing_contract_test.dart`).
 |---|---|---|---|
 | `PhoneEntries.project` | `grep -n "PhoneEntries.project\|PhoneEntries.ordered" lib test` — the bridge at `:243` and `test/watch_session_projection_test.dart` / `test/sync_protocol_fixtures_test.dart` | **Unchanged signature and behaviour**; siblings are added beside it, so all existing assertions stay green | S-140 · regression: the two suites |
 | `WatchSessionAdoptionBridge._entriesFor` (`:243`) | `grep -n "_entriesFor" lib test` — one caller, `projectSession` | The `effortKind != set → const []` early return is replaced by a per-kind dispatch; `projectSession`'s shape and the `timers: {}` field are untouched | S-140, S-141 |
-| `WatchSessionAdoptionBridge._wristRowStamps` (`:271`) | `grep -n "_wristRowStamps" lib test` — the claim rule for sets (the 15-series F3 fix) | The `kindSet` filter is replaced by a per-kind match; the set behaviour must not change | S-142 · regression: `test/watch_session_import_test.dart` |
+| `WatchSessionAdoptionBridge`'s per-kind claim read, `_rowsOfKind`/`_stampsOf` (`:314`/`:324`) | `grep -n "_rowsOfKind\|_stampsOf" lib test` — the claim rule for sets (the 15-series F3 fix); amended 2026-10-07 (review 1, F5) — the row cited `_wristRowStamps`, which Phase 1 removed | The `kindSet` filter is replaced by a per-kind match; the set behaviour must not change | S-142 · regression: `test/watch_session_import_test.dart` |
 | `WatchInboxEntry.kindSet` (`lib/data/models/models.dart:2618`) | `grep -n "kindSet\|kindTimed\|kindHold\|kindRound" lib test` | New sibling constants only if absent; existing rows' stored `kind` strings are never renamed | S-142 |
 | `heldWristEntryIds` (17c D-112) | `grep -n "heldWristEntryIds" lib test` | Its `kindSet` filter drops to the four kinds the wire carries; the set behaviour is unchanged | S-144 |
 | `$defs.entry` in `envelope.schema.json` + both validators | `test/sync_protocol_fixtures_test.dart`, `SyncProtocolValidator.swift:78–82` | **Not touched** — the shapes already exist; they are the conformance target | S-140, S-141, S-143 |
@@ -261,8 +264,8 @@ band (`test/docs_indexing_contract_test.dart`).
   imported both (one `WatchInboxEntry` row each, `origin == 'watch'`, `kind` `timed`/`round`) and holds
   the record the importer wrote (stamp as D-133 pins).
 - **Trigger:** one pass.
-- **Flow:** `_wristRowStamps` matches each row to its record by stamp per kind → the entry is claimed →
-  `_entriesFor` sends only the unclaimed ones.
+- **Flow:** the per-kind claim read (`_rowsOfKind`/`_stampsOf`) matches each row to its record by stamp
+  → the entry is claimed → `_entriesFor` sends only the unclaimed ones.
 - **Expected outcome:** the snapshot carries neither wrist entry; the wrist's own two entries are the
   only ones present (no duplicate pair, no phone-minted twin). Red without the change because the
   claim rule today skips every non-set row.
@@ -499,6 +502,15 @@ added weight stay off the wire by decision (D-135/D-136).
   (item 5) full suite `+4059 ~1: All tests passed!`, lint 196 issues/0 errors = baseline (no issue
   names a touched file), `swift-test` 335/0 = baseline, `docs_indexing_contract_test.dart` `+9`. Evidence:
   `2026-10-07-17d-watch-auto-sync-pr4-plan.evidence.md`.
+- [x] Fix round 1 (review 1, F1–F8) — **Complete**: F1/F2 `docs/watch_session_sync.md` (no live
+  `_wristRowStamps` hit; the answer carries all four kinds, citing `S-140`/`S-141`/`S-142`), F3
+  `docs/state_management/watch_surface.md` ("entry", citing `S-144`; reworded shorter so the file does
+  not grow, `docs_indexing_contract_test.dart` `+9`), F4/F5 this plan's D-132/D-133 prose and impact row
+  amended, F6 `S-31 both stores pair each kind's rows the same way` in the parity loop (mutation RED on
+  both stores, `+24` green), F7 no action (PROTOCOL.md ~52.5 KB, outside the docs index test's set), F8
+  the index doc's 17c/17d rows now "built and committed on develop 2026-10-07, not pushed"; full suite
+  `+4061 ~1: All tests passed!`, lint 196/0 = baseline, invariant grep clean, no `lib/` change remains.
+  Evidence: `2026-10-07-17d-watch-auto-sync-pr4-plan.evidence.md`.
 
 ## Assumption Log
 
@@ -508,7 +520,9 @@ added weight stay off the wire by decision (D-135/D-136).
    Options: implement it anyway (untestable) / omit. Omitted in favour of omission (D-132). RATIFY?
 2. **`extraLoadKg` has no exclusive minimum** in `envelope.schema.json` (plain number): D-132's
    "below the minimum" prose is unsupported, so the only omission guards are `_window`'s (zero-length)
-   and `_distanceFields`' (≤ 0). A load of exactly 0 is omitted; nothing is clamped. RATIFY?
+   and `_distanceFields`' (≤ 0). A load of exactly 0 is omitted; nothing is clamped. Amended
+   2026-10-07 (review 1, F4): D-132's two floor bullets are struck — `WireLimits` holds `minLoadKg`
+   alone, and no validator enforces a `loggedAt` minimum either. RATIFY?
 3. **The brief's "1-based" entry-id wording** contradicts D-131/evidence: the id carries the record's
    stored `entryIndex`, 0-based in general (`entry-slot-bench-0` in pre-existing S-31 tests); only
    `roundNumber` is 1-based. Went with D-131. RATIFY?
@@ -544,6 +558,9 @@ added weight stay off the wire by decision (D-135/D-136).
    sequences: no per-store payload dump exists for `timed`/`round`/`hold` (the S-31 dump is sets-only),
    so payload equality there is inferred from row-level Hive ↔ Mock parity plus the pure-read
    projection. A per-store dump for the new kinds is a follow-up, not Phase 3 work. RATIFY?
+12. **Fix round 1's scope**: F1's suggested structural guard (every `Type.member` token in `docs/*.md`
+    resolved against `lib/`) is not among the brief's seven items and is not added — the doc correction
+    is; F8 was also applied to the index's coverage-table mention of 17c, which said the same. RATIFY?
 
 ## Feedback
 

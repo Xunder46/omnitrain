@@ -233,3 +233,23 @@ four owner defaults (skipped set, a set's added weight, a running `timed` entry,
 stated in the plan's Open questions with implementable, reversible defaults, and no decision
 contradicts another. The planner's items are F4, F5 and F8 — prose and a date, not design — so this is
 a fix round, **not** a re-plan.
+
+## Fix round 1 (2026-10-07) — the findings' fixes
+
+| # | Fixed in | One line |
+|---|---|---|
+| F1 | `docs/watch_session_sync.md:26` | the Structure row no longer names the removed `_wristRowStamps`: it says the answer is read per kind through the current `_rowsOfKind`/`_stampsOf` reads and points at `S-142 a wrist-logged entry of any kind is not doubled`; a grep of `docs/` and `watch/sync_protocol/` leaves no hit that names the member as live code (the rest are dated plan/review records) |
+| F2 | `docs/watch_session_sync.md:24`, `:64` | both now name the four kinds the answer carries and point at `S-140 a phone timed entry reaches the wrist` / `S-141 a round and a hold carry their own fields`, instead of restating fields or speaking of sets alone |
+| F3 | `docs/state_management/watch_surface.md:604-635` | "the dropped entry" and "a hidden entry cannot be re-derived from its rows", citing `S-144 a non-set entry the wrist logged leaves under the wrist's own id, and one the phone logged under the id the phone minted`; reworded shorter so the file does not grow — `test/docs_indexing_contract_test.dart` `+9: All tests passed!` |
+| F4 | plan `:97`/`:99`, Assumption 2 | D-132's `loggedAt`-floor bullet is struck (no floor exists: `WireLimits` holds `minLoadKg` alone, and no validator enforces a `loggedAt` minimum) and the `extraLoadKg`-0 bullet folded into Assumption 2; both marked "amended 2026-10-07 (review 1, F4)" |
+| F5 | plan impact row `:221` | restated against `_rowsOfKind`/`_stampsOf` (`watch_session_adoption_bridge.dart:314`/`:324`) with "(review 1, F5)" |
+| F6 | `test/watch_session_projection_test.dart` | `S-31 both stores pair each kind's rows the same way` added inside the parity loop: it seeds a timed, a round and a hold sequence per harness and pins `distances[position]`/`extraLoads[position]` on both stores; mutation proof in the evidence file |
+| F7 | none, as briefed | `watch/sync_protocol/PROTOCOL.md` is ~52.5 KB and outside `test/docs_indexing_contract_test.dart`'s set; adding it to that test would fail its 52 KB band, so the split is a separate PR |
+| F8 | `docs/plans/2026-10-06-17-watch-auto-sync-index.md` | the 17c and 17d rows — and the coverage table's 17c mention — now read "built and committed on develop 2026-10-07, not pushed" |
+
+Fix-round runs: full `test` `+4061 ~1: All tests passed!` (baseline `+4059 ~1`; +2 = the parity-loop test on Mock
+and Hive), `lint` 196 issues / 0 errors = baseline with no issue naming a touched file, `docs_indexing_contract_test.dart`
+`+9`, invariant grep clean. No `lib/` change remains: the mutation used as F6's proof was restored exactly and
+`git-diff --stat` does not list `phone_entries.dart`. F1's suggested structural guard — checking every `Type.member`
+token in `docs/*.md` against `lib/` — is not among the brief's seven items and is not added here; it stands as a
+follow-up. No re-review is needed, per this review's own §"Remediation sub-phases opened".
