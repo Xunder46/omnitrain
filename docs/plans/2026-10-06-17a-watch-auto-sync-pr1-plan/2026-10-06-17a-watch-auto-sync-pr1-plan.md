@@ -707,6 +707,8 @@ routine/preference sync tests, and `test/phone_manage_bridge_test.dart`.
 - [x] PR 1b / Phase 3B — the behaviour docs and the residue sweep (steps 9–11) — docs-only: no `lib/`, `test/` or `watch/` file changed and `PROTOCOL.md` untouched; docs guard 9 / 0; full suite 4004 passed / ~1 skipped / 0 failed; lint 196 / 0 (baseline); invariant grep empty; footprint 4 tracked docs + index, all predicted; every new behaviour sentence names a test (map in the evidence file)
 - [x] Review fix round 1 — **Complete** — F6 (blocker), F1 (major), F4, plus the F2/F5 plan-text corrections — push file 18 / 0; targeted set 113 / 0 (`watch_session_auto_push_test`, `watch_session_finish_test`, `live_mirroring_test`, `watch_session_projection_test`, `docs_indexing_contract_test`); full suite 4009 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0 (baseline; none in the touched files); invariant grep empty; mutations a–d red and restored exactly; S-85/S-86 added (D-85, D-86); F3 accepted as A-17
 
+- [x] Review fix round 2 — **Complete** — G1 (critical: a pending end lost to a wrist frame inside the debounce window), G2, G3, G5; G6 recorded as A-20 — push file 21 / 0; targeted set 38 / 0 (`watch_session_auto_push_test`, `watch_session_finish_test`, `docs_indexing_contract_test`); full suite 4012 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0 (baseline; none in the touched files); invariant grep empty; mutations a–b red and restored exactly; `S-87` added (both variants); the fix-1 footprint row corrected to 9 paths; G6 filed under 17b in the series index
+
 ## Assumption Log
 
 Executors append here: the decision made, the options considered, and why — the Conductor
@@ -803,6 +805,10 @@ ratifies it into a D-x or reverts it with a remediation item.
     A-2/A-3 left `PROTOCOL.md` to the governor, but the brief for this round names it and the sentence
     ("once each", read from the shared session) became false once the end rules were keyed on the
     phone's own session; the edit is confined to that bullet and names the six tests that prove it.
+20. **A-20 — G6 is accepted as a limit, not fixed (developer, 2026-10-06).** A `send` that never
+    completes leaves the flush's drain set held, so later pushes queue behind it forever; bounding it
+    needs a send timeout, which is a transport decision (D-71/D-83), not a push one. Filed under 17b
+    in the series index.
 
 ## Open questions
 
@@ -871,3 +877,22 @@ general case and are false. Fix it, or narrow both sentences and move the genera
 index. Warnings/minors to clear in the same round: F2 (three stale Impact rows), F3 (a late adoption
 can leak one push), F4 (`flush()`'s unguarded `_getSession`, overlapping flushes), F5 (AC-11 vs A-8 —
 planner's call, no code fix). One round only; no review → fix → review loop.
+
+Review 2 (@code-reviewer, 2026-10-06) — **not approved as it stands.** Findings, the six answers and
+the evidence are in `2026-10-06-17a-watch-auto-sync-pr1-plan.review.md`, section "Code review 2
+(fix 1)". Verified: F6, F1's push path, F4's drain and the F2 row corrections (full suite 4009/0).
+
+Blocking: **G1** — `rebaseline()` adopts the phone's *current* session after every applied incoming
+frame, so a wrist frame inside a finished session's debounce window overwrites the pending id and that
+finish is announced zero times (the wrist keeps the session live and refuses the next one). Announce
+before adopting at the top of `rebaseline()`, with a guard test that ends A, starts B, delivers one
+wrist frame and asserts A's single `completed`. Same round: G2 (narrow the `catch (_)`), G3 (the
+evidence footprint row), G5 (PROTOCOL "the id it last pushed"). Optional: G4, G6. A-17's guard test
+must be filed as a 17b item. One round only; no review → fix → review loop.
+
+Fix round 2 (@developer, 2026-10-06) — **Complete.** G1 fixed and its guard added (`S-87`, both
+variants: the finish and the discard, each shown red on the pre-fix `rebaseline()` and green after),
+G2 narrowed to `on Exception` with the `G2` test, G3's footprint row corrected to the nine paths,
+G5's announced-finish sentence corrected in `PROTOCOL.md` and `docs/watch_session_sync.md`. G4 was
+skipped as the brief directed; G6 is recorded as A-20 and filed under 17b in the series index, not
+implemented. Evidence, mutations (a)/(b) and the suite outputs: the evidence file, "Review fix round 2".

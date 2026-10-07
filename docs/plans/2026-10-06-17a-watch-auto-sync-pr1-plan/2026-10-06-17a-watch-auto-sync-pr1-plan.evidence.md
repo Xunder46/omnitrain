@@ -325,4 +325,98 @@ those sentences (A-19).
 | Swift | `.github/copilot/scripts/macos/gateway.sh swift-test` | 315 passed / 0 failed (no Swift file changed) |
 | lint | `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues, exit 1 — the baseline's pre-existing info notices; none in a file this round touched |
 | the invariant | grep `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
-| footprint | `.github/copilot/scripts/macos/gateway.sh git-diff --stat` | 6 tracked paths, all intended: the two `lib/state/watch` files, the two test files, the plan, this file. `watch_sync_wiring.dart` needed no change |
+| footprint | `.github/copilot/scripts/macos/gateway.sh git-diff --stat` | 9 tracked paths, all intended: the two `lib/state/watch` files (`watch_session_auto_push.dart`, `live_session_mirror_state.dart`), the two test files (`watch_session_auto_push_test.dart`, `watch_session_finish_test.dart`), `watch/sync_protocol/PROTOCOL.md`, `docs/watch_session_sync.md`, the plan, this evidence file, and the plan's `.review.md` (the reviewer's findings, which ride in the same commit). `watch_sync_wiring.dart` needed no change |
+
+## Review fix round 2 — G1 (critical: a pending end lost to a wrist frame in its window), G2, G3, G5, G6
+
+Source: `lib/state/watch/watch_session_auto_push.dart`. `_ownSessionId` — one id, replaced on every
+re-baseline — became `final List<String> _pendingEnds`: the ids of the sessions the phone itself
+composed whose end is still undecided, oldest first. `_pushOnce()` now composes, `_remember`s the id it
+composed and then `_announceEnd`s; `rebaseline()` remembers the session the frame landed on and no
+longer clears anything; `_announceEnd(currentId)` walks a copy of the set and decides every id by its
+own row — `completed` when the row ended, `abandoned` when the row is gone, and for a running row it
+keeps the id only while it is still the freshly composed current id, so a session the phone merely
+stopped composing while it runs is not read as an end (S-84). Both `catch (_)`s became `on Exception`
+(G2): a repository read failure is still F4-silent, a programming `Error` surfaces.
+`test/watch_session_auto_push_test.dart` gained the `S-87` group (2 tests), the `G2` test inside `F4`,
+and the `S-85` id-clock guard.
+
+### Red → green (the new guard fails without the fix)
+
+The Phase-0 red run was taken in this round's first session, before any implementation: both `S-87`
+tests red on the behaviour that did not exist yet. The red is re-produced verbatim below by mutation
+(a), the pre-fix single-id behaviour, run on the finished fixtures:
+
+```
+00:00 +0 -1: S-87 a finish survives a wrist frame inside its window S-87 a frame the wrist sends inside the window does not lose the finish it landed in [E]
+  Expected: ['s-1']
+    Actual: []
+     Which: at location [0] is [] which shorter than expected
+  S-87 the finish the frame landed in is announced, under the session that finished: re-baselining the push onto the session the phone moved to must not erase a finish not yet said (D-81)
+  test/watch_session_auto_push_test.dart 1239:9       main.<fn>.<fn>
+00:00 +0 -2: S-87 a finish survives a wrist frame inside its window S-87 a frame the wrist sends inside the window does not lose the discard it landed in [E]
+  Expected: ['s-1']
+    Actual: []
+     Which: at location [0] is [] which shorter than expected
+  S-87 a session the phone discarded inside the window is abandoned once, not lost to the frame that landed in it
+  test/watch_session_auto_push_test.dart 1299:9       main.<fn>.<fn>
+00:00 +0 -2: Some tests failed.
+```
+
+Green after the fix: `test/watch_session_auto_push_test.dart` 21 passed / 0 failed (18 → 21); the
+brief's targeted set 38 passed / 0 failed.
+
+| Test | Fixture (what makes it adversarial) | Observed red |
+|---|---|---|
+| `S-87 a frame the wrist sends inside the window does not lose the finish it landed in` | the phone's session has entries, so the wrist frame's `rebaseline()` really re-baselines onto it | `Expected: ['s-1'] / Actual: []` — no lifecycle frame at all |
+| `S-87 a frame the wrist sends inside the window does not lose the discard it landed in` | the phone's session is discarded, so its row is gone by the time the frame lands | `Expected: ['s-1'] / Actual: []` — the `abandoned` frame lost |
+
+**The discard variant needed a stronger fixture, and that is a finding.** `projectSession()` returns
+null when the phone's own session holds no effort rows (`hasActiveSession` requires `_efforts` to be
+non-empty), so a frame delivered before the phone logs anything composes nothing and `rebaseline()`
+never reaches the guard — the first version of the test passed under mutation (a) for the wrong reason.
+It now calls `await add('ex-squat')` before the frame, which is what makes the guard reachable.
+
+### Mutations (each applied to source, seen red for the predicted reason, restored exactly, re-run green)
+
+| # | Mutation | Red run (verbatim) |
+|---|---|---|
+| a | `_pendingEnds.clear()` re-added to `rebaseline()` (the pre-fix overwrite) | the two `S-87` failures pasted above, `--plain-name "S-87"` |
+| b | both `on Exception` → `catch (_)` (the pre-G2 behaviour) | below, `--plain-name "G2"` |
+
+```
+00:00 +0 -1: F4 a flush that cannot finish does not disturb the phone G2 an Error from the session read is not swallowed [E]
+  Expected: throws <Instance of 'StateError'>
+    Actual: <Instance of 'Future<void>'>
+     Which: emitted <null>
+  test/watch_session_auto_push_test.dart 1412:13     main.<fn>.<fn>
+00:00 +0 -1: Some tests failed.
+```
+
+After (b) the file was re-run at 21 passed / 0 failed and `git-diff` showed the fixed blob back
+(`index f8e48d4..c307bfe`), so both mutations were restored exactly.
+
+### Docs (G5) and the footprint (G3)
+
+| Doc | Sentence changed | Tests it now names |
+|---|---|---|
+| `watch/sync_protocol/PROTOCOL.md` | the announced-finish bullet's "the id it last pushed" is false in G1's window: it now says the announcement covers the last session **the phone itself composed**, that every such session's end is announced once per app run, and that a wrist frame inside the debounce window cannot erase a pending announcement | `S-87 a frame the wrist sends inside the window does not lose the finish it landed in`, `S-87 a frame the wrist sends inside the window does not lose the discard it landed in` |
+| `docs/watch_session_sync.md` (the D-81 paragraph, its invariant, and the F4 invariant) | the announcement is a set of the phone's own composed sessions, not one id; a wrist frame inside the window cannot erase one; an `Error` is not swallowed | the two `S-87` tests, plus `G2 an Error from the session read is not swallowed` |
+
+G3: the fix-1 footprint row said 6 tracked paths; `git-show ad407c7 --name-status` shows 9, and the row
+now names all nine (the two `lib/state/watch` files, the two test files, `PROTOCOL.md`,
+`docs/watch_session_sync.md`, the plan, the evidence file, the review file).
+
+G6 — a `send` that never answers holds the flush's drain set, so later pushes queue behind it — is
+recorded as an accepted limit in A-20 and filed under 17b in the series index, not fixed here.
+
+### Suites and checks (fix round 2)
+
+| Check | Command | Result |
+|---|---|---|
+| the push file | `.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart` | 21 passed / 0 failed |
+| the brief's targeted set | `.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart test/watch_session_finish_test.dart test/docs_indexing_contract_test.dart` | 38 passed / 0 failed |
+| full suite | `.github/copilot/scripts/macos/gateway.sh test` | 4012 passed / ~1 skipped / 0 failed |
+| Swift | `.github/copilot/scripts/macos/gateway.sh swift-test` | 315 passed / 0 failed (no Swift file changed) |
+| lint | `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues, exit 1 — the baseline's pre-existing info notices; none in a file this round touched |
+| the invariant | grep `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |

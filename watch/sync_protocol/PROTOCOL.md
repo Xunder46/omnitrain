@@ -426,10 +426,12 @@ correction carries no distance
 - The phone MUST report its own finish. A session the phone has ended (its
   record carries an end) MUST be announced with `completed`, and one the phone
   discarded (its record is gone) with `abandoned`, once each — once per session,
-  so a second session ended in the same run is announced for itself. What is
-  announced is the session the phone itself holds and has told the watch about,
-  named by the id it last pushed and read from that session's own record: a past
-  session the user opens on the phone MUST NOT be read as the shared one ending,
+  so a second session ended in the same run is announced for itself, and so an end
+  that a frame from the watch lands on inside the phone's own debounce window is
+  still announced. What is announced is the session the phone itself holds and has
+  told the watch about, named by the last session the phone itself composed and
+  read from that session's own record: a past session the user opens on the phone
+  MUST NOT be read as the shared one ending,
   and MUST NOT be announced; a session the phone never held — one the wrist
   started on its own — MUST NOT be announced at all, whatever its record says;
   and an end the watch itself caused MUST NOT be announced back at it. Verified
@@ -438,7 +440,10 @@ correction carries no distance
   copy, once`, `S-84 opening a past session pushes nothing for the live one`,
   `S-85 two finishes and a discard are announced once each, under each session's
   own id`, `S-85 the end the wrist itself caused is not announced back at it`,
-  `S-86 the phone's own push does not end the wrist's live session`) and by
+  `S-86 the phone's own push does not end the wrist's live session`,
+  `S-87 a frame the wrist sends inside the window does not lose the finish it
+  landed in`, `S-87 a frame the wrist sends inside the window does not lose the
+  discard it landed in`) and by
   `test/watch_session_finish_test.dart` (`S-5 the phone's own finish is
   reported, and the wrist is answered at its next sync`).
 - `revision` increases by one per applied structure change, so two clients can

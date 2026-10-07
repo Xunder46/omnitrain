@@ -15,7 +15,9 @@
 //   S-84 browsing another session pushes nothing       → `S-84 ...`
 //   S-85 every session in one run is announced once    → `S-85 ...`
 //   S-86 the phone never abandons a session it never held → `S-86 ...`
+//   S-87 a wrist frame inside the window loses no finish → `S-87 ...`
 //   F4 a flush never leaks and never announces twice   → `F4 ...`
+//   G2 an Error from the session read is not swallowed  → `G2 ...`
 //
 // The phone side is the graph `createWatchSync` builds — the shipping wiring,
 // including the push it returns — over a fake radio; the wrist side is the real
@@ -1050,6 +1052,15 @@ void main() {
         await graph.autoPush.flush();
 
         // Session 3: started, pushed, then discarded without ever ending.
+        // The phone names a session `session-<millisecondsSinceEpoch>`
+        // (`lib/state/workout/session_core_io.dart`), so two sessions started
+        // inside one millisecond collide on their id — and this fixture would
+        // then hold two sessions under one id, a state the rule under test
+        // ("under each session's own id") cannot satisfy. Start the third once
+        // the id clock has moved past the second.
+        while ('session-${DateTime.now().millisecondsSinceEpoch}' == secondId) {
+          await Future<void>.delayed(const Duration(milliseconds: 1));
+        }
         await phoneState.createNewSession();
         final third = await add('ex-deadlift');
         final thirdId = phoneState.currentSession!.id;
@@ -1187,6 +1198,125 @@ void main() {
     );
   });
 
+  group('S-87 a finish survives a wrist frame inside its window', () {
+    test(
+      'S-87 a frame the wrist sends inside the window does not lose the '
+      'finish it landed in',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+
+        // The phone finishes its session and starts another: two notifications
+        // inside one debounce window, so no flush has run yet and the finish is
+        // still pending when the frame below lands.
+        await phoneState.endSession();
+        await phoneState.createNewSession();
+        final secondId = phoneState.currentSession!.id;
+
+        // A frame from the wrist lands in that window. The shipping wiring
+        // re-baselines the push after every applied frame (D-82), so the push
+        // composes the phone's new session while the finish is still pending.
+        await engine.appendObservation(<String, Object?>{
+          'entryId': _wristEntryId2,
+          'eventId': _wristEntryId2,
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 6,
+          'loadKg': 45.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+
+        // News of the phone's own session, so that the push that follows the
+        // finish is a real change and not a no-op.
+        await add('ex-row');
+        await graph.autoPush.flush();
+
+        final announced = radio.ofType('session_lifecycle');
+        expect(
+          [for (final frame in announced) frame['sessionId']],
+          ['s-1'],
+          reason:
+              'S-87 the finish the frame landed in is announced, under the '
+              'session that finished: re-baselining the push onto the session '
+              'the phone moved to must not erase a finish not yet said (D-81)',
+        );
+        expect(
+          _payload(announced.single)['state'],
+          WatchLifecycleState.completed,
+        );
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          secondId,
+          reason: 'S-87 the session the phone moved to is still pushed',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-87 a frame the wrist sends inside the window does not lose the '
+      'discard it landed in',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+
+        // The phone discards its session and starts another: two notifications
+        // inside one debounce window, so the discard is still pending when the
+        // frame below lands.
+        await phoneState.discardCurrentSession();
+        await phoneState.createNewSession();
+        final secondId = phoneState.currentSession!.id;
+
+        // The phone is already logging in the new session: a session with no
+        // rows of its own is one the projection cannot speak for, and a frame
+        // that re-baselines onto it would compose nothing at all.
+        await add('ex-squat');
+
+        await engine.appendObservation(<String, Object?>{
+          'entryId': _wristEntryId2,
+          'eventId': _wristEntryId2,
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 6,
+          'loadKg': 45.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+
+        // News of the phone's own session, so that the push that follows the
+        // discard is a real change and not a no-op.
+        await add('ex-row');
+        await graph.autoPush.flush();
+
+        final announced = radio.ofType('session_lifecycle');
+        expect(
+          [for (final frame in announced) frame['sessionId']],
+          ['s-1'],
+          reason:
+              'S-87 a session the phone discarded inside the window is '
+              'abandoned once, not lost to the frame that landed in it',
+        );
+        expect(
+          _payload(announced.single)['state'],
+          WatchLifecycleState.abandoned,
+        );
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          secondId,
+          reason: 'S-87 the session the phone moved to is still pushed',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
   group('F4 a flush that cannot finish does not disturb the phone', () {
     test(
       'F4 a throwing getSession leaks no async error and the next flush '
@@ -1198,7 +1328,10 @@ void main() {
         final push = WatchSessionAutoPush(
           mirror: graph.mirror,
           getSession: (sessionId) async {
-            if (!readable) throw StateError('the repository cannot be read');
+            // A repository read that fails is an `Exception`: an `Error` here
+            // would be a programming fault, which the push leaves to surface
+            // (G2 — see `G2 an Error from the session read is not swallowed`).
+            if (!readable) throw Exception('the repository cannot be read');
             return repository.getSession(sessionId);
           },
         )..bindWorkoutState(phoneState);
@@ -1259,6 +1392,30 @@ void main() {
       expect(ends.single['sessionId'], 's-1');
       expect(_payload(ends.single)['state'], WatchLifecycleState.completed);
       expect(failures, isEmpty);
+    });
+
+    test('G2 an Error from the session read is not swallowed', () async {
+      await wristStartsSession();
+
+      final push = WatchSessionAutoPush(
+        mirror: graph.mirror,
+        getSession: (sessionId) async =>
+            throw StateError('the session read is broken'),
+      )..bindWorkoutState(phoneState);
+      addTearDown(push.dispose);
+
+      await phoneState.addEntry(
+        _firstSlot,
+        previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+      );
+
+      await expectLater(push.flush(), throwsStateError);
+      expect(
+        radio.ofType('session_snapshot'),
+        isEmpty,
+        reason: 'G2 the pass stopped at the fault: nothing was sent for it',
+      );
+      push.dispose();
     });
   });
 }

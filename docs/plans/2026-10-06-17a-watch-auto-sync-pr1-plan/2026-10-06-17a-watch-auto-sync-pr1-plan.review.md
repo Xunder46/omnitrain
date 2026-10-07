@@ -191,3 +191,142 @@ Critical: 1 (F6) | Major: 1 (F1) | Warnings: 1 (F2) | Minors: 2 (F3, F4) | Escal
 Substantive findings: 5 — inside the budget's six, so no split; one fix round (R-1…R-5), each with a
 structural guard. Routing: F6, F3, F4 → @developer; F1 (option 2), F2, F5 → @planner.
 **VERDICT: CHANGES_REQUESTED**
+
+---
+
+## Code review 2 (fix 1)
+
+Range `HEAD~1..HEAD` (`ad407c7`, 9 files, +814/−73, one commit). Layers in scope: `lib/state/watch/`
+(2 files), `test/` (2), `watch/sync_protocol/` + `docs/` (2), the plan folder (3). Skipped:
+`lib/data/`, `lib/features/`, `lib/widgets/`, `lib/core/`, `watch/watchos/` — untouched, no Swift in
+the diff. Diff vs Predicted Files: conforms — all 9 accounted for, nothing outside the round's brief;
+the three plan-folder files are the round's own artifacts (the review file's round-1 text arrives in
+this same commit — see Open questions).
+Test run: `.github/copilot/scripts/macos/gateway.sh test` → `01:42 +4009 ~1: All tests passed!`, exit 0
+(log `.work/gateway/test-20261006-204952-15726.log:4643`). The evidence file's `4009 / ~1 skipped /
+0 failed` is real. `swift-test` not re-run (no Swift file in the diff); mutations not re-run (brief).
+
+### Findings
+
+🔴 CRITICAL | `lib/state/watch/watch_session_auto_push.dart:147-152` + `lib/state/watch/watch_sync_wiring.dart:191` | `rebaseline()` overwrites `_ownSessionId` with the session the phone holds *at that moment*, and it runs after **every** applied incoming frame, so a wrist frame arriving while a finished session's announcement is still inside the debounce window (`:167-170` arms the window per notification; `:129` is the only thing that announces) erases that finish: A is never announced, the wrist keeps A live, and B's snapshots are then refused by the wrist's own guard (`watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift:1479`) | announce before adopting — `await _announceEnd()` at the top of `rebaseline()`, or refuse to overwrite a pending unannounced id | @developer
+
+The window is not marginal: it is ≥ the debounce and it slides with every notification, so a phone
+that starts B and keeps interacting — or that runs B's rest timer, whose ticks notify (D-76's
+"collapses ticks" is D-76's starvation, not an announcement shortcut) — keeps it open for seconds,
+long enough for any wrist frame (`router.receive` → `rebaseline`) to land in it. Guard: a test that
+ends A, starts B, delivers one wrist frame, then flushes, asserting A's `completed` is announced once
+and B's snapshot still follows. This is F1's harm class, so it must be red before the fix.
+`PROTOCOL.md:428-429` and `docs/watch_session_sync.md:166-167` assert the invariant it breaks.
+
+🟡 WARNING | `lib/state/watch/watch_session_auto_push.dart:139,153` | `catch (_)` swallows `Error`s as well as `Exception`s, so a programming fault in this seam is indistinguishable from "nothing to send" — which is exactly what the two new F4 "no frame" assertions accept, so they can pass for the wrong reason | narrow to `on Exception` (or report the rest through `onFailure`) and add a guard that a non-repository `Error` is not silently swallowed | @developer
+
+🟡 WARNING | `2026-10-06-17a-watch-auto-sync-pr1-plan.evidence.md:328` | The footprint row reads "6 tracked paths, all intended: the two `lib/state/watch` files, the two test files, the plan, this file", while the commit changes 9 — it omits `watch/sync_protocol/PROTOCOL.md`, `docs/watch_session_sync.md` and the review file, so a reader of the evidence cannot see that the round's own amendment is part of it | correct the row | @planner
+
+💡 SUGGEST | `lib/state/watch/live_session_mirror_state.dart:514-520` | `reportLifecycleFor` rebuilds by hand the envelope `_envelope` (`:542`) already builds, differing only in where the session id comes from | give `_envelope` an explicit `sessionId` parameter | @developer
+
+💡 SUGGEST | `watch/sync_protocol/PROTOCOL.md:431` | "named by the id it last pushed" is not what the code does — the id is taken from a *composed* payload, and `rebaseline()` adopts one without sending anything | say "the last session the phone itself composed" | @planner
+
+💡 SUGGEST | `lib/state/watch/watch_session_auto_push.dart:100-118` | A `send` that never completes leaves `_draining` set forever, so every later flush joins the hung drain and the phone never pushes again for the life of the app — before this round one hung pass did not stop the next | bound the drain with a timeout, or let a later flush start fresh once the running one is abandoned | @developer
+
+### The brief's questions, in order
+
+1. **F6 — does any path still announce for a session the phone never held?** No. `_ownSessionId`
+   (`:76`) has two writers, `_pushOnce` (`:134`) and `rebaseline` (`:151`), both fed by
+   `projectedSession()`, which answers only the phone's *own* session (`watch_session_adoption_bridge.dart:185-200`:
+   no current session, `!hasActiveSession`, or an empty ladder → null). So the id can only ever name a
+   session the phone holds and composed, and `held` (`:188`) is that id compared with the mirror's.
+   Scenario by scenario: phone holds nothing → id null → `:183` returns, no frame at all; the refused
+   adoption (D-10) → same, the id is the phone's own P or null, never the wrist's X, and the old
+   `_mirror.isActive`-keyed path no longer exists; phone holds P while the wrist runs X → `held` is
+   false, so P running sends nothing and P's row ended/gone names **P** in `reportLifecycleFor`, which
+   the wrist's `guardSession` refuses while it holds X — the frame is inert rather than harmful; the
+   failed-push case → the id is still a *composed* session, same conclusion. S-86 pins the (b) case.
+2. **F1 — is A's end lost when B is pushed?** Not on the push path: `_announceEnd()` runs before the
+   composition in `_pushOnce` (`:129`), the id is cleared in every branch that leaves one (`:190,197`),
+   and a later session sets it again — so A and B are each announced once, A even though B has become
+   the current session (S-85's first half builds exactly that and asserts the per-session map). **But
+   yes on the frame path**: G1. `rebaseline()` replaces the pending A with B, so A is announced zero
+   times — the reader of `docs/watch_session_sync.md:166-167` ("the id is forgotten once announced")
+   should note it is forgotten *without* being announced when a wrist frame lands in the window.
+3. **`reportLifecycleFor` — is the mirror left consistent?** Yes. For a foreign id the mirror is read
+   and not written (`live_session_mirror_state.dart:521-525`): no `applyMessage`, no `notifyListeners`,
+   no local change, transport only — the phone's converged state still describes the wrist's session.
+   For its own id it applies and notifies, as `reportLifecycle` does through `_sendOwn` (`:536-540`).
+   `completeSession()` remains the only maker of `_completedRecord` (`:98,475`, cleared at `:212`) and
+   its getter (`:146`) has no production reader, so skipping it in the `reportLifecycleFor(completed)`
+   branch loses nothing. The `held && !_mirror.isActive` early return (`:189-192`) is sound: the mirror
+   reaches non-active either through the wrist-caused end (already applied through the router, so an
+   announcement would be an echo) or through the phone's own `completeSession()`. A-18's rejected
+   alternative would indeed have made the push a second owner of the mirror's place.
+4. **The drain loop (`:100-118`).** No deadlock, no dropped pass, no swallowed repeat: single-threaded,
+   and there is no `await` between the last `while (_again)` test and `_draining = null` in the
+   `finally`, so a joiner either sees `_draining` and sets `_again` (the loop re-runs) or starts a fresh
+   drain; `_again = false` is per iteration, after any joiner of the previous pass has set it. The empty
+   `catch (_)` is wider than the docs say it is (G2). `rebaseline()` is not coordinated with a running
+   drain, so a frame applied mid-pass can leave the baseline one composition stale — at worst one
+   redundant or deferred push, not a lost end (F3's neighbourhood, A-17). The hung-send wedge (G6) is
+   new to this round.
+5. **Tests — do S-85/S-86/F4 assert their claims on fixtures that build the named scenario?** Yes.
+   S-85 drives three real sessions through `WorkoutState` (the wrist-adopted `s-1` first, then two of
+   the phone's own), ends and discards them, and asserts the exact map of session id → lifecycle states
+   plus an empty `failures` — that is the criterion, not a paraphrase. Its second half asserts *no*
+   lifecycle frame, and its fixture is what makes the `held && !isActive` branch the live one
+   (`wristStartsSession()` has already set `_ownSessionId` to `s-1` and the router has already ended
+   the phone's copy on the wrist's behalf); mutation (d) is what shows the fixture bites. S-86 waits
+   until the wrist's own session is really in the mirror and really row-less before binding the push,
+   so "exactly one snapshot, no lifecycle" is asserted against the refused-adoption state rather than a
+   stand-in; mutation (a) is what shows that one bites. F4 #1 injects a throwing `getSession` through
+   the push's own seam and asserts nothing is sent while unreadable, nothing escapes to `onFailure`, and
+   the next flush announces the end; F4 #2 overlaps two flushes without awaiting and asserts exactly one
+   lifecycle — both are R-4's shape. Red-before-green rests on the evidence file's mutation table (a–d)
+   and red→green table; I re-ran the suite (4009/0) but no mutations, per the brief.
+6. **Docs — is every added sentence true of the code?** `PROTOCOL.md:426-443` and
+   `docs/watch_session_sync.md:130-145,161-177` describe the code (the phone's own session only, read
+   from that session's own row, never a refused session, never an echo of a wrist-caused end, id
+   forgotten once announced), and all six tests they name exist verbatim and pass (checked by name).
+   `docs/watch_session_sync.md:178-184`'s F4 invariant matches its two tests. Two exceptions:
+   `PROTOCOL.md:428-429`'s "once each — once per session" is false in G1's window — and because that is
+   a normative MUST, the code is what must change — and `:431`'s "the id it last pushed" (G5).
+
+```
+DOC FALSIFICATION: ❌ REJECT — watch/sync_protocol/PROTOCOL.md:428-429 (and docs/watch_session_sync.md:166-167)
+                    — "announced … once each — once per session" fails in G1's window — fix the code as in G1
+DOC STANDARD:       ✅ PASS — no prohibited content added (states and test names only)
+IMPACT:             ✅ PASS — 3 rows re-checked, 0 unlisted readers; the projectedSession row's :131/:149 are
+                    the current lines, loadHistoricalSession now names the adoption bridge :437, the
+                    noAutoSyncLabel row carries R-2
+CONVENTIONS:        PASS (state depends on the interface only; no concrete import; invariant grep clean)
+```
+
+### Assumption Log adjudication
+
+- **A-17 — RATIFIED as scope, with a condition.** F3's code fix out of this round is correct, but its
+  guard test must be filed as a 17b item in the plan, not left as a promise in an assumption — a fix
+  without a guard is not allowed to stay open across a PR boundary. G1's own guard test exercises the
+  same seam, so the two land together.
+- **A-18 — RATIFIED.** Promote to a numbered decision: "a lifecycle the phone originates is built for
+  a named session; the push never moves the mirror's place."
+- **A-19 — RATIFIED.** The `PROTOCOL.md` edit stays inside the announced-finish bullet and names the
+  six tests that prove it, as claimed.
+
+### Open questions (defaults taken)
+
+1. Mutations not re-run (brief). Default: the evidence file's a–d table plus the red→green table.
+2. `swift-test` not re-run: the diff has no Swift file. Default: trust the evidence's 315/0.
+3. The review file's round-1 text arrives inside this same commit, i.e. the implementer's commit
+   carries the reviewer's round-1 artifact. Default: treated as the record of review 1 arriving with
+   the fix commit, not as unplanned scope — but the governor may want review artifacts committed
+   separately.
+4. A doc cites a test literally named `G1 a finished session is not adopted back after a restart`
+   (`test/watch_session_finish_test.dart:499`), which collides with this round's finding ids.
+   Default: left alone (pre-existing naming).
+
+### Round summary
+
+Critical: 1 (G1) | Warnings: 2 (G2, G3) | Suggestions: 3 (G4–G6). Four substantive findings — inside
+the budget's six, so no split. One bounded fix round: G1's fix plus its guard test (1–2 lines and one
+test), with G2/G3/G5 mechanical; G4/G6 optional. No review → fix → review loop: G1's guard test is its
+structural guard, and none of the other items needs a decision. Everything else the round set out to do
+— F6, F1's push path, F4's drain, the F2 rows — is verified against the code, not against the summary.
+Routing: G1, G2, G4, G6 → @developer; G3, G5 → @planner.
+**VERDICT: CHANGES_REQUESTED**
