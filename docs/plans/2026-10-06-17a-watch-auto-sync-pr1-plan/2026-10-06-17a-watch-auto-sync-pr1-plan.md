@@ -15,8 +15,8 @@
 > `docs/documentation_standard.md`
 > Supersedes: `docs/plans/2026-10-05-15-watch-session-sync-index.md` decision 4 ("Sync stays manual /
 > watch-initiated") and that series' D-16/"G2" ("the phone's finish is silent") — see D-81.
-> Numbering: this PR uses **D-75…D-84** and **S-70…S-84**. D-85…/S-90… are reserved for PR 2
-> (`17b`), D-95…/S-100… for PR 3 (`17c`).
+> Numbering: this PR uses **D-75…D-86** and **S-70…S-86** (D-85/D-86 and S-85/S-86 were added by the
+> review fix round). D-87…/S-90… are reserved for PR 2 (`17b`), D-95…/S-100… for PR 3 (`17c`).
 
 ## Overview
 
@@ -88,7 +88,7 @@ Every entry is enforceable as written. Changes are superseding entries, never ed
   explicit statement beats the ownership rule), and a kind the message names is adopted as today.
   Symmetrically, the phone's own rest countdown is never stopped by incoming timer state: the mirror
   reports the wrist's timers for display and takes no timer action on the phone.
-- **D-81 — The session's end is pushed too, decided by the mirrored session's repository row.**
+- **D-81 — The session's end is pushed too, decided by the session's own repository row.**
   **Amended 2026-10-06 (rev 1):** both halves are keyed on the row of the mirrored session X in the
   `WorkoutRepository`, never on the phone's current-session pointer. The pointer is not "the phone
   holds X": `WorkoutState.loadHistoricalSession` (`lib/state/workout/session_core_io.dart:56`, called
@@ -114,6 +114,11 @@ Every entry is enforceable as written. Changes are superseding entries, never ed
   stated in `docs/watch_session_sync.md` (~line 145). The second half of that behaviour is unchanged:
   a phone that has *already* ended the session still answers a wrist snapshot with the end
   (`lib/state/watch/watch_incoming_router.dart:108`).
+  **Superseded in part (rev 2, 2026-10-06):** D-85 replaces "the mirrored session X" as the subject of
+  both halves with the id of the session the phone itself last composed or pushed. The row is still
+  read through the same seam and the pointer rule above still stands; what changes is that a session
+  the phone never held is no longer announced (S-86) and the id is dropped once announced, so a second
+  session in the same run announces itself (S-85).
 - **D-82 — A frame the phone applies from the wrist re-baselines the push.** After the frame handler
   in `createWatchSync` has handed a frame to the request handler or to the router, the push
   re-composes the payload and stores it as its baseline **without sending**. So applying a wrist frame
@@ -130,6 +135,25 @@ Every entry is enforceable as written. Changes are superseding entries, never ed
   `unreachableLabel` ("Phone not reachable") and the empty-routines sentence ("No routines yet. Sync
   with your phone to get them.") stay — routines are still manual (series D-72), and "Phone not
   reachable" is the one case the button is still for. No other copy changes.
+- **D-85 — The end rules name the phone's own session.** `WatchSessionAutoPush` remembers the
+  `sessionId` of the last payload it composed or baselined (`_ownSessionId`, set in `_pushOnce()` and
+  `rebaseline()`) and decides D-81's two rules on **that** id — never on the mirror's session, which a
+  wrist starting its own workout moves onto a session this phone refused to adopt (D-10), and never on
+  the `currentSession` pointer (D-81). "No row" therefore means "the phone discarded its own session",
+  and a wrist running its own workout is never ended by a phone that has nothing to do with it (S-86).
+  The id is dropped in **every** branch of the rule, whether or not a frame leaves, so the next session
+  announces itself in the same app run (S-85) instead of inheriting the first one's memoised state; and
+  an end the wrist caused itself is not echoed back at it — the phone's copy ended through the router,
+  so the phone adds nothing (S-85, second half). `completeSession()` keeps its single caller for the
+  case the mirror holds the session (S-72/S-73 unchanged); a named end the mirror does not hold goes
+  through `LiveSessionMirrorState.reportLifecycleFor(sessionId, state)`, which announces to the wrist
+  and applies locally only when the id is the mirror's own.
+- **D-86 — One flush at a time, and a push never throws.** A `flush()` that arrives while one is
+  running asks for one further pass and joins it instead of running beside it: two passes interleaved
+  between reading a row and announcing its end would announce that end twice (S-85, F4). The whole
+  pass is guarded, the repository read included, extending D-83: a row or a composition the phone
+  cannot read leaves it exactly as it was — nothing sent, nothing cached, nothing queued, no unhandled
+  async error — and the next notification tries again.
 
 ## Feature Invariants
 
@@ -172,7 +196,7 @@ Only what bites here; project-wide rules live in `docs/global_conventions.md`.
 |---|---|---|
 | AC-1 | A set logged on the phone for the mirrored session is on the watch within the debounce window, without any user action on the watch | S-70, S-80 |
 | AC-2 | A ladder change on the phone (add / swap) shows on the watch, and the watch's place and its own countdown are unchanged | S-71, S-76, S-79 |
-| AC-3 | Finishing on the phone ends the session on the watch; discarding on the phone abandons it there; browsing a past session while a live one is mirrored sends neither | S-72, S-73, S-84 |
+| AC-3 | Finishing on the phone ends the session on the watch; discarding on the phone abandons it there; browsing a past session while a live one is mirrored sends neither; every session in one app run is announced for itself, once, and a session the phone never held is never abandoned | S-72, S-73, S-84, S-85, S-86 |
 | AC-4 | A notification that composes an unchanged payload sends nothing, and a burst of changes sends one frame | S-74, S-75 |
 | AC-5 | The wrist refuses a snapshot naming another session while it holds an active one with a ladder: nothing applied, nothing sent | S-77 |
 | AC-6 | A lifecycle / timer / structure / exercise-push frame naming a session the watch does not hold changes nothing there | S-78 |
@@ -180,7 +204,7 @@ Only what bites here; project-wide rules live in `docs/global_conventions.md`.
 | AC-8 | A re-delivered frame changes nothing the second time | S-81 |
 | AC-9 | An unreachable watch: the push is dropped and reported, the phone is undisturbed, nothing is queued | S-83 |
 | AC-10 | Both stacks' start surfaces read "Sync" and carry no "No automatic sync", validated against the shared fixture | S-82 |
-| AC-11 | Every rule above is in both engines (Swift and the Dart twin), with the same outcomes | all S-70…S-81 (run in both stacks) |
+| AC-11 | Every rule above has the same **observable outcome** in both engines (Swift and the Dart twin); the single rule that exists in Swift only — the wrist's end-capture, `captureSessionEnd` — changes no outcome, is pre-existing and is A-8 | all S-70…S-81 (run in both stacks) |
 
 ## Existing-Functionality Impact
 
@@ -189,14 +213,14 @@ guards it.
 
 | Touched surface | What already reads it | Effect of the change | Guarded by |
 |---|---|---|---|
-| `WatchStartSurfaceCopy.noAutoSyncLabel` (`WatchStartPaths.swift:38`) | grep `noAutoSyncLabel`: `WatchStartView.swift:34` (via `WatchNoAutomaticSyncHint`), rendered at `:165`; `watch/contract/watch_start_paths_contract.json:242`; `WatchSessionStartPathsTests.swift:361`; `WatchConnectivityBridgeTests.swift:488,497`; `lib/watch/start/watch_start_screen.dart:60,272`; `test/watch_session_start_test.dart:1032,1035,1064`; `test/watch_transport_test.dart:99`; historical rows in `docs/plans/2026-10-04-14-…-plan.evidence.md:272,308,316` (**history — never edit**) | The string and both hint widgets are deleted; the button label changes to "Sync" | S-82 (both stacks + the fixture); the 14-series' evidence rows are history and stay as they are |
+| `WatchStartSurfaceCopy.noAutoSyncLabel` (`WatchStartPaths.swift:38`) | grep `noAutoSyncLabel`, as it stood before the change: `WatchStartView.swift:34` (via `WatchNoAutomaticSyncHint`), rendered at `:165`; `watch/contract/watch_start_paths_contract.json` (the key sat at `:242`, which now holds `syncLabel`); `WatchSessionStartPathsTests.swift:361`; `WatchConnectivityBridgeTests.swift:488,497`; `lib/watch/start/watch_start_screen.dart:60,272`; `test/watch_session_start_test.dart:1032,1035,1064`; historical rows in `docs/plans/2026-10-04-14-…-plan.evidence.md:272,308,316` (**history — never edit**). `test/watch_transport_test.dart` was predicted to name the label only conditionally and is untouched: its `:99` reads the whole contract fixture, and no grep finds the string in it (R-2, recorded in the evidence file) | The string and both hint widgets are deleted; the button label changes to "Sync" | S-82 (both stacks + the fixture); the 14-series' evidence rows are history and stay as they are |
 | `WatchStartSurfaceCopy.syncLabel` (`WatchStartPaths.swift:42`) | `WatchStartView.swift:110,158`; contract JSON `:243`; `WatchSessionStartPathsTests.swift:361…`; `WatchConnectivityBridgeTests.swift:497…`; `lib/watch/start/watch_start_screen.dart:64,88`; `test/watch_session_start_test.dart:1045,1055,1063` | "Sync routines" → "Sync". The button's visibility rule (shown only when the phone can be asked) and its action are unchanged | S-82 |
-| `LiveSessionMirrorState.projectedSession()` (`:276`) | grep `projectedSession(`: exactly one production reader, `watch_sync_request_handler.dart:102`; tests in `test/live_mirroring_test.dart`, `test/watch_session_projection_test.dart` | It now composes with the receiver's place instead of slot 0. A manual Sync stops yanking the wrist to exercise 1; the handler's answer is unchanged in every other respect | S-76 |
+| `LiveSessionMirrorState.projectedSession()` (`:276`) | grep `projectedSession(`: three production readers — `watch_sync_request_handler.dart:102` (the manual Sync's answer) and the push's two, `watch_session_auto_push.dart:131` (before composing a push) and `:149` (in `rebaseline`); tests in `test/live_mirroring_test.dart`, `test/watch_session_projection_test.dart` | It now composes with the receiver's place instead of slot 0. A manual Sync stops yanking the wrist to exercise 1; the handler's answer is unchanged in every other respect. The push calls it on every notification and every applied frame, so the composition stays cheap and side-effect-free | S-76, S-70, S-80, S-84 |
 | `LiveSessionMirrorState.state` / `convergedState()` | the mirror's own readers (the live-session view, `currentExerciseIndex`, `entries`) and every test of the mirror | Read (not written) by the push for the receiver's place | S-76, S-80 |
-| `WatchSessionAutoPush` (**new**) | nothing yet | A new listener on `WorkoutState`; it adds one listener and removes it on dispose; it reads the mirrored session's row through a `getSession` seam (`repository.getSession`, typed on `WorkoutRepository`) | S-70…S-76, S-83, S-84 |
+| `WatchSessionAutoPush` (**new**) | nothing yet | A new listener on `WorkoutState`; it adds one listener and removes it on dispose; it reads the row of the session the phone itself last pushed through a `getSession` seam (`repository.getSession`, typed on `WorkoutRepository`) | S-70…S-76, S-83, S-84, S-85, S-86 |
 | `createWatchSync` / `WatchSyncGraph` (`lib/state/watch/watch_sync_wiring.dart`) | `lib/main.dart:370` (`createWatchSync(...)`) and `:390` (`watchSync?.adoption.bindWorkoutState`); tests constructing the graph (`test/watch_session_*`) | Builds the push with the `getSession` seam from the `WorkoutRepository` it already holds, binds it to `WorkoutState` and returns it in the graph | S-70, S-82, S-84 (the wiring's tests still pass) |
 | `WorkoutState` notifications (`lib/state/workout_state.dart:18`) | every screen; `SessionCore`/`TimerManager` notify on every mutation *and* every timer tick | Now also read by the push — a listener that must be cheap (D-76: the window collapses ticks into nothing) | S-74 (a tick sends nothing) |
-| `WorkoutState.currentSession` pointer — `loadHistoricalSession` (`lib/state/workout/session_core_io.dart:56`) and `clearSession` (`lib/state/workout/session_core.dart:188`) | grep `loadHistoricalSession`: `lib/features/home/home_screen.dart:173`, `lib/features/calendar/calendar_screen.dart:211`, `lib/features/calendar/day_session_list_screen.dart:206`; `clearSession` runs from `discardCurrentSession` (`session_core_lifecycle.dart:100`) and other lifecycles | The end rules must NOT key on the pointer, which calendar browsing repoints at a past session — they key on the mirrored session's repository row read through the push's `getSession` seam (D-81). A finished past session makes `projectSession` (`watch_session_adoption_bridge.dart:192`, `!hasActiveSession`) answer null, so it is never pushed | S-84, S-72, S-73 |
+| `WorkoutState.currentSession` pointer — `loadHistoricalSession` (`lib/state/workout/session_core_io.dart:56`, facade `lib/state/workout/workout_state.dart:135`) and `clearSession` (`lib/state/workout/session_core.dart:188`) | grep `loadHistoricalSession`: `lib/state/workout/workout_state.dart:135` (the facade every caller goes through), `lib/features/home/home_screen.dart:173`, `lib/features/calendar/calendar_screen.dart:211`, `lib/features/calendar/day_session_list_screen.dart:206`, and `lib/state/watch/watch_session_adoption_bridge.dart:437` (the wrist's adoption repoints the pointer the same way); `clearSession` runs from `discardCurrentSession` (`session_core_lifecycle.dart:100`) and other lifecycles | The end rules must NOT key on the pointer, which calendar browsing and an adoption both repoint at a past session — they key on the id of the session the phone itself composed and pushed, whose repository row it reads through the push's `getSession` seam (D-81, D-85). A finished past session makes `projectSession` (`watch_session_adoption_bridge.dart:192`, `!hasActiveSession`) answer null, so it is never pushed | S-84, S-72, S-73, S-85, S-86 |
 | Swift `applySnapshot` (`:439`) / Dart `_applySnapshot` (`:438`) | `applyMessage`; `WatchSessionEngineTests.swift`, `WatchLiveMirroringTests.swift`, `test/watch_session_engine_test.dart`, `test/watch_reconciliation_cross_stack_test.dart` | Gains the foreign-session refusal (D-78) **before** `captureSessionEnd` | S-77 |
 | Swift `applyLifecycle` (`:530`) / Dart `_applyLifecycle` (`:528`) | same test files; `WatchCaptureContractTests` (the end-of-session capture) | Gains the session guard (D-79) | S-78 |
 | Swift `applyTimerState` (`:595`) / Dart `_applyTimerState` (`:568`) | `WatchLoggingTimersTests.swift`, `test/watch_logging_timers_test.dart` | Gains the session guard (D-79) | S-78 |
@@ -394,6 +418,39 @@ own timers); "phone rows" means what the phone's projection carries.
   `loadHistoricalSession('h-1')` notification then fires it and pushes `abandoned` for X, turning this
   scenario red.
 
+### S-85: every session in one app run is announced for itself
+- Fixture: one phone, one wrist, one process. Session 1 (`s-1`) is the wrist's own, adopted by the
+  phone, and the phone finishes it. Session 2 is started on the phone (`ex-bench`, ladder `[sx-1]`), a
+  set is logged and pushed, and it is finished. Session 3 is started on the phone (`ex-deadlift`),
+  pushed, and discarded.
+- Trigger: three ends in the same app run — two finishes and a discard, the first of them for a
+  session the wrist began.
+- Flow: the end rules read the id of the session the phone itself last composed or pushed (D-85),
+  never the mirror's, which stays on `s-1` for the rest of the process because the wrist sends no
+  further snapshot (A-16).
+- Expected outcome: **exactly one `session_lifecycle` per session, each naming its own id** — `s-1`
+  → `completed`, session 2 → `completed`, session 3 → `abandoned` — and none twice.
+- Second half (the end the wrist caused is not echoed): the wrist finishes `s-1` itself and says so;
+  the phone's copy ends through the router, and the flushes that follow send **no** lifecycle, because
+  the phone was told about that end, not the cause of it.
+- Edge case of: S-72, S-73. **Mutation seeds:** key `_announceEnd` on `_mirror.sessionId` again — the
+  run then announces `abandoned` for `s-1`, the live wrist session; never drop the announced id — the
+  same session's `completed` is announced twice.
+
+### S-86: a session the phone never held is not abandoned
+- Fixture: the phone holds its own live session P (ladder `[sx-1]`, one logged set pushed); the wrist
+  meanwhile starts its own session X (`s-1`) and sends its snapshot. D-10 refuses the adoption, so no
+  row for `s-1` exists anywhere on the phone.
+- Trigger: a phone change closes its window and the push flushes.
+- Flow: the composed payload is P, the phone's own session; the end rules run before it and read the
+  phone's own id, never the mirror's X (D-85, F6).
+- Expected outcome: **nothing about X** — no `session_lifecycle` naming `s-1`, one snapshot naming P
+  with only its own rows, and the wrist's engine still holding `s-1` as `active`. Reading "no row" as
+  "discarded" for a session the phone never held announced `abandoned` for X, which ends the workout
+  running on the wrist.
+- Edge case of: S-77, S-84. **Mutation seed:** the S-86 test in
+  `test/watch_session_auto_push_test.dart` — reverting the key to `_mirror.sessionId` turns it red.
+
 ## Iteration 1 (PR 1a: Phases 1–2 · PR 1b: Phase 3)
 
 ### Phase 1: The contract amendment and the copy (@developer) — PR 1a
@@ -519,12 +576,14 @@ no Dart twin (A-8).
    D-76 lives here); `Future<void> rebaseline()` (compose and store, send nothing — D-82); a
    `Duration debounce` knob. Encodes payloads by `jsonEncode` over a recursively key-sorted copy —
    **`Map` equality is identity in Dart and must not be used**.
-2. [ ] Same file: the end rules (D-81), keyed on the mirrored session X's repository row through the
-   `getSession` seam — never on the pointer (`state.currentSession`), which `loadHistoricalSession`
-   repoints at a past session. While the mirror holds X as active: if `await getSession(X.id)` answers
-   a row with `endedAtMs != null` → `await mirror.completeSession()`; if it answers null (the row is
-   gone) → `await mirror.reportLifecycle(WatchLifecycleState.abandoned)`. While the pointer is a past
-   session H, X's row still exists unended, so neither half fires (S-84).
+2. [ ] Same file: the end rules (D-81 as amended by D-85), keyed on the id of the session the phone
+   itself last composed or pushed (`_ownSessionId`), through the `getSession` seam — never on the
+   mirror's session, which a wrist starting its own workout moves onto a session this phone refused
+   (S-86), and never on the pointer (`state.currentSession`), which `loadHistoricalSession` repoints at
+   a past session. If `await getSession(ownId)` answers a row with `endedAtMs != null` → announce
+   `completed` for that id; if it answers null → announce `abandoned` for that id; then forget the id,
+   so the next session in the same run announces itself (S-85). While the pointer is a past session H,
+   the phone's own row still exists unended, so neither half fires (S-84).
 3. [ ] Same file: the push itself — `final composed = await mirror.projectedSession(); if (composed != null) await mirror.sendState(composed);` only when the encoding differs from the baseline;
    update the baseline with what was sent. Send nothing when the phone has no session of its own
    (nothing to assert).
@@ -623,9 +682,11 @@ routine/preference sync tests, and `test/phone_manage_bridge_test.dart`.
   PR 1b = Phase 3 (the push, D-81 and the behaviour docs). Two soft signals measured by the governor:
   the plan runs over 500 lines, and the PR touches three tracks and amends the contract. One plan
   file and one set of ids across both PRs; S-84 is this revision's new scenario.
-- **The pointer trap (D-81).** The end rules read the mirrored session X's repository row, never the
-  current-session pointer (S-84): `loadHistoricalSession` repoints it at a past session every time the
-  user browses the calendar, and `clearSession` can null it without deleting the row.
+- **The pointer trap (D-81, D-85).** The end rules read the repository row of the session the phone
+  itself last pushed, never the current-session pointer (S-84): `loadHistoricalSession` repoints it at
+  a past session every time the user browses the calendar, and `clearSession` can null it without
+  deleting the row. The mirror's session is not the key either — a wrist session the phone refused has
+  no row at all, so reading that absence as a discard ends the wrist's live workout (S-86, F6).
 - **What PR 1 deliberately does not do.** No catch-up for a device that was out of reach (PR 2); the
   wrist's own add-an-exercise stays silent (PR 2); deletions, the phone's `timed`/`hold`/`round`
   entries and the phone's rest timer (PR 3). Each is named in the series index.
@@ -644,6 +705,7 @@ routine/preference sync tests, and `test/phone_manage_bridge_test.dart`.
 - [x] PR 1a / Phase 2 — the wrist's acceptance rules — tests 3990 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0; targeted Dart 42 / 0 (`watch_session_engine_test` + `watch_logging_timers_test`); projection file 29 / 0; red→green shown for S-77, S-78 and S-79 on both stacks (steps 1–9 plus the governor's step 10, `PROTOCOL.md`)
 - [x] PR 1b / Phase 3A — the phone's push (steps 1–8) — tests 4004 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0; push file 13 / 0; projection file 30 / 0; finish file 8 / 0; mutations a–e red and restored; `PROTOCOL.md` amended (the governor addition)
 - [x] PR 1b / Phase 3B — the behaviour docs and the residue sweep (steps 9–11) — docs-only: no `lib/`, `test/` or `watch/` file changed and `PROTOCOL.md` untouched; docs guard 9 / 0; full suite 4004 passed / ~1 skipped / 0 failed; lint 196 / 0 (baseline); invariant grep empty; footprint 4 tracked docs + index, all predicted; every new behaviour sentence names a test (map in the evidence file)
+- [x] Review fix round 1 — **Complete** — F6 (blocker), F1 (major), F4, plus the F2/F5 plan-text corrections — push file 18 / 0; targeted set 113 / 0 (`watch_session_auto_push_test`, `watch_session_finish_test`, `live_mirroring_test`, `watch_session_projection_test`, `docs_indexing_contract_test`); full suite 4009 passed / ~1 skipped, 0 failed; swift 315 / 0; lint 196 / 0 (baseline; none in the touched files); invariant grep empty; mutations a–d red and restored exactly; S-85/S-86 added (D-85, D-86); F3 accepted as A-17
 
 ## Assumption Log
 
@@ -726,6 +788,21 @@ ratifies it into a D-x or reverts it with a remediation item.
     only from a `session_snapshot`, which the wrist sends only inside the Sync action — so both cells
     now read "only the frame / only locally", the widened 17b row owns the fix, and three
     phone→wrist cells that said "wait for a Sync" without naming a PR gained one.
+17. **A-17 — F3 is accepted, not fixed (developer, 2026-10-06).** In the window between a wrist
+    starting its own session and the phone adopting it, a push can still carry the phone's own
+    session; the content is harmless there because the wrist already holds a live session and
+    refuses the frame (S-77), and the brief rules a code fix out of this round. The reviewer's R-3
+    test is 17b's.
+18. **A-18 — the announcement is built for a named session rather than by moving the mirror
+    (developer, 2026-10-06).** `LiveSessionMirrorState.reportLifecycleFor(id, state)` sends the
+    envelope for the id the push holds and applies it locally only when the mirror already shows that
+    session, so a refused wrist session can never be announced and the mirror's converged state is
+    untouched. The brief's alternative — advancing the mirror to the phone's session on every push —
+    would have made the push a second owner of the mirror's place (D-76/D-81).
+19. **A-19 — the fix round amends `PROTOCOL.md`'s announced-finish bullet (developer, 2026-10-06).**
+    A-2/A-3 left `PROTOCOL.md` to the governor, but the brief for this round names it and the sentence
+    ("once each", read from the shared session) became false once the end rules were keyed on the
+    phone's own session; the edit is confined to that bullet and names the six tests that prove it.
 
 ## Open questions
 
@@ -772,3 +849,25 @@ Technical questions (not owner-visible):
 5. **A ninth file changed outside the phase's Predicted Files** (developer, 2026-10-06): one line in
    `test/watch_session_projection_test.dart` (A-5). Flagged for the reviewer rather than absorbed
    silently.
+6. **Where the F4 robustness rule is documented** (developer, 2026-10-06). *Default taken:* in
+   `docs/watch_session_sync.md`'s invariants, not `PROTOCOL.md` — it is a Dart-side rule (nothing
+   sent, no error escaped, the next flush announces the end), not a wire rule, so `PROTOCOL.md` gained
+   only the announced-finish bullet.
+7. **`PROTOCOL.md` was amended by the implementer this round** (A-19), where A-2 left the file to the
+   governor. The brief names the file explicitly and the sentence had become false; flagged for
+   ratification.
+
+## Feedback
+
+Review 1 (@code-reviewer, 2026-10-06) — **not approved as it stands.** Findings, evidence and the fix
+checklist are in `2026-10-06-17a-watch-auto-sync-pr1-plan.review.md`.
+
+Blocking: **F6** — a session the phone *refused* to adopt (D-10) has no row, and `_announceEnd` reads
+"no row" as "discarded", so the phone sends `abandoned` for a session the wrist is still running and
+ends the user's live wrist workout. Gate the announcement on the phone holding the session
+(`adoption.holdsSession`) and add S-86 + its test. **F1** — the phone announces its finish for the
+first session only, so `PROTOCOL.md:426-436` and `docs/watch_session_sync.md:130-139` state the
+general case and are false. Fix it, or narrow both sentences and move the general case to PR 2's
+index. Warnings/minors to clear in the same round: F2 (three stale Impact rows), F3 (a late adoption
+can leak one push), F4 (`flush()`'s unguarded `_getSession`, overlapping flushes), F5 (AC-11 vs A-8 —
+planner's call, no code fix). One round only; no review → fix → review loop.

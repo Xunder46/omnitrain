@@ -13,14 +13,19 @@
 ///    tick therefore sends nothing, and a burst of changes inside one window is
 ///    one frame. The payload is never cached: the newest state is the one that
 ///    matters.
-/// 2. **The session's end is announced** (D-81). While the mirror holds session
-///    X as active, X's own repository row decides: ended → [LiveSessionMirrorState.completeSession],
-///    gone → [LiveSessionMirrorState.reportLifecycle] `abandoned`. Never the
-///    phone's current-session pointer, which calendar browsing repoints at a
-///    past session.
+/// 2. **The session's end is announced** (D-81). The phone's *own* session
+///    decides — the id of the last payload this push composed or baselined, not
+///    the mirror's session, which a wrist starting its own workout moves onto a
+///    session this phone never held (F6). A row that exists and ended →
+///    [LiveSessionMirrorState.completeSession] for it; a row that is gone →
+///    [LiveSessionMirrorState.reportLifecycleFor] `abandoned` for it. The id is
+///    forgotten as it is announced, so each session in an app run is announced
+///    once (F1), and never the phone's current-session pointer, which calendar
+///    browsing repoints at a past session.
 /// 3. **Dropped, never queued** (D-83). The transport reports what it cannot
 ///    carry and never throws; this push adds no queue, no retry and no
-///    user-visible state, and a failure leaves the phone undisturbed.
+///    user-visible state, and a failure — a repository read included — leaves
+///    the phone undisturbed (F4).
 ///
 /// It persists nothing and writes nothing: it reads the phone's session through
 /// the projection and the mirrored session's row through [getSession], and sends.
@@ -62,6 +67,19 @@ class WatchSessionAutoPush {
   /// while it has none — the first composed payload is always sent.
   String? _baseline;
 
+  /// The id of the session the phone itself last composed or baselined — a
+  /// session it holds and has told the wrist about. Null while it has none.
+  ///
+  /// Never the mirror's session: the wrist can start a workout of its own, which
+  /// the phone refuses to adopt (D-10) and which is therefore not the phone's to
+  /// end (F6).
+  String? _ownSessionId;
+
+  /// The drain a running [flush] is, and whether another pass was asked for
+  /// while it ran. Two flushes that overlap are one drain (F4).
+  Future<void>? _draining;
+  bool _again = false;
+
   /// Binds the state whose changes are pushed. Binding the same state twice
   /// leaves one listener; [dispose] removes it.
   void bindWorkoutState(WorkoutState state) {
@@ -72,27 +90,70 @@ class WatchSessionAutoPush {
   }
 
   /// Closes the pending window and pushes the newest state at once.
+  ///
+  /// A flush that arrives while one is running joins it and asks for one more
+  /// pass after it, instead of running beside it: the end rules read the phone's
+  /// row and then act on it, and two passes interleaved between the two announce
+  /// one end twice (F4).
   Future<void> flush() async {
     _window?.cancel();
     _window = null;
 
-    await _announceEnd();
-    final composed = await _mirror.projectedSession();
-    if (composed == null) return; // nothing of the phone's own to assert
+    final running = _draining;
+    if (running != null) {
+      _again = true;
+      return running;
+    }
 
-    final encoded = _encode(composed);
-    if (encoded == _baseline) return;
-    _baseline = encoded;
-    await _mirror.sendState(composed);
+    final drained = Completer<void>();
+    _draining = drained.future;
+    try {
+      do {
+        _again = false;
+        await _pushOnce();
+      } while (_again);
+    } finally {
+      _draining = null;
+      drained.complete();
+    }
+  }
+
+  /// One pass: the end of the phone's own session, if it has one, and then the
+  /// composed payload when it differs from the baseline.
+  ///
+  /// Never throws (F4, D-83): a row or a composition the phone cannot read
+  /// leaves it exactly as it was — nothing sent, nothing cached, nothing queued
+  /// — and the next notification tries again.
+  Future<void> _pushOnce() async {
+    try {
+      await _announceEnd();
+
+      final composed = await _mirror.projectedSession();
+      if (composed == null) return; // nothing of the phone's own to assert
+
+      _ownSessionId = composed['sessionId'] as String? ?? _ownSessionId;
+      final encoded = _encode(composed);
+      if (encoded == _baseline) return;
+      _baseline = encoded;
+      await _mirror.sendState(composed);
+    } catch (_) {
+      // F4: a push that cannot be made must not disturb the phone.
+    }
   }
 
   /// Takes the phone's current session as the new baseline, sending nothing
   /// (D-82): a frame the phone applied from the wrist is never answered with a
   /// push of the rows that frame just brought in.
   Future<void> rebaseline() async {
-    final composed = await _mirror.projectedSession();
-    if (composed == null) return;
-    _baseline = _encode(composed);
+    try {
+      final composed = await _mirror.projectedSession();
+      if (composed == null) return;
+      _ownSessionId = composed['sessionId'] as String? ?? _ownSessionId;
+      _baseline = _encode(composed);
+    } catch (_) {
+      // F4, and the same reason [flush] holds: a frame the phone cannot turn
+      // into a baseline is not the phone's news to push.
+    }
   }
 
   /// Unbinds the state and cancels the pending window.
@@ -108,25 +169,49 @@ class WatchSessionAutoPush {
     _window = Timer(_debounce, () => unawaited(flush()));
   }
 
-  /// The end rules of D-81, decided by the mirrored session's own row — never
+  /// The end rules of D-81, decided by the row of the session the phone itself
+  /// composed and pushed — never by the mirror's session, which a wrist starting
+  /// its own workout moves onto a session this phone never held (F6), and never
   /// by the phone's current-session pointer, which [WorkoutState.loadHistoricalSession]
   /// repoints at a past session while the mirrored one is still live.
   ///
-  /// Nothing fires for a row that exists and is unended, and nothing fires
-  /// twice: [LiveSessionMirrorState.completeSession] memoises and
-  /// [LiveSessionMirrorState.reportLifecycle] applies locally, so both leave the
-  /// mirror no longer holding the session as active.
+  /// The id is dropped in every branch, whether or not a frame leaves, so one
+  /// session is announced once per app run and the next one sets the id again
+  /// (F1).
   Future<void> _announceEnd() async {
-    if (!_mirror.isActive) return;
-    final sessionId = _mirror.sessionId;
+    final sessionId = _ownSessionId;
     if (sessionId == null) return;
 
-    final row = await _getSession(sessionId);
-    if (row == null) {
-      await _mirror.reportLifecycle(WatchLifecycleState.abandoned);
+    // A session the wrist ended itself: its lifecycle is what ended the phone's
+    // copy, through the router, so the mirror no longer holds it as active and
+    // an end has already been said.
+    final held = _mirror.sessionId == sessionId;
+    if (held && !_mirror.isActive) {
+      _ownSessionId = null;
       return;
     }
-    if (row.endedAtMs != null) await _mirror.completeSession();
+
+    final row = await _getSession(sessionId);
+    if (row != null && row.endedAtMs == null) return; // still running
+
+    _ownSessionId = null;
+    if (row == null) {
+      // The row is gone: the phone discarded the session, and only for its own
+      // session does "no row" mean that.
+      await _mirror.reportLifecycleFor(
+        sessionId,
+        WatchLifecycleState.abandoned,
+      );
+      return;
+    }
+    if (held) {
+      await _mirror.completeSession();
+    } else {
+      await _mirror.reportLifecycleFor(
+        sessionId,
+        WatchLifecycleState.completed,
+      );
+    }
   }
 
   /// The deterministic encoding two payloads are compared by: `jsonEncode` over

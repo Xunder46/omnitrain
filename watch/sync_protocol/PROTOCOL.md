@@ -425,14 +425,21 @@ correction carries no distance
   says otherwise.
 - The phone MUST report its own finish. A session the phone has ended (its
   record carries an end) MUST be announced with `completed`, and one the phone
-  discarded (its record is gone) with `abandoned`, once each. What is announced
-  is the session the two devices share, read from that session's own record:
-  a past session the user opens on the phone MUST NOT be read as the shared one
-  ending, and MUST NOT be announced. Verified by
-  `test/watch_session_auto_push_test.dart` (`S-72 finishing on the phone ends
+  discarded (its record is gone) with `abandoned`, once each — once per session,
+  so a second session ended in the same run is announced for itself. What is
+  announced is the session the phone itself holds and has told the watch about,
+  named by the id it last pushed and read from that session's own record: a past
+  session the user opens on the phone MUST NOT be read as the shared one ending,
+  and MUST NOT be announced; a session the phone never held — one the wrist
+  started on its own — MUST NOT be announced at all, whatever its record says;
+  and an end the watch itself caused MUST NOT be announced back at it. Verified
+  by `test/watch_session_auto_push_test.dart` (`S-72 finishing on the phone ends
   the wrist's copy, once`, `S-73 discarding on the phone abandons the wrist's
-  copy, once`, `S-84 opening a past session pushes nothing for the live one`)
-  and by `test/watch_session_finish_test.dart` (`S-5 the phone's own finish is
+  copy, once`, `S-84 opening a past session pushes nothing for the live one`,
+  `S-85 two finishes and a discard are announced once each, under each session's
+  own id`, `S-85 the end the wrist itself caused is not announced back at it`,
+  `S-86 the phone's own push does not end the wrist's live session`) and by
+  `test/watch_session_finish_test.dart` (`S-5 the phone's own finish is
   reported, and the wrist is answered at its next sync`).
 - `revision` increases by one per applied structure change, so two clients can
   tell at a glance whether they are looking at the same session shape.

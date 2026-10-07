@@ -246,3 +246,83 @@ test names were read out of the files, not invented.
 | footprint | `.github/copilot/scripts/macos/gateway.sh git-diff --stat` | 6 tracked files, all docs and all predicted: the three behaviour docs (`docs/watch_session_sync.md` 125, `docs/watch-app-setup-and-qa.md` 139, `docs/state_management/watch_surface.md` 59), the series index (12), and the plan (11) + this evidence file (36). 265 insertions, 117 deletions. No `lib/`, `test/` or `watch/` file, and `watch/sync_protocol/PROTOCOL.md` is untouched |
 
 Swift was not re-run for this phase: no Swift file changed (Phase 2's 315/0 stands).
+
+## Review fix round 1 — F6 (blocker), F1 (major), F4, F2/F5 text (S-85, S-86)
+
+Source: `lib/state/watch/watch_session_auto_push.dart` (the end rules now key on `_ownSessionId`, the id
+of the session the phone itself last composed or pushed; `flush()` serialises through a `Completer` and
+re-runs when a second flush arrived while one was draining; `_pushOnce()` swallows a `getSession` that
+throws and announces before it composes), `lib/state/watch/live_session_mirror_state.dart`
+(`reportLifecycleFor(id, state)` builds the envelope for a named session and applies it locally only when
+the mirror already shows that session), `test/watch_session_auto_push_test.dart` (5 new tests),
+`test/watch_session_finish_test.dart` (the `S-5` fixture now calls `rebaseline()`, as the graph does
+after every incoming frame).
+
+### Red → green (the new tests fail without the fix)
+
+Red run of `test/watch_session_auto_push_test.dart` before any implementation, 4 failures of 17
+(13 pre-existing green), all four on the behaviour the fix adds:
+
+| Test | Observed failure |
+|---|---|
+| `S-85 two finishes and a discard are announced once each, under each session's own id` | the second session's `completed` never sent — one lifecycle frame for the whole run |
+| `S-85 the end the wrist itself caused is not announced back at it` | one stray `completed` sent for an end the wrist had already reported |
+| `S-86 the phone's own push does not end the wrist's live session` | the leaked frame `{'sessionId': 's-1', 'type': 'session_lifecycle', 'payload': {'state': 'abandoned'}}` — F6 exactly: `abandoned` for a session the phone never held |
+| `F4 two overlapping flushes announce the end once` | two `completed` frames from two overlapping flushes |
+
+`F4 a throwing getSession leaks no async error and the next flush announces the end` was red as an
+unhandled `StateError` escaping `flush()`.
+
+Green after the fix: `test/watch_session_auto_push_test.dart` 18 passed / 0 failed (13 → 18); the
+brief's targeted set 113 passed / 0 failed over `watch_session_auto_push_test`, `watch_session_finish_test`,
+`live_mirroring_test`, `watch_session_projection_test`, `docs_indexing_contract_test`; full suite
+4009 passed / ~1 skipped / 0 failed (baseline 4004 + the 5 new tests).
+
+### Mutations (each applied to source, seen red for the predicted reason, restored exactly, re-run green)
+
+| # | Mutation | Observed red |
+|---|---|---|
+| a | `_announceEnd()` keys on `_mirror.sessionId` again | `S-85 two finishes and a discard …` and `S-86 the phone's own push does not end the wrist's live session` |
+| b | the announced id is never forgotten (the two `_ownSessionId = null` lines removed) | `S-85 two finishes and a discard …` — the second `completed` duplicated |
+| c | the `_draining` / `_again` drain removed from `flush()` | `S-85 two finishes and a discard …` and `F4 two overlapping flushes announce the end once` — two `completed` frames |
+| d | the `held && !_mirror.isActive` early return removed | `S-85 the end the wrist itself caused is not announced back at it` — one stray `completed` |
+
+After (d) the file was re-run at 18 passed / 0 failed, and `git-diff` showed the originals back.
+
+### The `S-5` fixture correction (an existing test the plan predicted)
+
+`test/watch_session_finish_test.dart`'s `S-5` went red on the first targeted run (expected `['s-w1']`,
+got `[]`): its hand-built push is driven directly, so it never ran the graph's `rebaseline()` step and the
+push had no id to announce. Adding `await push.rebaseline();` after `router.receive(_snapshot())` — the
+step `watch_sync_wiring.dart` performs on every incoming frame — restores it; the file is 8 / 0. No
+assertion changed.
+
+### R-2 — the transport-test sweep
+
+`test/watch_transport_test.dart:99` reads the whole `watch/contract/watch_start_paths_contract.json`
+fixture; the string `noAutoSyncLabel` appears nowhere in the file (grep), so the deletion in Phase 1 left
+it untouched, as the corrected Impact row now states. The same sweep over the whole tree finds the label
+only in `docs/plans/2026-10-04-14-…-plan.evidence.md` rows, which are **history** and stay as they are.
+
+### Docs (the sentences the code change made false)
+
+| Doc | Sentence changed | Tests it now names |
+|---|---|---|
+| `watch/sync_protocol/PROTOCOL.md` | "The phone MUST report its own finish" — now says the announcement is the session the phone itself holds and last pushed, once per session, that a session the phone never held MUST NOT be announced, and that an end the wrist caused MUST NOT be announced back | `S-72 …`, `S-73 …`, `S-84 …`, `S-85 two finishes and a discard are announced once each, under each session's own id`, `S-85 the end the wrist itself caused is not announced back at it`, `S-86 the phone's own push does not end the wrist's live session`, `S-5 …` |
+| `docs/watch_session_sync.md` (the D-81 section) | the announcement names the phone's own last-pushed session, never whichever session the mirror shows | the same three, plus `S-72 …` |
+| `docs/watch_session_sync.md` (the invariants list) | the D-81 invariant restated on the phone's own session, the id forgotten once announced; a new invariant for the F4 behaviour | the six above; `F4 a throwing getSession leaks no async error and the next flush announces the end`, `F4 two overlapping flushes announce the end once` |
+
+Diff: `docs/watch_session_sync.md` 37 lines, `watch/sync_protocol/PROTOCOL.md` 21 — both confined to
+those sentences (A-19).
+
+### Suites and checks (fix round 1)
+
+| Check | Command | Result |
+|---|---|---|
+| the push file | `.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart` | 18 passed / 0 failed |
+| the brief's targeted set | `.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart test/watch_session_finish_test.dart test/live_mirroring_test.dart test/watch_session_projection_test.dart test/docs_indexing_contract_test.dart` | 113 passed / 0 failed |
+| full suite | `.github/copilot/scripts/macos/gateway.sh test` | 4009 passed / ~1 skipped / 0 failed |
+| Swift | `.github/copilot/scripts/macos/gateway.sh swift-test` | 315 passed / 0 failed (no Swift file changed) |
+| lint | `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues, exit 1 — the baseline's pre-existing info notices; none in a file this round touched |
+| the invariant | grep `import .*hive_workout_repository` under `lib/state lib/features lib/widgets lib/core` | no matches |
+| footprint | `.github/copilot/scripts/macos/gateway.sh git-diff --stat` | 6 tracked paths, all intended: the two `lib/state/watch` files, the two test files, the plan, this file. `watch_sync_wiring.dart` needed no change |

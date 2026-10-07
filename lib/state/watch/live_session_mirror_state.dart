@@ -494,6 +494,38 @@ class LiveSessionMirrorState extends ChangeNotifier {
     return envelope;
   }
 
+  /// Reports a lifecycle change for [sessionId] **by name** — the session the
+  /// caller is speaking about, which is not necessarily the one this mirror
+  /// holds.
+  ///
+  /// [reportLifecycle] names whatever session this mirror holds, which is the
+  /// same session only while the two agree: a wrist that starts its own session
+  /// moves the mirror onto one this phone never held (D-10), and an end
+  /// announced under that name would close a workout the wrist is still
+  /// running. The local apply happens only when this mirror is the one holding
+  /// [sessionId]; the frame reaches the transport either way.
+  ///
+  /// The merged record a closed session leaves behind is [completeSession]'s to
+  /// make, and is not made here.
+  Future<Map<String, Object?>> reportLifecycleFor(
+    String sessionId,
+    String state,
+  ) async {
+    final envelope = phoneEnvelope(
+      type: 'session_lifecycle',
+      messageId: _newId(),
+      sentAt: _clock(),
+      sessionId: sessionId,
+      payload: {'state': state, 'at': utcIso(_clock())},
+    );
+    if (sessionId == this.sessionId) {
+      _reconciler.applyMessage(envelope);
+      notifyListeners();
+    }
+    await _transport.send(envelope);
+    return envelope;
+  }
+
   /// A message the phone originates: applied here first, then handed to the
   /// transport.
   ///

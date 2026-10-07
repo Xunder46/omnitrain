@@ -423,6 +423,10 @@ void main() {
 
     await phone.router.receive(_snapshot());
     expect(phone.state.hasActiveSession, isTrue);
+    // The graph's post-frame step (D-82), which this harness drives by hand:
+    // the frame the phone just applied becomes the push's baseline, so the
+    // session it names is the phone's own from here on.
+    await push.rebaseline();
 
     // The owner ends the session on the phone, through the ordinary finish.
     await phone.state.endSession();

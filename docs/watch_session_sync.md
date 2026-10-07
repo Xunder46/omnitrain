@@ -131,9 +131,15 @@ and `a lifecycle naming another session changes nothing`).
 the phone is `WorkoutState.endSession`; it writes history, and the push that
 follows reports the session's own `completed` lifecycle, read from the session's
 stored row, so the wrist ends its copy rather than holding a session the phone has
-closed — and a session whose row already has an end is never adopted back.
-Verified by `test/watch_session_auto_push_test.dart`
-(`S-72 finishing on the phone ends the wrist's copy, once`) and
+closed — and a session whose row already has an end is never adopted back. What
+is announced is the session the phone itself holds and last pushed, never
+whichever session the mirror happens to be showing: a second session ended in the
+same run is announced for itself, and a session the phone never held is not
+announced at all (S-85, S-86). Verified by `test/watch_session_auto_push_test.dart`
+(`S-72 finishing on the phone ends the wrist's copy, once`,
+`S-85 two finishes and a discard are announced once each, under each session's
+own id`, `S-85 the end the wrist itself caused is not announced back at it`,
+`S-86 the phone's own push does not end the wrist's live session`) and
 `test/watch_session_finish_test.dart`
 (`S-5 the phone's own finish is reported, and the wrist is answered at its next
 sync`, `G1 a finished session is not adopted back after a restart`,
@@ -152,17 +158,30 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
   (`a set logged on the watch lands in the session the phone holds`) and
   `test/watch_session_merge_test.dart` (`S-9 a wrist set reaches the live phone
   session`, `S-12 a slot the session does not have`).
-- **The phone's finish and discard are announced (D-81).** While the mirror holds
-  a session as active, that session's own stored row decides: an ended row
-  reports its `completed` lifecycle and a row that is gone reports `abandoned` —
-  never the phone's current-session pointer, which browsing a past session
-  repoints. Verified by `test/watch_session_auto_push_test.dart`
+- **The phone's finish and discard are announced (D-81).** The session announced
+  is the one the phone itself holds and last pushed; that session's own stored row
+  decides: an ended row reports its `completed` lifecycle and a row that is gone
+  reports `abandoned` — never the phone's current-session pointer, which browsing
+  a past session repoints, and never a session the mirror shows but the phone
+  refused. The id is forgotten once announced, so a second session ended in the
+  same run is announced for itself. Verified by
+  `test/watch_session_auto_push_test.dart`
   (`S-72 finishing on the phone ends the wrist's copy, once`,
   `S-73 discarding on the phone abandons the wrist's copy, once`,
-  `S-84 opening a past session pushes nothing for the live one`) and by
+  `S-84 opening a past session pushes nothing for the live one`,
+  `S-85 two finishes and a discard are announced once each, under each session's
+  own id`, `S-85 the end the wrist itself caused is not announced back at it`,
+  `S-86 the phone's own push does not end the wrist's live session`) and by
   `test/watch_session_finish_test.dart`
   (`S-5 the phone's own finish is reported, and the wrist is answered at its next
   sync`).
+- **A flush that cannot read the session leaves nothing behind.** A `getSession`
+  that throws is swallowed: no frame is sent, no async error escapes, and the
+  session's end is announced by the next flush. Two flushes that overlap run one
+  after the other, so the end is announced once. Verified by
+  `test/watch_session_auto_push_test.dart`
+  (`F4 a throwing getSession leaks no async error and the next flush announces the
+  end`, `F4 two overlapping flushes announce the end once`).
 - **A finished session is never resurrected.** Verified by
   `test/watch_session_finish_test.dart`
   (`G1 a finished session is not adopted back after a restart`: the next sync

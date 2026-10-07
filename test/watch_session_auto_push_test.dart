@@ -13,6 +13,9 @@
 //   S-81 a re-delivered frame changes nothing          → `S-81 ...`
 //   S-83 a push the radio cannot carry is dropped      → `S-83 ...`
 //   S-84 browsing another session pushes nothing       → `S-84 ...`
+//   S-85 every session in one run is announced once    → `S-85 ...`
+//   S-86 the phone never abandons a session it never held → `S-86 ...`
+//   F4 a flush never leaks and never announces twice   → `F4 ...`
 //
 // The phone side is the graph `createWatchSync` builds — the shipping wiring,
 // including the push it returns — over a fake radio; the wrist side is the real
@@ -1007,6 +1010,254 @@ void main() {
             'S-84 re-reading the live session sends nothing: the payload equals '
             'the one already on the wrist (D-76)',
       );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-85 every session in one app run is announced for itself', () {
+    test(
+      'S-85 two finishes and a discard are announced once each, under each '
+      'session\'s own id',
+      () async {
+        // Session 1: adopted off the wrist, logged into and finished on the
+        // phone. The mirror holds this one.
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        // Session 2: the phone's own, started after the first finished. The
+        // mirror still holds session 1.
+        await phoneState.createNewSession();
+        final second = await add('ex-bench');
+        final secondId = phoneState.currentSession!.id;
+        await phoneState.addEntry(
+          second,
+          previousValues: <String, dynamic>{'reps': 5, 'weight': 40},
+        );
+        await graph.autoPush.flush();
+        expect(
+          [
+            for (final frame in radio.ofType('session_snapshot'))
+              frame['sessionId'],
+          ],
+          contains(secondId),
+          reason: 'the fixture: session 2 is the phone\'s own and is pushed',
+        );
+
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        // Session 3: started, pushed, then discarded without ever ending.
+        await phoneState.createNewSession();
+        final third = await add('ex-deadlift');
+        final thirdId = phoneState.currentSession!.id;
+        await phoneState.addEntry(third);
+        await graph.autoPush.flush();
+        await phoneState.discardCurrentSession();
+        await graph.autoPush.flush();
+
+        final announced = <String, List<String>>{};
+        for (final frame in radio.ofType('session_lifecycle')) {
+          (announced[frame['sessionId']! as String] ??= []).add(
+            _payload(frame)['state']! as String,
+          );
+        }
+        expect(
+          announced,
+          <String, List<String>>{
+            's-1': [WatchLifecycleState.completed],
+            secondId: [WatchLifecycleState.completed],
+            thirdId: [WatchLifecycleState.abandoned],
+          },
+          reason:
+              'S-85 the rule reads the phone\'s own session, so a second '
+              'session in the same app run is announced like the first, under '
+              'its own id, and each one exactly once (D-81)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test('S-85 the end the wrist itself caused is not announced back at it',
+        () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      // The wrist ends its own session, and says so. The phone's copy ends with
+      // it, through the router, so both devices hold the fact already.
+      await engine.finishSession();
+      final lifecycle = wristFrames.last;
+      expect(
+        lifecycle['type'],
+        'session_lifecycle',
+        reason: 'the fixture: the wrist announces its own end',
+      );
+      await radio.fromWrist(lifecycle);
+      await _settle();
+      expect(graph.mirror.status, WatchSessionStatus.completed);
+      expect(
+        phoneState.currentSession?.endedAtMs,
+        isNotNull,
+        reason: 'the fixture: the wrist is the authority on its own session',
+      );
+      radio.sent.clear();
+
+      await graph.autoPush.flush();
+      await phoneState.loadSessionData();
+      await graph.autoPush.flush();
+
+      expect(
+        radio.ofType('session_lifecycle'),
+        isEmpty,
+        reason:
+            'S-85 the phone announces ends it caused, not ends it was told '
+            'about: the wrist already holds this one, so there is nothing left '
+            'to say (D-81)',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-86 a session the phone never held is not abandoned', () {
+    test(
+      'S-86 the phone\'s own push does not end the wrist\'s live session',
+      () async {
+        // The phone starts a session of its own and puts a ladder in it.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final ownSessionId = phoneState.currentSession!.id;
+
+        // The wrist is running a session of its own — X — which the phone has
+        // no row for and refuses to adopt (D-10).
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+        expect(
+          await repository.getSession('s-1'),
+          isNull,
+          reason:
+              'the fixture: the phone never held X, so there is no row for it '
+              '(D-10 refused the adoption)',
+        );
+        expect(phoneState.currentSession?.id, ownSessionId);
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'S-86 a missing row means "discarded" only for a session the '
+              'phone itself held and pushed: announcing `abandoned` for the '
+              'wrist\'s session would end the workout running on the wrist',
+        );
+        final pushes = radio.ofType('session_snapshot');
+        expect(
+          pushes,
+          hasLength(1),
+          reason: 'S-86 the phone\'s own session is the only frame it sends',
+        );
+        expect(pushes.single['sessionId'], ownSessionId);
+        expect(_slotIds(_payload(pushes.single)), [own]);
+        expect(
+          engine.session!.status,
+          WatchSessionStatus.active,
+          reason: 'S-86 nothing the phone sent named the wrist\'s session',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('F4 a flush that cannot finish does not disturb the phone', () {
+    test(
+      'F4 a throwing getSession leaks no async error and the next flush '
+      'announces the end',
+      () async {
+        await wristStartsSession();
+
+        var readable = true;
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: (sessionId) async {
+            if (!readable) throw StateError('the repository cannot be read');
+            return repository.getSession(sessionId);
+          },
+        )..bindWorkoutState(phoneState);
+        addTearDown(push.dispose);
+
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await push.flush();
+        expect(radio.ofType('session_snapshot'), hasLength(1));
+
+        // The session ends while its row cannot be read: the flush must not
+        // throw and must not lose the end.
+        readable = false;
+        await phoneState.endSession();
+        await push.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'F4 a read the phone cannot make sends nothing — and the phone '
+              'is undisturbed: the flush returns rather than throwing',
+        );
+
+        readable = true;
+        await push.flush();
+        final ends = radio.ofType('session_lifecycle');
+        expect(
+          ends,
+          hasLength(1),
+          reason: 'F4 the next notification still announces the end',
+        );
+        expect(ends.single['sessionId'], 's-1');
+        expect(_payload(ends.single)['state'], WatchLifecycleState.completed);
+        expect(failures, isEmpty);
+      },
+    );
+
+    test('F4 two overlapping flushes announce the end once', () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      await phoneState.endSession();
+      final first = graph.autoPush.flush();
+      final second = graph.autoPush.flush();
+      await Future.wait(<Future<void>>[first, second]);
+
+      final ends = radio.ofType('session_lifecycle');
+      expect(
+        ends,
+        hasLength(1),
+        reason:
+            'F4 two flushes that overlap are one drain, so the session is '
+            'announced once (D-81)',
+      );
+      expect(ends.single['sessionId'], 's-1');
+      expect(_payload(ends.single)['state'], WatchLifecycleState.completed);
       expect(failures, isEmpty);
     });
   });
