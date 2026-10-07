@@ -547,7 +547,12 @@ added weight stay off the wire by decision (D-135/D-136).
 
 ## Feedback
 
-[empty — fill this and re-invoke the planner when a D-x contradicts itself or the scope changes]
+- **Code review 1 (17d) — CHANGES_REQUESTED.** Findings, fixes and the reviewer's own runs:
+  `2026-10-07-17d-watch-auto-sync-pr4-plan.review.md` §"Code review 1 (17d)". One blocker (F1): the
+  Structure table at `docs/watch_session_sync.md:26` still names `WatchSessionAdoptionBridge._wristRowStamps`,
+  which Phase 1 removed (the read is `_rowsOfKind`/`_stampsOf` now). Planner items: F4 (`:97`/`:99`),
+  F5 (`:221`'s grep), F8 (the series index's "shipped"). All eight findings are one-line mechanical
+  corrections; no re-plan and no re-review.
 
 ## Open questions
 
