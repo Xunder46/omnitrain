@@ -148,25 +148,62 @@ the plan's Predicted Files changed (the plan + its evidence file are the other t
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 1 | S-145 Dart twin | | |
-| 2 | S-145 Swift | | |
-| 3 | `heldWristEntryIds` filter dropped + S-144 | | |
-| 4 | regression suites | | |
-| 5 | Progress | | |
+| 1 | S-145 Dart twin | done | `test/watch_session_engine_test.dart` group `S-145 a phone entry of any kind is the wrist's own`, 2 tests: **2 passed / 0 failed**. Test 1 (timed + hold + round applied once each, with the phone's fields) mutation-proven below; test 2 asserts `loggedAt` order for a frame that carried round/hold/timed. |
+| 2 | S-145 Swift | done, **no Swift production change** (D-134) | `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift`: `testS145APhoneEntryOfEveryKindIsTheWristsOwn` + private `value`/`slot`/`phoneEntriesSnapshot` helpers. `swift-test --filter WatchPhoneEntriesTests` → **8 tests / 0 failures**; mutation → 8 failures; source restored byte-exact (absent from `git-status`). |
+| 3 | `heldWristEntryIds` filter dropped + S-144 | done | `_claimKinds`, `_rowsOfKind`/`_stampsOf` split; `heldWristEntryIds` claims sets via `resolveClaims` and `timed`/`hold`/`round` via `resolveRecordClaims` over `getTimedInstances`/`getRoundInstances`. S-144 group in `test/watch_session_auto_push_test.dart`: **1 passed / 0 failed**; prove-red **RED AT `d4e64ee`** (exit 1). |
+| 4 | regression suites | done | `test/watch_reconciliation_cross_stack_test.dart` + `test/watch_session_import_test.dart` + `test/watch_session_edit_restore_late_entry_test.dart`: **92 passed / 0 failed**. |
+| 5 | Progress | done | plan `## Progress` Phase 2 row + Assumption Log 6–8. The two Phase-1 pins of brief item 4 (D-133, D-132) live in `test/watch_session_projection_test.dart` — a Phase 1 file, flagged as such. |
 
 Done Criteria run:
 
 ```
-.github/copilot/scripts/macos/gateway.sh lint
-.github/copilot/scripts/macos/gateway.sh test test/watch_session_engine_test.dart test/watch_session_auto_push_test.dart test/watch_reconciliation_cross_stack_test.dart test/watch_session_import_test.dart
-.github/copilot/scripts/macos/gateway.sh swift-test
+.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart test/watch_session_engine_test.dart test/watch_session_projection_test.dart
+→ 00:00 +114: All tests passed!
+
+.github/copilot/scripts/macos/gateway.sh test test/watch_reconciliation_cross_stack_test.dart test/watch_session_import_test.dart test/watch_session_edit_restore_late_entry_test.dart
+→ 00:03 +92: All tests passed!
+
+.github/copilot/scripts/macos/gateway.sh swift-test --filter WatchPhoneEntriesTests
+→ 8 tests, 0 failures
 ```
 
 Red→green table:
 
-| Scenario | Red command / revert | Red output | Green output |
+| Guard | Red proof (mutation / prove-red) | Red output | Green output |
 |---|---|---|---|
-| S-144 | `prove-red` with the `kindSet` filter restored | | |
+| S-144 | `prove-red d4e64ee test test/watch_session_auto_push_test.dart --plain-name "S-144"` | `RED AT d4e64ee (exit 1)`: expected 5 frames, actual 2 | `+1: All tests passed!` |
+| S-145 Dart twin | mutation: `if (entry['kind'] != 'set') continue;` in `watch_session_engine.dart`'s `_applySnapshot` store loop | test 1 red — the `hold`/`round`/`timed` rows never reached the store | restored byte-exact, `+2: All tests passed!` |
+| S-145 Swift | mutation: `if entry["kind"] as? String != "set" { continue }` in `WatchSessionEngine.applySnapshot`'s store loop (~:527) | **8 failures** | restored byte-exact, 8 tests / 0 failures |
+| pin D-133 (`_rowsOfKind` ignores the kind) | mutation: `if (row.kind == kind) row,` → `row,` | `Expected: Set:['entry-slot-burpee-0'] Actual: Set:[]` — the timed row's stamp swallowed the round record's | restored byte-exact, `+2: All tests passed!` |
+| pin D-132 (`_extraLoadFields` zero guard) | mutation: `if (weightKg == 0) return const {};` removed | `Expected: false Actual: <true>` — the field the phone must omit was sent | restored byte-exact, `+2: All tests passed!` |
+
+Both pin mutations were reverted and `git-status` shows neither
+`lib/state/watch/watch_session_adoption_bridge.dart`'s guard nor
+`lib/core/sync_protocol/phone_entries.dart` carrying residue (`phone_entries.dart` is absent from
+`git-status` entirely); no mutation was left applied.
+
+Final counts for this phase (whole repo, after the phase):
+
+| Check | Baseline | After Phase 2 | Delta explained |
+|---|---|---|---|
+| `test` (full) | `+4052 ~1` | **`+4057 ~1: All tests passed!`** | +5: S-145 ×2, S-144 ×1, pins D-133/D-132 ×2 |
+| `swift-test` (full) | 334 tests / 0 failures | **335 tests / 0 failures** | +1: `testS145APhoneEntryOfEveryKindIsTheWristsOwn` |
+| `lint` | 196 issues / 0 errors | **196 issues / 0 errors** (exit 1 = the pre-existing info notices) | none; no issue names a file this phase touched |
+| invariant `import .*hive_workout_repository` in `lib/{state,features,widgets,core}` | none | **none** | — |
+
+Diff footprint (`git-diff --stat`, this phase's files only): `watch_session_adoption_bridge.dart` 103
+changed lines (32 deletions — the set-only body of `heldWristEntryIds`), `watch_session_engine_test.dart`
+234 changed lines / 0 deletions, `watch_session_auto_push_test.dart` 208 changed lines / 3 deletions (the
+`_slot` helper's parameter list and its hard-coded `'effortKind': 'set'`), `watch_session_projection_test.dart`
+108 changed lines / 0 deletions, `WatchPhoneEntriesTests.swift` 166 changed lines (the header comment's
+kind list extended, plus the new test and helpers). No Swift production file, no
+`lib/core/sync_protocol/phone_entries.dart`, no `lib/watch/session/watch_session_engine.dart` — every
+mutation target is byte-exactly restored.
+
+Docs: no Phase 2 update required. The sentence this phase narrows, `docs/watch_session_sync.md:328`
+("Only sets are carried"), was already false after Phase 1 and is Phase 3 item 1's explicit target; the
+deletion bullet at `:348` stays true but is now narrower than the behaviour, and Phase 3 item 1's pass
+carries the one-line correction (Assumption Log 9).
 
 ## Phase 3 — docs, contract sentence, residue sweep (@developer)
 

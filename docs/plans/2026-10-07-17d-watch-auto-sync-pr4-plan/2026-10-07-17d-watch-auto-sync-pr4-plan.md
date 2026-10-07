@@ -360,21 +360,30 @@ a `prove-red` demonstration on S-140 (red with the `_entriesFor` change reverted
 
 ### Phase 2: The wrist shows them, and 17c's deletion covers them (@developer)
 
-1. [ ] Add S-145 to `test/watch_session_engine_test.dart` (the Dart twin shows a phone `timed` entry
-   once, with the phone's fields). · `test/watch_session_engine_test.dart`
-2. [ ] Add the Swift half of S-145 to `watch/watchos/Tests/WatchSessionEngineTests/`: the logging
+1. [x] Add S-145 to `test/watch_session_engine_test.dart` (the Dart twin shows a phone `timed` entry
+   once, with the phone's fields). · `test/watch_session_engine_test.dart` — done: group
+   `S-145 a phone entry of any kind is the wrist's own` (2 tests: fields + once each; `loggedAt` order
+   whatever the frame's order). 2 passed; kind-filter mutation red; restored.
+2. [x] Add the Swift half of S-145 to `watch/watchos/Tests/WatchSessionEngineTests/`: the logging
    surface's per-kind tally includes a phone-sent `timed` entry, and the engine's `entries` carries it
    once. No Swift production change is expected (D-134) — if one is required, stop and report it. ·
-   `WatchSessionEngineTests`, `WatchLoggingStateTests`
-3. [ ] Drop `heldWristEntryIds`'s `kindSet` filter
+   `WatchSessionEngineTests`, `WatchLoggingStateTests` — done, **no Swift production change needed**:
+   `WatchPhoneEntriesTests.testS145APhoneEntryOfEveryKindIsTheWristsOwn`. 8 passed/0 failed; mutation
+   (`kind != "set"` in `applySnapshot`) 8 failures; source restored byte-exact.
+3. [x] Drop `heldWristEntryIds`'s `kindSet` filter
    (`lib/state/watch/watch_session_adoption_bridge.dart`, 17c Phase 1) so the ids of wrist-logged
    `timed`/`hold`/`round` entries join the held set, and add S-144 to
    `test/watch_session_auto_push_test.dart`. · `WatchSessionAdoptionBridge:heldWristEntryIds`,
-   `test/watch_session_auto_push_test.dart`
-4. [ ] Run the cross-stack and import suites as regression guards and record the counts
+   `test/watch_session_auto_push_test.dart` — done: `_claimKinds` + `_rowsOfKind`/`_stampsOf` claim per
+   kind (`resolveClaims` for sets, `resolveRecordClaims` over `getRoundInstances`/`getTimedInstances`
+   for the rest). S-144 passed; prove-red **RED AT `d4e64ee`** (5 frames expected, 2 actual).
+4. [x] Run the cross-stack and import suites as regression guards and record the counts
    (`test/watch_reconciliation_cross_stack_test.dart`, `test/watch_session_import_test.dart`,
-   `test/watch_session_edit_restore_late_entry_test.dart`). · the evidence file
-5. [ ] Write Progress + the red→green table for this phase. · the evidence file
+   `test/watch_session_edit_restore_late_entry_test.dart`). · the evidence file — done: 92 passed,
+   0 failed.
+5. [x] Write Progress + the red→green table for this phase. · the evidence file — done, with the two
+   Phase-1 pins of brief item 4 (`test/watch_session_projection_test.dart`, D-133 + D-132) and their
+   mutation proofs.
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh lint`;
 `.github/copilot/scripts/macos/gateway.sh test test/watch_session_engine_test.dart test/watch_session_auto_push_test.dart test/watch_reconciliation_cross_stack_test.dart test/watch_session_import_test.dart`;
@@ -388,8 +397,9 @@ restored).
 
 1. [ ] Rewrite `docs/watch_session_sync.md`'s "Only sets are carried" bullet (lines 328–338) to list the
    four kinds and what each carries, naming the tests of S-140/S-141, and restate D-135/D-136 in plain
-   words (one sentence each) with the test that proves each. Record the file's size. ·
-   `docs/watch_session_sync.md`
+   words (one sentence each) with the test that proves each. Also widen the deletion bullet (`:348`)
+   from "a set removed on the phone" to any kind, naming `S-144` (Assumption Log 9). Record the file's
+   size. · `docs/watch_session_sync.md`
 2. [ ] Add one dated sentence to `watch/sync_protocol/PROTOCOL.md`: which entry kinds the phone
    projects and from which record, with the id rule of D-131 (no schema change — the shapes already
    exist). · `watch/sync_protocol/PROTOCOL.md`
@@ -465,7 +475,13 @@ added weight stay off the wire by decision (D-135/D-136).
   `test/watch_session_projection_test.dart:2225+`, red first (32 passed/4 failed) then 36 passed;
   prove-red RED AT `3720c6c`; full suite `+4052 ~1: All tests passed!`; lint 196/0 = baseline.
   Evidence: `2026-10-07-17d-watch-auto-sync-pr4-plan.evidence.md`.
-- [ ] Phase 2 — the wrist shows them; 17c's deletion covers them
+- [x] Phase 2 — the wrist shows them; 17c's deletion covers them — **Complete**: `heldWristEntryIds`
+  claims per kind (`_claimKinds` + `_rowsOfKind`/`_stampsOf` in `watch_session_adoption_bridge.dart`);
+  S-144 in `test/watch_session_auto_push_test.dart` (prove-red RED AT `d4e64ee`); S-145 in
+  `test/watch_session_engine_test.dart` and `WatchPhoneEntriesTests.swift` (no Swift production change,
+  D-134); two Phase-1 pins (D-133/D-132) in `test/watch_session_projection_test.dart`; regressions
+  92 passed/0 failed; edited files 114 passed/0 failed. Evidence:
+  `2026-10-07-17d-watch-auto-sync-pr4-plan.evidence.md`.
 - [ ] Phase 3 — docs, contract sentence, residue sweep
 
 ## Assumption Log
@@ -490,6 +506,20 @@ added weight stay off the wire by decision (D-135/D-136).
    lack of a window (D-132). `['entry-$bench-0']` + two `.single` reads became
    `['entry-$bench-0', 'entry-$squat-0']` + `.first`; prove-red at `3720c6c` shows the updated
    expectation red there for exactly that reason. Reviewer: ratify or revert.
+6. **The two Phase-1 pins live in `test/watch_session_projection_test.dart`**, not in Phase 2's
+   predicted files (brief item 4): D-133's kind-scoped claim and D-132's zero-load omission. Both are
+   mutation-proven; the file is Phase 1's, so the diff touches one file outside the Phase 2 list.
+   RATIFY?
+7. **S-144 needed no new production API.** `WorkoutState` has no instance-create wrapper for a `timed`
+   entry, so the fixture logs through the same `TimerManager`-backed methods and inbox import path the
+   pre-existing S-122 test uses. RATIFY?
+8. **S-145's Swift half reads the public surface as D-134's "per-kind tally".** `WatchLoggingState`'s
+   tallies are private, so the test asserts `engine.entries`, `engine.observations`, the shown slot's
+   `fields` and `nextRoundNumber` (which counts the phone's `round` row) — no Swift production change
+   was required. RATIFY?
+9. **Phase 3's doc pass must widen the deletion bullet too** (`docs/watch_session_sync.md:348`): after
+   Phase 2 an entry of any kind deleted on the phone is announced, and `S-144` is the test that names
+   it. Phase 2 did not edit that file (not in its Predicted Files). RATIFY?
 
 ## Feedback
 

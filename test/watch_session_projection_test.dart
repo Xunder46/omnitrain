@@ -2490,6 +2490,114 @@ void main() {
       expect(loadProtocolValidator().validateEnvelope(snapshot), isEmpty);
     });
 
+    test(
+      'D-133 a timed row never claims a round record written at the same '
+      'millisecond',
+      () async {
+        await seedRoundsExercise();
+        await _SessionFixture.seedEfforts(repository, phoneState, 'sess-k', [
+          (
+            slotId: 'slot-burpee',
+            exerciseId: 'ex-burpee',
+            effortKind: 'round',
+            write: () async {
+              // The wrist's own timed entry, imported at this millisecond, and
+              // the record the importer wrote for it.
+              await repository.createTimedInstance(
+                timedInstance(
+                  'slot-burpee',
+                  0,
+                  durationSecs: 60,
+                  entryIndex: 0,
+                  startedAtMs: _at(1),
+                  finishedAtMs: _at(2),
+                ).copyWith(createdAtMs: _at(2)),
+              );
+              await _SessionFixture.stageImportedEntry(
+                repository,
+                'sess-k',
+                entryId: _wristEntryId,
+                kind: WatchInboxEntry.kindTimed,
+                slotId: 'slot-burpee',
+                exerciseId: 'ex-burpee',
+                loggedAtMs: _at(2),
+              );
+              // The phone's own round, written in that same millisecond: the
+              // timed row is not its owner.
+              await repository.createRoundInstance(
+                roundInstance(
+                  'slot-burpee',
+                  0,
+                  startedAtMs: _at(2),
+                  durationSecs: 60,
+                ).copyWith(createdAtMs: _at(2)),
+              );
+            },
+          ),
+        ]);
+
+        final snapshot = await answer();
+        final entries = byId(_payload(snapshot));
+        expect(
+          entries.keys.toSet(),
+          {'entry-slot-burpee-0'},
+          reason:
+              'D-133 a row claims the records of its own kind alone: the round '
+              'written in the same millisecond still rides the answer',
+        );
+        expect(entries['entry-slot-burpee-0']!['kind'], 'round');
+        expect(
+          loadProtocolValidator().validateEnvelope(snapshot),
+          isEmpty,
+          reason: 'the answer carrying both records is still a frame the wire accepts',
+        );
+        expect(
+          await graph.adoption.heldWristEntryIds('sess-k'),
+          contains(_wristEntryId),
+          reason:
+              'D-133 the timed row is held all the same: the timed record at '
+              'that millisecond is the one that claims it',
+        );
+      },
+    );
+
+    test(
+      'D-132 a hold held with nothing added is projected without the field',
+      () async {
+        await _SessionFixture.seedEfforts(repository, phoneState, 'sess-z', [
+          (
+            slotId: 'slot-hold',
+            exerciseId: 'ex-plank',
+            effortKind: 'drill',
+            write: () async {
+              await repository.createTimedInstance(
+                timedInstance('slot-hold', 0, durationSecs: 30, entryIndex: 0),
+              );
+              // The writer's own shape for a hold with nothing added: the row
+              // is written, carrying 0.
+              await repository.createObservation(
+                extraWeightRow('slot-hold', 0, 0, atMs: fixtureRowAt(0)),
+              );
+            },
+          ),
+        ]);
+
+        final snapshot = await answer();
+        final entry = byId(_payload(snapshot))['entry-slot-hold-0']!;
+        expect(entry['kind'], 'hold');
+        expect(
+          entry.containsKey('extraLoadKg'),
+          isFalse,
+          reason: 'D-132 an added weight of exactly 0 is omitted, never sent',
+        );
+        expect(
+          loadProtocolValidator().validateEnvelope(snapshot),
+          isEmpty,
+          reason: 'the hold as the wrist is sent it is a frame the wire accepts',
+        );
+      },
+    );
+
     test('S-143 an unrepresentable instance is omitted, not faked', () async {
       await _SessionFixture.seedEfforts(repository, phoneState, 'sess-o', [
         (

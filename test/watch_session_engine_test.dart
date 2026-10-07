@@ -1141,6 +1141,240 @@ void main() {
     });
   });
 
+  group('S-145 a phone entry of any kind is the wrist\'s own', () {
+    test(
+      'S-145 the twin applies the phone\'s timed, hold and round entries once '
+      'each, with the phone\'s fields, and a re-statement doubles nothing',
+      () async {
+        // The phone's ladder, as its projection writes it: one slot per kind,
+        // the declared effort kind the phone stores for the slot.
+        List<Map<String, Object?>> ladder() => [
+          {
+            'sessionExerciseId': 'sx-plank',
+            'exerciseId': 'ex-plank',
+            'name': 'Plank',
+            'effortKind': 'timed',
+            'capabilities': ['time'],
+          },
+          {
+            'sessionExerciseId': 'sx-hold',
+            'exerciseId': 'ex-plank',
+            'name': 'Plank',
+            'effortKind': 'drill',
+            'capabilities': ['hold'],
+          },
+          {
+            'sessionExerciseId': 'sx-burpee',
+            'exerciseId': 'ex-burpee',
+            'name': 'Burpees',
+            'effortKind': 'round',
+            'capabilities': ['rounds'],
+          },
+        ];
+
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        await engine.createSession(modality: null, exercises: ladder());
+
+        // One snapshot from the phone, carrying the three kinds the wrist used
+        // to be sent nothing about (D-130), in the order the phone sorts them
+        // by (`PhoneEntries.ordered`).
+        final snapshot = _snapshotOf(
+          's-watch-1',
+          messageId: 'msg-145-1',
+          exercises: ladder(),
+          entries: [
+            {
+              'entryId': 'entry-sx-plank-0',
+              'eventId': 'entry-sx-plank-0',
+              'kind': 'timed',
+              'loggedAt': '2026-07-13T06:01:00Z',
+              'sessionExerciseId': 'sx-plank',
+              'exerciseId': 'ex-plank',
+              'startedAt': '2026-07-13T06:00:00Z',
+              'endedAt': '2026-07-13T06:01:00Z',
+            },
+            {
+              'entryId': 'entry-sx-hold-0',
+              'eventId': 'entry-sx-hold-0',
+              'kind': 'hold',
+              'loggedAt': '2026-07-13T06:03:00Z',
+              'sessionExerciseId': 'sx-hold',
+              'exerciseId': 'ex-plank',
+              'startedAt': '2026-07-13T06:02:00Z',
+              'endedAt': '2026-07-13T06:03:00Z',
+              'extraLoadKg': 12.0,
+            },
+            {
+              'entryId': 'entry-sx-burpee-0',
+              'eventId': 'entry-sx-burpee-0',
+              'kind': 'round',
+              'loggedAt': '2026-07-13T06:05:00Z',
+              'sessionExerciseId': 'sx-burpee',
+              'exerciseId': 'ex-burpee',
+              'startedAt': '2026-07-13T06:04:00Z',
+              'endedAt': '2026-07-13T06:05:00Z',
+              'roundNumber': 1,
+              'pausedMs': 5000,
+            },
+          ],
+        );
+        expect(
+          _validator().validateEnvelope(snapshot),
+          isEmpty,
+          reason: 'S-145 the fixture is the shape the phone really sends',
+        );
+
+        expect(await engine.applyMessage(snapshot), isTrue);
+        expect(
+          [for (final entry in engine.entries) entry.entryId],
+          ['entry-sx-plank-0', 'entry-sx-hold-0', 'entry-sx-burpee-0'],
+          reason:
+              'S-145 the twin holds each kind once, in the phone\'s own order',
+        );
+        expect(
+          [
+            _shown(engine, 'entry-sx-plank-0', 'kind'),
+            _shown(engine, 'entry-sx-plank-0', 'sessionExerciseId'),
+            _shown(engine, 'entry-sx-plank-0', 'startedAt'),
+            _shown(engine, 'entry-sx-plank-0', 'endedAt'),
+          ],
+          ['timed', 'sx-plank', '2026-07-13T06:00:00Z', '2026-07-13T06:01:00Z'],
+          reason: 'S-145 the timed entry keeps the window the phone timed',
+        );
+        expect(
+          [
+            _shown(engine, 'entry-sx-hold-0', 'kind'),
+            _shown(engine, 'entry-sx-hold-0', 'extraLoadKg'),
+            _shown(engine, 'entry-sx-hold-0', 'endedAt'),
+          ],
+          ['hold', 12.0, '2026-07-13T06:03:00Z'],
+          reason: 'S-145 the hold keeps the weight it was held with',
+        );
+        expect(
+          [
+            _shown(engine, 'entry-sx-burpee-0', 'kind'),
+            _shown(engine, 'entry-sx-burpee-0', 'roundNumber'),
+            _shown(engine, 'entry-sx-burpee-0', 'pausedMs'),
+          ],
+          ['round', 1, 5000],
+          reason: 'S-145 the round keeps its number and the time it spent paused',
+        );
+        expect(
+          engine.observations
+              .where((row) => row.sessionId == 's-watch-1')
+              .map((row) => row.recordId)
+              .toSet(),
+          {'entry-sx-plank-0', 'entry-sx-hold-0', 'entry-sx-burpee-0'},
+          reason: 'S-145 each entry is stored under its own id, once',
+        );
+
+        // The phone re-states the same answer — a re-delivered frame.
+        expect(await engine.applyMessage(snapshot), isTrue);
+        expect(
+          [for (final entry in engine.entries) entry.entryId],
+          ['entry-sx-plank-0', 'entry-sx-hold-0', 'entry-sx-burpee-0'],
+          reason: 'S-145 a re-statement doubles none of the three kinds',
+        );
+        expect(
+          engine.observations.where((row) => row.sessionId == 's-watch-1'),
+          hasLength(3),
+          reason: 'S-145 the store keeps one row per entry, however often it is sent',
+        );
+        expect(
+          engine.pendingObservations(),
+          isEmpty,
+          reason: 'S-145 nothing is owed: the phone already has what it sent',
+        );
+      },
+    );
+
+    test(
+      'S-145 the twin shows the phone\'s entries by loggedAt, whatever order '
+      'the frame carried them in',
+      () async {
+        final exercises = [
+          {
+            'sessionExerciseId': 'sx-plank',
+            'exerciseId': 'ex-plank',
+            'name': 'Plank',
+            'effortKind': 'timed',
+            'capabilities': ['time'],
+          },
+          {
+            'sessionExerciseId': 'sx-hold',
+            'exerciseId': 'ex-plank',
+            'name': 'Plank',
+            'effortKind': 'drill',
+            'capabilities': ['hold'],
+          },
+          {
+            'sessionExerciseId': 'sx-burpee',
+            'exerciseId': 'ex-burpee',
+            'name': 'Burpees',
+            'effortKind': 'round',
+            'capabilities': ['rounds'],
+          },
+        ];
+
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        await engine.createSession(modality: null, exercises: exercises);
+
+        // The three kinds in the frame's reverse order: what the wrist shows is
+        // ordered by when the work happened, not by how the frame happened to
+        // be assembled.
+        final snapshot = _snapshotOf(
+          's-watch-1',
+          messageId: 'msg-145-2',
+          exercises: exercises,
+          entries: [
+            {
+              'entryId': 'entry-sx-burpee-0',
+              'eventId': 'entry-sx-burpee-0',
+              'kind': 'round',
+              'loggedAt': '2026-07-13T06:05:00Z',
+              'sessionExerciseId': 'sx-burpee',
+              'exerciseId': 'ex-burpee',
+              'startedAt': '2026-07-13T06:04:00Z',
+              'endedAt': '2026-07-13T06:05:00Z',
+              'roundNumber': 1,
+            },
+            {
+              'entryId': 'entry-sx-hold-0',
+              'eventId': 'entry-sx-hold-0',
+              'kind': 'hold',
+              'loggedAt': '2026-07-13T06:03:00Z',
+              'sessionExerciseId': 'sx-hold',
+              'exerciseId': 'ex-plank',
+              'startedAt': '2026-07-13T06:02:00Z',
+              'endedAt': '2026-07-13T06:03:00Z',
+              'extraLoadKg': 12.0,
+            },
+            {
+              'entryId': 'entry-sx-plank-0',
+              'eventId': 'entry-sx-plank-0',
+              'kind': 'timed',
+              'loggedAt': '2026-07-13T06:01:00Z',
+              'sessionExerciseId': 'sx-plank',
+              'exerciseId': 'ex-plank',
+              'startedAt': '2026-07-13T06:00:00Z',
+              'endedAt': '2026-07-13T06:01:00Z',
+            },
+          ],
+        );
+
+        expect(await engine.applyMessage(snapshot), isTrue);
+        expect(
+          [for (final entry in engine.entries) entry.entryId],
+          ['entry-sx-plank-0', 'entry-sx-hold-0', 'entry-sx-burpee-0'],
+          reason:
+              'S-145 the three kinds are shown in the order they were logged',
+        );
+      },
+    );
+  });
+
   group('Timer derivation', () {
     test('remaining time follows the clock across every state', () {
       final start = DateTime.utc(2026, 7, 13, 6);

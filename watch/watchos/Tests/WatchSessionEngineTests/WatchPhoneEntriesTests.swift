@@ -17,6 +17,11 @@
 //  (S-35, D-35); and an answer carrying no phone entries neither drops nor
 //  doubles the wrist's own set (S-41).
 //
+//  S-145 of
+//  `docs/plans/2026-10-07-17d-watch-auto-sync-pr4-plan/2026-10-07-17d-watch-auto-sync-pr4-plan.md`
+//  is here too: the phone's `timed`, `hold` and `round` entries are the wrist's
+//  own — stored once each, and counted by the logging surface's tallies.
+//
 
 import XCTest
 
@@ -289,7 +294,168 @@ final class WatchPhoneEntriesTests: XCTestCase {
         )
     }
 
+    // MARK: - S-145 a phone entry of any kind is the wrist's own
+
+    /// The phone sends a `timed`, a `hold` and a `round` over three slots. The
+    /// wrist stores each under its own id — not only the sets — and the logging
+    /// surface reads them back as work it did: the round's number is spent, the
+    /// hold's length and its added load are what the next hold starts from.
+    func testS145APhoneEntryOfEveryKindIsTheWristsOwn() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        let frame = phoneEntriesSnapshot(
+            messageId: "msg-kinds-1",
+            revision: 7,
+            currentExerciseIndex: 2
+        )
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(frame).isEmpty,
+            "\(Harness.validator().validateEnvelope(frame))"
+        )
+
+        _ = try await engine.applyMessage(frame)
+        _ = try await engine.applyMessage(frame)
+
+        XCTAssertEqual(
+            Set(engine.entries.map(\.entryId)),
+            ["entry-sx-ride-0", "entry-sx-plank-0", "entry-sx-burpee-0"],
+            "S-145 every kind the phone logged is in the wrist's log"
+        )
+        XCTAssertEqual(
+            engine.entries.count,
+            3,
+            "S-145 …once each: the same frame twice over doubles nothing"
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "entry-sx-plank-0" }?
+                .payload["extraLoadKg"] as? Double,
+            12,
+            "S-145 the hold keeps the phone's added load"
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "entry-sx-burpee-0" }?
+                .payload["roundNumber"] as? Int,
+            1,
+            "S-145 and the round its number"
+        )
+
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        XCTAssertEqual(surface.effortKind, WatchEffortKind.round, "S-145 the round slot is shown")
+        XCTAssertEqual(
+            value(surface, WatchMetricKey.rounds),
+            2,
+            "S-145 the phone's round 1 is counted: the wrist's next round is 2"
+        )
+
+        // One frame later the wrist is on the hold slot: what the phone logged
+        // for it is what the surface's next hold starts from.
+        _ = try await engine.applyMessage(
+            phoneEntriesSnapshot(
+                messageId: "msg-kinds-2",
+                revision: 8,
+                currentExerciseIndex: 1
+            )
+        )
+
+        XCTAssertEqual(surface.effortKind, WatchEffortKind.drill, "S-145 the hold slot is shown")
+        XCTAssertEqual(
+            value(surface, WatchMetricKey.duration),
+            60,
+            "S-145 the phone's hold is the length the wrist carries over"
+        )
+        XCTAssertEqual(
+            value(surface, WatchMetricKey.extraWeight),
+            12,
+            "S-145 and the phone's added load with it"
+        )
+        XCTAssertEqual(
+            engine.entries.count,
+            3,
+            "S-145 a second frame carrying the same three ids adds no fourth row"
+        )
+    }
+
+    private func value(_ surface: WatchLoggingState, _ metricKey: String) -> Double? {
+        surface.fields.first(where: { $0.metricKey == metricKey })?.value
+    }
+
     // MARK: - Helpers
+
+    private func slot(_ id: String, capabilities: [String]) -> [String: Any] {
+        [
+            "sessionExerciseId": id,
+            "exerciseId": "ex-\(id)",
+            "name": id,
+            "capabilities": capabilities,
+        ]
+    }
+
+    /// A phone frame carrying one entry of every kind the sync carries, over
+    /// three slots, with its position selectable so a surface can be read at
+    /// each of them.
+    private func phoneEntriesSnapshot(
+        messageId: String,
+        revision: Int,
+        currentExerciseIndex: Int
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": "s-kinds",
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:30:00Z",
+            "payload": [
+                "sessionId": "s-kinds",
+                "revision": revision,
+                "status": WatchSessionStatus.active,
+                "currentExerciseIndex": currentExerciseIndex,
+                "exercises": [
+                    slot("sx-ride", capabilities: ["time", "distance"]),
+                    slot("sx-plank", capabilities: ["hold", "time"]),
+                    slot("sx-burpee", capabilities: ["rounds", "time"]),
+                ],
+                "entries": [
+                    [
+                        "entryId": "entry-sx-ride-0",
+                        "eventId": "entry-sx-ride-0",
+                        "kind": "timed",
+                        "loggedAt": "2026-07-13T06:20:00Z",
+                        "sessionExerciseId": "sx-ride",
+                        "exerciseId": "ex-sx-ride",
+                        "startedAt": "2026-07-13T06:10:00Z",
+                        "endedAt": "2026-07-13T06:20:00Z",
+                        "distanceMeters": 2_000.0,
+                    ],
+                    [
+                        "entryId": "entry-sx-plank-0",
+                        "eventId": "entry-sx-plank-0",
+                        "kind": "hold",
+                        "loggedAt": "2026-07-13T06:01:00Z",
+                        "sessionExerciseId": "sx-plank",
+                        "exerciseId": "ex-sx-plank",
+                        "startedAt": "2026-07-13T06:00:00Z",
+                        "endedAt": "2026-07-13T06:01:00Z",
+                        "extraLoadKg": 12.0,
+                    ],
+                    [
+                        "entryId": "entry-sx-burpee-0",
+                        "eventId": "entry-sx-burpee-0",
+                        "kind": "round",
+                        "loggedAt": "2026-07-13T06:08:00Z",
+                        "sessionExerciseId": "sx-burpee",
+                        "exerciseId": "ex-sx-burpee",
+                        "startedAt": "2026-07-13T06:05:00Z",
+                        "endedAt": "2026-07-13T06:08:00Z",
+                        "roundNumber": 1,
+                        "pausedMs": 5_000,
+                    ],
+                ],
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ]
+    }
 
     private func entry(_ entryId: String, at loggedAt: String, loadKg: Double) -> [String: Any] {
         [

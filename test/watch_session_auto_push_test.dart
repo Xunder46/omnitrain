@@ -24,6 +24,7 @@
 //   S-121 several deletions, and a deletion that never was → `S-121 ...`
 //   S-122 an entry the wrist logged, imported and deleted → `S-122 ...`
 //   S-123 the first pass announces nothing (negative guard) → `S-123 ...`
+//   S-144 a timed, hold or round entry deleted on the phone → `S-144 ...`
 //   S-126 another session's deletion changes nothing   → `S-126 ...`
 //   D-114 leaving a session and coming back re-seeds its ledger → `D-114 ...`
 //   F4 a flush never leaks and never announces twice   → `F4 ...`
@@ -99,12 +100,13 @@ Map<String, Object?> _slot(
   String id,
   String exerciseId,
   String name,
-  List<String> capabilities,
-) => <String, Object?>{
+  List<String> capabilities, {
+  String effortKind = 'set',
+}) => <String, Object?>{
   'sessionExerciseId': id,
   'exerciseId': exerciseId,
   'name': name,
-  'effortKind': 'set',
+  'effortKind': effortKind,
   'capabilities': capabilities,
 };
 
@@ -144,6 +146,21 @@ const String _firstSlot = 'sx-1';
 /// The second slot, which the phone never logs in.
 const String _secondSlot = 'sx-2';
 
+/// The third slot of S-144's fixture: the hold the wrist logs its own entry on.
+const String _holdSlot = 'sx-3';
+
+/// S-144's fourth and fifth slots: the ones the phone logs its own `timed` and
+/// `round` entries on, so the announced id is a phone-minted one.
+const String _phoneTimedSlot = 'sx-4';
+const String _phoneRoundSlot = 'sx-5';
+
+/// The `timed`, `round` and `hold` entries the wrist logs in S-144's fixture —
+/// its own ids, which the phone imports and must announce when it drops them
+/// (D-112).
+const String _wristTimedEntryId = '3c1f0a44-5d2b-4e7a-8f19-6b0c2d3e4f50';
+const String _wristRoundEntryId = 'a7d5e2b1-9c3f-4a68-b0d1-2e4f5a6b7c8d';
+const String _wristHoldEntryId = 'd41b7e93-2a5c-4f80-9e37-5c6d7a8b9e0f';
+
 /// A catalog the phone can open a session from.
 Future<void> _seedCatalog(WorkoutRepository repository) async {
   await seedExercise(
@@ -169,6 +186,20 @@ Future<void> _seedCatalog(WorkoutRepository repository) async {
     id: 'ex-row',
     name: 'Barbell Row',
     capabilities: ['sets', 'reps', 'load'],
+  );
+  // S-144's fixture logs the kinds the phone used to drop: one exercise carries
+  // both the timed and the hold capability, the other the rounds.
+  await seedExercise(
+    repository,
+    id: 'ex-plank',
+    name: 'Plank',
+    capabilities: ['time', 'hold'],
+  );
+  await seedExercise(
+    repository,
+    id: 'ex-burpee',
+    name: 'Burpees',
+    capabilities: ['rounds', 'time'],
   );
 }
 
@@ -2015,6 +2046,177 @@ void main() {
               'I-3 the wrist\'s own row is hidden, never deleted from the '
               'append-only log',
         );
+      },
+    );
+  });
+
+  group('S-144 a timed, hold or round entry deleted on the phone', () {
+    test(
+      'S-144 a non-set entry the wrist logged leaves under the wrist\'s own id, '
+      'and one the phone logged under the id the phone minted',
+      () async {
+        // The fixture: one kind per slot. The wrist logs an entry of its own on
+        // the first three, which the phone imports; on the last two the phone
+        // logs its own through the session screen's own paths, and both ride
+        // back in the snapshot the push sends (D-76).
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-plank', 'Plank', ['time'],
+                effortKind: 'timed'),
+            _slot(_secondSlot, 'ex-burpee', 'Burpees', ['rounds'],
+                effortKind: 'round'),
+            _slot(_holdSlot, 'ex-plank', 'Plank', ['hold'],
+                effortKind: 'drill'),
+            _slot(_phoneTimedSlot, 'ex-plank', 'Plank', ['time'],
+                effortKind: 'timed'),
+            _slot(_phoneRoundSlot, 'ex-burpee', 'Burpees', ['rounds'],
+                effortKind: 'round'),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+
+        Future<void> wristLogs(Map<String, Object?> entry) async {
+          await engine.appendObservation(entry);
+          await radio.fromWrist(wristFrames.last);
+          await _settle();
+        }
+
+        await wristLogs(<String, Object?>{
+          'entryId': _wristTimedEntryId,
+          'eventId': _wristTimedEntryId,
+          'kind': 'timed',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _firstSlot,
+          'exerciseId': 'ex-plank',
+          'startedAt': _atIso(1),
+          'endedAt': _atIso(2),
+        });
+        await wristLogs(<String, Object?>{
+          'entryId': _wristRoundEntryId,
+          'eventId': _wristRoundEntryId,
+          'kind': 'round',
+          'loggedAt': _atIso(4),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-burpee',
+          'startedAt': _atIso(3),
+          'endedAt': _atIso(4),
+          'roundNumber': 1,
+        });
+        await wristLogs(<String, Object?>{
+          'entryId': _wristHoldEntryId,
+          'eventId': _wristHoldEntryId,
+          'kind': 'hold',
+          'loggedAt': _atIso(6),
+          'sessionExerciseId': _holdSlot,
+          'exerciseId': 'ex-plank',
+          'startedAt': _atIso(5),
+          'endedAt': _atIso(6),
+          'extraLoadKg': 12.0,
+        });
+
+        await phoneState.addTimedEntry(_phoneTimedSlot, targetDurationSecs: 60);
+        await phoneState.startTimedEntry(_phoneTimedSlot, 0);
+        await phoneState.finishTimedEntry(_phoneTimedSlot, 0);
+        await phoneState.addRound(_phoneRoundSlot);
+        await phoneState.startRound(_phoneRoundSlot, 0);
+        await phoneState.completeRound(_phoneRoundSlot, 0);
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'S-123 the first pass seeds its ledger from what the phone holds '
+              'and announces nothing',
+        );
+        await engine.applyMessage(radio.ofType('session_snapshot').last);
+        expect(
+          _sorted(wristEntryIds()),
+          _sorted(<String>[
+            _wristTimedEntryId,
+            _wristRoundEntryId,
+            _wristHoldEntryId,
+            'entry-$_phoneTimedSlot-0',
+            'entry-$_phoneRoundSlot-0',
+          ]),
+          reason:
+              'the fixture: the wrist holds its own three entries and the two '
+              'the phone logged, so both provenances are on the wrist when the '
+              'deletions are announced',
+        );
+
+        // The user deletes all five on the phone, each through the path its
+        // kind is deleted by.
+        await phoneState.deleteTimedEntry(_firstSlot, 0);
+        await phoneState.deleteRound(_secondSlot, 0);
+        await phoneState.deleteTimedEntry(_holdSlot, 0);
+        await phoneState.deleteTimedEntry(_phoneTimedSlot, 0);
+        await phoneState.deleteRound(_phoneRoundSlot, 0);
+        await graph.autoPush.flush();
+
+        final frames = radio.ofType('structure_change');
+        expect(
+          frames,
+          hasLength(5),
+          reason:
+              'S-144 every entry the wrist was told to hold and no longer '
+              'exists is announced, whatever kind it is — one frame each '
+              '(S-121)',
+        );
+        for (final frame in frames) {
+          expect(
+            _objects(_payload(frame)['changes']),
+            hasLength(1),
+            reason: 'S-121 each frame names exactly the entry it is about',
+          );
+          expect(
+            frame['sessionId'],
+            's-1',
+            reason: 'F3 a deletion frame names the session it is about',
+          );
+        }
+        expect(
+          _sorted(<String>[
+            for (final frame in frames)
+              _objects(_payload(frame)['changes']).single['entryId']!
+                  as String,
+          ]),
+          _sorted(<String>[
+            _wristTimedEntryId,
+            _wristRoundEntryId,
+            _wristHoldEntryId,
+            'entry-$_phoneTimedSlot-0',
+            'entry-$_phoneRoundSlot-0',
+          ]),
+          reason:
+              'S-144 a `timed`, `hold` or `round` entry the wrist logged leaves '
+              'under the id its own inbox row carries (D-112, D-133), and the '
+              'phone\'s own under the id the phone minted for it (D-131)',
+        );
+
+        for (final frame in frames) {
+          await engine.applyMessage(frame);
+        }
+        expect(
+          wristEntryIds(),
+          isEmpty,
+          reason: 'S-144 the wrist holds none of the five any more',
+        );
+        expect(
+          [for (final row in engine.observations) row.payload['entryId']],
+          containsAll(<String>[
+            _wristTimedEntryId,
+            _wristRoundEntryId,
+            _wristHoldEntryId,
+          ]),
+          reason:
+              'I-3 the wrist\'s own rows are hidden, never deleted from the '
+              'append-only log',
+        );
+        expect(failures, isEmpty);
       },
     );
   });
