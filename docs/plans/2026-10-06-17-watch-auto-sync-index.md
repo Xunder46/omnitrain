@@ -112,12 +112,15 @@ names the two test files that pin it.
 | **17a (PR 1a)** | The contract amendment (PROTOCOL, 2026-10-06), the start-surface copy ("Sync"; "No automatic sync" deleted), the wrist's acceptance rules — D-78 refuses a foreign snapshot silently, D-79 guards every session-scoped apply, D-80 gives each device its own rest countdown — and the wrist's own rest countdown surviving a snapshot. | `watch/sync_protocol/` + `watch/contract/` + `watch/watchos/` + `lib/watch/` | *(nothing visible on its own: the wrist is made safe before the phone starts pushing. 1a ships with 1b; a release carrying the push without these rules is not shippable.)* |
 | **17a (PR 1b)** | The phone's push — one seam (D-75), the coalescing trigger (D-76), the place-keeping projection (D-77), the end pushed (D-81, keyed on the mirrored session's repository row), the re-baseline (D-82), dropped-never-queued (D-83) — and the behaviour docs. | `lib/` + `docs/` | **Work you do on the phone about the running session — add an exercise, log or correct a set, finish, discard — appears on the watch by itself.** The watch's own session is never taken away by the phone, and each device keeps its own rest countdown. Nothing needs tapping. |
 | **17b (PR 2)** — **planned 2026-10-06**: `docs/plans/2026-10-06-17b-watch-auto-sync-pr2-plan/2026-10-06-17b-watch-auto-sync-pr2-plan.md` (D-90…D-103, S-100…S-115) | The wrist announces its own session: the engine emits its own `session_snapshot` on start and on a ladder change the **wrist's user** made (D-90/D-91), and a wrist-originated structure change now moves `revision` (D-101) — so a wrist-started session and a wrist add become the phone's without the button. The phone reconciles a wrist snapshot naming the session it already holds: **add-only**, in the snapshot's order, never a delete or a reorder, never re-adding a slot the phone removed, never clearing a timer (D-92/D-93/D-94/D-95 — 17a's `consider` returns `alreadyHeld` and drops the frame today). Catch-up by itself in both directions: the wrist on the reachability edge, gated on holding a session, one sync at a time via a tested `WatchSyncOrchestrator.catchUp(reachable:)` (D-96), and the phone on resume through a `WatchResumeSync` observer. **The application-context evaluation (D-71's amendment) is done and its outcome is D-97: not in PR 2** — the receiving halves would be new platform surface (no `didReceiveApplicationContext` in the shell, no `contextStream` listener on the phone), a context is latest-wins and so cannot carry the ordered owed observations the protocol requires, and the size limit is undocumented; a latest-state context for the phone → watch direction alone stays a viable later optimisation. Carried out of 17a's review: the push's drain bounded against a hung send (G6 → D-98) and the timer path's unhandled error (H5 → D-99); the Dart `captureSessionEnd` question closed as a recorded rule, not built (A-8 → D-100); the late-adoption push window closed by the phone-side resume trigger (F3/A-17 → D-96). Routines stay manual. Phases 1–4 are agent-built; Phase 5 (one call site in the watch shell) is governor-built. | `watch/watchos/` + `ios/` shell + `lib/` + `docs/` | **A watch that was out of range for a while catches up on its own when it is back** — nothing is lost and nothing needs tapping. **A session started on the watch, and an exercise added on the watch, reach the phone by themselves instead of at a Sync.** The Sync button remains the manual fallback. |
-| **17c (PR 3)** | What "any action" still cannot carry: a deletion reaching the wrist (`structure_change` `delete_entry`, no phone sender yet), the phone's `timed` / `hold` / `round` entries, a set the wire omits today (`skipped`, `extraLoadKg`), and the phone's rest timer (the 15-index's PR 5 row). | `lib/` + `watch/sync_protocol/` (+ `watch/watchos/` if a receiver rule is needed) | **Deleting a set on the phone removes it on the watch, and the other kinds of work the phone can log — holds, timed sets, rounds — show up there too.** |
+| **17c (PR 3)** — **planned 2026-10-06**: `docs/plans/2026-10-06-17c-watch-auto-sync-pr3-plan/2026-10-06-17c-watch-auto-sync-pr3-plan.md` (D-110…D-118, S-120…S-127) | A deletion on the phone reaching the wrist, and nothing else. The push keeps a per-session ledger of the entry ids the wrist is expected to hold, diffs it against what it holds now, and sends one `structure_change` / `delete_entry` per vanished id, with a changeId derived from the entry id so a re-assertion dedupes (D-110/D-111/D-112); the wrist's deletion lens becomes durable on the session row the change already appends (D-113.1), a snapshot clears the tombstone for any id it carries (D-113.2), and an entry re-stated with a new `loggedAt` replaces the held one instead of merging into it — the phone reuses entry numbers, so a deleted-and-recreated set would otherwise inherit the deleted one's fields (D-113.3). The two product defaults the owner asked about are stated, not built: a skipped set and a set's added weight stay off the wire (D-117). Split out of the same request: the phone's `timed`/`hold`/`round` entries and the phone's rest timer are **PR 4 (17d)**. | `lib/` + `watch/watchos/` + `watch/sync_protocol/` | **Deleting a set on the phone removes it on the watch by itself, and it stays gone after the watch restarts.** |
+| **17d (PR 4)** — **planned 2026-10-07**: `docs/plans/2026-10-07-17d-watch-auto-sync-pr4-plan/2026-10-07-17d-watch-auto-sync-pr4-plan.md` (D-130…D-138, S-140…S-146) | The phone's other entry kinds: `timed` (a `TimedInstance` → the wire's window, plus its distance when the effort has one), `round` (a `RoundInstance` → `roundNumber` and `pausedMs`) and `hold` (the held window plus `extraLoadKg`). The wire's shapes already exist and are already validated, so this is a sender gap like 17c's (D-130). Ids are `entry-<slot>-<index>` taken from the record's own `entryIndex`/`roundIndex` (D-131); an entry that cannot be expressed is omitted rather than faked (D-132); the wrist's stamp claim rule extends from sets to every kind, so a wrist-logged entry is never sent back to it twice (D-133); no new wrist rule is added, and 17c's deletion sender covers these ids for free (D-134/D-137). The two omissions stay decisions (D-135/D-136), and the phone's rest timer still does not travel. | `lib/` + tests (no Swift production change) | **The holds, timed sets and rounds you log on the phone show up on the watch by themselves, and deleting one there removes it there too.** |
 
 Each row's budget: 17a/1a = 2 phases (the contract + the `watch/` tracks), 17a/1b = 1 phase (`lib/` +
 docs) — one plan file, one set of ids (the governor's split note in the PR 1 plan). The governor split
 1a/1b on 2026-10-06 on three soft signals: the plan runs over 500 lines, it touches three tracks, and
-it amends the contract. PR 2 = 5 phases (Phases 3 and 4 are the Dart and Swift halves of one workstream), 2 tracks; PR 3 = 3 phases, 2 tracks. All within
+it amends the contract. PR 2 = 5 phases (Phases 3 and 4 are the Dart and Swift halves of one workstream), 2 tracks; PR 3 = 3 phases, 2 tracks; PR 4 = 3 phases, 1 track. The owner's remaining "any action" items were split
+into PR 3 (deletions reaching the wrist) and PR 4 (the other entry kinds) on 2026-10-06, on the measured
+soft signals of the pair: 6 phases between them, 2 tracks, ~19 ledger decisions and ~15 scenarios. All within
 `.github/copilot/pr-scope-budget.md`; the hard limits are 800 lines / 5 phases / 1500 production
 lines.
 
@@ -128,18 +131,23 @@ lines.
  ├── 1a (Phases 1–2: the contract amendment, the copy, the wrist's acceptance rules)   [ships with 1b]
  ├── 1b (Phase 3: the phone's push + the behaviour docs)   [needs 1a: the wrist must accept a push before a push reaches it]
  ├── 17b (PR 2: automatic catch-up, the wrist's silent adds)   [needs 17a]
- └── 17c (PR 3: deletions + the other entry kinds)             [needs 17a: entries travel in the push]
+ ├── 17c (PR 3: deletions reaching the wrist)                    [needs 17a: entries travel in the push]
+ └── 17d (PR 4: the other entry kinds)                           [needs 17a; needs 17c Phase 1 so a deleted non-set entry can be announced]
 ```
 
 - **1a must land with or before 1b.** A phone that pushes while the wrist still applies a foreign
   snapshot wholesale would take a session away from a wrist that has its own — a data-loss defect,
   not a cosmetic one. A release that carried the push without the wrist's rules is not shippable;
   the plan marks this explicitly.
-- **17b and 17c are independent of each other** and can land in either order. 17b is worth more
-  (a device out of reach is the case the owner named), so it is planned next.
-- Re-ordering with its trade-off: running 17c's entries-and-deletions first would make an edit of a
-  phone set reach the wrist sooner, but it leaves the owner's most visible complaint — the button
-  and the manual step — in place for one more PR. Not recommended.
+- **17b, 17c and 17d are independent in principle** and can land in any order. 17b is worth more
+  (a device out of reach is the case the owner named), so it was planned first; 17c was planned next
+  because a deletion is a data-loss-shaped gap (the watch keeps showing work the user removed).
+  17d needs 17c's Phase 1 to announce a deleted non-set entry, so 17d follows 17c.
+- Re-ordering with its trade-off: running 17d's entry kinds first would make a hold or a timed set
+  logged on the phone reach the wrist sooner, but it leaves the wrist showing a set the user deleted —
+  the worse of the two — for one more PR. Running 17c's Phases 2–3 after 17d instead is legitimate
+  (the durable lens is orthogonal), at the cost that a wrist relaunch resurrects a deleted entry until
+  then. Not recommended in either direction.
 
 ## Transport: how a frame gets there when the other device is not reachable (D-71)
 
@@ -245,23 +253,27 @@ never hears about", so it belongs in this series, in its own PR, after the push 
 
 | Doc | What is stale after this series | PR |
 |---|---|---|
-| `docs/watch_session_sync.md` | "Starting a session, changing exercises and converging two sessions still need a manual Sync"; "The phone's finish is silent" (`:145`); the D-26 rest-timer bullet ("a Sync stops a running wrist rest countdown" — 1a's D-80); "a delete does not reach the wrist" and "only sets are carried" (PR 3) | 17a/1b, 17c |
+| `docs/watch_session_sync.md` | "Starting a session, changing exercises and converging two sessions still need a manual Sync"; "The phone's finish is silent" (`:145`); the D-26 rest-timer bullet ("a Sync stops a running wrist rest countdown" — 1a's D-80); "a delete does not reach the wrist" (PR 3) and "only sets are carried" (PR 4), each with the plain statement that a skipped set and a set's added weight are not sent | 17a/1b, 17c, 17d |
 | `docs/state_management/watch_surface.md` | the "no automatic sync" claim (`:336`) and the D-11 sentence about `projectedSession` (`:81`) | 17a/1b |
 | `docs/watch-app-setup-and-qa.md` | walkthrough step 1 ("The watch says it does not auto-sync") and every step that says "tap Sync" as a *logging* step (`:345-380`); the recovery and routine steps stay but must say what they are for | 17a/1a |
-| `watch/sync_protocol/PROTOCOL.md` | the amendment of 2026-10-06 (a peer may send a session frame unasked; a frame applies only to the session it names; a receiver keeps its own session; timer ownership). v1 is unreleased, so it is additive with no version bump and no migration | 17a/1a, 17c |
+| `watch/sync_protocol/PROTOCOL.md` | the amendment of 2026-10-06 (a peer may send a session frame unasked; a frame applies only to the session it names; a receiver keeps its own session; timer ownership). v1 is unreleased, so it is additive with no version bump and no migration. 17c adds the deletion rule and the snapshot-clears-a-tombstone rule (dated); 17d adds which entry kinds the phone projects (the shapes already exist) | 17a/1a, 17c, 17d |
 | `docs/watch_session_sync.md`, `docs/state_management/watch_surface.md`, `docs/watch-app-setup-and-qa.md` | after 17b: "Starting a session, changing exercises and converging two sessions still need a manual Sync"; the walkthrough's "the wrist's session reaches the phone at a Sync" step (`:342-345`) and its "catches up at the next Sync" note (`:500-503`); the wrist's own announcements and the add-only reconcile rule are stated where the adoption rules are. Also records 17b's D-102 heads-up (an unended wrist session keeps blocking a new phone session on the watch) | 17b |
 
 ## Folders and numbering
 
 - `docs/plans/2026-10-06-17a-watch-auto-sync-pr1-plan/` — **used** (this series' PR 1: plan, evidence,
   review).
-- `docs/plans/2026-10-06-17b-watch-auto-sync-pr2-plan/` — **used** by PR 2 when it is planned.
-- `docs/plans/2026-10-06-17c-watch-auto-sync-pr3-plan/` — **used** by PR 3 when it is planned.
-- None of the three is unused; nothing needs removing.
+- `docs/plans/2026-10-06-17b-watch-auto-sync-pr2-plan/` — **used** by PR 2 (plan, evidence, review).
+- `docs/plans/2026-10-06-17c-watch-auto-sync-pr3-plan/` — **used** by PR 3 (plan, evidence, review).
+- `docs/plans/2026-10-07-17d-watch-auto-sync-pr4-plan/` — **used** by PR 4 (plan, evidence, review).
+- None of the four is unused; nothing needs removing.
 - Decision and scenario numbers: series contract D-70…D-74; PR 1 D-75…D-86, S-70…S-88 (its iteration 2
-  consumed the old "PR 2 reserved D-85…/S-90…" range); PR 2 **D-90…D-103, S-100…S-115**; PR 3 must
-  therefore start at **D-110… and S-130…** — its old reservation (D-95…, S-100…) now collides with
-  PR 2 on both, so a PR 3 planner must not reuse those ids.
+  consumed the old "PR 2 reserved D-85…/S-90…" range); PR 2 **D-90…D-103, S-100…S-115**; PR 3
+  **D-110…D-118, S-120…S-127**; PR 4 **D-130…D-138, S-140…S-146**. PR 3's old reservation (D-95…,
+  S-100…) collides with PR 2 on both, so no later planner may reuse those ids.
+- **Correction to the sentence this file carried before 2026-10-06:** PR 3 starts at **S-120…**, not
+  S-130…. The planned PR 3 plan is the authority (`docs/plans/2026-10-06-17c-watch-auto-sync-pr3-plan/`),
+  and its ids are listed above.
 
 ## Open questions (owner)
 
@@ -295,6 +307,22 @@ never hears about", so it belongs in this series, in its own PR, after the push 
 9. **PR 2 — where a wrist-added exercise lands on the phone.** Recommended: appended after the phone's
    known slots, in the wrist's order, never reordering the phone's own (the phone is the structure
    authority). Alternative: inserted at the wrist's own index.
+10. **PR 3 — a set you delete on the phone, then restart the watch.** Recommended: it stays deleted —
+   the deletion is written to the watch's own session record, so closing and reopening the watch app
+   does not bring the set back (PR 3's D-113). Alternative: accept that a restart resurrects it until
+   the session ends; that saves a stored field and two engines' write/restore paths, and is today's
+   behaviour. (PR 3's Phase 2/3 exist for this choice; say the word and they collapse into receiver
+   rules.)
+11. **PR 3/PR 4 — a set you skipped, and a set's added weight.** Recommended: neither is sent (PR 3's
+   D-117, PR 4's D-135/D-136) — a skipped set is not a performed set, and a set's added weight already
+   reaches the watch as the set's total load. Alternative: both travel; that needs a contract field,
+   both validators, a fixture, a watch surface that renders skipped work, and a separate PR.
+12. **PR 4 — a timed set that is still running.** Recommended: the watch sees a timed entry when it
+   finishes (PR 4's D-132), not while it runs. Alternative: mirror a running timer live, which needs a
+   re-send cadence and is its own PR.
+13. **PR 3/PR 4 — a deletion made on the watch.** Recommended: not in these PRs — the watch has no
+   delete sender today and the owner's ask is the phone→watch direction. Alternative: a new PR with its
+   own ledger (it interacts with the stamp claim rule that stops a wrist entry being doubled).
 
 ## Open questions (technical — not owner-visible)
 
