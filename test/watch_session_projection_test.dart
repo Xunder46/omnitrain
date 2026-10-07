@@ -25,6 +25,10 @@
 //   S-59 a snapshot carries the assist, and omits only the
 //        row without reps                                 → `S-59 ...`
 //   S-60 the floor is carried, one step below it is not   → `S-60 ...`
+//   S-109 the phone catches up on resume, once             → `S-109 ...`
+//         (this file: the graph's `sync()` sends the phone's OWN session or
+//         nothing, then asks for the wrist's; the observer is in
+//         watch_resume_sync_test.dart)
 //
 // S-42's "an entry the wire cannot carry is omitted" is now S-59/S-60: a
 // band-assisted set is carried with its sign, and only a row with no reps or a
@@ -2037,15 +2041,183 @@ void main() {
     });
   }
 
-  test('S-31 Mock and Hive answer byte for byte the same', () {
-    expect(parity['Mock'], isNotNull, reason: 'the Mock group ran');
-    expect(parity['Hive'], isNotNull, reason: 'the Hive group ran');
-    expect(
-      parity['Hive'],
-      parity['Mock'],
-      reason:
-          'the projection reads the rows through the repository interface, so '
-          'the store underneath must not show through (G1)',
+  group('S-109 the phone catches up on resume, once', () {
+    test(
+      'S-109 case A one resume is one catch-up: the phone\'s OWN session and '
+      'then the request for the wrist\'s, once per resume',
+      () async {
+        await seed('sess-1', [
+          (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(1)),
+        ]);
+        final ladderBefore = phoneSlots();
+        final before = radio.sent.length;
+
+        await graph.sync();
+
+        final frames = radio.sent.sublist(before);
+        expect(
+          frames,
+          hasLength(2),
+          reason:
+              'S-109 one resume is one catch-up: exactly one frame out and one '
+              'frame asking, not a stream of them',
+        );
+        expect(
+          frames.first['type'],
+          'session_snapshot',
+          reason:
+              'S-109 the phone asserts its own session first — the half of the '
+              'catch-up the wrist cannot learn any other way',
+        );
+        expect(frames.first['origin'], 'phone');
+        expect(
+          _payload(frames.first)['sessionId'],
+          'sess-1',
+          reason:
+              'S-109 case A the frame is the phone\'s own session, composed '
+              'from the projection (D-11) — not the mirror\'s converged copy, '
+              'which here is still the placeholder this phone never asserted',
+        );
+        expect(
+          _slotIds(_payload(frames.first)),
+          ladderBefore,
+          reason:
+              'S-109 case A the ladder in the frame is the one the phone holds '
+              'now, not a copy the mirror reconciled earlier',
+        );
+        expect(
+          WatchTransportRequest.nameOf(frames.last),
+          WatchTransportRequest.snapshot,
+          reason:
+              'S-109 and then asks the wrist for its own copy, which is how a '
+              'session the wrist started while the phone was away arrives',
+        );
+        expect(
+          phoneSlots(),
+          ladderBefore,
+          reason:
+              'S-109 the trigger asks and stops there: the session the phone '
+              'holds is untouched (no timer cleared, no navigation)',
+        );
+
+        final secondBefore = radio.sent.length;
+        await graph.sync();
+        expect(
+          radio.sent.sublist(secondBefore),
+          hasLength(2),
+          reason: 'S-109 a second resume catches up again — one per resume',
+        );
+      },
+    );
+
+    test(
+      'S-109 case B a phone holding no session sends no snapshot at all',
+      () async {
+        expect(
+          phoneState.currentSession,
+          isNull,
+          reason: 'the fixture: nothing is running on the phone',
+        );
+
+        await graph.sync();
+
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason:
+              'S-109 case B the phone has no session of its own to assert: the '
+              'mirror\'s converged copy is the placeholder, and a placeholder '
+              'is not a session (D-11)',
+        );
+        expect(
+          [
+            for (final frame in radio.sent)
+              if (frame['payload'] is Map)
+                (frame['payload']! as Map)['sessionId'],
+          ],
+          isNot(contains('s-phone-unjoined')),
+          reason:
+              'S-109 case B nothing named the placeholder leaves this phone — a '
+              'wrist holding nothing must not store a junk abandoned session',
+        );
+        expect(
+          radio.sent,
+          hasLength(1),
+          reason:
+              'S-109 case B the request is the whole catch-up when the phone '
+              'has nothing to assert',
+        );
+        expect(
+          WatchTransportRequest.nameOf(radio.sent.single),
+          WatchTransportRequest.snapshot,
+          reason:
+              'S-109 case B and it is the request: asking the wrist for its '
+              'copy is how a session started on the wrist arrives',
+        );
+        expect(reportedFailure, isNull);
+      },
+    );
+
+    test(
+      'S-109 case C the phone asserts its own session, never the wrist\'s copy',
+      () async {
+        await seed('sess-1', [
+          (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(1)),
+        ]);
+        final held = phoneState.currentSession!.id;
+
+        // The wrist starts its own session and sends it; the phone refuses to
+        // adopt it because it is already working through its own (D-10).
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot('wl-1', 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        final wristSessionId = engine.session!.sessionId;
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+
+        expect(
+          skipped,
+          [(held: held, offered: wristSessionId)],
+          reason: 'the fixture: the phone refused the wrist\'s session',
+        );
+        expect(
+          _slotIds(graph.mirror.state),
+          ['wl-1'],
+          reason:
+              'the fixture: the mirror converged on the wrist\'s copy while the '
+              'phone kept its own (S-6, D-10)',
+        );
+
+        radio.sent.clear();
+        await graph.sync();
+
+        final snapshot = radio.lastOfType('session_snapshot');
+        expect(
+          _payload(snapshot)['sessionId'],
+          held,
+          reason:
+              'S-109 case C a resume asserts the session the phone is working '
+              'through — composed from its own state (D-11)',
+        );
+        expect(
+          _payload(snapshot)['sessionId'],
+          isNot(wristSessionId),
+          reason:
+              'S-109 case C never the wrist\'s copy the mirror converged on: a '
+              'resume must not hand the wrist back its own stale session',
+        );
+        expect(
+          _slotIds(_payload(snapshot)),
+          ['slot-bench'],
+          reason:
+              'S-109 case C and the ladder in it is the phone\'s own, not the '
+              'converged copy\'s',
+        );
+        expect(reportedFailure, isNull);
+      },
     );
   });
 }

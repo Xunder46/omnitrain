@@ -251,8 +251,119 @@ so it is logged as A-14.
 `gateway git-diff --stat`: `lib/watch/session/watch_session_engine.dart` +39, `test/watch_session_engine_test.dart` +118,
 `test/watch_sensor_recording_test.dart` ±8, `docs/watch_session_sync.md` 26, `docs/state_management/watch_surface.md` +15,
 the plan +35 and its evidence +83 — 7 files, 305 insertions, 19 deletions, nothing else, and no
-untracked file (`git-status` lists the 7 modified files and no scratch). The test file's diff is
+untracked file (`git-status` lists the 7 modified files and no scratch). (Those are the whole-tree
+numbers at the end of Phase 2B; the Phase 3 section below adds its own files and its own counts.) The test file's diff is
 additions only apart from
 the S-003 comment and frame-list line, which is how the accidental mid-edit loss of the "Stopping a
 timer" group is shown to have left no residue: the file holds exactly its 28 pre-existing tests plus
 the 3 new ones, and `+31` is that file's whole run.
+
+## Phase 3 — the push's bounds and the phone's resume trigger (S-112, S-113, S-109; steps 1–8)
+
+Baseline carried into this phase: full `test` `+4023 ~1: All tests passed!` and `lint`
+`196 issues found. (ran in 3.0s)`, 0 errors. Five tests are new — S-112, S-113 (two), S-109 (two) —
+and the full suite's `+4028` is that baseline plus them.
+
+### No `prove-red` is possible here, so every guard was proven by mutation
+
+`.github/copilot/scripts/macos/gateway.sh prove-red HEAD test …` needs the tests to compile against the code without
+the change; at `HEAD` the new `sendTimeout` / `onFailure` constructor parameters, the `WatchResumeSync`
+class and `WatchSyncGraph.sync()` do not exist, so the three touched test files fail to compile rather
+than fail an assertion — a compile error is not the red the brief asks for. All four guards were
+therefore proven by mutation: each was applied alone, the failure observed, the line restored to its
+exact original, and the file re-run green. None is left applied, and the full suite below is green
+with all four absent.
+
+| # | Mutation (original → mutant) | Observed | Log |
+|---|---|---|---|
+| a | `flush()`: the `.timeout(_sendTimeout, onTimeout: …)` wrapper removed | S-112 red — "a send that never completes is abandoned and reported, and the change made while it hung still leaves the phone": the joined second flush never returned and the assertion on the single reported `TimeoutException` failed | inline (under the summary threshold) |
+| b | `_onChanged` timer callback: `unawaited(flush().catchError(…))` → `unawaited(flush())` | S-113 timer-path red — "an Error from the debounce timer path is reported, not unhandled, and a direct flush still throws it": `Expected: an object with length of <1> / Actual: []` on `reported` | inline (under the summary threshold) |
+| c | `WatchResumeSync.didChangeAppLifecycleState`: the `== AppLifecycleState.resumed` guard removed (call for every state) | both S-109 observer tests red — the down-transition half records calls for `inactive`/`hidden`/`paused` | inline (under the summary threshold) |
+| d | `WatchSyncGraph.sync()`: `await requestSnapshot(); await sendSnapshot();` (ask before handing over) | S-109 graph red — `Expected: 'session_snapshot' / Actual: <null>`: the wrist is asked first, so the phone's own snapshot is no longer the first frame | inline (under the summary threshold) |
+
+(b) needed the test strengthened first, and that is worth recording: against the mutant the test's
+original wait — `_until(reported.isNotEmpty)` — never resolved, because the escaped error goes to the
+`runZonedGuarded` handler and never reaches the failure hook, so the suite hung for 30 s instead of
+failing. The wait is now `reported.isNotEmpty || unhandled.isNotEmpty` and the `reported` length is
+asserted *after* the zone body, which turns the same regression into a fast, meaningful red. The
+bounded poll itself (`_until`: 500 × 2 ms, then `fail(reason)`) has no wall-clock threshold — it polls
+to a deadline.
+
+### Red first, and the fixture defect that hid it
+
+The two new auto-push tests were red on their first run, but for the wrong reason: the second phone
+set was built with `weight: 65`, an `int`, and `session_core_entry.dart:207` casts it with
+`as double?`. `addEntry` catches that itself, sets
+`WorkoutState.error = "Failed to add entry: type 'int' is not a subtype of type 'double?'"` and writes
+no row, so the second change never happened and the tests read as a push defect. Both fixtures now use
+`65.0` (A-18). A second, related trap: the pushed frame carries *every* entry the session holds, so
+after a wrist set and a phone set `payload['entries']` has two objects — `.single` throws
+`Bad state: Too many elements`, and the assertions map the list and use `contains(65.0)` instead.
+
+### Green
+
+| Command | Result | Log |
+|---|---|---|
+| gateway `test test/watch_session_auto_push_test.dart` | `+25: All tests passed!` — 22 pre-existing + 3 new | inline (under the summary threshold) |
+| gateway `test` (the three touched files together, final state) | `+57: All tests passed!` — 57 passed, 0 failed | inline (under the summary threshold) |
+| gateway `test` (full, final) | `+4028 ~1: All tests passed!` — 4028 passed, ~1 skipped, 0 failed; the 4023 baseline + the 5 new tests | `test-20261007-021922-20223.log` |
+| gateway `lint` | `196 issues found. (ran in 3.0s)`, 0 errors — the baseline count; a `grep` over the log for `watch_session_auto_push`, `watch_sync_wiring`, `watch_resume_sync`, `app.dart` and the three test files finds nothing | `lint-20261007-021856-20030.log` |
+| gateway `swift-test` | not run — no `.swift` file changed | `git diff --stat` below |
+| `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches | — |
+
+### Footprint and residue
+
+`gateway git-diff --stat`: `lib/state/watch/watch_session_auto_push.dart` +60, `lib/state/watch/watch_sync_wiring.dart` +10,
+`lib/app.dart` ±15, `lib/main.dart` +3, `test/watch_session_auto_push_test.dart` +226,
+`test/watch_session_projection_test.dart` +64, the plan +39 — 7 files, 398 insertions, 19 deletions.
+`git-status` additionally lists exactly two untracked files, both intended and both new:
+`lib/state/watch/watch_resume_sync.dart` (59 lines) and `test/watch_resume_sync_test.dart`. No scratch
+file was created, so none had to be deleted, and every changed file is inside the phase's Predicted
+Files. No formatter was run: the edits are hand-written and the diff is the size of the edits.
+
+## Phase 3 fix 1 — the resume sync sends the phone's own session, or nothing (closed fix, 2026-10-07)
+
+Defect (found by the governor behind the green Phase 3 suite): `WatchSyncGraph.sync()` was
+`mirror.sync()`, i.e. `sendSnapshot()` = `sendState(state)` — the MIRROR's converged copy. On an idle
+resume that copy is `watchSessionPlaceholder` (`s-phone-unjoined`, status `abandoned`), a junk session
+a wrist holding nothing would store; and a phone holding its own P while the mirror had converged on a
+wrist session X sent X's stale copy. 15-series D-11: every ladder the phone asserts is composed from
+the phone's own session via `mirror.projectedSession()`, never the mirror's copy.
+
+Fix (one method, `lib/state/watch/watch_sync_wiring.dart`): `sync()` composes
+`mirror.projectedSession()` and sends it only when it is non-null, then always `requestSnapshot()`.
+`LiveSessionMirrorState.sync()` is untouched — the debug mains use it. The doc comment now says what
+the method sends and why, and names its three tests.
+
+### Red first, before the fix
+
+`gateway test test/watch_session_projection_test.dart --plain-name "S-109"` — 0 passed / 3 failed, each
+for its own reason:
+
+| Case | The assertion that failed |
+|---|---|
+| A | `Expected: 'sess-1' / Actual: 's-phone-unjoined'` — the frame was the placeholder, not the phone's own session |
+| B | `Expected: empty / Actual: [ one session_snapshot for 's-phone-unjoined', status 'abandoned' ]` — the junk frame a wrist holding nothing would store |
+| C | `Expected: 'sess-1' / Actual: 'bd67cc5b-81b3-4f4e-b56e-0ff081b99585'` (the wrist's session X) — the mirror's converged copy |
+
+### Mutation — restore exactly
+
+`sync()` → `await mirror.sync();` alone. No `prove-red` is possible here: the tests are new to a call
+site that does not exist at HEAD. Observed: all three S-109 cases red (`+0 -3`) — A
+`s-phone-unjoined`, B the junk snapshot, C the wrist's id. Restored to the exact three-line body and
+re-ran green (`+3`); nothing is left applied.
+
+### Green
+
+| Command | Result | Log |
+|---|---|---|
+| gateway `test test/watch_session_projection_test.dart --plain-name "S-109"` | `+3: All tests passed!` | inline (under the summary threshold) |
+| gateway `test` (the three Done-criteria files) | `+59: All tests passed!` — 59 passed, 0 failed | inline (under the summary threshold) |
+| gateway `test` (full, final) | `+4030 ~1: All tests passed!` — 4030 passed, ~1 skipped, 0 failed; Phase 3's 4028 + the 2 added S-109 cases | `test-20261007-022843-33000.log` |
+| gateway `lint` | `196 issues found. (ran in 1.6s)`, 0 errors — the baseline count; the log has no line for `watch_sync_wiring` or `watch_session_projection` | `lint-20261007-022829-32858.log` |
+| gateway `swift-test` | not run — no `.swift` file changed | — |
+| `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches | — |
+
+Footprint: `lib/state/watch/watch_sync_wiring.dart` +19 and `test/watch_session_projection_test.dart`
+(replacing the one S-109 graph test with its three cases) — 2 files. No scratch file was created, so
+none had to be deleted, and no formatter was run.

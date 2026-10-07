@@ -407,7 +407,27 @@ Dependents that only read a touched surface (no change expected; their tests are
   1 → 2). `swift-test` 322 passed / 0 failed (baseline 315/0; +5 engine, +2 start-path tests), `lint`
   196 issues / 0 errors with none in a touched file, invariant check clean. Evidence: `.evidence.md`
   §Phase 2A.
-- [ ] Phase 3 — the Dart half: the push's bounds and the phone's resume trigger (@developer)
+- [x] Phase 3 — the Dart half: the push's bounds and the phone's resume trigger (@developer) —
+  **Complete** (2026-10-07). Steps 1–8 done. The push takes `sendTimeout` (default 10 s) and
+  `onFailure`, bounds each pass inside the drain (`TimeoutException` reported, never thrown, nothing
+  re-sent — the baseline is stored before the send), and its debounce timer reports what escapes a
+  pass instead of raising an unhandled async error (D-98, D-99; the `Error` a direct `flush()` caller
+  sees is untouched — A-16). `WatchSyncGraph.sync()` delegates to the mirror; the new
+  `WatchResumeSync` observer is mounted in `lib/app.dart` around the shell with `watchSync?.sync`
+  (`lib/main.dart`), so a phone with no watch mounts nothing. 5 new tests (S-112, S-113 ×2, S-109 ×2);
+  the touched set 57 passed / 0 failed, full `test` **4028 passed / 1 skipped / 0 failed** (baseline
+  4023/~1 → +5), `lint` 196 issues / 0 errors with none in a touched file, invariant check clean,
+  `swift-test` not run (no `.swift` file changed). All four guards proven red by mutation (no
+  `prove-red` at the base commit: the new constructor params, class and method do not compile there).
+  Evidence: `.evidence.md` §Phase 3.
+- [x] Phase 3 fix 1 — the resume sync sends the phone's own session, or nothing (closed fix; found by
+  the governor behind the green suite) — **Complete** (2026-10-07). `WatchSyncGraph.sync()` composes
+  `mirror.projectedSession()` and sends it only when non-null, then requests the snapshot; the S-109
+  graph test is now its three cases (A own session, B no session → no frame at all, C own session, not
+  the wrist's converged copy). All three red before the fix and under the mutation, green after; the
+  three Done-criteria files 59 passed / 0 failed, full `test` **4030 passed / 1 skipped / 0 failed**
+  (Phase 3's 4028 + 2), `lint` 196 / 0 with none in a touched file. Evidence: `.evidence.md` §Phase 3
+  fix 1. (Supersedes A-19.)
 - [ ] Phase 4 — the Swift half and the contract (@developer)
 - [ ] Phase 5 — the watch shell starts the catch-up (@governor, built)
 
@@ -476,6 +496,39 @@ Executors append here: decision made, options considered, choice and why. The Co
     Swift), replaces the bullet that told the user to press Sync for the wrist's own changes, and says
     nothing about the wrist pulling the phone's session — that arrives in Phases 3–5. Consistent with
     A-8.
+16. **A-16 — `flush()` still throws an `Error`; only the debounce timer path reports it (developer,
+     2026-10-07, Phase 3).** Step 2 says "catch every failure inside the drain … `flush()` never
+     throws", but G2's `G2 an Error from the session read is not swallowed` asserts a direct caller
+     still sees it. Options: catch everything (breaks G2) or report from the timer's `catchError` while
+     leaving a direct caller's `Error` intact. Chose the latter: D-99's harm — an unhandled async error
+     with no reporter — only exists on the path nobody awaits.
+17. **A-17 — the observer test asserts one sync per *reported* `resumed`, not per real transition
+     (developer, 2026-10-07, Phase 3).** `WidgetsBinding.instance.handleAppLifecycleStateChanged(resumed)`
+     twice in a row calls the observer twice (observed `['sync','sync']`), because the framework does
+     not dedupe a repeated state. The test therefore pins the widget's own rule — one call per reported
+     `resumed`, none for any other state, none after unmount — rather than a dedupe the widget does not
+     have.
+18. **A-18 — a `previousValues` weight must be a `double`, and an `int` silently logs nothing
+     (developer, 2026-10-07, Phase 3).** S-112/S-113's second set was first written as `weight: 65`;
+     `addEntry`'s `as double?` cast then throws inside its own try, sets
+     `WorkoutState.error = "Failed to add entry: type 'int' is not a subtype of type 'double?'"` and
+     creates no row, so the second change never reached the push and the tests read as a push defect.
+     The fixtures now use `65.0`. Recorded because it is a trap for any fixture that logs a second set.
+19. **A-19 — the resume's first frame carries an empty session when the phone holds none (developer,
+     2026-10-07, Phase 3).** `WatchSyncGraph.sync()` hands the wrist the phone's converged state, which
+     before any wrist frame is `sessionId: null`; the wrist refuses that payload whole, and per
+     `SyncProtocolValidator` answers with its own snapshot anyway, so the request is the effective half
+     of the catch-up. That is 17a's `sync()` shape, unchanged here; S-109's graph test therefore pins
+     the order and the once-per-resume count, not the payload. Reported to the governor as an
+     observation, not changed in this phase. **Superseded: the governor filed this as a defect and
+     Phase 3 fix 1 removed the frame entirely — a phone holding no session now sends no snapshot, so
+     there is no empty-session payload to refuse.**
+20. **A-20 — the resume's frame is the phone's own projection, so the graph's `sync()` stops being
+     `mirror.sync()` (developer, 2026-10-07, Phase 3 fix 1).** Options: keep the mirror's converged
+     copy (what A-19 described) or compose the phone's own session per resume (D-11). Chose D-11's
+     rule: `projectedSession()` first, and nothing at all when it is null. The debug mains keep
+     `LiveSessionMirrorState.sync()` — this fix changes only the graph's method, and the placeholder
+     (`s-phone-unjoined`) can no longer leave the phone on a resume.
 
 ## Feedback
 

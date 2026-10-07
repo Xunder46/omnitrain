@@ -29,8 +29,12 @@
 /// 3. **Dropped, never queued** (D-83). The transport reports what it cannot
 ///    carry and never throws; this push adds no queue, no retry and no
 ///    user-visible state, and a failure it can report — a repository read
-///    included — leaves the phone undisturbed (F4). An `Error` is a programming
-///    fault and is not swallowed (G2).
+///    included — leaves the phone undisturbed (F4). A pass that never finishes
+///    is abandoned at its `sendTimeout` and reported through the failure hook,
+///    so a silent radio cannot swallow every later frame for the rest of the
+///    app run (D-98), and the debounce path reports what escapes a pass instead
+///    of raising an unhandled async error (D-99). An `Error` is a programming
+///    fault and is not swallowed (G2): a direct caller still sees it.
 ///
 /// It persists nothing and writes nothing: it reads the phone's session through
 /// the projection and the mirrored session's row through [getSession], and sends.
@@ -50,9 +54,13 @@ class WatchSessionAutoPush {
     required LiveSessionMirrorState mirror,
     required Future<TrainingSession?> Function(String sessionId) getSession,
     Duration debounce = const Duration(milliseconds: 250),
+    Duration sendTimeout = const Duration(seconds: 10),
+    void Function(Object error, StackTrace stack)? onFailure,
   }) : _mirror = mirror,
        _getSession = getSession,
-       _debounce = debounce;
+       _debounce = debounce,
+       _sendTimeout = sendTimeout,
+       _onFailure = onFailure;
 
   final LiveSessionMirrorState _mirror;
 
@@ -64,6 +72,17 @@ class WatchSessionAutoPush {
   /// How long the state must be quiet before the composed payload is sent
   /// (D-76). A constructor knob so tests drive it.
   final Duration _debounce;
+
+  /// How long one pass may take before it is abandoned and reported (D-98). A
+  /// radio that never answers must not hold the drain open for the rest of the
+  /// app run — every later frame would be dropped by the `_again` branch. A
+  /// constructor knob so tests drive it.
+  final Duration _sendTimeout;
+
+  /// Where a failure the push can report — a pass that timed out (D-98), or an
+  /// `Exception` a pass could not read past — goes. An `Error` is not reported
+  /// here: a direct caller still sees it (G2).
+  final void Function(Object error, StackTrace stack)? _onFailure;
 
   WorkoutState? _workoutState;
   Timer? _window;
@@ -118,7 +137,20 @@ class WatchSessionAutoPush {
     try {
       do {
         _again = false;
-        await _pushOnce();
+        // One pass is bounded (D-98): the drain completes when the pass does or
+        // when the timeout expires, so a hung send cannot wedge every later
+        // push. A timed-out pass is reported, never thrown, never retried and
+        // never queued — its baseline was already stored before the send, so
+        // nothing is re-sent for the same payload (D-83).
+        await _pushOnce().timeout(
+          _sendTimeout,
+          onTimeout: () {
+            _report(
+              TimeoutException('push pass exceeded $_sendTimeout'),
+              StackTrace.current,
+            );
+          },
+        );
       } while (_again);
     } finally {
       _draining = null;
@@ -146,10 +178,15 @@ class WatchSessionAutoPush {
       if (encoded == _baseline) return;
       _baseline = encoded;
       await _mirror.sendState(composed);
-    } on Exception {
-      // F4: a push that cannot be made must not disturb the phone.
+    } on Exception catch (e, s) {
+      // F4: a push that cannot be made must not disturb the phone — but it is
+      // reported rather than swallowed (D-98, D-99).
+      _report(e, s);
     }
   }
+
+  /// Hands [error] to the injected failure hook, when the graph gave one.
+  void _report(Object error, StackTrace stack) => _onFailure?.call(error, stack);
 
   /// Takes the phone's current session as the new baseline, sending nothing
   /// (D-82): a frame the phone applied from the wrist is never answered with a
@@ -187,7 +224,16 @@ class WatchSessionAutoPush {
 
   void _onChanged() {
     _window?.cancel();
-    _window = Timer(_debounce, () => unawaited(flush()));
+    // D-99: whatever escapes a pass from the timer path — an `Error`, which
+    // `_pushOnce` deliberately does not catch — is reported through the hook
+    // rather than surfacing as an unhandled async error with no reporter. A
+    // direct caller of `flush()` still sees it.
+    _window = Timer(
+      _debounce,
+      () => unawaited(
+        flush().catchError((Object e, StackTrace s) => _report(e, s)),
+      ),
+    );
   }
 
   /// The end rules of D-81, decided by the row of each session the phone itself

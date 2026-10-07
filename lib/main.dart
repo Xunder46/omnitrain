@@ -433,5 +433,8 @@ Future<Widget> runStartup({
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,
+    // D-96: the phone asks the wrist for its session once per resume. Null
+    // without a watch graph, so no observer is mounted at all.
+    onWatchResume: watchSync?.sync,
   );
 }

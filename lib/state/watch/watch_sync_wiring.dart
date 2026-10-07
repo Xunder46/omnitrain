@@ -87,6 +87,26 @@ class WatchSyncGraph {
   /// The one object that pushes the phone's own session to the watch: the app
   /// binds the same `WorkoutState` to it (D-75).
   final WatchSessionAutoPush autoPush;
+
+  /// Asks the wrist for its session once — the phone's half of catching up
+  /// after being out of reach (D-96).
+  ///
+  /// The frame it sends is the phone's **own** session, composed on the spot
+  /// from the projection (D-11), and none at all when the phone holds no
+  /// session: the mirror's own copy is what this phone converged with the
+  /// wrist, not what it is working through, and a phone with nothing running
+  /// must not assert the placeholder. The request follows either way.
+  ///
+  /// Verified by `test/watch_session_projection_test.dart` (`S-109 case A one
+  /// resume is one catch-up: the phone's OWN session and then the request for
+  /// the wrist's, once per resume`, `S-109 case B a phone holding no session
+  /// sends no snapshot at all`, `S-109 case C the phone asserts its own session,
+  /// never the wrist's copy`).
+  Future<void> sync() async {
+    final composed = await mirror.projectedSession();
+    if (composed != null) await mirror.sendState(composed);
+    await mirror.requestSnapshot();
+  }
 }
 
 /// Builds the phone's watch graph and answers the handles the app keeps on it,
@@ -173,10 +193,13 @@ Future<WatchSyncGraph?> createWatchSync({
   );
   // Built after the mirror, from the same repository the graph already holds:
   // the push reads the mirrored session's own row — never the current-session
-  // pointer — to decide whether that session has ended (D-75, D-81).
+  // pointer — to decide whether that session has ended (D-75, D-81). The
+  // graph's failure hook is the push's too: a pass it cannot make, or one that
+  // times out, is reported rather than swallowed (D-98, D-99).
   final push = WatchSessionAutoPush(
     mirror: mirror,
     getSession: repository.getSession,
+    onFailure: onFailure,
   );
 
   resolved.onIncoming((frame) async {

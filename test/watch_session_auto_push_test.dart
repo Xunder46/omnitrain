@@ -17,6 +17,8 @@
 //   S-86 the phone never abandons a session it never held → `S-86 ...`
 //   S-87 a wrist frame inside the window loses no finish → `S-87 ...`
 //   S-88 browsing away does not lose a later finish   → `S-88 ...`
+//   S-112 a hung send cannot wedge the push           → `S-112 ...`
+//   S-113 a debounce-path failure is reported         → `S-113 ...`
 //   F4 a flush never leaks and never announces twice   → `F4 ...`
 //   G2 an Error from the session read is not swallowed  → `G2 ...`
 //
@@ -26,6 +28,8 @@
 // watch app applies one. The push is bound where a scenario starts from a
 // settled fixture, so the fixture's own notifications are not part of the
 // scenario, and every window is closed by `flush()` rather than by waiting.
+
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
@@ -92,6 +96,16 @@ Map<String, Object?> _slot(
 /// Lets the radio's dispatch settle before the next frame is handed over.
 Future<void> _settle() => pumpEventQueue();
 
+/// Polls [ready] to a bounded deadline — never unbounded — so a push that never
+/// settles fails the test rather than hanging it.
+Future<void> _until(bool Function() ready, {required String reason}) async {
+  for (var attempt = 0; attempt < 500; attempt++) {
+    if (ready()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+  }
+  fail(reason);
+}
+
 /// The instant a fixture's rows are stamped with: [minute] past the phone's own
 /// `_now` on the same day.
 int _at(int minute) =>
@@ -156,6 +170,14 @@ class _PhoneRadio implements WatchTransport {
   /// True while the wrist is out of range: `send` reports and carries nothing.
   bool failing = false;
 
+  /// True while the next `send` is not to complete at all — a radio that has
+  /// gone silent (S-112's seam). One frame, then the flag clears itself.
+  bool hangNext = false;
+
+  /// True while `send` throws instead of reporting — a platform channel that
+  /// fails the future rather than the callback (S-113's seam).
+  bool throwing = false;
+
   WatchInboundHandler? _handler;
 
   @override
@@ -180,6 +202,11 @@ class _PhoneRadio implements WatchTransport {
     if (failing) {
       onFailure(StateError('the wrist is out of range'));
       return;
+    }
+    if (throwing) throw Exception('the radio refused the frame');
+    if (hangNext) {
+      hangNext = false;
+      return Completer<void>().future;
     }
     sent.add(envelope);
   }
@@ -1486,5 +1513,204 @@ void main() {
       );
       push.dispose();
     });
+  });
+
+  group('S-112 a hung send cannot wedge the push', () {
+    test(
+      'S-112 a send that never completes is abandoned and reported, and the '
+      'change made while it hung still leaves the phone',
+      () async {
+        await wristStartsSession();
+
+        final reported = <Object>[];
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: repository.getSession,
+          // A real, small bound: the pass is abandoned this long after the
+          // radio goes silent, well inside the poll deadline below.
+          sendTimeout: const Duration(milliseconds: 200),
+          onFailure: (error, stack) => reported.add(error),
+        )..bindWorkoutState(phoneState);
+        addTearDown(push.dispose);
+
+        radio.hangNext = true;
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        final hung = push.flush();
+        await _until(
+          () => !radio.hangNext,
+          reason: 'S-112 the fixture: the first send was reached and is hung',
+        );
+
+        // A second change while that send is still hung: its flush joins the
+        // running drain and asks for one more pass, which is the branch a
+        // wedged drain used to swallow for the rest of the app run.
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 65.0},
+        );
+        final joined = push.flush();
+        await _until(
+          () => reported.isNotEmpty,
+          reason:
+              'S-112 the pass that never finishes is abandoned at sendTimeout '
+              'and reported, instead of holding the drain open for ever',
+        );
+        await hung;
+        await joined;
+
+        expect(
+          reported,
+          hasLength(1),
+          reason: 'S-112 exactly one failure is reported for the hung pass',
+        );
+        expect(
+          reported.single,
+          isA<TimeoutException>(),
+          reason: 'S-112 a pass that outran its bound is reported as a timeout',
+        );
+
+        final pushes = radio.ofType('session_snapshot');
+        expect(
+          pushes,
+          hasLength(1),
+          reason:
+              'S-112 the second change left the phone and nothing was queued '
+              'or retried for the hung one: the payload that failed is not '
+              'attempted twice (D-83: its baseline was already stored)',
+        );
+        expect(
+          [
+            for (final entry in _objects(_payload(pushes.single)['entries']))
+              entry['loadKg'],
+          ],
+          contains(65.0),
+          reason:
+              'S-112 the frame carries the second change — the newest state, '
+              'not a replay of the hung one',
+        );
+      },
+    );
+  });
+
+  group('S-113 a failure on the push path is reported', () {
+    test(
+      'S-113 a throwing send is reported once, and the next change still '
+      'pushes',
+      () async {
+        await wristStartsSession();
+
+        final reported = <Object>[];
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: repository.getSession,
+          onFailure: (error, stack) => reported.add(error),
+        )..bindWorkoutState(phoneState);
+        addTearDown(push.dispose);
+
+        radio.throwing = true;
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await push.flush();
+
+        expect(
+          reported,
+          hasLength(1),
+          reason:
+              'S-113 an Exception the send threw is reported through the hook '
+              'rather than swallowed (D-98)',
+        );
+        expect(reported.single, isA<Exception>());
+        expect(radio.ofType('session_snapshot'), isEmpty);
+
+        radio.throwing = false;
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 65.0},
+        );
+        await push.flush();
+
+        final pushes = radio.ofType('session_snapshot');
+        expect(
+          pushes,
+          hasLength(1),
+          reason:
+              'S-113 the push still works on the next change: the send that '
+              'threw left nothing queued and nothing wedged (D-83)',
+        );
+        expect(
+          [
+            for (final entry in _objects(_payload(pushes.single)['entries']))
+              entry['loadKg'],
+          ],
+          contains(65.0),
+          reason: 'S-113 the frame that follows carries the newest state',
+        );
+        expect(reported, hasLength(1));
+      },
+    );
+
+    test(
+      'S-113 an Error from the debounce timer path is reported, not unhandled, '
+      'and a direct flush still throws it',
+      () async {
+        await wristStartsSession();
+
+        final reported = <Object>[];
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          // An `Error` is a programming fault: `_pushOnce` does not catch it, so
+          // it escapes `flush()` (G2).
+          getSession: (sessionId) async =>
+              throw StateError('the session read is broken'),
+          debounce: const Duration(milliseconds: 5),
+          onFailure: (error, stack) => reported.add(error),
+        )..bindWorkoutState(phoneState);
+        addTearDown(push.dispose);
+
+        final unhandled = <Object>[];
+        final body = runZonedGuarded(() async {
+          await phoneState.addEntry(
+            _firstSlot,
+            previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+          );
+          // Either the pass reports it (D-99) or it escapes as an unhandled
+          // async error: waiting for either is what keeps a regression from
+          // hanging this test instead of failing it.
+          await _until(
+            () => reported.isNotEmpty || unhandled.isNotEmpty,
+            reason:
+                'S-113 an Error escaping the debounce timer\'s flush is '
+                'either reported through the hook (D-99) or unhandled — it '
+                'never simply disappears',
+          );
+
+          // The direct caller is still told: the timer path swallows nothing
+          // that a non-timer caller would have seen (G2).
+          await expectLater(push.flush(), throwsStateError);
+        }, (error, stack) => unhandled.add(error));
+        await body;
+
+        expect(
+          reported,
+          hasLength(1),
+          reason:
+              'S-113 the timer path reports what escapes a pass through the '
+              'hook instead of raising an unhandled async error (D-99)',
+        );
+        expect(reported.single, isA<StateError>());
+        expect(
+          unhandled,
+          isEmpty,
+          reason:
+              'S-113 the timer path raises no unhandled async error: it is '
+              'recorded through the hook instead (D-99)',
+        );
+      },
+    );
   });
 }
