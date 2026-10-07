@@ -385,9 +385,19 @@ that same set, not a third set, which is what the re-statement is proven to do
 the phone is carried: the next push announces the deletion and the set leaves the
 watch (`test/watch_session_auto_push_test.dart`,
 `S-120 the push names the set the phone dropped, in a frame the wrist applies,
-before the snapshot that no longer carries it`), and it stays gone after the
+before the snapshot that no longer carries it`). A deletion the push could not
+send is not lost: the next push announces it under the id it was minted with
+(`test/watch_session_auto_push_test.dart`,
+`F7 the next pass announces the deletion the failed one could not, under the
+change id it was minted with`), and two deletions of one re-used number are two
+distinct frames rather than a repeat (`test/watch_session_auto_push_test.dart`,
+`F2 a number the phone re-used and dropped again is announced again, under a
+change id the wrist has not applied`). It stays gone after the
 watch's app is relaunched (`test/watch_session_engine_test.dart`,
-`S-124 the deleted set stays hidden across a restart`).
+`S-124 the deleted set stays hidden across a restart`), and on the watch itself
+after a local stop the watch began and ended on its own
+(`watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`,
+`testF1ALocalTransitionAfterADeleteKeepsTheLens`).
 
 **The walkthrough** — each step maps to a protocol rule that is already
 enforced in code, so a failure points at the transport, not the logic:

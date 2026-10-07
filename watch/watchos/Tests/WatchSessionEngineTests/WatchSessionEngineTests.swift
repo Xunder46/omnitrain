@@ -568,6 +568,57 @@ final class WatchSessionEngineTests: XCTestCase {
         )
     }
 
+    /// F1 (review 1): a wrist action of its own writes a newer session row than
+    /// the one the phone's delete wrote, and `restore()` reads the lens off the
+    /// newest row. A transition that drops the lens forgets the deletion on the
+    /// next relaunch — the deleted set comes back.
+    func testF1ALocalTransitionAfterADeleteKeepsTheLens() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: nil,
+            exercises: [exercise("sx-bench"), exercise("sx-row")]
+        )
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-f1-1",
+                exercises: [exercise("sx-bench"), exercise("sx-row")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-1",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+
+        // The wrist's own actions, with no frame from the phone involved: the
+        // newest session row is now the one these transitions write.
+        _ = await engine.advanceExercise()
+        _ = await engine.finishSession()
+
+        let relaunched = await harness.runningEngine()
+
+        XCTAssertEqual(
+            relaunched.session?.deletedEntryIds,
+            ["entry-bench-1"],
+            "F1 the row a local transition writes carries the deletion the phone sent"
+        )
+        XCTAssertEqual(
+            relaunched.entries
+                .filter { $0.kind != WatchObservationKind.sessionEnd }
+                .map(\.entryId),
+            ["entry-bench-2"],
+            "F1 a wrist transition after a delete does not resurrect the deleted set"
+        )
+    }
+
     func testS125AReUsedNumberShowsTheNewEntrysOwnFields() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()

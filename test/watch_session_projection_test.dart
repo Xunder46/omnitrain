@@ -1910,8 +1910,11 @@ void main() {
       );
       expect(
         _payload(deletion)['changeId'],
-        'del-entry-slot-bench-1',
-        reason: 'D-113 the id is derived from the entry, so a resend is a no-op',
+        startsWith('del-entry-slot-bench-1-'),
+        reason:
+            'D-110 the id names the entry the deletion is about and is minted '
+            'per delete event, so a resend of the same event is a no-op (D-113) '
+            'while a second deletion of a re-used number is a new change',
       );
       expect(
         _payload(deletion)['changes'],

@@ -27,6 +27,10 @@
 //   S-126 another session's deletion changes nothing   → `S-126 ...`
 //   D-114 leaving a session and coming back re-seeds its ledger → `D-114 ...`
 //   F4 a flush never leaks and never announces twice   → `F4 ...`
+//   F2 a set the phone re-used and dropped again is announced again
+//                                                     → `F2 ...`
+//   F3 a deletion frame names the session it is about  → `F3 ...`
+//   F7 a deletion whose send failed is owed, then sent → `F7 ...`
 //   G2 an Error from the session read is not swallowed  → `G2 ...`
 //
 // The delete half is 17c Phase 1 (D-110…D-114, S-120…S-126); S-124, S-125 and
@@ -178,6 +182,10 @@ class _PhoneRadio implements WatchTransport {
 
   final List<Map<String, Object?>> sent = [];
 
+  /// Every frame handed to `send`, including the ones it then failed: what a
+  /// pass tried to announce is not visible in [sent] alone (F7).
+  final List<Map<String, Object?>> attempted = [];
+
   /// True while the wrist is out of range: `send` reports and carries nothing.
   bool failing = false;
 
@@ -210,6 +218,7 @@ class _PhoneRadio implements WatchTransport {
 
   @override
   Future<void> send(Map<String, Object?> envelope) async {
+    attempted.add(envelope);
     if (failing) {
       onFailure(StateError('the wrist is out of range'));
       return;
@@ -1794,10 +1803,11 @@ void main() {
         );
         expect(
           _payload(deletion)['changeId'],
-          'del-$doomed',
+          startsWith('del-$doomed-'),
           reason:
-              'D-113 the id is derived from the entry, so re-announcing the '
-              'same deletion is a no-op on the wrist',
+              'D-116 (F2) the id names the entry *and* the delete event, so a '
+              're-delivery of this frame is a no-op on the wrist while the '
+              'second deletion of a number the phone re-used is not',
         );
         expect(
           _payload(deletion)['changes'],
@@ -1875,7 +1885,7 @@ void main() {
           [
             for (final frame in deletions) _payload(frame)['changeId'],
           ],
-          ['del-$second', 'del-$fourth'],
+          [startsWith('del-$second-'), startsWith('del-$fourth-')],
           reason:
               'S-121 the frames go out in ascending id order, so the same two '
               'deletions look the same however the store listed the rows',
@@ -1976,8 +1986,8 @@ void main() {
         );
         expect(
           _payload(deletion)['changeId'],
-          'del-$_wristEntryId',
-          reason: 'D-113 the id is derived from the entry it names',
+          startsWith('del-$_wristEntryId-'),
+          reason: 'D-116 the id names the entry the deletion is about',
         );
         expect(
           await phoneEntries(_firstSlot),
@@ -2181,6 +2191,257 @@ void main() {
               'deletion for the set that stopped being held in between',
         );
         expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('F2 a deletion is announced per delete event, not per entry', () {
+    test(
+      'F2 a number the phone re-used and dropped again is announced again, '
+      'under a change id the wrist has not applied',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        await logSetHeldByBoth();
+        final doomed = await logSetHeldByBoth();
+        expect(
+          doomed,
+          'entry-$_firstSlot-3',
+          reason: 'the fixture: the phone numbered its third set 3 (D-325)',
+        );
+
+        // The user drops that set: the frame goes out and the wrist hides it.
+        await phoneState.deleteEntry(_firstSlot, 3);
+        await graph.autoPush.flush();
+        final first = radio.ofType('structure_change').single;
+        await engine.applyMessage(first);
+        expect(
+          wristEntryIds(),
+          isNot(contains(doomed)),
+          reason: 'the fixture: the wrist hid the set the phone dropped',
+        );
+
+        // The phone logs another set, which its mint numbers 3 again, and the
+        // wrist applies the snapshot carrying it: the id the lens hides is
+        // stated again with a later stamp, which is the wrist's own rule for a
+        // re-created row (D-113.3).
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await graph.autoPush.flush();
+        await engine.applyMessage(radio.ofType('session_snapshot').last);
+        expect(
+          wristEntryIds(),
+          contains(doomed),
+          reason:
+              'the fixture: the row the phone re-created under number 3 is '
+              'visible on the wrist again',
+        );
+
+        // Dropping it is a second deletion *event*, of a number the phone has
+        // already announced once (F2).
+        await phoneState.deleteEntry(_firstSlot, 3);
+        await graph.autoPush.flush();
+        final second = radio.ofType('structure_change').last;
+        expect(
+          _payload(second)['changeId'],
+          isNot(_payload(first)['changeId']),
+          reason:
+              'F2 two deletion events are two change ids: the wrist drops a '
+              'change id it has already applied, durably, so an id derived '
+              'from the entry alone would have it swallow the second deletion '
+              'of a number the phone re-used',
+        );
+        expect(
+          _payload(second)['changeId'],
+          startsWith('del-$doomed-'),
+          reason: 'F2 the id still names the entry the event is about',
+        );
+
+        await engine.applyMessage(second);
+        expect(
+          wristEntryIds(),
+          isNot(contains(doomed)),
+          reason:
+              'F2 the wrist hides the set the second event names: the frame is '
+              'not deduped against the one it already applied',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('F3 a deletion frame names the session it is about', () {
+    test(
+      'F3 a deletion of the phone\'s own session neither names nor moves the '
+      'wrist\'s session, which the phone never held',
+      () async {
+        // The phone starts a session of its own — Y — which is what the push
+        // composes.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final ownSessionId = phoneState.currentSession!.id;
+
+        // The wrist is running a session of its own — X — which the phone has
+        // no row for: the mirror takes it (S-86) and refuses to adopt it
+        // (D-10).
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          ownSessionId,
+          reason: 'the fixture: the push composes the phone\'s own session',
+        );
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason:
+              'the fixture: the mirror still holds the wrist\'s session, and '
+              'the phone\'s is the one the payload names',
+        );
+        final before = graph.mirror.state;
+        final beforeIds = _entryIds(
+          _payload(radio.ofType('session_snapshot').last),
+        );
+        expect(
+          beforeIds,
+          hasLength(2),
+          reason: 'the fixture: the phone\'s own session holds its two sets',
+        );
+
+        await phoneState.deleteEntry(own, 0);
+        await graph.autoPush.flush();
+
+        // The set the phone dropped, read off the pass that followed it: the
+        // deletion and the snapshot of the same pass go out together (D-111).
+        final afterIds = _entryIds(
+          _payload(radio.ofType('session_snapshot').last),
+        );
+        final dropped = beforeIds.firstWhere(
+          (entryId) => !afterIds.contains(entryId),
+          orElse: () => fail('the fixture: the phone dropped no set'),
+        );
+
+        final deletion = radio.ofType('structure_change').single;
+        expect(
+          deletion['sessionId'],
+          ownSessionId,
+          reason:
+              'F3 the frame names the session the deletion is about — the one '
+              'the pass composed — and not the session the mirror happens to '
+              'hold: the wrist refuses a frame naming any other session, so '
+              'this deletion would be invisible to the user',
+        );
+        expect(
+          _payload(deletion)['changes'],
+          [
+            {'kind': 'delete_entry', 'entryId': dropped},
+          ],
+          reason: 'F3 the frame still names the set the phone dropped',
+        );
+        expect(
+          graph.mirror.state,
+          before,
+          reason:
+              'F3 a deletion of the phone\'s session never moves the mirror\'s '
+              'state for the wrist\'s: applying it locally would hide an entry '
+              'of a session the frame does not name',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('F7 a deletion whose send failed is owed, not lost', () {
+    test(
+      'F7 the next pass announces the deletion the failed one could not, under '
+      'the change id it was minted with',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        final doomed = await logSetHeldByBoth();
+
+        // The frame the deletion owes never leaves the phone: the transport
+        // fails the future rather than reporting it (S-113's seam).
+        radio.throwing = true;
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+        expect(
+          failures,
+          hasLength(1),
+          reason: 'F7 the failed pass is reported, once (D-98)',
+        );
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason: 'F7 the transport carried no deletion frame',
+        );
+        final attempted = [
+          for (final frame in radio.attempted)
+            if (frame['type'] == 'structure_change') frame,
+        ];
+        expect(
+          attempted,
+          hasLength(1),
+          reason: 'F7 the pass did try to announce the deletion it owed',
+        );
+
+        // The radio comes back. The deletion is still owed, and it is the same
+        // change: a new id would be a second change for the one deletion.
+        radio.throwing = false;
+        await graph.autoPush.flush();
+        final retried = radio.ofType('structure_change');
+        expect(
+          retried,
+          hasLength(1),
+          reason:
+              'F7 a deletion stays owed until its frame has gone: the ledger of '
+              'what the wrist was told is never updated by a send that failed',
+        );
+        expect(
+          _payload(retried.single)['changeId'],
+          _payload(attempted.single)['changeId'],
+          reason: 'F7 the owed event keeps the change id it was minted with',
+        );
+        expect(failures, hasLength(1), reason: 'the retry did not fail');
+
+        await engine.applyMessage(retried.single);
+        expect(
+          wristEntryIds(),
+          isNot(contains(doomed)),
+          reason: 'F7 the retried frame hides the set the phone dropped',
+        );
+
+        // It has gone: no later pass announces it again.
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          hasLength(1),
+          reason: 'F7 an announced deletion is not announced again',
+        );
+        expect(failures, hasLength(1));
       },
     );
   });

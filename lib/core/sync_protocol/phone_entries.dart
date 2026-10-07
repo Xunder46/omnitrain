@@ -58,27 +58,47 @@ abstract final class PhoneEntries {
     return entries;
   }
 
-  /// The entry numbers [wristLoggedAtMs] claim (D-34).
+  /// The entry numbers [wristLoggedAtMs] claim (D-34): [resolveClaims]'s
+  /// `.groups`, so the projection and every caller that asks about a row read
+  /// the claim rule once.
+  static Set<int> claimedBy({
+    required List<SetRows> groups,
+    required List<int> wristLoggedAtMs,
+  }) => resolveClaims(groups: groups, wristLoggedAtMs: wristLoggedAtMs).groups;
+
+  /// What [wristLoggedAtMs] claims, in one pass: the group numbers claimed
+  /// (`.groups`) and the **indexes** into [wristLoggedAtMs] that claimed one
+  /// (`.stamps`).
   ///
   /// Each stamp claims **one** group: the first unclaimed group it matches, in
   /// ascending number. One row, one group — which is what makes a wrist entry
   /// and a phone entry written in the same millisecond a benign
   /// under-projection (the later group is left unclaimed and is projected)
   /// rather than a lost one.
-  static Set<int> claimedBy({
+  ///
+  /// The indexes are what lets a caller holding one row per stamp map a claim
+  /// back to the row it came from. Asking about one stamp at a time is **not**
+  /// the same question: two rows sharing a stamp claim one group each, so
+  /// row-by-row both read as claiming while one pass over both sees the second
+  /// group gone. Callers that report which rows the wrist holds must pass every
+  /// stamp of the slot, or they disagree with the projection (F4).
+  static ({Set<int> groups, Set<int> stamps}) resolveClaims({
     required List<SetRows> groups,
     required List<int> wristLoggedAtMs,
   }) {
     final claimed = <int>{};
-    for (final stamp in wristLoggedAtMs) {
+    final claiming = <int>{};
+    for (var index = 0; index < wristLoggedAtMs.length; index++) {
+      final stamp = wristLoggedAtMs[index];
       for (final group in groups) {
         if (claimed.contains(group.number)) continue;
         if (stampOf(group) != stamp) continue;
         claimed.add(group.number);
+        claiming.add(index);
         break;
       }
     }
-    return claimed;
+    return (groups: claimed, stamps: claiming);
   }
 
   /// The stamp a group carries: the earliest `createdAtMs` among its rows.

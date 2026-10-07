@@ -203,6 +203,9 @@ Future<WatchSyncGraph?> createWatchSync({
     // rule in one place (D-112). Nothing of the phone's own needs it: those ids
     // travel inside the composed payload this push already has.
     heldWristEntryIds: adoption.heldWristEntryIds,
+    // The graph's clock stamps a deletion frame's change id (F2), so tests pin
+    // it the way they pin every other stamp this graph makes.
+    clock: clock,
     onFailure: onFailure,
   );
 

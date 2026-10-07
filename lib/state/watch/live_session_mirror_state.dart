@@ -463,24 +463,40 @@ class LiveSessionMirrorState extends ChangeNotifier {
         {'kind': 'delete_entry', 'entryId': entryId},
       ]);
 
-  /// Deletes an entry under a [changeId] the caller names rather than a fresh
-  /// one.
+  /// Deletes the entry [entryId] of the session [sessionId], under a [changeId]
+  /// the caller names rather than a fresh one.
   ///
-  /// [deleteEntry] mints a new id per call, so a caller that has to say the same
-  /// deletion twice — the auto-push announcing `'del-<entryId>'` on every pass it
-  /// finds a set gone (D-110) — would look like a new change each time. A named
-  /// id makes a re-delivered frame a no-op on the wrist: its `appliedChangeIds`
-  /// drops the repeat and the row the frame writes has the same record id
-  /// (D-116, S-120).
+  /// [deleteEntry] mints a new id per call and names whatever session this
+  /// mirror holds, so a caller that has to say the same deletion twice — the
+  /// auto-push announcing a set gone (D-110) — would look like a new change
+  /// each time. A named id makes a re-delivered frame a no-op on the wrist: its
+  /// `appliedChangeIds` drops the repeat and the row the frame writes has the
+  /// same record id (D-116, S-120).
+  ///
+  /// [sessionId] is named the way [reportLifecycleFor] names one, because the
+  /// session the caller is deleting in is not necessarily the one this mirror
+  /// holds: the entries the auto-push composes for are the composed session's,
+  /// and applying the frame here would hide an entry of a session this frame
+  /// does not name. The name travels on the frame either way, and the wrist
+  /// applies it to the session it holds under that name.
   Future<Map<String, Object?>> deleteEntryAs(
+    String sessionId,
     String entryId, {
     required String changeId,
-  }) => applyStructureChange(
-    [
-      {'kind': 'delete_entry', 'entryId': entryId},
-    ],
-    changeId: changeId,
-  );
+  }) async {
+    final envelope = _envelopeFor(sessionId, 'structure_change', {
+      'changeId': changeId,
+      'changes': [
+        {'kind': 'delete_entry', 'entryId': entryId},
+      ],
+    });
+    if (sessionId == this.sessionId) {
+      _reconciler.applyMessage(envelope);
+      notifyListeners();
+    }
+    await _transport.send(envelope);
+    return envelope;
+  }
 
   /// Closes the session from the phone and hands back the merged record.
   ///
@@ -532,13 +548,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
     String sessionId,
     String state,
   ) async {
-    final envelope = phoneEnvelope(
-      type: 'session_lifecycle',
-      messageId: _newId(),
-      sentAt: _clock(),
-      sessionId: sessionId,
-      payload: {'state': state, 'at': utcIso(_clock())},
-    );
+    final envelope = _envelopeFor(sessionId, 'session_lifecycle', {
+      'state': state,
+      'at': utcIso(_clock()),
+    });
     if (sessionId == this.sessionId) {
       _reconciler.applyMessage(envelope);
       notifyListeners();
@@ -561,13 +574,21 @@ class LiveSessionMirrorState extends ChangeNotifier {
   }
 
   Map<String, Object?> _envelope(String type, Map<String, Object?> payload) =>
-      phoneEnvelope(
-        type: type,
-        messageId: _newId(),
-        sentAt: _clock(),
-        sessionId: state['sessionId'] as String?,
-        payload: payload,
-      );
+      _envelopeFor(state['sessionId'] as String?, type, payload);
+
+  /// An envelope this phone originates, naming [sessionId] — which a caller can
+  /// take from anywhere, where [_envelope] names the session this mirror holds.
+  Map<String, Object?> _envelopeFor(
+    String? sessionId,
+    String type,
+    Map<String, Object?> payload,
+  ) => phoneEnvelope(
+    type: type,
+    messageId: _newId(),
+    sentAt: _clock(),
+    sessionId: sessionId,
+    payload: payload,
+  );
 
   // ---------------------------------------------------------------------------
   // Disagreement

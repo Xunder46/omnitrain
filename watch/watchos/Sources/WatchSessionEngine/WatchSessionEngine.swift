@@ -857,20 +857,27 @@ public final class WatchSessionEngine {
         return a == b
     }
 
-    /// Writes a row a message produced, without announcing it back to the phone:
-    /// the phone is the author of the news.
-    private func storeSessionRow(_ row: WatchSessionRecord) async {
-        // Every row carries the lens as it stands, not only the row a structure
-        // change writes: a lifecycle row appended after a delete would otherwise
-        // be the newest one, and `restore` would read an empty lens back from it
-        // (D-113.1).
+    /// `row` carrying the deletion lens as it stands this moment.
+    ///
+    /// Every session row carries the lens, not only the row a structure change
+    /// writes: `restore` reads it off the *newest* row, so a row appended after a
+    /// delete — a lifecycle row, the wrist's own ladder change, its End — would
+    /// otherwise be the newest one and answer an empty lens (D-113.1, F1). One
+    /// writer, so no path that appends a session row can lose it.
+    private func carryingLens(_ row: WatchSessionRecord) -> WatchSessionRecord {
         var carried = row.deletedEntryIds
         for id in deletedEntryIds.sorted() where !carried.contains(id) {
             carried.append(id)
         }
+        return row.withDeletedEntryIds(carried)
+    }
 
-        let stored = await store.append(.session(row.withDeletedEntryIds(carried)))
-        current = mirrored(stored.sessionRow ?? row)
+    /// Writes a row a message produced, without announcing it back to the phone:
+    /// the phone is the author of the news.
+    private func storeSessionRow(_ row: WatchSessionRecord) async {
+        let carried = carryingLens(row)
+        let stored = await store.append(.session(carried))
+        current = mirrored(stored.sessionRow ?? carried)
     }
 
     /// The session's entries in `entryMaps`, oldest first — the moment the
@@ -1045,7 +1052,10 @@ public final class WatchSessionEngine {
     /// store append-only and makes the position survive a kill. `revision` is
     /// carried over from the session being replaced unless the caller moves it:
     /// the counter is the number the phone reads a shape by, so a change that is
-    /// not a shape change leaves it exactly where it was (D-101).
+    /// not a shape change leaves it exactly where it was (D-101). The row carries
+    /// the deletion lens like every other one (F1) — `restore` reads the lens off
+    /// the newest row, and a wrist-side advance, End or abandon must not answer
+    /// an empty one.
     ///
     /// - Parameter revision: the new row's revision, or nil to keep the current
     ///   session's.
@@ -1077,8 +1087,9 @@ public final class WatchSessionEngine {
             revision: revision ?? session.revision
         )
 
-        let stored = await store.append(.session(row))
-        let live = mirrored(stored.sessionRow ?? row)
+        let carried = carryingLens(row)
+        let stored = await store.append(.session(carried))
+        let live = mirrored(stored.sessionRow ?? carried)
         if let lifecycle { emitLifecycle(live, state: lifecycle) }
         return live
     }

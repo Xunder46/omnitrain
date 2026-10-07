@@ -357,7 +357,15 @@ remains out is listed below.
   set back (`test/watch_session_engine_test.dart`,
   `S-124 the deleted set stays hidden across a restart`;
   `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`,
-  `testS124ADeletionSurvivesAWristRelaunch`). A snapshot that carries the id
+  `testS124ADeletionSurvivesAWristRelaunch`). Each deletion is announced under an
+  id of its own, so a second deletion of a number the phone re-used is a new
+  change rather than a repeat the wrist drops (`test/watch_session_auto_push_test.dart`,
+  `F2 a number the phone re-used and dropped again is announced again, under a
+  change id the wrist has not applied`), and a deletion the push could not send
+  is announced by the next push under the id it was minted with, rather than
+  being lost (`test/watch_session_auto_push_test.dart`,
+  `F7 the next pass announces the deletion the failed one could not, under the
+  change id it was minted with`). A snapshot that carries the id
   clears its deletion, so a slot whose set was deleted and re-created under the
   reused number converges (`test/watch_session_engine_test.dart`,
   `S-125 the wrist shows the new set's own fields`, `S-125 an id the wrist never held is shown when a snapshot carries it`;

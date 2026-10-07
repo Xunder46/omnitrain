@@ -286,3 +286,81 @@ file left untouched>`
   `transitionTo` appends its own row directly (`WatchSessionEngine.swift:1080`) without the lens. That
   is review finding F1, and it is why no Swift test in this phase can see the defect: every new Swift
   fixture writes its later row from a message.
+
+## Fix round 1 — review 1's F1–F5 and F7 (@developer)
+
+Executor: developer agent, 2026-10-07. Base commit `7888050` (the tree review 1 read).
+
+### Red → green, per fix
+
+Every guard was run against the un-fixed tree with `prove-red`, so the red is a real assertion failure
+on the code without the fix, not a compile error. Verdict lines are quoted verbatim.
+
+| Fix | Guard (test) | Command | Verdict at base | Assertion that failed |
+|---|---|---|---|---|
+| F1 (blocker, Swift) | `WatchSessionEngineTests.testF1ALocalTransitionAfterADeleteKeepsTheLens` | `.github/copilot/scripts/macos/gateway.sh prove-red HEAD swift-test --filter testF1ALocalTransitionAfterADeleteKeepsTheLens -- watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift` | **RED AT HEAD** | `deletedEntryIds == []` and `entries` still carried `entry-bench-1` — the local transition wrote its session row without the lens |
+| F2 (major) | `F2 a deletion is announced per delete event, not per entry` | `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/watch_session_auto_push_test.dart --plain-name F2` | `gateway: prove-red: RED AT HEAD (exit 1)` | `Expected: not 'del-entry-sx-1-3' / Actual: 'del-entry-sx-1-3'` — the second deletion of a re-used number reused the first one's id |
+| F3 (major) | `F3 a deletion frame names the session it is about` | `… prove-red HEAD test test/watch_session_auto_push_test.dart --plain-name F3` | `gateway: prove-red: RED AT HEAD (exit 1)` | `Expected: 'session-1791390869944' / Actual: 's-1'` — the frame named the mirror's held session, not the composed one |
+| F4 (major) | `F4 two wrist rows of one slot that share a stamp hold one id …` | `… prove-red HEAD test test/watch_session_adoption_bridge_test.dart --plain-name F4` | `gateway: prove-red: RED AT HEAD (exit 1)` | `Expected: Set:['entry-sl-1-0'] / Actual: Set:['entry-sl-1-0', 'entry-sl-1-1']` — asking stamp by stamp made both rows claim the slot's one group |
+| F7 (governor) | `F7 a deletion whose send failed is owed, not lost` | `… prove-red HEAD test test/watch_session_auto_push_test.dart --plain-name F7` | `gateway: prove-red: RED AT HEAD (exit 1)` | `Expected: an object with length of <1> / Actual: []` — the failed send was recorded as announced, so no later pass announced the deletion |
+| F1 (blocker, Dart parity half) | `F1 the set stays hidden when the wrist advances after the delete` / `…finishes after the delete` (`test/watch_session_engine_test.dart`) | `… test test/watch_session_engine_test.dart --plain-name F1` | **green at base, by design** | none — Dart's `_transitionTo` already funnelled through `_appendSessionRow` (the finding's own words), so this pair is the cross-stack parity assertion the remediation table asks for, not a red guard. Running it at base is the proof the Dart twin was already safe. |
+
+F5 (minor) has **no test by design**: Swift's `sameStamp` normalises a non-string stamp, and
+`WatchProtocolValidator` refuses such a payload before either twin sees it, so the only way to reach
+the Dart branch is to hand the engine a wire message the protocol does not allow. The Dart twin's
+`_sameStamp` now applies the same normalisation as the Swift one, and the parity row below records the
+rule instead. A test here would pin a branch the validator owns: it would pass at HEAD (unreachable)
+and could only be shown red by bypassing the validator, which is not a user-reachable input.
+
+### Suites (files this round touched)
+
+| Command | Result |
+|---|---|
+| `.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart` | **35 passed, 0 failed** (was 31 before this round; +4: the F2, F3 and F7 groups) |
+| `.github/copilot/scripts/macos/gateway.sh test test/watch_session_adoption_bridge_test.dart` | **17 passed, 0 failed** (was 16; +1 F4) |
+| `.github/copilot/scripts/macos/gateway.sh test test/watch_session_engine_test.dart --plain-name F1` | **2 passed, 0 failed** — F1's Dart parity pair. Green at base by design (the review's F1 was Swift-only): Dart's `_transitionTo` already funnelled through `_appendSessionRow`, so this is the parity half the remediation table asks for, not a red guard. |
+| `.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart --plain-name F2` etc. | each new guard green with the fix in the tree; the red is the base run above |
+
+**Regression found and fixed while implementing F7** (not in the review): the fix's first version kept
+the base's `_owed`-only drop of other sessions' ledgers, losing `_announced.removeWhere` for other
+sessions. `D-114 leaving a session and coming back re-seeds its ledger again, so the set it lost in
+between is not announced by the return pass` (`test/watch_session_auto_push_test.dart`) went red —
+a `structure_change` frame on the return pass naming a set lost while away. The original line was
+restored unchanged; the test is green and was **not** edited.
+
+**One further existing test went red, and it was narrowed rather than left red.**
+`test/watch_session_projection_test.dart`, group `S-31…S-43 the sets the phone logged ride the answer`,
+`S-35 an edit reaches the wrist and a delete is announced` pinned the push's composed `changeId` as the
+literal `'del-entry-slot-bench-1'`:
+
+```
+00:23 +1296 -1: test/watch_session_projection_test.dart: S-31…S-43 … S-35 an edit reaches the wrist and a delete is announced [E]
+  Expected: 'del-entry-slot-bench-1'
+    Actual: 'del-entry-slot-bench-1-1791277200000-0'
+  D-113 the id is derived from the entry, so a resend is a no-op
+  test/watch_session_projection_test.dart 1911:7
+```
+
+That literal is the pre-F2 id shape, so the assertion is the one thing the amended D-110/D-116 made
+false. It now reads `startsWith('del-entry-slot-bench-1-')`, keeping its stated intent (the id names the
+entry) and dropping only the length the amendment changed (plan Assumption Log, fix round 1, 6;
+Feedback has it flagged for the reviewer to ratify or revert). No other test in the repository pins the
+composed id by literal — the `del-entry-bench-*` frames in `test/watch_session_engine_test.dart` and
+`test/interaction_flow_test.dart` are test-authored *inputs*. No other existing test went red.
+
+### F5, as a parity rule rather than a test
+
+| Rule | Dart twin | Swift twin | Equal? |
+|---|---|---|---|
+| Two stamps name the same instant | `_sameStamp` (`lib/watch/session/watch_session_engine.dart`) — normalises a non-`String` stamp to its numeric text before comparing | `sameStamp` (`WatchSessionEngine.swift`) — the same normalisation, pre-existing | **yes** — same rule, same reach: only a payload the validator refuses could tell them apart |
+
+### Validation, at the end of the round
+
+| Check | Result |
+|---|---|
+| `.github/copilot/scripts/macos/gateway.sh test` (full suite, final) | **`01:46 +4048 ~1: All tests passed!`** — 4048 passed, 1 skipped, 0 failed (log `.work/gateway/test-20261007-124847-73332.log`, 4685 lines). The plan's baseline is `+4042 ~1` / 0 failed (Phase 3); +6 is this round's Dart tests (F2, F3, F4, F7 and F1's parity pair). The earlier full runs this round were `+4045 ~1 -1` (the stale projection literal, before it was widened to the new id shape) and `+4046 ~1` (after). |
+| `.github/copilot/scripts/macos/gateway.sh test test/watch_session_projection_test.dart` | **32 passed, 0 failed** (the widened case included) |
+| `.github/copilot/scripts/macos/gateway.sh swift-test` | **`Executed 334 tests, with 0 failures (0 unexpected)`** (baseline 325 / 0 at Phase 3; +1 is the F1 test). Log `.work/gateway/swift-test-20261007-124512-72073.log`, 0 failure-looking lines. |
+| `.github/copilot/scripts/macos/gateway.sh lint` | **196 issues / 0 errors** — equal to the plan's baseline; none in a file this round touched (grep of `.work/gateway/lint-20261007-124517-72127.log` for the nine touched names returns nothing). Exit 1 is the repo's pre-existing info notices. |
+| I-2, `import … hive_workout_repository` under `lib/state`, `lib/features`, `lib/widgets`, `lib/core` | **clean** — no match |
+| `git-diff --stat` | 11 files, +657/−98 at the source stage; +the projection narrowing, the plan, the evidence and three docs afterwards (see the reviewer's footprint table) |

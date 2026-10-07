@@ -263,43 +263,34 @@ class WatchSessionAdoptionBridge {
   ///
   /// The ids the wrist logged and the phone still holds. A row whose group the
   /// user deleted on the phone claims no group and stops being held, which is
-  /// the deletion the phone has to announce (S-122, `_wristRowStamps` +
-  /// `PhoneEntries.claimedBy` — the same claim rule the projection uses, not a
-  /// second one).
+  /// the deletion the phone has to announce (S-122, `_wristRowsBySlot` +
+  /// `PhoneEntries.resolveClaims` — the same claim rule the projection uses in
+  /// the same single pass over the slot's stamps, not a second one).
   ///
   /// Scope: `kindSet` rows only. A non-set entry has no wire entry to delete
   /// until 17d projects those kinds, so the phone cannot name one here (D-112,
   /// 17d D-137).
   Future<Set<String>> heldWristEntryIds(String sessionId) async {
-    final rows = await _repository.getWatchInboxEntriesForSession(sessionId);
-    final groupsBySlot = <String, List<SetRows>>{};
+    final bySlot = await _wristRowsBySlot(sessionId);
     final held = <String>{};
-    for (final row in rows) {
-      if (row.origin != WatchInboxEntry.originWatch) continue;
-      if (row.kind != WatchInboxEntry.kindSet) continue;
-
-      final payload = row.payload;
-      final slot = payload['sessionExerciseId'];
-      final loggedAtMs = _loggedAtMs(payload['loggedAt']);
-      if (slot is! String || slot.isEmpty || loggedAtMs == null) continue;
-
-      final groups = groupsBySlot[slot] ??= EntryRows.setGroups(
-        await _repository.getEffortObservations(slot),
+    for (final slot in bySlot.keys) {
+      final listed = bySlot[slot]!;
+      final claims = PhoneEntries.resolveClaims(
+        groups: EntryRows.setGroups(
+          await _repository.getEffortObservations(slot),
+        ),
+        wristLoggedAtMs: [for (final row in listed) row.loggedAtMs],
       );
-      // Does this row's stamp still claim a group? One stamp, the existing
-      // predicate: a row claims the first group on its slot carrying its stamp.
-      final claims = PhoneEntries.claimedBy(
-        groups: groups,
-        wristLoggedAtMs: [loggedAtMs],
-      );
-      if (claims.isEmpty) continue;
-      held.add(row.entryId);
+      for (final index in claims.stamps) {
+        held.add(listed[index].entryId);
+      }
     }
     return held;
   }
 
-  /// The `loggedAt` of every watch-inbox row that carries a set the wrist
-  /// logged in [sessionId], by slot (D-34).
+  /// The wrist's own inbox rows for [sessionId], by slot: each row's stamp and
+  /// entry id, ascending by stamp then entry id — the order `PhoneEntries` reads
+  /// a slot's stamps in.
   ///
   /// A row claims its group whether or not the phone has marked it applied:
   /// the importer writes an entry's rows *before* it marks the inbox row
@@ -309,8 +300,12 @@ class WatchSessionAdoptionBridge {
   /// away, since staged rows are never deleted (the repository's contract).
   /// `originWatch` means the wrist wrote the row rather than this phone
   /// annotating one, so a phone-annotated row never claims its own group.
-  Future<Map<String, List<int>>> _wristRowStamps(String sessionId) async {
-    final stamps = <String, List<int>>{};
+  ///
+  /// One reader for both the projection's stamps and the ids the wrist holds, so
+  /// the two cannot list different rows (F4).
+  Future<Map<String, List<({int loggedAtMs, String entryId})>>>
+  _wristRowsBySlot(String sessionId) async {
+    final bySlot = <String, List<({int loggedAtMs, String entryId})>>{};
     final rows = await _repository.getWatchInboxEntriesForSession(sessionId);
     for (final row in rows) {
       if (row.origin != WatchInboxEntry.originWatch) continue;
@@ -320,12 +315,27 @@ class WatchSessionAdoptionBridge {
       final slot = payload['sessionExerciseId'];
       final loggedAtMs = _loggedAtMs(payload['loggedAt']);
       if (slot is! String || slot.isEmpty || loggedAtMs == null) continue;
-      (stamps[slot] ??= []).add(loggedAtMs);
+      (bySlot[slot] ??= []).add((loggedAtMs: loggedAtMs, entryId: row.entryId));
     }
-    for (final slot in stamps.keys) {
-      stamps[slot]!.sort();
+    for (final listed in bySlot.values) {
+      listed.sort((a, b) {
+        final byStamp = a.loggedAtMs.compareTo(b.loggedAtMs);
+        if (byStamp != 0) return byStamp;
+        return a.entryId.compareTo(b.entryId);
+      });
     }
-    return stamps;
+    return bySlot;
+  }
+
+  /// The `loggedAt` of every watch-inbox row that carries a set the wrist
+  /// logged in [sessionId], by slot (D-34): `_wristRowsBySlot`'s stamps, which
+  /// is why the projection and `heldWristEntryIds` agree row for row.
+  Future<Map<String, List<int>>> _wristRowStamps(String sessionId) async {
+    final bySlot = await _wristRowsBySlot(sessionId);
+    return {
+      for (final entry in bySlot.entries)
+        entry.key: [for (final row in entry.value) row.loggedAtMs],
+    };
   }
 
   /// A wire instant in epoch ms, or null when the payload carries none.

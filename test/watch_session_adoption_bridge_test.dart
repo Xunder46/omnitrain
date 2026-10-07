@@ -19,6 +19,11 @@
 //   (S-103 and S-111 need the app's own screen and live in
 //    `test/watch_session_adoption_build_notify_test.dart`.)
 //
+// Plan: `docs/plans/2026-10-06-17c-watch-auto-sync-pr3-plan/2026-10-06-17c-watch-auto-sync-pr3-plan.md`,
+// review 1, F4 — D-112: the ids the push holds and the groups the projection
+// claims are read in one pass over a slot's stamps.
+//   F4 two rows of one slot sharing a stamp hold one id → `F4 ...`
+//
 // Every snapshot arrives through the real `LiveSessionMirrorState` behind the
 // real `WatchIncomingRouter`, so the bridge reads the reconciler's own converged
 // output and the wiring is part of what these tests prove. Plain `test()`: no
@@ -1047,6 +1052,106 @@ void main() {
         await repository.getSession('session-phone-empty'),
         isNull,
         reason: 'the older empty row is swept, not the wrist\'s session',
+      );
+    },
+  );
+
+  // F4: one row, one claim. The ids the push's ledger holds and the groups the
+  // projection leaves out are two readings of one rule, so a slot whose wrist
+  // rows outnumber its groups by a shared stamp must hold as many ids as the
+  // projection pairs with groups — never one id per row.
+  test(
+    'F4 two wrist rows of one slot that share a stamp hold one id — the row the '
+    'projection pairs with the slot\'s one group',
+    () async {
+      const at = 1780000000000;
+      const slot = 'sl-1';
+      final repository = await _repository();
+      await repository.createSession(
+        TrainingSession(
+          id: 's-1',
+          ownerUserId: LoggedEntryRows.ownerUserId,
+          startedAtMs: at,
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.createSegment(
+        LoggedEntryRows.defaultSegment(
+          id: 'segment-s-1',
+          sessionId: 's-1',
+          atMs: at,
+        ),
+      );
+      await repository.createEffort(
+        SegmentEffort(
+          id: slot,
+          segmentId: 'segment-s-1',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          effortKind: BlockTypes.set,
+          exerciseId: 'ex-bench',
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      // The slot's one group: the phone's own set, written in the millisecond
+      // both of the wrist's rows carry (D-34).
+      await repository.createObservation(repsRow(slot, 0, 5, atMs: at));
+
+      final loggedAt = DateTime.fromMillisecondsSinceEpoch(
+        at,
+        isUtc: true,
+      ).toIso8601String();
+      final rows = const ['entry-sl-1-0', 'entry-sl-1-1'];
+      for (final entryId in rows) {
+        await repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: entryId,
+            watchSessionId: 's-1',
+            kind: WatchInboxEntry.kindSet,
+            origin: WatchInboxEntry.originWatch,
+            payload: <String, dynamic>{
+              'entryId': entryId,
+              'eventId': entryId,
+              'kind': 'set',
+              'loggedAt': loggedAt,
+              'sessionExerciseId': slot,
+              'exerciseId': 'ex-bench',
+              'reps': 5,
+              'loadKg': 55.0,
+            },
+            receivedAtMs: at,
+          ),
+        );
+        await repository.markWatchInboxEntriesApplied([entryId], at);
+      }
+
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('s-1');
+
+      final projected = (await phone.bridge.projectSession(null))!;
+      expect(
+        [
+          for (final entry in projected['entries']! as List)
+            (entry as Map)['entryId'],
+        ],
+        isEmpty,
+        reason:
+            'the fixture: both rows carry the stamp of the slot\'s one group, '
+            'and the row that claims it is the wrist\'s, so the projection '
+            'pairs that group with a row and leaves none of its own to send '
+            '(D-34)',
+      );
+
+      expect(
+        await phone.bridge.heldWristEntryIds('s-1'),
+        {'entry-sl-1-0'},
+        reason:
+            'F4 the ledger names the one row the claim rule pairs with the '
+            'slot\'s one group: asking stamp by stamp instead names both rows, '
+            'and the push then reads the second row as a set the phone still '
+            'holds and never announces its deletion (D-112, S-122)',
       );
     },
   );

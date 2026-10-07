@@ -53,16 +53,29 @@ The frame is the existing shape, unchanged:
 {"kind": "delete_entry", "entryId": "entry-<slotId>-<n>"}
 ```
 
-inside one `structure_change` message with `changeId: 'del-<entryId>'`.
+inside one `structure_change` message with a changeId minted **per delete event**:
+`'del-<entryId>-<clock ms>-<serial>'`.
+
+**Amended 2026-10-07 (review 1, F2).** The plan said `changeId: 'del-<entryId>'`. That id is a
+function of the entry alone, so a *second* deletion of a number the phone re-used arrives under an id
+the wrist has already applied durably and is dropped as a re-delivery — TRAP 4's case, swallowed. The
+id is now derived from the event in the push (`_deleteChangeId`: the injected clock plus a per-push
+`_deleteSerial`), so the pair (same deletion retried → same id, different deletion → different id)
+both hold. D-116's re-delivery rule is unchanged and still what makes the retry safe.
 
 - **The changeId is derived, not minted.** `LiveSessionMirrorState.deleteEntry` (line 457) mints a
   fresh `_newId()` per call, which makes a re-assertion of the same deletion look like a new change.
-  The push needs a stable id: `'del-' + entryId` is unique (the entry id already names its slot, and
-  the slot id is a UUID) and stable across passes. Phase 1 adds a sibling
-  `LiveSessionMirrorState.deleteEntryAs(String entryId, {required String changeId})` next to
-  `deleteEntry`, which applies the change locally exactly as `deleteEntry` does and sends it with the
-  given changeId. `deleteEntry` keeps its behaviour (its tests stay green) and both funnel into
-  `applyStructureChange` (line 350).
+  The push needs an id that is stable across the retry of *one* deletion and new for a *different*
+  one, so it derives it from the event as above. Phase 1 adds a sibling
+  `LiveSessionMirrorState.deleteEntryAs(String sessionId, String entryId, {required String changeId})`
+  next to `deleteEntry`, which applies the change locally exactly as `deleteEntry` does and sends it
+  with the given changeId. `deleteEntry` keeps its behaviour (its tests stay green) and both funnel
+  into `applyStructureChange` (line 350).
+
+  **Amended 2026-10-07 (review 1, F3).** The call named only the entry and the mirror sent the frame
+  under *its* held session id, which is not the session the pass composed when the phone has switched
+  sessions; the wrist's guard refuses a frame for another session, so the deletion was invisible. The
+  session the deletion is about is now an argument, and the push passes the id it composed.
 - **Local first, wire second.** The frame is applied to the mirror's own state before it is sent, so
   the phone's converged view and the wrist's agree (`_sendOwn`'s existing order).
 - **Rejected:** a new frame type (the schema already expresses a deletion, and a new type means two
@@ -84,6 +97,21 @@ composed)`** → baseline compare → send the snapshot. Per pass:
 2. `vanished = _announced[composedId] − held`, announced one frame per id, **ascending entry id
    order** (deterministic, so a test can assert the order).
 3. `_announced[composedId] = held`.
+
+**Amended 2026-10-07 (review 1, F7).** `_announced` is what the wrist *was told*, so writing `held`
+into it on every pass is only true when every frame the pass composed reached the transport. A send
+that fails (or throws, or never completes) left the id recorded as announced with nothing announced,
+and no later pass could ever say it again — the deletion was lost for good, and S-122's case (an
+imported wrist entry deleted on the phone) has no second chance. The push now carries a second map,
+`_owed[sessionId]`: an id whose frame did not go in is moved there, retried on the next pass under the
+same changeId it was minted with (D-116 makes the retry safe), and only cleared once the send has
+succeeded or the id is held again (re-logged, so there is nothing to delete). `_announced` is written
+from `held ∪ owed` at the end of the pass. **Also amended:** the pass drops **both** maps for any
+other session, not `_owed` alone. The reviewed version dropped `_announced` for other sessions (base
+behaviour, D-114) and a first attempt at this fix kept that drop only for `_owed`, so a session left
+behind kept its ledger: coming back to it announced the ids it lost in between, which D-114 forbids.
+Pinned by `D-114 the session the phone comes back to seeds its ledger again, so the set it lost in
+between is not announced by the return pass` in `test/watch_session_auto_push_test.dart`.
 
 Rules that make this safe:
 
@@ -113,6 +141,16 @@ itself logged and the phone still holds.
   (`_wristRowStamps` at `watch_session_adoption_bridge.dart:271` + `PhoneEntries.claimedBy` in
   `lib/core/sync_protocol/phone_entries.dart`), reused rather than re-implemented: a row whose group
   the user deleted stops claiming, which is exactly TRAP 1's case.
+
+  **Amended 2026-10-07 (review 1, F4).** The claim test asked about **one row at a time**
+  (`claimedBy(groups, [loggedAtMs])` per row), and one group can be claimed by only one row. Two rows
+  of a slot sharing a stamp are therefore not two claims: read together, the first claims the group
+  and the second claims nothing. The row-by-row read said both claimed, so the phone held an id it no
+  longer did and never announced that set's deletion — S-122's own failure mode, back under a
+  different fixture. `PhoneEntries.resolveClaims` now answers the whole slot in one pass and returns
+  both the claimed group numbers and the **indexes** of the rows that claimed them, so
+  `heldWristEntryIds` and the projection are the same rule on the same list (`_wristRowsBySlot`, one
+  reader for both).
 - Why the bridge: it is the only place that already owns the claim rule and the inbox read behind the
   repository interface; the push takes it as an **injected seam** (like its existing `getSession`,
   passed by `createWatchSync` in `lib/state/watch/watch_sync_wiring.dart:~220`), so `lib/state/` keeps
@@ -138,6 +176,14 @@ Three rules, all in `_storeSnapshotEntry` / `applyStructureChange` / `restore` o
    (D-111), and the durable `appliedChangeIds` would swallow a repeat of the same changeId. **A
    tombstone that cannot be rebuilt from `restore()` is not a tombstone**, so re-assertion is not an
    alternative to this rule.
+
+   **Amended 2026-10-07 (review 1, F1).** "The row a structure change already appends" was too narrow
+   on the twin: `WatchSessionEngine.transitionTo` appends a session row of its own (a local
+   start/stop/switch, no incoming frame), and it wrote the union from the *in-memory* lens only after
+   the row was built — so a wrist restart after a purely local action restored an empty lens and the
+   deleted set came back (I-1/AC-5 failing on the Swift side only). The union is now written by the one
+   funnel every session row passes through (`storeSessionRow`), `carryingLens` included, which is what
+   Phase 2's twin already did.
 2. **A snapshot naming an id clears that id's tombstone (TRAP 4).** The phone is the structure
    authority (PROTOCOL authority rule 2), so an entry its snapshot carries exists. This is what makes
    a delete-then-re-create converge instead of leaving the entry invisible.
@@ -150,6 +196,14 @@ Three rules, all in `_storeSnapshotEntry` / `applyStructureChange` / `restore` o
    the existing merge (17b D-35, unchanged). The projection already sorts on the folded
    `payload['loggedAt']` (`_byLoggedAtThenEntryId`, `watch_session_engine.dart:1001`), so the
    re-created entry also lands in the right order.
+
+   **Amended 2026-10-07 (review 1, F5).** "Equal `loggedAt`" is a comparison of two *wire values*,
+   and the Dart twin compared the raw payload objects: two spellings of one instant (`700` and
+   `'700'`) are equal as instants and different as objects, so Dart would have replaced where Swift's
+   `sameStamp` merges. Each twin now normalises through its own one predicate (`_sameStamp` /
+   `sameStamp`) and the two spell the same rule. Not reachable through the validator today — every
+   `loggedAt` a message can carry is already a string — so this is alignment, not a fixed user-visible
+   bug (Assumption Log).
    - **Rejected:** making the minted wire id carry the stamp — correct in principle, but it churns
      every id assertion in `test/watch_session_projection_test.dart` (~40),
      `test/watch_session_auto_push_test.dart` (~11), the cross-stack tests and four fixtures, and
@@ -176,10 +230,17 @@ re-adds it — and if a snapshot ever does carry it, rule D-113.2 applies.
 
 ### D-116 — Re-delivery is a no-op on both sides
 
-`changeId = 'del-<entryId>'` means: a re-delivered frame is dropped by the durable
-`appliedChangeIds`, and the row it wrote (`chg-del-<entryId>`) has the same record id, so the store's
-duplicate-recordId no-op applies (PROTOCOL authority rule 6). This is what lets the phone re-announce
-without inventing a new id.
+`changeId = 'del-<entryId>-<clock ms>-<serial>'` means: a re-delivered frame is dropped by the durable
+`appliedChangeIds`, and the row it wrote (`chg-del-<entryId>-<clock ms>-<serial>`) has the same record
+id, so the store's duplicate-recordId no-op applies (PROTOCOL authority rule 6). This is what lets the
+phone re-announce without inventing a new id.
+
+**Amended 2026-10-07 (review 1, F2).** The plan wrote this rule around
+`changeId = 'del-<entryId>'`, which makes *every* deletion of one entry id the same change: the
+retry-safe half holds, but a second deletion of a number the phone re-used is then also dropped as a
+re-delivery and never reaches the wrist (TRAP 4, AC-6). The id is per delete event (D-110), so
+re-delivery and re-deletion are distinct, and this rule keeps its whole force for the retry the push
+makes (F7's owed frame is re-sent under the id it was minted with).
 
 ### D-117 — A skipped set and a set's added weight stay off the wire (owner default, stated plainly)
 
@@ -256,7 +317,7 @@ Only the invariants that bite in this feature. Project-wide rules live in
 
 | AC | Statement | Scenarios |
 |---|---|---|
-| AC-1 | A set logged on the phone and deleted on the phone disappears on the wrist, and the frame that carries it is `structure_change` with one `delete_entry` naming the entry id and `changeId: 'del-<entryId>'`. | S-120 |
+| AC-1 | A set logged on the phone and deleted on the phone disappears on the wrist, and the frame that carries it is `structure_change` with one `delete_entry` naming the entry id and a `changeId` minted per delete event (`del-<entryId>-<clock ms>-<serial>`). | S-120 |
 | AC-2 | Two deletions in one pass arrive as two frames in ascending entry-id order; a set logged and deleted inside one debounce window announces nothing. | S-121 |
 | AC-3 | An entry the wrist logged, the phone imported and the user then deleted is announced and disappears (TRAP 1). | S-122 |
 | AC-4 | The first pass after a binding/relaunch announces nothing, and the ledger seeds from the held set. | S-123 |
@@ -264,6 +325,14 @@ Only the invariants that bite in this feature. Project-wide rules live in
 | AC-6 | Delete a set, log a new one in the same slot (same minted id): the wrist shows the new set's own values, in `loggedAt` order, and not the deleted set's fields (TRAP 4). | S-125 |
 | AC-7 | A delete naming another session changes nothing; a delete delivered twice changes nothing the second time. | S-126 |
 | AC-8 | The doc statements — the delete rule, the durable lens and D-117's plain statement — each name an existing test, and no `docs/` file passes 64 KiB. | S-127 |
+
+**Amended 2026-10-07 (review 1, F2/F3/F4/F7).** AC-1 carried the literal `changeId: 'del-<entryId>'`
+and the acceptance of a frame whose only job is one deletion; both were narrower than the behaviour
+the feature needs. The changeId is per delete event (D-110/D-116), the frame names the session the
+deletion is about rather than the mirror's held one (D-110, F3), the ids the push holds come from the
+same single pass as the projection's claims (D-112, F4), and a frame that did not reach the transport
+stays owed (D-111, F7). S-120's and S-122's stated outcomes are unchanged; the id shape inside them
+is not.
 
 ## Existing-Functionality Impact
 
@@ -292,13 +361,15 @@ Every row carries the read that proves it. An "unaffected" row must carry its gr
   two logged sets, `entry-bench-1` (60 kg × 5, `loggedAt` 1000) and `entry-bench-2` (60 kg × 5,
   `loggedAt` 2000); a Mock-backed push bound to that session, having completed one pass so the ledger
   has seeded both ids; a wrist engine (Dart twin) holding both from the previous snapshot.
-- **Trigger:** delete set 2 on the phone (`LiveSessionMirrorState.deleteEntryAs('entry-bench-2',
-  changeId: 'del-entry-bench-2')` via the push's next pass; the UI path is `deleteEntry` on the
-  session core).
+- **Trigger:** delete set 2 on the phone (`WorkoutState.deleteEntry` / `LiveSessionMirrorState.deleteEntry`,
+  the user path) and let the push's next pass announce it — the pass calls
+  `deleteEntryAs(<composed session>, 'entry-bench-2', changeId: 'del-entry-bench-2-<clock ms>-<serial>')`
+  (review 1 F2/F3: the id is per delete event and the frame names the composed session).
 - **Flow:** the push composes → `held` = `{entry-bench-1}` → `vanished` = `{entry-bench-2}` → one
   frame → the snapshot (one entry).
 - **Expected outcome:** exactly one `structure_change` frame, `changes == [{'kind': 'delete_entry',
-  'entryId': 'entry-bench-2'}]`, `changeId == 'del-entry-bench-2'`; the wrist's `entries` no longer
+  'entryId': 'entry-bench-2'}]`, `changeId` starting `del-entry-bench-2-` (amended 2026-10-07,
+  review 1 F2: the id is per delete event); the wrist's `entries` no longer
   contains `entry-bench-2`, still contains `entry-bench-1`, and the wrist's observation store still
   has the row (I-3).
 - **Edge case of:** none.
@@ -405,10 +476,10 @@ Every row carries the read that proves it. An "unaffected" row must carry its gr
    `EntryRows.setGroups(await _repository.getEffortObservations(effortId))` and return the `entryId`
    of every row whose stamp still claims a group (`PhoneEntries.claimedBy`). Doc comment cites D-112
    and the 17d boundary. · `WatchSessionAdoptionBridge:heldWristEntryIds`
-2. [ ] Add `deleteEntryAs(String entryId, {required String changeId})` beside
+2. [ ] Add `deleteEntryAs(String sessionId, String entryId, {required String changeId})` beside
    `LiveSessionMirrorState.deleteEntry` (`lib/state/watch/live_session_mirror_state.dart:457`): build
-   the same `structure_change` envelope with the given `changeId`, apply it locally (the same call
-   `deleteEntry` makes) and send it. `deleteEntry` keeps minting its own id. · `LiveSessionMirrorState:deleteEntryAs`
+   the same `structure_change` envelope **under `sessionId`** with the given `changeId`, apply it
+   locally (the same call `deleteEntry` makes) and send it. `deleteEntry` keeps minting its own id. · `LiveSessionMirrorState:deleteEntryAs`
 3. [ ] Add the ledger and the diff to `WatchSessionAutoPush` (`lib/state/watch/watch_session_auto_push.dart`):
    a `Map<String, Set<String>> _announced` field; in `_pushOnce` compose → `_remember` →
    `await _announceDeletions(composedId, composed)` → baseline compare → `_mirror.sendState`. ·
@@ -416,8 +487,10 @@ Every row carries the read that proves it. An "unaffected" row must carry its gr
 4. [ ] Implement `_announceDeletions(String sessionId, Map<String, Object?> composed)` in the same
    file: `held = payload entry ids ∪ await _heldWristEntryIds!(sessionId)`; if `_announced` has no
    entry for the session, store `held` and return; otherwise send one
-   `deleteEntryAs(id, changeId: 'del-$id')` per id in `_announced[sessionId] − held`, ascending, then
-   store `held`. Drop the entry for any other session id (D-111). ·
+   `deleteEntryAs(sessionId, id, changeId: 'del-$id-<clock ms>-<serial>')` per id in
+   `_announced[sessionId] − held`, ascending, then store `held`. Drop the entry for any other session
+   id (D-111). A frame whose send did not go in stays owed under the id it was minted with (D-111,
+   review 1 F2/F7). ·
    `WatchSessionAutoPush:_announceDeletions`
 5. [ ] Add the `heldWristEntryIds` seam to the constructor and its call site:
    `WatchSessionAutoPush(...)` takes `Future<Set<String>> Function(String sessionId) heldWristEntryIds`
@@ -545,10 +618,11 @@ baseline in the evidence file; do not assume it).
 - `watch/watchos/Sources/WatchSessionEngine/FileWatchSessionStore.swift` (Phase 3)
 - `watch/sync_protocol/PROTOCOL.md` (Phase 3)
 - `docs/watch_session_sync.md`, `docs/state_management/watch_surface.md` (Phase 3)
+- `lib/core/sync_protocol/phone_entries.dart` — `resolveClaims` (fix round 1, review 1 F4); the plan
+  listed this file as a reader only
 - Tests (as listed per phase). Readers only: `test/phone_manage_bridge_test.dart`,
   `test/watch_session_import_test.dart`, `test/watch_session_edit_restore_late_entry_test.dart`,
-  `test/docs_indexing_contract_test.dart`, `lib/core/utils/entry_rows.dart`,
-  `lib/core/sync_protocol/phone_entries.dart`.
+  `test/docs_indexing_contract_test.dart`, `lib/core/utils/entry_rows.dart`.
 
 ## Notes
 
@@ -610,6 +684,22 @@ never sent to the phone (the wrist has no delete sender, and no rule here adds o
   - [x] 5 `docs/watch_session_sync.md` — the delete bullet is the rule, the lens is durable, D-117's two statements; four mutation proofs in the evidence file (`prove-red` cannot compile the new API at the base commit)
   - [x] 6 `docs/state_management/watch_surface.md` — the two D-118 invariants and the stale S-35 pointer; the docs contract test enumerates no claims, so S-127 stays the reviewer's; evidence + this Progress
   - [x] checks — four suites `+109`, full `test` `+4042 ~1`, `lint` 196 issues / 0 errors, invariant clean; the two unscheduled Swift suites (`WatchPhoneEntriesTests`, `WatchFileStoreTests`) are covered by the full `swift-test` run
+- [x] Fix round 1 — the code review's F1–F5 and F7 — **Complete** (developer, 2026-10-07; base
+  `HEAD 7888050`)
+  - [x] F1 (blocker) Swift `transitionTo` kept the lens — the union is written by one helper (`carryingLens`) that it shares with `storeSessionRow`; `WatchSessionEngineTests.testF1ALocalTransitionAfterADeleteKeepsTheLens`, `prove-red HEAD swift-test --filter` → **RED AT HEAD**; the Dart parity pair (`F1 the set stays hidden when the wrist advances after the delete` / `…finishes after the delete`, `test/watch_session_engine_test.dart`) passes at base, which is what it is there for
+  - [x] F2 (major) the delete changeId is per delete event (`del-<entryId>-<clock ms>-<serial>`), so a second deletion of a re-used number is not a re-delivery; `F2 a deletion is announced per delete event, not per entry`, **RED AT HEAD**
+  - [x] F3 (major) the frame names the session the pass composed, not the mirror's held one (`deleteEntryAs(sessionId, entryId, {changeId})`); `F3 …`, **RED AT HEAD**
+  - [x] F4 (major) `PhoneEntries.resolveClaims` — one pass over a slot's stamps returns the claimed groups *and* the rows that claimed them, so `heldWristEntryIds` cannot hold two rows for one group; `F4 …`, **RED AT HEAD**
+  - [x] F5 (minor) the Dart twin's stamp comparison is `_sameStamp`, the same rule as Swift's `sameStamp`; normalisation only (Assumption Log)
+  - [x] F7 (governor) a frame whose send did not reach the transport stays owed and is re-sent under the id it was minted with; `F7 …`, **RED AT HEAD**
+  - [x] regression found while fixing F7 — the `_announced` ledger must still be dropped for other sessions (D-114); `D-114 …` is the pin
+  - [x] tests — `test/watch_session_auto_push_test.dart` 35 passed / 0 failed (was 31; four tests across the F2, F3 and F7 groups), `test/watch_session_adoption_bridge_test.dart` 17 passed / 0 failed (was 16; the F4 case), `test/watch_session_engine_test.dart` +2 (F1's Dart parity pair, green at base by design); prove-red verdicts in the evidence file
+  - [x] one existing test narrowed by the amendment — `test/watch_session_projection_test.dart:1911`
+    pinned the composed id's pre-F2 literal (`'del-entry-slot-bench-1'`); now the `del-<entryId>-` shape
+    (Assumption Log fix round 1, 6; flagged in Feedback for ratification)
+  - [x] plan amended — D-110, D-111, D-112, D-113 (1 and 3), D-116, AC-1, the Phase 1 iteration text, Files Affected
+  - [x] docs — `docs/watch-app-setup-and-qa.md`, `docs/watch_session_sync.md`, `docs/state_management/watch_surface.md`; every behaviour sentence names a test that exists
+  - [x] checks — `lint` 196 issues / 0 errors (none in a touched file), full `test` `+4048 ~1: All tests passed!`, `swift-test` 334 / 0, invariant clean; the counts and the two earlier full runs (`+4045 ~1 -1`, `+4046 ~1`) are in the evidence file
 
 ## Assumption Log
 
@@ -699,6 +789,36 @@ Phase 3 (developer, 2026-10-07). Each entry: decision / options considered / why
    nothing. Each of the four guards was mutated alone, run, restored exactly (`git-diff --stat` back to
    the phase's own 4 Swift files), and re-run green; the verdicts are in the evidence file.
 
+Fix round 1 (developer, 2026-10-07). Each entry: decision / options considered / why.
+
+1. **One reader for the ids held and the groups claimed.** `_wristRowsBySlot` returns
+   `(loggedAtMs, entryId)` per row and `PhoneEntries.resolveClaims` returns the claimed groups plus the
+   **indexes** of the claiming stamps — indexes, not ids, because two rows can carry one stamp and the
+   claim is about the row the pass read. `heldWristEntryIds` and the projection share it.
+2. **F5 is alignment, not a fix: no test can reach the branch.** Swift's `sameStamp` normalises a
+   stamp that is not a string, and `WatchProtocolValidator` rejects such a payload before either twin
+   sees it, so the Dart difference could only be shown by calling the engine with hand-built state. It
+   is recorded in the evidence file instead of being pinned by a test that a validator change would
+   silently un-pin. Revertible in one predicate if the owner wants the branch driven directly.
+3. **The F2 changeId's two halves come from the push's own injected clock plus a per-push counter.**
+   Options: the entry id plus the mirror's `_newId()`, or the clock plus `_deleteSerial`. The clock
+   alone can repeat inside one millisecond and `_newId()` is not derived (D-110 rejects it), so the
+   tests pin the pair by shape and by uniqueness, never by a wall-clock value.
+4. **The D-114 ledger drop was restored, not re-designed.** Dropping `_announced` for other sessions is
+   base behaviour the F7 rewrite must keep; the fixed pass drops both maps together. The existing
+   `D-114 …` test is the pin and was not edited.
+5. **The review's AC-1 escalation is answered in the plan, not deferred.** The brief names the AC-1,
+   D-110 and D-116 amendments, so the fix round wrote them (each marked `amended 2026-10-07 (review 1,
+   F…)`) rather than leaving the wording to a fresh planning session. The owner can revert one bullet
+   without touching code.
+6. **`test/watch_session_projection_test.dart:1911` was widened to the new id shape, per the brief's
+   item 2** ("the S-120 / flipped S-35 assertions that pin `'del-<entryId>'`"). It now reads
+   `startsWith('del-entry-slot-bench-1-')`; intent unchanged (the id names the entry), and it is the
+   only literal the amendment made false. Full run before: `+4045 ~1 -1`; see Feedback.
+7. **The brief's base commit `9312088` is not this tree's `HEAD` (`7888050`).** `prove-red HEAD …` and
+   every `git-diff` view ran against the working tree's own `HEAD`, which is the tree review 1 read.
+   Recorded so the evidence's "HEAD" is unambiguous.
+
 ## Feedback
 
 - **D-113.2's literal wording contradicts this plan's own impact table** (developer, Phase 2,
@@ -707,6 +827,13 @@ Phase 3 (developer, 2026-10-07). Each entry: decision / options considered / why
   Existing-Functionality Impact requires that family to stay green. Phase 2 shipped the scoped reading
   (Assumption Log 3) and is **Complete**; the planner should ratify that wording — or say the S-35
   guard is meant to flip, which is a one-predicate change (evidence mutation b).
+- **Fix round 1 narrowed one existing assertion to the amended id shape, at the brief's item 2.**
+  `test/watch_session_projection_test.dart`'s flipped S-35 case pinned the push's composed `changeId`
+  as the literal `'del-entry-slot-bench-1'` (the pre-F2 shape), which made the full run `+4045 ~1 -1`.
+  The brief names that class of assertion ("the S-120 / flipped S-35 assertions that pin
+  `'del-<entryId>'`") and says to move it to the prefix shape, so the line now reads
+  `startsWith('del-entry-slot-bench-1-')` (Assumption Log, fix round 1, 6). No other test pins the
+  composed id by literal, and no test was loosened further than that prefix.
 - **Reviewer, 2026-10-07 (round 1): CHANGES_REQUESTED.** The full findings, the guard each fix must
   add, and the two escalations are in `2026-10-06-17c-watch-auto-sync-pr3-plan.review.md` under
   "Code review 1". In short: (1) **blocker** — the Swift `transitionTo` writes its session row without

@@ -38,7 +38,9 @@
 /// 4. **A set that vanished is announced** (D-110). The push is the only
 ///    component that knows what the wrist was last told, so it keeps that ledger
 ///    per session (D-111) and sends one `delete_entry` for every id that was in
-///    it and is no longer held. The first pass for a session only seeds it.
+///    it and is no longer held. The first pass for a session only seeds it. Each
+///    deletion carries a change id minted per *event* (F2) and an id whose frame
+///    the transport threw on stays owed until it has gone (F7).
 ///
 /// It persists nothing and writes nothing: it reads the phone's session through
 /// the projection and the mirrored session's row through [getSession], and sends.
@@ -60,12 +62,14 @@ class WatchSessionAutoPush {
     Future<Set<String>> Function(String sessionId)? heldWristEntryIds,
     Duration debounce = const Duration(milliseconds: 250),
     Duration sendTimeout = const Duration(seconds: 10),
+    DateTime Function()? clock,
     void Function(Object error, StackTrace stack)? onFailure,
   }) : _mirror = mirror,
        _getSession = getSession,
        _heldWristEntryIds = heldWristEntryIds ?? _noWristEntries,
        _debounce = debounce,
        _sendTimeout = sendTimeout,
+       _clock = clock ?? DateTime.now,
        _onFailure = onFailure;
 
   /// No ids of the wrist's own: the default for a push built without the
@@ -93,6 +97,11 @@ class WatchSessionAutoPush {
   /// app run — every later frame would be dropped by the `_again` branch. A
   /// constructor knob so tests drive it.
   final Duration _sendTimeout;
+
+  /// The phone's wall clock, for the stamp a deletion frame's change id carries
+  /// (F2) — the same clock the graph stamps with. A constructor knob so tests
+  /// pin it.
+  final DateTime Function() _clock;
 
   /// Where a failure the push can report — a pass that timed out (D-98), or an
   /// `Exception` a pass could not read past — goes. An `Error` is not reported
@@ -125,8 +134,24 @@ class WatchSessionAutoPush {
   /// phone that leaves a session and comes back re-seeds rather than comparing
   /// the held session against another session's ids (D-114). Memory-only, and
   /// that is the contract: a relaunch re-seeds from what the phone holds now
-  /// (D-111).
+  /// (D-111). An id whose frame the transport threw on stays in it (F7).
   final Map<String, Set<String>> _announced = {};
+
+  /// The deletions that have not gone out yet, per composed session, by entry id
+  /// → the change id that event was minted (F2, F7).
+  ///
+  /// An entry leaves it when its frame has been handed to the mirror, and the
+  /// change id it carries is minted once per deletion event and reused while the
+  /// frame is owed: a transport that fails the future costs a retry, never a new
+  /// change that would make the wrist apply the deletion twice. Dropped with the
+  /// ledger (D-114), except that an id the payload carries again — re-created
+  /// under a reused number — supersedes its deletion and is released at once.
+  final Map<String, Map<String, String>> _owed = {};
+
+  /// How many deletion frames this push has minted a change id for. Part of the
+  /// id rather than the whole of it, so two deletion events inside one
+  /// millisecond are still two changes (F2).
+  int _deleteSerial = 0;
 
   /// The drain a running [flush] is, and whether another pass was asked for
   /// while it ran. Two flushes that overlap are one drain (F4).
@@ -225,20 +250,29 @@ class WatchSessionAutoPush {
   /// `held` is what the wrist holds now: the ids the payload carries — the
   /// phone's own and the wrist's imported ones (D-112) — plus nothing else. The
   /// ids that were in the ledger and are not in `held` have vanished since the
-  /// last pass, and each goes out as
-  /// `deleteEntryAs(id, changeId: 'del-$id')`, in ascending id order so the
-  /// frames are the same whichever store returned the rows in whichever order.
+  /// last pass, and each goes out as a `deleteEntryAs(sessionId, …)` naming
+  /// [sessionId], in ascending id order so the frames are the same whichever
+  /// store returned the rows in whichever order.
+  ///
+  /// Each id carries a change id minted once per deletion *event* (F2, D-116):
+  /// `del-<entryId>-<stamp>-<n>`. The wrist drops a change id it has already
+  /// applied, and it does so durably, so a fixed `del-<entryId>` would make it
+  /// swallow the second deletion of a number the phone re-used. The stamp makes
+  /// two events in two app runs differ, the serial two events inside one
+  /// millisecond, and the event's own id is kept while its frame is owed.
+  ///
+  /// Every id that vanished stays in the ledger until its frame has gone (F7):
+  /// a transport that fails the future for a send leaves the id owed, with the
+  /// change id it was minted with, so a later pass announces it instead of
+  /// losing the deletion for the rest of the app run. An id the payload carries
+  /// again was re-created, which supersedes the deletion and releases it; the
+  /// frames still go out in the order the ids sort in.
   ///
   /// The first pass for a session only seeds the ledger and announces nothing
   /// (S-123): nothing has vanished yet, and announcing the difference against an
   /// empty set would delete everything the wrist already held. A session the
   /// push composes nothing of is not a pass of its own — the caller does not
   /// call this at all, so a phone browsing a past session keeps its ledger.
-  ///
-  /// A deletion only ever names an id the phone itself announced holding, and
-  /// the ids are slot-scoped, so a stale ledger cannot name the held session's
-  /// entries: the frame is scoped to the session the mirror holds and the
-  /// wrist's guard refuses any other session (D-114).
   Future<void> _announceDeletions(
     String sessionId,
     Map<String, Object?> composed,
@@ -253,15 +287,43 @@ class WatchSessionAutoPush {
     };
 
     final previous = _announced[sessionId] ?? const <String>{};
-    _announced
-      ..removeWhere((id, _) => id != sessionId)
-      ..[sessionId] = held;
+    final owed = _owed[sessionId] ??= <String, String>{};
+    _owed.removeWhere((id, _) => id != sessionId);
+    // Both ledgers belong to [sessionId] alone: a pass of another session drops
+    // them, so a phone that leaves and comes back seeds again from what it holds
+    // then instead of comparing against ids it announced before the switch
+    // (D-114).
+    _announced.removeWhere((id, _) => id != sessionId);
+    // The ids belong to [sessionId] alone: the mirror's own session can differ
+    // — a wrist that started its own workout — and applying the frame to it
+    // would hide an entry of a session the frame does not name (F3).
+    owed.removeWhere((entryId, _) => held.contains(entryId));
 
     final vanished = previous.difference(held).toList()..sort();
     for (final entryId in vanished) {
-      await _mirror.deleteEntryAs(entryId, changeId: 'del-$entryId');
+      owed.putIfAbsent(entryId, () => _deleteChangeId(entryId));
+    }
+    try {
+      for (final entryId in vanished) {
+        await _mirror.deleteEntryAs(
+          sessionId,
+          entryId,
+          changeId: owed[entryId]!,
+        );
+        owed.remove(entryId);
+      }
+    } finally {
+      // Whatever did not go out is still owed — and still expected by the
+      // wrist — so the next pass sees it as vanished and announces it again.
+      _announced[sessionId] = {...held, ...owed.keys};
     }
   }
+
+  /// The change id of one deletion *event* (F2, D-116): the entry it names, the
+  /// instant the event was first seen, and a serial so two events inside one
+  /// millisecond are still two changes.
+  String _deleteChangeId(String entryId) =>
+      'del-$entryId-${_clock().millisecondsSinceEpoch}-${_deleteSerial++}';
 
   /// Hands [error] to the injected failure hook, when the graph gave one.
   void _report(Object error, StackTrace stack) => _onFailure?.call(error, stack);

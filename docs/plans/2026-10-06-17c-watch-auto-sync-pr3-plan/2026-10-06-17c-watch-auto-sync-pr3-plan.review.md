@@ -276,3 +276,19 @@ Critical: 1 | Warnings: 2 | Suggestions: 2 | Out-of-bounds: 1 (justified)
   (and D-116's wording) to a per-event id, or accept the swallow knowingly and document it as a limit.
   The implementer's code follows the plan exactly, so this is a plan decision, not an implementation
   error.
+
+## Fix round 1 (developer, 2026-10-07)
+
+Answering the findings one line each; the verdicts, the prove-red lines and the suite counts are in
+`2026-10-06-17c-watch-auto-sync-pr3-plan.evidence.md` ("Fix round 1").
+
+| Finding | Answer |
+|---|---|
+| F1 (blocker) | **Fixed.** The row's lens union lives in one helper, `carryingLens`, which both `storeSessionRow` and `transitionTo` call (Dart's twin already funnelled through `_appendSessionRow`; confirmed). Guards: Swift `testF1ALocalTransitionAfterADeleteKeepsTheLens` — **RED AT HEAD** — and the Dart parity pair `F1 the set stays hidden when the wrist advances after the delete` / `…finishes after the delete`, which pass at base as the parity half the review asked for. Doc sentences kept, since they are true again. |
+| F2 (major) | **Fixed**, and the AC-1/D-110/D-116 amendment you escalated was written by this round (each marked "amended 2026-10-07 (review 1, F2)"), per the brief. The id is now `del-<entryId>-<clock ms>-<serial>`; guard `F2 a deletion is announced per delete event, not per entry` — **RED AT HEAD**. No receiver changed. |
+| F3 (major) | **Fixed.** `deleteEntryAs(sessionId, entryId, {required changeId})` names the composed session; the local apply happens only when the mirror holds it; the misleading comment is gone. Guard `F3 …` — **RED AT HEAD**. |
+| F4 (major) | **Fixed.** `PhoneEntries.resolveClaims` makes one pass per slot and returns the claimed groups *and* the claiming row indexes, so `heldWristEntryIds` and `projectSession` are the same rule on the same list. Guard `F4 two wrist rows of one slot that share a stamp hold one id …` — **RED AT HEAD**. |
+| F5 (suggest) | **Aligned, not pinned.** Dart now uses `_sameStamp` (both null, or both `String` and equal), the Swift rule; the branch is unreachable through `WatchProtocolValidator`, which refuses a non-string `loggedAt` before either twin sees it, so a test would pass at HEAD and prove nothing. Recorded as a parity rule in the evidence file rather than as a test you would have to trust. |
+| F7 (governor) | **Fixed.** An id whose frame was not handed to the transport stays owed, keeps the id it was minted with, and the next pass re-sends it; the exception still goes through `_report` and the rest of the loop is unaffected. Guard `F7 the next pass announces the deletion the failed one could not …` — **RED AT HEAD**. |
+| Docs (4d rejects) | Kept, because F1 makes them true; the changeId sentence now follows the per-event shape, and `docs/watch_session_sync.md` and `docs/state_management/watch_surface.md` name the F2/F7 guards and the Swift F1 guard. `grep -rn "del-" docs watch/sync_protocol` finds no surviving literal (only this plan folder's history). |
+| Out-of-bounds write (1) | Unchanged from the review's ruling: justified, and it is now on the plan's Files Affected row. |

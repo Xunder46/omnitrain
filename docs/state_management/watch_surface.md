@@ -604,7 +604,16 @@ enforcement at the storage API`).
 row.** The push names the dropped set first — a `delete_entry` frame the wrist
 applies — and only then sends the snapshot the set is no longer in, so the set
 leaves the wrist as a deliberate removal and never as a disagreement to be
-reconciled (D-113, D-115). Verified by `test/watch_session_auto_push_test.dart`
+reconciled (D-113, D-115). Each deletion carries an id of its own (D-110), so a
+number the phone re-used and dropped again is announced again rather than read
+as a repeat, and an announcement the transport could not carry is owed: the
+next push sends it under the id it was minted with, not a new one
+(`test/watch_session_auto_push_test.dart`,
+`F2 a number the phone re-used and dropped again is announced again, under a
+change id the wrist has not applied` and
+`F7 the next pass announces the deletion the failed one could not, under the
+change id it was minted with`). Verified by
+`test/watch_session_auto_push_test.dart`
 (`S-120 the push names the set the phone dropped, in a frame the wrist applies,
 before the snapshot that no longer carries it`); the wrist's half — a delete for
 an id it does not hold is refused, and a repeat is a no-op — by
@@ -614,7 +623,9 @@ phone sent and the id it replaced live only in the running engine, so a relaunch
 reads the held rows plus the lens the session carries, never the corrections: an
 edit is delivered again rather than remembered (D-50). The lens goes the other
 way, because a hidden set cannot be re-derived from the rows — the row is still
-there — so every session row written after a deletion carries that deletion, and
+there — so every session row written after a deletion carries that deletion,
+including one the wrist writes itself when it stops or transitions
+(`WatchSessionEngineTests.testF1ALocalTransitionAfterADeleteKeepsTheLens`), and
 the set stays hidden across a relaunch (`test/watch_session_engine_test.dart`,
 `S-124 the deleted set stays hidden across a restart` and `S-124 the lens rides
 on the rows written after it`; `WatchFileStoreTests.testS124TheLensSurvivesAStoreReopen`)

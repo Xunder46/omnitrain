@@ -791,7 +791,7 @@ class WatchSessionEngine {
     _unhideTheIdTheSnapshotNames(entry);
     if (_observations.any((row) => row.recordId == entryId)) {
       final held = _heldPayload(entryId);
-      if (held != null && held['loggedAt'] != entry['loggedAt']) {
+      if (held != null && !_sameStamp(held['loggedAt'], entry['loggedAt'])) {
         // D-113.3: the phone mints the highest number + 1, so deleting the
         // newest set of a slot and logging another reuses its id for a
         // different entry. A merge would keep a field the new entry does not
@@ -834,8 +834,23 @@ class WatchSessionEngine {
   void _unhideTheIdTheSnapshotNames(Map<String, Object?> entry) {
     final entryId = entry['entryId']! as String;
     final held = _heldPayload(entryId);
-    if (held != null && held['loggedAt'] == entry['loggedAt']) return;
+    if (held != null && _sameStamp(held['loggedAt'], entry['loggedAt'])) return;
     _deletedEntryIds.remove(entryId);
+  }
+
+  /// Whether two `loggedAt` values name the same instant (F5): both absent, or
+  /// both a wire instant spelled the same.
+  ///
+  /// The Swift twin's `sameStamp` reads exactly this — `nil, nil` is the same
+  /// stamp, and anything that is not a string on either side is not — so
+  /// comparing the values with `==` would let a non-string stamp on one side
+  /// answer differently in the two engines: this one would call two equal
+  /// non-strings the same entry and hide the row D-113.3 replaces. Wire stamps
+  /// are strings, so the rule is unchanged for them.
+  static bool _sameStamp(Object? a, Object? b) {
+    if (a == null || b == null) return a == null && b == null;
+    if (a is! String || b is! String) return false;
+    return a == b;
   }
 
   /// The payload [entries] shows for [entryId] right now, before any deletion —

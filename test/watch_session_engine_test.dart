@@ -1539,6 +1539,106 @@ void main() {
     });
   });
 
+  group('F1 a local transition keeps the deletion the phone sent', () {
+    // The Dart twin funnels every session row through `_appendSessionRow`, which
+    // writes the lens union; this pair is the parity guard for the Swift fix, so it
+    // passes at base as well (review 1's F1 was Swift-only).
+    test('F1 the set stays hidden when the wrist advances after the delete',
+        () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench'), _exercise('sx-row')],
+      );
+      await engine.applyMessage(
+        _snapshot(
+          harness.sessionId,
+          messageId: 'msg-f1-1',
+          revision: 1,
+          entries: [_entry('entry-bench-1'), _entry('entry-bench-2')],
+        ),
+      );
+      await engine.applyMessage(
+        _structureChange(
+          harness.sessionId,
+          changeId: 'del-entry-bench-1',
+          changes: [
+            {'kind': 'delete_entry', 'entryId': 'entry-bench-1'},
+          ],
+        ),
+      );
+
+      await engine.advanceExercise();
+
+      final relaunched = await harness.runningEngine();
+
+      expect(
+        relaunched.session?.deletedEntryIds,
+        ['entry-bench-1'],
+        reason:
+            'F1 the row a local transition writes carries the deletion the phone '
+            'sent, so the newest row still speaks for it',
+      );
+      expect(
+        relaunched.entries.map((entry) => entry.entryId),
+        ['entry-bench-2'],
+        reason: 'F1 a wrist advance after a delete does not resurrect the set',
+      );
+    });
+
+    test('F1 the set stays hidden when the wrist finishes after the delete',
+        () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _snapshot(
+          harness.sessionId,
+          messageId: 'msg-f1-2',
+          revision: 1,
+          entries: [_entry('entry-bench-1'), _entry('entry-bench-2')],
+        ),
+      );
+      await engine.applyMessage(
+        _structureChange(
+          harness.sessionId,
+          changeId: 'del-entry-bench-1',
+          changes: [
+            {'kind': 'delete_entry', 'entryId': 'entry-bench-1'},
+          ],
+        ),
+      );
+
+      await engine.finishSession();
+
+      final relaunched = await harness.runningEngine();
+
+      expect(
+        relaunched.session?.deletedEntryIds,
+        ['entry-bench-1'],
+        reason:
+            'F1 the end row the wrist writes carries the deletion the phone sent',
+      );
+      final relaunchedIds =
+          relaunched.entries.map((entry) => entry.entryId).toList();
+      expect(
+        relaunchedIds,
+        contains('entry-bench-2'),
+        reason:
+            'F1 the set the phone kept is still there after the wrist finished',
+      );
+      expect(
+        relaunchedIds,
+        isNot(contains('entry-bench-1')),
+        reason: 'F1 a wrist finish after a delete does not resurrect the set',
+      );
+    });
+  });
+
   group('S-125 a re-created set under a reused number is not swallowed (TRAP 4)', () {
     test('S-125 the wrist shows the new set\'s own fields', () async {
       final harness = _Harness();
