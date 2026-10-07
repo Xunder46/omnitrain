@@ -21,7 +21,10 @@
 //   S-40 two sessions do not share entries                → `S-40 ...`
 //   S-41 the wrist's own set survives an answer           → `S-41 ...`
 //   S-43 the phone is unreachable at Sync                 → `S-43 ...`
-//   S-35/D-35 an edit reaches the wrist, a delete does not → `S-35 ...`
+//   S-35/D-35 an edit reaches the wrist, and a delete is announced as a
+//        structure change, not carried by the answer  → `S-35 ...`
+//        (D-110/D-114, plan 2026-10-06-17c-watch-auto-sync-pr3-plan: the
+//        announcement itself is S-120..S-123 in watch_session_auto_push_test)
 //   S-59 a snapshot carries the assist, and omits only the
 //        row without reps                                 → `S-59 ...`
 //   S-60 the floor is carried, one step below it is not   → `S-60 ...`
@@ -167,6 +170,21 @@ List<String> _entryIds(Map<String, Object?> payload) => [
   for (final entry in _objects(payload['entries']))
     entry['entryId']! as String,
 ];
+
+/// The wrist's own snapshot of a session, with no entries of its own.
+///
+/// A wrist copy carrying the entries the phone pushed would claim the phone's
+/// own groups as rows the wrist logged (D-112) and the projection would then
+/// omit them; which is right for a wrist that really logged them, and wrong for
+/// a fixture whose sets are the phone's. The ladder is kept, because holding it
+/// is what makes the phone's mirror hold the session at all (D-114).
+Map<String, Object?> _wristCopyWithoutEntries(Map<String, Object?> snapshot) => {
+  ...snapshot,
+  'payload': <String, Object?>{
+    ..._payload(snapshot),
+    'entries': const <Object?>[],
+  },
+};
 
 /// The answer's entries as `entryId → loadKg`, decoded — never matched as a
 /// substring, so `-200` and `-200.1` cannot be confused (S-60). An entry with no
@@ -1755,7 +1773,7 @@ void main() {
       );
     });
 
-    test('S-35 an edit reaches the wrist and a delete is not sent', () async {
+    test('S-35 an edit reaches the wrist and a delete is announced', () async {
       await seed('sess-1', [
         (reps: 8, loadKg: 60.0, skipped: false, atMs: _at(1)),
         (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(2)),
@@ -1827,7 +1845,21 @@ void main() {
             'nothing, so the set is never doubled',
       );
 
-      // A delete: the phone drops the set it logged second.
+      // A delete: the phone drops the set it logged second. An answer cannot
+      // carry an absence, so the delete is announced as a structure change on
+      // the push's next pass (D-110) — and the frame names the session only
+      // because the phone's mirror holds it, which here means the wrist's copy
+      // has been handed back, the way it is after a hand-over.
+      graph.autoPush.bindWorkoutState(phoneState);
+      await graph.autoPush.flush();
+      expect(
+        radio.ofType('structure_change'),
+        isEmpty,
+        reason:
+            'S-123 the first pass of a session seeds the announced ledger: '
+            'nothing has vanished yet, so nothing is announced',
+      );
+
       for (final metricKey in ['reps', 'weight']) {
         await repository.deleteObservation(
           LoggedEntryRows.observationId('slot-bench', 1, metricKey),
@@ -1849,8 +1881,62 @@ void main() {
         [for (final entry in engine.entries) entry.entryId],
         ['entry-slot-bench-0', 'entry-slot-bench-1'],
         reason:
-            'D-38 the wrist holds a row the phone no longer names until its own '
-            'session is replaced: nothing in the answer takes it away',
+            'D-38 the answer alone takes nothing away — which is the gap the '
+            'announcement below fills (D-110)',
+      );
+
+      await radio.fromWrist(_wristCopyWithoutEntries(engine.sessionSnapshot()!));
+      await _settle();
+
+      final phoneProjection = await graph.adoption.projectSession(
+        const <String, Object?>{},
+      );
+      expect(
+        _entryIds(phoneProjection!),
+        ['entry-slot-bench-0'],
+        reason:
+            'D-112 a wrist copy with no entries of its own claims no group, so '
+            'the phone still projects its own surviving set',
+      );
+
+      await graph.autoPush.flush();
+      final deletion = radio.ofType('structure_change').single;
+      expect(
+        deletion['sessionId'],
+        'sess-1',
+        reason:
+            'D-114 the frame names the session both devices hold — the wrist '
+            'would refuse one it is not running',
+      );
+      expect(
+        _payload(deletion)['changeId'],
+        'del-entry-slot-bench-1',
+        reason: 'D-113 the id is derived from the entry, so a resend is a no-op',
+      );
+      expect(
+        _payload(deletion)['changes'],
+        [
+          {'kind': 'delete_entry', 'entryId': 'entry-slot-bench-1'},
+        ],
+        reason:
+            'S-35 the phone now names the set it dropped, in a frame the wrist '
+            'applies (D-110)',
+      );
+
+      await engine.applyMessage(deletion);
+      expect(
+        [for (final entry in engine.entries) entry.entryId],
+        ['entry-slot-bench-0'],
+        reason:
+            'S-35 the wrist hides the entry the frame named, so a set the phone '
+            'dropped leaves the ladder it was logged against',
+      );
+      expect(
+        [for (final entry in engine.observations) entry.payload['entryId']],
+        ['entry-slot-bench-0', 'entry-slot-bench-1'],
+        reason:
+            'S-35/D-115 the wrist hides an entry without rewriting the rows it '
+            'already wrote: the store stays append-only (I-3)',
       );
     });
 

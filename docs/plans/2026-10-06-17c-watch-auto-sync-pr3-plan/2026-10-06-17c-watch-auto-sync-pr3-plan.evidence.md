@@ -19,10 +19,10 @@ Base branch: `develop`. Rebase point (commit): `<fill in>`. Recorded by: `<phase
 
 | Check | Command | Result | Date |
 |---|---|---|---|
-| lint | `.github/copilot/scripts/macos/gateway.sh lint` | `<issues/errors — the brief quotes 196/0 at the base; 17b's evidence quotes different numbers, so record what this run prints>` | |
-| test | `.github/copilot/scripts/macos/gateway.sh test` | `<passed / failed / skipped>` | |
-| swift | `.github/copilot/scripts/macos/gateway.sh swift-test` | `<passed / failed>` | |
-| invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | `<nothing / hits>` | |
+| lint | `.github/copilot/scripts/macos/gateway.sh lint` | `196 issues, 0 errors` — matches the brief's quoted baseline; whichever count this line prints, it is compared against the count the *first* executor records here | 2026-10-07 |
+| test | `.github/copilot/scripts/macos/gateway.sh test` | `+4036 ~1: All tests passed!` (4036 passed, 1 skipped, 0 failed), recorded **with** the Phase 1 change in the tree — no base-commit full-suite run exists for this PR, so this row is the post-change reference the later phases compare against | 2026-10-07 |
+| swift | `.github/copilot/scripts/macos/gateway.sh swift-test` | not run — Phase 1 changes no `.swift` file | 2026-10-07 |
+| invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | nothing (I-2 holds) | 2026-10-07 |
 
 ## Doc sizes (before the Phase 3 edits)
 
@@ -34,30 +34,93 @@ Base branch: `develop`. Rebase point (commit): `<fill in>`. Recorded by: `<phase
 
 ## Phase 1 — the phone announces its deletions (@developer)
 
+Executor: developer agent, 2026-10-07. Base commit `8d00fab`.
+
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 1 | `WatchSessionAdoptionBridge:heldWristEntryIds` | | |
-| 2 | `LiveSessionMirrorState:deleteEntryAs` | | |
-| 3 | `WatchSessionAutoPush:_announced` + `_pushOnce` order | | |
-| 4 | `WatchSessionAutoPush:_announceDeletions` | | |
-| 5 | constructor + `createWatchSync` seam | | |
-| 6 | S-35 flip in `watch_session_projection_test.dart` | | |
-| 7 | S-120, S-121, S-122, S-123, S-126(first half) | | |
-| 8 | evidence + Progress | | |
+| 1 | `WatchSessionAdoptionBridge:heldWristEntryIds` | done | `watch_session_adoption_bridge.dart:273` — `originWatch` + `kindSet` inbox rows whose stamp still claims a group (`PhoneEntries.claimedBy`, the projection's own predicate); each slot's groups resolved once and cached per call |
+| 2 | `LiveSessionMirrorState:deleteEntryAs` | done | `live_session_mirror_state.dart:466`, beside `deleteEntry` (`:461`); `applyStructureChange(..., {String? changeId})` (`:362`) now takes the id and falls back to `_newId()`, so `deleteEntry` keeps minting its own |
+| 3 | `WatchSessionAutoPush:_announced` + `_pushOnce` order | done | `watch_session_auto_push.dart:201-220`: compose → `_remember` → `_announceEnd` → `_announceDeletions` → baseline compare → `sendState` |
+| 4 | `WatchSessionAutoPush:_announceDeletions` | done | `:242-274`: `held` = payload entry ids ∪ `await _heldWristEntryIds(sessionId)`; `previous.difference(held)`, sorted ascending, one `deleteEntryAs(id, changeId: 'del-$id')` each; other sessions dropped from the ledger |
+| 5 | constructor + `createWatchSync` seam | done | optional named `heldWristEntryIds`, defaulting to a `const {}` no-op; `watch_sync_wiring.dart` passes `adoption.heldWristEntryIds` |
+| 6 | S-35 flip in `watch_session_projection_test.dart` | done | `S-35 an edit reaches the wrist and a delete is announced` — the file runs 4 passed / 0 failed; the delete frame is asserted (`changeId == 'del-entry-slot-bench-1'`, one `delete_entry`, session `sess-1`) and the wrist applies it |
+| 7 | S-120, S-121, S-122, S-123, S-126(first half) | done | 6 new `test()` cases in `test/watch_session_auto_push_test.dart`; the whole file: **31 passed, 0 failed** |
+| 8 | evidence + Progress | done | this section; plan Progress + Assumption Log updated |
 
 Done Criteria run:
 
 ```
 .github/copilot/scripts/macos/gateway.sh lint
-.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart test/watch_session_projection_test.dart test/watch_session_adoption_bridge_test.dart test/phone_manage_bridge_test.dart test/watch_session_import_test.dart
+  -> 196 issues, 0 errors; none of them in the four lib files or the two test files this phase changed
+     (the count is the plan's quoted baseline)
+
+.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart \
+    test/watch_session_projection_test.dart test/watch_session_adoption_bridge_test.dart \
+    test/phone_manage_bridge_test.dart test/watch_session_import_test.dart
+  -> 116 passed, 0 failed (full output: .work/gateway/test-20261007-042435-10008.log)
+
+.github/copilot/scripts/macos/gateway.sh test test/watch_session_auto_push_test.dart
+  -> 31 passed, 0 failed
+
+.github/copilot/scripts/macos/gateway.sh test   (full suite, run because the standing rules ask for it;
+                                                 the plan schedules the full suite for the end of Phase 3)
+  -> 01:42 +4036 ~1: All tests passed!  (4036 passed, 1 skipped, 0 failed; the plan schedules the
+     full suite for the end of Phase 3, but the standing rules ask for one at the end of every phase.
+     Full output: .work/gateway/test-20261007-042641-11621.log)
+
+grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core
+  -> nothing (I-2)
 ```
 
 Red→green table:
 
 | Scenario | Red command / revert | Red output | Green output |
 |---|---|---|---|
-| S-120 | `prove-red` with the `_announceDeletions` call removed from `_pushOnce` | | |
-| S-123 | mutation: seed `_announced` from an empty set | | |
+| S-35, S-120, S-121, S-122 | `.github/copilot/scripts/macos/gateway.sh prove-red 8d00fab test test/watch_session_auto_push_test.dart test/watch_session_projection_test.dart` | `RED AT 8d00fab (exit 1)` — `S-35 … [E]`; `S-120 … Expected: an object with length of <1> / Actual: []`; `S-121 … Expected: <2> / Actual: []`; `S-122 … Bad state: No element` (`List.single` — no frame at all) | 31 + 4 passed, 0 failed |
+| S-123 | mutation: `..[sessionId] = held;` → `..[sessionId] = const <String>{};` **and** `previous.difference(held)` → `held.difference(previous)` (see the note below) | `S-123 … Expected: empty / Actual: [ 10 structure_change frames, one per held id, re-sent every pass ]` — the delete-everything defect | `S-123` green after restoring both lines exactly |
+
+`prove-red`'s own verdict line:
+
+```
+gateway: prove-red: RED AT 8d00fab (exit 1). It proves the guard only if an assertion fails for the
+reason the test guards; a compile or load error means the test could not run there (use a mutation
+instead).
+```
+
+Two of the new cases **cannot** be red at the base, and that is honest rather than passing-by-luck:
+
+- **S-123** asserts *no* frame on the first pass; absence is already true at the base. Its guard is
+  shown by the mutation above.
+- **S-126** (first half) asserts the *wrist* refuses a foreign-session frame. That guard is the
+  engine's existing `_guardSession` (PR 2, `watch_session_engine.dart:675`), which this phase does
+  not touch: it is a boundary regression test, so `prove-red` is N/A rather than GREEN-at-base
+  proof of a new guard.
+
+Mutations (each recorded, applied one at a time, original line restored exactly, green re-run after
+each restore — never left applied):
+
+| # | Scenario the mutation targets | Original line | Mutant | Verdict |
+|---|---|---|---|---|
+| a | S-120, S-121 | `final vanished = previous.difference(held).toList()..sort();` | `final vanished = held.difference(previous).toList()..sort();` | RED: `S-120 … Expected: an object with length of <1> / Actual: [3 frames — one per held id, incl. the two the wrist must keep]` |
+| b | S-120's ledger seed | `..[sessionId] = held;` | `..[sessionId] = const <String>{};` | RED: `S-120 … Expected: an object with length of <1> / Actual: []` — an empty ledger never notices the vanished set |
+| b′ | S-123 | both lines above mutated together (see the note) | — | RED: `S-123 … Expected: empty / Actual: [10 frames]` |
+| c | S-122 | `return held;` (`heldWristEntryIds`) | `return const <String>{};` | RED: `S-122 … Bad state: No element` — with no held wrist ids the phone cannot name the set the wrist logged |
+| d | S-120's ordering (D-111) | `await _announceDeletions(composedId, composed);` before the baseline compare | the same call moved to *after* `await _mirror.sendState(composed);` | RED: `S-120 … Expected: a value less than <3> / Actual: <4>` — the deletion now lands after the snapshot of its own pass |
+
+Not observable, stated plainly:
+
+- **The plan's S-123 mutation text is not achievable on its own.** "Seed from an empty set instead of
+  from `held`" is only observable once the difference direction is also inverted (mutation b′). With
+  the direction correct, an empty seed and a `held` seed behave identically on the first pass
+  (`{} − held` is empty either way); with the seed correct, the inverted direction announces the
+  whole held set, which is what b′ shows. Both halves are the same defect, and b′ is the smallest
+  faithful reproduction of it.
+- **The per-session keying of `_announced` is not distinguishable by the suite.** Flattening the
+  lookup (`_announced[sessionId] ?? const {}` → `_announced.values.expand((s) => s).toSet()`) leaves
+  every test green, `S-85` included: the ids are slot-scoped, so a stale entry from another session
+  can never name the held session's entries. The keying is kept as a cheap invariant, not as a
+  guarded rule — flagged in the plan's Assumption Log for the reviewer to drop or to demand a
+  fixture for.
 
 ## Phase 2 — the Dart twin keeps the deletion (@developer)
 

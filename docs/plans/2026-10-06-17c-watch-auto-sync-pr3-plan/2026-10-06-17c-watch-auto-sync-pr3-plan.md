@@ -584,14 +584,48 @@ never sent to the phone (the wrist has no delete sender, and no rule here adds o
 
 ## Progress
 
-- [ ] Phase 1 — the phone announces its deletions
+- [x] Phase 1 — the phone announces its deletions — **Complete** (developer, 2026-10-07; base
+  `8d00fab`)
+  - [x] 1 `WatchSessionAdoptionBridge:heldWristEntryIds` — `kindSet` rows whose stamp still claims a group
+  - [x] 2 `LiveSessionMirrorState:deleteEntryAs` + `applyStructureChange(..., {changeId})`
+  - [x] 3 `WatchSessionAutoPush:_announced`, `_pushOnce`: compose → remember → announce end → announce deletions → baseline → send
+  - [x] 4 `WatchSessionAutoPush:_announceDeletions` — `previous − held`, ascending, `del-$id`
+  - [x] 5 optional `heldWristEntryIds` seam, wired in `createWatchSync`
+  - [x] 6 S-35 flipped in `test/watch_session_projection_test.dart`
+  - [x] 7 S-120, S-121 (×2), S-122, S-123, S-126 (first half) added; `watch_session_auto_push_test.dart` 31 passed / 0 failed
+  - [x] 8 evidence + Progress — counts, prove-red verdicts and the mutation table in the evidence file
 - [ ] Phase 2 — the Dart twin keeps the deletion; a snapshot clears and replaces
 - [ ] Phase 3 — the Swift twin, PROTOCOL, docs
 
 ## Assumption Log
 
-[empty — executors append decision / options / rationale here; the Conductor marks each RATIFIED or
-REVERT]
+Phase 1 (developer, 2026-10-07). Each entry: decision / options considered / why.
+
+1. **The `heldWristEntryIds` seam is optional with a default, not required (`_heldWristEntryIds!`).**
+   Options: a required constructor parameter (item 5's text), or an optional named one defaulting to a
+   `const {}` no-op. Chose optional: every existing construction site — the tests and any future
+   mirror-only host — keeps compiling, and "the phone holds no wrist entries" is a truthful default.
+   The wiring still passes the real function, so no runtime path uses the default.
+2. **The ledger is seeded by writing `held` on every pass, not by an early return.** Options: an
+   explicit `if (!_announced.containsKey(sessionId)) { _announced[sessionId] = held; return; }`, or
+   the one-line `..[sessionId] = held`. Same observable behaviour (S-123, S-120), one branch fewer;
+   the phase's mutation record shows the seed is load-bearing either way.
+3. **S-123's mutation, as the plan words it, is not reachable on its own.** "Seed from an empty set
+   instead of from `held`" only changes behaviour once the difference direction is inverted too
+   (evidence, mutation b′). Recorded honestly instead of claiming the plan's exact mutation.
+4. **The per-session keying of `_announced` is not observable.** Flattening the lookup leaves every
+   test green, S-85 included, because the ids are slot-scoped. Kept as a cheap invariant; the
+   reviewer can drop it or ask for a fixture.
+5. **Fixture ids follow the harness, not the plan's prose.** The plan's scenario text says
+   `entry-bench-*`; `test/watch_session_auto_push_test.dart` numbers sets `entry-sx-1-*` /
+   `entry-slot-bench-*`. The scenario's *outcome* is asserted unchanged; only the ids differ.
+6. **The plan's S-35 pointer (~line 1158) is stale** — the test is at ~1780 in
+   `test/watch_session_projection_test.dart`. The named test was found by name, not by line.
+7. **A full `flutter test` run was made at the end of Phase 1** although the plan schedules it for the
+   end of Phase 3: `+4036 ~1: All tests passed!`. The evidence Baseline test row is post-change, since
+   no base-commit full-suite run exists for this PR.
+8. **No Swift file changed in this phase**, so no `swift-test` run and no Swift prove-red: S-126's
+   second half and TRAP 2's durable half are Phase 2/3 work.
 
 ## Feedback
 

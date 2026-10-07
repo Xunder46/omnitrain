@@ -199,6 +199,10 @@ Future<WatchSyncGraph?> createWatchSync({
   final push = WatchSessionAutoPush(
     mirror: mirror,
     getSession: repository.getSession,
+    // The wrist's own imported ids come from the bridge, which owns the claim
+    // rule in one place (D-112). Nothing of the phone's own needs it: those ids
+    // travel inside the composed payload this push already has.
+    heldWristEntryIds: adoption.heldWristEntryIds,
     onFailure: onFailure,
   );
 

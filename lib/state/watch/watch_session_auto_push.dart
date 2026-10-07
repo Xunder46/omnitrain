@@ -35,6 +35,10 @@
 ///    app run (D-98), and the debounce path reports what escapes a pass instead
 ///    of raising an unhandled async error (D-99). An `Error` is a programming
 ///    fault and is not swallowed (G2): a direct caller still sees it.
+/// 4. **A set that vanished is announced** (D-110). The push is the only
+///    component that knows what the wrist was last told, so it keeps that ledger
+///    per session (D-111) and sends one `delete_entry` for every id that was in
+///    it and is no longer held. The first pass for a session only seeds it.
 ///
 /// It persists nothing and writes nothing: it reads the phone's session through
 /// the projection and the mirrored session's row through [getSession], and sends.
@@ -53,14 +57,21 @@ class WatchSessionAutoPush {
   WatchSessionAutoPush({
     required LiveSessionMirrorState mirror,
     required Future<TrainingSession?> Function(String sessionId) getSession,
+    Future<Set<String>> Function(String sessionId)? heldWristEntryIds,
     Duration debounce = const Duration(milliseconds: 250),
     Duration sendTimeout = const Duration(seconds: 10),
     void Function(Object error, StackTrace stack)? onFailure,
   }) : _mirror = mirror,
        _getSession = getSession,
+       _heldWristEntryIds = heldWristEntryIds ?? _noWristEntries,
        _debounce = debounce,
        _sendTimeout = sendTimeout,
        _onFailure = onFailure;
+
+  /// No ids of the wrist's own: the default for a push built without the
+  /// adoption bridge, where only the phone's own entries are known.
+  static Future<Set<String>> _noWristEntries(String sessionId) async =>
+      const <String>{};
 
   final LiveSessionMirrorState _mirror;
 
@@ -68,6 +79,10 @@ class WatchSessionAutoPush {
   /// graph already has. A narrow seam on purpose: `lib/state` keeps depending
   /// on the [WorkoutRepository] interface, not on a storage implementation.
   final Future<TrainingSession?> Function(String sessionId) _getSession;
+
+  /// The ids the wrist itself logged and this phone still holds for a session —
+  /// the bridge's claim rule, injected the way [_getSession] is (D-112).
+  final Future<Set<String>> Function(String sessionId) _heldWristEntryIds;
 
   /// How long the state must be quiet before the composed payload is sent
   /// (D-76). A constructor knob so tests drive it.
@@ -101,6 +116,17 @@ class WatchSessionAutoPush {
   /// can start a workout of its own, which the phone refuses to adopt (D-10) and
   /// which is therefore not the phone's to end (F6).
   final List<String> _pendingEnds = [];
+
+  /// The entry ids the wrist was expected to hold at the end of this push's last
+  /// pass, per composed session (D-111): what the phone told the wrist about,
+  /// which is the only thing that can vanish from it.
+  ///
+  /// Keyed by composed session id and dropped for the others on every pass, so a
+  /// phone that leaves a session and comes back re-seeds rather than comparing
+  /// the held session against another session's ids (D-114). Memory-only, and
+  /// that is the contract: a relaunch re-seeds from what the phone holds now
+  /// (D-111).
+  final Map<String, Set<String>> _announced = {};
 
   /// The drain a running [flush] is, and whether another pass was asked for
   /// while it ran. Two flushes that overlap are one drain (F4).
@@ -160,8 +186,13 @@ class WatchSessionAutoPush {
     }
   }
 
-  /// One pass: every pending session's end, decided by its own row, and then the
-  /// composed payload when it differs from the baseline.
+  /// One pass: every pending session's end, decided by its own row, then the
+  /// entries that vanished since the last pass, and then the composed payload
+  /// when it differs from the baseline.
+  ///
+  /// The deletions go out **before** the snapshot of the same pass: an entry the
+  /// phone re-created under a reused id must end up visible, and the snapshot
+  /// that follows is what restores it (D-111, D-113).
   ///
   /// An `Exception` (F4, D-83) — a row or a composition the phone cannot read —
   /// leaves it exactly as it was: nothing sent, nothing cached, nothing queued,
@@ -175,7 +206,8 @@ class WatchSessionAutoPush {
 
       await _announceEnd(composedId);
 
-      if (composed == null) return; // nothing of the phone's own to assert
+      if (composed == null || composedId == null) return;
+      await _announceDeletions(composedId, composed);
       final encoded = _encode(composed);
       if (encoded == _baseline) return;
       _baseline = encoded;
@@ -184,6 +216,50 @@ class WatchSessionAutoPush {
       // F4: a push that cannot be made must not disturb the phone — but it is
       // reported rather than swallowed (D-98, D-99).
       _report(e, s);
+    }
+  }
+
+  /// Announces every entry id the wrist was expected to hold and should not any
+  /// more, one `structure_change` frame each (D-110, D-111, S-120).
+  ///
+  /// `held` is what the wrist holds now: the ids the payload carries — the
+  /// phone's own and the wrist's imported ones (D-112) — plus nothing else. The
+  /// ids that were in the ledger and are not in `held` have vanished since the
+  /// last pass, and each goes out as
+  /// `deleteEntryAs(id, changeId: 'del-$id')`, in ascending id order so the
+  /// frames are the same whichever store returned the rows in whichever order.
+  ///
+  /// The first pass for a session only seeds the ledger and announces nothing
+  /// (S-123): nothing has vanished yet, and announcing the difference against an
+  /// empty set would delete everything the wrist already held. A session the
+  /// push composes nothing of is not a pass of its own — the caller does not
+  /// call this at all, so a phone browsing a past session keeps its ledger.
+  ///
+  /// A deletion only ever names an id the phone itself announced holding, and
+  /// the ids are slot-scoped, so a stale ledger cannot name the held session's
+  /// entries: the frame is scoped to the session the mirror holds and the
+  /// wrist's guard refuses any other session (D-114).
+  Future<void> _announceDeletions(
+    String sessionId,
+    Map<String, Object?> composed,
+  ) async {
+    final entries = composed['entries'];
+    final held = <String>{
+      if (entries is List)
+        for (final entry in entries)
+          if (entry is Map && entry['entryId'] is String)
+            entry['entryId'] as String,
+      ...await _heldWristEntryIds(sessionId),
+    };
+
+    final previous = _announced[sessionId] ?? const <String>{};
+    _announced
+      ..removeWhere((id, _) => id != sessionId)
+      ..[sessionId] = held;
+
+    final vanished = previous.difference(held).toList()..sort();
+    for (final entryId in vanished) {
+      await _mirror.deleteEntryAs(entryId, changeId: 'del-$entryId');
     }
   }
 

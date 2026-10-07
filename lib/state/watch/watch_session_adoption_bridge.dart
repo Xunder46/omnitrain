@@ -257,6 +257,47 @@ class WatchSessionAdoptionBridge {
     );
   }
 
+  /// The entry ids the wrist is expected to hold for [sessionId]: the ones its
+  /// own inbox rows carry while their stamp still claims a group on their slot
+  /// (D-112).
+  ///
+  /// The ids the wrist logged and the phone still holds. A row whose group the
+  /// user deleted on the phone claims no group and stops being held, which is
+  /// the deletion the phone has to announce (S-122, `_wristRowStamps` +
+  /// `PhoneEntries.claimedBy` — the same claim rule the projection uses, not a
+  /// second one).
+  ///
+  /// Scope: `kindSet` rows only. A non-set entry has no wire entry to delete
+  /// until 17d projects those kinds, so the phone cannot name one here (D-112,
+  /// 17d D-137).
+  Future<Set<String>> heldWristEntryIds(String sessionId) async {
+    final rows = await _repository.getWatchInboxEntriesForSession(sessionId);
+    final groupsBySlot = <String, List<SetRows>>{};
+    final held = <String>{};
+    for (final row in rows) {
+      if (row.origin != WatchInboxEntry.originWatch) continue;
+      if (row.kind != WatchInboxEntry.kindSet) continue;
+
+      final payload = row.payload;
+      final slot = payload['sessionExerciseId'];
+      final loggedAtMs = _loggedAtMs(payload['loggedAt']);
+      if (slot is! String || slot.isEmpty || loggedAtMs == null) continue;
+
+      final groups = groupsBySlot[slot] ??= EntryRows.setGroups(
+        await _repository.getEffortObservations(slot),
+      );
+      // Does this row's stamp still claim a group? One stamp, the existing
+      // predicate: a row claims the first group on its slot carrying its stamp.
+      final claims = PhoneEntries.claimedBy(
+        groups: groups,
+        wristLoggedAtMs: [loggedAtMs],
+      );
+      if (claims.isEmpty) continue;
+      held.add(row.entryId);
+    }
+    return held;
+  }
+
   /// The `loggedAt` of every watch-inbox row that carries a set the wrist
   /// logged in [sessionId], by slot (D-34).
   ///

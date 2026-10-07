@@ -19,8 +19,17 @@
 //   S-88 browsing away does not lose a later finish   → `S-88 ...`
 //   S-112 a hung send cannot wedge the push           → `S-112 ...`
 //   S-113 a debounce-path failure is reported         → `S-113 ...`
+//   S-120 a set deleted on the phone disappears on the wrist
+//                                                     → `S-120 ...`
+//   S-121 several deletions, and a deletion that never was → `S-121 ...`
+//   S-122 an entry the wrist logged, imported and deleted → `S-122 ...`
+//   S-123 the first pass announces nothing (negative guard) → `S-123 ...`
+//   S-126 another session's deletion changes nothing   → `S-126 ...`
 //   F4 a flush never leaks and never announces twice   → `F4 ...`
 //   G2 an Error from the session read is not swallowed  → `G2 ...`
+//
+// The delete half is 17c Phase 1 (D-110…D-114, S-120…S-126); S-124, S-125 and
+// S-126's dedupe half are the engine's and live in `watch_session_engine_test.dart`.
 //
 // The phone side is the graph `createWatchSync` builds — the shipping wiring,
 // including the push it returns — over a fake radio; the wrist side is the real
@@ -34,6 +43,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/core/sync_protocol/phone_envelope.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -354,6 +364,28 @@ void main() {
     final pushes = radio.ofType('session_snapshot');
     expect(pushes, hasLength(1), reason: 'S-70 one change, one frame');
     return pushes.single;
+  }
+
+  /// The phone logs one more of its own sets, pushes it and the wrist applies
+  /// the frame — the state S-120's fixture needs, where the wrist holds a set
+  /// the phone is about to drop. Answers the id the phone minted for it.
+  Future<String> logSetHeldByBoth() async {
+    final snapshots = radio.ofType('session_snapshot');
+    final before = [
+      if (snapshots.isNotEmpty) ..._entryIds(_payload(snapshots.last)),
+    ];
+    await phoneState.addEntry(
+      _firstSlot,
+      previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+    );
+    await graph.autoPush.flush();
+    final push = radio.ofType('session_snapshot').last;
+    final added = _entryIds(_payload(push)).firstWhere(
+      (entryId) => !before.contains(entryId),
+      orElse: () => fail('the fixture: the phone logged no new set'),
+    );
+    await engine.applyMessage(push);
+    return added;
   }
 
   setUp(() async {
@@ -1709,6 +1741,373 @@ void main() {
           reason:
               'S-113 the timer path raises no unhandled async error: it is '
               'recorded through the hook instead (D-99)',
+        );
+      },
+    );
+  });
+
+  group('S-120 a set deleted on the phone disappears on the wrist', () {
+    test(
+      'S-120 the push names the set the phone dropped, in a frame the wrist '
+      'applies, before the snapshot that no longer carries it',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+
+        final first = await pushPhoneSet();
+        await engine.applyMessage(first);
+        final doomed = await logSetHeldByBoth();
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1', doomed]),
+          reason: 'the fixture: the wrist holds both of the phone\'s sets',
+        );
+
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+
+        final deletions = radio.ofType('structure_change');
+        expect(
+          deletions,
+          hasLength(1),
+          reason:
+              'S-120 one frame per set that vanished, and none for the sets '
+              'that did not',
+        );
+        final deletion = deletions.single;
+        final snapshot = radio.ofType('session_snapshot').last;
+        expect(
+          radio.sent.indexOf(deletion),
+          lessThan(radio.sent.indexOf(snapshot)),
+          reason:
+              'D-111 the deletion goes out before the snapshot of the same '
+              'pass, so a set the phone re-created under a reused id ends up '
+              'visible rather than deleted',
+        );
+        expect(
+          deletion['sessionId'],
+          's-1',
+          reason:
+              'D-114 the frame names the session both devices hold: the wrist '
+              'refuses a frame naming any other',
+        );
+        expect(
+          _payload(deletion)['changeId'],
+          'del-$doomed',
+          reason:
+              'D-113 the id is derived from the entry, so re-announcing the '
+              'same deletion is a no-op on the wrist',
+        );
+        expect(
+          _payload(deletion)['changes'],
+          [
+            {'kind': 'delete_entry', 'entryId': doomed},
+          ],
+          reason: 'S-120 the frame names the set the phone dropped (D-110)',
+        );
+        expect(
+          _entryIds(_payload(snapshot)),
+          ['entry-$_firstSlot-1'],
+          reason:
+              'S-120 the snapshot that follows carries the survivors only — '
+              'and never the set the wrist logged itself (D-34)',
+        );
+
+        await engine.applyMessage(deletion);
+        expect(
+          _sorted(wristEntryIds()),
+          _sorted(<String>[_wristEntryId, 'entry-$_firstSlot-1']),
+          reason:
+              'S-120 the wrist hides the set the frame named, so a set the '
+              'phone dropped leaves the ladder it was logged against',
+        );
+        expect(
+          [
+            for (final row in engine.observations) row.payload['entryId'],
+          ],
+          contains(doomed),
+          reason:
+              'I-3 the wrist\'s log is append-only: the row the entry was '
+              'projected from is still stored, only hidden',
+        );
+      },
+    );
+  });
+
+  group('S-121 several deletions, and a deletion that never was', () {
+    test(
+      'S-121 two sets dropped in one pass are two frames in ascending id '
+      'order, and the snapshot carries the survivors',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+
+        await pushPhoneSet();
+        final second = await logSetHeldByBoth();
+        final third = await logSetHeldByBoth();
+        final fourth = await logSetHeldByBoth();
+        expect(
+          _sorted(<String>[second, third, fourth]),
+          _sorted(<String>[
+            'entry-$_firstSlot-2',
+            'entry-$_firstSlot-3',
+            'entry-$_firstSlot-4',
+          ]),
+          reason:
+              'the fixture: the phone numbers its own sets above every row the '
+              'effort holds (D-325)',
+        );
+
+        // The later entry goes first: the phone's own set 4 is addressed by
+        // number, so dropping it does not renumber the survivors.
+        await phoneState.deleteEntry(_firstSlot, 4);
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+
+        final deletions = radio.ofType('structure_change');
+        expect(
+          deletions,
+          hasLength(2),
+          reason: 'S-121 one frame per set that vanished',
+        );
+        expect(
+          [
+            for (final frame in deletions) _payload(frame)['changeId'],
+          ],
+          ['del-$second', 'del-$fourth'],
+          reason:
+              'S-121 the frames go out in ascending id order, so the same two '
+              'deletions look the same however the store listed the rows',
+        );
+        expect(
+          [
+            for (final frame in deletions) _payload(frame)['changes'],
+          ],
+          [
+            [
+              {'kind': 'delete_entry', 'entryId': second},
+            ],
+            [
+              {'kind': 'delete_entry', 'entryId': fourth},
+            ],
+          ],
+          reason: 'S-121 each frame names exactly the set it is about',
+        );
+        expect(
+          _sorted(
+            _entryIds(_payload(radio.ofType('session_snapshot').last)),
+          ),
+          _sorted(<String>['entry-$_firstSlot-1', third]),
+          reason: 'S-121 the snapshot of that pass carries the two survivors',
+        );
+      },
+    );
+
+    test(
+      'S-121 a set logged and dropped inside one window is announced to nobody',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+
+        // Both changes land inside one debounce window: the set the user
+        // dropped never left the phone, so the wrist was never told to hold it.
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await phoneState.deleteEntry(_firstSlot, 3);
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'S-121 an id the phone never announced cannot vanish: the '
+              'ledger is what the wrist was told, not what the phone holds '
+              '(D-111)',
+        );
+        expect(
+          _sorted(
+            _entryIds(_payload(radio.ofType('session_snapshot').last)),
+          ),
+          _sorted(<String>['entry-$_firstSlot-1', 'entry-$_firstSlot-2']),
+          reason: 'S-121 the snapshot carries the sets the phone kept',
+        );
+      },
+    );
+  });
+
+  group('S-122 a set the wrist logged, imported and deleted on the phone', () {
+    test(
+      'S-122 the frame names the wrist\'s own entry id, so the entry the wrist '
+      'logged leaves it too',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1']),
+          reason:
+              'the fixture: the wrist holds the set it logged and the set the '
+              'phone logged',
+        );
+
+        // The slot's first group is the row the phone imported from the wrist
+        // (D-34), so entry 0 is the set the user sees as the wrist's.
+        await phoneState.deleteEntry(_firstSlot, 0);
+        await graph.autoPush.flush();
+
+        final deletion = radio.ofType('structure_change').single;
+        expect(
+          _payload(deletion)['changes'],
+          [
+            {'kind': 'delete_entry', 'entryId': _wristEntryId},
+          ],
+          reason:
+              'S-122 the frame names the wrist\'s own row id — the id the '
+              'phone\'s inbox row carries — and not a phone-minted one (D-112)',
+        );
+        expect(
+          _payload(deletion)['changeId'],
+          'del-$_wristEntryId',
+          reason: 'D-113 the id is derived from the entry it names',
+        );
+        expect(
+          await phoneEntries(_firstSlot),
+          1,
+          reason:
+              'S-122 the phone\'s group stays deleted: only the phone\'s own '
+              'set is left on the slot',
+        );
+
+        await engine.applyMessage(deletion);
+        expect(
+          wristEntryIds(),
+          isNot(contains(_wristEntryId)),
+          reason:
+              'S-122 the wrist hides the set it logged itself when the phone '
+              'deleted it (TRAP 1)',
+        );
+        expect(wristEntryIds(), contains('entry-$_firstSlot-1'));
+        expect(
+          [
+            for (final row in engine.observations) row.payload['entryId'],
+          ],
+          contains(_wristEntryId),
+          reason:
+              'I-3 the wrist\'s own row is hidden, never deleted from the '
+              'append-only log',
+        );
+      },
+    );
+  });
+
+  group('S-123 the first pass announces nothing', () {
+    test(
+      'S-123 a push that binds to a session the wrist already holds seeds its '
+      'ledger and announces no deletion',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        final second = await logSetHeldByBoth();
+        final third = await logSetHeldByBoth();
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1', second, third]),
+          reason:
+              'the fixture: the wrist has held all three sets since before the '
+              'push below existed, the way it has after a re-launch',
+        );
+
+        final rebound = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: repository.getSession,
+        )..bindWorkoutState(phoneState);
+        addTearDown(rebound.dispose);
+
+        await rebound.flush();
+
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'S-123 the first pass of a session seeds the ledger from what '
+              'the phone holds: announcing the difference against an empty '
+              'set would order the wrist to delete everything it holds',
+        );
+        expect(
+          _sorted(
+            _entryIds(_payload(radio.ofType('session_snapshot').last)),
+          ),
+          _sorted(<String>['entry-$_firstSlot-1', second, third]),
+          reason:
+              'S-123 the first pass is otherwise the snapshot the push always '
+              'sent (D-76)',
+        );
+      },
+    );
+  });
+
+  group('S-126 another session\'s deletion changes nothing', () {
+    test(
+      'S-126 a delete frame naming a session the wrist is not running is '
+      'refused whole, twice',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1']),
+          reason: 'the fixture: the wrist holds two sets of its session',
+        );
+
+        // What a phone whose mirror holds another session sends: the same
+        // envelope builder the mirror uses, naming the session it holds.
+        final foreign = phoneEnvelope(
+          type: 'structure_change',
+          messageId: 'msg-other-session',
+          sentAt: _now,
+          sessionId: 'sess-b',
+          payload: {
+            'changeId': 'chg-other-session',
+            'changes': [
+              {'kind': 'delete_entry', 'entryId': 'entry-$_firstSlot-1'},
+            ],
+          },
+        );
+        final before = await wristRows();
+
+        expect(
+          await engine.applyMessage(foreign),
+          isFalse,
+          reason:
+              'S-126 the wrist\'s session guard refuses a frame naming another '
+              'session (D-79)',
+        );
+        expect(
+          await engine.applyMessage(foreign),
+          isFalse,
+          reason: 'S-126 the same refusal again, with nothing applied either time',
+        );
+        expect(
+          _sorted(wristEntryIds()),
+          _sorted(<String>[_wristEntryId, 'entry-$_firstSlot-1']),
+          reason: 'S-126 a foreign session\'s deletion leaves the ladder alone',
+        );
+        expect(
+          await wristRows(),
+          before,
+          reason:
+              'S-126 no row is appended for a foreign session, so the store '
+              'does not accumulate copies of a change it refuses',
         );
       },
     );

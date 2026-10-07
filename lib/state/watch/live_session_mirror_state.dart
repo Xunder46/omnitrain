@@ -356,13 +356,15 @@ class LiveSessionMirrorState extends ChangeNotifier {
   ///
   /// [changes] are the protocol's change objects — `add_exercise`,
   /// `remove_exercise`, `reorder_exercises`, `swap_exercise`, `correct_entry`,
-  /// `delete_entry`. The `changeId` is minted here, which is what makes the
-  /// watch's application of a re-delivered change a no-op.
+  /// `delete_entry`. The `changeId` is minted here unless the caller names one,
+  /// which is what makes the watch's application of a re-delivered change a
+  /// no-op.
   Future<Map<String, Object?>> applyStructureChange(
-    List<Map<String, Object?>> changes,
-  ) async {
+    List<Map<String, Object?>> changes, {
+    String? changeId,
+  }) async {
     final envelope = _envelope('structure_change', {
-      'changeId': _newId(),
+      'changeId': changeId ?? _newId(),
       'changes': changes,
     });
     await _sendOwn(envelope);
@@ -460,6 +462,25 @@ class LiveSessionMirrorState extends ChangeNotifier {
       applyStructureChange([
         {'kind': 'delete_entry', 'entryId': entryId},
       ]);
+
+  /// Deletes an entry under a [changeId] the caller names rather than a fresh
+  /// one.
+  ///
+  /// [deleteEntry] mints a new id per call, so a caller that has to say the same
+  /// deletion twice — the auto-push announcing `'del-<entryId>'` on every pass it
+  /// finds a set gone (D-110) — would look like a new change each time. A named
+  /// id makes a re-delivered frame a no-op on the wrist: its `appliedChangeIds`
+  /// drops the repeat and the row the frame writes has the same record id
+  /// (D-116, S-120).
+  Future<Map<String, Object?>> deleteEntryAs(
+    String entryId, {
+    required String changeId,
+  }) => applyStructureChange(
+    [
+      {'kind': 'delete_entry', 'entryId': entryId},
+    ],
+    changeId: changeId,
+  );
 
   /// Closes the session from the phone and hands back the merged record.
   ///
