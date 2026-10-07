@@ -204,7 +204,7 @@ class WatchSessionAdoptionBridge {
       if (named != null && named != session.id) return null;
     }
 
-    final wristStamps = await _wristRowStamps(session.id);
+    final wristRows = await _wristRowsBySlot(session.id);
 
     final slots = <Map<String, Object?>>[];
     final entries = <Map<String, Object?>>[];
@@ -213,7 +213,7 @@ class WatchSessionAdoptionBridge {
         final slot = _slotFor(effort, target);
         if (slot == null) continue;
         slots.add(slot);
-        entries.addAll(await _entriesFor(effort, slot, wristStamps));
+        entries.addAll(await _entriesFor(effort, slot, wristRows));
       }
     }
     // A ladder with nothing the wrist can render is not a state to send: an
@@ -237,24 +237,86 @@ class WatchSessionAdoptionBridge {
 
   /// One slot's own entries, in the protocol's order.
   ///
-  /// None for a kind with no wire entry yet (D-39): a `timed`, `hold` or `round`
-  /// effort's rows are its instances' companions, and their window and round
-  /// fields are not carried. `set` is the kind the wire can spell today.
+  /// The slot's kind decides which record it is read from (D-130): a `set` slot
+  /// contributes its groups, a `timed`, `hold` or `round` slot the instances the
+  /// regular session screen wrote for it. A kind the wire has no entry for
+  /// contributes none, as it always has.
+  ///
+  /// [wristRows] is the session's live watch-inbox read (`_wristRowsBySlot`).
+  /// A slot's rows claim the entries the wrist itself logged, matched per kind
+  /// (D-133), so a wrist-logged `timed` entry claims the phone record the
+  /// importer wrote for it and neither rides back (S-142).
   Future<List<Map<String, Object?>>> _entriesFor(
     SegmentEffort effort,
     Map<String, Object?> slot,
-    Map<String, List<int>> wristStamps,
+    Map<String, List<({int loggedAtMs, String entryId, String kind})>>
+    wristRows,
   ) async {
-    if (effort.effortKind != BlockTypes.set) return const [];
+    final exerciseId = slot['exerciseId']! as String;
+    final rows = wristRows[effort.id] ?? const [];
 
-    return PhoneEntries.project(
-      sessionExerciseId: effort.id,
-      exerciseId: slot['exerciseId']! as String,
-      groups: EntryRows.setGroups(
-        await _repository.getEffortObservations(effort.id),
-      ),
-      wristLoggedAtMs: wristStamps[effort.id] ?? const [],
-    );
+    switch (_wireKind(slot)) {
+      case PhoneEntries.setKind:
+        return PhoneEntries.project(
+          sessionExerciseId: effort.id,
+          exerciseId: exerciseId,
+          groups: EntryRows.setGroups(
+            await _repository.getEffortObservations(effort.id),
+          ),
+          wristLoggedAtMs: _stampsOf(rows, PhoneEntries.setKind),
+        );
+      case PhoneEntries.timedKind:
+        return PhoneEntries.projectTimed(
+          sessionExerciseId: effort.id,
+          exerciseId: exerciseId,
+          instances: await _repository.getTimedInstances(effort.id),
+          rows: await _repository.getEffortObservations(effort.id),
+          wristLoggedAtMs: _stampsOf(rows, PhoneEntries.timedKind),
+        );
+      case PhoneEntries.holdKind:
+        return PhoneEntries.projectHold(
+          sessionExerciseId: effort.id,
+          exerciseId: exerciseId,
+          instances: await _repository.getTimedInstances(effort.id),
+          rows: await _repository.getEffortObservations(effort.id),
+          wristLoggedAtMs: _stampsOf(rows, PhoneEntries.holdKind),
+        );
+      case PhoneEntries.roundKind:
+        return PhoneEntries.projectRound(
+          sessionExerciseId: effort.id,
+          exerciseId: exerciseId,
+          instances: await _repository.getRoundInstances(effort.id),
+          rows: await _repository.getEffortObservations(effort.id),
+          wristLoggedAtMs: _stampsOf(rows, PhoneEntries.roundKind),
+        );
+      default:
+        return const [];
+    }
+  }
+
+  /// [rows]' stamps for the entries of [kind] (D-133): a wrist-logged entry
+  /// claims the records of its own kind, so a `timed` row never claims a `round`
+  /// record written in the same millisecond.
+  static List<int> _stampsOf(
+    List<({int loggedAtMs, String entryId, String kind})> rows,
+    String kind,
+  ) => [
+    for (final row in rows)
+      if (row.kind == kind) row.loggedAtMs,
+  ];
+
+  /// The wire kind a slot's own entries carry (D-130) — the name the wrist's own
+  /// logger gives the slot.
+  ///
+  /// A slot whose effort stores one of the wire's kinds keeps it, and a `drill`
+  /// is a `hold` on the wire — the kind the wrist's own logger writes for it
+  /// (`WatchLoggingState.metricPayload`). A slot storing a kind the wire has no
+  /// entry for (`amrap`, `interval`, `note`) resolves by capability through
+  /// `_effortKind`'s precedence, the order the wrist reads a slot that declares
+  /// none; a kind with no projection contributes no entries.
+  String _wireKind(Map<String, Object?> slot) {
+    final kind = _effortKind(slot);
+    return kind == BlockTypes.drill ? PhoneEntries.holdKind : kind;
   }
 
   /// The entry ids the wrist is expected to hold for [sessionId]: the ones its
@@ -267,14 +329,20 @@ class WatchSessionAdoptionBridge {
   /// `PhoneEntries.resolveClaims` — the same claim rule the projection uses in
   /// the same single pass over the slot's stamps, not a second one).
   ///
-  /// Scope: `kindSet` rows only. A non-set entry has no wire entry to delete
-  /// until 17d projects those kinds, so the phone cannot name one here (D-112,
-  /// 17d D-137).
+  /// Scope: `kindSet` rows only, and the phone projects every kind of entry
+  /// (Phase 1, D-130). 17d Phase 2 drops this filter so the ids of wrist-logged
+  /// `timed`/`hold`/`round` entries join this set and a deleted one is announced
+  /// like any other (17d D-133, S-144).
   Future<Set<String>> heldWristEntryIds(String sessionId) async {
     final bySlot = await _wristRowsBySlot(sessionId);
     final held = <String>{};
     for (final slot in bySlot.keys) {
-      final listed = bySlot[slot]!;
+      final listed = [
+        for (final row in bySlot[slot]!)
+          if (row.kind == WatchInboxEntry.kindSet) row,
+      ];
+      if (listed.isEmpty) continue;
+
       final claims = PhoneEntries.resolveClaims(
         groups: EntryRows.setGroups(
           await _repository.getEffortObservations(slot),
@@ -288,34 +356,42 @@ class WatchSessionAdoptionBridge {
     return held;
   }
 
-  /// The wrist's own inbox rows for [sessionId], by slot: each row's stamp and
-  /// entry id, ascending by stamp then entry id — the order `PhoneEntries` reads
-  /// a slot's stamps in.
+  /// The wrist's own inbox rows for [sessionId], by slot: each row's stamp,
+  /// entry id and the wire kind it logged, ascending by stamp then entry id —
+  /// the order `PhoneEntries` reads a slot's stamps in.
   ///
-  /// A row claims its group whether or not the phone has marked it applied:
+  /// A row claims its record whether or not the phone has marked it applied:
   /// the importer writes an entry's rows *before* it marks the inbox row
-  /// applied, so an interrupted import leaves the session's groups on a staged
-  /// row. Reading only applied rows would leave those groups unclaimed and send
-  /// the wrist its own set back under a phone id — a duplicate that never goes
+  /// applied, so an interrupted import leaves the session's rows on a staged
+  /// row. Reading only applied rows would leave those entries unclaimed and send
+  /// the wrist its own entry back under a phone id — a duplicate that never goes
   /// away, since staged rows are never deleted (the repository's contract).
   /// `originWatch` means the wrist wrote the row rather than this phone
-  /// annotating one, so a phone-annotated row never claims its own group.
+  /// annotating one, so a phone-annotated row never claims its own entry.
+  ///
+  /// Every kind is listed, not only sets (D-133): a `timed`, `hold` or `round`
+  /// row is what claims the record the importer wrote for it, and each reader
+  /// narrows to the kinds it speaks for.
   ///
   /// One reader for both the projection's stamps and the ids the wrist holds, so
   /// the two cannot list different rows (F4).
-  Future<Map<String, List<({int loggedAtMs, String entryId})>>>
+  Future<Map<String, List<({int loggedAtMs, String entryId, String kind})>>>
   _wristRowsBySlot(String sessionId) async {
-    final bySlot = <String, List<({int loggedAtMs, String entryId})>>{};
+    final bySlot =
+        <String, List<({int loggedAtMs, String entryId, String kind})>>{};
     final rows = await _repository.getWatchInboxEntriesForSession(sessionId);
     for (final row in rows) {
       if (row.origin != WatchInboxEntry.originWatch) continue;
-      if (row.kind != WatchInboxEntry.kindSet) continue;
 
       final payload = row.payload;
       final slot = payload['sessionExerciseId'];
       final loggedAtMs = _loggedAtMs(payload['loggedAt']);
       if (slot is! String || slot.isEmpty || loggedAtMs == null) continue;
-      (bySlot[slot] ??= []).add((loggedAtMs: loggedAtMs, entryId: row.entryId));
+      (bySlot[slot] ??= []).add((
+        loggedAtMs: loggedAtMs,
+        entryId: row.entryId,
+        kind: row.kind,
+      ));
     }
     for (final listed in bySlot.values) {
       listed.sort((a, b) {
@@ -325,17 +401,6 @@ class WatchSessionAdoptionBridge {
       });
     }
     return bySlot;
-  }
-
-  /// The `loggedAt` of every watch-inbox row that carries a set the wrist
-  /// logged in [sessionId], by slot (D-34): `_wristRowsBySlot`'s stamps, which
-  /// is why the projection and `heldWristEntryIds` agree row for row.
-  Future<Map<String, List<int>>> _wristRowStamps(String sessionId) async {
-    final bySlot = await _wristRowsBySlot(sessionId);
-    return {
-      for (final entry in bySlot.entries)
-        entry.key: [for (final row in entry.value) row.loggedAtMs],
-    };
   }
 
   /// A wire instant in epoch ms, or null when the payload carries none.

@@ -324,6 +324,100 @@ abstract final class _SessionFixture {
       await repository.markWatchInboxEntriesApplied([entryId], loggedAtMs);
     }
   }
+
+  /// Seeds a running phone session holding one effort per entry of [slots] —
+  /// [effortKind] is the kind the phone stores — and runs each slot's `write` to
+  /// fill its records and rows, so a scenario names exactly the instances it
+  /// needs and nothing else. Answers the last slot's id.
+  static Future<String> seedEfforts(
+    WorkoutRepository repository,
+    WorkoutState state,
+    String sessionId,
+    List<
+      ({
+        String slotId,
+        String exerciseId,
+        String effortKind,
+        Future<void> Function() write,
+      })
+    >
+    slots,
+  ) async {
+    final start = _at(0);
+    await repository.createSession(
+      TrainingSession(
+        id: sessionId,
+        ownerUserId: LoggedEntryRows.ownerUserId,
+        startedAtMs: start,
+        endedAtMs: null,
+        createdAtMs: start,
+        updatedAtMs: start,
+      ),
+    );
+    final segmentId = 'segment-$sessionId';
+    await repository.createSegment(
+      LoggedEntryRows.defaultSegment(
+        id: segmentId,
+        sessionId: sessionId,
+        atMs: start,
+      ),
+    );
+    for (final (index, slot) in slots.indexed) {
+      await repository.createEffort(
+        SegmentEffort(
+          id: slot.slotId,
+          segmentId: segmentId,
+          orderIndex: index,
+          effortKind: slot.effortKind,
+          exerciseId: slot.exerciseId,
+          createdAtMs: start,
+          updatedAtMs: start,
+        ),
+      );
+      await slot.write();
+    }
+    await state.loadHistoricalSession(sessionId);
+    return slots.last.slotId;
+  }
+
+  /// Stages the watch-inbox row of a non-set entry the wrist logged: [kind] is
+  /// the wire kind, and the row carries the fields every entry has plus
+  /// [payload]'s.
+  ///
+  /// The row's `loggedAt` is what the importer stamps on the record it writes
+  /// for the entry (`createdAtMs`), so a fixture passes the stamp its imported
+  /// record carries (D-133).
+  static Future<void> stageImportedEntry(
+    WorkoutRepository repository,
+    String sessionId, {
+    required String entryId,
+    required String kind,
+    required String slotId,
+    required String exerciseId,
+    required int loggedAtMs,
+    Map<String, Object?> payload = const {},
+  }) async {
+    await repository.stageWatchInboxEntry(
+      WatchInboxEntry(
+        entryId: entryId,
+        watchSessionId: sessionId,
+        kind: kind,
+        origin: WatchInboxEntry.originWatch,
+        payload: <String, dynamic>{
+          'entryId': entryId,
+          'eventId': entryId,
+          'kind': kind,
+          'loggedAt': utcIso(
+            DateTime.fromMillisecondsSinceEpoch(loggedAtMs, isUtc: true),
+          ),
+          'sessionExerciseId': slotId,
+          'exerciseId': exerciseId,
+          ...payload,
+        },
+        receivedAtMs: loggedAtMs,
+      ),
+    );
+  }
 }
 
 /// The phone's radio: records what the phone sent, and hands the phone one
@@ -562,16 +656,17 @@ void main() {
         );
         expect(
           _entryIds(payload),
-          ['entry-$bench-0'],
+          ['entry-$bench-0', 'entry-$squat-0'],
           reason:
-              'S-31 the phone answers with the sets it logged itself. The '
-              'session path logs one set when an exercise is added, and only '
-              'the `set` slot carries one: a `timed` or unnamed kind has no '
-              'wire entry yet (D-39)',
+              'S-31 the phone answers with the entries it logged itself: the '
+              'session path logs one group when an exercise is added. The '
+              '`amrap` slot resolves to `set` by capability, so its group rides '
+              '(D-130); the `timed` slot has no window yet, so its entry is '
+              'omitted (D-132)',
         );
-        expect(_objects(payload['entries']).single['reps'], 10);
+        expect(_objects(payload['entries']).first['reps'], 10);
         expect(
-          _objects(payload['entries']).single.containsKey('loadKg'),
+          _objects(payload['entries']).first.containsKey('loadKg'),
           isFalse,
           reason:
               'D-60 a zero weight still sends no `loadKg`: the wire keeps "no '
@@ -2129,6 +2224,351 @@ void main() {
       });
     });
   }
+
+  group('S-140…S-143 the phone projects the kinds it used to drop', () {
+    /// The answer's entries by their own id, so a scenario reads one entry's
+    /// fields without pinning the frame's order.
+    Map<String, Map<String, Object?>> byId(Map<String, Object?> payload) => {
+      for (final entry in _objects(payload['entries']))
+        entry['entryId']! as String: entry,
+    };
+
+    /// The answer to one `snapshot` request, from the phone's own projection of
+    /// the session it holds.
+    Future<Map<String, Object?>> answer() async {
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      return radio.lastOfType('session_snapshot');
+    }
+
+    /// The round exercise these fixtures log: the catalog's own, so the slot
+    /// carries a capability list and rides the answer at all.
+    Future<void> seedRoundsExercise() => seedExercise(
+      repository,
+      id: 'ex-burpee',
+      name: 'Burpees',
+      capabilities: ['rounds', 'time'],
+    );
+
+    test('S-140 a phone timed entry reaches the wrist', () async {
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-t', [
+        (
+          slotId: 'slot-plank',
+          exerciseId: 'ex-plank',
+          effortKind: 'timed',
+          write: () async {
+            await repository.createTimedInstance(
+              timedInstance(
+                'slot-plank',
+                0,
+                durationSecs: 60,
+                entryIndex: 1,
+                startedAtMs: _at(1),
+                finishedAtMs: _at(2),
+              ),
+            );
+            await repository.createObservation(
+              distanceRow('slot-plank', 1, 0, atMs: _at(2)),
+            );
+          },
+        ),
+      ]);
+
+      final snapshot = await answer();
+      final payload = _payload(snapshot);
+      expect(_slotIds(payload), ['slot-plank']);
+      expect(
+        _entryIds(payload),
+        ['entry-slot-plank-1'],
+        reason:
+            'D-131 the phone\'s timed record rides the answer, named by its '
+            'slot and the record\'s own index',
+      );
+      final entry = _objects(payload['entries']).single;
+      expect(entry['kind'], 'timed');
+      expect(entry['sessionExerciseId'], 'slot-plank');
+      expect(entry['exerciseId'], 'ex-plank');
+      expect(entry['loggedAt'], _atIso(2));
+      expect(entry['startedAt'], _atIso(1));
+      expect(entry['endedAt'], _atIso(2));
+      expect(
+        entry.containsKey('distanceMeters'),
+        isFalse,
+        reason: 'D-132 a distance of 0 is omitted, never sent as 0',
+      );
+      expect(
+        loadProtocolValidator().validateEnvelope(snapshot),
+        isEmpty,
+        reason: 'one entry the wire cannot carry rejects the whole snapshot',
+      );
+
+      expect(await engine.applyMessage(snapshot), isTrue);
+      expect(
+        [for (final record in engine.entries) record.entryId],
+        ['entry-slot-plank-1'],
+        reason: 'S-140 the wrist holds the entry the phone sent it',
+      );
+    });
+
+    test('S-141 a round and a hold carry their own fields', () async {
+      await seedRoundsExercise();
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-k', [
+        (
+          slotId: 'slot-burpee',
+          exerciseId: 'ex-burpee',
+          effortKind: 'round',
+          write: () async {
+            await repository.createRoundInstance(
+              roundInstance(
+                'slot-burpee',
+                0,
+              ).copyWith(totalPausedDurationMs: 5000),
+            );
+            await repository.createRoundInstance(
+              roundInstance('slot-burpee', 1),
+            );
+          },
+        ),
+        (
+          slotId: 'slot-hold',
+          exerciseId: 'ex-plank',
+          effortKind: 'drill',
+          write: () async {
+            await repository.createTimedInstance(
+              timedInstance('slot-hold', 0, durationSecs: 30, entryIndex: 0),
+            );
+            await repository.createObservation(
+              extraWeightRow('slot-hold', 0, 12, atMs: fixtureRowAt(0)),
+            );
+          },
+        ),
+      ]);
+
+      final snapshot = await answer();
+      final entries = byId(_payload(snapshot));
+      expect(entries.keys.toSet(), {
+        'entry-slot-burpee-0',
+        'entry-slot-burpee-1',
+        'entry-slot-hold-0',
+      });
+      expect(entries['entry-slot-burpee-0']!['kind'], 'round');
+      expect(
+        entries['entry-slot-burpee-0']!['roundNumber'],
+        1,
+        reason: 'D-130 a round index is 0-based on the phone, 1-based on the wire',
+      );
+      expect(
+        entries['entry-slot-burpee-0']!['pausedMs'],
+        5000,
+        reason: 'D-130 a round carries the time it spent paused',
+      );
+      expect(entries['entry-slot-burpee-1']!['roundNumber'], 2);
+      expect(
+        entries['entry-slot-burpee-1']!.containsKey('pausedMs'),
+        isFalse,
+        reason: 'D-132 a round that was never paused sends no pause',
+      );
+      expect(
+        entries['entry-slot-hold-0']!['kind'],
+        'hold',
+        reason:
+            'D-130 a drill effort is a hold on the wire, the kind the wrist\'s '
+            'own logger spells',
+      );
+      expect(
+        entries['entry-slot-hold-0']!['extraLoadKg'],
+        12.0,
+        reason: 'D-130 a hold carries the weight it was held with',
+      );
+      expect(
+        [
+          entries['entry-slot-hold-0']!['startedAt'],
+          entries['entry-slot-hold-0']!['endedAt'],
+        ],
+        [isA<String>(), isA<String>()],
+        reason: 'D-130 a hold carries the window it was held over',
+      );
+      expect(loadProtocolValidator().validateEnvelope(snapshot), isEmpty);
+    });
+
+    test('S-142 a wrist-logged entry of any kind is not doubled', () async {
+      await seedRoundsExercise();
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-c', [
+        (
+          slotId: 'slot-plank',
+          exerciseId: 'ex-plank',
+          effortKind: 'timed',
+          write: () async {
+            // The record the importer wrote for the wrist's own timed entry:
+            // the importer stamps it with the row's `loggedAt` (fact (a)), so
+            // the row's stamp still claims it.
+            await repository.createTimedInstance(
+              timedInstance(
+                'slot-plank',
+                0,
+                durationSecs: 60,
+                entryIndex: 0,
+                startedAtMs: _at(1),
+                finishedAtMs: _at(2),
+              ).copyWith(createdAtMs: _at(2)),
+            );
+            await _SessionFixture.stageImportedEntry(
+              repository,
+              'sess-c',
+              entryId: _wristEntryId,
+              kind: WatchInboxEntry.kindTimed,
+              slotId: 'slot-plank',
+              exerciseId: 'ex-plank',
+              loggedAtMs: _at(2),
+            );
+            await repository.createTimedInstance(
+              timedInstance(
+                'slot-plank',
+                1,
+                durationSecs: 30,
+                entryIndex: 1,
+                startedAtMs: _at(3),
+                finishedAtMs: _at(4),
+              ),
+            );
+          },
+        ),
+        (
+          slotId: 'slot-burpee',
+          exerciseId: 'ex-burpee',
+          effortKind: 'round',
+          write: () async {
+            await repository.createRoundInstance(
+              roundInstance(
+                'slot-burpee',
+                0,
+                startedAtMs: _at(1),
+                durationSecs: 60,
+              ).copyWith(createdAtMs: _at(2)),
+            );
+            await _SessionFixture.stageImportedEntry(
+              repository,
+              'sess-c',
+              entryId: _wristEntryId2,
+              kind: WatchInboxEntry.kindRound,
+              slotId: 'slot-burpee',
+              exerciseId: 'ex-burpee',
+              loggedAtMs: _at(2),
+            );
+            await repository.createRoundInstance(
+              roundInstance(
+                'slot-burpee',
+                1,
+                startedAtMs: _at(4),
+                durationSecs: 60,
+              ),
+            );
+          },
+        ),
+      ]);
+
+      final snapshot = await answer();
+      final entries = byId(_payload(snapshot));
+      expect(
+        _entryIds(_payload(snapshot)),
+        ['entry-slot-plank-1', 'entry-slot-burpee-1'],
+        reason:
+            'D-133 one wrist entry produces at most one phone entry: neither '
+            'wrist row rides back, and no claimed record rides twice',
+      );
+      expect(
+        entries.keys.toSet(),
+        {'entry-slot-plank-1', 'entry-slot-burpee-1'},
+        reason:
+            'D-133 the wrist\'s own timed and round entries claim their phone '
+            'records, so neither rides back under a phone-minted id',
+      );
+      expect(
+        {for (final entry in entries.values) entry['kind']},
+        {'timed', 'round'},
+      );
+      expect(loadProtocolValidator().validateEnvelope(snapshot), isEmpty);
+    });
+
+    test('S-143 an unrepresentable instance is omitted, not faked', () async {
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-o', [
+        (
+          slotId: 'slot-plank',
+          exerciseId: 'ex-plank',
+          effortKind: 'timed',
+          write: () async {
+            await repository.createTimedInstance(
+              timedInstance(
+                'slot-plank',
+                0,
+                durationSecs: 0,
+                entryIndex: 0,
+                startedAtMs: 0,
+                finishedAtMs: null,
+                state: TimedState.notStarted,
+              ),
+            );
+            await repository.createTimedInstance(
+              timedInstance(
+                'slot-plank',
+                1,
+                durationSecs: 0,
+                entryIndex: 1,
+                startedAtMs: _at(1),
+                finishedAtMs: _at(1),
+              ),
+            );
+            await repository.createTimedInstance(
+              timedInstance(
+                'slot-plank',
+                2,
+                durationSecs: 60,
+                entryIndex: 2,
+                startedAtMs: _at(1),
+                finishedAtMs: _at(2),
+              ),
+            );
+            // The writer's own shape: every entry index carries a distance row
+            // and an added-load row, 0 where nothing was recorded
+            // (`LoggedEntryRows.timedObservations`).
+            for (var i = 0; i < 3; i++) {
+              await repository.createObservation(
+                distanceRow(
+                  'slot-plank',
+                  i,
+                  i == 2 ? 250 : 0,
+                  atMs: _at(2),
+                  source: i == 2 ? EffortObservation.sourceEntered : null,
+                ),
+              );
+              await repository.createObservation(
+                extraWeightRow('slot-plank', i, 0, atMs: _at(2)),
+              );
+            }
+          },
+        ),
+      ]);
+
+      final snapshot = await answer();
+      final payload = _payload(snapshot);
+      expect(
+        _entryIds(payload),
+        ['entry-slot-plank-2'],
+        reason:
+            'D-132 an instance that never started and a window of no length are '
+            'omitted, never placeheld',
+      );
+      final entry = _objects(payload['entries']).single;
+      expect(entry['startedAt'], isNot(entry['endedAt']));
+      expect(
+        entry['distanceMeters'],
+        250.0,
+        reason: 'D-132 a distance above 0 rides the timed entry',
+      );
+      expect(entry['distanceSource'], EffortObservation.sourceEntered);
+      expect(loadProtocolValidator().validateEnvelope(snapshot), isEmpty);
+    });
+  });
 
   group('S-109 the phone catches up on resume, once', () {
     test(

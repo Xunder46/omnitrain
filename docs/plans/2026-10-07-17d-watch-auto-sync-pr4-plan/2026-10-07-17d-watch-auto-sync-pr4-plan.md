@@ -318,33 +318,37 @@ band (`test/docs_indexing_contract_test.dart`).
 
 ### Phase 1: The phone projects its other kinds (@developer)
 
-1. [ ] Read and record two facts in the evidence file, then proceed on the pinned fallbacks if they do
+1. [x] Read and record two facts in the evidence file, then proceed on the pinned fallbacks if they do
    not hold: (a) the `createdAtMs`/stamp `lib/state/watch/watch_session_importer.dart` writes for an
    imported non-set entry (D-133's first rule); (b) whether a hold effort's window is derivable from
    its observation row alone (D-130's "a hold with no instance"). · `2026-10-06-17d-…-plan.evidence.md`
-2. [ ] Add the per-kind projections beside `PhoneEntries.project` in
+2. [x] Add the per-kind projections beside `PhoneEntries.project` in
    `lib/core/sync_protocol/phone_entries.dart` — one shared `_window` helper plus
    `projectTimed`/`projectHold`/`projectRound` (or one `projectInstance` with a kind switch),
    each documented as D-130's table and D-131's id rule. `project` keeps its `set`-only contract. ·
    `PhoneEntries:projectTimed`, `PhoneEntries:projectHold`, `PhoneEntries:projectRound`
-3. [ ] Read `WatchLoggingState.windowPayload(coversDistance:)` and the hold/round spellings
+3. [x] Read `WatchLoggingState.windowPayload(coversDistance:)` and the hold/round spellings
    (`watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift:600–700`) and make the phone's
    field names, signs and units agree for each kind; cite the function and the line in a doc comment. ·
    `PhoneEntries:_window`
-4. [ ] Add the kind constants (`kindTimed`, `kindHold`, `kindRound`) beside `WatchInboxEntry.kindSet`
+4. [x] Add the kind constants (`kindTimed`, `kindHold`, `kindRound`) beside `WatchInboxEntry.kindSet`
    in `lib/data/models/models.dart:2618` if they are absent — additive, no rename, no migration. ·
    `WatchInboxEntry:kindTimed`
-5. [ ] Replace `_entriesFor`'s `effortKind != BlockTypes.set → const []` early return
+5. [x] Replace `_entriesFor`'s `effortKind != BlockTypes.set → const []` early return
    (`lib/state/watch/watch_session_adoption_bridge.dart:243`) with the per-kind dispatch: sets keep
    today's path, and the wires' other kinds read `getTimedInstances`/`getRoundInstances` through the
    repository and project them. · `WatchSessionAdoptionBridge:_entriesFor`
-6. [ ] Drop `_wristRowStamps`'s `kind != kindSet` skip (`:271`) and match a row to its record per kind
+6. [x] Drop `_wristRowStamps`'s `kind != kindSet` skip (`:271`) and match a row to its record per kind
    (D-133). · `WatchSessionAdoptionBridge:_wristRowStamps`
-7. [ ] Add S-140, S-141, S-142, S-143 to `test/watch_session_projection_test.dart` and the payload
+7. [x] Add S-140, S-141, S-142, S-143 to `test/watch_session_projection_test.dart` and the payload
    shapes to `test/sync_protocol_fixtures_test.dart`'s conformance area if a fixture is the natural
    home; plain `test()`, Mock-first. · `test/watch_session_projection_test.dart`,
-   `test/sync_protocol_fixtures_test.dart`
-8. [ ] Write Progress + the two recorded facts + the red→green table for this phase. · the evidence file
+   `test/sync_protocol_fixtures_test.dart` — no fixture addition was needed: the payload shapes are
+   asserted inside the new group (both validators accept the projected entries), so
+   `sync_protocol_fixtures_test.dart` was run as a guard only (138 passed).
+8. [x] Write Progress + the two recorded facts + the red→green table for this phase. · the evidence file
+   (facts table, Phase 1 table, Done Criteria run, red→green table, three mutation proofs, assumptions,
+   residue sweeps, diff footprint)
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh lint`;
 `.github/copilot/scripts/macos/gateway.sh test test/watch_session_projection_test.dart test/watch_session_adoption_bridge_test.dart test/sync_protocol_fixtures_test.dart test/watch_session_import_test.dart test/phone_manage_bridge_test.dart`;
@@ -453,14 +457,39 @@ added weight stay off the wire by decision (D-135/D-136).
 
 ## Progress
 
-- [ ] Phase 1 — the phone projects its other kinds
+- [x] Phase 1 — the phone projects its other kinds — **Complete**: `projectTimed`/`projectHold`/
+  `projectRound` + `_window` in `phone_entries.dart` (kinds at `:40-52`, `resolveRecordClaims` `:300`);
+  `_entriesFor` per-kind dispatch (`watch_session_adoption_bridge.dart:258`) and all-kinds
+  `_wristRowsBySlot` (`:379`); `heldWristEntryIds` still set-scoped (Phase 2). Items 1–8 done; item 4
+  was a no-op (`kindTimed`/`kindHold`/`kindRound` already at `models.dart:2618-2621`). S-140…S-143 in
+  `test/watch_session_projection_test.dart:2225+`, red first (32 passed/4 failed) then 36 passed;
+  prove-red RED AT `3720c6c`; full suite `+4052 ~1: All tests passed!`; lint 196/0 = baseline.
+  Evidence: `2026-10-07-17d-watch-auto-sync-pr4-plan.evidence.md`.
 - [ ] Phase 2 — the wrist shows them; 17c's deletion covers them
 - [ ] Phase 3 — docs, contract sentence, residue sweep
 
 ## Assumption Log
 
-[empty — executors append decision / options / rationale here; the Conductor marks each RATIFIED or
-REVERT]
+1. **D-130's "a hold with no instance" reconstruction branch is not implemented** (fact (b)):
+   `session_core_entry.dart:134-156` and `watch_session_importer.dart:99`/`:887-893` both write a
+   `TimedInstance` for every hold, so the branch would be dead code; I-5 forbids inventing a window.
+   Options: implement it anyway (untestable) / omit. Omitted in favour of omission (D-132). RATIFY?
+2. **`extraLoadKg` has no exclusive minimum** in `envelope.schema.json` (plain number): D-132's
+   "below the minimum" prose is unsupported, so the only omission guards are `_window`'s (zero-length)
+   and `_distanceFields`' (≤ 0). A load of exactly 0 is omitted; nothing is clamped. RATIFY?
+3. **The brief's "1-based" entry-id wording** contradicts D-131/evidence: the id carries the record's
+   stored `entryIndex`, 0-based in general (`entry-slot-bench-0` in pre-existing S-31 tests); only
+   `roundNumber` is 1-based. Went with D-131. RATIFY?
+4. **Positional pairing**: `EntryRows.distanceEntries`/`companions` pair the k-th metric row with the
+   k-th entry, and `LoggedEntryRows.timedObservations` writes a row for every index — so the wire
+   projections read that reader and fixtures must use that shape (S-143's sparse fixture hid a guard).
+   RATIFY?
+5. **The pre-existing S-2 expectation had to change** (`test/watch_session_projection_test.dart:657`)
+   though the impact table predicted no existing assertion would: the `amrap` squat slot resolves to
+   `set` by capability precedence (D-130; base kept it out) and the `timed` plank slot is omitted for
+   lack of a window (D-132). `['entry-$bench-0']` + two `.single` reads became
+   `['entry-$bench-0', 'entry-$squat-0']` + `.first`; prove-red at `3720c6c` shows the updated
+   expectation red there for exactly that reason. Reviewer: ratify or revert.
 
 ## Feedback
 
