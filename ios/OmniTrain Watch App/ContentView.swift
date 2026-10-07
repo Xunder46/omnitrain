@@ -100,6 +100,10 @@ final class WatchAppHost: ObservableObject {
             guard let self else { return }
             self.phoneReachability = WatchPhoneReachability.observed(reachable: reachable)
             self.revision += 1
+            // The phone back in reach catches the wrist up by itself (D-96). Not
+            // awaited, so the handler is never blocked; the gate and the in-flight
+            // guard live in `catchUp`, not here.
+            Task { await self.orchestrator.catchUp(reachable: reachable) }
         }
 
         // End and the answer both change which surface the shell shows, and
@@ -128,9 +132,11 @@ final class WatchAppHost: ObservableObject {
         revision += 1
     }
 
-    /// Asks the phone for the routines and the wrist's session state — the one
-    /// action that starts a sync, because nothing arrives unless the user asks
-    /// (D-16, I-1).
+    /// Asks the phone for the routines and the wrist's session state — the Sync
+    /// button's own action, for what is not automatic: the first fetch on a fresh
+    /// watch, the routines and the settings, and a manual retry. A session the
+    /// wrist is running keeps itself in step with the phone without it, by its own
+    /// announcements and its reachability catch-up (D-96).
     ///
     /// The first sync asks for everything; a later one says what the wrist
     /// already has, so the phone can answer with what changed.

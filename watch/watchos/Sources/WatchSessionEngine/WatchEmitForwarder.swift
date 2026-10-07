@@ -22,8 +22,33 @@
 //  it is not queued and not retried, because the row it came from is still owed
 //  and the next Sync re-sends it from storage (D-22).
 //
+//  A send that never completes is bounded the same way: after `sendTimeout` the
+//  frame is reported through `onFailure` and the chain moves on, so one wedged
+//  radio cannot silence the wrist for the rest of the session (D-98).
 
 import Foundation
+
+/// A send that did not complete inside its bound (D-98). Reported through the
+/// forwarder's failure hook like any refusal; the frame is dropped, and the row
+/// it came from is re-sent from storage by the next sync.
+struct WatchSendTimeout: Error {
+    let seconds: TimeInterval
+}
+
+/// Resolves a timeout race exactly once, so the loser cannot resume the
+/// continuation a second time.
+private final class SendRace {
+    private let lock = NSLock()
+    private var settled = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if settled { return false }
+        settled = true
+        return true
+    }
+}
 
 /// Turns the engine's `WatchMessageSink` into sends over a `WatchSyncTransport`.
 public final class WatchEmitForwarder {
@@ -33,6 +58,10 @@ public final class WatchEmitForwarder {
 
     /// Where a refused frame is reported — the same kind of hook the bridge uses.
     private let onFailure: (Error) -> Void
+
+    /// How long one send may run before it is treated as refused (D-98).
+    /// Injectable so a test can use a bound it can outlast.
+    private let sendTimeout: TimeInterval
 
     private let lock = NSLock()
 
@@ -46,20 +75,24 @@ public final class WatchEmitForwarder {
     /// seam below rather than through the protocol.
     public init(
         transport: WatchSyncTransport,
-        onFailure: @escaping (Error) -> Void = { _ in }
+        onFailure: @escaping (Error) -> Void = { _ in },
+        sendTimeout: TimeInterval = 10
     ) {
         self.send = { await transport.send($0) }
         self.onFailure = onFailure
+        self.sendTimeout = sendTimeout
     }
 
     /// The seam the transport init wraps: a sender that can refuse a frame, so
     /// the failure path is expressible without a transport whose `send` throws.
     init(
         send: @escaping ([String: Any]) async throws -> Void,
-        onFailure: @escaping (Error) -> Void
+        onFailure: @escaping (Error) -> Void,
+        sendTimeout: TimeInterval = 10
     ) {
         self.send = send
         self.onFailure = onFailure
+        self.sendTimeout = sendTimeout
     }
 
     /// What the engine is given as its `onEmit`.
@@ -76,16 +109,49 @@ public final class WatchEmitForwarder {
         let previous = tail
         let send = self.send
         let onFailure = self.onFailure
+        let timeout = sendTimeout
         let next = Task {
             await previous?.value
             do {
-                try await send(envelope)
+                try await WatchEmitForwarder.bounded(envelope, via: send, within: timeout)
             } catch {
                 onFailure(error)
             }
         }
         tail = next
         lock.unlock()
+    }
+
+    /// Hands one frame to `send`, failing with `WatchSendTimeout` when it has not
+    /// completed within `timeout` seconds (D-98).
+    ///
+    /// The loser of the race is abandoned rather than awaited: a send that never
+    /// returns must not hold the serial chain. Nothing is retried — the row the
+    /// frame came from is still owed and the next sync re-sends it from storage.
+    static func bounded(
+        _ envelope: [String: Any],
+        via send: @escaping ([String: Any]) async throws -> Void,
+        within timeout: TimeInterval
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let race = SendRace()
+            Task {
+                do {
+                    try await send(envelope)
+                    if race.claim() { continuation.resume() }
+                } catch {
+                    if race.claim() { continuation.resume(throwing: error) }
+                }
+            }
+            Task {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                } catch {
+                    return
+                }
+                if race.claim() { continuation.resume(throwing: WatchSendTimeout(seconds: timeout)) }
+            }
+        }
     }
 
     /// The send in flight and everything queued behind it. The app never reads

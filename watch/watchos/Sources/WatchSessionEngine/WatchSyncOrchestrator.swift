@@ -55,6 +55,13 @@ public final class WatchSyncOrchestrator {
     /// has nothing to do with a `preferences_down`.
     private let preferences: WatchPhonePreferences?
 
+    /// Whether a catch-up is running. The class is not main-actor isolated, so
+    /// the flag is protected by a lock: the test-and-set in `catchUp` has no
+    /// suspension point between the check and the set, so two triggers can never
+    /// both pass it.
+    private let catchUpLock = NSLock()
+    private var catchUpInFlight = false
+
     public init(
         transport: WatchSyncTransport,
         paths: WatchSessionStartPaths,
@@ -95,6 +102,30 @@ public final class WatchSyncOrchestrator {
         } else {
             await answerSnapshotRequest()
         }
+    }
+
+    /// Catches the wrist up with the phone when the radio reports the phone back
+    /// in reach, without the user pressing Sync (D-96).
+    ///
+    /// Two gates, both here rather than in the shell: the phone must be
+    /// `reachable` **and** the wrist must hold a session. A wrist with no session
+    /// keeps the old behaviour — routines, settings and the first fetch still
+    /// wait for the Sync button — so nothing is pulled for a reason the user did
+    /// not ask for. A trigger that arrives while one is already running is
+    /// dropped: never queued, never cancelling the running one.
+    public func catchUp(reachable: Bool) async {
+        guard reachable, engine.session != nil else { return }
+
+        let alreadyRunning = catchUpLock.withLock { () -> Bool in
+            if catchUpInFlight { return true }
+            catchUpInFlight = true
+            return false
+        }
+        guard !alreadyRunning else { return }
+
+        defer { catchUpLock.withLock { catchUpInFlight = false } }
+
+        await sync(reconnect: paths.syncedAt != nil)
     }
 
     /// Answers a snapshot request from the phone with the watch's live session.

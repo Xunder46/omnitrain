@@ -195,4 +195,38 @@ final class WatchEmitForwarderTests: XCTestCase {
         XCTAssertEqual(recorder.failures.count, 1)
         XCTAssertEqual(recorder.ids, ["next"])
     }
+
+    // MARK: - S-112 a hung send cannot wedge the chain
+
+    func testS112AHungSendCannotWedgeTheQueue() async throws {
+        let recorder = ForwarderRecorder()
+        let forwarder = WatchEmitForwarder(
+            send: { frame in
+                if frame["id"] as? String == "hung" {
+                    // Never returns within the bound. The bound, not the send, is
+                    // what moves the chain on (D-98).
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    return
+                }
+                recorder.record(frame)
+            },
+            onFailure: { recorder.record($0) },
+            sendTimeout: 0.05
+        )
+
+        forwarder.sink(["id": "hung"])
+        forwarder.sink(["id": "next"])
+
+        // The bound is a real clock, so poll to a deadline rather than assuming
+        // a fixed duration.
+        let deadline = Date().addingTimeInterval(2)
+        while recorder.ids != ["next"] && Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        await forwarder.drain()
+
+        XCTAssertEqual(recorder.ids, ["next"], "the frame behind a wedged send still leaves")
+        XCTAssertEqual(recorder.failures.count, 1, "the wedged send is reported exactly once")
+        XCTAssertEqual(recorder.frames.count, 1, "and nothing is retried")
+    }
 }

@@ -428,8 +428,27 @@ Dependents that only read a touched surface (no change expected; their tests are
   three Done-criteria files 59 passed / 0 failed, full `test` **4030 passed / 1 skipped / 0 failed**
   (Phase 3's 4028 + 2), `lint` 196 / 0 with none in a touched file. Evidence: `.evidence.md` §Phase 3
   fix 1. (Supersedes A-19.)
-- [ ] Phase 4 — the Swift half and the contract (@developer)
-- [ ] Phase 5 — the watch shell starts the catch-up (@governor, built)
+- [x] Phase 4 — the Swift half and the contract (@developer) — **Complete** (2026-10-07). Steps 1–5
+  done. `WatchEmitForwarder.enqueue` bounds each chained send (`sendTimeout`, default 10 s, injectable;
+  a send past the bound is reported through the existing failure hook and the chain moves on — no
+  retry, no queue; D-98). `WatchSyncOrchestrator.catchUp(reachable:)` holds both the gate
+  (`reachable && engine.session != nil`) and an `NSLock`-guarded test-and-set in-flight guard (no
+  suspension between check and set; the flag clears in a `defer`), then calls
+  `sync(reconnect: paths.syncedAt != nil)` (D-96). 3 new Swift tests (S-107, S-108, S-112). PROTOCOL.md
+  gained one additive dated row and a snapshot-rules bullet for the wrist's own announcement (no
+  catch-up claim). `docs/watch_session_sync.md` gained a "Catching up by itself" section (both
+  directions, the bounded send, the remaining Sync uses, D-102) and `docs/watch-app-setup-and-qa.md`'s
+  wrist walkthrough step and out-of-reach note became automatic (marked *(owner)*). Full `swift-test`
+  **325 passed / 0 failed** (baseline 322/0 → +3), full `test` **4030 passed / 1 skipped / 0 failed**
+  (baseline +4030 ~1; docs-only change), `lint` 196 issues / 0 errors with none in a touched file,
+  invariant check clean. All four guards proven red by mutation (no `prove-red` at the base: the new
+  API does not compile there). Evidence: `.evidence.md` §Phase 4.
+- [x] Phase 5 — the watch shell starts the catch-up (@governor, built) — **agent edit done this brief**
+  (2026-10-07). The reachability handler forwards the value to `orchestrator.catchUp(reachable:)` in a
+  detached `Task` (one line, not awaited), and `requestSync()`'s comment now says Sync is for what is
+  not automatic (the first fetch on a fresh watch, routines/settings, a manual retry; D-96). The gate
+  and the guard stay in `catchUp`. Step 3's `xcodebuild` for a watchOS simulator remains the
+  governor's own check.
 
 ## Assumption Log
 
@@ -529,6 +548,24 @@ Executors append here: decision made, options considered, choice and why. The Co
      rule: `projectedSession()` first, and nothing at all when it is null. The debug mains keep
      `LiveSessionMirrorState.sync()` — this fix changes only the graph's method, and the placeholder
      (`s-phone-unjoined`) can no longer leave the phone on a resume.
+21. **A-21 — the catch-up in-flight flag is protected by an `NSLock`, not an actor (developer,
+    2026-10-07, Phase 4).** `WatchSyncOrchestrator` is a plain `public final class` (not main-actor
+    isolated, unlike the shell host), so an actor-isolated flag was not an option without changing the
+    class's isolation. The flag is a `Bool` behind `catchUpLock`; the check-and-set is one
+    `withLock` block with no suspension inside it, so two triggers can never both pass, and the clear
+    sits in a `defer` so an early exit still releases it. `withLock` (not `lock()`/`unlock()`) keeps
+    the async context free of the Swift 6 "unavailable from asynchronous contexts" warning.
+22. **A-22 — the shell edit (Phase 5) was routed through this agent, not left to the governor
+    (developer, 2026-10-07, Phase 4).** Brief item 6 asks for it explicitly: the agent may edit
+    `ios/OmniTrain Watch App/ContentView.swift` but cannot compile it, so the one forwarding line and
+    the `requestSync()` comment were written conservatively and the file's `xcodebuild` stays the
+    governor's check. The gate and the guard were kept in `catchUp` (Phase 4), so the shell line is
+    only a forward.
+23. **A-23 — S-107 and S-108 live in `WatchConnectivityBridgeTests.swift` only (developer,
+    2026-10-07, Phase 4).** The brief allows "…and/or `WatchLiveMirroringTests.swift`"; the recording
+    transport, the orchestrator and the start-path harness they need are all in the bridge file's
+    module, so a test-local `GatedTransport` was added there (a named type in a test file, not a
+    scratch file) rather than duplicating the harness in the mirroring file.
 
 ## Feedback
 

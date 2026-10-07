@@ -339,12 +339,18 @@ is a single frame, and a rest-timer tick pushes nothing
 (`test/watch_session_auto_push_test.dart`,
 `S-75 three changes inside the window are one frame`,
 `S-74 five notifications without a change push nothing`).
-**(c) The wrist's session reaches the phone at a Sync.** From a fresh state
-(nothing running on either device), start **Free workout** on the watch and pick
-an exercise. Tap **Sync** on the watch — this is one of the things still on the
-button, because the phone adopts a wrist session only from the snapshot a Sync
-sends. The phone's home shows it as a session in progress, and opening it shows
-the regular session screen with the wrist's exercise.
+**(c) The wrist's session reaches the phone by itself — (owner).** From a fresh
+state (nothing running on either device), start **Free workout** on the watch and
+pick an exercise. It appears on the phone without tapping **Sync**: the wrist
+announces its own start with a snapshot the phone adopts as its in-progress
+session, and an exercise added afterwards arrives as a second snapshot
+(`test/watch_session_engine_test.dart`,
+`S-100 a wrist start sends its lifecycle, then its own snapshot`,
+`S-101 a wrist-added exercise arrives as a second snapshot with a moved
+revision`). The phone's home shows it as a session in progress, and opening it
+shows the regular session screen with the wrist's exercise. With the phone back
+in reach after being out of range, the wrist catches up on its own
+(`WatchConnectivityBridgeTests.testS107TheWristCatchesUpOnAReachabilityEdgeOnce`).
 **(d) Different sessions on both devices: each keeps its own — (owner).** With a
 session running on the phone, start one on the watch (or the other way round) and
 sync. The phone keeps the session it was running and does not adopt the wrist's;
@@ -497,10 +503,14 @@ hardware yet.
    sync from the wrist. On the wrist tap **End**; the question appears alone —
    no skip, back or swipe. Answer 4. The phone's calendar holds one entry for
    the session and its Summary shows 4 / 5.
-4. **A workout logged with the phone out of reach catches up at the next Sync.**
+4. **A workout logged with the phone out of reach catches up by itself — (owner).**
    Start another wrist workout and log a set with the phone in Airplane Mode.
-   Nothing arrives. Turn Airplane Mode off, foreground the phone app and tap
-   **Sync** on the wrist: the set lands exactly once.
+   Nothing arrives. Turn Airplane Mode off: with the phone back in reach the wrist
+   catches up on its own — the set lands exactly once without tapping **Sync**
+   (`WatchConnectivityBridgeTests.testS107TheWristCatchesUpOnAReachabilityEdgeOnce`:
+   the owed entries leave once, and a second notification while one is in flight
+   is dropped). The **Sync** button still fetches routines, preferences and the
+   food catalog, and retries by hand.
 5. **A band-assisted set logs a negative load** *(owner)*. Pick a set exercise
    with a load. Dial the load down past zero: the crown stops at the wire's floor
    however long you keep turning

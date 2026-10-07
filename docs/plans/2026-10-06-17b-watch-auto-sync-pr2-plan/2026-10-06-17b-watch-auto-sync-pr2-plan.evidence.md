@@ -367,3 +367,62 @@ re-ran green (`+3`); nothing is left applied.
 Footprint: `lib/state/watch/watch_sync_wiring.dart` +19 and `test/watch_session_projection_test.dart`
 (replacing the one S-109 graph test with its three cases) — 2 files. No scratch file was created, so
 none had to be deleted, and no formatter was run.
+
+## Phase 4 — the Swift half and the contract (S-107, S-108, S-112; steps 1–5)
+
+Brief: `.work/watch-autosync/brief-17b-dev-4.md`. Base commit `8ed0a96` (swift 322 / 0; flutter
++4030 ~1; analyze 196 / 0).
+
+### No `prove-red` at the base — the new API does not compile there
+
+`catchUp(reachable:)` and the `sendTimeout` init parameter do not exist at `8ed0a96`, so
+`prove-red HEAD swift-test …` cannot compile the new tests. Every guard is therefore proven by
+mutation: record the original line, apply the mutation, run the guard's test, restore the EXACT
+original, re-run green. All four mutations are below with their verdict lines.
+
+### Mutations — every new guard, shown red, then restored exactly
+
+| Guard | Mutation applied | Test | Verdict |
+|---|---|---|---|
+| S-107 in-flight guard | `catchUp`'s test-and-set replaced with `catchUpLock.withLock { catchUpInFlight = true }` (the guard removed) | `testS107TheWristCatchesUpOnAReachabilityEdgeOnce` | RED AT: `XCTAssertEqual failed: ("2") is not equal to ("1") - exactly one sync ran`; also `and no send overlapped it`, `the owed entries left exactly once` (`["e-1", "e-2", "e-1", "e-2"]`), `the wrist holding a session offers its own snapshot` (2 vs 1), `a later trigger is not dropped` (3 vs 2) |
+| S-108 session gate | `guard reachable, engine.session != nil else { return }` → `guard reachable else { return }` | `testS108AWristWithNoSessionDoesNotSyncOnItsOwn` | RED AT: `XCTAssertTrue failed - no session means no catch-up`; `XCTAssertEqual failed: ("1") is not equal to ("0")` (a snapshot request left) |
+| S-107 unreachable case | the gate's `reachable` clause dropped: `guard engine.session != nil else { return }` | `testS107TheWristCatchesUpOnAReachabilityEdgeOnce` | RED AT: `XCTAssertEqual failed: ("3") is not equal to ("2") - an unreachable phone starts no sync` — the only assertion that fails |
+| S-112 send bound | `enqueue`'s `try await WatchEmitForwarder.bounded(envelope, via: send, within: timeout)` → `try await send(envelope)` (the bound removed) | `testS112AHungSendCannotWedgeTheQueue` | RED AT: `XCTAssertEqual failed: ("0") is not equal to ("1") - the wedged send is reported exactly once`; the run took 5.17 s — the hung send's own delay, i.e. no bound fired |
+
+After each mutation the exact original line was restored and the test re-run green (below).
+
+### Green
+
+| Command | Result | Log |
+|---|---|---|
+| gateway `swift-test --filter WatchEmitForwarderTests` | `Executed 6 tests, with 0 failures` — includes `testS112AHungSendCannotWedgeTheQueue` | `swift-test-20261007-024226-47452.log` |
+| gateway `swift-test --filter WatchConnectivityBridgeTests` | `Executed 21 tests, with 0 failures` — includes `testS107TheWristCatchesUpOnAReachabilityEdgeOnce` and `testS108AWristWithNoSessionDoesNotSyncOnItsOwn` | `swift-test-20261007-024245-…` (inline) |
+| gateway `swift-test` (full, final) | `Executed 325 tests, with 0 failures` — 325 passed, 0 failed; baseline 322 / 0, **+3** (S-107, S-108, S-112) | `swift-test-20261007-024536-48671.log` |
+| gateway `test` (full, final) | `+4030 ~1: All tests passed!` — 4030 passed, ~1 skipped, 0 failed; the baseline count (docs-only change; the docs/fixtures guard is green) | `test-20261007-024546-48829.log` |
+| gateway `lint` | `196 issues found.` — 0 errors, the baseline count; no line for a touched file | `lint-20261007-024541-48733.log` |
+| `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches | — |
+
+### What the change is
+
+- `WatchEmitForwarder.swift`: `sendTimeout: TimeInterval = 10` on both inits; `enqueue` routes each
+  frame through a new `static func bounded(_:via:within:)` that races the send against a `Task.sleep`
+  and fails with `WatchSendTimeout` when the bound expires, guarded by a once-only `SendRace` (NSLock).
+  The loser is abandoned, never awaited, so a hung send cannot hold the serial chain; nothing is
+  retried or queued (D-98).
+- `WatchSyncOrchestrator.swift`: `public func catchUp(reachable: Bool) async` — the gate
+  (`reachable && engine.session != nil`) and an `NSLock`-guarded test-and-set in-flight flag (no
+  suspension between check and set; cleared in a `defer`), then `await sync(reconnect: paths.syncedAt
+  != nil)` (D-96).
+- `PROTOCOL.md`: one additive 2026-10-06 version-history row and one snapshot-rules bullet for the
+  wrist's own announcement (D-101), naming the six tests; nothing about catch-up.
+- `docs/watch_session_sync.md`: a new "Catching up by itself" section (both directions, the bounded
+  send, the remaining Sync uses, D-102), every sentence naming an exact test.
+- `docs/watch-app-setup-and-qa.md`: the wrist walkthrough step and the out-of-reach note became
+  automatic, marked *(owner)*.
+- `ios/OmniTrain Watch App/ContentView.swift`: the reachability handler forwards the value to
+  `orchestrator.catchUp(reachable:)` in a detached `Task`; `requestSync()`'s comment corrected. This
+  file is the governor's to build (`xcodebuild`); the agent edit is one line plus the comment.
+
+Footprint: 8 files — 2 Swift sources, 2 Swift test files, `PROTOCOL.md`, 2 docs, 1 shell file
+(`git-diff --stat`: 359 insertions, 15 deletions). No scratch file was created, so none had to be
+deleted, and no formatter was run.

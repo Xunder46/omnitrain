@@ -174,6 +174,64 @@ half — it ends its session on receiving that lifecycle — is
 `WatchSessionEngineTests.testThePhonesLifecycleEndsAWristSessionAtTheMomentItNames`
 in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 
+## Catching up by itself
+
+**The wrist catches up when the phone comes back in reach (D-96).** When the radio
+reports the phone reachable again and the wrist holds a session, the wrist runs
+the same catch-up the Sync button runs — it re-sends what the phone has not
+acknowledged and asks for the phone's state — once, without the user pressing
+anything. A trigger that arrives while one is already running is dropped: never
+queued, never cancelling the running one. A wrist that holds no session does
+nothing by itself, so routines, preferences and the food catalog still wait for
+the Sync button, as does a fresh watch's first fetch. Verified by
+`WatchConnectivityBridgeTests.testS107TheWristCatchesUpOnAReachabilityEdgeOnce`
+(a reachability edge runs one sync; a second notification while it is in flight is
+dropped; a later edge runs again; an unreachable radio starts nothing) and
+`WatchConnectivityBridgeTests.testS108AWristWithNoSessionDoesNotSyncOnItsOwn` (no
+session, no sync, the surfaces still empty) in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`.
+
+**The phone catches up when the app resumes, once (D-96).** Resuming the app asks
+for one sync: the phone asserts its own session and then asks the wrist for its
+own, so a change the wrist made while the app was backgrounded lands without the
+user pressing Sync. The trigger is the app lifecycle alone — no timer, no polling —
+and a phone with no watch mounts no observer at all. Verified by
+`test/watch_resume_sync_test.dart`
+(`S-109 a resume asks for one sync, no other lifecycle state asks for any, and an
+unmounted observer asks for none`, `S-109 every reported resume asks
+for exactly one sync, and no other lifecycle state asks for any`) and by
+`test/watch_session_projection_test.dart`
+(`S-109 case A one resume is one catch-up: the phone's OWN session and then the
+request for the wrist's, once per resume`,
+`S-109 case B a phone holding no session sends no snapshot at all`,
+`S-109 case C the phone asserts its own session, never the wrist's copy`).
+
+**A wedged send cannot silence either device (D-98).** Each frame a device chains
+is bounded: a send that does not complete within its bound is reported through the
+device's failure hook and the chain moves on to the next frame — nothing is
+retried and nothing is queued, because the row the frame came from is still owed
+and the next sync re-sends it from storage. Verified on the phone by
+`test/watch_session_auto_push_test.dart`
+(`S-112 a send that never completes is abandoned and reported, and the change made
+while it hung still leaves the phone`) and on the wrist by
+`WatchEmitForwarderTests.testS112AHungSendCannotWedgeTheQueue` in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchEmitForwarderTests.swift`.
+
+**What the Sync button is still for.** Sync is what is not automatic: the first
+fetch on a fresh watch (routines, preferences and the food catalog) and a manual
+retry. A session's own changes travel by themselves in both directions (D-90,
+D-91, D-96).
+
+**A wrist session left running keeps a new phone session off the watch (D-102).**
+While the wrist holds an active session, a snapshot the phone sends for a
+different session is refused whole and silently, so a session the user starts on
+the phone afterwards does not appear on the watch until the wrist's own session
+is ended there. This is how "each keeps its own" behaves — the alternative would
+silently discard work done on the wrist — so it is a consequence of the rule, not
+a defect. Pinned by
+`WatchSessionEngineTests.testS77AForeignSnapshotChangesNothingAndSaysNothing` in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
+
 ## Invariants
 
 - **One session id, one row.** A wrist pass over a session the phone owns writes
