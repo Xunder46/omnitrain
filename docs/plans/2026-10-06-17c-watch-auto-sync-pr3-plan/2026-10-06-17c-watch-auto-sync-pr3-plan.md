@@ -594,7 +594,14 @@ never sent to the phone (the wrist has no delete sender, and no rule here adds o
   - [x] 6 S-35 flipped in `test/watch_session_projection_test.dart`
   - [x] 7 S-120, S-121 (×2), S-122, S-123, S-126 (first half) added; `watch_session_auto_push_test.dart` 31 passed / 0 failed
   - [x] 8 evidence + Progress — counts, prove-red verdicts and the mutation table in the evidence file
-- [ ] Phase 2 — the Dart twin keeps the deletion; a snapshot clears and replaces
+- [x] Phase 2 — the Dart twin keeps the deletion; a snapshot clears and replaces — **Complete**
+  (developer, 2026-10-07; base `0413112`)
+  - [x] 1 `WatchSessionRecord.deletedEntryIds`, defaulted, carried through `withSequence`/`withDeletedEntryIds`/JSON
+  - [x] 2 the union is written in `_appendSessionRow` (every session row, not the structure-change row only — see the Assumption Log); `_applyDeletion` keeps the in-memory set in step
+  - [x] 3 `restore()` seeds `_deletedEntryIds` from the newest session row
+  - [x] 4 `_storeSnapshotEntry` clears the tombstone for a carried id (scoped — see the Assumption Log) and replaces the whole entry when `loggedAt` differs; `entries` folds the two arms differently
+  - [x] 5 S-124 ×2, S-125 ×2, S-126 (second half) added; `watch_session_engine_test.dart` 36 passed / 0 failed
+  - [x] 6 regression: four suites 141 passed / 0 failed, engine + projection 68 passed / 0 failed, full suite `+4042 ~1`, lint 196/0, I-2 clean; evidence + Progress below
 - [ ] Phase 3 — the Swift twin, PROTOCOL, docs
 
 ## Assumption Log
@@ -627,9 +634,44 @@ Phase 1 (developer, 2026-10-07). Each entry: decision / options considered / why
 8. **No Swift file changed in this phase**, so no `swift-test` run and no Swift prove-red: S-126's
    second half and TRAP 2's durable half are Phase 2/3 work.
 
+Phase 2 (developer, 2026-10-07). Each entry: decision / options considered / why.
+
+1. **The union is written in `_appendSessionRow`, not in `_applyStructureChange`.** Options: item 2's
+   literal "the change writes the union onto the session row it appends", or writing it in the single
+   funnel every row passes through. Chose the funnel (`watch_session_engine.dart:1148`): `restore()`
+   reads the *newest* row, so the lifecycle row S-124's second case appends after an ordinary frame
+   would otherwise answer with an empty lens. A superset of item 2's text; nothing else changes.
+2. **The snapshot's tombstone state is settled before its own row is appended.** `_applySnapshot`
+   appends the session row *before* `_storeSnapshotEntry` runs, and that row is what `restore()` reads
+   the lens from — so the D-113.2 clear is applied in `_applySnapshot`'s entry loop as well as at the
+   entry-store site item 4 names. One helper (`_unhideTheIdTheSnapshotNames`), two call sites.
+3. **D-113.2 is scoped: the clear applies only to a statement the wrist is not already holding.**
+   Options: the literal rule (clear for every carried id), or clearing only when the snapshot outranks
+   what the wrist holds — no held row, or a differing `loggedAt`. Chose the scoped rule: the literal
+   one turns Phase 1's `S-35 a re-statement of a deleted id stays deleted`
+   (`test/watch_session_projection_test.dart`) red, while this plan's own impact row for
+   `_storeSnapshotEntry` requires that family to stay green. D-115 says the phone stops sending a
+   deleted id, so a same-stamp repeat is a stale answer and the newer deletion wins. Convergence
+   (TRAP 4) is untouched: a differing stamp is D-113.3's replacement, and an id the wrist never held is
+   shown. Evidence mutation b is the literal reading, red on S-35; Open question 5 asks for the ruling.
+4. **The replacement/correction lens stays memory-only, like 17b's corrections.** Only the *deletion*
+   lens is durable (that is the field D-113.1 asks for), so after a wrist relaunch a re-created id
+   shows the dead set's stored fields again. Outside Phase 2 — Open question 5's neighbour, not
+   absorbed here.
+5. **The brief's extra item needs the delete and the session switch inside one window.** A phone-side
+   delete only reaches the *composed* session (the ledger is keyed by composed id, and a pass
+   composing nothing returns before it announces), so a mirror-level delete alone cannot shrink the
+   held set. Recorded because it is the only fixture that discriminates the ledger drop.
+
 ## Feedback
 
-[empty — fill this and re-invoke the planner when a D-x contradicts itself or the scope changes]
+- **D-113.2's literal wording contradicts this plan's own impact table** (developer, Phase 2,
+  2026-10-07). Clearing the tombstone for *every* id a snapshot carries turns Phase 1's
+  `S-35 a re-statement of a deleted id stays deleted` red, yet the `_storeSnapshotEntry` row in
+  Existing-Functionality Impact requires that family to stay green. Phase 2 shipped the scoped reading
+  (Assumption Log 3) and is **Complete**; the planner should ratify that wording — or say the S-35
+  guard is meant to flip, which is a one-predicate change (evidence mutation b).
+- Otherwise empty.
 
 ## Open questions
 
@@ -653,3 +695,14 @@ implementable and reversible.
 4. **How fast must a deletion appear on the wrist?** Default: **the existing push cadence** — 250 ms
    debounce plus one frame (D-110), no new timer. Making it immediate would mean sending outside the
    debounce, which weakens the coalescing the push does for every other change.
+5. **May a snapshot resurrect an id whose deletion the wrist already knows?** Default: **only when the
+   snapshot's statement is new to the wrist** — the tombstone is cleared for a carried id when this
+   watch holds no row for that id, or when the snapshot's `loggedAt` differs from the held row's
+   (Phase 2, Assumption Log 3). The literal D-113.2 is one predicate simpler, but it turns a stale
+   repeat of a deleted id back into a visible set, which is the behaviour the existing S-35 test
+   guards against. Reversible in one predicate; the owner's answer decides Phase 3's Swift twin too.
+6. **Does the wrist need the re-created set to survive a relaunch as the *new* set, not the dead
+   one's fields?** Default: **not in this PR** — the replacement lens is memory-only, so after a
+   relaunch a re-created id shows the deleted set's stored fields (a re-created set is rare, and the
+   next snapshot's differing `loggedAt` re-replaces it). Persisting it means a second durable map on
+   the session row in both twins; say the word and it is a follow-up.

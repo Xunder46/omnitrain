@@ -70,11 +70,15 @@ Map<String, Object?> _setEvent(
 
 /// One entry as the wire spells a `set` — the shape a snapshot hands back for
 /// an id the wrist no longer holds.
-Map<String, Object?> _entry(String entryId, {int loadKg = 80}) => {
+Map<String, Object?> _entry(
+  String entryId, {
+  int loadKg = 80,
+  String loggedAt = '2026-07-13T06:00:00Z',
+}) => {
   'entryId': entryId,
   'eventId': entryId,
   'kind': 'set',
-  'loggedAt': '2026-07-13T06:00:00Z',
+  'loggedAt': loggedAt,
   'sessionExerciseId': 'sx-bench',
   'exerciseId': 'ex-sx-bench',
   'reps': 8,
@@ -1435,6 +1439,312 @@ void main() {
         reason:
             'an edit the phone made is its own news: announcing it back would '
             'be noise (D-91)',
+      );
+    });
+  });
+
+  group('S-124 a deletion survives a wrist relaunch (TRAP 2)', () {
+    test('S-124 the deleted set stays hidden across a restart', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _snapshot(
+          harness.sessionId,
+          messageId: 'msg-s124-1',
+          revision: 1,
+          entries: [_entry('entry-bench-1'), _entry('entry-bench-2')],
+        ),
+      );
+      expect(
+        await engine.applyMessage(
+          _structureChange(
+            harness.sessionId,
+            changeId: 'del-entry-bench-1',
+            changes: [
+              {'kind': 'delete_entry', 'entryId': 'entry-bench-1'},
+            ],
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['entry-bench-2'],
+        reason: 'S-124 the phone\'s deletion hides the set while the wrist runs',
+      );
+
+      final relaunched = await harness.runningEngine();
+
+      expect(
+        relaunched.entries.map((entry) => entry.entryId),
+        ['entry-bench-2'],
+        reason:
+            'S-124 the lens is read back from the newest session row: a wrist '
+            'relaunch does not resurrect the deleted set',
+      );
+      expect(
+        relaunched.observations.map((entry) => entry.entryId),
+        ['entry-bench-1', 'entry-bench-2'],
+        reason: 'I-3 the row is still stored — the lens hides it, nothing deletes it',
+      );
+    });
+
+    test('S-124 the lens rides on the rows written after it', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _snapshot(
+          harness.sessionId,
+          messageId: 'msg-s124-2',
+          revision: 1,
+          entries: [_entry('entry-bench-1'), _entry('entry-bench-2')],
+        ),
+      );
+      await engine.applyMessage(
+        _structureChange(
+          harness.sessionId,
+          changeId: 'del-entry-bench-1',
+          changes: [
+            {'kind': 'delete_entry', 'entryId': 'entry-bench-1'},
+          ],
+        ),
+      );
+      // An ordinary frame after the delete: the newest row must still know.
+      await engine.applyMessage(
+        _lifecycleOf(
+          harness.sessionId,
+          messageId: 'msg-life-s124',
+          state: WatchLifecycleState.exerciseAdvanced,
+          exerciseIndex: 0,
+        ),
+      );
+
+      final relaunched = await harness.runningEngine();
+
+      expect(
+        relaunched.entries.map((entry) => entry.entryId),
+        ['entry-bench-2'],
+        reason:
+            'S-124 the deletion is carried onto every later session row, so the '
+            'newest one still speaks for it',
+      );
+    });
+  });
+
+  group('S-125 a re-created set under a reused number is not swallowed (TRAP 4)', () {
+    test('S-125 the wrist shows the new set\'s own fields', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _snapshot(
+          harness.sessionId,
+          messageId: 'msg-s125-1',
+          revision: 1,
+          entries: [
+            _entry('entry-bench-1', loadKg: 60, loggedAt: '2026-07-13T06:00:00Z'),
+            _entry('entry-bench-2', loadKg: 60, loggedAt: '2026-07-13T06:01:00Z'),
+          ],
+        ),
+      );
+      expect(_shown(engine, 'entry-bench-2', 'loadKg'), 60);
+
+      // The phone deletes the newest set of the slot and logs another one,
+      // which its mint (highest number + 1) numbers `entry-bench-2` again —
+      // this time a bodyweight set with no load and no reps.
+      expect(
+        await engine.applyMessage(
+          _structureChange(
+            harness.sessionId,
+            changeId: 'del-entry-bench-2',
+            changes: [
+              {'kind': 'delete_entry', 'entryId': 'entry-bench-2'},
+            ],
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        await engine.applyMessage(
+          _snapshot(
+            harness.sessionId,
+            messageId: 'msg-s125-2',
+            revision: 2,
+            entries: [
+              _entry(
+                'entry-bench-1',
+                loadKg: 60,
+                loggedAt: '2026-07-13T06:00:00Z',
+              ),
+              {
+                'entryId': 'entry-bench-2',
+                'eventId': 'entry-bench-2',
+                'kind': 'set',
+                'loggedAt': '2026-07-13T06:05:00Z',
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-sx-bench',
+              },
+            ],
+          ),
+        ),
+        isTrue,
+      );
+
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['entry-bench-1', 'entry-bench-2'],
+        reason:
+            'S-125 the snapshot clears the tombstone for the id it carries '
+            '(D-113.2), and the new set sorts by its own loggedAt',
+      );
+      expect(
+        _shown(engine, 'entry-bench-2', 'loadKg'),
+        isNull,
+        reason:
+            'S-125 a differing loggedAt replaces the held entry outright: the '
+            'deleted set\'s load does not survive on the new one (D-113.3)',
+      );
+      expect(
+        _shown(engine, 'entry-bench-2', 'reps'),
+        isNull,
+        reason: 'S-125 no field the phone did not send comes from the dead set',
+      );
+      expect(
+        _shown(engine, 'entry-bench-1', 'loadKg'),
+        60,
+        reason: 'S-125 the entry the snapshot re-stated unchanged keeps its values',
+      );
+    });
+
+    test('S-125 an id the wrist never held is shown when a snapshot carries it',
+        () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+
+      // The phone deletes an id this wrist has no row for: the frame names a
+      // set that never reached it.
+      expect(
+        await engine.applyMessage(
+          _structureChange(
+            harness.sessionId,
+            changeId: 'del-entry-bench-2',
+            changes: [
+              {'kind': 'delete_entry', 'entryId': 'entry-bench-2'},
+            ],
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        engine.entries,
+        isEmpty,
+        reason: 'the fixture: nothing is stored under that id yet',
+      );
+
+      // The phone then re-states the id as a live set — the reused number.
+      expect(
+        await engine.applyMessage(
+          _snapshot(
+            harness.sessionId,
+            messageId: 'msg-s125-3',
+            revision: 2,
+            entries: [_entry('entry-bench-2', loadKg: 40)],
+          ),
+        ),
+        isTrue,
+      );
+
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['entry-bench-2'],
+        reason:
+            'S-125 a tombstone with no row behind it can never be answered '
+            'for, so the snapshot that names the id shows it (D-113.2)',
+      );
+      expect(
+        _shown(engine, 'entry-bench-2', 'loadKg'),
+        40,
+        reason: 'S-125 the entry shown is the phone\'s own, not a dead one',
+      );
+    });
+  });
+
+  group('S-126 a delete for another session, and a repeated frame', () {
+    test('S-126 the foreign frame is refused and the repeat is a no-op', () async {
+      final harness = _Harness();
+      final engine = await harness.runningEngine();
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('sx-bench')],
+      );
+      await engine.applyMessage(
+        _snapshot(
+          harness.sessionId,
+          messageId: 'msg-s126-1',
+          revision: 1,
+          entries: [_entry('entry-bench-1'), _entry('entry-bench-2')],
+        ),
+      );
+
+      final before = await harness.store.readAll();
+      expect(
+        await engine.applyMessage(
+          _structureChange(
+            's-other',
+            changeId: 'del-entry-bench-1',
+            changes: [
+              {'kind': 'delete_entry', 'entryId': 'entry-bench-1'},
+            ],
+          ),
+        ),
+        isFalse,
+        reason: 'D-79 a delete naming another session is refused',
+      );
+      expect(
+        (await harness.store.readAll()).sessions,
+        hasLength(before.sessions.length),
+      );
+
+      final frame = _structureChange(
+        harness.sessionId,
+        changeId: 'del-entry-not-here',
+        changes: [
+          {'kind': 'delete_entry', 'entryId': 'entry-not-here'},
+        ],
+      );
+      expect(await engine.applyMessage(frame), isTrue);
+      final once = await harness.store.readAll();
+      expect(
+        await engine.applyMessage(frame),
+        isFalse,
+        reason: 'D-116 a frame re-delivered under the same changeId is a no-op',
+      );
+      final twice = await harness.store.readAll();
+
+      expect(
+        twice.sessions,
+        hasLength(once.sessions.length),
+        reason: 'S-126 the second delivery appends no row',
+      );
+      expect(
+        engine.entries.map((entry) => entry.entryId),
+        ['entry-bench-1', 'entry-bench-2'],
+        reason: 'S-126 the held session is unchanged by either frame',
       );
     });
   });

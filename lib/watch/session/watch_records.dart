@@ -178,6 +178,7 @@ final class WatchSessionRecord extends WatchRecord {
     required this.currentExerciseIndex,
     this.exercises = const [],
     this.revision = 0,
+    this.deletedEntryIds = const [],
     super.sequence,
   });
 
@@ -206,6 +207,12 @@ final class WatchSessionRecord extends WatchRecord {
   /// at the same session shape. Zero until a snapshot says otherwise.
   final int revision;
 
+  /// The entry ids the phone deleted, as the newest row knows them: the durable
+  /// half of the deletion lens (plan D-113), so a relaunch rebuilds it from
+  /// storage instead of forgetting it. Ids the newest snapshot carries are not
+  /// in it — an entry the phone still sends exists.
+  final List<String> deletedEntryIds;
+
   Map<String, Object?>? get currentExercise => exercises.isEmpty
       ? null
       : exercises[currentExerciseIndex.clamp(0, exercises.length - 1)];
@@ -225,8 +232,26 @@ final class WatchSessionRecord extends WatchRecord {
     currentExerciseIndex: currentExerciseIndex,
     exercises: exercises,
     revision: revision,
+    deletedEntryIds: deletedEntryIds,
     sequence: sequence,
   );
+
+  /// The same row carrying [deletedEntryIds] as its deletion lens.
+  WatchSessionRecord withDeletedEntryIds(List<String> deletedEntryIds) =>
+      WatchSessionRecord(
+        recordId: recordId,
+        sessionId: sessionId,
+        recordedAt: recordedAt,
+        startedAt: startedAt,
+        modality: modality,
+        source: source,
+        status: status,
+        currentExerciseIndex: currentExerciseIndex,
+        exercises: exercises,
+        revision: revision,
+        deletedEntryIds: deletedEntryIds,
+        sequence: sequence,
+      );
 
   @override
   Map<String, Object?> toJson() => {
@@ -242,6 +267,7 @@ final class WatchSessionRecord extends WatchRecord {
     'currentExerciseIndex': currentExerciseIndex,
     'exercises': exercises,
     'revision': revision,
+    'deletedEntryIds': deletedEntryIds,
   };
 
   static WatchSessionRecord fromJson(Map<String, Object?> json) =>
@@ -258,6 +284,10 @@ final class WatchSessionRecord extends WatchRecord {
             .map(asJsonObject)
             .toList(growable: false),
         revision: (json['revision'] as int?) ?? 0,
+        deletedEntryIds: [
+          for (final id in (json['deletedEntryIds'] as List?) ?? const [])
+            id! as String,
+        ],
         sequence: (json['sequence'] as int?) ?? 0,
       );
 }

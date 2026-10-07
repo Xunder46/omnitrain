@@ -124,21 +124,70 @@ Not observable, stated plainly:
 
 ## Phase 2 — the Dart twin keeps the deletion (@developer)
 
+Executor: developer agent, 2026-10-07. Base commit `0413112`.
+
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 1 | `WatchSessionRecord.deletedEntryIds` | | |
-| 2 | `_applyStructureChange` writes the union | | |
-| 3 | `restore()` seeds the lens | | |
-| 4 | `_storeSnapshotEntry` clear + replace | | |
-| 5 | S-124, S-125, S-126(second half) | | |
-| 6 | regression suites + Progress | | |
+| 1 | `WatchSessionRecord.deletedEntryIds` | done | `watch_records.dart:181` (constructor, `const []` default), `:214` field + doc, `:239`-`:252` `withDeletedEntryIds`, `:270` the JSON write, `:287`-`:288` the JSON read (`(json['deletedEntryIds'] as List?) ?? const []`, so a row written before this phase reads back as `[]`); `withSequence` carries it like every other field |
+| 2 | the union on the appended session row | done | `watch_session_engine.dart:1144`-`:1153` — the union is written in `_appendSessionRow`, not in `_applyStructureChange` alone: `restore()` reads the *newest* session row, and any lifecycle row appended after a delete is newer than the structure change's (`{...row.deletedEntryIds, ..._deletedEntryIds}`); `_applyDeletion` keeps the in-memory set in step (`:1008`-`:1009`) |
+| 3 | `restore()` seeds the lens | done | `:156`-`:158` — `_deletedEntryIds ..clear() ..addAll(_session?.deletedEntryIds ?? const [])` |
+| 4 | `_storeSnapshotEntry` clear + replace | done | `:791` clears for a carried id (the scoped D-113.2, mutation b), `:793`-`:801` the whole-entry replacement when `loggedAt` differs (D-113.3), `:803`-`:808` the unchanged field merge otherwise, `:227`-`:235` the `entries` getter's replacement arm before the merge arm; the tombstone state is settled in `_applySnapshot`'s loop (`:500`-`:503`) *before* its row is appended (`:512`), because that row is what `restore()` reads the lens from |
+| 5 | S-124, S-125, S-126 (second half) | done | 5 new `test()` cases in `test/watch_session_engine_test.dart`: S-124 ×2 (`:1446` — a restart over the same store; the lens on the rows written after it), S-125 ×2 (`:1542` — the reused id; an id the wrist never held), S-126 ×1 (`:1632` — a foreign-session delete, a repeated frame); the file alone: **36 passed, 0 failed** |
+| 6 | regression suites + Progress | done | `watch_session_engine_test.dart` + `watch_session_projection_test.dart`: **68 passed, 0 failed**; the four delete/late-entry/import/push suites: **141 passed, 0 failed**; full suite and lint below; this section and the plan's Progress/Assumption Log |
+
+Done Criteria run:
+
+```
+.github/copilot/scripts/macos/gateway.sh test test/watch_session_engine_test.dart test/watch_session_edit_restore_late_entry_test.dart test/watch_session_import_test.dart test/watch_session_auto_push_test.dart
+  -> 141 passed, 0 failed (full output: .work/gateway/test-20261007-045424-43073.log)
+
+.github/copilot/scripts/macos/gateway.sh test test/watch_session_engine_test.dart
+  -> 36 passed, 0 failed
+
+.github/copilot/scripts/macos/gateway.sh test test/watch_session_engine_test.dart test/watch_session_projection_test.dart
+  -> 68 passed, 0 failed (run after restoring both mutations exactly, and after the D-113.2 scoping)
+
+.github/copilot/scripts/macos/gateway.sh test   (full suite)
+  -> 01:41 +4042 ~1: All tests passed!   (4042 passed, 1 skipped, 0 failed)
+     The Baselines row reads +4036 ~1, so exactly the six new cases of Phase 2 moved it (five here,
+     one in the push suite) and nothing else. Full output:
+     .work/gateway/test-20261007-045232-38350.log
+
+.github/copilot/scripts/macos/gateway.sh lint
+  -> 196 issues, 0 errors — the plan's recorded baseline count, and no issue is in a file this phase
+     touched (checked by grepping the lint log for the four paths)
+```
 
 Red→green table:
 
 | Scenario | Red command / revert | Red output | Green output |
 |---|---|---|---|
-| S-124 | `prove-red` with the `restore()` seeding reverted | | |
-| S-125 | `prove-red` with the replacement branch reverted to the merge | | |
+| S-124 (both cases) | `.github/copilot/scripts/macos/gateway.sh prove-red 0413112 test test/watch_session_engine_test.dart` — at the base, `restore()` seeds no lens and no row carries one | `RED AT 0413112 (exit 1)` — `S-124 the deleted set stays hidden across a restart [E] Expected: ['entry-bench-2'] / Actual: ['entry-bench-1','entry-bench-2']` (`test/watch_session_engine_test.dart:1482`), and the same for `S-124 the lens rides on the rows written after it` (`:1532`) | 36 passed, 0 failed |
+| S-125 (both cases) | the same `prove-red`, plus mutation a for the replacement branch alone | `S-125 … the reused id [E] Expected: ['entry-bench-1','entry-bench-2'] / Actual: ['entry-bench-1']` (`:1604`) and `S-125 an id the wrist never held is shown [E] Expected: ['entry-bench-2'] / Actual: []` (`:1672`) — the base clears no tombstone, so the reused id stays swallowed; mutation a then isolates the D-113.3 half (`:1611`, the dead set's Load surviving the replacement) | 68 passed, 0 failed |
+
+`prove-red`'s own verdict line:
+
+```
+gateway: prove-red: RED AT 0413112 (exit 1). It proves the guard only if an assertion fails for the
+reason the test guards; a compile or load error means the test could not run there (use a mutation
+instead).
+```
+
+S-126's second half **cannot** be red at the base: it asserts the wrist refuses a foreign-session
+delete frame, which is the engine's existing `_guardSession` (PR 2, untouched here), so it is a
+boundary regression test — `prove-red` is N/A rather than a green-at-base pass.
+
+Mutations (each recorded, applied one at a time, original lines restored exactly, green re-run after
+each restore — never left applied):
+
+| # | Scenario the mutation targets | Original line | Mutant | Verdict |
+|---|---|---|---|---|
+| a | S-125's replacement branch (D-113.3) | `final held = _heldPayload(entryId); if (held != null && held['loggedAt'] != entry['loggedAt']) { _entryCorrections[entryId] = entry; _replacedEntryIds.add(entryId); return; }` | the whole block deleted, leaving the field merge | RED: `S-125 the wrist shows the new set's own fields [E] Expected: null / Actual: <60>` (`test/watch_session_engine_test.dart:1611`) — the dead set's Load survives on the new set |
+| b | the D-113.2 scoping (the existing S-35 guard) | `final held = _heldPayload(entryId); if (held != null && held['loggedAt'] == entry['loggedAt']) return; _deletedEntryIds.remove(entryId);` | `_deletedEntryIds.remove(entry['entryId']! as String);` — the literal D-113.2, clearing for every carried id | RED: `S-35 a re-statement of a deleted id stays deleted [E] Expected: ['entry-slot-bench-0'] / Actual: ['entry-slot-bench-0','entry-slot-bench-1']` (`test/watch_session_projection_test.dart:1205`); exactly 1 failure in a 68-test run |
+| c | the auto-push ledger drop (the brief's extra item) | `..removeWhere((id, _) => id != sessionId)` (`lib/state/watch/watch_session_auto_push.dart:257`) | `..removeWhere((id, _) => false)` | RED: `D-114 leaving a session and coming back re-seeds the ledger [E]` — the return pass announced one `structure_change` for `del-entry-sx-1-2`; the file is absent from the final `git-diff --stat` |
+
+Docs: **no docs this phase**, by the plan's own Interphase note — the durable-lens sentences cover
+both twins and land with the Swift twin in Phase 3.
 
 ## Phase 3 — the Swift twin, PROTOCOL, docs (@developer)
 

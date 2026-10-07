@@ -25,6 +25,7 @@
 //   S-122 an entry the wrist logged, imported and deleted → `S-122 ...`
 //   S-123 the first pass announces nothing (negative guard) → `S-123 ...`
 //   S-126 another session's deletion changes nothing   → `S-126 ...`
+//   D-114 leaving a session and coming back re-seeds its ledger → `D-114 ...`
 //   F4 a flush never leaks and never announces twice   → `F4 ...`
 //   G2 an Error from the session read is not swallowed  → `G2 ...`
 //
@@ -2109,6 +2110,77 @@ void main() {
               'S-126 no row is appended for a foreign session, so the store '
               'does not accumulate copies of a change it refuses',
         );
+      },
+    );
+  });
+
+  group('D-114 leaving a session and coming back re-seeds the ledger', () {
+    test(
+      'D-114 the session the phone comes back to seeds its ledger again, so '
+      'the set it lost in between is not announced by the return pass',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        final doomed = await logSetHeldByBoth();
+        await graph.autoPush.flush();
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1', doomed]),
+          reason:
+              'the fixture: the wrist holds the set it logged and the phone\'s '
+              'two, which is what the push\'s ledger records for `s-1`',
+        );
+
+        // The user drops the phone's second set and starts a session of their
+        // own, both inside one window and both started in this turn, so no pass
+        // composes `s-1` between the two: the set is gone from `s-1` before any
+        // pass of `s-1` sees it go (D-114, D-111's 250 ms window).
+        final dropping = phoneState.deleteEntry(_firstSlot, 2);
+        final switching = phoneState.createNewSession();
+        await dropping;
+        await switching;
+        final other = await add('ex-bench');
+        await phoneState.addEntry(other);
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          isNot('s-1'),
+          reason:
+              'the fixture: the window the switch closed composed the phone\'s '
+              'new session',
+        );
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'the fixture: nobody announced the dropped set, because no pass '
+              'of `s-1` ran between the deletion and the switch',
+        );
+
+        // Back to the session the wrist is running, which no longer holds one
+        // of the phone's sets.
+        await phoneState.loadHistoricalSession('s-1');
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          's-1',
+          reason: 'the fixture: the pass after the browse composed `s-1` again',
+        );
+
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'D-114 the ledger is dropped on every pass but the composed '
+              'session\'s, so a phone that leaves `s-1` and comes back seeds '
+              'again from what it holds now instead of comparing `s-1` against '
+              'the ids it announced before the switch: the first pass of the '
+              'returned session announces nothing, and in particular no '
+              'deletion for the set that stopped being held in between',
+        );
+        expect(failures, isEmpty);
       },
     );
   });

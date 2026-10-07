@@ -105,6 +105,12 @@ class WatchSessionEngine {
   final Map<String, Map<String, Object?>> _entryCorrections = {};
   final Set<String> _deletedEntryIds = {};
 
+  /// The ids whose held row the phone **replaced** rather than corrected: its
+  /// snapshot re-stated the id with a different `loggedAt`, which is a
+  /// different entry reusing a minted number (D-113.3). A correction merges
+  /// into the held payload; a replacement is the whole payload.
+  final Set<String> _replacedEntryIds = {};
+
   WatchSessionRecord? _session;
 
   // ---------------------------------------------------------------------------
@@ -144,6 +150,12 @@ class WatchSessionEngine {
           if (row.recordId.startsWith(_changePrefix))
             row.recordId.substring(_changePrefix.length),
       ]);
+
+    // D-113.1: the deletion lens is read back from the newest row, so a
+    // relaunch hides the same entries the killed process hid.
+    _deletedEntryIds
+      ..clear()
+      ..addAll(_session?.deletedEntryIds ?? const []);
   }
 
   // ---------------------------------------------------------------------------
@@ -215,6 +227,12 @@ class WatchSessionEngine {
         if (!_deletedEntryIds.contains(observation.entryId))
           switch (_entryCorrections[observation.entryId]) {
             null => observation,
+            final correction when _replacedEntryIds.contains(
+              observation.entryId,
+            ) =>
+              // D-113.3: a re-stated id with a new stamp **is** the whole entry,
+              // so the held row's keys it does not carry are gone with it.
+              observation.withPayload(correction),
             final correction => observation.withPayload({
               ...observation.payload,
               ...correction,
@@ -475,6 +493,13 @@ class WatchSessionEngine {
         held.exercises.isNotEmpty &&
         held.sessionId != sessionId) {
       return false;
+    }
+
+    // D-113.2: an entry the snapshot carries exists, so its tombstone is
+    // cleared — here, before the row that records this state is written, since
+    // that row is what [restore] reads the lens back from.
+    for (final entry in entryMaps) {
+      _unhideTheIdTheSnapshotNames(entry);
     }
 
     final row = WatchSessionRecord(
@@ -743,22 +768,43 @@ class WatchSessionEngine {
   /// Stores an entry the phone sent, in the shape the wrist shows it. Nothing
   /// is emitted: the phone is the source, and the receipt is [entries].
   ///
-  /// An `entryId` the wrist already holds is **re-stated**: the snapshot's
-  /// payload folds into the projection [entries] reads, exactly as a
-  /// `correct_entry` does, and the stored observation row is left alone — the
-  /// log stays append-only, so re-stating a set the phone edited neither
-  /// rewrites the row nor doubles it. The phone, receiving, keeps the first
-  /// value it stored for an id it holds; only the wrist re-states.
+  /// An `entryId` the wrist already holds is **re-stated**: when the snapshot
+  /// carries the same `loggedAt`, its payload folds into the projection
+  /// [entries] reads, exactly as a `correct_entry` does, and the stored
+  /// observation row is left alone — the log stays append-only, so re-stating a
+  /// set the phone edited neither rewrites the row nor doubles it. The phone,
+  /// receiving, keeps the first value it stored for an id it holds; only the
+  /// wrist re-states.
+  ///
+  /// A re-stated id whose `loggedAt` **differs** is a different entry wearing a
+  /// reused number, and replaces the held one outright (D-113.3). An id a
+  /// deletion had hidden is shown again, because the phone saying it is there
+  /// outranks the phone having said it was gone (D-113.2) — unless the snapshot
+  /// only repeats the entry the wrist already holds, stamp and all.
   Future<void> _storeSnapshotEntry(
     String sessionId,
     Map<String, Object?> entry,
   ) async {
     final entryId = entry['entryId']! as String;
+    // D-113.2: the phone is the structure authority, so an entry its snapshot
+    // carries exists — whatever this watch was told about that id before.
+    _unhideTheIdTheSnapshotNames(entry);
     if (_observations.any((row) => row.recordId == entryId)) {
+      final held = _heldPayload(entryId);
+      if (held != null && held['loggedAt'] != entry['loggedAt']) {
+        // D-113.3: the phone mints the highest number + 1, so deleting the
+        // newest set of a slot and logging another reuses its id for a
+        // different entry. A merge would keep a field the new entry does not
+        // carry — the dead entry's Load. The correction is the whole entry.
+        _entryCorrections[entryId] = entry;
+        _replacedEntryIds.add(entryId);
+        return;
+      }
       _entryCorrections[entryId] = {
         ...?_entryCorrections[entryId],
         ...entry,
       };
+      _replacedEntryIds.remove(entryId);
       return;
     }
 
@@ -772,6 +818,38 @@ class WatchSessionEngine {
       ),
     );
     _observations.add(stored);
+  }
+
+  /// Shows [entry]'s id again — the tombstone it carried no longer stands —
+  /// when this snapshot entry outranks what the wrist holds (D-113.2).
+  ///
+  /// The phone is the structure authority, so an id its snapshot carries exists
+  /// — but a snapshot entry that only repeats the row the wrist already holds,
+  /// stamp and all, is the stale answer D-115 says the phone stops sending, and
+  /// the deletion the wrist was told about is newer than it: the tombstone
+  /// stays, and the projection keeps hiding the id (S-35 `a re-statement of a
+  /// deleted id stays deleted`, `test/watch_session_projection_test.dart`). An
+  /// id the wrist holds no row for, or one whose `loggedAt` differs — D-113.3's
+  /// replacement — is the phone saying something new, and is shown again.
+  void _unhideTheIdTheSnapshotNames(Map<String, Object?> entry) {
+    final entryId = entry['entryId']! as String;
+    final held = _heldPayload(entryId);
+    if (held != null && held['loggedAt'] == entry['loggedAt']) return;
+    _deletedEntryIds.remove(entryId);
+  }
+
+  /// The payload [entries] shows for [entryId] right now, before any deletion —
+  /// the held row with the phone's correction folded in, or null when the wrist
+  /// holds no row for it.
+  Map<String, Object?>? _heldPayload(String entryId) {
+    for (final row in _observations) {
+      if (row.recordId != entryId) continue;
+      final correction = _entryCorrections[entryId];
+      return correction == null
+          ? row.payload
+          : {...row.payload, ...correction};
+    }
+    return null;
   }
 
   /// The session's entries in [entryMaps], oldest first — the moment the session
@@ -927,6 +1005,7 @@ class WatchSessionEngine {
   void _applyDeletion(Map<String, Object?> change) {
     final entryId = change['entryId']! as String;
     _entryCorrections.remove(entryId);
+    _replacedEntryIds.remove(entryId);
     _deletedEntryIds.add(entryId);
   }
 
@@ -1064,10 +1143,19 @@ class WatchSessionEngine {
     WatchSessionRecord row, {
     required String? lifecycle,
   }) async {
+    // Every row carries the lens as it stands, not only the row a structure
+    // change writes: a lifecycle row appended after a delete would otherwise be
+    // the newest one, and [restore] would read an empty lens back from it
+    // (D-113.1).
+    final carried = {
+      ...row.deletedEntryIds,
+      ..._deletedEntryIds,
+    }.toList(growable: false);
+
     final existing = _sessionRows.any(
       (stored) => stored.recordId == row.recordId,
     );
-    final stored = await _store.append(row);
+    final stored = await _store.append(row.withDeletedEntryIds(carried));
     if (!existing) _sessionRows.add(stored);
     _session = stored;
     if (lifecycle != null) _emitLifecycleIfConformant(stored, lifecycle);
@@ -1440,6 +1528,7 @@ class WatchSessionEngine {
     // same id is re-carried.
     for (final recordId in dropped) {
       _entryCorrections.remove(recordId);
+      _replacedEntryIds.remove(recordId);
       _deletedEntryIds.remove(recordId);
     }
     return pruned;
