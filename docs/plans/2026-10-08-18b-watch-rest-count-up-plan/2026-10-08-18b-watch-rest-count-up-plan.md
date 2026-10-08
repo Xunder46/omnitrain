@@ -625,7 +625,12 @@ Dependents that only *read* a touched surface (no edits, tests must stay green):
   (`test/watch_session_engine_test.dart`, `test/live_mirroring_test.dart`, `test/watch_session_auto_push_test.dart`,
   the two Swift test files); Swift 357/0, Dart `+4141 ~1` all passed, analyze 196/0. Evidence:
   `2026-10-08-18b-watch-rest-count-up-plan.evidence.md` (`## Phase 3 FIX — the rest-with-plan fixtures`)
-- [ ] Phase 4 — the rule where agents will hit it (@developer)
+- [x] Phase 4 — the rule where agents will hit it (@developer) — complete: the `docs/global_conventions.md`
+  Rules row, `test/rest_is_count_up_contract_test.dart` (7 cases, RED at HEAD for the debug-surface
+  finding), the debug surface's rest started with no plan, the six docs rewritten, the residue sweep
+  classified; Dart `+4148 ~1` all passed (4133 → 4148 = the 7 new cases + Phase 2's 5 + Phase 3's 3),
+  Swift 357/0, analyze 196/0. Evidence:
+  `2026-10-08-18b-watch-rest-count-up-plan.evidence.md`
 - [ ] 18c planned — the wrist's rest reaches the phone
 
 ## Assumption Log
@@ -700,6 +705,38 @@ RATIFIED (promote to a D-x) or REVERT (remediation).]
    rest + plan inside a `session_snapshot` is accepted (only `timer_state` refuses it); the Dart
    validator supports `maximum/pattern/allOf/oneOf/$ref` only. Fixing it is a production change, and
    this brief is tests and fixtures only, so it goes to Phase 4/the owner.
+
+### Phase 4 (@developer)
+
+1. **S-166's base-ref expectation is stale; the surviving regression was elsewhere.** The scenario
+   predicted findings at `WatchLoggingState.swift:25,717`, which Phases 1–2 fixed and committed. The
+   line that still failed on `HEAD` was `lib/watch/debug/watch_session_debug_surface.dart` (a rest
+   started with `_debugRestMs`), so `prove-red HEAD` was RED for that finding, and the debug surface
+   plus its test were fixed. Options: exempt the debug surface, or fix it — fixed, because the rule
+   has no debug exemption.
+2. **`test/watch_debug_surface_test.dart` was edited although the phase's Predicted Files name only
+   the contract test and docs.** Phase 1's Assumption Log 4 assigned exactly this survivor to Phase 4,
+   and the test asserted the `left` line the fix removes. One mutation proof was not possible (the
+   fixed code is what the test now needs), so the mutation was run on the *rule* instead: the scan's
+   own `restSeconds` fixture flipped it RED, then restored exactly.
+3. **The Swift guard cannot be prove-red'd, so it was only re-worded.** `WatchRestIsCountUpTests`
+   pins behaviour that shipped in Phase 1 and is committed at `HEAD`, so `prove-red HEAD swift-test`
+   would be GREEN AT. The brief asks for a verdict only where the guard is new; here the message and
+   header were aligned with the conventions wording and nothing behavioural changed (Swift 357/0).
+4. **`prove-red` accepts files, not directories.** The brief's literal form `prove-red HEAD test
+   <test> -- lib/watch watch/watchos/Sources …` is refused (`not a file: lib/watch`). Used
+   `prove-red HEAD test test/rest_is_count_up_contract_test.dart`, which names the whole tree scan
+   through the test itself.
+5. **The residue sweep fixed prose and logged identifiers as debt.** Fixed: watch/wire-domain prose in
+   `lib/state/watch/watch_session_auto_push.dart`, `test/watch_session_auto_push_test.dart`,
+   `test/watch_session_rest_timer_append_test.dart` and `docs/watch_session_sync.md`. Left, because
+   renaming them is a separate PR with its own risk: `RestTimerStrip`, `rest_timer_strip.dart`,
+   `RestNotificationService` (and its `'Rest timer'` title), `test/rest_timer_docked_strip_test.dart`'s
+   name, the phone-side widget/theme comments, and `docs/plans/**` history — all phone vocabulary or
+   history, none of it a preset-length or countdown claim.
+6. **The debug-surface tick comment says "a countdown".** It is the round timer's remaining time
+   (`_engine.timerFor(WatchTimerKind.round)`), which the debug surface still renders, so the sentence
+   stays; the rest path no longer writes a plan at all.
 
 ## Feedback
 

@@ -155,7 +155,7 @@ snapshot can bring back a slot the phone removed.) Verified by
 (`S-103 the same snapshot twice, and a stale copy after a removal` and
 `S-111 an append while the phone is on another screen`) and by
 `test/watch_session_rest_timer_append_test.dart`
-(`S-110 a running rest timer survives the append`).
+(`S-110 a running rest survives the append`).
 
 ## The two directions of ending
 
@@ -491,7 +491,7 @@ remains out is listed below.
   phone composes carries the place the wrist reported rather than the phone's own
   (`test/watch_session_projection_test.dart`,
   `S-76 the answer carries the position the wrist is on`) and asserts no timers,
-  so a countdown the wrist started is the one that stands
+  so the timer the wrist started is the one that stands
   (`test/watch_logging_timers_test.dart`,
   `S-79 a snapshot leaves the wrist's countdown running and stops the phone's
   own`).
@@ -547,12 +547,13 @@ remains out is listed below.
   `a lifecycle naming another session changes nothing`).
 - **A relaunch keeps what the wrist logged, with two gaps.** The shell's store
   is an append-only file, so the session with its place in the ladder, every set
-  logged, a running rest countdown and an owed rating question come back after
-  the app is closed, force-quit or the watch restarts, with no Sync in between —
-  `WatchFileStoreTests.testS44ALoggedSetSurvivesTheProcess`,
-  `…testS46ACountdownThatWasRunningIsStillRight` and
+  logged, a running rest and an owed rating question come back after the app is
+  closed, force-quit or the watch restarts, with no Sync in between —
+  `WatchFileStoreTests.testS44ALoggedSetSurvivesTheProcess` and
   `…testS47TheOwedRatingQuestionSurvivesTheKill` in
-  `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`. A
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`, and
+  the rest screen counts from the restored start rather than from zero
+  (`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`). A
   session still running when the app died is still running after the relaunch
   until it is ended on the wrist or the phone's Sync ends it
   (`…testS44ALoggedSetSurvivesTheProcess`, whose restored session reads active),
@@ -584,11 +585,17 @@ remains out is listed below.
   a session it logs carries no heart-rate or step values of its own; the
   recording layer exists and is exercised only by its own suites
   (`WatchSensorRecordingTests`, `test/watch_sensor_recording_test.dart`).
-- **The phone's rest timer is not carried; each device keeps its own
-  countdown (D-26, D-80).** The answer projects no timers, and a snapshot stops
-  only the countdown the phone itself wrote there: a countdown the wrist started
-  keeps its remaining-time line through a snapshot, while a phone-written one
-  loses it and its milestone haptic. Verified by
+- **A rest is device-local, and it has no length (D-26, D-80's device-local rule, D-160).** The
+  answer projects no timers, and a snapshot stops only the timer the phone
+  itself wrote there: the rest the wrist started is the wrist's through a
+  snapshot, while a phone-written timer loses its milestone haptic. A rest
+  record carries no `plannedDurationMs`, and the wire refuses one outright
+  (`test/sync_protocol_fixtures_test.dart`,
+  `S-165 the wire refuses a rest length` —
+  `a rest carries no planned length, a round keeps one, and a rest with one is
+  refused`; Swift twin,
+  `SyncProtocolValidatorTests.testS165ARestCarriesNoPlannedLengthAndStillConforms`
+  and `…testS165ARestWithAPlannedLengthIsRefused`). Verified by
   `test/watch_logging_timers_test.dart`
   (`S-79 a snapshot leaves the wrist's countdown running and stops the phone's
   own`); the phone-written case is held by the reconciliation fixture

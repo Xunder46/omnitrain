@@ -64,7 +64,7 @@ Map<String, Object?> _snapshot({
 };
 
 void main() {
-  test('S-110 a running rest timer survives the append', () async {
+  test('S-110 a running rest survives the append', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
     for (final exercise in const [
@@ -129,7 +129,8 @@ void main() {
 
     // A rest is running on A: the open wall-clock record that logging a set
     // leaves behind (`restEndMs` null), which is what the session screen's rest
-    // tile and the global timer read their countdown from. It is started through
+    // tile and the global timer read their elapsed count from. Rest is a
+    // count-up with no length (D-160). It is started through
     // the live state, so it is in the timer manager and in the repository both.
     await state.recordRestStart('sl-1', 1);
     final restBefore = state.getEntryRests('sl-1').single;

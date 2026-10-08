@@ -55,10 +55,76 @@ is stale, the arithmetic above is from the diff.)
 
 | Item | Command | Result |
 |---|---|---|
-| `docs/global_conventions.md` row | | pending |
-| Doc sweep (rest, sync, watch surface, QA walkthrough, settings, README) | `watch_surface.md` size before/after (ceiling 51.2 KB) | pending |
-| `test/rest_is_count_up_contract_test.dart` | `.github/copilot/scripts/macos/gateway.sh test test/rest_is_count_up_contract_test.dart` | pending |
-| Residue sweep + grep | the grep's output, pasted | pending |
+| `docs/global_conventions.md` row | `view docs/global_conventions.md:17` | done — one row appended as the table's last row: `Rest rule: rest is a count-up`, the rule in bold, the `restSeconds`-is-a-prescription sentence, and pointers to `docs/rest_tracking.md` + the contract test |
+| Doc sweep (rest, sync, watch surface, QA walkthrough, settings, README) | `gateway.sh git-diff --stat` | done — `docs/rest_tracking.md` (+36/-…, the new rule section), `docs/watch-app-setup-and-qa.md` (6 hunks), `docs/watch_session_sync.md` (5 hunks), `docs/state_management/watch_surface.md` (3 hunks, net −63 bytes), `docs/modality_based_exercise_ui.md` (3 hunks), `docs/theme_and_settings.md`, `docs/README.md`; total across the diff is `120 insertions(+), 61 deletions(-)` |
+| `test/rest_is_count_up_contract_test.dart` | `gateway.sh test test/rest_is_count_up_contract_test.dart` | `00:00 +7: All tests passed!` (7 cases) |
+| Residue sweep + grep | the greps below | 4 residue fixes + a classification table; no preset-length or countdown claim left in the five scanned trees |
+
+### Phase 4 details — counts, sizes, sweeps
+
+| Item | Command | Result |
+|---|---|---|
+| New file, green | `.github/copilot/scripts/macos/gateway.sh test test/rest_is_count_up_contract_test.dart` | `00:00 +7: All tests passed!` — `restIsCountUpContract` · `S-166 the scanner flags a stored rest length and a planned rest` · `…flags rest-countdown wording under any spelling` · `…a round countdown and a round plan are not this rule's` · `…no scanned file plans a rest, counts one down or stores a rest length` · `…the envelope schema still refuses a planned length on a rest` · `…both validators still refuse a planned length on a rest` · `S-168 the routine prescription keeps restSeconds and is not scanned` |
+| Proved red at the base | `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/rest_is_count_up_contract_test.dart` | `gateway: prove-red: RED AT HEAD (exit 1)`; the failing case is `S-166 no scanned file plans a rest, counts one down or stores a rest length`, with the three findings in `lib/watch/debug/watch_session_debug_surface.dart`. The other six cases (the schema and both validators, the wording regex, the round non-flag, S-168) pass at `HEAD` too — that is what makes the file a scanner and not a tautology |
+| Mutation (the scan can fail on the rule's own token) | `view` the line, edit, re-run, restore | original `const restSeconds = 90;` in `lib/watch/session/watch_timer_math.dart` → the same case RED naming that file, then the exact original restored (`git-diff --stat` shows no residue) and the file green again |
+| Touched files, Mock-first | `.github/copilot/scripts/macos/gateway.sh test test/rest_is_count_up_contract_test.dart test/docs_indexing_contract_test.dart test/watch_session_rest_timer_append_test.dart test/watch_debug_surface_test.dart test/watch_session_auto_push_test.dart` | `00:00 +74: All tests passed!` (before the format pass reflowed one interpolation in the new file; re-run green after) |
+| Full Dart suite | `.github/copilot/scripts/macos/gateway.sh test` | `01:47 +4148 ~1: All tests passed!` (log `.work/gateway/test-20261008-104652-19225.log`) — 4141 → 4148 is the 7 new cases; no other count moved. Re-run on the final tree after the interp fix, the format pass and the last doc edits: `01:54 +4148 ~1: All tests passed!` (log `.work/gateway/test-20261008-105405-25961.log`) |
+| Analyzer | `.github/copilot/scripts/macos/gateway.sh lint` | first run `197 issues found` — the one new issue was mine (`test/rest_is_count_up_contract_test.dart:176:17 • unnecessary_brace_in_string_interps`); after fixing that line and running `gateway.sh format test/rest_is_count_up_contract_test.dart` on the new file only, `196 issues found` = the baseline, and no issue names a file this phase touched |
+| Swift | `.github/copilot/scripts/macos/gateway.sh swift-test` | `Executed 357 tests, with 0 failures (0 unexpected)` (log `.work/gateway/swift-test-20261008-104847-23986.log`) = the Phase 3 baseline; only `WatchRestIsCountUpTests`'s header and message text changed, no behaviour |
+| Interface invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches — clean |
+| Watch-surface size | `gateway.sh git-diff -- docs/state_management/watch_surface.md` | 3 hunks, net **−63 bytes** (262 bytes of replacement text where 325 stood; the gateway has no size probe, so the ceiling itself is enforced by `test/docs_indexing_contract_test.dart`, green in the runs above). `docs/modality_based_exercise_ui.md` grew by 6 lines — the rest overlay's purpose now names the rule and its test |
+| Working tree | `gateway.sh git-diff --stat` | 14 modified + 1 new file: `120 insertions(+), 61 deletions(-)`; the largest hunks are the rule section in `docs/rest_tracking.md` (+36) and the QA walkthrough (+31/−…) — no file was regenerated |
+
+### Phase 4 residue sweep — what was fixed, what was left, and why
+
+| Grep | Scope | Result |
+|---|---|---|
+| `plannedDurationMs` | `lib/watch`, `lib/state/watch`, `lib/core/sync_protocol`, `watch/watchos/Sources`, `watch/sync_protocol` | 46 hits / 17 files, none of them a planned rest: the serializers refuse to write one (`lib/watch/session/watch_records.dart:452`, `WatchRecords.swift:483`), both validators refuse to accept one (see the contract test's cases), and the rest are round/timed planners and the two `invalid/` fixtures that exist to be refused. This is the contract test's rule B, green |
+| `countdown` | the same five trees | 72 hits / 19 files, every one the **round** timer's remaining time (`lib/watch/logging/watch_logging_state.dart:690`, `WatchLoggingState.swift:653`), generic derivation prose (`lib/core/sync_protocol/timer_derivation.dart`, `watch/sync_protocol/schemas/messages/timer_state.schema.json:5`), or `PROTOCOL.md:219` — the normative sentence that a plan belongs to a countdown and a `rest` MUST NOT carry one. No rest countdown anywhere |
+| `rest timer` / `rest-timer` | the same five trees | 3 hits, all allowed: `PROTOCOL.md:587` (the 2026-10-07 changelog row — append-only history), `fixtures/manifest.json:149` (the count-up rule's own note), `fixtures/reconciliation/snapshot_then_events.json:4` ("the rest timer running" — a fixture description of the kind named `rest`, no length and no countdown) |
+| `rest countdown` (case-insensitive) | `docs/`, outside `plans/` | 4 hits, all the rule's own wording: `global_conventions.md:17`, `rest_tracking.md:12,21`, `watch-app-setup-and-qa.md:490` ("anyone adds a rest length or a rest countdown back"). The other 39 are under `docs/plans/**` — plans are history and were not rewritten |
+| `countdown` | `docs/`, outside `plans/` | 22 hits in 10 pages, and only three kinds: the **round** countdown (`constants_reference.md:69`, `modality_tracking.md:220,361`, `state_management/workout_state.md:201`, `README.md:174`, `modality_based_exercise_ui.md:148,270`), the protocol's "a countdown is never sent" (`state_management/watch_surface.md:802`) plus the rule's own four, and citations of the **S-79 test name** — `watch_session_sync.md:496,600`, `watch-app-setup-and-qa.md:198,601`, `state_management/watch_surface.md:480` — which is another feature's case (`S-79 a snapshot leaves the wrist's countdown running and stops the phone's own`) and cannot be renamed from here. The remaining 141 hits are under `docs/plans/**` |
+| ownership sentences that say "countdown" | `docs/` | `docs/watch-app-setup-and-qa.md:195,599` and `docs/state_management/watch_surface.md:477` say a Sync "stops a countdown the phone wrote and leaves a wrist-started one running". Kept: they speak about timer **kinds** (the wrist runs a round countdown too), and each is followed by the rest's own sentence — `watch-app-setup-and-qa.md:199` states a wrist rest is device-local with no length, citing the rule and the contract test |
+| `restSeconds` | the five trees + `docs/` | none in a scanned tree (that is the contract test's rule A); the survivors are the prescription itself (`lib/data/models/models.dart`, `lib/state/routine/`, `lib/features/routine/`, `docs/my_routines.md:160`), which D-168 keeps and the S-168 case pins as un-scanned |
+
+Fixed this phase:
+
+- `lib/watch/debug/watch_session_debug_surface.dart` — the rest now starts through
+  `startTimer(WatchTimerKind.rest)` with no plan, `_debugRestMs` is gone, `_restElapsedMs()` reads
+  `activeElapsedMs(rest, now)`, the summary prints `elapsed` and the control reads `Start rest`
+  (with `test/watch_debug_surface_test.dart`).
+- `lib/state/watch/watch_session_auto_push.dart:12` — "A rest tick therefore sends nothing".
+- `test/watch_session_auto_push_test.dart:631` — the reason string on the rest-append case.
+- `test/watch_session_rest_timer_append_test.dart` — the comment and the case renamed to
+  `S-110 a running rest survives the append` (the citation in `docs/watch_session_sync.md` follows).
+- `docs/watch_session_sync.md` — the bullet's title now reads "(D-26, D-80's device-local rule,
+  D-160)", because D-80's own name says "each device keeps its own rest **countdown**", which D-160
+  supersedes; the rule it still carries — the rest the wrist started survives a snapshot — stands.
+- `docs/watch_session_sync.md:592` — "record carries no `plannedDurationMs`", inside the bullet
+  "A rest is device-local, and it has no length (D-26, D-80's device-local rule, D-160)".
+
+Left as vocabulary debt (none of it claims a preset length or a countdown, and renaming an identifier
+is a separate PR with its own blast radius):
+
+- Widgets, files and services on the **phone**: `RestTimerStrip`, `lib/features/session/rest_timer_strip.dart`,
+  `RestNotificationService` and its `'Rest timer'` notification title, `test/rest_timer_docked_strip_test.dart`,
+  `test/session_rest_closing_race_test.dart`.
+- Phone-side comments and test names in `lib/core/constants/omni_theme.dart`, `workout_session_screen.dart`,
+  `workout_session_list_view.dart`, `workout_session_edit_mode.dart`, `pr_toast.dart`,
+  `test/screen_widget_test.dart`, `test/in_session_pr_toast_test.dart`, `test/state_test.dart`.
+- Swift fixture comments in `WatchFileStoreTests.swift:140,516`, `WatchEmitForwarderTests.swift:121`,
+  `WatchSessionEngineTests.swift:196`, and `docs/plans/**`.
+- The S-79 case's **name**: `test/watch_logging_timers_test.dart`'s `S-79 a snapshot leaves the wrist's
+  countdown running and stops the phone's own`, its Swift twin
+  `testS79ASnapshotLeavesTheWristsCountdownRunningAndStopsThePhones`, and the three pages that must
+  cite that exact name. Phase 1 kept the case (its rest simply lost its plan), so the name now
+  describes a count-up; renaming it is that feature's change, not this phase's.
+- Fixtures and tests that build a *rest row with a plan* on purpose: `watch/sync_protocol/fixtures/invalid/timer_state_rest_with_planned_duration.json`,
+  `…/timer_state_remaining_seconds.json` (the refusal path), and the test-tree survivors Phase 3's FIX
+  listed (`test/watch_session_engine_test.dart`, `test/phone_manage_bridge_test.dart`,
+  `WatchFileStoreTests.swift:151,419`, `WatchSessionEngineTests.swift:194,224,952,1412`) whose assertion
+  *is* a rest's remaining/end. `test/` is deliberately outside the scanner's roots: a test that feeds
+  the wire a rest with a plan is exercising the validator, not spawning the bug.
 
 ## Red → green (prove-red)
 
@@ -67,7 +133,7 @@ is stale, the arithmetic above is from the diff.)
 | S-160/S-164 | `gateway.sh prove-red HEAD test test/watch_logging_timers_test.dart test/watch_logging_surfaces_test.dart` | `gateway: prove-red: RED AT HEAD (exit 1)`, `00:00 +40 -4: Some tests failed.` — failures are the four count-up cases: `S-160 a logged set starts a rest with no planned length` (`Expected: null Actual: <90000>`), `S-164 no alert is ever owed for a rest` (an extra `round` milestone), `S-164 a paused rest is still owed no alert` (`Expected: empty Actual: [WatchTimerMilestone(rest at …17:02:00Z)]`), `S-160 a rest is a count-up with no "left" line` (`Expected: null Actual: <90000>`) | `All tests passed!` (44 cases, the two files) |
 | S-161/S-162/S-163 | Phase 2 — `prove-red` is **not applicable**: `isResting`, `endRest()`, `restElapsedSeconds()` and `watch_rest_screen.dart` do not exist at `3cab789`, so the test file cannot compile there and a prove-red over them would have to delete an untracked new file. Proved by mutation instead (A–D below), as the brief directs | n/a | n/a |
 | S-165 | Phase 3 | n/a | n/a |
-| S-166 | Phase 4 (Dart twin); the Swift half is `WatchRestIsCountUpTests` (Phase 1) | n/a | n/a |
+| S-166 | Phase 4 (Dart twin): `gateway.sh prove-red HEAD test test/rest_is_count_up_contract_test.dart` | `gateway: prove-red: RED AT HEAD (exit 1)` — `S-166 no scanned file plans a rest, counts one down or stores a rest length` failed on the debug surface's `restSeconds`/`_debugRestMs`/`startTimer(…, plannedDurationMs: _debugRestMs)`. The scenario's predicted `WatchLoggingState.swift:25,717` findings were already fixed in Phases 1–2 and are committed at `HEAD`, so they are stale; the Swift half is `WatchRestIsCountUpTests` (Phase 1, behaviour committed, so it cannot be prove-red'd — only re-worded) | `00:00 +7: All tests passed!` |
 
 ## Mutations (Swift: the change cannot compile without, so a scan/mutation proves it)
 

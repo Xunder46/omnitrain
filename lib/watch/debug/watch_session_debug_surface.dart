@@ -56,9 +56,6 @@ const List<Map<String, Object?>> _debugSlots = [
   },
 ];
 
-/// How long a debug rest timer counts down from.
-const int _debugRestMs = 90 * 1000;
-
 /// The sensors a QA run has out of the box: none.
 ///
 /// The platform source and health store belong to the app entry, which does not
@@ -239,10 +236,7 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
 
   Future<void> _startRest() => _attempt(() async {
     _note = 'rest started';
-    await _engine.startTimer(
-      WatchTimerKind.rest,
-      plannedDurationMs: _debugRestMs,
-    );
+    await _engine.startTimer(WatchTimerKind.rest);
   });
 
   Future<void> _pauseRest() => _attempt(() async {
@@ -333,7 +327,7 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
     }
 
     final slot = _engine.currentExercise;
-    final remaining = _restRemainingMs();
+    final restElapsed = _restElapsedMs();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -347,8 +341,8 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
         ),
         Text('entries logged: ${_engine.observations.length}'),
         Text(
-          'rest: ${_restState()}${remaining == null ? '' : ' · '
-                    '${_formatMs(remaining)} left'}',
+          'rest: ${_restState()}${restElapsed == null ? '' : ' · '
+                    '${_formatMs(restElapsed)} elapsed'}',
         ),
         Text('sensor readings: ${_engine.sensorSamples.length}'),
         Text('messages emitted: ${_emitted.length}'),
@@ -366,7 +360,7 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
       _action('New session', _startSession, primary: true),
       _action('Log set', _logSet, primary: true),
       _action('Next exercise', _advance),
-      _action('Rest 90s', _startRest),
+      _action('Start rest', _startRest),
       _action('Pause rest', _pauseRest),
       _action('Resume rest', _resumeRest),
       _action('Finish', _finish),
@@ -400,9 +394,11 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
           );
   }
 
-  int? _restRemainingMs() {
+  /// How long the running rest has been going. A rest has no length, so this
+  /// only ever counts up.
+  int? _restElapsedMs() {
     final rest = _engine.timerFor(WatchTimerKind.rest);
-    return rest == null ? null : remainingMs(rest, DateTime.now().toUtc());
+    return rest == null ? null : activeElapsedMs(rest, DateTime.now().toUtc());
   }
 
   String _restState() => _engine.timerFor(WatchTimerKind.rest)?.state ?? 'none';

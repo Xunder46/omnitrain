@@ -75,9 +75,13 @@ void main() {
     await pumpSurface(tester);
 
     await tap(tester, 'New session');
-    await tap(tester, 'Rest 90s');
+    await tap(tester, 'Start rest');
     expect(restLine(tester), contains('rest: running'));
-    expect(restLine(tester), contains('left'));
+    expect(
+      restLine(tester),
+      contains('elapsed'),
+      reason: 'a rest has no length, so the readout counts up (D-160)',
+    );
 
     await tap(tester, 'Simulate kill');
     expect(

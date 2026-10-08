@@ -4,9 +4,8 @@
 //
 //  The wrist's rest is a count-up (D-160): nothing on the native side names a
 //  preset rest length, and nothing starts a rest timer with a planned duration.
-//  The Dart twin of this rule (`test/rest_is_count_up_contract_test.dart`)
-//  lands in a later phase of the same plan; until then this scan is the Swift
-//  half.
+//  Its Dart twin is `test/rest_is_count_up_contract_test.dart`, which scans
+//  these same sources, the wrist's Dart tree and the shared message contract.
 //
 
 import Foundation
@@ -16,12 +15,16 @@ import XCTest
 
 final class WatchRestIsCountUpTests: XCTestCase {
 
-    /// The rule, in the words a failing scan repeats.
+    /// The rule, in the words a failing scan repeats. It is the wording of
+    /// `docs/global_conventions.md`, "Rest rule: rest is a count-up".
     private let rule = """
-    Rest is a count-up from the moment a set is logged to the next set; there \
-    is no preset rest length, no rest countdown and no rest alarm on any \
-    device. See docs/global_conventions.md (rest rule) and \
-    docs/plans/2026-10-08-18b-watch-rest-count-up-plan, D-160.
+    Rest is a count-up from the moment a set is logged to the moment the next \
+    set starts. There is no preset rest length, no rest countdown and no rest \
+    alarm anywhere, on any device. See docs/global_conventions.md, "Rest rule: \
+    rest is a count-up", and \
+    docs/plans/2026-10-08-18b-watch-rest-count-up-plan, D-160 and D-164. Do not \
+    add a preset rest length or a rest countdown; if you think the product \
+    needs one, ask the owner.
     """
 
     /// Every `.swift` file under `watch/watchos/Sources`.

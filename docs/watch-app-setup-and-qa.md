@@ -192,10 +192,14 @@ are what prove the logic they host.
 **What the wrist cannot do yet.** Two gaps: the wrist labels the load it dials
 in kilograms even when the phone's saved unit is pounds — the wire value is
 always kilograms, so the phone's history and conversions stay correct — and each
-device keeps only the countdown it started, so a Sync stops a countdown the phone
+device owns only the timer it started, so a Sync stops a countdown the phone
 wrote and leaves a wrist-started one running, because the phone's answer carries
 no timers (D-26, D-80; `test/watch_logging_timers_test.dart`,
 `S-79 a snapshot leaves the wrist's countdown running and stops the phone's own`).
+A rest is not one of those timers: it is device-local and has no length, so a
+wrist rest never travels to the phone and never appears in the phone's history
+([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up";
+`test/rest_is_count_up_contract_test.dart`).
 
 ---
 
@@ -335,7 +339,7 @@ position, not slot 0`), and a set logged on the phone arrives the same way
 not sent back`).
 **(b) A change on the phone arrives by itself — (owner).** Add an exercise on the
 phone. It appears on the watch without a Sync: a burst of changes inside one push
-is a single frame, and a rest-timer tick pushes nothing
+is a single frame, and a rest tick pushes nothing
 (`test/watch_session_auto_push_test.dart`,
 `S-75 three changes inside the window are one frame`,
 `S-74 five notifications without a change push nothing`).
@@ -478,13 +482,18 @@ enforced in code, so a failure points at the transport, not the logic:
    idempotency keys (`eventId`, `entryId`, `changeId`) are what should prevent
    it.
 10. **Kill the phone app mid-session** and relaunch. The session should restore
-   from timestamps, not from a counter — a restored rest timer showing a fresh
-   full duration means someone reintroduced remaining-time, which the protocol
-   forbids.
+   from timestamps, not from a counter — a restored rest showing a fresh full
+   duration means someone reintroduced remaining-time, which the protocol
+   forbids: rest is a count-up with no preset length, written down in
+   [Global Conventions](global_conventions.md) as "Rest rule: rest is a
+   count-up", and `test/rest_is_count_up_contract_test.dart` fails the build if
+   anyone adds a rest length or a rest countdown back.
 11. **Kill the watch app mid-session** and relaunch **(owner)**. Log two sets on
     the wrist, force-quit the watch app with no Sync, then relaunch: the session,
-    both sets and the rest countdown are back. Sync: the phone shows the sets
-    once.
+    both sets and the running rest are back, and the rest screen counts up from
+    the restored start rather than from zero
+    (`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`).
+    Sync: the phone shows the sets once.
 12. **Quick-log food on the wrist.** It should land on the phone's correct day,
     and a redelivery must not double it.
 13. **Sensor path** (after HealthKit is configured): heart rate appears during a
@@ -550,7 +559,9 @@ hardware yet.
 1. **Start a workout on the wrist and pick an exercise.** Tap **Free workout**.
    A Free workout starts with no exercise, so the picker comes up first; pick
    one and the logging screen appears with that exercise's value rows. Dial 3
-   reps and tap **Log**: the row is accepted and the rest countdown starts.
+   reps and tap **Log**: the row is accepted and the rest screen appears counting
+   up, with exactly one control, **Next**
+   (`WatchRestSurfaceTests.testS162NextEndsTheRestAtTheTapInstant`).
 2. **The set is on the phone at the moment it is logged.** Phone app in the
    foreground and reachable. Without touching the wrist, the phone's session for
    this wrist session shows the set. The phone must show it before any Sync —
@@ -584,8 +595,8 @@ hardware yet.
    Dialling back up to zero leaves a plain `0.0`, never a `-0.0`
    (`testS064AZeroLoadNeverPrintsASignedZero`).
 
-Two known gaps this walkthrough must not be read as failing on: each device keeps
-only the countdown it started, so a Sync stops a countdown the phone wrote and
+Two known gaps this walkthrough must not be read as failing on: each device owns
+only the timer it started, so a Sync stops a countdown the phone wrote and
 leaves a wrist-started one running (`test/watch_logging_timers_test.dart`,
 `S-79 a snapshot leaves the wrist's countdown running and stops the phone's own`;
 the phone-written case is the reconciliation fixture `timer_cleared.json`,

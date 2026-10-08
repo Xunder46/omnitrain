@@ -9,7 +9,7 @@
 /// 1. **Coalesce, then send only what changed** (D-76). Every notification of
 ///    the bound `WorkoutState` restarts a trailing window; when it closes the
 ///    payload is composed fresh and sent only if its deterministic encoding
-///    differs from the last payload this push sent or baselined. A rest-timer
+///    differs from the last payload this push sent or baselined. A rest
 ///    tick therefore sends nothing, and a burst of changes inside one window is
 ///    one frame. The payload is never cached: the newest state is the one that
 ///    matters.

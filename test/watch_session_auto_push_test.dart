@@ -628,7 +628,7 @@ void main() {
         after.stoppedAt,
         isNull,
         reason:
-            'S-71 the wrist\'s rest countdown is still running after the push',
+            'S-71 the wrist\'s own rest is still running after the push',
       );
       expect(failures, isEmpty);
     });

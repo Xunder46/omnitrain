@@ -167,7 +167,7 @@ The one place a session is pushed from the phone (D-75). It binds the same
 `WorkoutState` the screen runs, restarts a trailing window on every notification
 and, when the window closes, composes the projection fresh and sends it only if
 its encoding differs from the last payload this push sent or baselined — so a
-rest-timer tick sends nothing and a burst of changes inside one window is one
+rest tick sends nothing and a burst of changes inside one window is one
 frame. Nothing is cached: the newest state is the one that matters. The pending
 ends are the sessions the phone itself composed whose end is not decided yet:
 each is announced by its own id, once, when its own stored row decides it — an
@@ -434,8 +434,8 @@ Once a session is open, the shell's second surface is the package's logging view
 for the current exercise: the exercise's own effort kind — a set, a timed hold, a
 round or a drill — with the value rows that effort needs, End leading the
 toolbar and the exercise picker behind a list button. A logged set starts a rest
-countdown of the surface's own length
-(`WatchLoggingTimersTests.testS005LoggingASetStartsARestCountdownOfTheSurfaceLength`).
+with no length, which the rest screen counts up
+(`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`).
 
 Logged rows leave the wrist as they are logged: the engine's emissions go to
 `WatchEmitForwarder` over the connectivity bridge, in emission order, and a
@@ -464,12 +464,11 @@ revision` and `S-104 nothing from the phone is announced back`) and by
 
 The shell builds an append-only file store, `FileWatchSessionStore`, over the
 app's Application Support directory (`watch-session/`), so a relaunch brings back
-the session, its logged rows, a running rest countdown and any unanswered rating
+the session, its logged rows, a running rest and any unanswered rating
 question; the engine is restored at launch, before the start paths, preferences
 and rating. What survives is asserted by the store's two-engine cases
 (`watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`:
 `testS44ALoggedSetSurvivesTheProcess`,
-`…testS46ACountdownThatWasRunningIsStillRight`,
 `…testS47TheOwedRatingQuestionSurvivesTheKill`), and that a commit which suspends
 still shows the owed question by
 `WatchEffortRatingTests.testS55ASlowCommitStillShowsTheOwedQuestion` and
