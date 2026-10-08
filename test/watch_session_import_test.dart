@@ -172,6 +172,30 @@ Map<String, Object?> _rating(
   'rating': rating,
 };
 
+/// An ISO instant as the epoch milliseconds every row carries.
+int _msOf(String iso) => DateTime.parse(iso).toUtc().millisecondsSinceEpoch;
+
+/// A rest event in the protocol's shape (18b D-166): a window, no length, and
+/// the id of the set it follows.
+Map<String, Object?> _rest(
+  String entryId, {
+  required String startedAt,
+  required String endedAt,
+  required String afterEntryId,
+  String slot = 'sx-bench',
+  String exerciseId = 'ex-bench',
+}) => {
+  'entryId': entryId,
+  'eventId': entryId,
+  'kind': 'rest',
+  'loggedAt': endedAt,
+  'sessionExerciseId': slot,
+  'exerciseId': exerciseId,
+  'startedAt': startedAt,
+  'endedAt': endedAt,
+  'afterEntryId': afterEntryId,
+};
+
 /// Whether the phone already holds the rows [entryId] of [caseName] becomes —
 /// what a receipt is allowed to name.
 Future<bool> _rowsExist(
@@ -2274,6 +2298,29 @@ void main() {
                 'loggedAt': '2026-09-25T10:30:00.000Z',
                 'startedAt': '2026-09-25T10:00:00.000Z',
               },
+              // A rest is stageable only with the entry it follows (D-214);
+              // the same row carrying it is staged.
+              {
+                'entryId': 'rest-s-snap-partial',
+                'eventId': 'rest-s-snap-partial',
+                'kind': 'rest',
+                'loggedAt': '2026-09-25T10:06:10.000Z',
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-bench',
+                'startedAt': '2026-09-25T10:05:00.000Z',
+                'endedAt': '2026-09-25T10:06:10.000Z',
+              },
+              {
+                'entryId': 'rest-s-snap-whole',
+                'eventId': 'rest-s-snap-whole',
+                'kind': 'rest',
+                'loggedAt': '2026-09-25T10:06:10.000Z',
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-bench',
+                'startedAt': '2026-09-25T10:05:00.000Z',
+                'endedAt': '2026-09-25T10:06:10.000Z',
+                'afterEntryId': 'e-snap-1',
+              },
             ],
             'timers': const <String, Object?>{},
           },
@@ -2286,7 +2333,18 @@ void main() {
         );
         expect(result.stagedEntryIds, [
           'e-snap-1',
-        ], reason: 'A-3 only the complete entry');
+          'rest-s-snap-whole',
+        ], reason: 'A-3 only the complete entries');
+        expect(
+          await repository.getWatchInboxEntry('rest-s-snap-partial'),
+          isNull,
+          reason: 'A-3 a rest without the entry it follows is not staged',
+        );
+        expect(
+          await repository.getWatchInboxEntry('rest-s-snap-whole'),
+          isNotNull,
+          reason: 'A-3 the same rest with it is staged',
+        );
         expect(
           await repository.getWatchInboxEntry('rating-s-snap'),
           isNull,
@@ -2338,6 +2396,365 @@ void main() {
         transport.receiptedEntryIds.toSet(),
         {'e-snap-2', 'end-s-snap-1', 'rating-s-snap-1'},
         reason: 'D-132 the snapshot entries are acknowledged',
+      );
+    });
+  });
+
+  // Plan: `docs/plans/2026-10-08-18c-watch-rest-to-phone-plan/` (D-210,
+  // D-214 – D-216, D-222) — the wrist's rest becomes an `EntryRest` of the
+  // effort whose set it followed, in the ordinary import flow.
+  //   S-320 a staged set and rest become one rest row → `S-320 ...`
+  //   S-323 zero length is dropped                  → `S-323 ...`
+  //   S-324 duplicate delivery, and a re-run pass   → `S-324 ...`
+  //   S-326 a rest alone imports no session         → `S-326 ...`
+  //   S-327 deleting the set leaves the rest        → `S-327 ...`
+  //   S-328 an unresolvable rest is consumed        → `S-328 ...`
+  group('the wrist’s rests (D-210)', () {
+    final bench = WatchSessionImporter.effortIdFor(
+      _capId,
+      'sx-bench',
+      'ex-bench',
+      'set',
+    );
+    const restStart = '2026-09-25T10:05:00.000Z';
+    const restEnd = '2026-09-25T10:06:10.000Z';
+    const sessionStart = '2026-09-25T10:00:00.000Z';
+    const sessionEnd = '2026-09-25T10:30:00.000Z';
+
+    /// The rest the fixture above sends, as the importer writes it.
+    Map<String, Object?> restRow(String effortId, {int entryIndex = 1}) => {
+      'id': 'rest-$effortId-$entryIndex',
+      'effort_id': effortId,
+      'entry_index': entryIndex,
+      'rest_start_ms': _msOf(restStart),
+      'rest_end_ms': _msOf(restEnd),
+      'rest_is_paused': 0,
+      'rest_paused_at_ms': null,
+      'rest_paused_duration_ms': 0,
+      'created_at_ms': _msOf(restEnd),
+      'updated_at_ms': _msOf(restEnd),
+    };
+
+    test('S-320 a staged set and rest import one rest row after the set',
+        () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        _rest(
+          'e-rest1',
+          startedAt: restStart,
+          endedAt: restEnd,
+          afterEntryId: 'e-set1',
+        ),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      final rests = await repository.getEntryRests(bench);
+      expect(rests, hasLength(1), reason: 'S-320 one rest event, one row');
+      expect(
+        rests.single.toMap(),
+        restRow(bench),
+        reason:
+            'S-320 D-167’s row: the id from the index the set took, the '
+            'window as sent, never paused',
+      );
+      expect(
+        await observationAt(repository, bench, 0, 'reps'),
+        isNotNull,
+        reason: 'S-320 the set the rest followed still lands at index 0',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        containsAll(['e-set1', 'e-rest1', 'end-$_capId']),
+        reason: 'S-320 the rest is consumed in the same pass as the set',
+      );
+      expect(
+        await repository.getAllSessions(),
+        hasLength(1),
+        reason: 'S-320 the rest creates no session of its own',
+      );
+    });
+
+    test('S-323 a rest of no length is dropped, consumed and never retried',
+        () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+      final zeroLength = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restStart,
+        afterEntryId: 'e-set1',
+      );
+
+      // The wire refuses it, so it never arrives as a message (D-222).
+      final refused = await inbox.receive(
+        observationsUp(_capId, [zeroLength], messageId: 'msg-zero'),
+      );
+      expect(
+        refused.outcome,
+        WatchInboxOutcome.refused,
+        reason: 'S-323 the wire refuses a rest that is not a window',
+      );
+      expect(
+        await repository.getWatchInboxEntry('e-rest1'),
+        isNull,
+        reason: 'S-323 so nothing is staged',
+      );
+
+      // An older peer staged one anyway (D-222): the pass that runs next drops
+      // it, and consumes it rather than holding it back for ever.
+      await repository.stageWatchInboxEntry(
+        WatchInboxEntry(
+          entryId: 'e-rest1',
+          watchSessionId: _capId,
+          kind: WatchInboxEntry.kindRest,
+          origin: WatchInboxEntry.originWatch,
+          payload: Map<String, dynamic>.from(zeroLength),
+          receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+        ),
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-323 a rest of no length is never written',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-323 and the row is consumed rather than left unapplied',
+      );
+
+      // A pass that runs again over the same row drops it the same way.
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-323 the second pass writes nothing either',
+      );
+    });
+
+    test('S-324 a redelivered rest and a re-run pass write one row', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+      final rest = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restEnd,
+        afterEntryId: 'e-set1',
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        rest,
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+      final written = await repository.getEntryRests(bench);
+      expect(written, hasLength(1), reason: 'S-324 the first delivery wrote it');
+
+      // The wrist never got the receipt, so it sends the rest again.
+      await _deliverEach(inbox, _capId, [rest], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        hasLength(1),
+        reason: 'S-324 a redelivery writes nothing: the row is already applied',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        contains('e-rest1'),
+        reason: 'S-324 and it is acknowledged, so the wrist may forget it',
+      );
+
+      // A pass that runs again over the same row — the recovery path clears
+      // the watermark — finds the spot taken and leaves the row alone.
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [rest], tag: 'third');
+      final after = await repository.getEntryRests(bench);
+      expect(
+        after.map((r) => r.toMap()),
+        [written.single.toMap()],
+        reason:
+            'S-324 first write wins: Mock appends and Hive puts by id, so the '
+            'index guard is what keeps the two implementations equal',
+      );
+    });
+
+    test('S-326 a rest and an end alone create no session', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, _capId, [
+        _rest(
+          'e-rest1',
+          startedAt: restStart,
+          endedAt: restEnd,
+          afterEntryId: 'e-set1',
+        ),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      expect(
+        await repository.getSession(_capId),
+        isNull,
+        reason: 'S-326 D-214 a rest is not an effort entry, so it imports none',
+      );
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-326 a pass that creates no session writes no rest',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-326 D-215 the row is consumed, so it is not retried',
+      );
+    });
+
+    test('S-327 deleting the set leaves its rest', () async {
+      final repository = await _repository();
+      final inbox = _inbox(repository, CaptureTransport());
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        _rest(
+          'e-rest1',
+          startedAt: restStart,
+          endedAt: restEnd,
+          afterEntryId: 'e-set1',
+        ),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+      final before = await repository.getEntryRests(bench);
+      expect(before, hasLength(1), reason: 'S-327 the rest is imported');
+
+      final workout = WorkoutState(repository);
+      await workout.loadHistoricalSession(_capId);
+      await workout.deleteEntry(bench, 0);
+
+      expect(
+        await observationAt(repository, bench, 0, 'reps'),
+        isNull,
+        reason: 'S-327 the user deleted the set the rest followed',
+      );
+      expect(
+        (await repository.getEntryRests(bench)).map((r) => r.toMap()),
+        [before.single.toMap()],
+        reason:
+            'S-327 D-167(b) a rest is not an entry: deleting the set deletes '
+            'the observations and nothing else',
+      );
+    });
+
+    test('S-328 an unresolvable rest is dropped, consumed and not retried',
+        () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+      final orphan = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restEnd,
+        afterEntryId: 'e-set2',
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        orphan,
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the after-entry was never placed, so there is no spot',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-328 the row is consumed with the set it arrived with',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        containsAll(['e-set1', 'e-rest1']),
+        reason: 'S-328 and it is acknowledged',
+      );
+
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [orphan], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the next pass does not retry it',
+      );
+    });
+
+    test('S-328 a rest naming one of two same-instant sets is dropped and '
+        'consumed', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      // Two sets the wrist logged on the same instant: their rows cannot be
+      // told apart by stamp, so neither position can be named.
+      await _deliverEach(inbox, _capId, [
+        _set('e-dup1', loggedAt: restStart),
+        _set('e-dup2', loggedAt: restStart),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      // The user adds a row of their own (A-51), so the effort is the user's
+      // to arrange and the wrist's already-placed rows are resolved by stamp.
+      final workout = WorkoutState(repository);
+      await workout.loadHistoricalSession(_capId);
+      await workout.addEntry(
+        bench,
+        previousValues: {'reps': 8, 'weight': 100.0},
+      );
+
+      final ambiguous = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restEnd,
+        afterEntryId: 'e-dup1',
+      );
+      await _deliverEach(inbox, _capId, [ambiguous], tag: 'rest');
+
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the two same-instant sets leave no spot to name',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-328 the row is consumed rather than left unapplied',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        contains('e-rest1'),
+        reason: 'S-328 and it is acknowledged',
+      );
+
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [ambiguous], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the next pass does not retry it',
       );
     });
   });

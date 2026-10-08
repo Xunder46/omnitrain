@@ -28,8 +28,8 @@ without a stated reason.
 | 1A | S-330 window rule | `test/sync_protocol_fixtures_test.dart`, `SyncProtocolFixturesTests.swift` (`invalid/observations_up_rest_not_after.json`) | see below | `+95` / swift 376 / 0 |
 | 1B | S-320/332/333/334/335 (Dart) | `test/watch_session_rest_timer_append_test.dart` | `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/watch_session_rest_timer_append_test.dart` must **fail** | |
 | 1B | S-320/322/331/332/334/335/336/339 (Swift) | `WatchRestSurfaceTests.swift`, `WatchRestIsCountUpTests.swift`, `WatchSessionEngineTests.swift`, `WatchFileStoreTests.swift` | | |
-| 2 | S-320/323/324/326/327/328 | `test/watch_session_import_test.dart`, `test/watch_session_rest_timer_append_test.dart` | `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/watch_session_import_test.dart` must **fail** | |
-| 2 | S-320/325/328/337/338 + repository parity | `test/watch_session_merge_test.dart` (Mock and Hive) | | |
+| 2 | S-320/323/324/326/327/328 | `test/watch_session_import_test.dart` (`the wrist’s rests (D-210)`), `test/watch_session_rest_timer_append_test.dart` (`S-320 a wrist rest lands beside the phone's running rest`) | `prove-red dc69aa3 test test/watch_session_rest_timer_append_test.dart` → **RED AT**, `Expected: [0, 1] Actual: [0]`; `prove-red dc69aa3 test test/watch_session_import_test.dart` → RED AT but as a *load* error (the base has no `WatchInboxEntry.kindRest`), so the import group is proved by two mutations — see below | import group `+6`; rest-timer file `+2`; both files in the Done Criteria run `+105` |
+| 2 | S-320/325/328/337/338 + repository parity | `test/watch_session_merge_test.dart` (Mock and Hive) | `prove-red dc69aa3 test test/watch_session_merge_test.dart` → **RED AT**, 12 assertion failures (6 Mock + 6 Hive), pasted below | `+12` (`--plain-name "the wrist's rests"`) |
 | 3 | S-329 total | `test/watch_session_summary_integration_test.dart` | | |
 | 3 | view guard | `test/watch_rest_to_phone_view_test.dart` (new) | | |
 | 3 | rest rule + docs size | `test/rest_is_count_up_contract_test.dart`, `test/docs_indexing_contract_test.dart` | | |
@@ -88,6 +88,69 @@ it removes the fixtures and manifest rows the change adds — with nothing new t
 passes. The valid red proof is the manual run pasted above (fixtures + manifest present, schemas unchanged), which is
 exactly the red state the brief prescribes for Phase 1A.
 
+## Phase 2 — red first, then green
+
+Base commit for every proof: `dc69aa3`.
+
+**`prove-red dc69aa3 test test/watch_session_merge_test.dart` → RED AT** (exit 1), 12 assertion failures, 6 Mock + 6 Hive,
+each for the reason its test guards:
+
+```
+00:00 +14 -1: Mock the wrist's rests (D-210) S-320 a wrist rest lands beside the set in the phone's own effort [E]
+  Expected: an object with length of <1>
+    Actual: []
+  S-320 one rest event, one row
+00:00 +14 -3: Mock the wrist's rests (D-210) S-325 the phone's own rest at that spot wins [E]
+  Expected: contains 'rest-a1'
+    Actual: ['sx-1']
+00:00 +14 -5: Mock the wrist's rests (D-210) S-337 a rest whose after-entry is gone is dropped and consumed [E]
+  Expected: not null
+    Actual: <null>
+00:00 +14 -6: Mock the wrist's rests (D-210) S-328 an unresolvable rest is consumed in the merge too [E]
+  Expected: not null
+    Actual: <null>
+… the same six failures again under `Hive …` (`+28 -12` in all)
+00:01 +28 -12: Some tests failed.
+```
+
+**`prove-red dc69aa3 test test/watch_session_rest_timer_append_test.dart` → RED AT** (exit 1); `S-110` passes at the base,
+so the proof is the new guard alone:
+
+```
+00:00 +1 -1: S-320 a wrist rest lands beside the phone's running rest [E]
+  Expected: [0, 1]
+    Actual: [0]
+     Which: at location [1] is [0] which shorter than expected
+  S-320 the running rest keeps its spot, and the wrist's rest lands after the set the wrist logged
+```
+
+**`prove-red dc69aa3 test test/watch_session_import_test.dart` → RED AT, but not usable as a proof:** the group cannot run
+at the base — `test/watch_session_import_test.dart:2480:33: Error: Member not found: 'kindRest'` (the constant is new
+code), and the gateway says a load error means the test could not run there. So the import group was proved by two
+mutations, each restored to the exact original line and re-run green:
+
+| Mutation | Original line | Result with the mutation applied | After restore |
+|---|---|---|---|
+| `lib/core/services/watch_session_importer.dart:521` — the rest write in a new import | `    await _applyRests(unapplied);` | `the wrist’s rests` `+3 -3`: `S-320`, `S-324`, `S-327` fail with `Expected: an object with length of <1> Actual: []` (`S-320 one rest event, one row`) | `+6: All tests passed!` |
+| `lib/data/models/models.dart:2635` — `kindRest` in `watchKinds` | `    kindRest,` | `the wrist’s rests` `+0 -6`: `S-323` throws `Invalid argument (kind): D-132: not a kind the inbox stages for origin watch: "rest"`, the other five find no row | `+6: All tests passed!` |
+
+**Green.** `.github/copilot/scripts/macos/gateway.sh test test/watch_session_import_test.dart
+test/watch_session_merge_test.dart test/watch_session_rest_timer_append_test.dart test/db_seed_test.dart` →
+`00:01 +105: All tests passed!` (the phase's Done Criteria command). Full suite
+`.github/copilot/scripts/macos/gateway.sh test` → `01:48 +4204 ~1: All tests passed!` (baseline +4181 ~1).
+`.github/copilot/scripts/macos/gateway.sh lint` → `196 issues found` (baseline 196, 0 errors; `grep` of the lint log finds
+no issue in `watch_session_importer.dart`, `watch_session_inbox.dart`, `models.dart` or the three test files).
+`grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` → no matches. The doc-contract
+suites the two doc corrections touch are green too: `.github/copilot/scripts/macos/gateway.sh test
+test/docs_indexing_contract_test.dart test/rest_is_count_up_contract_test.dart
+test/watch_capture_contract_conformance_test.dart` → `+36: All tests passed!`.
+
+**Parity.** The merge group's six test bodies run twice, once under `group('Mock')` and once under `group('Hive')`
+(Hive seeded in `setUp`, `Hive.deleteFromDisk()` in `tearDown`), and assert the written row's `id`, `entryIndex`,
+`restStartMs` and `restEndMs` on both — the repository half of the parity row. No repository, model or SQL change was
+needed (V-4): `getEntryRests`/`createEntryRest` already existed in both implementations, and the importer's
+`entryIndex` guard is what keeps Mock's append-only `createEntryRest` observably equal to Hive's put-by-id.
+
 ## Reproducing the planner's verification answers
 
 | Answer | Command |
@@ -112,3 +175,53 @@ exactly the red state the brief prescribes for Phase 1A.
   (`docs/plans/2026-10-08-18d-watch-rest-emit-and-docs-plan/2026-10-08-18d-watch-rest-emit-and-docs-plan.evidence.md`),
   which keeps this plan's baselines. The view-guard row's test file is the one 18d's Phase 2 names there. So there is no
   state in which the wrist emits what the phone cannot stage: the emission lands with 18d, after this plan's writer.
+
+## Fix round 1
+
+Review findings F-1, F-2, F-3 (table only), F-4 and Assumption Log A-10. Base commit `dc69aa3`; Phase 2 stays
+uncommitted on the tree. No production behaviour changed: the two tests are pins, so each is proved by a mutation of the
+guard it pins, restored to the exact original line and re-run green.
+
+### F-1 — the same-instant rest pin
+
+`test/watch_session_import_test.dart`, group `the wrist’s rests (D-210)`:
+`S-328 a rest naming one of two same-instant sets is dropped and consumed`. Two wrist sets share one logged instant and
+the user has added a row of their own to the effort, so `_EffortRows.indexOf` cannot tell the two positions apart; the
+staged rest is dropped and its row marked applied, and a second pass writes nothing either.
+
+Mutation — `lib/core/services/watch_session_importer.dart`, `_EffortRows.indexOf` body
+
+```
+  int? indexOf(_Entry entry) {
+    if (_stagedPerStamp[entry.loggedAtMs] != 1) return null;
+    final indices = _indicesByStamp[entry.loggedAtMs];
+    return indices != null && indices.length == 1 ? indices.single : null;
+  }
+```
+
+replaced with `return _indicesByStamp[entry.loggedAtMs]?.first;` →
+
+`.github/copilot/scripts/macos/gateway.sh test test/watch_session_import_test.dart --plain-name "S-328 a rest naming one of two same-instant sets is dropped and consumed"`
+→ `+0 -1`, `Expected: empty Actual: [Instance of 'EntryRest']` (`S-328 the two same-instant sets leave no spot to name`).
+After restore: `+55: All tests passed!` for the file.
+
+### F-2 — the rest required-fields negative
+
+`test/watch_session_import_test.dart`, group `what the inbox stages (D-132)`,
+`A-3 a snapshot entry missing its kind’s fields is not staged`: a `rest` snapshot entry without `afterEntryId` is not
+staged; the same row with it is staged.
+
+Mutation — `lib/state/watch/watch_session_inbox.dart`, `'afterEntryId'` removed from `_requiredFields[kindRest]` →
+
+`.github/copilot/scripts/macos/gateway.sh test test/watch_session_import_test.dart --plain-name "A-3 a snapshot entry missing its kind’s fields is not staged"`
+→ `+0 -1`, `Expected: ['e-snap-1', 'rest-s-snap-whole'] Actual: ['e-snap-1', 'rest-s-snap-partial', 'rest-s-snap-whole']`.
+After restore: `+55: All tests passed!` for the file.
+
+### Verify
+
+`.github/copilot/scripts/macos/gateway.sh test test/watch_session_import_test.dart test/watch_session_merge_test.dart
+test/watch_session_rest_timer_append_test.dart test/docs_indexing_contract_test.dart` → `00:01 +106: All tests passed!`
+`.github/copilot/scripts/macos/gateway.sh test` (full suite) → `01:49 +4205 ~1: All tests passed!` (baseline `+4204 ~1`;
+the +1 is the new S-328 pin).
+`.github/copilot/scripts/macos/gateway.sh lint` → `196 issues found` (baseline 196, 0 errors; files touched this round add
+none). `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` → no matches.

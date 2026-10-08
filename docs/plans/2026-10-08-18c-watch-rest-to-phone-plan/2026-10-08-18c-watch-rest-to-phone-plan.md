@@ -65,7 +65,8 @@ set on the phone does not delete the rest after it.
 6. **(ships in plan 18d)** Docs are true: the sync doc's and watch-surface doc's "what travels" lists; 17a D-80/S-79
    annotated per 18b D-165; the 18 index gains its row.
 7. Baselines hold or rise: flutter +4181 ~1, swift 376 / 0, analyze 196 / 0. The governor's `xcodebuild "OmniTrain
-   Watch App"` run belongs to plan 18d (18c changes no Swift, so the watch baseline holds trivially).
+   Watch App"` run belongs to plan 18d. 18c touches Swift only through Phase 1A's mirror validator
+   (`SyncProtocolValidator.swift`) — no Swift client change — so the watch baseline holds: `swift-test` 376 / 0.
 
 ## Requirements (planner, Iteration 1)
 
@@ -208,7 +209,7 @@ Each row: the surface this feature touches → what already reads it (the grep t
 | `WatchInboxEntry._checkInvariants` allow-list (`models.dart:2725`), whose `ArgumentError` `_entryFor` (`watch_session_inbox.dart:514`) swallows | the staging path | a `rest` row absent from `watchKinds` is never staged **and never receipted**, so the wrist re-sends it forever — the kind must be added | S-320, S-324 |
 | `_requiredFields` (`watch_session_inbox.dart:171`) → `_isStageable` (`:501`) → `_settleNow` (`:420`) | staging and receipting | a kind absent from the map is never settled (D-214) | S-320 |
 | `computeSessionRestTimeMs` (`session_summary_service.dart:17`) | `session_summary_screen.dart:808` (`_restTimeMs`), the summary tests | no code change: an imported rest is a closed `EntryRest` inside the session window — asserted, never edited | plan 18d Phase 2 (S-329) |
-| `getEntryRests` readers (`workout_session_screen.dart:331,678,770`, `workout_session_list_view.dart:607`) | the session and history rest rows | they show an imported rest with no change (no new screen, no new widget); the view guard runs in plan 18d | plan 18d Phase 2 |
+| `getEntryRests` readers (`workout_session_screen.dart:331,678,770`; `lib/features/session/workout_session_global_timer.dart:45,81`; `lib/state/workout/session_core_io.dart:104,175,247`; `lib/state/workout/timer_manager.dart:49`; `lib/state/workout/workout_state.dart:90`; the history view reads it through `_getMostRecentOpenRestKey`, not the `workout_session_list_view.dart:607` doc comment) | the session and history rest rows, the rest ping and the global rest chip | the timer and notification readers null-check `restEndMs` before use, so a closed imported rest never enters the global rest chip or fires a ping; the rest are passthrough accessors and loaders; they show an imported rest with no change (no new screen, no new widget) | plan 18d Phase 2 |
 | `WorkoutRepository.createEntryRest` (`workout_repository.dart:253`) in both implementations | `TimerManager.recordRestStart` (`timer_manager.dart:693`); from Phase 2, `_applyRests` reads `getEntryRests` for first-write-wins | no change needed (V-4); the phone's own rest keeps winning (D-216) | S-325, Phase 2 parity row |
 | `watch/sync_protocol/PROTOCOL.md` message table + Version history | `test/sync_protocol_fixtures_test.dart` (spec text, rejection codes, and "links only to paths that exist", `:764`) | one kind in the `observations_up` row, one dated amendment row, no new rejection code | S-330 |
 | `scripts/sqlite_schema.sql` (`app_entry_rest`, `:756`) | `test/db_seed_test.dart` | no change: no model field and no table; `entry_index`/`rest_start_ms`/`rest_end_ms` already match D-167 | `db_seed_test.dart` |
@@ -353,32 +354,32 @@ new fixtures — paste that failure into `….evidence.md` before making them pa
 
 ### Phase 2: the phone writes it (@dba) — the seeded Phase 2
 
-1. [ ] Add the wire kind: `static const kindRest = 'rest'` next to `kindSessionEnd` and `kindRest` in `watchKinds` —
+1. [x] Add the wire kind: `static const kindRest = 'rest'` next to `kindSessionEnd` and `kindRest` in `watchKinds` —
        `lib/data/models/models.dart` · `WatchInboxEntry` (`:2621`), so `_checkInvariants`' kind allow-list (`:2725`)
        accepts the row instead of throwing into `_entryFor`'s swallow (D-214).
-2. [ ] Add the field contract `kindRest: [sessionExerciseId, exerciseId, startedAt, endedAt, afterEntryId]` to the map,
+2. [x] Add the field contract `kindRest: [sessionExerciseId, exerciseId, startedAt, endedAt, afterEntryId]` to the map,
        which `_isStageable` (`:501`) consults before `_settleNow` (`:420`) receipts the row —
        `lib/state/watch/watch_session_inbox.dart` · `_requiredFields` (`:171`) (D-214).
-3. [ ] Add `_applyRests(rows, placedEffort, sessionExerciseId)`: in arrival order resolve `afterEntryId` through the
+3. [x] Add `_applyRests(rows, placedEffort, sessionExerciseId)`: in arrival order resolve `afterEntryId` through the
        placed entries' `entryId` → `entryIndex` = that entry's index + 1; drop (and report as consumed) a row with no
        match or with `endedAt <= startedAt`; skip when `getEntryRests(effortId)` already holds a rest at that
        `entryIndex`; otherwise `createEntryRest` with D-167's id (`'rest-<effortId>-<entryIndex>'`), window
        (`restStartMs`/`restEndMs`) and `entryIndex`; return the written/dropped split —
        `lib/core/services/watch_session_importer.dart` · new `_applyRests` (D-215, D-216, D-222).
-4. [ ] Call it where entries are final and rows are about to be consumed, for a new import **and** a top-up:
+4. [x] Call it where entries are final and rows are about to be consumed, for a new import **and** a top-up:
        after the placement loops of `_Pass.run` (`:429`) and before `_markApplied` (`:214`) — `…_importer.dart` ·
        `_Pass.run` / `apply` (`:127`). A pass that creates no session writes no rest (D-214, S-326).
-5. [ ] The merge flow: call `_applyRests` for the phone-held effort before `_consume` (`:367`) / `_markApplied`
+5. [x] The merge flow: call `_applyRests` for the phone-held effort before `_consume` (`:367`) / `_markApplied`
        (`:369`), so the phone's own rest at that `entryIndex` wins and the row is consumed either way —
        `…_importer.dart` · `_mergeHeld` (`:224`) (D-216).
-6. [ ] Count a written rest as a write: include the effort in the pass's changed set (the same value that feeds
+6. [x] Count a written rest as a write: include the effort in the pass's changed set (the same value that feeds
        `historyChanged`, and `_mergeHeld`'s `changedEffortIds`) so the summary recomputes; a dropped row must not —
        `…_importer.dart` · `apply` (`:127`) and `_mergeHeld` (`:224`).
-7. [ ] Tests for S-320 (phone side), S-323, S-324, S-326, S-327 and S-328: a staged rest becomes one `EntryRest`;
+7. [x] Tests for S-320 (phone side), S-323, S-324, S-326, S-327 and S-328: a staged rest becomes one `EntryRest`;
        a duplicate delivery and a re-run pass write once; a zero-length row is dropped; a rest plus a `session_end`
        alone creates no session; deleting the set leaves the rest; an unresolvable rest is consumed and not retried —
        `test/watch_session_import_test.dart` and `test/watch_session_rest_timer_append_test.dart` (Mock-first).
-8. [ ] Tests for the merge and top-up flows (S-320's second and third flow, S-325, S-328, S-337, S-338) and the parity
+8. [x] Tests for the merge and top-up flows (S-320's second and third flow, S-325, S-328, S-337, S-338) and the parity
        row: one fixture asserted through `MockWorkoutRepository` and through `HiveWorkoutRepository` yields one row with
        the same `entryIndex`, `id`, `restStartMs`, `restEndMs` — `test/watch_session_merge_test.dart` (Hive seeded in
        `setUp`), with `test/db_seed_test.dart` still green (no model, no SQL change).
@@ -386,8 +387,9 @@ new fixtures — paste that failure into `….evidence.md` before making them pa
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh lint`;
 `.github/copilot/scripts/macos/gateway.sh test test/watch_session_import_test.dart test/watch_session_merge_test.dart test/watch_session_rest_timer_append_test.dart test/db_seed_test.dart`;
 guard proof: `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/watch_session_import_test.dart` must
-**fail** at the base commit. Baselines: analyze 196 / 0. No Swift change in this plan, so `swift-test` is not required
-here (plan 18d's final phase runs it, with the full suite and the governor's watch-app build).
+**fail** at the base commit. Baselines: analyze 196 / 0. The only Swift 18c touches are Phase 1A's mirror validator
+(`SyncProtocolValidator.swift`); no Swift client change, and `swift-test` ran 376 / 0 (plan 18d's final phase runs it
+again, with the full suite and the governor's watch-app build).
 **Predicted Files**: `lib/data/models/models.dart`, `lib/state/watch/watch_session_inbox.dart`,
 `lib/core/services/watch_session_importer.dart`, the three test files named above.
 
@@ -440,7 +442,18 @@ Dependents that only read a touched surface (no edit, but their tests must stay 
   both validators + PROTOCOL.md. `test/sync_protocol_fixtures_test.dart` `+95`, `swift-test` 376 / 0,
   `rest_is_count_up_contract_test.dart` + `watch_capture_contract_conformance_test.dart` `+27`, `lint` 196 (baseline).
   Red evidence (fixtures present, schemas unchanged: `+66 -3`) and the `prove-red` not-applicable note are in
-  `.evidence.md`. Phase 2: not started.
+  `.evidence.md`. Phase 2: complete (below).
+- Phase 2: **Complete** (dba, 2026-10-08, base dc69aa3). All 8 items done; `kindRest` in `WatchInboxEntry.watchKinds`
+  and its field contract in `_requiredFields`; `_applyRests` called at the end of `_Pass.run` and in `_mergeHeld`.
+  Done Criteria (`test/watch_session_import_test.dart test/watch_session_merge_test.dart
+  test/watch_session_rest_timer_append_test.dart test/db_seed_test.dart`) → `+105`; full suite `+4204 ~1`; `lint` 196
+  (baseline, none in the touched files). `prove-red dc69aa3` → **RED AT** on the merge file (`+28 -12`) and the
+  rest-timer file (`+1 -1`); the import file cannot load at the base (the constant is new), so its group is proved by
+  two mutations, both pasted in `.evidence.md`. No repository, model or SQL change; the only Swift change is Phase 1A's
+  mirror validator.
+- Fix round 1 (developer, 2026-10-08, base dc69aa3): review F-1/F-2/F-3/F-4 and A-10 addressed — two new import
+  tests (S-328 the same-instant rest pin, the A-3 rest missing `afterEntryId` negative), the Impact table's reader
+  set, the three Swift sentences, and A-10. Counts and both mutation proofs in `.evidence.md` "Fix round 1".
 - Baselines to beat at the base commit: flutter +4181 ~1, swift 376 / 0, analyze 196 / 0, `xcodebuild "OmniTrain Watch
   App"` (governor-run).
 
@@ -460,6 +473,21 @@ Dependents that only read a touched surface (no edit, but their tests must stay 
 - **A-6** The moved Ledger entries and scenarios are reproduced verbatim in plan 18d under their original ids, with a
   transpose note naming this plan — chosen over bare cross-references because 18d must be self-contained for its
   executor, and this file's markers must not need editing later. Vetoable.
+- **A-7 (dba, Phase 2)** Item 3's sketched signature `_applyRests(rows, placedEffort, sessionExerciseId)` is not
+  buildable as written: resolving `afterEntryId` needs the entry's *final* index, which only the placement loops know.
+  Built `_applyRests(rows)` over a `_placed` map (`entryId → effortId + final index`) that `_placeEntries` and
+  `_placeAroundUserRows` fill. Same behaviour, one map, one pass.
+- **A-8 (dba, Phase 2)** A written rest sets the pass's `changed`, so it counts as a write (item 6) and a merge names
+  the effort; a dropped row sets nothing. `test/watch_session_merge_test.dart` pins both (the receipt and the refresh
+  count). Vetoable.
+- **A-9 (dba, Phase 2)** `kindRest` is in `watchKinds` only, never in `_effortKinds`: a rest is not an entry, so it is
+  never placed, re-stated by a correction, re-indexed or deleted. S-327 pins the delete case. Vetoable.
+- **A-10 (dba, Phase 2)** Docs: `docs/watch_session_capture.md` was corrected (the staging list and the "only … are
+  staged" invariant). `docs/rest_tracking.md` was left as committed — the governor restored it because its wording
+  claims a wrist rest reaches the phone, untrue until plan 18d — and is plan 18d's.
+- **A-11 (dba, Phase 2)** S-323 stages its zero-length row with `repository.stageWatchInboxEntry`, because 1A's wire
+  rule (A-4) refuses `endedAt == startedAt` — the older-peer row cannot arrive as a message. The test asserts the
+  refusal first, then the drop. Vetoable.
 
 ## Feedback
 

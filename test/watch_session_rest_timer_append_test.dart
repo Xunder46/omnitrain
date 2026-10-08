@@ -1,7 +1,10 @@
-// A running rest timer survives the append a wrist snapshot asks for.
+// A running rest timer survives the append a wrist snapshot asks for, and a
+// rest the wrist logged lands beside the phone's own running rest.
 //
 // Plan: `docs/plans/2026-10-06-17b-watch-auto-sync-pr2-plan/2026-10-06-17b-watch-auto-sync-pr2-plan.md`,
 // Phase 1 — D-94. Scenario: S-110.
+// Plan: `docs/plans/2026-10-08-18c-watch-rest-to-phone-plan/2026-10-08-18c-watch-rest-to-phone-plan.md`,
+// Phase 2 — D-210. Scenario: S-320.
 //
 // Plain `test()`: a rest is a wall-clock record, so its timing is derived from
 // the row at whatever `nowMs` the caller passes — no widget, no real clock, and
@@ -11,6 +14,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
@@ -24,7 +28,7 @@ import 'package:omnitrain/watch/session/watch_records.dart';
 
 import 'helpers/sync_protocol_harness.dart';
 import 'helpers/watch_capture_import_harness.dart'
-    show CaptureTransport, seedExercise;
+    show CaptureTransport, observationsUp, seedExercise;
 
 final DateTime _at = DateTime.utc(2026, 10, 6, 12);
 
@@ -63,6 +67,99 @@ Map<String, Object?> _snapshot({
   },
 };
 
+/// The set the wrist logged, and the rest that followed it.
+const String _setAt = '2026-10-06T11:55:00Z';
+const String _restStart = '2026-10-06T11:56:00Z';
+const String _restEnd = '2026-10-06T11:57:10Z';
+const String _endAt = '2026-10-06T12:00:00Z';
+
+int _msOf(String iso) => DateTime.parse(iso).toUtc().millisecondsSinceEpoch;
+
+/// One set the wrist logged.
+Map<String, Object?> _set(String entryId) => {
+  'entryId': entryId,
+  'eventId': entryId,
+  'kind': 'set',
+  'loggedAt': _setAt,
+  'sessionExerciseId': 'sl-1',
+  'exerciseId': 'ex-bench',
+  'reps': 8,
+  'loadKg': 40,
+};
+
+/// One rest the wrist observed, naming the entry it followed (18b D-166).
+Map<String, Object?> _rest(String entryId, {String afterEntryId = 'sx-1'}) => {
+  'entryId': entryId,
+  'eventId': entryId,
+  'kind': 'rest',
+  'loggedAt': _restEnd,
+  'sessionExerciseId': 'sl-1',
+  'exerciseId': 'ex-bench',
+  'startedAt': _restStart,
+  'endedAt': _restEnd,
+  'afterEntryId': afterEntryId,
+};
+
+/// The wrist's own end for `s-w1`.
+Map<String, Object?> _end() => {
+  'entryId': 'end-s-w1',
+  'eventId': 'end-s-w1',
+  'kind': 'session_end',
+  'loggedAt': _endAt,
+  'startedAt': '2026-10-06T11:40:00Z',
+  'endedAt': _endAt,
+  'status': 'completed',
+  'avgHeartRateBpm': 140,
+  'maxHeartRateBpm': 165,
+};
+
+/// The phone's graph, Mock-only: the inbox, the mirror behind the router, the
+/// adoption bridge and the live state it binds.
+Future<
+  ({
+    WatchIncomingRouter router,
+    LiveSessionMirrorState mirror,
+    WorkoutState state,
+  })
+>
+_phone(WorkoutRepository repository) async {
+  final transport = CaptureTransport();
+  final bridge = WatchSessionAdoptionBridge(
+    repository: repository,
+    clock: () => _at,
+    onFailure: (error, stack) => fail('the bridge failed: $error'),
+  );
+  final inbox = WatchSessionInbox(
+    repository: repository,
+    transport: transport,
+    clock: () => _at,
+    onFailure: (error, stack) => fail('the session inbox failed: $error'),
+    phoneOwnsSession: bridge.holdsSession,
+  );
+  final mirror = LiveSessionMirrorState(
+    transport: WatchInboxStagingTransport(inner: transport, inbox: inbox),
+    snapshot: watchSessionPlaceholder,
+    validator: _validator,
+  );
+  final state = WorkoutState(repository);
+  bridge.bindWorkoutState(state);
+  return (
+    router: WatchIncomingRouter(
+      inbox: inbox,
+      mirror: mirror,
+      nutrition: WatchNutritionLogBridge(
+        nutrition: NutritionState(repository),
+        library: FoodLibraryState(repository),
+        validator: _validator,
+        transport: transport,
+      ),
+      adoption: bridge,
+    ),
+    mirror: mirror,
+    state: state,
+  );
+}
+
 void main() {
   test('S-110 a running rest survives the append', () async {
     final repository = MockWorkoutRepository();
@@ -80,39 +177,10 @@ void main() {
       );
     }
 
-    final transport = CaptureTransport();
-    final inbox = WatchSessionInbox(
-      repository: repository,
-      transport: transport,
-      clock: () => _at,
-      onFailure: (error, stack) => fail('the session inbox failed: $error'),
-    );
-    final mirror = LiveSessionMirrorState(
-      transport: WatchInboxStagingTransport(inner: transport, inbox: inbox),
-      snapshot: watchSessionPlaceholder,
-      validator: _validator,
-    );
-    final bridge = WatchSessionAdoptionBridge(
-      repository: repository,
-      clock: () => _at,
-      onFailure: (error, stack) => fail('the bridge failed: $error'),
-    );
-    final state = WorkoutState(repository);
-    bridge.bindWorkoutState(state);
-    final router = WatchIncomingRouter(
-      inbox: inbox,
-      mirror: mirror,
-      nutrition: WatchNutritionLogBridge(
-        nutrition: NutritionState(repository),
-        library: FoodLibraryState(repository),
-        validator: _validator,
-        transport: transport,
-      ),
-      adoption: bridge,
-    );
+    final phone = await _phone(repository);
 
     // The phone holds the wrist's session with `[A, B]` in it.
-    await router.receive(
+    await phone.router.receive(
       _snapshot(
         sessionId: 's-w1',
         revision: 3,
@@ -121,9 +189,12 @@ void main() {
         messageId: 'msg-s110-1',
       ),
     );
-    final segmentId = state.segments.single.id;
+    final segmentId = phone.state.segments.single.id;
     expect(
-      [for (final effort in state.getEffortsForSegment(segmentId)) effort.id],
+      [
+        for (final effort in phone.state.getEffortsForSegment(segmentId))
+          effort.id,
+      ],
       ['sl-1', 'sl-2'],
     );
 
@@ -132,10 +203,10 @@ void main() {
     // tile and the global timer read their elapsed count from. Rest is a
     // count-up with no length (D-160). It is started through
     // the live state, so it is in the timer manager and in the repository both.
-    await state.recordRestStart('sl-1', 1);
-    final restBefore = state.getEntryRests('sl-1').single;
+    await phone.state.recordRestStart('sl-1', 1);
+    final restBefore = phone.state.getEntryRests('sl-1').single;
     expect(restBefore.restEndMs, isNull, reason: 'the rest is running');
-    expect(state.hasRestRecord('sl-1', 1), isTrue);
+    expect(phone.state.hasRestRecord('sl-1', 1), isTrue);
 
     // Elapsed time is derived from the record and the moment it is asked about,
     // so the same `now` can be asked again after the append.
@@ -145,13 +216,13 @@ void main() {
       45,
       reason: 'it counts from its own start',
     );
-    final indexBefore = mirror.state['currentExerciseIndex'];
+    final indexBefore = phone.mirror.state['currentExerciseIndex'];
 
     var notifications = 0;
-    state.addListener(() => notifications += 1);
+    phone.state.addListener(() => notifications += 1);
 
     // The wrist adds C and sends the ladder it holds.
-    await router.receive(
+    await phone.router.receive(
       _snapshot(
         sessionId: 's-w1',
         revision: 4,
@@ -166,7 +237,10 @@ void main() {
     );
 
     expect(
-      [for (final effort in state.getEffortsForSegment(segmentId)) effort.id],
+      [
+        for (final effort in phone.state.getEffortsForSegment(segmentId))
+          effort.id,
+      ],
       ['sl-1', 'sl-2', 'sl-3'],
       reason: 'D-92 C exists: the append landed',
     );
@@ -178,7 +252,7 @@ void main() {
           'which notifies three times and clears every timer',
     );
 
-    final restAfter = state.getEntryRests('sl-1').single;
+    final restAfter = phone.state.getEntryRests('sl-1').single;
     expect(restAfter.id, restBefore.id);
     expect(
       restAfter.restStartMs,
@@ -190,7 +264,7 @@ void main() {
       isNull,
       reason: 'the rest is still running: the append closed nothing',
     );
-    expect(state.hasRestRecord('sl-1', 1), isTrue);
+    expect(phone.state.hasRestRecord('sl-1', 1), isTrue);
     expect(
       restAfter.elapsedSeconds(nowMs),
       restBefore.elapsedSeconds(nowMs),
@@ -202,9 +276,97 @@ void main() {
       reason: 'no rest row was deleted or rewritten',
     );
     expect(
-      mirror.state['currentExerciseIndex'],
+      phone.mirror.state['currentExerciseIndex'],
       indexBefore,
       reason: 'the position the wrist reports is not moved',
+    );
+  });
+
+  test('S-320 a wrist rest lands beside the phone\'s running rest', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    for (final exercise in const [
+      ('ex-bench', 'Bench Press'),
+      ('ex-squat', 'Back Squat'),
+    ]) {
+      await seedExercise(
+        repository,
+        id: exercise.$1,
+        name: exercise.$2,
+        capabilities: const ['sets', 'reps', 'load'],
+      );
+    }
+
+    final phone = await _phone(repository);
+    await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w1',
+        revision: 3,
+        exercises: [_slot('sl-1', 'ex-bench'), _slot('sl-2', 'ex-squat')],
+        messageId: 'msg-s320-1',
+      ),
+    );
+
+    // A rest is running on A, counted from the phone's own entry at index 0:
+    // open, with no end (D-160). It is the record the rest tile and the global
+    // timer read their elapsed count from.
+    await phone.state.recordRestStart('sl-1', 0);
+    final running = phone.state.getEntryRests('sl-1').single;
+    expect(running.restEndMs, isNull, reason: 'the phone\'s rest is running');
+    final nowMs = running.restStartMs + 45000;
+
+    // The wrist sends the set it logged, the rest that followed it, and its end.
+    await phone.router.receive(
+      observationsUp('s-w1', [
+        _set('sx-1'),
+        _rest('rest-a1'),
+        _end(),
+      ], messageId: 'msg-s320-2'),
+    );
+
+    final rows = await repository.getEntryRests('sl-1');
+    expect(
+      [for (final row in rows) row.entryIndex],
+      [0, 1],
+      reason:
+          'S-320 the running rest keeps its spot, and the wrist\'s rest lands '
+          'after the set the wrist logged',
+    );
+    final wristRest = rows.singleWhere((row) => row.entryIndex == 1);
+    expect(wristRest.id, 'rest-sl-1-1', reason: 'S-320 D-167\'s id');
+    expect(
+      wristRest.restStartMs,
+      _msOf(_restStart),
+      reason: 'S-320 the window the wrist observed',
+    );
+    expect(
+      wristRest.restEndMs,
+      _msOf(_restEnd),
+      reason: 'S-320 and the end it observed',
+    );
+
+    final stillRunning = phone.state
+        .getEntryRests('sl-1')
+        .firstWhere((rest) => rest.entryIndex == 0);
+    expect(
+      stillRunning.id,
+      running.id,
+      reason: 'S-320 the phone\'s own rest is the same record',
+    );
+    expect(
+      stillRunning.restEndMs,
+      isNull,
+      reason: 'S-320 the import closed no rest of the phone\'s',
+    );
+    expect(
+      stillRunning.elapsedSeconds(nowMs),
+      running.elapsedSeconds(nowMs),
+      reason: 'S-320 the running timer still counts to the same end',
+    );
+    expect(
+      phone.state.hasRestRecord('sl-1', 0),
+      isTrue,
+      reason: 'S-320 the timer the phone started is still running',
     );
   });
 }

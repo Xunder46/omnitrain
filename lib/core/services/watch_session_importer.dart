@@ -357,6 +357,12 @@ class WatchSessionImporter {
       if (pass.writes != wasChanged) changedEffortIds.add(slot);
     }
 
+    // A rest for a slot the session holds is written beside the entry it
+    // follows; the phone's own rest at that spot wins (D-216).
+    for (final effortId in await pass._applyRests(unapplied)) {
+      if (!changedEffortIds.contains(effortId)) changedEffortIds.add(effortId);
+    }
+
     await _markApplied(unapplied);
     return WatchSessionImport(
       appliedEntryIds: _wristIds(unapplied),
@@ -426,6 +432,12 @@ class _Pass {
   set changed(bool wrote) {
     if (wrote) writes++;
   }
+
+  /// Where this pass placed each entry, by the entry's wire id: the effort it
+  /// went into and the index its rows carry. A rest is written beside the
+  /// entry it follows, keyed on that index + 1 (D-167), so the placement has
+  /// to stay readable after the entry loops have run.
+  final Map<String, ({String effortId, int index})> _placed = {};
 
   Future<void> run({
     required TrainingSession? existing,
@@ -503,6 +515,10 @@ class _Pass {
       await _repository.deleteEffort(effortId);
       changed = true;
     }
+
+    // Rests come last: every entry has its final index now (D-215). A pass
+    // that created no session never reaches this (D-214, S-326).
+    await _applyRests(unapplied);
   }
 
   // --- The session ------------------------------------------------------------
@@ -662,6 +678,9 @@ class _Pass {
       for (var i = 0; i < before.length; i++) before[i].entryId: i,
     };
     final newIndex = {for (var i = 0; i < now.length; i++) now[i].entryId: i};
+    for (var i = 0; i < now.length; i++) {
+      _placed[now[i].entryId] = (effortId: effortId, index: i);
+    }
     final removed = [
       for (final entry in before)
         if (!newIndex.containsKey(entry.entryId)) entry,
@@ -762,9 +781,19 @@ class _Pass {
     for (final entry in now) {
       if (placed.contains(entry.entryId)) continue;
       final index = rows.unfinishedPlaceOf(entry) ?? next++;
+      _placed[entry.entryId] = (effortId: effortId, index: index);
       await _createEntry(key, entry, effortId, index);
       // An instance a pass that did not finish left elsewhere follows its rows.
       await _reindexInstance(entry, effortId, index);
+    }
+
+    // The entries the effort already holds, where their rows sit: a rest
+    // following one of them is keyed on that index + 1.
+    for (final entry in before) {
+      if (!live.contains(entry.entryId)) continue;
+      final index = rows.indexOf(entry);
+      if (index == null) continue;
+      _placed[entry.entryId] = (effortId: effortId, index: index);
     }
 
     for (final entry in now) {
@@ -779,6 +808,59 @@ class _Pass {
         ownRowsOnly: true,
       );
     }
+  }
+
+  // --- Rests ------------------------------------------------------------------
+
+  /// Writes the session's staged rests beside the entries they follow (D-215).
+  ///
+  /// A rest is not an entry (D-214): it is written through the repository's own
+  /// rest method, keyed on the entry its `afterEntryId` names — the effort that
+  /// entry went into, at its index + 1 (D-167). In arrival order, a spot the
+  /// effort already holds a rest at keeps the one it has, so the phone's own
+  /// rest wins and a redelivery writes nothing (D-216, S-324, S-325); a row
+  /// whose `afterEntryId` names no placed entry, or whose window is not a
+  /// window (`endedAt <= startedAt`), is dropped (S-323, S-328, S-337). A
+  /// written rest counts as a write, so the summary recomputes and a merge can
+  /// name the effort (D-17); a dropped row does not. Either way the caller
+  /// marks the row applied, so it is never retried (D-215).
+  ///
+  /// Returns the efforts a rest was written into — the written side of the
+  /// split, which is what a merge has to name.
+  Future<Set<String>> _applyRests(List<WatchInboxEntry> rows) async {
+    final written = <String>{};
+    for (final row in rows) {
+      if (row.kind != WatchInboxEntry.kindRest) continue;
+      final payload = row.payload;
+      final afterEntryId = payload['afterEntryId'];
+      final placed = afterEntryId is String ? _placed[afterEntryId] : null;
+      final startedAtMs = _ms(payload['startedAt']);
+      final endedAtMs = _ms(payload['endedAt']);
+      if (placed == null ||
+          startedAtMs == null ||
+          endedAtMs == null ||
+          endedAtMs <= startedAtMs) {
+        continue;
+      }
+      final entryIndex = placed.index + 1;
+      final rests = await _repository.getEntryRests(placed.effortId);
+      if (rests.any((rest) => rest.entryIndex == entryIndex)) continue;
+      final loggedAtMs = _ms(payload['loggedAt']) ?? startedAtMs;
+      await _repository.createEntryRest(
+        EntryRest(
+          id: 'rest-${placed.effortId}-$entryIndex',
+          effortId: placed.effortId,
+          entryIndex: entryIndex,
+          restStartMs: startedAtMs,
+          restEndMs: endedAtMs,
+          createdAtMs: loggedAtMs,
+          updatedAtMs: loggedAtMs,
+        ),
+      );
+      changed = true;
+      written.add(placed.effortId);
+    }
+    return written;
   }
 
   static Map<int, List<({EffortObservation observation, String metricKey})>>

@@ -189,6 +189,13 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
       'startedAt',
       'endedAt',
     ],
+    WatchInboxEntry.kindRest: [
+      'sessionExerciseId',
+      'exerciseId',
+      'startedAt',
+      'endedAt',
+      'afterEntryId',
+    ],
     WatchInboxEntry.kindEffortRating: ['rating'],
     WatchInboxEntry.kindSessionEnd: ['startedAt', 'endedAt', 'status'],
   };
