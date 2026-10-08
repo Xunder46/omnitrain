@@ -41,11 +41,13 @@ abstract final class WatchMetricKey {
 }
 
 /// The units a logging surface is set to. Weight and distance are the two
-/// preferences that change what a detent means.
+/// preferences that change what a detent means. It also carries the Rest Ping
+/// interval the rest surface taps on, so no screen reads the setting itself.
 class WatchUnitPreferences {
   const WatchUnitPreferences({
     this.weightUnit = 'kg',
     this.distanceUnit = 'km',
+    this.restPingSeconds = 0,
   });
 
   /// The preferences the user has saved, read through their canonical owner so
@@ -54,6 +56,7 @@ class WatchUnitPreferences {
       WatchUnitPreferences(
         weightUnit: settings.preferredWeightUnit,
         distanceUnit: settings.preferredDistanceUnit,
+        restPingSeconds: settings.restPingInterval,
       );
 
   /// `kg` or `lbs`.
@@ -61,6 +64,10 @@ class WatchUnitPreferences {
 
   /// `km` or `miles`.
   final String distanceUnit;
+
+  /// The phone's Rest Ping interval in seconds, 0 when it is Off (or a wrist
+  /// that has not heard from the phone yet).
+  final int restPingSeconds;
 }
 
 /// What one rotary detent does, per metric.

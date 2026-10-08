@@ -601,6 +601,10 @@ remains out is listed below.
   own`); the phone-written case is held by the reconciliation fixture
   `timer_cleared.json`, replayed by
   `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`.
+  The wrist taps at each multiple of the interval the phone sent in
+  `preferences_down` (`restPingSeconds`), with no sound — a haptic tap only
+  (`WatchRestPingTests.testS241AnIntervalTapsAtItsMultiplesAndNowhereElse`;
+  `test/watch_rest_ping_test.dart`).
 - **The wrist labels load in kilograms.** The shell hands the surfaces no unit
   preferences, so the rows read kg whatever the phone's saved unit is, while the
   payload is always kilograms on the wire, which keeps the phone's history and

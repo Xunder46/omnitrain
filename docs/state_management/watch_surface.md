@@ -1,7 +1,8 @@
 # The Watch Surface — Live Mirroring and Sensors
 
 **Scope.** The watch↔phone live mirroring surface (`lib/state/watch/`,
-`lib/watch/start/watch_sync_orchestrator.dart`, `lib/core/sync_protocol/`), the
+`lib/watch/start/watch_sync_orchestrator.dart`, `lib/core/sync_protocol/`,
+`lib/core/utils/watch_reference_sync.dart`), the
 platform transport it rides on (`lib/core/platform/`), and the watch's own
 runtime layer (`lib/watch/`, mirrored file for file by
 `watch/watchos/Sources/WatchSessionEngine/`), including the sensor layer and the
@@ -437,6 +438,11 @@ toolbar and the exercise picker behind a list button. A logged set starts a rest
 with no length, which the rest screen counts up
 (`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`).
 
+Both wrist clients tap at each multiple of the interval the phone sent in
+`preferences_down` (`restPingSeconds`) — one Rest Ping setting, silent, and no
+sound on the wrist (`WatchRestPingTests.testS241AnIntervalTapsAtItsMultiples
+AndNowhereElse`; Dart twin, `test/watch_rest_ping_test.dart`, S-241).
+
 Logged rows leave the wrist as they are logged: the engine's emissions go to
 `WatchEmitForwarder` over the connectivity bridge, in emission order, and a
 refused frame is reported once and dropped without disturbing the frames behind
@@ -472,12 +478,7 @@ and rating. What survives is asserted by the store's two-engine cases
 `…testS47TheOwedRatingQuestionSurvivesTheKill`), and that a commit which suspends
 still shows the owed question by
 `WatchEffortRatingTests.testS55ASlowCommitStillShowsTheOwedQuestion` and
-`…testS55ASlowAnswerNotifiesAfterTheRatingIsRecorded`. Two smaller gaps: the
-wrist labels load in kilograms whatever the phone's unit preference says, and a
-countdown the phone wrote stops when a Sync arrives while one the wrist started
-keeps running, because the phone's answer carries no timers (D-26, D-80; on the
-Dart twin, `test/watch_logging_timers_test.dart`'s `S-79 a snapshot leaves the
-wrist's countdown running and stops the phone's own`). What a relaunch does not keep is the projection lens:
+`…testS55ASlowAnswerNotifiesAfterTheRatingIsRecorded`. What a relaunch does not keep is the projection lens:
 a re-stated entry holds the phone's new value only until the process ends, and
 the stored first value shows again until the next Sync re-states it (D-50,
 `WatchFileStoreTests.testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync`).

@@ -2,7 +2,7 @@
 
 > Status: Iteration 1 active — written from plan 22's Phase 3, which the governor's scope check moved here
 > whole on 2026-10-08 (see plan 22's `## Split`)
-> Next handoff: @developer (Phase 1)
+> Next handoff: @code-reviewer (Phase 1 review — both parts complete)
 > Binding conventions: `docs/global_conventions.md` (+ `docs/rest_tracking.md`, `docs/theme_and_settings.md`,
 > `docs/watch_session_sync.md`, `docs/state_management/watch_surface.md`, `docs/documentation_standard.md`, by path)
 > Follows: plan 22 — `docs/plans/2026-10-08-22-rest-ping-on-watch-plan/2026-10-08-22-rest-ping-on-watch-plan.md`
@@ -357,10 +357,33 @@ test/settings_sounds_test.dart test/rest_is_count_up_contract_test.dart test/doc
 
 One line per item. Implementers append their result; the reviewer appends the evidence row.
 
-- 1.1 Dart rule + test — `[ ]` · 1.2 unit preferences — `[ ]` · 1.3 haptic protocol +
-  `SystemWatchHaptics` + stub — `[ ]` · 1.4 rest screen tick + S-226 — `[ ]` · 1.5 Settings subtitles +
-  S-249 — `[ ]` · 1.6 convention row + three docs — `[ ]` · 1.7 `watch_surface.md` — `[ ]` · 1.8 scanner +
-  index rows + residue sweep — `[ ]`
+- 1.1 Dart rule + test — `[x]` (`lib/watch/logging/watch_rest_ping.dart`, `test/watch_rest_ping_test.dart`,
+  13 tests; red at base as a compile error, guards proved by mutations M1/M2/M3) · 1.2 unit preferences —
+  `[x]` (`restPingSeconds`, filled from `settings.restPingInterval`) · 1.3 haptic protocol +
+  `SystemWatchHaptics` + stub — `[x]` (`playRestPing()`; `_RecordingHaptics` gains `restPings`) · 1.4 rest
+  screen tick + S-226 — `[x]` (the tick asks the rule; S-226 proves 3 pings, no milestone) · 1.5 Settings
+  subtitles + S-249 — `[x]` (both subtitles as item 5 words them; S-249 asserts both, the row's label and
+  `Off`, then taps the label into the picker's `Rest Ping Interval`, `30s`, `1 min`; red at base by
+  `prove-red` on the subtitle assertion) · 1.6 convention row + three docs — `[x]` (the one allowance worded
+  the same in the convention row, `rest_tracking.md`, `theme_and_settings.md` and `watch_session_sync.md`,
+  every denial kept; the whole-tree scan green, and red if an added line loses its denial) · 1.7
+  `watch_surface.md` — `[x]` (**50,892 → 50,843 B**: the duplicated wrist-gap sentence removed, the ping
+  paragraph and the scope-line file added; nothing current lost) · 1.8 scanner + index rows + residue sweep —
+  `[x]` (the `:360` denial reworded, S-250 added and proved by mutations M7/M8, the 22 and 22b rows in the
+  index, the baselines untouched; sweep: one residue outside this brief, below)
+- 1.9 Review fix round 1 (F1, F2) — `[x]` (F1: the Swift `rule` message now quotes the current row — "no
+  preset rest length, no rest countdown and no end-of-rest alarm on any device. The one allowed rest cue is
+  the rest ping." — with the pointers and "ask the owner" unchanged; `grep` found no test asserting the old
+  wording. F2: S-249 restores its 800×3000 surface with `addTearDown`. `swift-test` 376 / 0, the two touched
+  Dart files 30 / 0, full `test` 4181 / 0 (1 skipped), lint 196 / 0. Evidence: `.evidence.md`, "Fix round 1".
+  F3 left by the brief)
+
+**Phase 1: Complete** — the two part-B tests red first (S-249 by `prove-red`, S-250 by mutation), the five
+targeted files **84 passed / 0 failed**, lint **196 issues / 0 errors** (baseline), `swift-test` **376 / 0**,
+invariant grep clean. Items 1.1–1.4 (part A) are one developer run; 1.5–1.8 (part B) are the second, and
+part A touched none of their files. Evidence: `.evidence.md` (Phase 1, "Guards proved by mutation").
+**Fix round 1** (item 1.9, review F1 and F2) moved none of those counts: `swift-test` 376 / 0, the two
+touched Dart files 30 / 0, lint 196 / 0, one line added per fix.
 
 ## Assumption Log
 
@@ -371,6 +394,34 @@ Conductor marks each RATIFIED (promoted to a D-x) or REVERT (a remediation item)
   decision here is new: the Ledger above re-anchors plan 22's D-243/D-245/D-247/D-251/D-253 by path. Options:
   restate them (drift risk) or cite them (this plan). Chose citation, with S-226 added as the one gap the
   move exposed — D-251's Dart half had no guard of its own.
+- (Developer, part A/items 1.1–1.4) The rule needs to know *which* rest row it is walking, and item 4 names
+  only `state.units.restPingSeconds`. Options: add a `restId`/`restElapsedSeconds` pair to
+  `WatchLoggingState` (outside the Predicted Files) or read the public `state.timerFor(WatchTimerKind.rest)`
+  and the existing `restElapsedSeconds()` from the screen. Chose the read: no state class changes, and the
+  row id stays the screen's own business.
+- (Developer, part A) `watch_rest_screen.dart` gains two imports — `../session/watch_records.dart` (for
+  `WatchTimerKind.rest`) and `watch_logging_screen.dart` (for the haptics protocol). Both are the read above;
+  no shared utility moved, and no second reader of `SettingsState` was added.
+- (Developer, part A) Part A stops after item 1.4. Items 1.5–1.8 (Settings copy, the four docs, the
+  `watch_surface.md` size pass, the scanner and the index rows) are the run brief's part B; none of their
+  files were opened. No ledger decision was reinterpreted to fit the split.
+- (Developer, part A) `swift-test` was not run: no `.swift` file changed, which is the run brief's own
+  condition. The plan's Done Criteria still list it, so part B or the governor should run it once (expected
+  359 passing / 0 failing, unchanged).
+- (Developer, part B/items 1.5–1.8) Part B ran `swift-test` once anyway (the run brief lists it): **376
+  passing / 0 failing**, no Swift in this PR. The 359 → 376 delta is plan 22 Phase 2's, already committed.
+- (Developer, part B) S-249 sets the surface to 800×3000 before tapping. The Rest Ping row sits at y≈661,
+  below the default 600 px viewport, so the tap missed there; the file's own picker test only taps
+  successfully because an earlier test leaks a large surface. Options: `ensureVisible` (needs a scrollable
+  ancestor) or the file's existing `setSurfaceSize` pattern. Chose the latter.
+- (Developer, part B) The residue sweep found one stale quotation of the retired rule outside this brief:
+  the `rule` string in `watch/watchos/Tests/WatchSessionEngineTests/WatchRestIsCountUpTests.swift:22` still
+  reads "no rest alarm anywhere, on any device" and claims to be the wording of `docs/global_conventions.md`.
+  Item 6 names four docs and the brief calls the sweep report-only, so it was left alone — see Open questions.
+- (Developer, fix round 1) F1's message now quotes `docs/global_conventions.md:17` verbatim (the denial plus
+  the ping allowance) and keeps the pointers. The review's optional guard — scanning `watch/watchos/Tests` or
+  asserting the quotation against the row — is not in the brief's F1 goal, so the message stays a message and
+  a future row re-wording can drift again; F2 is one `addTearDown` line in S-249, no other body change.
 
 ## Feedback
 

@@ -5,7 +5,9 @@
 ///
 /// Rest is a count-up from the moment a set is logged; there is no preset
 /// length. The elapsed is derived from the persisted timer row on every tick,
-/// so a screen that was off comes back showing the truth. One control, Next: it
+/// so a screen that was off comes back showing the truth. The same tick asks the
+/// ping rule how far through the phone's Rest Ping interval the rest is, and
+/// taps through the injected haptics when one is owed. One control, Next: it
 /// ends the rest and returns to logging (D-161). No End, no picker, no dial,
 /// no pause.
 library;
@@ -16,17 +18,25 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/date_utils.dart';
+import '../session/watch_records.dart';
+import 'watch_logging_screen.dart';
 import 'watch_logging_state.dart';
+import 'watch_rest_ping.dart';
 
 class WatchRestScreen extends StatefulWidget {
   const WatchRestScreen({
     super.key,
     required this.state,
     required this.onNext,
+    this.haptics = const SystemWatchHaptics(),
   });
 
   final WatchLoggingState state;
   final VoidCallback onNext;
+
+  /// Where the rest's ping goes. The default is the platform channel, as the
+  /// logging surface defaults it.
+  final WatchHaptics haptics;
 
   /// Wrist-scale layout, as the logging surface carries it.
   static const double surfaceInset = 8;
@@ -40,14 +50,31 @@ class _WatchRestScreenState extends State<WatchRestScreen> {
   /// One second is enough to watch the count-up move without a rebuild storm.
   static const Duration _tick = Duration(seconds: 1);
 
+  /// The ping rule, held across ticks so `lastPinged` follows the rest row being
+  /// walked.
+  final WatchRestPing _ping = WatchRestPing();
+
   Timer? _ticker;
 
   @override
   void initState() {
     super.initState();
     _ticker = Timer.periodic(_tick, (_) {
+      _pingIfOwed();
       if (mounted) setState(() {});
     });
+  }
+
+  /// The ping, asked once per tick through the surface's own preferences. The
+  /// rule owns whether this second is one the interval names — it is a tap of
+  /// its own, never a countdown that ended (D-251).
+  void _pingIfOwed() {
+    final owed = _ping.isOwed(
+      restId: widget.state.timerFor(WatchTimerKind.rest)?.recordId,
+      elapsed: widget.state.restElapsedSeconds(),
+      interval: widget.state.units.restPingSeconds,
+    );
+    if (owed) widget.haptics.playRestPing();
   }
 
   @override

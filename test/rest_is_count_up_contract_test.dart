@@ -357,7 +357,8 @@ void main() {
             'the regression S-166 predicted',
       );
       for (final denial in [
-        'There is no rest countdown and no rest alarm anywhere.\n',
+        'There is no rest countdown and no end-of-rest alarm; the rest ping is '
+            'the one allowed cue.\n',
         'the contract test fails if a scanned tree\n'
             'reintroduces a rest length or a rest countdown.\n',
         'A routine\'s stored `restSeconds` is a prescription, never a timer.\n',
@@ -369,6 +370,64 @@ void main() {
               'rule stating itself, and the prescription may be named',
         );
       }
+    });
+
+    test('S-250 the rest ping is allowed and the rule still bites', () {
+      // D-264: the allowance is narrow. The ping's own identifiers are neither a
+      // stored rest length, nor a planned rest, nor a countdown.
+      for (final allowed in [
+        'const restPingSeconds = 30;\n',
+        'final interval = preferences.rest_ping_interval;\n',
+        'await haptics.playRestPing();\n',
+      ]) {
+        expect(
+          restCountUpFindings('lib/watch/logging/example.dart', allowed),
+          isEmpty,
+          reason: 'the rest ping is the one allowed cue, never a rest length',
+        );
+      }
+
+      // S-166's red cases still fail, so the allowance did not widen.
+      expect(
+        restCountUpFindings(
+          'lib/watch/session/example.dart',
+          'const restSeconds = 90;\n',
+        ),
+        hasLength(1),
+        reason: 'a stored rest length is still the preset value the rule '
+            'forbids',
+      );
+      expect(
+        restCountUpFindings(
+          'lib/watch/session/example.dart',
+          'await _engine.startTimer(\n'
+              '  WatchTimerKind.rest,\n'
+              '  plannedDurationMs: 90 * 1000,\n'
+              ');\n',
+        ),
+        hasLength(1),
+        reason: 'a rest is still started with no length at all',
+      );
+      expect(
+        restCountUpFindings(
+          'docs/watch_session_sync.md',
+          'The rest countdown shows how much rest is left.\n',
+        ),
+        hasLength(1),
+        reason: 'a document describing a rest as a remaining time is still the '
+            'regression the rule forbids',
+      );
+
+      // The reworded rule prose names the ping and still denies the countdown.
+      expect(
+        restCountUpFindings(
+          'docs/rest_tracking.md',
+          'There is no rest countdown and no end-of-rest alarm; the rest ping '
+              'is the one allowed cue.\n',
+        ),
+        isEmpty,
+        reason: 'the rule states itself: a denial, and the one allowance named',
+      );
     });
 
     test('S-166 a round countdown and a round plan are not this rule\'s', () {

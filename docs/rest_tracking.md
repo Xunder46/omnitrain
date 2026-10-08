@@ -9,11 +9,15 @@ OmniTrain uses **wall-clock-persisted rest records** to track recovery time betw
 ## The rule: rest is a count-up
 
 Rest is a count-up from the moment a set is logged to the moment the next set starts. There is no
-preset rest length, no rest countdown and no rest alarm anywhere, on any device
+preset rest length, no rest countdown and no end-of-rest alarm on any device
 ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up";
 `docs/plans/2026-10-08-18b-watch-rest-count-up-plan`, D-160). A routine's stored `restSeconds` is a
-prescription read at routine setup, never a timer (D-168), and the phone's rest ping is a nudge
-about the phone's own open rest, not a countdown ([Theme and Settings](theme_and_settings.md)).
+prescription read at routine setup, never a timer (D-168). The one allowed rest cue is the rest ping:
+a repeating nudge at each multiple of the Rest Ping interval while a rest is open, on the device that
+holds the rest, and it reaches the phone and the watch from that one setting — a haptic tap and no
+sound on the wrist, and never a countdown ([Theme and Settings](theme_and_settings.md); Dart
+`test/watch_rest_ping_test.dart`, `S-241 an interval of 30 polled every second from 0 to 100 taps at 30,
+60 and 90 and nowhere else`; Swift `WatchRestPingTests.testS241AnIntervalTapsAtItsMultiplesAndNowhereElse`).
 Every rest record on the wire carries no length, and the shared contract refuses one
 (`test/sync_protocol_fixtures_test.dart`,
 `S-165 the wire refuses a rest length` — `a rest carries no planned length, a round keeps one, and a

@@ -81,6 +81,50 @@ void main() {
       expect(find.text('Off'), findsOneWidget);
     });
 
+    testWidgets('S-249 the Settings copy names the devices each row reaches', (
+      WidgetTester tester,
+    ) async {
+      // The whole Settings column, so the Rest Ping row is on screen: at the
+      // default 600 px the row sits below the fold and a tap on it would miss.
+      await tester.binding.setSurfaceSize(const Size(800, 3000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final settings = await makeSettings();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settings,
+            timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Periodic reminder during rest, on phone and watch'),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Sound for the rest ping, phone only (the watch taps your wrist)',
+        ),
+        findsOneWidget,
+      );
+
+      // The row's label and value are unchanged: Off, the never-set default.
+      expect(find.text('Rest Ping'), findsOneWidget);
+      expect(find.text('Off'), findsOneWidget);
+
+      await tester.tap(find.text('Rest Ping'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rest Ping Interval'), findsOneWidget);
+      expect(find.text('30s'), findsOneWidget);
+      expect(find.text('1 min'), findsOneWidget);
+    });
+
     testWidgets('shows default Rest Ping Sound value Soft Chime', (
       WidgetTester tester,
     ) async {

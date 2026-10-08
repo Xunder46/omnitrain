@@ -13,6 +13,7 @@
 //   S-063 the assist carries to the next set                 → `S-063 ...`
 //   S-064 a leading minus renders in the user's unit         → `S-064 ...`
 //   S-160 the wrist's rest has no length                     → `S-160 ...`
+//   S-226 the rest ping is its own haptic entry point        → `S-226 ...`
 //
 // Every event asserted here is validated against the shared protocol schemas
 // read from the repository — the same documents the phone's validator and the
@@ -31,6 +32,7 @@ import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/watch/logging/watch_logging_screen.dart';
 import 'package:omnitrain/watch/logging/watch_logging_state.dart';
 import 'package:omnitrain/watch/logging/watch_metric_stepping.dart';
+import 'package:omnitrain/watch/logging/watch_rest_screen.dart';
 import 'package:omnitrain/watch/logging/watch_timer_haptics.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -78,12 +80,22 @@ Map<String, Object?> _asObject(Object? value) =>
 
 /// Records what the screen asked the haptic channel to play, so the wiring from
 /// a due countdown to the platform channel can be asserted rather than assumed.
+/// A rest ping is counted separately: it is its own entry point, not a
+/// milestone (S-226, D-251).
 class _RecordingHaptics implements WatchHaptics {
   final List<WatchTimerMilestone> played = [];
+
+  /// How many times the rest surface asked for its own ping.
+  int restPings = 0;
 
   @override
   void play(WatchTimerMilestone milestone) {
     played.add(milestone);
+  }
+
+  @override
+  void playRestPing() {
+    restPings++;
   }
 }
 
@@ -860,6 +872,59 @@ void main() {
             'the screen must hand a due countdown to the channel it was '
             'given, not to the platform one',
       );
+    });
+
+    testWidgets('S-226 the rest surface pings through its own entry point, '
+        'never a milestone', (tester) async {
+      final haptics = _RecordingHaptics();
+      final surface = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-bench', ['reps', 'sets', 'load']),
+        units: const WatchUnitPreferences(restPingSeconds: 30),
+      );
+
+      await surface.log();
+      expect(surface.isResting, isTrue, reason: 'logging a set opens a rest');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WatchRestScreen(
+            state: surface,
+            haptics: haptics,
+            onNext: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // The screen's own one-second tick, driven across the rest.
+      for (var i = 0; i < 90; i++) {
+        clock.advance(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      expect(
+        haptics.restPings,
+        3,
+        reason: 'S-226 one tap at each multiple of the interval',
+      );
+      expect(
+        haptics.played,
+        isEmpty,
+        reason: 'S-226 the ping is its own entry point, not a milestone',
+      );
+      expect(
+        WatchTimerHaptics(engine).poll(clock.now),
+        isEmpty,
+        reason: 'S-226 the timer haptics owe a rest nothing',
+      );
+
+      expect(find.text('sx-bench'), findsOneWidget);
+      expect(find.text('1:30'), findsOneWidget);
+      expect(find.text('Next'), findsOneWidget);
+
+      // Dispose the screen so its ticker does not outlive the test.
+      await tester.pumpWidget(const SizedBox());
     });
   });
 

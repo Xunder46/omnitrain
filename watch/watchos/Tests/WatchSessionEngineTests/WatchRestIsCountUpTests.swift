@@ -19,8 +19,9 @@ final class WatchRestIsCountUpTests: XCTestCase {
     /// `docs/global_conventions.md`, "Rest rule: rest is a count-up".
     private let rule = """
     Rest is a count-up from the moment a set is logged to the moment the next \
-    set starts. There is no preset rest length, no rest countdown and no rest \
-    alarm anywhere, on any device. See docs/global_conventions.md, "Rest rule: \
+    set starts. There is no preset rest length, no rest countdown and no \
+    end-of-rest alarm on any device. The one allowed rest cue is the rest ping. \
+    See docs/global_conventions.md, "Rest rule: \
     rest is a count-up", and \
     docs/plans/2026-10-08-18b-watch-rest-count-up-plan, D-160 and D-164. Do not \
     add a preset rest length or a rest countdown; if you think the product \
