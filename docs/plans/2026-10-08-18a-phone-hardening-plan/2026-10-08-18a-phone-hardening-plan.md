@@ -119,11 +119,11 @@ makes the first defect class impossible to reintroduce. No user-visible rule cha
 
 | Touched surface | What already reads it (grep) | Effect of the change | Guarded by |
 |---|---|---|---|
-| `WorkoutSessionScreen.initState` / `_loadExercises` | `WorkoutSessionScreen(` appears in `test/screen_widget_test.dart` (~30 pumps), `test/pr4_session_controls_test.dart:53`, `test/exercise_detail_emphasis_tier_test.dart` (5), `test/screen_widget_test.dart:9279`; production entry points `lib/features/home/home_screen.dart` (5 pushes, see `docs/history/route-migration-audit.md:29-34`) | the load runs one frame later; frame 1 is the spinner exactly as today (`_isLoading = true`, `:109`) | S-150, S-151 |
-| `WorkoutState.loadSessionData` | definition `session_core_io.dart:131`; callers `workout_session_screen.dart:428`, `session_overview_screen.dart:56`, `session_core_lifecycle.dart:376`; tests `test/watch_session_auto_push_test.dart:625/673/700/1222`, `test/watch_session_edit_restore_summaries_test.dart:238/455`, `test/screen_widget_test.dart:8057/8521/8527` | none — the method and its notify are unchanged; only *when the screen* calls it moves | S-151 |
+| `WorkoutSessionScreen.initState` / `_loadExercises` | `WorkoutSessionScreen(` appears in `test/screen_widget_test.dart` (~30 pumps), `test/pr4_session_controls_test.dart:53`, `test/exercise_detail_emphasis_tier_test.dart` (5), `test/screen_widget_test.dart:9279`; production entry points `lib/features/home/home_screen.dart` (5 pushes, see `docs/history/route-migration-audit.md:29-34`) and `session_overview_screen.dart:108/324`, `session_summary_screen.dart:429`, `my_routines_screen.dart:253`, `day_session_list_screen.dart:275`, `exercise_detail_screen.dart:35` | the load runs one frame later; frame 1 is the spinner exactly as today (`_isLoading = true`, `:109`) | S-150, S-151 |
+| `WorkoutState.loadSessionData` | definition `session_core_io.dart:131`; callers `workout_session_screen.dart:428`, `session_overview_screen.dart:56`, `my_routines_screen.dart:244`, `day_session_list_screen.dart:264`, `session_core_lifecycle.dart:376`; tests `test/watch_session_auto_push_test.dart:625/673/700/1222`, `test/watch_session_edit_restore_summaries_test.dart:238/455`, `test/screen_widget_test.dart:8057/8521/8527` | none — the method and its notify are unchanged; only *when the screen* calls it moves | S-151 |
 | `resetSessionTimerStart` | definition `session_core_lifecycle.dart:59`; single call site `workout_session_screen.dart:1458` (`isFirstExercise && !editMode`) | a session that already ended keeps its window when a first exercise is added afterwards | S-155 |
 | `endedAtMs` writers | `endSession` `session_core_lifecycle.dart:21/28`, `updateSessionEndTime` `:152`, `WatchSessionImporter._createSession` `watch_session_importer.dart:516-517` (exempt, D-153) | no inverted pair is produced by the phone; a running row is untouched | S-155, S-156 |
-| `endedAtMs` readers | guards (`!= null`) across `session_core*.dart`, `stats_progress_service.dart`, calendar code, and the summary's window (`session_summary_service.dart:22`) | an inverted row can no longer exist; nothing else changes | S-156 |
+| `endedAtMs` readers | `grep -rn endedAtMs lib/` -> 104 sites in 23 files; guards (`!= null`) across `session_core*.dart`, `stats_progress_service.dart`, calendar code, and the summary's window (`session_summary_service.dart:22`) — every site is a null-guard or arithmetic over a completed row | an inverted row can no longer exist; nothing else changes | S-156 |
 | `computeSessionRestTimeMs` | `grep -rn computeSessionRestTimeMs lib/` -> only caller `lib/features/session/session_summary_screen.dart:192`; documented at `docs/session_summary.md:217/249` | an inverted window yields `0` instead of throwing; normal sessions unchanged | S-153, S-154 |
 | Migration step list + `currentDataVersion` | `test/data_migration_test.dart` (sequence, shim, retry, idempotency), `docs/db_integration.md:156-215` (the append-a-step rule; no per-step table exists) | one appended step, version 15; no meta-box key, no schema change | S-156 |
 | `SessionOverviewScreen.initState` | `_initializeSession` `session_overview_screen.dart:48` (called from `initState` `:46`), `_isLoading` `:41`; screen used from the session entry flows (`docs/navigation_and_screens.md`) | the same deferral as D-150; the spinner/error path is unchanged | S-152 |
@@ -460,6 +460,7 @@ every existing suite whose name mentions the summary (the implementer resolves t
 2026-10-08 · Phase 4 · item 4 — three S-156 tests in `test/data_migration_test.dart` (sequence entry; Mock repair + idempotent re-run; Hive store seeded at 14 with one watched write, a second pass writing nothing, and the Hive↔Mock `.toMap()` parity loop) · evidence "The S-156 fixture" / "The S-156 mutations"
 2026-10-08 · Phase 4 · item 5 — `docs/db_integration.md:156-215` enumerates no individual step, so nothing in it became false: read and recorded, no edit owed · evidence the db_integration row
 2026-10-08 · Phase 4 · verification — `prove-red bc96cd2 test test/data_migration_test.dart` reports RED AT bc96cd2 by compile error (new code), so three mutations carry the proof, `+1 -2` each; `lint` 196 issues / 0 errors (baseline — one `unnecessary_import` in the new test fixed first), full `test` `01:57 +4078 ~1: All tests passed!`, the Done-Criteria pair `+20`, invariant grep clean, `git-diff --stat` = 3 source files + 1 test file · evidence "Phase 4 verification"
+2026-10-08 · Fix round 1 (review F1–F4, docs only) — welded group/test citations split in `docs/state_management/workout_state.md:91/95` (group and both test names grep-verified in `test/session_window_never_inverted_test.dart:89/109/139`, and the same weld in the evidence file's S-155 row); `docs/modality_based_exercise_ui.md:335` now points at the S-155 group instead of restating the clamp (Assumption 12 corrected); Impact rows 122/123 gained the nine unlisted construction/caller sites and row 126 the `grep -rn endedAtMs lib/` count (104 sites in 23 files); QA-index row 19 declared intentional (Assumption 16) · evidence "Fix round 1"
 
 ## Assumption Log
 
@@ -505,10 +506,11 @@ every existing suite whose name mentions the summary (the implementer resolves t
     has no injectable clock, so `endSession`'s clamp cannot be reached by moving time: the test seeds
     a `TrainingSession` whose `startedAtMs` is an hour ahead of the phone clock, loads it with
     `loadHistoricalSession`, then ends it. That is the fixture that makes the clamp's mutation red.
-12. **Two doc rows state the stored expression (Phase 3, items 2-3).** The `endSession()` and
-    `updateSessionEndTime()` rows of `docs/state_management/workout_state.md` and the Save bullet of
-    `docs/modality_based_exercise_ui.md` now carry the `max(startedAtMs, …)` form and name the S-155
-    tests; all three sites are outside the plan's Predicted Files, which list no doc this phase.
+12. **Three doc sites carry the writer rule (Phase 3, items 2-3; corrected in fix round 1, F2).** The
+    `endSession()` and `updateSessionEndTime()` rows of `docs/state_management/workout_state.md`
+    state the `max(startedAtMs, …)` form and name the S-155 tests; the Save bullet of
+    `docs/modality_based_exercise_ui.md` points at the S-155 group instead of restating the
+    expression. All three sites are outside the plan's Predicted Files, which list no doc this phase.
 13. **The repair leaves `updatedAtMs` alone (Phase 4, items 2-3).** D-154 names only the end, and a
     fresh timestamp on every run would break both the Hive↔Mock parity comparison and the "a re-run
     writes nothing" requirement; the byte-identical snapshot the Hive test takes pins this.
@@ -521,10 +523,24 @@ every existing suite whose name mentions the summary (the implementer resolves t
 15. **The proof is by mutation, not by red-at-base (Phase 4, item 4).** The new tests cannot even
     compile without `dataMigrationStepsForTest()`, so `prove-red bc96cd2 test …` reports RED AT the
     base ref as a load error; three mutations then carry the guard proof, each restored exactly.
+16. **The QA-index row-19 edit is intentional (Phase 4; review F3).** `docs/plans/2026-10-08-18-watch-qa-index.md`
+    row 19 was rewritten to point at the 19a/19b plans (D-170…D-181, S-170…S-185) although the file is
+    outside Predicted Files; a planning artefact with no product claim. Reviewer: ratify as intentional.
 
 ## Feedback
 
-_(empty — the reviewer or the owner folds a note here; non-empty triggers a new Iteration block)_
+Review 1: **CHANGES_REQUESTED** — code, tests, migration and guards pass (0 blocker); 1 major + 3 minor,
+all documentation. Findings, prove-red results, the six ordered answers and the Assumption Log rulings
+are in `2026-10-08-18a-phone-hardening-plan.review.md` (`## Code review 1 (18a)`). Fix checklist:
+- F1 `docs/state_management/workout_state.md:91,95` — split the welded group+test citations.
+- F2 `docs/modality_based_exercise_ui.md:335` — replace the restated clamp with the S-155 test pointer;
+  correct Assumption 12's "all three sites name the S-155 tests".
+- F3 `docs/plans/2026-10-08-18-watch-qa-index.md` — declare the QA-index edit in the Assumption Log or
+  drop it from this PR.
+- F4 plan `:122-127` — add the unlisted `WorkoutSessionScreen` / `loadSessionData` sites and row 126's
+  grep command.
+- Guard for F1/F2: extend `test/docs_indexing_contract_test.dart` so a backticked `test/…` citation must
+  resolve to a name that exists in that file.
 
 ## Open questions
 

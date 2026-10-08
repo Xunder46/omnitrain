@@ -209,10 +209,22 @@ _sessions[entry.key] = TrainingSession(
 | S-152 | the same phase assertion with the overview screen pumped in the same frame as the session screen | `S-152 the overview screen pumped in the same frame notifies nobody` |
 | S-153 | `computeSessionRestTimeMs` throws `ArgumentError(1791419191803)` from `int.clamp` at `session_summary_service.dart:33`, so the summary screen never renders | `S-153: an inverted session window contributes no rest and the summary still renders` |
 | S-154 | (passes at base by design — a negative guard: an ordinary session's total is 100000 with or without the fix; its non-vacuity is proven by the merge mutation instead) | `S-154: an ordinary session merges overlapping rests once and keeps its total` |
-| S-155 | `endedAtMs >= startedAtMs` fails after the post-end `resetSessionTimerStart()` (Actual `1791428252518` < Expected `1791428252523`: the reset moved the start 5 ms past the stored end), and `endSession` on a start ahead of the phone clock stores an end 1 h before its start (`1791428252555` < `1791431852554`) | `S-155: the reset after an end writes nothing and the stored window stays ordered`; `S-155 writer table — every phone-owned writer leaves an ordered window endSession clamps a start that lies ahead of the phone clock` |
+| S-155 | `endedAtMs >= startedAtMs` fails after the post-end `resetSessionTimerStart()` (Actual `1791428252518` < Expected `1791428252523`: the reset moved the start 5 ms past the stored end), and `endSession` on a start ahead of the phone clock stores an end 1 h before its start (`1791428252555` < `1791431852554`) | `S-155: the reset after an end writes nothing and the stored window stays ordered`; `S-155 writer table — every phone-owned writer leaves an ordered window`, `endSession clamps a start that lies ahead of the phone clock` |
 | S-156 | cannot be red at base by assertion: `prove-red bc96cd2 test test/data_migration_test.dart` is RED AT bc96cd2 by compile error (`dataMigrationStepsForTest` is undefined), so the guard is proven by mutation instead — the emptied repair bodies (`+1 -2`) fail exactly this claim (`Expected: <1700000000000> Actual: <1699999000000>`, the inverted row's original end). A second mutation (start moved instead of end) fails at this file's start assertion | `S-156: the Mock repairs an inverted row once and a re-run writes nothing`; `S-156: Hive repairs the store and matches the Mock`; `S-156: step 15 is appended to both migration sequences` |
 
 ## Reviewer findings
 
 _(empty — the reviewer writes its table in `2026-10-08-18a-phone-hardening-plan.review.md` and links
 the phase here)_
+
+## Fix round 1 (review F1–F4, docs only)
+
+| Check | Command | Result |
+|---|---|---|
+| docs contract | `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart` | `00:00 +9: All tests passed!` |
+| analyzer | `.github/copilot/scripts/macos/gateway.sh lint` | `196 issues found` (baseline; 0 errors) — the one warning at `lib/features/routine/routine_setup_screen.dart:1046` is pre-existing and not a file this round touched |
+| citation resolution | grep of the two edited docs against `test/session_window_never_inverted_test.dart` | group `S-155 writer table — every phone-owned writer leaves an ordered window` (`:89`), `endSession clamps a start that lies ahead of the phone clock` (`:109`), `updateSessionEndTime with a zero or negative duration writes nothing` (`:140`) — all verbatim |
+| `endedAtMs` sweep | `grep -rn endedAtMs lib/` (file tools) | 104 matching lines in 23 files, as recorded in Impact row 126 |
+
+Docs-only round: no `lib/` or `test/` file changed; `git-diff --stat` = the two docs, the plan, this
+evidence file and the review file.
