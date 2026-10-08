@@ -203,13 +203,11 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
     return parts.isEmpty ? null : parts.join('  ·  ');
   }
 
-  /// What is left of the running countdown, or null when none is running. The
-  /// round countdown wins when both kinds are live, because it is the one the
-  /// user is working to.
+  /// What is left of the running round countdown, or null when none is running.
+  /// A rest is a count-up and has no remaining time (D-160), so it never
+  /// produces the "left" line.
   int? _countdown() {
-    final running =
-        widget.state.timerFor(WatchTimerKind.round) ??
-        widget.state.timerFor(WatchTimerKind.rest);
+    final running = widget.state.timerFor(WatchTimerKind.round);
     if (running == null || running.state == WatchTimerState.stopped) {
       return null;
     }

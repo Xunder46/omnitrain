@@ -20,10 +20,6 @@ import Foundation
 
 /// What the views fall back on before the phone's prescription arrives.
 public enum WatchLoggingDefaults {
-    /// Length of the rest countdown after a set. A routine's per-effort rest
-    /// supersedes it once the prescription reaches the watch.
-    public static let restSeconds = 90
-
     /// Mirrors `WorkoutConstants.defaultRoundDurationSecs`.
     public static let roundDurationSeconds = 180
 }
@@ -131,9 +127,6 @@ public final class WatchLoggingState {
     /// The saved unit preferences the wrist reads in.
     public let units: WatchUnitPreferences
 
-    /// Rest countdown length after a set, in seconds.
-    public let restSeconds: Int
-
     /// The session's live sensors, when the view is wired to them. A view with
     /// none behaves exactly as before: every value is the user's to dial.
     public let sensors: WatchSensorRecorder?
@@ -176,14 +169,12 @@ public final class WatchLoggingState {
         clock: @escaping () -> Date = { Date() },
         idFactory: @escaping () -> String = { UUID().uuidString },
         units: WatchUnitPreferences = WatchUnitPreferences(),
-        restSeconds: Int = WatchLoggingDefaults.restSeconds,
         sensors: WatchSensorRecorder? = nil
     ) {
         self.engine = engine
         self.clock = clock
         self.newId = idFactory
         self.units = units
-        self.restSeconds = restSeconds
         self.sensors = sensors
     }
 
@@ -706,16 +697,13 @@ public final class WatchLoggingState {
         return summary
     }
 
-    /// The countdown the effort kind runs next: rest after a set, the next
-    /// round after a round, nothing after work that is measured rather than
-    /// prescribed.
+    /// The timer the effort kind runs next: a rest after a set is a count-up
+    /// with no length (D-160), the next round after a round is a countdown,
+    /// nothing after work that is measured rather than prescribed.
     private func startFollowOnTimer() async {
         switch effortKind {
         case WatchEffortKind.set:
-            _ = try? await engine.startTimer(
-                WatchTimerKind.rest,
-                plannedDurationMs: restSeconds * 1000
-            )
+            _ = try? await engine.startTimer(WatchTimerKind.rest)
         case WatchEffortKind.round:
             let length = value(of: WatchMetricKey.roundDuration) ?? 0
             _ = try? await engine.startTimer(

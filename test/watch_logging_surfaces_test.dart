@@ -12,6 +12,7 @@
 //   S-062 zero still means "no load claim"                   → `S-062 ...`
 //   S-063 the assist carries to the next set                 → `S-063 ...`
 //   S-064 a leading minus renders in the user's unit         → `S-064 ...`
+//   S-160 the wrist's rest has no length                     → `S-160 ...`
 //
 // Every event asserted here is validated against the shared protocol schemas
 // read from the repository — the same documents the phone's validator and the
@@ -795,14 +796,42 @@ void main() {
       );
     });
 
+    testWidgets('S-160 a rest is a count-up with no "left" line', (
+      tester,
+    ) async {
+      final surface = await pumpSurface(
+        tester,
+        modality: 'resistance_lifting',
+        slot: _slot('sx-bench', ['reps', 'sets', 'load']),
+      );
+
+      await tester.tap(find.text('Log'));
+      await tester.pump();
+
+      expect(
+        surface.timerFor(WatchTimerKind.rest)!.plannedDurationMs,
+        isNull,
+        reason: 'a rest starts with no preset length',
+      );
+      expect(
+        find.textContaining('left'),
+        findsNothing,
+        reason: 'a rest has no length, so there is no remaining time to show',
+      );
+      expect(find.text('Log'), findsOneWidget, reason: 'the surface stays up');
+    });
+
     testWidgets('a due countdown reaches the injected haptic channel', (
       tester,
     ) async {
       final haptics = _RecordingHaptics();
       final surface = await surfaceFor(
-        'resistance_lifting',
-        _slot('sx-bench', ['reps', 'sets', 'load']),
+        'sports',
+        _slot('sx-round', ['time', 'rounds']),
       );
+      final length = fieldValue(surface, WatchMetricKey.roundDuration);
+      final startedAt = clock.now;
+
       await tester.pumpWidget(
         MaterialApp(
           home: WatchLoggingScreen(state: surface, haptics: haptics),
@@ -813,7 +842,7 @@ void main() {
       await tester.tap(find.text('Log'));
       await tester.pump();
 
-      // The rest countdown ran while the screen did not. Coming back is the
+      // The round countdown ran while the screen did not. Coming back is the
       // moment its haptic is owed.
       clock.advance(const Duration(minutes: 5));
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -821,7 +850,12 @@ void main() {
 
       expect(
         haptics.played,
-        isNotEmpty,
+        [
+          WatchTimerMilestone(
+            kind: WatchTimerKind.round,
+            at: startedAt.add(Duration(seconds: length.toInt())),
+          ),
+        ],
         reason:
             'the screen must hand a due countdown to the channel it was '
             'given, not to the platform one',

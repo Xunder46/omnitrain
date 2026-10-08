@@ -64,12 +64,11 @@ public final class WatchLoggingModel: ObservableObject {
         objectWillChange.send()
     }
 
-    /// What is left of the running countdown, in seconds, or nil when none is
-    /// running.
+    /// What is left of the running round countdown, in seconds, or nil when
+    /// none is running. A rest is a count-up and has no remaining time (D-160).
     public var countdown: Double? {
-        let timer = state.timer(for: WatchTimerKind.round)
-            ?? state.timer(for: WatchTimerKind.rest)
-        guard let timer, timer.state != WatchTimerState.stopped else { return nil }
+        guard let timer = state.timer(for: WatchTimerKind.round),
+              timer.state != WatchTimerState.stopped else { return nil }
         guard let remaining = remainingMs(timer, now: state.now()) else { return nil }
         return Double(remaining) / 1000
     }

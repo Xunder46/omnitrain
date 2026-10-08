@@ -28,14 +28,6 @@ import '../session/watch_session_engine.dart';
 import '../session/watch_timer_math.dart';
 import 'watch_metric_stepping.dart';
 
-/// What the surfaces fall back on before the phone's prescription arrives.
-abstract final class WatchLoggingDefaults {
-  /// Length of the rest countdown after a set. A routine's per-effort rest
-  /// supersedes it once the prescription reaches the watch; until then the
-  /// wrist rests at the standing default.
-  static const int restSeconds = 90;
-}
-
 /// The effort kinds a value screen can be, in the protocol's vocabulary. A hold
 /// is a `drill` to the data layer and a `hold` on the wire, which is why both
 /// names appear here.
@@ -131,7 +123,6 @@ class WatchLoggingState {
     DateTime Function()? clock,
     String Function()? idFactory,
     this.units = const WatchUnitPreferences(),
-    this.restSeconds = WatchLoggingDefaults.restSeconds,
     WatchSensorRecorder? sensors,
   }) : _engine = engine,
        _clock = clock ?? _utcNow,
@@ -171,9 +162,6 @@ class WatchLoggingState {
 
   /// The saved unit preferences the wrist reads in.
   final WatchUnitPreferences units;
-
-  /// Rest countdown length after a set, in seconds.
-  final int restSeconds;
 
   // ---------------------------------------------------------------------------
   // What the screen is showing
@@ -698,15 +686,13 @@ class WatchLoggingState {
 
   double? _valueOf(String metricKey) => _fieldOrNull(metricKey)?.value;
 
-  /// The countdown the effort kind runs next: rest after a set, the next round
-  /// after a round, nothing after work that is measured rather than prescribed.
+  /// The timer the effort kind runs next: a rest after a set is a count-up
+  /// with no length (D-160), the next round after a round is a countdown,
+  /// nothing after work that is measured rather than prescribed.
   Future<void> _startFollowOnTimer() async {
     switch (effortKind) {
       case WatchEffortKind.set:
-        await _engine.startTimer(
-          WatchTimerKind.rest,
-          plannedDurationMs: restSeconds * Duration.millisecondsPerSecond,
-        );
+        await _engine.startTimer(WatchTimerKind.rest);
       case WatchEffortKind.round:
         final length = _valueOf(WatchMetricKey.roundDuration) ?? 0;
         await _engine.startTimer(

@@ -608,7 +608,11 @@ Dependents that only *read* a touched surface (no edits, tests must stay green):
 
 ## Progress
 
-- [ ] Phase 1 — the wrist's rest stops having a length (@developer)
+- [x] Phase 1 — the wrist's rest stops having a length (@developer) — complete: `restSeconds`
+  deleted in both stacks, `countdown`/`_countdown()` read the round timer only, `startFollowOnTimer`
+  starts a rest with no plan, the new `WatchRestIsCountUpTests` scan in place; Swift 349/0, Dart
+  `+4133 ~1` all passed, analyze 196/0, `prove-red HEAD` RED for the four count-up cases. Evidence:
+  `2026-10-08-18b-watch-rest-count-up-plan.evidence.md`
 - [ ] Phase 2 — the rest screen, with one control (@developer)
 - [ ] Phase 3 — the wire refuses a rest length (@dba)
 - [ ] Phase 4 — the rule where agents will hit it (@developer)
@@ -618,6 +622,30 @@ Dependents that only *read* a touched surface (no edits, tests must stay green):
 
 [empty — executors append: decision made, options considered, choice + why. The Conductor marks each
 RATIFIED (promote to a D-x) or REVERT (remediation).]
+
+### Phase 1 (@developer)
+
+1. **Base ref for `prove-red` = `HEAD` (`d79dd8c`).** The brief's `git log -1 --format=%h` is denied by
+   policy (`shell(git log)`), so the base could not be read that way; `gateway.sh git-status`/`git-log`
+   showed a clean tree at `d79dd8c`, so that is the base.
+2. **The Dart twin's `WatchLoggingDefaults` class was deleted, not emptied.** Its only member was
+   `restSeconds`, so deleting the member would have left an empty holder; nothing else referenced it
+   (lint 196/0). Options: keep an empty class for symmetry with Swift's `WatchLoggingDefaults` (which
+   still holds `roundDurationSeconds`) or delete it — deleted, because Dart has no second member.
+3. **No doc edited (plan's Predicted Files: "Nothing else — in particular no … doc").** The wrist
+   rest-countdown prose that Phase 1 makes false (`docs/state_management/watch_surface.md:467`,
+   `docs/watch_session_sync.md:550`, `docs/watch-app-setup-and-qa.md:486,553`) stays until Phase 4
+   items 3–5, which own it.
+4. **Survivors outside Phase 1's Predicted Files, left untouched.** `lib/watch/debug/watch_session_debug_surface.dart:243`
+   still starts a rest with `plannedDurationMs: _debugRestMs`, and `test/watch_debug_surface_test.dart:80`
+   still asserts a `left` line (it passes, because the debug surface writes its own plan); several test
+   files still build a 90 s *rest* row directly (`test/watch_session_engine_test.dart`,
+   `WatchFileStoreTests.swift`, `WatchLiveMirroringTests.swift`, `WatchSessionEngineTests.swift`). The
+   plan predicted none of them; Phase 4's contract scan and residue sweep must decide them.
+5. **Two base tests changed subject rather than being deleted.** `WatchTimerHaptics derivation a
+   countdown the user ended early never fires`, in both stacks, moved from rest+90 s to a round (60 s,
+   stopped at 30 s), because a rest can no longer be owed a haptic at all; and the S-79 group's wrist
+   rest is now started with no plan, since S-79 is about ownership, not length.
 
 ## Feedback
 
