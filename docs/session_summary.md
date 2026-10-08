@@ -170,7 +170,10 @@ Rest Time is aggregated from EntryRest records by:
 
 - collecting closed rest intervals across all efforts in the session
 - clipping each interval to the session wall-clock window (`startedAtMs` to
-  `endedAtMs`)
+  `max(startedAtMs, endedAtMs)`: an end stored before the start leaves an empty
+  window, so every interval clips to zero length and contributes no rest —
+  `test/session_summary_inverted_window_test.dart`, `S-153: an inverted session
+  window contributes no rest and the summary still renders`)
 - merging overlapping or adjacent intervals so concurrent rests are not
   double-counted
 - summing merged positive durations
@@ -214,7 +217,9 @@ Summary data loaded on entry:
 4. computePRs from SessionSummaryService
 5. groupPrsByEffortKind from SessionSummaryService
 6. buildGroupMetrics from SessionSummaryService
-7. computeSessionRestTimeMs from SessionSummaryService
+7. computeSessionRestTimeMs from SessionSummaryService — rests clip to the
+   session's window, and an end stored before the start contributes no rest
+   (`test/session_summary_inverted_window_test.dart`, `S-153`)
 8. getPreferredWeightUnit from SessionSummaryService
 9. calendar-day data for current month
 
@@ -246,7 +251,10 @@ Key public methods:
   versa. See `docs/plans/stats-summary-fix-pack-plan.md`
   Item 2 (rep-based record parity).
 - saveRoutineFromDraft
-- computeSessionRestTimeMs
+- computeSessionRestTimeMs — sums closed `EntryRest` intervals after clipping
+  each to the session's window and merging overlaps once; a session whose stored
+  end precedes its start has an empty window and the total is `0`
+  (`test/session_summary_inverted_window_test.dart`, `S-153`)
 - buildGroupMetrics
 - groupPrsByEffortKind
 - getPreferredWeightUnit

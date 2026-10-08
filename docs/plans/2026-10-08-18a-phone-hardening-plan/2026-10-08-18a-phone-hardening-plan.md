@@ -288,19 +288,19 @@ those with a real trap), `test/session_screen_build_phase_notify_test.dart`,
 
 ### Phase 2: the summary never throws on an inverted window (@developer)
 
-1. [ ] `SessionSummaryService.computeSessionRestTimeMs` — `windowEnd` becomes
+1. [x] `SessionSummaryService.computeSessionRestTimeMs` — `windowEnd` becomes
    `max(windowStart, session.endedAtMs ?? DateTime.now().millisecondsSinceEpoch)`; keep the clamps
    (`:33-34`), the `end > start` filter (`:36`) and the merge (`:40-57`) · `computeSessionRestTimeMs`
    (`lib/core/services/session_summary_service.dart:15`, window at `:21-22`)
-2. [ ] New `test/session_summary_inverted_window_test.dart` — S-153: the exact inverted pair from the
+2. [x] New `test/session_summary_inverted_window_test.dart` — S-153: the exact inverted pair from the
    owner's log returns `0` and the summary screen renders the session · `S-153`
-3. [ ] Same file — S-154: the ordinary session's total (`100_000` with three overlapping rests and one
+3. [x] Same file — S-154: the ordinary session's total (`100_000` with three overlapping rests and one
    before the window) as the negative guard · `S-154`
-4. [ ] The clamp audit: grep `lib/` for `.clamp(` and confirm the two session-window clamps in
+4. [x] The clamp audit: grep `lib/` for `.clamp(` and confirm the two session-window clamps in
    `session_summary_service.dart:33-34` are the only ones whose bounds are session data (every other
    call site has constant bounds); record the list and the verdict in
    `<…>.evidence.md` · the audit's result
-5. [ ] `docs/session_summary.md` — the lines that name `computeSessionRestTimeMs` (`:217`, `:249`):
+5. [x] `docs/session_summary.md` — the lines that name `computeSessionRestTimeMs` (`:217`, `:249`):
    state that rests are clipped to the session's window and that a session whose end precedes its
    start contributes no rest, naming S-153 as the test · the rest-time sentences
 
@@ -430,6 +430,12 @@ every existing suite whose name mentions the summary (the implementer resolves t
 2026-10-08 · Phase 1 · item 7 — new `test/initstate_notify_contract_test.dart`: a fixture test plus a scan of every `initState` under `lib/features`, red at 1665f64 naming the three sites · evidence "initstate_notify_contract_test red at base"
 2026-10-08 · Phase 1 · item 8 — S-152 in `test/session_screen_build_phase_notify_test.dart`: the overview screen pumped in the same frame as the session screen notifies nobody and throws nothing · evidence S-152 row
 2026-10-08 · Phase 1 · verification — `lint` 196 issues / 0 errors (baseline), full `test` `+4068 ~1: All tests passed!`, invariant grep clean, `git-diff --stat` = 3 source files, 7 lines each including the comment · evidence "Full suite", "`lint`"
+2026-10-08 · Phase 2 · item 1 — `windowEnd` is now `math.max(windowStart, session.endedAtMs ?? DateTime.now().millisecondsSinceEpoch)`; the clamps (`:33-34`), the `end > start` filter and the merge are untouched (`lib/core/services/session_summary_service.dart:19-26`, +6/-2) · evidence "S-153 / S-154 green after" and the two mutation rows
+2026-10-08 · Phase 2 · item 2 — new `test/session_summary_inverted_window_test.dart`, S-153: the owner's exact inverted pair returns `0` and the summary screen renders its title; red at 15bab66 with the owner's own `ArgumentError` · evidence "S-153 / S-154 red at base"
+2026-10-08 · Phase 2 · item 3 — S-154 in the same file: `100000` from three overlapping rests plus one before the window; non-vacuous via the merge mutation (`130000` without the merge) · evidence S-154 mutation row
+2026-10-08 · Phase 2 · item 4 — the clamp audit: 50 `.clamp(` sites in 28 files under `lib/`; `session_summary_service.dart:33-34` is the only one taking session-data bounds — every other site is a constant pair, a guarded list index/length, a layout metric or a single-value cap · evidence "The `.clamp(` audit"
+2026-10-08 · Phase 2 · item 5 — `docs/session_summary.md`: the clipping bullet, the load-order item 7 and the `computeSessionRestTimeMs` bullet now state `max(startedAtMs, endedAtMs)` and name S-153; `test/docs_indexing_contract_test.dart` green (`+9`) · evidence "Item 5 — the doc update"
+2026-10-08 · Phase 2 · verification — `lint` 196 issues / 0 errors (baseline), full `test` `01:41 +4070 ~1: All tests passed!`, the 8 summary-named suites `+87`, invariant grep clean, `git-diff --stat` = 1 source file (+6/-2) plus the new test file · evidence "Full suite", "`lint`"
 
 ## Assumption Log
 
@@ -453,6 +459,14 @@ every existing suite whose name mentions the summary (the implementer resolves t
 6. **One row added to `docs/global_conventions.md`** ("No state notification during the build phase",
    `Last Updated` refreshed). Item 7 points readers there for the reason, and the rule is mechanically
    checked by the new contract test; this file is outside the plan's Predicted Files.
+7. **The Phase-2 doc edit went one place wider than item 5 (item 5).** The plan named `:217` and
+   `:249`, but the "Rest Time and Duration" bullet still described clipping as `startedAtMs` to
+   `endedAtMs` — false after item 1 — so it was updated too. All three sentences name
+   `test/session_summary_inverted_window_test.dart` (`S-153`).
+8. **The clamp audit ran with the file tools (item 4).** The gateway exposes no grep check, so the
+   `.clamp(` sweep and the call-site reads used the file-tool grep over `lib/`; the pattern, the 50
+   sites and the classification are recorded in the evidence section, since no shell alternative
+   exists in Copilot mode.
 
 ## Feedback
 

@@ -58,9 +58,32 @@ test `+1 -1` — each `RED AT 1665f64 (exit 1)`.
 
 | Item | Command | Result |
 |---|---|---|
-| S-153 / S-154 red at base | | _(pending)_ |
-| S-153 / S-154 green after | | _(pending)_ |
-| The `.clamp(` audit: every session-window clamp and its verdict | | _(pending)_ |
+| S-153 / S-154 red at base | `prove-red 15bab66 test test/session_summary_inverted_window_test.dart` | RED AT 15bab66 (exit 1), `+1 -1`: S-153 fails `ArgumentError: Invalid argument(s): 1791419191803`, stack `#0 int.clamp #1 SessionSummaryService.computeSessionRestTimeMs (session_summary_service.dart:33:42)` — byte for byte the owner's log line; S-154 passes at base by design (a negative guard) — see the mutation row |
+| S-153 / S-154 green after | `test test/session_summary_inverted_window_test.dart` | `+2: All tests passed!` |
+| S-153 non-vacuous (the `math.max` is the fix) | mutation: `windowEnd` -> `session.endedAtMs ?? DateTime.now().millisecondsSinceEpoch` (the pre-fix form) | RED: the same `ArgumentError: Invalid argument(s): 1791419191803`, stack now at `session_summary_service.dart:35`. Original `math.max(windowStart, …)` restored exactly, then `test test/session_summary_inverted_window_test.dart` -> `+2: All tests passed!` |
+| S-154 non-vacuous (the merge is still observed) | mutation: the merge condition `if (iv.$1 <= mergedEnd)` -> `if (false)` | RED: `Expected: <100000> / Actual: <130000>` (130000 = the three overlapping rests counted once each). Original line restored exactly, then -> `+2: All tests passed!` |
+| Every existing suite whose name mentions the summary | `test test/session_summary_inverted_window_test.dart test/session_summary_distance_test.dart test/session_summary_effort_row_test.dart test/watch_session_edit_restore_summaries_test.dart test/watch_session_summary_integration_test.dart test/calendar_summary_screen_bugs_test.dart test/home_nutrition_summary_card_test.dart test/sensor_summaries_by_session_test.dart test/entry_identity_summary_test.dart` | `+87: All tests passed!`, 0 failure lines |
+| Full suite | `test` | `01:41 +4070 ~1: All tests passed!` (exit 0) — the Phase-1 run ended `+4068 ~1`; the +2 are this file's tests, no regression |
+| `lint` | `lint` | `196 issues found. (ran in 2.9s)`, 0 errors, `lines that look like failures (0)` — identical to the baseline; a search of the log for `session_summary_service|session_summary_inverted_window` finds no issue, so nothing this phase touched is named |
+| the `hive_workout_repository` import invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` (run with the file-tool grep, same pattern and paths — the gateway has no grep check) | no matches; nothing under those four trees imports a concrete repository |
+| Item 5 — the doc update | `docs/session_summary.md`, three places that stated the old rule | each updated to `max(startedAtMs, endedAtMs)` and to name `test/session_summary_inverted_window_test.dart` / `S-153` |
+| The docs contract after the four doc edits | `test test/docs_indexing_contract_test.dart` | `+9: All tests passed!` — the page is ~23 KB against the 64 KiB ceiling and sits below the 52 KB warning band |
+| the `.clamp(` audit: every session-window clamp and its verdict | see "The `.clamp(` audit" below | 50 `.clamp(` sites in 28 files under `lib/`; only `session_summary_service.dart:33-34` takes session-data bounds — that is the defect this phase fixes. Every other site is a constant pair, a list index/length, a layout metric or a single-value cap with a constant lower bound, so `lower > upper` is unreachable |
+
+### The `.clamp(` audit — every `clamp` site under `lib/` and why its bounds cannot invert
+
+The sweep: `grep -n "\.clamp("` over `lib/` -> 50 hits in 28 files (read with the file tools; run with
+the file tools because the gateway has no grep check). Each hit was opened at its call site and
+classified by where its bounds come from. `num.clamp` throws `ArgumentError(lower)` exactly when
+`lower > upper`, so the only question per row is whether the upper bound can come out below the lower.
+
+| Class | Sites (representative) | Why the bounds cannot invert |
+|---|---|---|
+| **session-data bounds — the only class that can invert** | `session_summary_service.dart:33-34` (the `DateTime`-derived `windowStart` / `windowEnd`) | **the defect**: with `endedAtMs < startedAtMs` the upper bound was the smaller one. Fixed by `math.max`, guarded by S-153 |
+| constants, lower < upper by inspection | `0, 86400000`; `0, 99999`; `-200.0, 999.0`; `0.0, 1.0`; `1, 10`; `0.05, 0.95`; `0, 255`; `0, 999`; `0, 3600`; `kTextScaleMin, kTextScaleMax` | both bounds are literals or `const`s with the lower strictly below the upper; no input reaches them |
+| list indices and lengths | `clamp(0, _exercises.length - 1)`; `clamp(0, _exercises.length)`; `clamp(0, exercises.length - 1)`; `clamp(1, _maxRows)` with `_maxRows = 3` | each index clamp sits behind an `isEmpty` guard on the same list, so its upper bound is `>= 0` at the call; `_maxRows` is the constant `3` |
+| layout metrics | `clamp(0.0, maxScrollExtent)`; `clamp(0.5, 0.95)`; `clamp(0, size.width)`; `clamp(screenMargin, maxLabelLeft)` | `maxScrollExtent`, `size.width` and `maxLabelLeft` are framework/geometry non-negatives, and the last call is guarded by `maxLabelLeft <= screenMargin` |
+| single-value caps (constant lower bound) | `(…).clamp(0, plannedDurationSecs * 2000 / 86400000)`; `clamp(0, effectiveTarget)`; `clamp(0, 999)` reps; `clamp(0.0, maxDistanceUnits)` with `maxDistanceUnits = 999.99` | the lower bound is the literal `0` (or `0.0`) and each upper bound is a duration, target, reps or unit cap that cannot go negative |
 
 ## Phase 3 — the writer rule
 
@@ -86,7 +109,8 @@ test `+1 -1` — each `RED AT 1665f64 (exit 1)`.
 | S-150 | the first `WorkoutState` notification lands in `SchedulerPhase.persistentCallbacks`, and `tester.takeException()` returns `FlutterError: setState() or markNeedsBuild() called during build.` | `S-150 the session screen notifies nobody while the frame builds` |
 | S-151 | (a) the first frame is the spinner and the notification phase is `persistentCallbacks` (so this is a positive guard, not the negative one the scenario text predicted); (b) passes at base — proven non-vacuously by the mutation row above | `S-151 the spinner is the first frame and the seeded set follows`, `S-151 a first load that fails reports on screen and throws nothing` |
 | S-152 | the same phase assertion with the overview screen pumped in the same frame as the session screen | `S-152 the overview screen pumped in the same frame notifies nobody` |
-| S-153 | `computeSessionRestTimeMs` throws `ArgumentError(1791419191803)` | _(pending)_ |
+| S-153 | `computeSessionRestTimeMs` throws `ArgumentError(1791419191803)` from `int.clamp` at `session_summary_service.dart:33`, so the summary screen never renders | `S-153: an inverted session window contributes no rest and the summary still renders` |
+| S-154 | (passes at base by design — a negative guard: an ordinary session's total is 100000 with or without the fix; its non-vacuity is proven by the merge mutation instead) | `S-154: an ordinary session merges overlapping rests once and keeps its total` |
 | S-155 | `endedAtMs >= startedAtMs` fails after `resetSessionTimerStart()` | _(pending)_ |
 | S-156 | the repaired `endedAtMs` still precedes `startedAtMs` | _(pending)_ |
 
