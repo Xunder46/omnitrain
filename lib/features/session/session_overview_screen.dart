@@ -45,7 +45,12 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeSession();
+    // D-150/D-151: `createNewSession` and `loadSessionData` notify
+    // `WorkoutState`, so the first load waits for the frame that mounts this
+    // screen — a notifying listener above it cannot be marked dirty mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _initializeSession();
+    });
   }
 
   Future<void> _initializeSession() async {

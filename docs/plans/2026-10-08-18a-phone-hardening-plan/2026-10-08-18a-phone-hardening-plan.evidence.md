@@ -9,14 +9,50 @@ counts (pasted, not summarised). Baselines for this plan (measured 2026-10-08, p
 | `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues, 0 errors (pre-existing info notices) |
 | `.github/copilot/scripts/macos/gateway.sh swift-test` | 335 passing, 0 failures |
 
+**Baseline correction.** The first row's "~1 failure" is the `flutter test` *skip* marker, not a
+failure: the raw summary line was `+4061 ~1: All tests passed!`. The full suite was green before this
+phase, and the phase's own run ends in `All tests passed!` too.
+
 ## Phase 1 — the build-phase notify
 
 | Item | Command | Result |
 |---|---|---|
-| S-150 / S-151 red at base | `prove-red <base-ref> test test/session_screen_build_phase_notify_test.dart -- …` | _(pending)_ |
-| S-150 / S-151 green after | | _(pending)_ |
-| `initstate_notify_contract_test` | | _(pending)_ |
-| The item-6 audit: every checked site and its verdict | | _(pending)_ |
+| S-150 / S-151 / S-152 red at base | `prove-red 1665f64 test test/session_screen_build_phase_notify_test.dart` | RED AT 1665f64 (exit 1), `+1 -3`: S-150 and S-152 fail `Expected: [SchedulerPhase:SchedulerPhase.postFrameCallbacks] / Actual: [SchedulerPhase:SchedulerPhase.persistentCallbacks]`; S-150 also `Expected: null / Actual: FlutterError:<setState() or markNeedsBuild() called during build.>` "thrown while dispatching notifications for WorkoutState"; S-151(a) fails the same phase assertion; S-151(b) passes at base by design — see the mutation row |
+| S-150 / S-151 / S-152 green after | `test test/session_screen_build_phase_notify_test.dart` | `+4: All tests passed!` |
+| R-2 (the routines site) red at base | `prove-red 1665f64 test test/my_routines_screen_build_phase_notify_test.dart` | RED AT 1665f64 (exit 1), `+0 -1`: `Expected: [SchedulerPhase:SchedulerPhase.postFrameCallbacks] / Actual: [SchedulerPhase:SchedulerPhase.persistentCallbacks]` |
+| R-2 green after | `test test/my_routines_screen_build_phase_notify_test.dart` | `+1: All tests passed!` |
+| `initstate_notify_contract_test` red at base | `prove-red 1665f64 test test/initstate_notify_contract_test.dart` | RED AT 1665f64 (exit 1), `+1 -1`, naming exactly the three real sites: `lib/features/routine/my_routines_screen.dart: initState -> loadRoutines()`; `lib/features/session/session_overview_screen.dart: initState -> _initializeSession -> createNewSession()` and `-> loadSessionData()`; `lib/features/session/workout_session_screen.dart: initState -> _loadExercises -> createNewSession()` and `-> loadSessionData()` |
+| `initstate_notify_contract_test` green after | `test test/initstate_notify_contract_test.dart` | `+2: All tests passed!` |
+| S-151(b) non-vacuous (negative guard) | mutation: `_RefusingInboxRepository`'s `throw StateError(...)` -> `return super.getWatchInboxEntriesForSession(watchSessionId);` | RED: `Expected: exactly one matching candidate / Actual: Found 0 widgets with text "Error Loading Session": []`. Original line restored exactly, then `test test/session_screen_build_phase_notify_test.dart` -> `+4: All tests passed!` |
+| The three new files together | `test test/initstate_notify_contract_test.dart test/session_screen_build_phase_notify_test.dart test/my_routines_screen_build_phase_notify_test.dart` | `+7: All tests passed!` |
+| The Done-Criteria regression trio | `test test/screen_widget_test.dart test/pr4_session_controls_test.dart test/exercise_detail_emphasis_tier_test.dart` | `+235: All tests passed!`, 0 failure lines |
+| Full suite | `test` | `01:40 +4068 ~1: All tests passed!` (exit 0) — baseline was `+4061 ~1`; +7 are the three new files' tests, no regression. Re-run after the lint fix: `01:42 +4068 ~1: All tests passed!`, again exit 0 |
+| `lint` | `lint` | `196 issues found. (ran in 3.2s)`, 0 errors, `lines that look like failures (0)` — identical to the baseline, and none in a file this phase touched. An intermediate run showed 198 with 2 `unnecessary_underscores` infos in the two new test files; both fixed (`(_, __)` -> `(_, _)`) and the lint re-run gives the 196 above |
+| The item-6 audit: every checked site and its verdict | see "The item-6 audit" below | 3 real traps (all three fixed and guarded), 2 sites left as pure readers |
+
+### The item-6 audit — every `initState` under `lib/features/**` that reaches a notifying state method
+
+| Site | What its `initState` called | Verdict |
+|---|---|---|
+| `lib/features/session/workout_session_screen.dart` (`initState`) | `_loadExercises()` -> `createNewSession()` / `loadSessionData()` -> `SessionCore._setLoading` -> `notifyListeners()` (`session_core_io.dart:137`) | **real trap** — deferred to `addPostFrameCallback` (item 1); guarded by S-150 / S-151 |
+| `lib/features/session/session_overview_screen.dart` (`initState`) | `_initializeSession()` -> the same two methods (`session_overview_screen.dart:60-62`) | **real trap** — deferred (item 5); guarded by S-152 |
+| `lib/features/routine/my_routines_screen.dart` (`initState`) | `widget.routineState.loadRoutines()` -> `routine_state.dart:107-113` sets `_isLoading` and notifies before it reads | **real trap** — deferred (item 6); guarded by R-2 in `test/my_routines_screen_build_phase_notify_test.dart` |
+| `lib/features/exercise_library/exercise_library_detail_screen.dart` (`initState`) | `_loadReference()` -> `ExerciseLibraryState` readers; that state notifies only after an `await`, i.e. after the build phase | left as is — no synchronous notify |
+| `lib/features/profile/widgets/measurement_sparkline.dart` (`initState`) | `_loadEntries()` -> its own element's `setState` + repository/profile readers (pure pass-throughs) | left as is — marks no listener dirty mid-build |
+| the sweep: `loadSessionData` / `createNewSession` / `resetSessionTimerStart` / `loadHistoricalSession` / `endSession` / `loadRoutines` across `lib/features/**/*.dart` | 25 hits in 8 files; every hit sits in an event handler, an async continuation or a post-frame callback — none in an `initState` | no other trap |
+| the contract test's scan of every `initState` under `lib/features/**/*.dart` | all sites | only the three named above reach a notifying method; the scan is the mechanical half of this table |
+
+**The plan's prove-red command is not the one that proves this phase.** `prove-red <ref> test
+<file> -- lib/features/session/workout_session_screen.dart` copies the *carried* paths into the base
+worktree, so it puts my fixed source back and never copies the new, untracked test file; `flutter
+test` then fails to load it (`Failed to load … Does not exist.`), which the gateway itself labels "a
+compile or load error … use a mutation instead". The proofs above carry the *test* file instead (a
+plain file argument is carried over automatically) and leave every `lib/` source at `1665f64`. Phases
+2–4 list the same command shape in their Done Criteria.
+
+All three proofs were re-run against the final content of the test files (the lint fix and the added
+rule line changed them after the first round): session file `+1 -3`, routines file `+0 -1`, contract
+test `+1 -1` — each `RED AT 1665f64 (exit 1)`.
 
 ## Phase 2 — the summary guard
 
@@ -47,7 +83,9 @@ counts (pasted, not summarised). Baselines for this plan (measured 2026-10-08, p
 
 | Scenario | Assertion that fails at the base | Test name |
 |---|---|---|
-| S-150 | `tester.takeException()` returns `setState() or markNeedsBuild() called during build` | _(pending)_ |
+| S-150 | the first `WorkoutState` notification lands in `SchedulerPhase.persistentCallbacks`, and `tester.takeException()` returns `FlutterError: setState() or markNeedsBuild() called during build.` | `S-150 the session screen notifies nobody while the frame builds` |
+| S-151 | (a) the first frame is the spinner and the notification phase is `persistentCallbacks` (so this is a positive guard, not the negative one the scenario text predicted); (b) passes at base — proven non-vacuously by the mutation row above | `S-151 the spinner is the first frame and the seeded set follows`, `S-151 a first load that fails reports on screen and throws nothing` |
+| S-152 | the same phase assertion with the overview screen pumped in the same frame as the session screen | `S-152 the overview screen pumped in the same frame notifies nobody` |
 | S-153 | `computeSessionRestTimeMs` throws `ArgumentError(1791419191803)` | _(pending)_ |
 | S-155 | `endedAtMs >= startedAtMs` fails after `resetSessionTimerStart()` | _(pending)_ |
 | S-156 | the repaired `endedAtMs` still precedes `startedAtMs` | _(pending)_ |

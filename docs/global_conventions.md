@@ -13,6 +13,7 @@ Read this file at the start of every task. It is the single source of truth for 
 | Timestamps are source data | For log flows without explicit date entry, timestamp at save time. For timed, round, and rest flows, derive elapsed and completion state from persisted wall-clock timestamps rather than local counters so backgrounding and reloads stay correct. | `docs/profile_and_measurements.md`, `docs/state_management.md`, `docs/modality_tracking.md`, `docs/rest_tracking.md`, `lib/data/models/models.dart` |
 | Reuse the canonical owner | When a shared utility, state object, or service already owns a cross-cutting concern, use it instead of rebuilding the logic locally. Preference-backed formatting goes through `SettingsState` + `UnitFormatter`; analytics classification goes through the existing progress services; theme selection goes through `SettingsState` + `OmniTheme`. | `docs/state_management.md`, `docs/theme_and_settings.md`, `docs/stats_screen.md`, `lib/core/utils/unit_formatter.dart`, `lib/core/services/stats_progress_service.dart` |
 | Instrument panel, not influencer | Favor fast logging, clear status, restrained motion, and low-friction instrumentation over decorative chrome, coaching theater, or social/influencer patterns. Use defaults and inference where the existing product docs do. | `docs/app_philosophy.md`, `docs/design_system.md` |
+| No state notification during the build phase | A widget's `initState` must not synchronously reach a state method that calls `notifyListeners()`. Defer the call with `WidgetsBinding.instance.addPostFrameCallback` (or `Future.microtask`); a synchronous notify from `initState` marks a listener dirty while the frame builds and throws `setState() or markNeedsBuild() called during build`. | `docs/state_management.md`, `lib/state/`, `test/initstate_notify_contract_test.dart` (group `initStateNotifyContractTest`, test "no initState under lib/features notifies a state during build"), `test/session_screen_build_phase_notify_test.dart` (S-150, S-152) |
 
 ## Usage
 
@@ -20,7 +21,7 @@ Read this file at the start of every task. It is the single source of truth for 
 - Code Reviewer: verify every rule explicitly as `PASS`, `N/A`, or `FAIL` before approval.
 - Handoffs: point back here; do not restate the rules elsewhere.
 
-**Last Updated**: May 22, 2026
+**Last Updated**: October 8, 2026
 
 ---
 

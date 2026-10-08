@@ -233,7 +233,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     } else {
       _computeStaticElapsed();
     }
-    _loadExercises();
+    // D-150: the load notifies `WorkoutState` synchronously, and a listener
+    // mounted above this screen cannot be marked dirty while the framework is
+    // still building. The first load waits for the frame that mounts it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadExercises();
+    });
   }
 
   @override

@@ -239,23 +239,23 @@ makes the first defect class impossible to reintroduce. No user-visible rule cha
 
 ### Phase 1: the build-phase notify — the session screen, its siblings, and a permanent guard (@developer)
 
-1. [ ] `_WorkoutSessionScreenState.initState` — replace the direct `_loadExercises()` call
+1. [x] `_WorkoutSessionScreenState.initState` — replace the direct `_loadExercises()` call
    (`lib/features/session/workout_session_screen.dart:236`) with
    `WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _loadExercises(); })`; leave the
    observer, the settings listener and the ticker above it untouched · `initState` (`:226-239`)
-2. [ ] `_WorkoutSessionScreenState._loadExercises` — confirm nothing else needs to move: the spinner is
+2. [x] `_WorkoutSessionScreenState._loadExercises` — confirm nothing else needs to move: the spinner is
    the first frame's content (`_isLoading = true`, `:109`), `!hasSession -> createNewSession()` +
    `loadSessionData()` (`:425-428`), the `catch` -> `_hasError` (`:507-511`) and the rolling-session
    reordering all stay as they are · `_loadExercises` (`:415`)
-3. [ ] New `test/session_screen_build_phase_notify_test.dart` — S-150: the ancestor-`ListenableBuilder`
+3. [x] New `test/session_screen_build_phase_notify_test.dart` — S-150: the ancestor-`ListenableBuilder`
    harness, Mock-first, `pumpWidget` + `pump()` only (no `pumpAndSettle`, no real delay) ·
    `S-150`
-4. [ ] Same file — S-151: spinner on the first frame, the seeded row after the post-frame pump, and the
+4. [x] Same file — S-151: spinner on the first frame, the seeded row after the post-frame pump, and the
    failing-load path with no escaping exception · `S-151`
-5. [ ] `_SessionOverviewScreenState.initState` (`lib/features/session/session_overview_screen.dart:46`)
+5. [x] `_SessionOverviewScreenState.initState` (`lib/features/session/session_overview_screen.dart:46`)
    — the same post-frame deferral around `_initializeSession()` (`:48`), keeping `_isLoading` (`:41`)
    and the `try/catch/finally` · `initState` / `_initializeSession`
-6. [ ] The audit: grep `lib/features/**/*.dart` for `initState` bodies that call a notifying method
+6. [x] The audit: grep `lib/features/**/*.dart` for `initState` bodies that call a notifying method
    (`loadSessionData`, `createNewSession`, `resetSessionTimerStart`, `loadHistoricalSession`,
    `endSession`). Candidates already seen and to be **checked, not assumed**: `my_routines_screen.dart`
    (`initState` `:48`), `exercise_library_detail_screen.dart` (`initState` `:61`),
@@ -263,13 +263,13 @@ makes the first defect class impossible to reintroduce. No user-visible rule cha
    whose chain reaches a synchronous `notifyListeners()`; leave a site that only calls pure readers;
    add one test per fixed site in the S-150 shape (`test/<screen>_build_phase_notify_test.dart`) and
    list every checked site in `<…>.evidence.md` with its verdict · the audit's sites
-7. [ ] New `test/initstate_notify_contract_test.dart` — the structural guard: scan
+7. [x] New `test/initstate_notify_contract_test.dart` — the structural guard: scan
    `lib/features/**/*.dart` for an `initState` body that calls a known notifying method without an
    intervening `addPostFrameCallback` / `Future.microtask`, and fail naming the file, the method and
    the reason (`WorkoutState.notifyListeners()` during build throws `setState() or markNeedsBuild()
    called during build`; see `docs/global_conventions.md`). Pattern:
    `test/palette_legibility_contract_test.dart` · `initStateNotifyContractTest`
-8. [ ] New `test/session_screen_build_phase_notify_test.dart` — one item per defect class, not one per
+8. [x] New `test/session_screen_build_phase_notify_test.dart` — one item per defect class, not one per
    site: the same file also asserts that a **second** screen pumped in the same frame (the overview
    screen) does not throw, so the guard and the fix agree · `S-152`
 
@@ -421,12 +421,38 @@ every existing suite whose name mentions the summary (the implementer resolves t
 
 ## Progress
 
-_(empty — executors append one line per completed item: date, phase, item, evidence file row)_
+2026-10-08 · Phase 1 · item 1 — `_WorkoutSessionScreenState.initState` now defers `_loadExercises()` through `addPostFrameCallback` (`lib/features/session/workout_session_screen.dart:226-242`) · evidence "S-150 / S-151 / S-152 red at base", "… green after"
+2026-10-08 · Phase 1 · item 2 — `_loadExercises` left as it was: spinner first frame (S-151(a)), `createNewSession()`/`loadSessionData()` unchanged, `catch` -> `_hasError` (S-151(b)) · evidence "S-150 / S-151 / S-152 green after", mutation row
+2026-10-08 · Phase 1 · item 3 — new `test/session_screen_build_phase_notify_test.dart`, S-150 red at 1665f64 (`persistentCallbacks` + `setState() or markNeedsBuild() called during build`) · evidence "The three new files together"
+2026-10-08 · Phase 1 · item 4 — S-151 in the same file: spinner first frame (red at base), the seeded set after the post-frame pump, and the failing load reporting on screen with nothing thrown · evidence mutation row (the negative guard is proven by mutation, not by red-at-base)
+2026-10-08 · Phase 1 · item 5 — `_SessionOverviewScreenState.initState` defers `_initializeSession()` the same way (`lib/features/session/session_overview_screen.dart:44-50`) · evidence S-152 row
+2026-10-08 · Phase 1 · item 6 — the audit: 3 real traps (the two session screens and `my_routines_screen.dart`), 2 sites left as pure readers; a sweep of the six notifying method names over `lib/features` found 25 hits in 8 files, none in another `initState` · evidence "The item-6 audit" + "R-2 red at base"
+2026-10-08 · Phase 1 · item 7 — new `test/initstate_notify_contract_test.dart`: a fixture test plus a scan of every `initState` under `lib/features`, red at 1665f64 naming the three sites · evidence "initstate_notify_contract_test red at base"
+2026-10-08 · Phase 1 · item 8 — S-152 in `test/session_screen_build_phase_notify_test.dart`: the overview screen pumped in the same frame as the session screen notifies nobody and throws nothing · evidence S-152 row
+2026-10-08 · Phase 1 · verification — `lint` 196 issues / 0 errors (baseline), full `test` `+4068 ~1: All tests passed!`, invariant grep clean, `git-diff --stat` = 3 source files, 7 lines each including the comment · evidence "Full suite", "`lint`"
 
 ## Assumption Log
 
-_(empty — executors append: decision made, options considered, choice + why. The Conductor marks each
-RATIFIED (promoted to a D-x) or REVERT (a remediation sub-phase).)_
+1. **Harness shape (items 3, 4, 8).** The plan's literal tree — the screen mounted directly under the
+   listening `ListenableBuilder` — cannot show the defect: `markNeedsBuild` allows marking the current
+   build target dirty. Chose a `_MountedBelowTheListener` element between listener and screen; proven
+   red at 1665f64 and green after, with and without the fix.
+2. **S-151(b)'s fixture (item 4).** The planned "Mock with no session, `getSession` throws" cannot set
+   `_hasError`: the state layer absorbs repository errors and `_loadExercises` catches only its own
+   reads. Chose a repository whose watch-inbox read throws (`_RefusingInboxRepository`) with a session
+   present and `editMode: true`; it passes at base, so the guard is proven by the recorded mutation.
+3. **S-151(a) is not a negative guard (items 3, 4).** At base the whole load finishes inside
+   `pumpWidget`, so the first frame is never the spinner — the assertion is red at base.
+4. **`prove-red` form (all phases).** The plan's `-- lib/features/…` carries my *fixed* source into the
+   base worktree and never carries the new untracked test, so the check cannot load it. Chose
+   `prove-red 1665f64 test <test file>` (a plain file argument is carried, `lib/` stays at base);
+   Phases 2–4's Done Criteria list the unusable form.
+5. **S-152 needs a taller surface.** The default 800x600 test view overflows the overview screen's
+   `Column` (`session_overview_screen.dart:179`), so the test sets `tester.view.physicalSize` to
+   800x1600 and resets it on teardown.
+6. **One row added to `docs/global_conventions.md`** ("No state notification during the build phase",
+   `Last Updated` refreshed). Item 7 points readers there for the reason, and the rule is mechanically
+   checked by the new contract test; this file is outside the plan's Predicted Files.
 
 ## Feedback
 
