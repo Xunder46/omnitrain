@@ -49,6 +49,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
@@ -447,7 +448,10 @@ class _PhoneRadio implements WatchTransport {
       send(WatchTransportRequest.snapshotFrame());
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async => sent.add(envelope);
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
+    sent.add(envelope);
+    return WatchDelivery.delivered;
+  }
 
   /// One frame from the wrist, the way the radio delivers one.
   Future<void> fromWrist(Map<String, Object?> frame) async {
@@ -3151,10 +3155,13 @@ void main() {
         );
         final wristSessionId = engine.session!.sessionId;
 
-        final foreign = await graph.mirror.reportLifecycleFor(
+        await graph.mirror.reportLifecycleFor(
           's-other',
           WatchLifecycleState.abandoned,
         );
+        // The frame itself, as the radio recorded it: `reportLifecycleFor`
+        // answers the transport's delivery result, not the envelope (D-197).
+        final foreign = radio.sent.last;
 
         expect(
           await engine.applyMessage(foreign),

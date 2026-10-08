@@ -30,6 +30,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -321,9 +322,10 @@ class _PhoneTransport implements WatchMirrorTransport {
   final List<Map<String, Object?>> sent = [];
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
     if (session.linked) await session.orchestrator.receive(envelope);
+    return WatchDelivery.delivered;
   }
 
   @override
@@ -338,7 +340,10 @@ class _RecordingTransport implements WatchMirrorTransport {
   final List<Map<String, Object?>> sent = [];
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async => sent.add(envelope);
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
+    sent.add(envelope);
+    return WatchDelivery.delivered;
+  }
 
   @override
   Future<void> requestSnapshot() async {}

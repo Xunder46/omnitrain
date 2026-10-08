@@ -18,6 +18,7 @@
 // structure-change fixture pins.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -203,9 +204,10 @@ class _PhoneTransport implements WatchMirrorTransport {
   final List<Map<String, Object?>> sent = [];
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
     await bridge.wrist.applyMessage(envelope);
+    return WatchDelivery.delivered;
   }
 
   /// A message handed over without being counted as an outgoing send — how the

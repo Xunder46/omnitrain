@@ -185,13 +185,20 @@ No row above reads "unaffected" without the grep that produced it. Anything the 
 - **Doc budget.** `docs/state_management/watch_surface.md` sits inside the 52 KB band at base and 19a's Phase 4 trims the same page, so Phase 4 item 2 re-measures at head; `docs/watch_session_sync.md` has more room but the same rule (remove at least as many bytes as are added).
 
 ## Progress
-- [ ] Phase 1 — an honest transport result, on both sides (D-190, D-195, D-196, D-200, D-201; S-206, S-207, S-218)
+- [x] Phase 1 — an honest transport result, on both sides (D-190, D-195, D-196, D-200, D-201; S-206, S-207, S-218) — **Complete**: `WatchDelivery` + the phone radio's per-send reachability read, every `WatchMirrorTransport` implementer/double answering a delivery, 5 tests (S-206 ×4, S-218 ×1, one Swift confirmation test); suite +4113 ~1, swift 343/0, lint 196/0, four mutations RED (evidence file).
 - [ ] Phase 2 — the phone's push owes what was not delivered (D-191, D-192, D-197, D-198, D-202; S-200 … S-203, S-205, S-207 … S-211, S-217, S-218)
 - [ ] Phase 3 — the wrist announces a finished session at catch-up, and the phone follows (D-193, D-199; S-204, S-212 … S-216)
 - [ ] Phase 4 — docs, contract and the residue sweep (D-194; every added sentence names its test)
 
 ## Assumption Log
 Executors append here: the decision made, the options considered, the choice and why (at most 3 lines each). The planner reviews every entry: RATIFIED (promoted to a D-x) or REVERT (remediation sub-phase). Phase 1's doubles sweep, Phase 2's four rewritten cases, Phase 3's choice between `test/live_mirroring_test.dart` and `test/pr4_session_controls_test.dart`, and any deviation from D-197's five sites are expected entries, not optional ones. An empty log after a phase is itself a finding.
+
+**Phase 1 — the doubles sweep.** Ten `WatchMirrorTransport` implementers moved to `Future<WatchDelivery>` (`_PhoneRadio` ×3, `RecordingMirrorTransport`, `CaptureTransport`, `_PhoneTransport` ×2, `_RecordingTransport`, plus the two production wrappers); the seven `WatchSyncTransport` doubles and the one `WatchMessageChannel` double were left on `Future<void>` because D-196 keeps that wrist-side contract, and `Future<WatchDelivery>` being a subtype means one override satisfies both — a mirror implementer left behind would not compile. Evidence: the sweep table in the evidence file.
+
+**Phase 1 — `test/watch_session_projection_test.dart:3154`.** It read `reportLifecycleFor`'s return as if it were the frame; under D-197 the return is the transport's verdict, so the test now reads the frame the radio recorded (`radio.sent.last`). The assertions are otherwise untouched, and `reportLifecycle`/`applyStructureChange`/`pushExercise` kept their signatures so the other 160 tests in the touched files needed no edit.
+
+**Phase 1 — Swift side needed no production change.** D-190's wrist clause is already true: `WatchEmitForwarder`/`WatchConnectivityBridge.send` report a platform refusal exactly once, and a refused observation row stays owed until its own confirmation. Pinned by `testS206ARefusedFrameIsReportedOnceAndTheRowStaysOwed` (confirmation, no behaviour change), proven to have teeth by mutation (d) — emptying the catch turns it red.
+
 
 ## Feedback
 [empty]

@@ -18,6 +18,7 @@ import 'package:omnitrain/core/services/watch_session_importer.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 
 /// The capture contract, parsed.
@@ -116,9 +117,10 @@ class CaptureTransport implements WatchMirrorTransport {
   ];
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     await onSend?.call(envelope);
     sent.add(envelope);
+    return WatchDelivery.delivered;
   }
 
   @override

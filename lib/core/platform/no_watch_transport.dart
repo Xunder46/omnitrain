@@ -11,6 +11,7 @@
 /// all — asks the factory for null instead.
 library;
 
+import 'watch_delivery.dart';
 import 'watch_transport.dart';
 
 class NoWatchTransport implements WatchTransport {
@@ -33,6 +34,9 @@ class NoWatchTransport implements WatchTransport {
   @override
   Future<void> requestSnapshot() async {}
 
+  /// Nothing was handed over — there is no counterpart to hand it to (D-196).
+  /// Quiet: a platform with no watch is not a failure.
   @override
-  Future<void> send(Map<String, Object?> envelope) async {}
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async =>
+      WatchDelivery.undelivered;
 }

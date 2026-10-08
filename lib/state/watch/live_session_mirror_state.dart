@@ -20,6 +20,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/platform/watch_delivery.dart';
 import '../../core/sync_protocol/message_validator.dart';
 import '../../core/sync_protocol/phone_envelope.dart';
 import '../../core/sync_protocol/session_reconciler.dart';
@@ -30,12 +31,14 @@ import '../../watch/session/watch_records.dart';
 /// What [LiveSessionMirrorState] needs from whatever carries messages to the
 /// watch (WatchConnectivity on iOS, the Wear OS data layer, or a test double).
 ///
-/// There is no reachability flag here on purpose: the transport is
-/// fire-and-forget with retries, so a send that cannot be carried yet is the
-/// transport's problem to buffer, not a decision the session logic should make.
+/// There is no reachability flag here on purpose: a send answers
+/// [WatchDelivery] — [WatchDelivery.delivered] means the frame was handed to
+/// the radio while the counterpart was reachable, [WatchDelivery.undelivered]
+/// that it was not handed over — and the caller, not the transport, decides
+/// whether the frame is still owed (D-196).
 abstract interface class WatchMirrorTransport {
-  /// Hands the watch one message.
-  Future<void> send(Map<String, Object?> envelope);
+  /// Hands the watch one message, and answers whether the radio took it.
+  Future<WatchDelivery> send(Map<String, Object?> envelope);
 
   /// Asks the watch for its `session_snapshot`; the reply arrives through
   /// [LiveSessionMirrorState.receive], exactly as any other message does.
@@ -341,7 +344,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
 
   /// Hands the watch [state] as this phone's snapshot, over the same transport
   /// every other outgoing message uses.
-  Future<void> sendState(Map<String, Object?> state) =>
+  ///
+  /// The result is the transport's honest answer about whether the frame was
+  /// handed over, not the frame (D-196, D-197).
+  Future<WatchDelivery> sendState(Map<String, Object?> state) =>
       _transport.send(snapshotEnvelope(state: state));
 
   /// Asks the watch for its snapshot — the phone's half of joining a session
@@ -496,7 +502,9 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// and applying the frame here would hide an entry of a session this frame
   /// does not name. The name travels on the frame either way, and the wrist
   /// applies it to the session it holds under that name.
-  Future<Map<String, Object?>> deleteEntryAs(
+  ///
+  /// The result is the transport's, not the frame's (D-197).
+  Future<WatchDelivery> deleteEntryAs(
     String sessionId,
     String entryId, {
     required String changeId,
@@ -511,8 +519,7 @@ class LiveSessionMirrorState extends ChangeNotifier {
       _reconciler.applyMessage(envelope);
       notifyListeners();
     }
-    await _transport.send(envelope);
-    return envelope;
+    return _transport.send(envelope);
   }
 
   /// Closes the session from the phone and hands back the merged record.
@@ -570,7 +577,9 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The end is remembered against [sessionId] — not against whatever this
   /// mirror holds — for the same reason the frame names it: the wrist it is
   /// owed to is the one still announcing that session (D-182, S-190).
-  Future<Map<String, Object?>> reportLifecycleFor(
+  ///
+  /// The result is the transport's, not the frame's (D-197).
+  Future<WatchDelivery> reportLifecycleFor(
     String sessionId,
     String state,
   ) async {
@@ -583,8 +592,7 @@ class LiveSessionMirrorState extends ChangeNotifier {
       _reconciler.applyMessage(envelope);
       notifyListeners();
     }
-    await _transport.send(envelope);
-    return envelope;
+    return _transport.send(envelope);
   }
 
   /// Whether this mirror's session is owed a reset before the phone asserts
@@ -655,10 +663,13 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// at has to be the session the watch is told about, and a watch observation
   /// arriving in the meantime lands in the new shape rather than in a stale one.
   /// Every apply is idempotent, so a transport that retries cannot double-edit.
-  Future<void> _sendOwn(Map<String, Object?> envelope) async {
+  ///
+  /// The result is the transport's; callers that do not owe the frame ignore
+  /// it (D-197).
+  Future<WatchDelivery> _sendOwn(Map<String, Object?> envelope) async {
     _reconciler.applyMessage(envelope);
     notifyListeners();
-    await _transport.send(envelope);
+    return _transport.send(envelope);
   }
 
   Map<String, Object?> _envelope(String type, Map<String, Object?> payload) =>

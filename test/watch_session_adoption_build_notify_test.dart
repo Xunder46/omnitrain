@@ -33,6 +33,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
@@ -112,7 +113,8 @@ class _PhoneRadio implements WatchTransport {
       send(WatchTransportRequest.snapshotFrame());
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {}
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async =>
+      WatchDelivery.delivered;
 
   /// One frame from the wrist, the way the radio delivers one.
   Future<void> fromWrist(Map<String, Object?> frame) async {

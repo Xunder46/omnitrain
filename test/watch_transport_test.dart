@@ -25,6 +25,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/no_watch_transport.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/platform_watch_transport_factory.dart';
@@ -132,7 +133,7 @@ class _Endpoint implements WatchMessageChannel {
 
   bool reachable = true;
 
-  /// A send the radio refuses, so the fire-and-forget path can be exercised.
+  /// A send the radio refuses, so the refusal path can be exercised.
   /// Null means every send is taken.
   Object? sendFailure;
 
@@ -244,8 +245,12 @@ void main() {
   late DateTime phoneNow;
   late InMemoryWatchSessionStore watchStore;
   late Object? reportedFailure;
+  late int reportedFailureCount;
 
-  void reportFailure(Object error, StackTrace stack) => reportedFailure = error;
+  void reportFailure(Object error, StackTrace stack) {
+    reportedFailure = error;
+    reportedFailureCount++;
+  }
 
   /// The wrist: its real engine over an in-memory store, fed by the real
   /// transport, dispatched the way the watch app dispatches.
@@ -259,6 +264,7 @@ void main() {
   setUp(() async {
     link = _Link();
     reportedFailure = null;
+    reportedFailureCount = 0;
     repository = MockWorkoutRepository();
     await repository.initialize();
 
@@ -721,6 +727,88 @@ void main() {
         transport: const NoWatchTransport(),
       );
       expect(none, isNull);
+    });
+  });
+
+  // D-190, D-196, D-201: a send answers whether the frame was handed over.
+  group('S-206 a send answers whether the frame was handed over', () {
+    test('S-206 a reachable counterpart means delivered, and the radio carried '
+        'the frame', () async {
+      final frame = WatchTransportRequest.snapshotFrame();
+
+      final result = await phoneTransport.send(frame);
+
+      expect(result, WatchDelivery.delivered);
+      expect(link.phone.sent, [frame]);
+      expect(reportedFailureCount, 0);
+    });
+
+    test('S-206 an unreachable counterpart is undelivered, unsent and '
+        'unreported', () async {
+      link.phone.reachable = false;
+      final frame = WatchTransportRequest.snapshotFrame();
+
+      final result = await phoneTransport.send(frame);
+
+      expect(result, WatchDelivery.undelivered);
+      expect(
+        link.phone.sent,
+        isEmpty,
+        reason: 'the frame was never handed to the radio',
+      );
+      expect(
+        reportedFailureCount,
+        0,
+        reason: 'a counterpart that is simply apart is quiet (D-201), not an '
+            'error to report on every send',
+      );
+    });
+
+    test('S-206 a send reads reachability again rather than trusting the last '
+        'answer', () async {
+      final frame = WatchTransportRequest.snapshotFrame();
+      expect(await phoneTransport.send(frame), WatchDelivery.delivered);
+
+      link.phone.reachable = false;
+
+      expect(await phoneTransport.send(frame), WatchDelivery.undelivered);
+      expect(
+        link.phone.sent,
+        [frame],
+        reason: 'the hint the last send left behind is not an answer about '
+            'this one (D-190)',
+      );
+      expect(reportedFailureCount, 0);
+    });
+
+    test('S-206 a radio that refuses the frame is undelivered and reported '
+        'once', () async {
+      link.phone.sendFailure = StateError('the radio refused the frame');
+      final frame = WatchTransportRequest.snapshotFrame();
+
+      final result = await phoneTransport.send(frame);
+
+      expect(result, WatchDelivery.undelivered);
+      expect(link.phone.sent, isEmpty);
+      expect(reportedFailure, isA<StateError>());
+      expect(reportedFailureCount, 1);
+    });
+
+    test('S-218 a transport that cannot carry a frame is undelivered and '
+        'quiet', () async {
+      const transport = NoWatchTransport();
+      var received = 0;
+      transport.onIncoming((frame) async => received++);
+
+      final result = await transport.send(WatchTransportRequest.snapshotFrame());
+
+      expect(result, WatchDelivery.undelivered);
+      expect(
+        reportedFailureCount,
+        0,
+        reason: 'no wrist means nothing to report, not an error per send',
+      );
+      expect(received, 0);
     });
   });
 

@@ -56,6 +56,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/sync_protocol/phone_envelope.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
@@ -257,18 +258,19 @@ class _PhoneRadio implements WatchTransport {
       send(WatchTransportRequest.snapshotFrame());
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     attempted.add(envelope);
     if (failing) {
       onFailure(StateError('the wrist is out of range'));
-      return;
+      return WatchDelivery.undelivered;
     }
     if (throwing) throw Exception('the radio refused the frame');
     if (hangNext) {
       hangNext = false;
-      return Completer<void>().future;
+      return Completer<WatchDelivery>().future;
     }
     sent.add(envelope);
+    return WatchDelivery.delivered;
   }
 
   /// One frame from the wrist, the way the radio delivers one.
@@ -919,7 +921,7 @@ void main() {
         reason:
             'S-81 the same message id leaves the wrist\'s rows exactly as they '
             'were — no second entry, no second session row, no second timer '
-            '(the push\'s fire-and-forget transport relies on this)',
+            '(the transport can carry this frame again)',
       );
       expect(failures, isEmpty);
     });

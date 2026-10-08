@@ -4,6 +4,7 @@
 // The wire itself is proven in `test/phone_manage_bridge_test.dart`, where both
 // devices are real.
 
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 
 /// Records what the phone emitted and carries nothing.
@@ -25,7 +26,10 @@ class RecordingMirrorTransport implements WatchMirrorTransport {
   ];
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async => sent.add(envelope);
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
+    sent.add(envelope);
+    return WatchDelivery.delivered;
+  }
 
   @override
   Future<void> requestSnapshot() async => snapshotRequests++;

@@ -465,6 +465,49 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(harness.session.sent.count, 1)
     }
 
+    // MARK: - S-206 a refused frame is reported once, and the row stays owed
+
+    func testS206ARefusedFrameIsReportedOnceAndTheRowStaysOwed() async throws {
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+
+        _ = await harness.engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        try await harness.engine.appendObservation(setEvent(harness.clock, entryId: "e-1"))
+
+        let observation = try XCTUnwrap(harness.engine.pendingObservations().first)
+        let messageId = try XCTUnwrap(observation["messageId"] as? String)
+
+        harness.session.sendError = BridgeFixtureError.malformed("the radio refused it")
+        await harness.bridge.send(observation)
+
+        // The wrist never claims the frame went out, and says so once.
+        XCTAssertTrue(harness.session.sent.isEmpty)
+        XCTAssertEqual(harness.failures.count, 1, "a refusal is reported, once")
+
+        // The refused frame is still owed: it is not treated as delivered, so a
+        // later send can carry it again (D-196).
+        XCTAssertEqual(
+            harness.engine.pendingObservations().compactMap { $0["messageId"] as? String },
+            [messageId]
+        )
+        let pruned = await harness.engine.pruneConfirmed()
+        XCTAssertTrue(
+            pruned.isEmpty,
+            "nothing is confirmed, so the phone's receipt has not arrived"
+        )
+        XCTAssertEqual(
+            harness.engine.pendingObservations().compactMap { $0["messageId"] as? String },
+            [messageId],
+            "the row survives the sweep that drops confirmed ones"
+        )
+
+        // Once the radio takes it, the frame is out.
+        harness.session.sendError = nil
+        await harness.bridge.send(observation)
+        XCTAssertEqual(harness.session.sent.count, 1)
+        XCTAssertEqual(harness.failures.count, 1)
+    }
+
     // MARK: - Reachability is read from the seam
 
     func testReachabilityIsReadFromTheSeam() async throws {
