@@ -122,6 +122,59 @@ func setEvent(_ clock: TestClock, entryId: String, slot: String = "sx-bench") ->
     ]
 }
 
+/// A schema-conformant `effort_rating` observation: the wrist's session rating,
+/// the event the end frame is owed behind (D-174, D-193).
+func ratingEvent(_ clock: TestClock, entryId: String, rating: Int = 4) -> [String: Any] {
+    [
+        "entryId": entryId,
+        "eventId": entryId,
+        "kind": "effort_rating",
+        "loggedAt": utcIso(clock.now),
+        "rating": rating,
+    ]
+}
+
+/// 2026-10-08T10:00:00Z — the instant the S-212 fixture ends `w9` at, built from
+/// components so it is the same end instant the Dart suite uses rather than a
+/// hand-computed epoch.
+func octoberInstant() -> Date {
+    var components = DateComponents()
+    components.year = 2026
+    components.month = 10
+    components.day = 8
+    components.hour = 10
+    components.timeZone = TimeZone(secondsFromGMT: 0)
+    return Calendar(identifier: .gregorian).date(from: components)!
+}
+
+/// Asserts two frames are the same frame, field for field — including the
+/// payload's own. A replay that only looks like the live frame (a re-minted
+/// `messageId`, a `sentAt` taken from the catch-up) fails here.
+func assertSameFrame(
+    _ frame: [String: Any],
+    _ expected: [String: Any],
+    _ message: String
+) {
+    XCTAssertEqual(
+        Set(frame.keys), Set(expected.keys),
+        "\(message): the frame names the fields the live one does"
+    )
+    for key in ["type", "messageId", "sessionId", "origin", "sentAt"] {
+        XCTAssertEqual(
+            frame[key] as? String, expected[key] as? String,
+            "\(message): the frame's \(key)"
+        )
+    }
+    XCTAssertEqual(
+        frame["protocolVersion"] as? Int, expected["protocolVersion"] as? Int,
+        "\(message): the frame's protocolVersion"
+    )
+    XCTAssertEqual(
+        frame["payload"] as? NSDictionary, expected["payload"] as? NSDictionary,
+        "\(message): the frame's payload"
+    )
+}
+
 final class WatchSessionEngineTests: XCTestCase {
 
     // MARK: - S-001 force-kill restores an in-progress session
@@ -1067,6 +1120,113 @@ final class WatchSessionEngineTests: XCTestCase {
 
         XCTAssertEqual(sessionEnd(engine)?["status"] as? String, WatchSessionStatus.abandoned, "D-120")
         XCTAssertNil(sessionEnd(engine)?["modality"], "D-120 a session with no modality says none")
+    }
+
+    // MARK: - S-212/S-214 the end is replayed, never re-minted (D-199)
+
+    /// The S-212 fixture: a wrist holding `w9`, created and ended at
+    /// 2026-10-08T10:00:00Z while the phone was out of reach, so the end frame
+    /// is the one the next catch-up owes it.
+    private func endedW9(abandon: Bool = false) async throws
+        -> (harness: Harness, engine: WatchSessionEngine, live: [String: Any])
+    {
+        let harness = Harness(sessionId: "w9")
+        let engine = await harness.runningEngine()
+        harness.clock.now = octoberInstant()
+        let started = await engine.createSession(modality: nil, exercises: [exercise("u-squat")])
+        XCTAssertEqual(started.sessionId, "w9", "the fixture's session")
+        harness.clearEmitted()
+
+        if abandon {
+            _ = await engine.abandonSession()
+        } else {
+            _ = await engine.finishSession()
+        }
+
+        XCTAssertEqual(engine.session?.recordId, "rec-2", "the fixture's terminal row")
+        XCTAssertEqual(
+            harness.emitted.suffix(2).map { $0["type"] as? String },
+            ["observations_up", "session_lifecycle"],
+            "the fixture ends it once, live: the end observation, then the frame"
+        )
+        return (harness, engine, harness.emitted[1])
+    }
+
+    func testS212TheReplayRepeatsTheLiveFrameFieldForField() async throws {
+        let fixture = try await endedW9()
+        fixture.harness.clock.advance(5400)
+
+        fixture.engine.replaySessionEnd()
+
+        XCTAssertEqual(
+            fixture.harness.emitted.count, 3,
+            "exactly one more frame (D-199): the end observation, the live"
+                + " frame, the replay"
+        )
+        let replay = fixture.harness.emitted[2]
+        assertSameFrame(replay, fixture.live, "S-212 the frame the phone would have received live")
+        XCTAssertEqual(replay["messageId"] as? String, "msg-rec-2", "the end row keys it")
+        XCTAssertEqual(
+            replay["sentAt"] as? String, "2026-10-08T10:00:00.000Z",
+            "the end's instant, not the catch-up's"
+        )
+        XCTAssertEqual(replay["sessionId"] as? String, "w9")
+        XCTAssertEqual(
+            replay["payload"] as? NSDictionary,
+            ["state": WatchSessionStatus.completed, "at": "2026-10-08T10:00:00.000Z"] as NSDictionary,
+            "the state and the moment the wrist ended it (D-199)"
+        )
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(replay).isEmpty,
+            "the replay is a frame the phone can read"
+        )
+        XCTAssertEqual(fixture.engine.session?.recordId, "rec-2", "nothing appended")
+        let stored = await fixture.harness.store.readAll()
+        XCTAssertEqual(
+            stored.sessions.count, 2,
+            "no row either — the replay mints nothing"
+        )
+    }
+
+    func testS212AnAbandonedSessionReplaysTheSameWay() async throws {
+        let fixture = try await endedW9(abandon: true)
+        fixture.harness.clock.advance(5400)
+
+        fixture.engine.replaySessionEnd()
+
+        XCTAssertEqual(fixture.harness.emitted.count, 3)
+        let replay = fixture.harness.emitted[2]
+        assertSameFrame(replay, fixture.live, "S-212 a given-up session replays as itself")
+        XCTAssertEqual(replay["messageId"] as? String, "msg-rec-2")
+        XCTAssertEqual(
+            replay["payload"] as? NSDictionary,
+            ["state": WatchSessionStatus.abandoned, "at": "2026-10-08T10:00:00.000Z"] as NSDictionary
+        )
+    }
+
+    func testS214ASessionStillRunningReplaysNothing() async throws {
+        let harness = Harness(sessionId: "w9")
+        let engine = await harness.runningEngine()
+        harness.clock.now = octoberInstant()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("u-squat")])
+        let frames = harness.emitted.count
+
+        engine.replaySessionEnd()
+
+        XCTAssertEqual(
+            harness.emitted.count, frames,
+            "a session in progress has no end to re-announce (D-199)"
+        )
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.active)
+    }
+
+    func testS214AWristWithNoSessionReplaysNothing() async throws {
+        let harness = Harness(sessionId: "w9")
+        let engine = await harness.runningEngine()
+
+        engine.replaySessionEnd()
+
+        XCTAssertTrue(harness.emitted.isEmpty, "there is nothing to end")
     }
 
     func testThePhonesLifecycleEndsAWristSessionAtTheMomentItNames() async throws {

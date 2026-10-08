@@ -91,6 +91,9 @@ class WatchSyncOrchestrator {
     _paths.phoneReachable = _transport.isPhoneReachable;
     await _transport.requestRoutines(since: reconnect ? _paths.syncedAt : null);
     await _sendOwedObservations();
+    // D-199: the rating observation above must reach the phone before the
+    // replay, so the copy ends with the wrist's rating already in it.
+    if (_paths.phoneReachable) _engine.replaySessionEnd();
     await _exchangeSessionState();
   }
 

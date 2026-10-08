@@ -1144,6 +1144,18 @@ public final class WatchSessionEngine {
         emit(envelope)
     }
 
+    /// D-199: re-announces how the held session ended, from its stored terminal
+    /// row, so a phone that missed the live frame ends its copy. The frame is
+    /// the live frame's own (same `messageId`, `sentAt`, `at`); nothing is
+    /// minted and nothing is queued. An active session, or none, says nothing.
+    public func replaySessionEnd() {
+        guard let row = current,
+              row.status == WatchSessionStatus.completed
+                || row.status == WatchSessionStatus.abandoned
+        else { return }
+        emitLifecycle(row, state: row.status)
+    }
+
     // MARK: - Observations
 
     /// Persists `event` and emits it as an `observations_up` message.

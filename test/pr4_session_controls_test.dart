@@ -5,18 +5,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
+import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
+import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
 import 'package:omnitrain/widgets/session/effort_rating_sheet.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_rest_notification_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/sync_protocol_harness.dart';
+import 'helpers/watch_capture_import_harness.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -788,6 +792,165 @@ void main() {
           find.byType(EffortRatingSheet),
           findsNothing,
           reason: 'S-174 the phone must not prompt for a rating it already has',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'S-213 the end the wrist re-announces at its next catch-up leaves the '
+      'screen for one summary carrying the wrist\'s rating',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        // The phone's own session is open and holds nothing — the one shape
+        // D-10 lets the wrist's session replace.
+        final harness = await _pumpSession(repo, emptySession: true);
+        final bridge = WatchSessionAdoptionBridge(repository: repo)
+          ..bindWorkoutState(harness.workoutState);
+        final exercise = (await repo.getExercises()).first;
+
+        final outcome = await bridge.consider({
+          'sessionId': 'w9',
+          'status': WatchSessionStatus.active,
+          'revision': 1,
+          'currentExerciseIndex': 0,
+          'exercises': <Map<String, Object?>>[
+            <String, Object?>{
+              'sessionExerciseId': 'u-squat',
+              'exerciseId': exercise.id,
+              'name': exercise.name,
+              'capabilities': const ['sets', 'reps', 'load'],
+            },
+          ],
+          'entries': <Object?>[],
+          'timers': <String, Object?>{},
+        });
+        expect(outcome, WatchSessionAdoption.adopted);
+        expect(harness.workoutState.currentSession?.id, 'w9');
+
+        // S-216's order at the phone: the owed rating lands on the copy before
+        // the end frame does, through the inbox the router hands it to.
+        final inbox = WatchSessionInbox(
+          repository: repo,
+          transport: CaptureTransport(),
+          validator: loadProtocolValidator(),
+          clock: () => DateTime.utc(2026, 10, 8, 10),
+          idFactory: () => 'msg-phone-1',
+          // A failure inside the inbox fails the test where it happened.
+          onFailure: Error.throwWithStackTrace,
+          phoneOwnsSession: (sessionId) =>
+              harness.workoutState.currentSession?.id == sessionId,
+        );
+        await inbox.receive(
+          observationsUp('w9', <Map<String, Object?>>[
+            <String, Object?>{
+              'entryId': 'rating-w9',
+              'eventId': 'rating-w9',
+              'kind': 'effort_rating',
+              'loggedAt': '2026-10-08T10:00:00Z',
+              'rating': 4,
+            },
+          ], messageId: 'msg-rating-w9'),
+        );
+        expect(
+          (await repo.getSession('w9'))?.sessionFeeling,
+          4,
+          reason:
+              'S-216 the wrist\'s rating is on the phone\'s copy before the '
+              'end frame arrives, which is what the summary will read',
+        );
+
+        final nav = _RouteAdder();
+        await _pushSessionRoute(tester, harness, observer: nav);
+        final routesAtMount = nav.added;
+
+        // The wrist's end, replayed at its next catch-up: the same frame the
+        // wrist sent when it ended, which the router hands to this bridge.
+        final replay = <String, Object?>{
+          'protocolVersion': SyncProtocolValidator.protocolVersion,
+          'messageId': 'msg-rec-2',
+          'sessionId': 'w9',
+          'type': 'session_lifecycle',
+          'origin': 'watch',
+          'sentAt': '2026-10-08T10:00:00.000Z',
+          'payload': <String, Object?>{
+            'state': WatchLifecycleState.completed,
+            'at': '2026-10-08T10:00:00.000Z',
+          },
+        };
+        await bridge.onLifecycle(replay);
+
+        await tester.pump();
+        expect(
+          nav.added,
+          routesAtMount + 1,
+          reason:
+              'S-213 the re-announced end ends the phone\'s copy and opens '
+              'exactly one route — the summary',
+        );
+
+        await _pumpUntil(
+          tester,
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await _pumpUntil(tester, find.text('4 / 5'));
+
+        expect(
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+          findsOneWidget,
+          reason: 'S-213 one summary, not two, for one end',
+        );
+        expect(
+          find.byType(WorkoutSessionScreen),
+          findsNothing,
+          reason: 'S-213 the session route is replaced, not left beneath',
+        );
+        expect(
+          find.text('4 / 5'),
+          findsWidgets,
+          reason:
+              'S-213 the summary shows the rating the wrist recorded, carried '
+              'into the copy before the bridge ended it',
+        );
+        expect(
+          find.byType(EffortRatingSheet),
+          findsNothing,
+          reason: 'S-213 the phone must not prompt for a rating it already has',
+        );
+        final endedAtMs = (await repo.getSession('w9'))!.endedAtMs;
+        expect(
+          endedAtMs,
+          isNotNull,
+          reason: 'S-213 the phone\'s copy carries the end',
+        );
+
+        // S-215: the next catch-up replays the same frame, and the phone reads
+        // it as the end it already holds.
+        await bridge.onLifecycle(replay);
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+
+        expect(
+          nav.added,
+          routesAtMount + 1,
+          reason: 'S-215 the repeat opens no second route',
+        );
+        expect(
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+          findsOneWidget,
+          reason: 'S-215 the screen it already shows is the only summary',
+        );
+        expect(
+          find.text('4 / 5'),
+          findsWidgets,
+          reason: 'S-215 and it still carries the wrist\'s rating',
+        );
+        expect(
+          (await repo.getSession('w9'))!.endedAtMs,
+          endedAtMs,
+          reason: 'S-215 the copy keeps the first end — a repeat is not a new end',
         );
         expect(tester.takeException(), isNull);
       },

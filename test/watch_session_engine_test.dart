@@ -2173,6 +2173,118 @@ void main() {
       );
     });
   });
+
+  group('S-212 the replay is the live end frame, not a new event', () {
+    /// The S-212 fixture: a wrist holding `w9`, ended at 10:00 while the phone
+    /// was out of reach, asked for its end again at 11:30.
+    Future<
+      ({_Harness harness, WatchSessionEngine engine, Map<String, Object?> live})
+    >
+    endedW9({bool abandon = false}) async {
+      final harness = _Harness(sessionId: 'w9');
+      final engine = await harness.runningEngine();
+      harness.clock.now = DateTime.utc(2026, 10, 8, 10);
+      final started = await engine.createSession(
+        modality: null,
+        exercises: [_exercise('u-squat')],
+      );
+      expect(started.sessionId, 'w9', reason: 'the fixture mints w9');
+      harness.emitted.clear();
+
+      final ended = abandon
+          ? await engine.abandonSession()
+          : await engine.finishSession();
+
+      expect(ended.recordId, 'rec-2', reason: "the fixture's terminal row");
+      expect(
+        harness.emitted,
+        hasLength(1),
+        reason: 'the fixture ends it once, live, and the frame is the one to replay',
+      );
+      return (harness: harness, engine: engine, live: harness.emitted.single);
+    }
+
+    test('S-212 the replay repeats the live frame field for field', () async {
+      final ended = await endedW9();
+      ended.harness.clock.now = DateTime.utc(2026, 10, 8, 11, 30);
+
+      ended.engine.replaySessionEnd();
+
+      expect(
+        ended.harness.emitted,
+        hasLength(2),
+        reason: 'exactly one more frame (D-199)',
+      );
+      final replay = ended.harness.emitted.last;
+      expect(
+        replay,
+        ended.live,
+        reason: 'the frame the phone would have received live, to the byte',
+      );
+      expect(replay['messageId'], 'msg-rec-2', reason: 'the end row keys it');
+      expect(
+        replay['sentAt'],
+        '2026-10-08T10:00:00.000Z',
+        reason: "the end's instant, not the catch-up's",
+      );
+      expect(replay['sessionId'], 'w9');
+      expect(replay['payload'], {
+        'state': 'completed',
+        'at': '2026-10-08T10:00:00.000Z',
+      }, reason: 'the state and the moment the wrist ended it (D-199)');
+      expect(ended.engine.session!.recordId, 'rec-2', reason: 'nothing appended');
+      expect(
+        (await ended.harness.store.readAll()).sessions,
+        hasLength(2),
+        reason: 'no row either — the replay mints nothing',
+      );
+    });
+
+    test('S-212 an abandoned session replays the same way', () async {
+      final ended = await endedW9(abandon: true);
+      ended.harness.clock.now = DateTime.utc(2026, 10, 8, 11, 30);
+
+      ended.engine.replaySessionEnd();
+
+      expect(ended.harness.emitted, hasLength(2));
+      final replay = ended.harness.emitted.last;
+      expect(replay, ended.live, reason: 'a given-up session replays as itself');
+      expect(replay['messageId'], 'msg-rec-2');
+      expect(replay['payload'], {
+        'state': 'abandoned',
+        'at': '2026-10-08T10:00:00.000Z',
+      });
+    });
+
+    test('S-214 a session still running replays nothing', () async {
+      final harness = _Harness(sessionId: 'w9');
+      final engine = await harness.runningEngine();
+      harness.clock.now = DateTime.utc(2026, 10, 8, 10);
+      await engine.createSession(
+        modality: null,
+        exercises: [_exercise('u-squat')],
+      );
+      final frames = [...harness.emitted];
+
+      engine.replaySessionEnd();
+
+      expect(
+        harness.emitted,
+        frames,
+        reason: 'a session in progress has no end to re-announce (D-199)',
+      );
+      expect(engine.session!.status, WatchSessionStatus.active);
+    });
+
+    test('S-214 a wrist with no session replays nothing', () async {
+      final harness = _Harness(sessionId: 'w9');
+      final engine = await harness.runningEngine();
+
+      engine.replaySessionEnd();
+
+      expect(harness.emitted, isEmpty, reason: 'there is nothing to end');
+    });
+  });
 }
 
 /// Names that may not appear on a synced entity: a record is appended and never

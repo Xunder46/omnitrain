@@ -349,6 +349,20 @@ class WatchSessionEngine {
     lifecycle: WatchLifecycleState.abandoned,
   );
 
+  /// D-199: re-announces how the held session ended, from its stored terminal
+  /// row, so a phone that missed the live frame ends its copy. The frame is the
+  /// live frame's own (same `messageId`, `sentAt`, `at`); nothing is minted and
+  /// nothing is queued. An active session, or none, says nothing.
+  void replaySessionEnd() {
+    final row = _session;
+    if (row == null ||
+        (row.status != WatchSessionStatus.completed &&
+            row.status != WatchSessionStatus.abandoned)) {
+      return;
+    }
+    _emitLifecycleIfConformant(row, row.status);
+  }
+
   /// Puts [slot] into the session's exercise ladder.
   ///
   /// A slot id already present is dropped rather than added twice, which is

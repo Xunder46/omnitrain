@@ -184,6 +184,72 @@ private struct NotAPlistValue {
     let text = "nope"
 }
 
+/// The S-216 wire: one list, in the order the wrist handed each frame over. The
+/// catch-up's own sends and the engine's emissions land in it alike, because a
+/// synchronous sink is exactly what the app's `WatchEmitForwarder` is fed by —
+/// that forwarder's own ordering is S-020's test's, not this one's.
+private final class WireLog: WatchSyncTransport {
+    var isPhoneReachable = false
+    private(set) var frames: [[String: Any]] = []
+    private(set) var requested: [Date?] = []
+    private(set) var snapshotRequests = 0
+
+    func requestRoutines(since: Date?) async { requested.append(since) }
+
+    func requestSnapshot() async { snapshotRequests += 1 }
+
+    func send(_ envelope: [String: Any]) async { frames.append(envelope) }
+
+    /// What the engine is given as its `onEmit`.
+    var sink: WatchMessageSink {
+        { [weak self] envelope in self?.frames.append(envelope) }
+    }
+}
+
+/// The S-216 fixture: a wrist wired the way the app wires it — one engine, its
+/// start paths, and the orchestrator over the log above — holding `w9`.
+private final class LoggedWrist {
+    let clock = TestClock(testInstant())
+    let store = InMemoryWatchSessionStore()
+    let wire = WireLog()
+    private var ids = 0
+
+    private(set) var engine: WatchSessionEngine!
+    private(set) var paths: WatchSessionStartPaths!
+    private(set) var orchestrator: WatchSyncOrchestrator!
+
+    init() {
+        build()
+    }
+
+    private func build() {
+        engine = WatchSessionEngine(
+            store: store,
+            onEmit: wire.sink,
+            validator: Harness.validator(),
+            clock: clock.call,
+            idFactory: { [weak self] in
+                guard let self else { return UUID().uuidString }
+                self.ids += 1
+                return "rec-\(self.ids)"
+            },
+            sessionIdFactory: { "w9" }
+        )
+        paths = WatchSessionStartPaths(
+            engine: engine,
+            store: store,
+            validator: Harness.validator(),
+            clock: clock.call,
+            idFactory: { [weak self] in
+                guard let self else { return UUID().uuidString }
+                self.ids += 1
+                return "cat-\(self.ids)"
+            }
+        )
+        orchestrator = WatchSyncOrchestrator(transport: wire, paths: paths, engine: engine)
+    }
+}
+
 final class WatchConnectivityBridgeTests: XCTestCase {
 
     // MARK: - S-102 a first sync asks for routines with no `since`
@@ -923,6 +989,127 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         await orchestrator.catchUp(reachable: true)
         XCTAssertEqual(transport.requested.count, 2, "a later trigger is not dropped")
         XCTAssertEqual(transport.snapshotRequests, 2, "and runs a fresh pass")
+    }
+
+    // MARK: - S-216/S-212/S-215 the wrist's end is re-announced at its catch-up
+
+    func testS216TheEndIsReAnnouncedBehindTheWristsOwedObservations() async throws {
+        let wrist = LoggedWrist()
+        wrist.clock.now = octoberInstant()
+        let started = await wrist.engine.createSession(modality: nil, exercises: [exercise("u-squat")])
+        XCTAssertEqual(started.sessionId, "w9", "the fixture's session")
+
+        // Airplane mode: the wrist rates and ends `w9`, so the rating and the end
+        // are both owed. The live frames are still handed to the radio, which
+        // refuses them while apart (D-201) — this double records what it was
+        // asked to carry.
+        _ = try await wrist.engine.appendObservation(ratingEvent(wrist.clock, entryId: "rating-w9"))
+        _ = await wrist.engine.finishSession()
+        let live = try XCTUnwrap(
+            wrist.wire.frames.last { $0["type"] as? String == "session_lifecycle" },
+            "the fixture ends it, live"
+        )
+
+        // The catch-up while the pair is apart.
+        wrist.clock.advance(5400)
+        let apartRequests = wrist.wire.requested.count
+        let apartStart = wrist.wire.frames.count
+        await wrist.orchestrator.sync(reconnect: true)
+        let apart = Array(wrist.wire.frames[apartStart...])
+
+        XCTAssertEqual(
+            wrist.wire.requested.count, apartRequests + 1,
+            "S-212 the catch-up opens by asking for the routines"
+        )
+        XCTAssertEqual(
+            apart.first?["type"] as? String, "observations_up",
+            "S-212 what the wrist owes goes out first"
+        )
+        XCTAssertTrue(
+            apart.contains { $0["type"] as? String == "session_snapshot" },
+            "S-212 the exchange still answers with the wrist's own session"
+        )
+        XCTAssertFalse(
+            apart.contains { $0["type"] as? String == "session_lifecycle" },
+            "S-216 while the pair is apart nothing is re-announced (D-199)"
+        )
+
+        // Reachable: the owed rating, then the wrist's own end frame, then the
+        // exchange. The fixture reads the order frames were composed in; on the
+        // radio the forwarder may give the snapshot the wire first, which the
+        // phone's `consider` ignores for a status it already holds (D-199).
+        wrist.wire.isPhoneReachable = true
+        let reachableRequests = wrist.wire.requested.count
+        let reachStart = wrist.wire.frames.count
+        await wrist.orchestrator.sync(reconnect: true)
+        let carried = Array(wrist.wire.frames[reachStart...])
+
+        XCTAssertEqual(
+            wrist.wire.requested.count, reachableRequests + 1,
+            "S-212 the later catch-up asks for the routines again"
+        )
+        XCTAssertEqual(
+            carried.first?["type"] as? String, "observations_up",
+            "S-216 the rating leaves before the copy ends"
+        )
+        XCTAssertTrue(
+            carried.contains { $0["type"] as? String == "session_snapshot" },
+            "S-212 the exchange follows"
+        )
+        let frames = carried.enumerated().filter { $0.element["type"] as? String == "session_lifecycle" }
+        XCTAssertEqual(frames.count, 1, "S-212 exactly one end frame per catch-up")
+        let index = try XCTUnwrap(frames.first?.offset, "the replay arrived")
+        let lastOwed = try XCTUnwrap(
+            carried.lastIndex { $0["type"] as? String == "observations_up" },
+            "the owed observations were carried"
+        )
+        XCTAssertGreaterThan(
+            index, lastOwed,
+            "S-216 the replay follows everything the wrist owed (D-199)"
+        )
+
+        let replay = carried[index]
+        assertSameFrame(
+            replay, live,
+            "S-212 the catch-up repeats the live end frame, field for field"
+        )
+        XCTAssertEqual(replay["messageId"] as? String, "msg-rec-2", "the end row keys it")
+        XCTAssertEqual(
+            replay["sentAt"] as? String, "2026-10-08T10:00:00.000Z",
+            "S-212 the end's own instant, not the catch-up's"
+        )
+        XCTAssertEqual(
+            replay as NSDictionary,
+            [
+                "protocolVersion": 1,
+                "messageId": "msg-rec-2",
+                "sessionId": "w9",
+                "type": "session_lifecycle",
+                "origin": "watch",
+                "sentAt": "2026-10-08T10:00:00.000Z",
+                "payload": ["state": "completed", "at": "2026-10-08T10:00:00.000Z"],
+            ] as NSDictionary,
+            "S-212 the replayed frame itself, for the evidence file"
+        )
+
+        // S-215: the next catch-up repeats the same frame, and the wrist's own
+        // copy stays the end it recorded.
+        wrist.clock.advance(300)
+        let repeatStart = wrist.wire.frames.count
+        await wrist.orchestrator.catchUp(reachable: true)
+        let repeats = wrist.wire.frames[repeatStart...].filter { $0["type"] as? String == "session_lifecycle" }
+
+        XCTAssertEqual(repeats.count, 1, "S-215 one re-announcement per catch-up")
+        assertSameFrame(
+            try XCTUnwrap(repeats.first), live,
+            "S-215 the same message id at the same instant as the first"
+        )
+        XCTAssertEqual(
+            wrist.engine.session?.status, WatchSessionStatus.completed,
+            "S-215 the wrist's copy is still the end it recorded"
+        )
+        let stored = await wrist.store.readAll()
+        XCTAssertEqual(stored.sessions.count, 2, "S-215 the repeat mints no row")
     }
 }
 

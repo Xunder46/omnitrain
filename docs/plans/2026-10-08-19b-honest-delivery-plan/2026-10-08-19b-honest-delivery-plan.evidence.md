@@ -121,20 +121,69 @@ Mutation rows. Each of (a)–(e) was run against the **full** suite (`gateway.sh
 
 | S-id | Test file and name (Dart / Swift) | Red at base | Green at head | The frame (verbatim: `messageId`, `at`, payload) |
 | --- | --- | --- | --- | --- |
-| S-212 |  |  |  |  |
-| S-213 |  |  |  |  |
-| S-214 (green at base) |  |  |  | — |
-| S-215 (the deliberate extra frame) |  |  |  |  |
-| S-216 |  |  |  |  |
+| S-212 | `test/watch_session_engine_test.dart`, group `S-212 the replay is the live end frame, not a new event` (`:2177`), tests `S-212 the replay repeats the live frame field for field` (`:2207`) and `S-212 an abandoned session replays the same way` (`:2243`); the same frame at the orchestrator: `test/live_mirroring_test.dart`, group `S-216 the catch-up re-announces the wrist's end behind what it owes` (`:1262`) › `S-216 the rating is announced before the end frame, and the exchange follows it` (`:1310`); Swift `WatchSessionEngineTests.testS212TheReplayRepeatsTheLiveFrameFieldForField` (`:1155`), `…AnAbandonedSessionReplaysTheSameWay` (`:1191`), and `WatchConnectivityBridgeTests.testS216TheEndIsReAnnouncedBehindTheWristsOwedObservations` (`:996`) | RED — `gateway prove-red HEAD test test/live_mirroring_test.dart` → `RED AT HEAD`, three failures: `:1388`, `:1416` and the reachability gate, `Actual: []` where the replay is expected, and the step log `['routines', 'send:observations_up', 'send:session_snapshot']` (the replay's step absent, the snapshot the only carrier of the end). The engine file and the Swift files cannot be pinned at the base — they do not compile without `replaySessionEnd` (`prove-red 0f7aaff test test/watch_session_engine_test.dart` → load failure) — so their pins are the mutation rows below | passed | `{'protocolVersion': 1, 'messageId': 'msg-rec-2', 'sessionId': 'w9', 'type': 'session_lifecycle', 'origin': 'watch', 'sentAt': '2026-10-08T10:00:00.000Z', 'payload': {'state': 'completed', 'at': '2026-10-08T10:00:00.000Z'}}` — `messageId` = `msg-<terminal rowId>`, `sentAt`/`payload.at` = the terminal row's own `recordedAt`; Swift asserts the same dictionary whole (`["protocolVersion": 1, "messageId": "msg-rec-2", "sessionId": "w9", "type": "session_lifecycle", "origin": "watch", "sentAt": "2026-10-08T10:00:00.000Z", "payload": ["state": "completed", "at": "2026-10-08T10:00:00.000Z"]]`). The pair harness runs at its own clock and shows the same frame with `sentAt`/`at` `2026-07-13T06:00:00.000Z`. No new row and no new id per replay (the wrist's `rec-2` survives) |
+| S-213 | `test/pr4_session_controls_test.dart` › `testWidgets('S-213 the end the wrist re-announces at its next catch-up leaves the screen for one summary carrying the wrist's rating')` (`:800`) | green at base **by design**: `gateway prove-red HEAD test test/pr4_session_controls_test.dart` → `GREEN AT HEAD`. D-199 puts the whole change on the wrist ("the phone needs no new rule"); what the phone does with the frame is consumption, and it is exactly the frame S-216 proves is composed and carried (red, above) | passed | the router hands the frame to `WatchSessionAdoptionBridge.onLifecycle`, the importer folds the rating into the phone's copy, and the screen leaves for one summary: `WorkoutSessionScreen` gone, one `SessionSummaryScreen`, the summary shows `4 / 5`, no `EffortRatingSheet`, and the phone's `w9` carries an `endedAtMs` |
+| S-214 (green at base) | `test/watch_session_engine_test.dart`, same group › `S-214 a session still running replays nothing` (`:2259`) and `S-214 a wrist with no session replays nothing` (`:2279`); Swift `WatchSessionEngineTests.testS214ASessionStillRunningReplaysNothing` (`:1207`), `…AWristWithNoSessionReplaysNothing` (`:1223`) | pinned by mutation, not by the base commit (the API does not exist there): (a′) Dart → RED at `test/watch_session_engine_test.dart:2271`, reason `a session in progress has no end to re-announce (D-199)`; (a″) Swift → RED at `WatchSessionEngineTests.swift:1216`, `XCTAssertEqual failed: ("3") is not equal to ("2") - a session in progress h…` | passed | — (nothing is composed: a running row's replay is refused, and a wrist with no session has nothing to compose) |
+| S-215 (the deliberate extra frame) | `test/live_mirroring_test.dart`, same group › `S-215 every catch-up repeats the same frame, and the phone stays still` (`:1396`); the repeat half of `WatchConnectivityBridgeTests.testS216TheEndIsReAnnouncedBehindTheWristsOwedObservations` | RED — the same `prove-red HEAD` run, `:1416`: `Actual: []` where the two identical frames are expected | passed | two catch-ups carry **two** `session_lifecycle` frames, identical to each other and to the live one (`msg-rec-2`, `2026-07-13T06:00:00.000Z` twice); the wrist's row stays `completed`, two stored rows, nothing minted by the repeat, and the phone's state is read before and after the repeat and compared |
+| S-216 | `test/live_mirroring_test.dart`, group `:1262`, tests `:1310` (the order), `S-216 the replay is gated on reachability: an apart sync re-announces nothing, and the later one does` (`:1362`); Swift `WatchConnectivityBridgeTests.testS216TheEndIsReAnnouncedBehindTheWristsOwedObservations` (`:996`) | RED — `gateway prove-red HEAD test test/live_mirroring_test.dart` → `RED AT HEAD`, `:1388` and `:1416` (+ the gate test), each for the reason it guards | passed | the reachable catch-up's exact step log: `['routines', 'send:observations_up', 'send:session_lifecycle', 'send:session_snapshot']` — the owed rating first, the replay behind it, the exchange last; unreachable → no replay at all (`steps` and `sent` both show none), and the wrist still holds its end |
 
 Mutation rows: replay unconditionally (S-214 red) · replay before the observations (S-216 red).
+
+| Mutation | Where | Expected red S-id | Result (failure line, reason, restore) |
+| --- | --- | --- | --- |
+| (a) the terminal-status guard removed, `_emitLifecycleIfConformant(row, row.status)` kept (`replaySessionEnd`, `:354-360`) | `lib/watch/session/watch_session_engine.dart` | S-214 | **not detected** — `gateway test test/watch_session_engine_test.dart` → 46 passed. Finding, recorded because it is one: the emit path refuses a non-terminal lifecycle anyway — `_emitLifecycleIfConformant` (`:1201-1208`) validates the composed envelope and drops it (`active` is not a state the schema admits for a `session_lifecycle`; Swift's `emitLifecycle` does the same) — so the guard is the second line of defence, and D-199's rule holds only while both are in place. The mutant with teeth is the one that ignores the row's status: |
+| (a′) `_emitLifecycleIfConformant(row, WatchSessionStatus.completed)` — a running row replays as an end | same method | S-214 | RED — `test/watch_session_engine_test.dart:2271`, reason `a session in progress has no end to re-announce (D-199)`: actual = the start lifecycle, the snapshot **and** `{'protocolVersion': 1, 'messageId': 'msg-rec-1', 'sessionId': 'w9', 'type': 'session_lifecycle', 'origin': 'watch', 'sentAt': '2026-10-08T10:00:00.000Z', 'payload': {'state': 'completed', 'at': '2026-10-08T10:00:00.000Z'}}` — one frame too many. Restored exactly; the Dart files then ran `+100: All tests passed!` |
+| (a″) guard narrowed to `guard let row = current else { return }` and `emitLifecycle(row, state: WatchSessionStatus.completed)` | `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`, `replaySessionEnd()` | S-214 | RED — `WatchSessionEngineTests.swift:1216`, `XCTAssertEqual failed: ("3") is not equal to ("2") - a session in progress h…`. Restored exactly |
+| (b) `if (_paths.phoneReachable) _engine.replaySessionEnd();` moved above `await _sendOwedObservations();` | `lib/watch/start/watch_sync_orchestrator.dart`, `sync` | S-216 | RED — `test/live_mirroring_test.dart:1322`: expected `['routines', 'send:observations_up', 'send:session_lifecycle', 'send:session_snapshot']`, actual `['routines', 'send:session_lifecycle', 'send:observations_up', 'send:session_snapshot']`. Restored exactly; both Dart files then ran `+100: All tests passed!` |
+| (c) the same call moved above the `pendingObservations()` loop | `watch/watchos/Sources/WatchSessionEngine/WatchSyncOrchestrator.swift`, `sync` | S-216 | RED — `WatchConnectivityBridgeTests.swift:1051` (`XCTAssertEqual failed: ("Optional("session_lifecyc…")` — the first carried frame is the replay, not the owed observation) and `:1066` (`XCTAssertGreaterThan failed: ("0") is not greater …`). Restored exactly; `gateway swift-test` then `Executed 348 tests, with 0 failures` |
+
+Why (c) needed a fixture of its own: through the production `WatchEmitForwarder` the emit is enqueued on
+its own `Task`, so on the wire the replay can land after the snapshot wherever it is composed — a
+wire-order assertion could not see the reordering, and the existing `Harness`'s local `emitted` array
+never sees a replay at all. The bridge fixture therefore reads a synchronous sink (`WireLog`, a
+`WatchSyncTransport` that is both the send log and the engine's `onEmit`), which records the composition
+order exactly as the Dart twin's single list does; the forwarder's own ordering remains S-020's test's.
+
+What landed: `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift` +12 (`replaySessionEnd()`:
+the terminal-status guard, then `emitLifecycle(row, state: row.status)` over the stored row);
+`WatchSyncOrchestrator.swift` +4 (the replay between the owed observations and the snapshot branch,
+gated on `paths.phoneReachable`); `lib/watch/session/watch_session_engine.dart` +14 and
+`lib/watch/start/watch_sync_orchestrator.dart` +3 (the twin's halves); tests
+`WatchSessionEngineTests.swift` +160, `WatchConnectivityBridgeTests.swift` +187,
+`test/watch_session_engine_test.dart` +112, `test/live_mirroring_test.dart` +197,
+`test/pr4_session_controls_test.dart` +163. `gateway git-diff --stat` ends at 9 files, 848 insertions,
+**4 deletions** — the four are the pair harness's `_Session` constructor and `onEmit:`/`sessionIdFactory`
+lines this phase parameterised, every other file is insertions only, and the figure is identical before
+and after every mutation, which is what shows the restores were byte-identical. `gateway git-status`
+lists those nine modified paths and no untracked file. No phone production change was needed: the router
+already routes `session_lifecycle` to the adoption bridge, and neither `WatchSessionAdoptionBridge` nor
+`WatchSessionImporter` took a line — which is exactly why S-213 is green at base.
+
+Phase totals: `gateway test` 4125 passing / 1 skipped (baseline) → **4133 passing / 1 skipped, 0 failed**
+(`01:46`, exit 0, `.work/gateway/test-20261008-060916-86918.log`); `gateway swift-test` 343 / 0 →
+**Executed 348 tests, with 0 failures**; `gateway lint` 196 / 0 → **196 issues found** (equal to the
+baseline, and no issue in that log names a file this phase touched); the plan's named Done Criteria set
+`gateway test test/watch_session_auto_push_test.dart test/watch_session_engine_test.dart test/live_mirroring_test.dart test/watch_session_projection_test.dart test/watch_resume_sync_test.dart`
+→ `01:01 +198: All tests passed!` (`.work/gateway/test-20261008-060906-86757.log`); the invariant
+`grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` → nothing.
 
 Base frame order for a catch-up (recorded once, so S-212 can be compared against it — read from the
 double's list before any Phase 3 change):
 
 ```
-<fill in the base order, e.g. routines request → owed observations → snapshot request/answer>
+routines request → owed observations → snapshot request/answer
 ```
+
+The prove-red run's own failing log shows that order verbatim as the base's actual:
+`['routines', 'send:observations_up', 'send:session_snapshot']` — the owed rating, then the exchange,
+with nothing between them; Phase 3 inserts the replay between the two.
+
+Phase 3's own residue (the formal sweep is Phase 4 item 6): `grep -rn "replaySessionEnd" lib/ watch/watchos/`
+returns exactly four production hits — the two definitions
+(`WatchSessionEngine.swift:1151`, `watch_session_engine.dart:356`) and the two `sync` call sites
+(`WatchSyncOrchestrator.swift:102`, `watch_sync_orchestrator.dart:96`) — plus four Swift test call sites;
+and no `Future.delayed`, `Task.sleep` or `DispatchQueue` appears in any of the four touched production
+files, so trap (a) holds (the re-announcement rides the catch-up that already exists).
 
 ## Phase 4 — docs, contract and the residue sweep
 

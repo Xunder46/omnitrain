@@ -97,6 +97,10 @@ public final class WatchSyncOrchestrator {
             await transport.send(message)
         }
 
+        // D-199: the rating observation above must reach the phone before the
+        // replay, so the copy ends with the wrist's rating already in it.
+        if paths.phoneReachable { engine.replaySessionEnd() }
+
         if engine.session == nil {
             await transport.requestSnapshot()
         } else {
