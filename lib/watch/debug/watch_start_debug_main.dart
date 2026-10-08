@@ -249,7 +249,8 @@ class _WatchStartDebugHarness extends StatefulWidget {
       _WatchStartDebugHarnessState();
 }
 
-class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
+class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness>
+    with WidgetsBindingObserver {
   final WatchSessionStore _store = InMemoryWatchSessionStore();
   final _DebugTransport _transport = _DebugTransport(false);
 
@@ -275,7 +276,23 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _sync();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// D-183 in the harness: the resumed app catches the wrist up, the same
+  /// trigger the real shell calls on its scene phase.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _orchestrator.catchUp(reachable: true);
+    }
   }
 
   /// The launch sequence: restore, then take the catalogs the phone sent.

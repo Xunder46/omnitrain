@@ -467,11 +467,113 @@ Runs at the fix run's head:
 | full suite | `gateway.sh test` | `+4103 ~1: All tests passed!` (0 failures; the `~1` skip is pre-existing) |
 | watch package | not run | no `.swift` file changed in this run |
 
+## Phase 5b — the wrist catches up at its next activation (D-183; S-186, S-187, S-188)
+
+Scope: both stacks' orchestrators, both entry points, both test files, and the D-96 paragraph on the
+two doc pages that carried it. Base commit `82eab68`; baselines `+4103 ~1` (flutter), 340/0 (swift),
+196 (lint).
+
+**The gate.** `WatchSyncOrchestrator.catchUp(reachable:)` keeps one gate — `guard reachable else
+{ return }` — and loses the session one; the in-flight guard (`catchUpInFlight` under `NSLock`) is
+unchanged and now carries both triggers. The Dart twin gains the same method with
+`if (!reachable || _catchUpRunning) return;` and a `try/finally` around `sync(reconnect: paths.syncedAt
+!= null)`, the flag set before the first `await`. The session material a session-less wrist needs was
+already in `sync()` (`_exchangeSessionState()` asks for a snapshot when the wrist holds none, D-104), so
+the two guards are the whole change; no new frame, field or route.
+
+**Prove-red** (the Swift surface at the phase's base — the test file only, production untouched there):
+
+```
+$ gateway.sh prove-red 82eab68 swift-test --filter WatchConnectivityBridgeTests \
+    -- watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift
+RED AT 82eab68 (exit 1)
+  S-186  XCTUnwrap failed: expected non-nil value of type Date? - the wrist asks for routines at its activation   :779
+  S-187  XCTAssertEqual failed: ("0") is not equal to ("1")  :833, :834 (count, snapshotRequests)
+  S-188  XCTAssertTrue failed - the first catch-up must reach the transport  :868; 0 ≠ 1 :877, :878; 0 ≠ 2 :881, :882
+  Executed 23 tests, with 8 failures (0 unexpected) in 2.157 (2.158) seconds
+```
+
+The first attempt at that run was red by `Fatal error: Index out of range` instead: at base the routines
+list is empty and the case indexed `requested[0]` after XCTest's **non-halting** `XCTAssertEqual`, so
+the failure was a crash rather than an assertion. `XCTAssertNil(harness.transport.requested[0], …)` was
+replaced by `try XCTUnwrap(harness.transport.requested.first, "the wrist asks for routines at its
+activation")` + `XCTAssertNil(routinesRequest, …)` — a strict strengthening (nothing weakened, one
+assertion split in two), and what makes the run above an assertion red for the guarded reason.
+
+**Mutations** (the Dart method is new code, so prove-red cannot load there; the two Swift guards are
+proved by the run above *and* by these). Each mutant's line was recorded, changed, observed red,
+restored to the exact original, and the file re-run green — the restored green is the run in the table
+below it.
+
+| # | File · original line | Mutant | Red cases · observed |
+| --- | --- | --- | --- |
+| a | `lib/watch/start/watch_sync_orchestrator.dart:68` `if (!reachable \|\| _catchUpRunning) return;` | `... \|\| _engine.session == null)` (19a's pre-D-183 rule) | S-186 `Expected: [DateTime:2026-07-13 17:00:00.000Z] Actual: []` :1151 · S-187 `has length of <0>` :1199 · S-188 `has length of <0>` :1217 |
+| b | same line | `if (!reachable) return;` (drop the in-flight clause) | S-188 alone: `Expected: an object with length of <1> Actual: [3 × DateTime:…] has length of <3>` :1217; S-186/S-187 green |
+| c | same line | `if (_catchUpRunning) return;` (drop reachability) | S-187 alone: `Expected: empty Actual: [DateTime:2026-07-13 17:00:00.000Z]` :1192; S-186/S-188 green |
+| d | `watch/watchos/Sources/WatchSessionEngine/WatchSyncOrchestrator.swift:126` `guard !alreadyRunning else { return }` | `_ = alreadyRunning` | S-188 `the triggers in flight are dropped` :872, `3 ≠ 1` :877/:878, `4 ≠ 2` :881/:882 · and the pre-existing S-107 (`2 ≠ 1` :739, sends `["e-1","e-2","e-1","e-2"]` :750) — the same guard, its other customer. 11 failures, 23 tests |
+| e | `…WatchSyncOrchestrator.swift:119` `guard reachable else { return }` | `_ = reachable` | S-187 alone: `an unreachable phone is not (asked)` :826, `1 ≠ 0` :827, `2 ≠ 1` :833/:834 · plus S-107's unreachable-edge clause `3 ≠ 2` :764. 5 failures, 23 tests |
+
+Mutation (d) reddening S-107 as well is expected and wanted: 19a Phase 2's reachability-edge case and
+this phase's burst case are the two ends of one guard, and a mutant that kills one kills both. (a) is
+the phase's centre — the old rule reddens all three scenarios at once, which is exactly the behaviour
+D-183 removes.
+
+Runs at the phase's head (each after the restores; the mutations' reds are in the table):
+
+| Check | Command | Result |
+| --- | --- | --- |
+| the mirroring file (S-186/S-187/S-188 included) | `gateway.sh test test/live_mirroring_test.dart` | `+51: All tests passed!` |
+| the three scenarios alone | same file, `--plain-name "the wrist catches up at its next activation"` | `+3` green; `+2 -1` under mutant (b); `+1 -1` under (c); `+0 -3` under (a) |
+| the watch package's bridge class | `gateway.sh swift-test --filter WatchConnectivityBridgeTests` | `Executed 23 tests, with 0 failures` (0.061 s), twice — before and after the mutation runs |
+| the docs this phase touches | `gateway.sh test test/docs_indexing_contract_test.dart test/sync_protocol_fixtures_test.dart` | `+94: All tests passed!` (the size, walkthrough, roadmap and link gates included) |
+| the phase's Done Criteria set | `gateway.sh test test/live_mirroring_test.dart test/watch_session_finish_test.dart test/watch_session_adoption_bridge_test.dart test/watch_session_merge_test.dart test/watch_session_import_test.dart test/watch_nutrition_quick_log_test.dart test/watch_session_rest_timer_append_test.dart test/watch_session_auto_push_test.dart` | `+237: All tests passed!` (`.work/gateway/test-20261008-030731-38333.log`) |
+| full suite (at the head, after every restore) | `gateway.sh test` | `+4106 ~1: All tests passed!` — 0 failures; baseline `+4103 ~1` plus this phase's three Dart cases (`.work/gateway/test-20261008-030737-38450.log`, line 4749) |
+| the watch package | `gateway.sh swift-test` | `Executed 342 tests, with 0 failures` (baseline 340/0; S-108 rewritten one-for-one, S-187 and S-188 new) (`.work/gateway/swift-test-20261008-030932-43303.log`) |
+| linter | `gateway.sh lint` | `196 issues found.` = baseline; a search of the log for the five files this phase touched returns nothing (`.work/gateway/lint-20261008-030937-43360.log`) |
+| invariant sweep | ripgrep `import .*hive_workout_repository` over `lib/state`, `lib/features`, `lib/widgets`, `lib/core` (file tools) | no matches |
+| diff footprint | `gateway.sh git-diff --stat` | 10 files, 549 insertions(+), 43 deletions(−) — the two orchestrators, the two entry points, the two test files, the two docs, and the plan + evidence pair (the plan's Progress and Assumption Log edits are the last two files in the count) |
+
+**Test rename, for the record.** `testS108AWristWithNoSessionDoesNotSyncOnItsOwn` asserted the
+behaviour D-183 removes, so it became the three cases above rather than surviving as a counter-example:
+`testS186AWristWithNoSessionAsksAtItsNextActivation`, `testS187AnUnreachableActivationIsANoOpAndTheEdge
+DoesTheWork`, `testS188AnActivationBurstIsDroppedAndTheLaterTriggerRuns`. The class's MARK now reads
+"S-107/S-186 the wrist's activation catch-up (D-96, D-183)". `testS107TheWristCatchesUpOnAReachability
+EdgeOnce` is untouched and still covers the edge and the in-flight drop.
+
+**Fixtures, stack by stack.** The Dart pair (`_p1PhoneState()`: session `p1`, active, revision 4, the
+ladder `u-squat` (2 sets) + `u-press` (3 sets)) installs `fixtures/valid/routines_down.json` on the
+wrist, so `paths.syncedAt != null` and the activation is reconnect-shaped — the request carries
+`since == syncedAt`. The Swift twin keeps the harness's bare launch, so its first activation is a
+first pass and carries `since == nil`. Both are one activation of a wrist that holds nothing; the
+`since` value differs because the fixtures do, and each asserts the value its own fixture produces.
+
+**Doc sentences this phase added, and the test each names.**
+
+| Doc | Sentence (abridged) | Test named |
+| --- | --- | --- |
+| `docs/watch_session_sync.md` | "A reachability edge or the wrist's own activation runs the same catch-up the Sync button runs … a wrist holding none asks the phone for its workout instead of doing nothing" | `test/live_mirroring_test.dart` S-186/S-187/S-188 (both test names, file and group), the three Swift twins, `testS107TheWristCatchesUpOnAReachabilityEdgeOnce` |
+| `docs/watch_session_sync.md` | "A reset the transport cannot carry leaves the wrist on W until the next pass, the next reconnect's resume, **or either device's next unlock or app focus** sends it" | S-186 (the wrist-side half: the activation reaches the phone) |
+| `docs/watch_session_sync.md` | "It resolves itself at the wrist's next unlock or app focus when the phone has a session of its own: the wrist's announcement is answered with the reset" (the discard heads-up) | `test/watch_session_finish_test.dart` `S-189 the wrist's own announcement is answered with the reset` |
+| `watch/sync_protocol/PROTOCOL.md` 2026-10-08 row | "The same answer reaches the wrist without a push as well … the new trigger adds nothing to the wire" | the same six 5b names |
+
+No new PROTOCOL version row, field, schema, validator rule or fixture: the trigger is local, and the
+frames are 19a Phase 2's. `docs/state_management/watch_surface.md` is untouched — the activation hook
+is the app target's, and the page's own reachability note already covers "syncs when the phone is
+reachable".
+
 ## Not covered by these checks (state it, never claim it)
 
 - `ios/OmniTrain Watch App/ContentView.swift` (the SwiftUI app target and its `onWatchResume`
   wiring around `:167-180`) is outside `swift-test`; only the governor's `xcodebuild` watchOS
   simulator build covers it. A phase touching it must say so and ask the governor.
+- **Phase 5b · the activation hook is glue with no agent-runnable check.**
+  `ContentView.swift`'s `.onChange(of: scenePhase) { _, phase in if phase == .active {
+  host.catchUpOnActivation() } }` (and `WatchAppHost.catchUpOnActivation()` itself) and
+  `lib/watch/debug/watch_start_debug_main.dart`'s `WidgetsBindingObserver`
+  `didChangeAppLifecycleState` → `catchUp(reachable: true)` are both untested here: the first is
+  the watchOS app target (governor's `xcodebuild`), the second is a `main()` entry point no test
+  imports. Both do nothing but call the orchestrator method this phase's tests cover, with
+  reachability read at the call site as `phoneReachability == .reachable`.
 - A pair that never reconnects: the reset stays owed and each side keeps its own session.
   19b makes delivery durable.
 - The Dart twin emits nothing when it applies a lifecycle (`watch_session_engine.dart:583`)

@@ -152,10 +152,23 @@ final class WatchAppHost: ObservableObject {
     func noteSurfaceChange() {
         revision += 1
     }
+
+    /// Catches the wrist up whenever the app becomes active (D-183), with what
+    /// the radio last observed: the same trigger the reachability edge uses, so
+    /// a wrist that woke beside a reachable phone converges without the Sync
+    /// button. Not awaited, so the handler is never blocked; the gate and the
+    /// in-flight guard live in `catchUp`.
+    func catchUpOnActivation() {
+        Task { await orchestrator.catchUp(reachable: phoneReachability == .reachable) }
+    }
 }
 
 struct ContentView: View {
     @ObservedObject var host: WatchAppHost
+
+    /// The app's own lifecycle, so a wrist raised beside its phone catches up
+    /// without the user pressing Sync (D-183).
+    @Environment(\.scenePhase) private var scenePhase
 
     /// The exercise picker on the logging surface. The start surface keeps its
     /// own sheet for the empty Free workout; this one moves between exercises and
@@ -182,6 +195,9 @@ struct ContentView: View {
         }
         .task {
             await host.restore()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { host.catchUpOnActivation() }
         }
     }
 

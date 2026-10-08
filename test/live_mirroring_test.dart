@@ -127,6 +127,38 @@ Map<String, Object?> _snapshot({
   ),
 };
 
+/// S-186's phone: `p1`, active, revision 4, the ladder it names — `u-squat`
+/// with two sets and `u-press` with three.
+Map<String, Object?> _p1PhoneState() => _snapshotPayload(
+  sessionId: 'p1',
+  revision: 4,
+  exercises: [_slot('u-squat'), _slot('u-press')],
+  entries: [
+    for (var index = 1; index <= 2; index++)
+      {
+        'entryId': 'e-u-squat-$index',
+        'eventId': 'e-u-squat-$index',
+        'kind': 'set',
+        'loggedAt': '2026-07-13T06:0$index:00Z',
+        'sessionExerciseId': 'u-squat',
+        'exerciseId': 'ex-u-squat',
+        'reps': 5,
+        'loadKg': 80,
+      },
+    for (var index = 1; index <= 3; index++)
+      {
+        'entryId': 'e-u-press-$index',
+        'eventId': 'e-u-press-$index',
+        'kind': 'set',
+        'loggedAt': '2026-07-13T06:1$index:00Z',
+        'sessionExerciseId': 'u-press',
+        'exerciseId': 'ex-u-press',
+        'reps': 8,
+        'loadKg': 40,
+      },
+  ],
+);
+
 /// Timers compare by instant, not by spelling: the engine writes timestamps in
 /// the protocol's wire shape with milliseconds, a fixture may write the same
 /// instant without them.
@@ -251,11 +283,16 @@ class _WatchTransport implements WatchSyncTransport {
   /// How many times the watch asked the phone for its snapshot.
   int snapshotRequests = 0;
 
+  /// What each routines request carried as `since` — null for a first sync.
+  final List<DateTime?> routinesRequests = [];
+
   @override
   bool isPhoneReachable = true;
 
   @override
-  Future<void> requestRoutines({DateTime? since}) async {}
+  Future<void> requestRoutines({DateTime? since}) async {
+    routinesRequests.add(since);
+  }
 
   @override
   Future<void> requestSnapshot() async {
@@ -1082,6 +1119,117 @@ void main() {
             'S-31 the ladder the phone asserts carries the sets it logged in '
             'it (D-31/D-34), so a wrist that drifted gets them back',
       );
+    });
+  });
+
+  // D-183. The wrist's own activation carries the convergence: whenever the
+  // app wakes and the phone is reachable, the wrist catches up by itself. A
+  // wrist with no session is exactly the one that must ask, because the phone
+  // may hold the session it should be in.
+  group('S-186 the wrist catches up at its next activation', () {
+    /// S-186's pair: the phone holds `p1` with an answer path for a snapshot
+    /// request, and the wrist holds nothing yet — only a synced catalog, so the
+    /// catch-up runs as a reconnect.
+    Future<_Session> pair() async {
+      final session = _Session(phoneState: _p1PhoneState());
+      await session.paths.applyRoutinesDown(
+        readProtocolJson('fixtures/valid/routines_down.json'),
+      );
+      expect(session.engine.session, isNull);
+      expect(session.engine.pendingObservations(), isEmpty);
+      return session;
+    }
+
+    test('S-186 a session-less wrist asks, and installs the phone\'s session',
+        () async {
+      final session = await pair();
+      final syncedAt = session.paths.syncedAt;
+      expect(syncedAt, isNotNull, reason: 'the catch-up runs as a reconnect');
+
+      await session.orchestrator.catchUp(reachable: true);
+
+      expect(
+        session._watchTransport.routinesRequests,
+        [syncedAt],
+        reason: 'one reconnect-shaped routines request',
+      );
+      expect(session._watchTransport.snapshotRequests, 1);
+      expect(
+        session._watchTransport.sent,
+        isEmpty,
+        reason: 'nothing else leaves the wrist',
+      );
+
+      final joined = session.watchSession;
+      expect(joined.sessionId, 'p1');
+      expect(joined.status, WatchSessionStatus.active);
+      expect(joined.revision, 4);
+      expect(_slotIds(session.engine), ['u-squat', 'u-press']);
+      expect(
+        session.engine.entries.map((entry) => entry.entryId),
+        [
+          'e-u-squat-1',
+          'e-u-squat-2',
+          'e-u-press-1',
+          'e-u-press-2',
+          'e-u-press-3',
+        ],
+      );
+
+      expect(
+        session._phoneTransport.sent.map((frame) => frame['type']),
+        ['session_snapshot'],
+        reason: 'the phone answers once, and sends no lifecycle',
+      );
+    });
+
+    test('S-187 an unreachable activation is a no-op, and the reachability '
+        'edge does the work', () async {
+      final session = await pair();
+
+      await session.orchestrator.catchUp(reachable: false);
+
+      expect(session._watchTransport.routinesRequests, isEmpty);
+      expect(session._watchTransport.snapshotRequests, 0);
+      expect(session._watchTransport.sent, isEmpty);
+      expect(session.engine.session, isNull, reason: 'nothing was carried');
+
+      await session.orchestrator.catchUp(reachable: true);
+
+      expect(session._watchTransport.routinesRequests, hasLength(1));
+      expect(session._watchTransport.snapshotRequests, 1);
+      expect(session.watchSession.sessionId, 'p1');
+    });
+
+    test('S-188 an activation burst is dropped, and the later trigger runs',
+        () async {
+      final session = await pair();
+
+      // Three triggers in a row without awaiting the first: what a waking app
+      // produces when more than one observer fires.
+      final burst = [
+        session.orchestrator.catchUp(reachable: true),
+        session.orchestrator.catchUp(reachable: true),
+        session.orchestrator.catchUp(reachable: true),
+      ];
+      await Future.wait(burst);
+
+      expect(
+        session._watchTransport.routinesRequests,
+        hasLength(1),
+        reason: 'the burst ran one sync, not three',
+      );
+      expect(session._watchTransport.snapshotRequests, 1);
+      expect(session.watchSession.sessionId, 'p1');
+
+      // The next trigger after it completes runs a fresh catch-up: the wrist
+      // now holds p1, so it answers with its own snapshot instead of asking.
+      await session.orchestrator.catchUp(reachable: true);
+
+      expect(session._watchTransport.routinesRequests, hasLength(2));
+      expect(session._watchTransport.snapshotRequests, 1);
+      expect(session._watchTransport.sent, hasLength(1));
+      expect(session._watchTransport.sent.single['type'], 'session_snapshot');
     });
   });
 }

@@ -58,6 +58,22 @@ class WatchSyncOrchestrator {
   /// without the surface has nothing to do with a `foods_down`.
   final WatchNutritionState? _nutrition;
 
+  /// Whether a catch-up is already running: a trigger that arrives while one
+  /// does is dropped, never queued (D-183).
+  bool _catchUpRunning = false;
+
+  /// D-183: catches the watch up when the app becomes active and the phone is
+  /// reachable; a trigger while one runs is dropped.
+  Future<void> catchUp({required bool reachable}) async {
+    if (!reachable || _catchUpRunning) return;
+    _catchUpRunning = true;
+    try {
+      await sync(reconnect: _paths.syncedAt != null);
+    } finally {
+      _catchUpRunning = false;
+    }
+  }
+
   /// Brings the watch up to date with the phone: the routines, and then the
   /// session state the two devices do not share yet.
   ///

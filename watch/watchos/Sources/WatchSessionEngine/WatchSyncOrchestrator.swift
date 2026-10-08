@@ -104,17 +104,19 @@ public final class WatchSyncOrchestrator {
         }
     }
 
-    /// Catches the wrist up with the phone when the radio reports the phone back
-    /// in reach, without the user pressing Sync (D-96).
+    /// Catches the wrist up with the phone when it becomes the active app and
+    /// the radio reports the phone in reach, without the user pressing Sync
+    /// (D-96, D-183).
     ///
-    /// Two gates, both here rather than in the shell: the phone must be
-    /// `reachable` **and** the wrist must hold a session. A wrist with no session
-    /// keeps the old behaviour — routines, settings and the first fetch still
-    /// wait for the Sync button — so nothing is pulled for a reason the user did
-    /// not ask for. A trigger that arrives while one is already running is
-    /// dropped: never queued, never cancelling the running one.
+    /// One gate, here rather than in the shell: the phone must be `reachable`.
+    /// The wrist's own session no longer matters — a wrist with no session asks
+    /// the phone for its current workout and for the routines (D-183), so the
+    /// workout the wrist should be in appears after its own was discarded. A
+    /// trigger that arrives while one is already running is dropped: never
+    /// queued, never cancelling the running one; the next trigger after it
+    /// completes runs a fresh catch-up.
     public func catchUp(reachable: Bool) async {
-        guard reachable, engine.session != nil else { return }
+        guard reachable else { return }
 
         let alreadyRunning = catchUpLock.withLock { () -> Bool in
             if catchUpInFlight { return true }

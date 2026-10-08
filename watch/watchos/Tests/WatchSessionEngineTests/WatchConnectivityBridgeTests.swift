@@ -151,6 +151,34 @@ private func bridgeObjects(_ value: Any?) throws -> [[String: Any]] {
     return value
 }
 
+/// The phone's answer to a session-less wrist's catch-up: its own
+/// `session_snapshot`, carrying the session and the entries it asserts (S-186).
+private func bridgeSnapshotFrame(
+    sessionId: String,
+    messageId: String,
+    exercises: [[String: Any]],
+    entries: [[String: Any]] = [],
+    revision: Int = 4
+) -> [String: Any] {
+    [
+        "protocolVersion": SyncProtocolValidator.protocolVersion,
+        "messageId": messageId,
+        "sessionId": sessionId,
+        "type": "session_snapshot",
+        "origin": "phone",
+        "sentAt": "2026-07-13T06:30:00Z",
+        "payload": [
+            "sessionId": sessionId,
+            "revision": revision,
+            "status": WatchSessionStatus.active,
+            "currentExerciseIndex": 0,
+            "exercises": exercises,
+            "entries": entries,
+            "timers": [String: Any](),
+        ] as [String: Any],
+    ]
+}
+
 /// A value the radio cannot carry: not a property-list type at all.
 private struct NotAPlistValue {
     let text = "nope"
@@ -677,7 +705,7 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(added?.currentExerciseIndex, 0)
     }
 
-    // MARK: - S-107/S-108 the wrist's reachability catch-up (D-96)
+    // MARK: - S-107/S-186 the wrist's activation catch-up (D-96, D-183)
 
     func testS107TheWristCatchesUpOnAReachabilityEdgeOnce() async throws {
         let harness = Harness(sessionId: "s-watch-1")
@@ -736,18 +764,122 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(transport.requested.count, 2, "an unreachable phone starts no sync")
     }
 
-    func testS108AWristWithNoSessionDoesNotSyncOnItsOwn() async throws {
+    /// S-186, the Swift half (was `testS108AWristWithNoSessionDoesNotSyncOnItsOwn`
+    /// before D-183). A wrist holding nothing is exactly the one that must ask:
+    /// the phone may hold the session it should be in, so a reachable activation
+    /// carries a routines request and a snapshot request and installs the answer.
+    func testS186AWristWithNoSessionAsksAtItsNextActivation() async throws {
         let harness = WatchStartHarness()
         await harness.launch()
-        XCTAssertNil(harness.engine.session)
+        XCTAssertNil(harness.engine.session, "the wrist holds no session")
+        XCTAssertTrue(harness.engine.pendingObservations().isEmpty, "and owes nothing")
 
         await harness.orchestrator.catchUp(reachable: true)
 
-        XCTAssertTrue(harness.transport.requested.isEmpty, "no session means no catch-up")
-        XCTAssertTrue(harness.transport.sent.isEmpty, "no frame leaves")
-        XCTAssertEqual(harness.transport.snapshotRequests, 0)
+        let routinesRequest = try XCTUnwrap(
+            harness.transport.requested.first,
+            "the wrist asks for routines at its activation"
+        )
+        XCTAssertNil(routinesRequest, "and the first pass asks for everything")
+        XCTAssertEqual(harness.transport.snapshotRequests, 1, "and for the phone's session")
+        XCTAssertTrue(harness.transport.sent.isEmpty, "nothing else leaves the wrist")
         XCTAssertTrue(harness.paths.routines.isEmpty, "the routines surface is still empty")
         XCTAssertNil(harness.preferences.current, "and so is the settings surface")
+
+        let answer = bridgeSnapshotFrame(
+            sessionId: "p1",
+            messageId: "msg-p1-1",
+            exercises: [exercise("u-squat"), exercise("u-press")],
+            entries: [
+                setEvent(harness.clock, entryId: "e-u-squat-1", slot: "u-squat"),
+                setEvent(harness.clock, entryId: "e-u-squat-2", slot: "u-squat"),
+                setEvent(harness.clock, entryId: "e-u-press-1", slot: "u-press"),
+            ]
+        )
+        let installed = try await harness.receive(answer)
+        XCTAssertTrue(installed, "the phone's answer is applied")
+
+        let session = try XCTUnwrap(harness.engine.session)
+        XCTAssertEqual(session.sessionId, "p1")
+        XCTAssertEqual(session.status, WatchSessionStatus.active)
+        XCTAssertEqual(
+            session.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["u-squat", "u-press"]
+        )
+        // Same instant for all three, so the projection's order is not the
+        // subject here — the entries it holds are.
+        XCTAssertEqual(
+            Set(harness.engine.entries.compactMap { $0.payload["entryId"] as? String }),
+            ["e-u-squat-1", "e-u-squat-2", "e-u-press-1"],
+            "the ladder the phone asserts arrives whole"
+        )
+    }
+
+    /// S-187, the Swift half: an activation with the phone out of reach carries
+    /// nothing and throws nothing; the reachability edge that follows does work.
+    func testS187AnUnreachableActivationIsANoOpAndTheEdgeDoesTheWork() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        await harness.orchestrator.catchUp(reachable: false)
+
+        XCTAssertTrue(harness.transport.requested.isEmpty, "an unreachable phone is not asked")
+        XCTAssertEqual(harness.transport.snapshotRequests, 0)
+        XCTAssertTrue(harness.transport.sent.isEmpty, "and nothing leaves the wrist")
+        XCTAssertNil(harness.engine.session, "the wrist still holds nothing")
+
+        await harness.orchestrator.catchUp(reachable: true)
+
+        XCTAssertEqual(harness.transport.requested.count, 1, "the edge runs the catch-up")
+        XCTAssertEqual(harness.transport.snapshotRequests, 1)
+
+        let answer = bridgeSnapshotFrame(
+            sessionId: "p1",
+            messageId: "msg-p1-2",
+            exercises: [exercise("u-squat"), exercise("u-press")]
+        )
+        let installed = try await harness.receive(answer)
+        XCTAssertTrue(installed)
+        XCTAssertEqual(harness.engine.session?.sessionId, "p1")
+    }
+
+    /// S-188, the Swift half: a burst of triggers from one wake runs one sync —
+    /// the rest are dropped, never queued — and the next trigger after that sync
+    /// completes runs a fresh catch-up.
+    func testS188AnActivationBurstIsDroppedAndTheLaterTriggerRuns() async throws {
+        let harness = Harness(sessionId: "s-watch-1")
+        let engine = await harness.runningEngine()
+        let paths = WatchSessionStartPaths(
+            engine: engine,
+            store: harness.store,
+            validator: Harness.validator(),
+            clock: harness.clock.call,
+            idFactory: { "cat-1" }
+        )
+        let transport = GatedRequestTransport()
+        let orchestrator = WatchSyncOrchestrator(transport: transport, paths: paths, engine: engine)
+        XCTAssertNil(engine.session, "a wrist with no session is the burst's case")
+
+        let first = Task { await orchestrator.catchUp(reachable: true) }
+        let deadline = Date().addingTimeInterval(2)
+        while !transport.gateEntered && Date() < deadline {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertTrue(transport.gateEntered, "the first catch-up must reach the transport")
+
+        await orchestrator.catchUp(reachable: true)
+        await orchestrator.catchUp(reachable: true)
+        XCTAssertTrue(transport.requested.isEmpty, "the triggers in flight are dropped")
+
+        transport.release()
+        await first.value
+
+        XCTAssertEqual(transport.requested.count, 1, "the burst ran one sync, not three")
+        XCTAssertEqual(transport.snapshotRequests, 1, "and asked once for the phone's session")
+
+        await orchestrator.catchUp(reachable: true)
+        XCTAssertEqual(transport.requested.count, 2, "a later trigger is not dropped")
+        XCTAssertEqual(transport.snapshotRequests, 2, "and runs a fresh pass")
     }
 }
 
@@ -793,6 +925,60 @@ final class GatedTransport: WatchSyncTransport {
     }
 
     /// Lets the gated send finish.
+    func release() {
+        let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            let held = releaseContinuation
+            releaseContinuation = nil
+            return held
+        }
+        continuation?.resume()
+    }
+}
+
+/// A transport whose first routines request waits for the test to release it, so
+/// a later trigger arrives while a session-less catch-up is in flight (S-188).
+/// A wrist with no session has no send to gate, so the gate sits on the request
+/// that catch-up makes first.
+final class GatedRequestTransport: WatchSyncTransport {
+    var isPhoneReachable: Bool
+    private(set) var requested: [Date?] = []
+    private(set) var sent: [[String: Any]] = []
+    private(set) var snapshotRequests = 0
+
+    /// True once the gated request has registered its continuation.
+    private(set) var gateEntered = false
+
+    private let lock = NSLock()
+    private var gateUsed = false
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    init(isPhoneReachable: Bool = true) {
+        self.isPhoneReachable = isPhoneReachable
+    }
+
+    func requestRoutines(since: Date?) async {
+        let shouldGate = lock.withLock { () -> Bool in
+            let gate = !gateUsed
+            gateUsed = true
+            return gate
+        }
+
+        if shouldGate {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                lock.withLock {
+                    releaseContinuation = continuation
+                    gateEntered = true
+                }
+            }
+        }
+        requested.append(since)
+    }
+
+    func requestSnapshot() async { snapshotRequests += 1 }
+
+    func send(_ envelope: [String: Any]) async { sent.append(envelope) }
+
+    /// Lets the gated request finish.
     func release() {
         let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
             let held = releaseContinuation

@@ -196,19 +196,24 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 
 ## Catching up by itself
 
-**The wrist catches up when the phone comes back in reach (D-96).** When the radio
-reports the phone reachable again and the wrist holds a session, the wrist runs
-the same catch-up the Sync button runs — it hands the phone the session it holds,
-and of the phone's state it asks nothing — once, without the user pressing
-anything. A trigger that arrives while one is already running is dropped: never
-queued, never cancelling the running one. A wrist that holds no session does
-nothing by itself, so routines, preferences and the food catalog still wait for
-the Sync button, as does a fresh watch's first fetch. Verified by
+**The wrist catches up when the phone comes back in reach and whenever its app
+wakes (D-96, D-183).** A reachability edge or the wrist's own activation runs the
+same catch-up the Sync button runs, once and without the user pressing anything:
+the routines, the messages the wrist owes, and then the session state — a wrist
+holding a session hands that session over, and a wrist holding none asks the
+phone for its workout instead of doing nothing, so the session the wrist should
+be in appears after its own was discarded, at the price of re-asking for the
+routines on every wake. A trigger that arrives while one is already running is
+dropped: never queued, never cancelling the running one. Verified by
+`test/live_mirroring_test.dart` (`the wrist catches up at its next activation`:
+`S-186 a session-less wrist asks, and installs the phone's session`,
+`S-187 an unreachable activation is a no-op, and the reachability edge does the
+work`, `S-188 an activation burst is dropped, and the later trigger runs`) and by
+`WatchConnectivityBridgeTests.testS186AWristWithNoSessionAsksAtItsNextActivation`,
+`testS187AnUnreachableActivationIsANoOpAndTheEdgeDoesTheWork` and
+`testS188AnActivationBurstIsDroppedAndTheLaterTriggerRuns`, with
 `WatchConnectivityBridgeTests.testS107TheWristCatchesUpOnAReachabilityEdgeOnce`
-(a reachability edge runs one sync; a second notification while it is in flight is
-dropped; a later edge runs again; an unreachable radio starts nothing) and
-`WatchConnectivityBridgeTests.testS108AWristWithNoSessionDoesNotSyncOnItsOwn` (no
-session, no sync, the surfaces still empty) in
+still covering the edge and the drop of a trigger that arrives in flight, in
 `watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`.
 
 **The phone catches up when the app resumes, once (D-96).** Resuming the app asks
@@ -482,9 +487,12 @@ remains out is listed below.
   is what converges the pair`, and the resume
   `S-182 the resume sends the reset before its own state, and the answer clears
   the debt`). A reset the transport cannot carry leaves the wrist on W until the
-  next pass or the next reconnect's resume sends it, and is owed by nobody once
-  the pair agrees (`S-180 a reset the radio cannot carry is dropped, re-sent by
-  the next pass, and owed by nobody once the pair agrees`). The wrist's own place
+  next pass, the next reconnect's resume, or either device's next unlock or app
+  focus sends it (`S-186 a session-less wrist asks, and installs the phone's
+  session` is the wrist-side half of that: the wrist's own activation reaches the
+  phone), and is owed by nobody once the pair agrees
+  (`S-180 a reset the radio cannot carry is dropped, re-sent by the next pass, and
+  owed by nobody once the pair agrees`). The wrist's own place
   is the wrist's to report and the phone follows it, so the phone's own move of
   its current exercise does not move the watch
   (`test/watch_session_projection_test.dart`,
@@ -556,8 +564,13 @@ remains out is listed below.
 - **A session discarded on the phone can come back from the wrist.** A discard
   deletes the row, so the phone has nothing left to recognise; a wrist that still
   holds that session — one the discard never reached — offers it again at its next
-  sync and the phone adopts it as a new in-progress session. A wrist the discard
-  did reach is told to abandon its copy instead
+  sync and the phone adopts it as a new in-progress session. It resolves itself at
+  the wrist's next unlock or app focus when the phone has a session of its own: the
+  wrist's announcement is answered with the reset, so the wrist's old session is
+  discarded and the phone's is shown
+  (`test/watch_session_finish_test.dart`,
+  `S-189 the wrist's own announcement is answered with the reset`). A wrist the
+  discard did reach is told to abandon its copy instead
   (`test/watch_session_auto_push_test.dart`,
   `S-73 discarding on the phone abandons the wrist's copy, once`). Only a session
   that ended and kept a row is protected. Not handled.
