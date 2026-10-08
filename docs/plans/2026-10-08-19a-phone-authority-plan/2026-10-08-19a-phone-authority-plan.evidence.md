@@ -561,6 +561,53 @@ frames are 19a Phase 2's. `docs/state_management/watch_surface.md` is untouched 
 is the app target's, and the page's own reachability note already covers "syncs when the phone is
 reachable".
 
+## Fix round 1 — review 1's findings F1–F6 (F7/F8 take no action)
+
+Base for this round: the Phase 5b head. Files: `lib/features/session/workout_session_screen.dart`
+(+8), `test/pr4_session_controls_test.dart` (+194/−1), `docs/watch_session_sync.md` (F1/F2),
+`lib/state/watch/live_session_mirror_state.dart` (F6, comment only), the plan's Impact rows (F4, and
+row 5 for F3).
+
+**F5's fix, as restored in the tree** (the ended branch of `_onWorkoutStateChanged`, between
+`if (!mounted) return;` and `_pushSessionReplacement(`):
+
+```dart
+        final route = ModalRoute.of(context);
+        if (route != null) {
+          Navigator.of(context).popUntil((r) => r == route || r.isFirst);
+        }
+```
+
+**Mutation table** (the original line recorded, the mutant applied, the run, the exact restore and
+the re-run):
+
+| Item | Mutation | Command | Expected red | Observed |
+| --- | --- | --- | --- | --- |
+| F5 | the `popUntil` block above removed (the `session == null` branch's own `popUntil` left alone) | `gateway.sh test test/pr4_session_controls_test.dart --plain-name "S-174 an end delivered while a dialog is open over the screen replaces the session route"` | the dialog case | **RED** — `Expected: no matching candidates` / `Actual: _TypeWidgetFinder:<Found 1 widget with type "WorkoutSessionScreen"…` at `test/pr4_session_controls_test.dart:851` ("the ended session screen is gone from the stack"). Restored exactly → case green, file `+16 All tests passed!` |
+| F3 | `_leaving = true;` dropped from the ended branch (`session.id == expectedSessionId && session.endedAtMs != null`) | `gateway.sh test test/pr4_session_controls_test.dart --plain-name "S-174 via the adoption path"` | the adoption case's leave-once clause | **RED** — `Expected: <3> Actual: <4>` at `:754` ("the screen leaves once — a later notification for the session the bridge ended must not navigate again"). Restored exactly → file `+16 All tests passed!` |
+
+**The first F5 mutation run was falsely green, and that is recorded as part of the proof.** With the
+mutant applied the dialog case passed: `find.byType(WorkoutSessionScreen)` skips offstage widgets and
+the ended screen sits beneath an opaque summary route. The assertion was strengthened to
+`find.byType(WorkoutSessionScreen, skipOffstage: false)` — its `reason` names the mutant — and only
+then did the mutant redden. The same case's route-count witness (`nav.added == routesWithDialog + 1`)
+passes under both, so it is the stack's contents, not the count, that proves the fix.
+
+**prove-red.** `gateway.sh prove-red HEAD test test/pr4_session_controls_test.dart` → **RED AT HEAD**:
+the dialog case fails with the same `Found 1 widget with type "WorkoutSessionScreen"` assertion
+(`+15 -1`), while F3's adoption case is green at HEAD by design (`_leaving` already exists there), so
+the mutation above is its proof.
+
+**Suite counts.** Targeted: `gateway.sh test test/pr4_session_controls_test.dart
+test/session_screen_build_phase_notify_test.dart test/watch_session_finish_test.dart
+test/docs_indexing_contract_test.dart test/watch_session_auto_push_test.dart` → `+87: All tests
+passed!`. Full: `gateway.sh test` → `01:45 +4108 ~1: All tests passed!` (4108 passed, 1 skipped,
+0 failed; Phase 5b's `+4106 ~1` plus this round's two cases). `lint` → `196 issues found.` = baseline;
+the one notice in a file this round touched is the pre-existing `use_build_context_synchronously` at
+`workout_session_screen.dart:1450`, far from the +8-line edit. Invariant sweep (run with the file
+tools, `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core`) →
+no matches. `swift-test` not re-run: no `.swift` file changed.
+
 ## Not covered by these checks (state it, never claim it)
 
 - `ios/OmniTrain Watch App/ContentView.swift` (the SwiftUI app target and its `onWatchResume`

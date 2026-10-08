@@ -296,6 +296,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       _leaving = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        // `_pushSessionReplacement` replaces the navigator's topmost route, and
+        // this screen opens sheets and dialogs over itself: anything above this
+        // screen's own route is dismissed first, or the summary would replace
+        // that route and leave the ended session screen beneath it.
+        final route = ModalRoute.of(context);
+        if (route != null) {
+          Navigator.of(context).popUntil((r) => r == route || r.isFirst);
+        }
         _pushSessionReplacement(
           context,
           (_) => SessionSummaryScreen(

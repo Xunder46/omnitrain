@@ -599,11 +599,14 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// `isActive` test would drop the retry after the first pass while the
   /// wrist's answer is what actually clears the debt (D-176, D-178).
   ///
-  /// A `W` this phone already announced as `completed` is not reset either: the
-  /// wrist has been told how that session ended, and an `abandoned` under the
-  /// same name would rewrite a finished workout as a discarded one (S-85). An
-  /// `abandoned` `W` still is — the retry after a failed send has nothing but
-  /// the status to show for it, and that retry is what S-180 pins.
+  /// The last clause reads this mirror's own status for the session it holds —
+  /// not an announcement the phone made about it. A held `W` that has reached
+  /// `completed` is not reset: the wrist has been told how that session ended,
+  /// and an `abandoned` under the same name would rewrite a finished workout as
+  /// a discarded one (`test/watch_session_auto_push_test.dart`, "S-85 two
+  /// finishes and a discard are announced once each, under each session's own
+  /// id"). A held `abandoned` `W` still is — the retry after a failed send has
+  /// nothing but the status to show for it, and that retry is what S-180 pins.
   bool owesResetFor(String? composedId) {
     final held = sessionId;
     return composedId != null &&

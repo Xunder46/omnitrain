@@ -104,9 +104,16 @@ the native watchOS client by `WatchPhoneEntriesTests`
 
 **D-10 — a conflict resolves to the phone's session (D-170).** A phone already
 running a session refuses to adopt another, and a wrist session the phone is not
-in is left where it is — but the pair does not stay split: the phone's own state
-is preceded by a `session_lifecycle` naming the wrist's session `abandoned`, so
-the wrist ends that session and then holds the phone's. A refusal is the rule
+in is left where it is — but the pair does not stay split: a phone that still
+knows the wrist's session sends its own state preceded by a `session_lifecycle`
+naming that session `abandoned`, so the wrist ends it and then holds the phone's.
+A phone that has not sent the reset — one whose mirror holds the placeholder
+rather than a session (D-173) — sends no lifecycle at all: there is nothing on
+the wrist to abandon, and no frame anywhere may name the placeholder
+(`test/watch_session_auto_push_test.dart`, group `S-172 the phone resets the
+wrist's live session, then asserts its own`, test `S-181 case B a phone holding
+its own session over a wrist that holds nothing sends no lifecycle and never
+names the placeholder`). A refusal is the rule
 working, not an error: it is reported once per
 (held, offered) pair through the bridge's own `onSkipped` callback — one plain
 `debugPrint` line by default, carrying no stack — and never through the failure
@@ -252,10 +259,9 @@ snapshot the phone sends for a different session is still refused whole and
 silently while the wrist holds an active session **with a non-empty ladder**, but
 it no longer arrives alone: the reset in front of it is an `abandoned` lifecycle
 naming that very session, so the wrist ends it and the snapshot that follows is
-the phone's session taking its place. (A wrist whose own ladder is empty has
-nothing to interrupt, so it takes the phone's session without the lifecycle.) The
-alternative — leaving the wrist's work standing and the two devices on two
-sessions — is the defect D-170 fixes. Pinned, for the phone's half, by
+the phone's session taking its place. The alternative — leaving the wrist's work
+standing and the two devices on two sessions — is the defect D-170 fixes.
+Pinned, for the phone's half, by
 `test/watch_session_auto_push_test.dart`
 (`S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer
 is what converges the pair`) and, for the wrist's half, by

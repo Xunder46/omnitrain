@@ -10,7 +10,9 @@ import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
 import 'package:omnitrain/widgets/session/effort_rating_sheet.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_rest_notification_service.dart';
@@ -35,6 +37,7 @@ Future<_SessionHarness> _pumpSession(
   MockWorkoutRepository repo, {
   bool editMode = false,
   bool endSessionFirst = false,
+  bool emptySession = false,
   String chosenMetric = 'reps',
 }) async {
   final workoutState = WorkoutState(repo);
@@ -45,7 +48,7 @@ Future<_SessionHarness> _pumpSession(
   await workoutState.createNewSession();
   if (endSessionFirst) {
     await workoutState.endSession();
-  } else {
+  } else if (!emptySession) {
     final exercises = await repo.getExercises();
     final first = exercises.firstWhere(
       (e) => e.capabilities.contains(chosenMetric),
@@ -669,6 +672,195 @@ void main() {
           find.byType(SessionSummaryScreen, skipOffstage: false),
           findsNothing,
           reason: 'S-185c no summary is pushed for a foreign session id',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'S-174 via the adoption path the bridge\'s end takes the screen to one summary',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        // The phone's own session is open and holds nothing — the one shape
+        // D-10 lets the wrist's session replace.
+        final harness = await _pumpSession(repo, emptySession: true);
+        final bridge = WatchSessionAdoptionBridge(repository: repo)
+          ..bindWorkoutState(harness.workoutState);
+        final exercise = (await repo.getExercises()).first;
+
+        // The wrist's snapshot: the adoption itself, through the bridge.
+        final outcome = await bridge.consider({
+          'sessionId': 's-w-adopted',
+          'status': WatchSessionStatus.active,
+          'revision': 1,
+          'currentExerciseIndex': 0,
+          'exercises': <Map<String, Object?>>[
+            <String, Object?>{
+              'sessionExerciseId': 'sl-w1',
+              'exerciseId': exercise.id,
+              'name': exercise.name,
+              'capabilities': const ['sets', 'reps', 'load'],
+            },
+          ],
+          'entries': <Object?>[],
+          'timers': <String, Object?>{},
+        });
+        expect(
+          outcome,
+          WatchSessionAdoption.adopted,
+          reason:
+              'S-174 the fixture must adopt: an empty phone session is nothing '
+              'to protect (D-10), so the wrist\'s session is the phone\'s',
+        );
+        expect(
+          harness.workoutState.currentSession?.id,
+          's-w-adopted',
+          reason: 'S-174 the phone now holds the session the wrist is running',
+        );
+
+        // The rating the wrist recorded, on the row before the end (D-174).
+        await repo.updateSessionFeeling('s-w-adopted', 4);
+
+        final nav = _RouteAdder();
+        await _pushSessionRoute(tester, harness, observer: nav);
+        final routesAtMount = nav.added;
+
+        // The wrist's own end for the session the phone holds, through the
+        // bridge — the path the router calls it on.
+        await bridge.onLifecycle(<String, Object?>{
+          'type': 'session_lifecycle',
+          'sessionId': 's-w-adopted',
+          'payload': <String, Object?>{
+            'sessionId': 's-w-adopted',
+            'state': WatchLifecycleState.completed,
+          },
+        });
+
+        await tester.pump();
+        expect(
+          nav.added,
+          routesAtMount + 1,
+          reason:
+              'S-174 an end applied by the bridge opens exactly one route — '
+              'the summary',
+        );
+
+        // A later notification for the same session, while the screen is
+        // leaving: D-179 leaves once.
+        await harness.workoutState.updateSessionFeeling('s-w-adopted', 4);
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        expect(
+          nav.added,
+          routesAtMount + 1,
+          reason:
+              'S-174 the screen leaves once — a later notification for the '
+              'session the bridge ended must not navigate again (red under the '
+              'mutation that drops the `_leaving` guard)',
+        );
+
+        await _pumpUntil(
+          tester,
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await _pumpUntil(tester, find.text('4 / 5'));
+
+        expect(
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+          findsOneWidget,
+          reason: 'S-174 one summary, not two, for one end',
+        );
+        expect(
+          find.byType(WorkoutSessionScreen),
+          findsNothing,
+          reason: 'S-174 the session route is replaced, not left beneath',
+        );
+        expect(
+          find.text('4 / 5'),
+          findsWidgets,
+          reason:
+              'S-174 the summary reads the row as it stands — the rating the '
+              'bridge carried into the copy before ending it is on screen',
+        );
+        expect(
+          find.byType(EffortRatingSheet),
+          findsNothing,
+          reason: 'S-174 the phone must not prompt for a rating it already has',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'S-174 an end delivered while a dialog is open over the screen replaces the session route',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final harness = await _pumpSession(repo);
+        final sessionId = harness.workoutState.currentSession!.id;
+        final nav = _RouteAdder();
+        await _pushSessionRoute(tester, harness, observer: nav);
+
+        // The session screen opens dialogs over itself; this one stands in for
+        // any of them (the discard confirmation is the same shape).
+        unawaited(
+          showDialog<void>(
+            context: tester.element(find.byType(WorkoutSessionScreen)),
+            builder: (_) => const AlertDialog(
+              title: Text('dialog-over-session'),
+            ),
+          ),
+        );
+        await tester.pump();
+        await _pumpUntil(tester, find.text('dialog-over-session'));
+        expect(
+          find.text('dialog-over-session'),
+          findsOneWidget,
+          reason: 'the fixture needs a route above the session screen',
+        );
+        final routesWithDialog = nav.added;
+
+        // The external end, exactly as S-174 delivers it.
+        await harness.workoutState.updateSessionFeeling(sessionId, 4);
+        await harness.workoutState.endSession();
+
+        await tester.pump();
+        expect(
+          nav.added,
+          routesWithDialog + 1,
+          reason:
+              'S-174 one end, one route: the summary replaces the session '
+              'route, not the dialog',
+        );
+
+        await _pumpUntil(
+          tester,
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+        );
+        // The dialog's exit transition and the session route's run here.
+        for (var i = 0; i < 25; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+
+        expect(
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+          findsOneWidget,
+          reason: 'S-174 the summary is on screen',
+        );
+        expect(
+          find.byType(WorkoutSessionScreen, skipOffstage: false),
+          findsNothing,
+          reason:
+              'S-174 the ended session screen is gone from the stack — red '
+              'under the mutation that removes the pop-to-the-session-route '
+              'step, when the summary replaces the dialog and leaves this '
+              'screen beneath it (obscured, so `skipOffstage: false` reads it)',
+        );
+        expect(
+          find.text('dialog-over-session'),
+          findsNothing,
+          reason: 'S-174 the route above the screen is dismissed, not replaced',
         );
         expect(tester.takeException(), isNull);
       },
