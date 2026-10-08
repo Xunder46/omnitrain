@@ -15,15 +15,16 @@ import 'workout_repository.dart';
 
 const _mockUuid = Uuid();
 
-/// A no-op [DataMigrationStep] used by [MockWorkoutRepository]'s
-/// consolidated sequence. The Mock's bulk-load in `initialize()` does
-/// the equivalent of all thirteen real migration steps in one shot; the
-/// steps exist here only so the [DataMigrationService] can advance the
+/// One [DataMigrationStep] of [MockWorkoutRepository]'s consolidated
+/// sequence. The Mock's bulk-load in `initialize()` does the equivalent
+/// of the early real migration steps in one shot, so those run as
+/// no-ops and exist only so the [DataMigrationService] can advance the
 /// device's `data_version` through the sequence in the same order as
-/// the Hive-backed runtime. Behavioral parity for the real steps is
-/// validated in `HiveWorkoutRepository` integration tests.
+/// the Hive-backed runtime. A step that repairs already-stored rows
+/// (step 15) carries the same repair body the runtime runs, so the two
+/// stores converge to the same value.
 class _MockMigrationStep extends DataMigrationStep {
-  _MockMigrationStep(this.targetVersion, this.name);
+  _MockMigrationStep(this.targetVersion, this.name, [this._body]);
 
   @override
   final int targetVersion;
@@ -31,9 +32,13 @@ class _MockMigrationStep extends DataMigrationStep {
   @override
   final String name;
 
+  /// The work the step performs; absent for the steps the Mock's bulk
+  /// load already covered.
+  final Future<void> Function()? _body;
+
   @override
   Future<void> run() async {
-    // No-op: Mock's initialize() bulk-loads the equivalent of every step.
+    await _body?.call();
   }
 }
 
@@ -261,10 +266,13 @@ class MockWorkoutRepository implements WorkoutRepository {
     await service.run();
   }
 
-  /// The thirteen no-op steps that map the Mock's bulk-loaded state to
-  /// the `data_version` sequence used by the Hive runtime. Each step's
-  /// `targetVersion` matches the corresponding real migration step.
+  /// The steps that map the Mock's bulk-loaded state to the
+  /// `data_version` sequence used by the Hive runtime. Each step's
+  /// `targetVersion` matches the corresponding real migration step; the
+  /// early ones are no-ops (the bulk load above already applied them)
+  /// and step 15 runs the same repair body the Hive runtime does.
   List<DataMigrationStep> _dataMigrationSteps() {
+    final repo = this;
     return [
       _MockMigrationStep(2, 'seedData'),
       _MockMigrationStep(3, 'seedUnits'),
@@ -279,7 +287,49 @@ class MockWorkoutRepository implements WorkoutRepository {
       _MockMigrationStep(12, 'seedFoodCatalog'),
       _MockMigrationStep(13, 'seedDefaultFoodGroups'),
       _MockMigrationStep(14, 'foodCategoryToGroupId'),
+      _MockMigrationStep(
+        15,
+        'clampInvertedSessionWindows',
+        () => repo._clampInvertedSessionWindows(),
+      ),
     ];
+  }
+
+  /// The consolidated migration sequence, exposed so tests can assert a
+  /// newly appended step's version and name and re-run a step directly.
+  @visibleForTesting
+  List<DataMigrationStep> dataMigrationStepsForTest() => _dataMigrationSteps();
+
+  /// Repairs session rows already stored with an end before their start —
+  /// the same repair the Hive runtime applies in step 15, so a store
+  /// holding an inverted row converges to the same value in both. The
+  /// start is never moved, a running row (`endedAtMs == null`) is never
+  /// touched, and a row that is already valid is left as it is.
+  Future<void> _clampInvertedSessionWindows() async {
+    for (final entry in _sessions.entries.toList()) {
+      final session = entry.value;
+      final endedAtMs = session.endedAtMs;
+      if (endedAtMs == null || endedAtMs >= session.startedAtMs) continue;
+
+      _sessions[entry.key] = TrainingSession(
+        id: session.id,
+        ownerUserId: session.ownerUserId,
+        routineTemplateId: session.routineTemplateId,
+        startedAtMs: session.startedAtMs,
+        endedAtMs: session.startedAtMs,
+        title: session.title,
+        note: session.note,
+        locationText: session.locationText,
+        modality: session.modality,
+        intent: session.intent,
+        perceivedSessionRpe: session.perceivedSessionRpe,
+        sessionFeeling: session.sessionFeeling,
+        qualityRating: session.qualityRating,
+        isRolling: session.isRolling,
+        createdAtMs: session.createdAtMs,
+        updatedAtMs: session.updatedAtMs,
+      );
+    }
   }
 
   // ===== EXERCISES =====

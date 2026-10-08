@@ -1,7 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:omnitrain/core/constants/data_version.dart';
 import 'package:omnitrain/core/services/data_migration_service.dart';
+import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/repositories/hive_workout_repository.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+
+import 'helpers/repository_harness.dart';
 
 /// A synthetic migration step that records when it ran. Used to drive the
 /// `DataMigrationService` through its ordered sequence without depending on
@@ -48,6 +55,60 @@ List<DataMigrationStep> _stubSteps() {
 }
 
 const int _stubTargetVersion = 11;
+
+/// The version a store holds before step 15 exists — the shape S-156
+/// describes.
+const int _preRepairDataVersion = 14;
+
+/// The version implied by the last legacy one-shot marker
+/// (`food_category_groupid_migrated_v1`). It is history, not
+/// [currentDataVersion]: steps appended after it still run for a legacy
+/// install, which is why the shim maps a fully-migrated legacy device to
+/// this value and the service then runs step 15.
+const int _lastLegacyMarkerVersion = 14;
+
+const int _s156StartMs = 1_700_000_000_000;
+
+TrainingSession _s156Session({required String id, required int? endedAtMs}) {
+  return TrainingSession(
+    id: id,
+    ownerUserId: 'user-s156',
+    startedAtMs: _s156StartMs,
+    endedAtMs: endedAtMs,
+    title: 'Session $id',
+    isRolling: false,
+    createdAtMs: _s156StartMs - 60_000,
+    updatedAtMs: _s156StartMs - 60_000,
+  );
+}
+
+/// Three stored rows standing for a store written before step 15: `a` is
+/// inverted, `b` is running, `c` is already valid.
+List<TrainingSession> _s156Fixture() => [
+  _s156Session(id: 'a', endedAtMs: _s156StartMs - 1_000_000),
+  _s156Session(id: 'b', endedAtMs: null),
+  _s156Session(id: 'c', endedAtMs: _s156StartMs + 60_000),
+];
+
+/// Asserts the S-156 expectations for one stored row against [session]:
+/// `a` is repaired (end clamped up to the untouched start), `b` is a
+/// running row, `c` keeps its original window.
+void _expectS156Window(String id, TrainingSession? session) {
+  expect(session, isNotNull, reason: '$id must still be stored');
+  expect(session!.startedAtMs, equals(_s156StartMs));
+  switch (id) {
+    case 'a':
+      expect(
+        session.endedAtMs,
+        equals(_s156StartMs),
+        reason: 'the end is clamped up to the start',
+      );
+    case 'b':
+      expect(session.endedAtMs, isNull, reason: 'a running row is untouched');
+    case 'c':
+      expect(session.endedAtMs, equals(_s156StartMs + 60_000));
+  }
+}
 
 void main() {
   group('DataMigrationService', () {
@@ -155,10 +216,10 @@ void main() {
 
         expect(
           await repo.getLegacyAppliedDataVersion(),
-          equals(currentDataVersion),
+          equals(_lastLegacyMarkerVersion),
           reason:
-              'shim should detect all legacy markers and map to '
-              'currentDataVersion',
+              'shim should detect all legacy markers and map to the '
+              'version the last legacy marker implied',
         );
 
         final steps = _stubSteps();
@@ -169,8 +230,8 @@ void main() {
         );
         final result = await service.run();
 
-        expect(result.from, equals(currentDataVersion));
-        expect(result.to, equals(currentDataVersion));
+        expect(result.from, equals(_lastLegacyMarkerVersion));
+        expect(result.to, equals(_lastLegacyMarkerVersion));
         expect(result.appliedSteps, isEmpty);
         for (final step in steps) {
           expect(
@@ -181,7 +242,8 @@ void main() {
                 'install',
           );
         }
-        expect(await repo.getDataVersion(), equals(currentDataVersion));
+        expect(await repo.getDataVersion(), equals(_lastLegacyMarkerVersion),
+            reason: 'the shim writes the mapped version, not the target');
       },
     );
 
@@ -427,4 +489,166 @@ void main() {
       expect(await repo.getDataVersion(), equals(currentDataVersion));
     },
   );
+
+  // ─────────────────────────────────────────────────────────────────────
+  // S-156: a stored inverted session window is repaired once, in both stores
+  // ─────────────────────────────────────────────────────────────────────
+  test('S-156: step 15 is appended to both migration sequences', () async {
+    expect(currentDataVersion, equals(15));
+
+    final mockSteps = MockWorkoutRepository().dataMigrationStepsForTest();
+    final hiveSteps = HiveWorkoutRepository().dataMigrationStepsForTest();
+
+    expect(mockSteps.last.targetVersion, equals(15));
+    expect(mockSteps.last.name, equals('clampInvertedSessionWindows'));
+    expect(hiveSteps.last.targetVersion, equals(15));
+    expect(hiveSteps.last.name, equals('clampInvertedSessionWindows'));
+    expect(
+      mockSteps.map((step) => '${step.targetVersion}:${step.name}').toList(),
+      equals(
+        hiveSteps.map((step) => '${step.targetVersion}:${step.name}').toList(),
+      ),
+      reason: 'both stores must walk the same version sequence',
+    );
+  });
+
+  test(
+    'S-156: the Mock repairs an inverted row once and a re-run writes nothing',
+    () async {
+      final mock = MockWorkoutRepository();
+      for (final session in _s156Fixture()) {
+        await mock.createSession(session);
+      }
+      // The store is at the version that predates step 15, so initialize()
+      // reaches the repair through step 15 alone.
+      await mock.setDataVersion(_preRepairDataVersion);
+
+      await mock.initialize();
+      expect(await mock.getDataVersion(), equals(currentDataVersion));
+
+      for (final session in _s156Fixture()) {
+        _expectS156Window(session.id, await mock.getSession(session.id));
+      }
+      expect(
+        (await mock.getSession('b'))!.toMap(),
+        equals(_s156Fixture()[1].toMap()),
+        reason: 'a running row is byte-identical after the step',
+      );
+      expect(
+        (await mock.getSession('c'))!.toMap(),
+        equals(_s156Fixture()[2].toMap()),
+        reason: 'an already-valid row is byte-identical after the step',
+      );
+
+      final before = {
+        for (final session in _s156Fixture())
+          session.id: (await mock.getSession(session.id))!.toMap(),
+      };
+      await mock.setDataVersion(_preRepairDataVersion);
+      final rerun = await DataMigrationService(
+        repository: mock,
+        targetVersion: currentDataVersion,
+        steps: mock.dataMigrationStepsForTest(),
+      ).run();
+
+      expect(
+        rerun.appliedSteps.map((step) => step.name).toList(),
+        equals(['clampInvertedSessionWindows']),
+      );
+      expect(await mock.getDataVersion(), equals(currentDataVersion));
+      for (final session in _s156Fixture()) {
+        expect((await mock.getSession(session.id))!.toMap(), equals(before[session.id]));
+      }
+    },
+  );
+
+  group('S-156: a Hive store seeded before step 15', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('s156_mig_');
+      PathProviderChannel.install(tempDir);
+      Hive.init(tempDir.path);
+    });
+
+    tearDown(() async {
+      await Hive.deleteFromDisk();
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('S-156: Hive repairs the store and matches the Mock', () async {
+      final sessionsBox = await Hive.openBox<Map>('sessions');
+      for (final session in _s156Fixture()) {
+        await sessionsBox.put(session.id, session.toMap());
+      }
+      final metaBox = await Hive.openBox('meta');
+      await metaBox.put('data_version', _preRepairDataVersion);
+
+      final writes = <BoxEvent>[];
+      final subscription = sessionsBox.watch().listen(writes.add);
+
+      final repo = HiveWorkoutRepository();
+      await repo.initialize();
+      await pumpEventQueue();
+
+      expect(await repo.getDataVersion(), equals(currentDataVersion));
+      for (final session in _s156Fixture()) {
+        _expectS156Window(session.id, await repo.getSession(session.id));
+      }
+      expect(
+        writes.where((event) => event.key == 'a').length,
+        equals(1),
+        reason: 'the repair writes the row once',
+      );
+      expect(
+        writes.where((event) => event.key == 'b' || event.key == 'c'),
+        isEmpty,
+        reason: 'running and already-valid rows are never rewritten',
+      );
+
+      final before = {
+        for (final session in _s156Fixture())
+          session.id: (await repo.getSession(session.id))!.toMap(),
+      };
+      writes.clear();
+      await repo.setDataVersion(_preRepairDataVersion);
+      final rerun = await DataMigrationService(
+        repository: repo,
+        targetVersion: currentDataVersion,
+        steps: repo.dataMigrationStepsForTest(),
+      ).run();
+      await pumpEventQueue();
+
+      expect(
+        rerun.appliedSteps.map((step) => step.name).toList(),
+        equals(['clampInvertedSessionWindows']),
+      );
+      expect(await repo.getDataVersion(), equals(currentDataVersion));
+      expect(writes, isEmpty, reason: 'a retry of the step writes nothing');
+      for (final session in _s156Fixture()) {
+        expect((await repo.getSession(session.id))!.toMap(), equals(before[session.id]));
+      }
+
+      await subscription.cancel();
+
+      // Parity: the Mock, seeded with the same three rows, returns equal
+      // values for every one of them.
+      final mock = MockWorkoutRepository();
+      for (final session in _s156Fixture()) {
+        await mock.createSession(session);
+      }
+      await mock.initialize();
+      for (final session in _s156Fixture()) {
+        final hiveSession = await repo.getSession(session.id);
+        final mockSession = await mock.getSession(session.id);
+        expect(
+          hiveSession!.toMap(),
+          equals(mockSession!.toMap()),
+          reason: 'both stores must return equal values for ${session.id}',
+        );
+      }
+    });
+  });
 }

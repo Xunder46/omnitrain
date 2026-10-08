@@ -137,12 +137,68 @@ Every mutation was reversed before the next step; the final `git-diff --stat` af
 
 ## Phase 4 — the repair migration
 
+Baselines at the base ref (bc96cd2): full suite `+4075 ~1`, `lint` 196 issues / 0 errors.
+
 | Item | Command | Result |
 |---|---|---|
-| S-156 red at base | | _(pending)_ |
-| S-156 green after | | _(pending)_ |
-| Hive↔Mock parity on the repaired rows | | _(pending)_ |
-| `docs/db_integration.md` reading: does it enumerate steps? | | _(pending)_ |
+| S-156 red at base | `.github/copilot/scripts/macos/gateway.sh prove-red bc96cd2 test test/data_migration_test.dart` | **RED AT bc96cd2 — by compile error, not by an assertion**: `dataMigrationStepsForTest` does not exist at base, so the file cannot load. The mutation path below is therefore the proof, exactly as the plan's Assumption 4 anticipated |
+| S-156 green after | `… test test/data_migration_test.dart` | `+11: All tests passed!`; the S-156 group alone (`--plain-name S-156`) `+3: All tests passed!` |
+| S-156 + the seed contract (the phase's Done Criteria pair) | `… test test/data_migration_test.dart test/db_seed_test.dart` | `+20: All tests passed!` |
+| Hive↔Mock parity on the repaired rows | the S-156 group's closing loop, comparing `.toMap()` row by row | equal for all three rows — the repaired `a`, the running `b`, the already-ordered `c`. The third mutation below turns the parity assertion red on its own, so the loop is not vacuous |
+| `docs/db_integration.md` reading: does it enumerate steps? | file-tool read of `docs/db_integration.md:156-215` | **No step is enumerated** — the section states the append-a-step rule, the back-compat shim, the meta-box keys and the repository method table. Nothing in it became false, so no edit was owed. Its line 158 does still count "thirteen previously-independent one-time migration steps", which remains true: step 15 is an appended step, not one of the consolidated thirteen |
+| the value's second home | `grep -rn "currentDataVersion" docs/` | `docs/constants_reference.md:544` carried the literal `14` in its constant table — false after item 1 — and is now `15`. Every other doc mention is prose about the rule, not a value |
+
+### The S-156 fixture
+
+`_s156Fixture()` is three stored rows sharing `_s156StartMs = 1_700_000_000_000`: `a` inverted
+(`endedAtMs = start - 1_000_000`), `b` running (`endedAtMs: null`), `c` ordered
+(`endedAtMs = start + 60_000`). `_expectS156Window` asserts, per id: the start is always
+`_s156StartMs` (the repair never moves it), `a`'s end is clamped up to the start, `b` keeps `null`,
+`c` keeps its original end.
+
+### The S-156 mutations (the new tests cannot compile at the base ref)
+
+Three mutations, each restored exactly before the next, with `--plain-name S-156` re-run green
+(`+3: All tests passed!`) after the last one:
+
+| Mutation | Original changed and restored | Verdict |
+|---|---|---|
+| both repair bodies emptied to no-ops | `_clampInvertedSessionWindows` in `hive_workout_repository.dart:508-519` and `mock_workout_repository.dart:308-333` (the guarded loops quoted in the "Restored" block below) | **RED — `+1 -2`**: "the end is clamped up to the start" in both stores (`Expected: <1700000000000> Actual: <1699999000000>`: the inverted row kept its original end), and the Hive↔Mock parity loop still passed, so the guard is the repair itself, not the comparison |
+| the repair moved the *start* instead of the end | Hive `:516` `sessionMap['ended_at_ms'] = startedAtMs;` → `sessionMap['started_at_ms'] = endedAtMs;`; Mock `:318-319` `startedAtMs: session.startedAtMs,` / `endedAtMs: session.startedAtMs,` → `startedAtMs: endedAtMs,` | **RED — `+1 -2`** at `_expectS156Window`'s start assertion (test line 98, `expect(session!.startedAtMs, equals(_s156StartMs))`): the D-154 rule that the start never moves |
+| the Mock's step-15 body dropped, its sequence entry kept | Mock step list `_MockMigrationStep(15, 'clampInvertedSessionWindows', repo._clampInvertedSessionWindows)` → the two-argument form | **RED — `+1 -2`**: the Mock test fails on the unrepaired value and the Hive test fails on the parity line — the two stores must return equal values for the same store |
+
+Restored, byte-for-byte (re-read from the final tree):
+
+```dart
+// hive_workout_repository.dart
+if (startedAtMs == null || endedAtMs == null) continue;
+if (endedAtMs >= startedAtMs) continue;
+
+sessionMap['ended_at_ms'] = startedAtMs;
+await _sessionsBox.put(entry.key, sessionMap);
+```
+
+```dart
+// mock_workout_repository.dart
+final endedAtMs = session.endedAtMs;
+if (endedAtMs == null || endedAtMs >= session.startedAtMs) continue;
+
+_sessions[entry.key] = TrainingSession(
+  …
+  startedAtMs: session.startedAtMs,
+  endedAtMs: session.startedAtMs,
+  …
+);
+```
+
+### Phase 4 verification
+
+| Check | Result |
+|---|---|
+| full `test` on the final tree | `01:57 +4078 ~1: All tests passed!` (baseline `+4075 ~1`; the +3 are the three S-156 tests) |
+| `lint` | 196 issues / 0 errors — the baseline. The first pass reported 197: `unnecessary_import` on `test/data_migration_test.dart:4` (`package:hive/hive.dart show BoxEvent` is re-exported by `hive_flutter`); the import was dropped and the file re-run green (`+11`) |
+| invariant grep | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` → nothing |
+| touched files with lint issues | none: `data_migration_test`, `constants_reference`, the two repositories and `data_version.dart` appear nowhere in the lint log |
 
 ## Red → green table
 
@@ -154,7 +210,7 @@ Every mutation was reversed before the next step; the final `git-diff --stat` af
 | S-153 | `computeSessionRestTimeMs` throws `ArgumentError(1791419191803)` from `int.clamp` at `session_summary_service.dart:33`, so the summary screen never renders | `S-153: an inverted session window contributes no rest and the summary still renders` |
 | S-154 | (passes at base by design — a negative guard: an ordinary session's total is 100000 with or without the fix; its non-vacuity is proven by the merge mutation instead) | `S-154: an ordinary session merges overlapping rests once and keeps its total` |
 | S-155 | `endedAtMs >= startedAtMs` fails after the post-end `resetSessionTimerStart()` (Actual `1791428252518` < Expected `1791428252523`: the reset moved the start 5 ms past the stored end), and `endSession` on a start ahead of the phone clock stores an end 1 h before its start (`1791428252555` < `1791431852554`) | `S-155: the reset after an end writes nothing and the stored window stays ordered`; `S-155 writer table — every phone-owned writer leaves an ordered window endSession clamps a start that lies ahead of the phone clock` |
-| S-156 | the repaired `endedAtMs` still precedes `startedAtMs` | _(pending)_ |
+| S-156 | cannot be red at base by assertion: `prove-red bc96cd2 test test/data_migration_test.dart` is RED AT bc96cd2 by compile error (`dataMigrationStepsForTest` is undefined), so the guard is proven by mutation instead — the emptied repair bodies (`+1 -2`) fail exactly this claim (`Expected: <1700000000000> Actual: <1699999000000>`, the inverted row's original end). A second mutation (start moved instead of end) fails at this file's start assertion | `S-156: the Mock repairs an inverted row once and a re-run writes nothing`; `S-156: Hive repairs the store and matches the Mock`; `S-156: step 15 is appended to both migration sequences` |
 
 ## Reviewer findings
 

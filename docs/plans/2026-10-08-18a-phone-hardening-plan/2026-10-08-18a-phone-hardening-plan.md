@@ -3,7 +3,7 @@
 > Status: Iteration 1 active (planned 2026-10-08; nobody could answer questions in this run, so every
 > owner-visible choice carries a recommended default under `## Open questions` at the end and the plan
 > proceeds on those defaults)
-> Next handoff: @developer (Phase 1)
+> Next handoff: @code-reviewer (Phase 4 complete — all four phases implemented)
 > Binding conventions: `docs/global_conventions.md`; plus `docs/state_management/workout_state.md`
 > (state layer), `docs/db_integration.md` (migrations), `docs/session_summary.md` (summary numbers)
 > Series: `docs/plans/2026-10-08-18-watch-qa-index.md` (18a = this plan; 18b = the watch rest count-up)
@@ -351,24 +351,35 @@ every existing suite whose name mentions the summary (the implementer resolves t
 
 ### Phase 4: repair the rows already stored inverted (@dba)
 
-1. [ ] `currentDataVersion` 14 -> 15 · `lib/core/constants/data_version.dart:34`
-2. [ ] Append the step to `HiveWorkoutRepository._dataMigrationSteps()`
+**Phase 4 status: Complete** (2026-10-08, @dba) — all five items landed; the per-item results are in
+`## Progress` and the baselines, red/green table and mutation table in the evidence file.
+
+1. [x] `currentDataVersion` 14 -> 15 · `lib/core/constants/data_version.dart:34` — done; the literal was
+   also carried in `docs/constants_reference.md:544` and is updated there
+2. [x] Append the step to `HiveWorkoutRepository._dataMigrationSteps()`
    (`lib/data/repositories/hive_workout_repository.dart:272`) as
    `_MethodStep(15, 'clampInvertedSessionWindows', () => repo._clampInvertedSessionWindows())`, and add
    the private body beside its siblings (`:619+` style): read each session row from the sessions box,
    rewrite `endedAtMs = startedAtMs` when `endedAtMs != null && endedAtMs < startedAtMs`, skip
-   unchanged rows so a re-run writes nothing · `_dataMigrationSteps` / `_clampInvertedSessionWindows`
-3. [ ] The Mock mirror (`lib/data/repositories/mock_workout_repository.dart:267`) — the same repair over
+   unchanged rows so a re-run writes nothing · `_dataMigrationSteps` / `_clampInvertedSessionWindows` —
+   landed as planned (`lib/data/repositories/hive_workout_repository.dart:308`, body `:508-519`), plus a
+   `@visibleForTesting dataMigrationStepsForTest()` accessor so the sequence test can read the list
+3. [x] The Mock mirror (`lib/data/repositories/mock_workout_repository.dart:267`) — the same repair over
    the in-memory rows, so a store holding an inverted row converges to the same value in both
    repositories (give `_MockMigrationStep` (`:25`) a body hook if it has none) · `_dataMigrationSteps`
-   / `_MockMigrationStep`
-4. [ ] `test/data_migration_test.dart` — the new step's sequence entry (version 15, name), the S-156
+   / `_MockMigrationStep` — done; `_MockMigrationStep` gained the optional body, so step 15 runs the
+   same repair over the in-memory rows and the parity loop is green
+4. [x] `test/data_migration_test.dart` — the new step's sequence entry (version 15, name), the S-156
    three-row fixture, idempotency (a second run writes nothing) and the Hive↔Mock parity assertion on
-   the repaired values · `S-156`
-5. [ ] Confirm no doc change is owed: `docs/db_integration.md:156-215` states the append-a-step rule and
+   the repaired values · `S-156` — all three tests added (`+3`); the Hive test seeds a store at
+   `data_version = 14`, watches the box for writes (exactly one, on the inverted key) and re-runs
+   step 15 to prove the second pass writes nothing
+5. [x] Confirm no doc change is owed: `docs/db_integration.md:156-215` states the append-a-step rule and
    lists no individual step, so nothing in it becomes false; record that reading in
    `<…>.evidence.md`. (If the file is found to enumerate steps, add the row instead.) ·
-   `docs/db_integration.md`
+   `docs/db_integration.md` — confirmed as planned: the section names no individual step, so no edit
+   was owed there; the reading and its one nuance are recorded in the evidence file. The bump's value
+   *is* duplicated in `docs/constants_reference.md:544` and that row was updated to `15`
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh lint`;
 `.github/copilot/scripts/macos/gateway.sh test test/data_migration_test.dart test/db_seed_test.dart`;
@@ -443,6 +454,12 @@ every existing suite whose name mentions the summary (the implementer resolves t
 2026-10-08 · Phase 3 · item 6 — the `endedAtMs:` sweep: 16 sites in 9 files, three phone writers fixed, six carry-through sites unchanged, `WatchSessionImporter._createSession` named exempt (D-153), four readers/parse helpers and one seed literal · evidence "The `endedAtMs:` writer sweep"
 2026-10-08 · Phase 3 · verification — `lint` 196 issues / 0 errors (baseline), full `test` `01:58 +4075 ~1: All tests passed!` on the final tree, the neighbouring pair `+19`, the docs contract `+9`, invariant grep clean, `git-diff --stat` = the two source files only · evidence "Full suite", "`lint`"
 2026-10-08 · Phase 3 · docs — `docs/state_management/workout_state.md` (`endSession()` / `updateSessionEndTime()` rows) and `docs/modality_based_exercise_ui.md` (the duration Save bullet) now state `max(startedAtMs, …)` and name the S-155 tests · Assumption 12
+2026-10-08 · Phase 4 · item 1 — `currentDataVersion` 14 -> 15 (`lib/core/constants/data_version.dart:34`); the same literal in `docs/constants_reference.md:544` is updated with it · evidence "the value's second home"
+2026-10-08 · Phase 4 · item 2 — step 15 `clampInvertedSessionWindows` appended to the Hive sequence with its guarded loop (`hive_workout_repository.dart:508-519`): only `ended_at_ms < started_at_ms` rows are rewritten, unchanged rows are skipped so a re-run writes nothing · evidence "The S-156 mutations" rows 1-2
+2026-10-08 · Phase 4 · item 3 — the Mock mirror: `_MockMigrationStep` gained the optional body, step 15 rebuilds an inverted row with `endedAtMs: startedAtMs` and every other field carried through, no `updatedAtMs` change · evidence the parity row
+2026-10-08 · Phase 4 · item 4 — three S-156 tests in `test/data_migration_test.dart` (sequence entry; Mock repair + idempotent re-run; Hive store seeded at 14 with one watched write, a second pass writing nothing, and the Hive↔Mock `.toMap()` parity loop) · evidence "The S-156 fixture" / "The S-156 mutations"
+2026-10-08 · Phase 4 · item 5 — `docs/db_integration.md:156-215` enumerates no individual step, so nothing in it became false: read and recorded, no edit owed · evidence the db_integration row
+2026-10-08 · Phase 4 · verification — `prove-red bc96cd2 test test/data_migration_test.dart` reports RED AT bc96cd2 by compile error (new code), so three mutations carry the proof, `+1 -2` each; `lint` 196 issues / 0 errors (baseline — one `unnecessary_import` in the new test fixed first), full `test` `01:57 +4078 ~1: All tests passed!`, the Done-Criteria pair `+20`, invariant grep clean, `git-diff --stat` = 3 source files + 1 test file · evidence "Phase 4 verification"
 
 ## Assumption Log
 
@@ -492,6 +509,18 @@ every existing suite whose name mentions the summary (the implementer resolves t
     `updateSessionEndTime()` rows of `docs/state_management/workout_state.md` and the Save bullet of
     `docs/modality_based_exercise_ui.md` now carry the `max(startedAtMs, …)` form and name the S-155
     tests; all three sites are outside the plan's Predicted Files, which list no doc this phase.
+13. **The repair leaves `updatedAtMs` alone (Phase 4, items 2-3).** D-154 names only the end, and a
+    fresh timestamp on every run would break both the Hive↔Mock parity comparison and the "a re-run
+    writes nothing" requirement; the byte-identical snapshot the Hive test takes pins this.
+14. **Two test-side additions outside the phase's predicted surface (Phase 4, item 4).**
+    `dataMigrationStepsForTest()` (`@visibleForTesting`) on both repositories exposes the private step
+    list to the sequence test, and three S-002 assertions now read `_lastLegacyMarkerVersion = 14`:
+    the shim maps to the last *legacy marker*, so the old `currentDataVersion` expectation only held
+    while the constant stood at 14 — and mapping the shim to `currentDataVersion` instead would skip
+    the repair on exactly the devices that need it. Reviewer: ratify the S-002 edit.
+15. **The proof is by mutation, not by red-at-base (Phase 4, item 4).** The new tests cannot even
+    compile without `dataMigrationStepsForTest()`, so `prove-red bc96cd2 test …` reports RED AT the
+    base ref as a load error; three mutations then carry the guard proof, each restored exactly.
 
 ## Feedback
 
