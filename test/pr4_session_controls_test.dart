@@ -1,13 +1,17 @@
 // PR 4 (Session Screen Controls) — UI smoke tests.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/session/effort_rating_sheet.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_rest_notification_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
@@ -65,6 +69,76 @@ Future<_SessionHarness> _pumpSession(
 Future<void> _pumpScreen(WidgetTester tester, _SessionHarness harness) async {
   await tester.pumpWidget(MaterialApp(home: harness.screen));
   await tester.pumpAndSettle();
+}
+
+/// The route beneath the session screen (D-179's S-184 asks which route the
+/// stack holds after the screen leaves).
+class _HomeStub extends StatelessWidget {
+  const _HomeStub();
+
+  @override
+  Widget build(BuildContext context) =>
+      const Scaffold(body: Center(child: Text('home-stub')));
+}
+
+/// Counts the routes the navigator *adds* — `didPush` and `didReplace`. An
+/// exit animation's `didPop` / `didRemove` is not an addition, so the count is
+/// what "left once" is read from.
+class _RouteAdder extends NavigatorObserver {
+  int added = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => added++;
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      added++;
+}
+
+/// Pushes the session screen above [_HomeStub] and pumps until the seeded set
+/// is on screen — the point at which the screen has armed the session id it
+/// was mounted for. `pumpAndSettle` is never used: the session screen runs a
+/// one-second ticker.
+Future<void> _pushSessionRoute(
+  WidgetTester tester,
+  _SessionHarness harness, {
+  NavigatorObserver? observer,
+}) async {
+  final navigatorKey = GlobalKey<NavigatorState>();
+  await tester.pumpWidget(
+    MaterialApp(
+      navigatorKey: navigatorKey,
+      navigatorObservers: [?observer],
+      home: const _HomeStub(),
+    ),
+  );
+  unawaited(
+    navigatorKey.currentState!.push(
+      MaterialPageRoute<void>(builder: (_) => harness.screen),
+    ),
+  );
+  await _pumpUntil(tester, find.byType(ListTile));
+  expect(
+    find.byType(ListTile),
+    findsWidgets,
+    reason:
+        'the session screen must have loaded its session (and armed the id '
+        'it was mounted for) before the watch delivers anything',
+  );
+}
+
+/// Pumps up to [frames] frames of [step] until [finder] matches. Never
+/// `pumpAndSettle` on a tree that holds the session screen.
+Future<void> _pumpUntil(
+  WidgetTester tester,
+  Finder finder, {
+  int frames = 40,
+  Duration step = const Duration(milliseconds: 20),
+}) async {
+  for (var i = 0; i < frames; i++) {
+    if (finder.evaluate().isNotEmpty) return;
+    await tester.pump(step);
+  }
 }
 
 /// Open a rest via the standard user-facing Log Set flow. Sets
@@ -339,6 +413,264 @@ void main() {
         // in absolute terms — the consolidated token guarantees it.
         expect(discardRect.height, notesRect.height);
         expect(discardRect.height, infoRect.height);
+      },
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // 19a Phase 3 (D-179) — the phone's session screen follows an end delivered
+  // by the other device: it leaves for its own session's end, once, and never
+  // in edit mode.
+  // -------------------------------------------------------------------------
+  group('Watch authority — the session screen leaves on its own', () {
+    testWidgets(
+      'S-174 the screen leaves for the summary when the watch completes its session, rating shown, no prompt',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final harness = await _pumpSession(repo);
+        final sessionId = harness.workoutState.currentSession!.id;
+        final nav = _RouteAdder();
+        await _pushSessionRoute(tester, harness, observer: nav);
+        final routesAtMount = nav.added;
+
+        // The wrist's lifecycle naming the live session: the adoption bridge
+        // catches the row up with the watch's rating (`_catchUpSessionRow`)
+        // and then ends it. `updateSessionFeeling` clamps to 1..5, so the
+        // plan's rating 7 is delivered as the top of the real scale.
+        await harness.workoutState.updateSessionFeeling(sessionId, 4);
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        expect(
+          nav.added,
+          routesAtMount,
+          reason:
+              'S-174 a live session\'s own lifecycle does not move the screen — '
+              'red under the mutation that drops the `endedAtMs` clause',
+        );
+
+        await harness.workoutState.endSession();
+
+        // One frame runs the listener's post-frame replacement; the session
+        // route is still mounted here, on its way out.
+        await tester.pump();
+        expect(
+          nav.added,
+          routesAtMount + 1,
+          reason: 'S-174 the end opens exactly one route — the summary',
+        );
+
+        // A second lifecycle naming the same session arrives while the screen
+        // is leaving: D-179 leaves once.
+        await harness.workoutState.updateSessionFeeling(sessionId, 4);
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        expect(
+          nav.added,
+          routesAtMount + 1,
+          reason:
+              'S-174 the screen leaves once — a later notification for its own '
+              'session must not navigate again (red under the mutation that '
+              'drops the `_leaving` guard)',
+        );
+
+        await _pumpUntil(
+          tester,
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+        );
+        // Let the replacement finish: the session route is disposed when its
+        // exit transition ends, not when the summary is pushed.
+        await tester.pump(const Duration(milliseconds: 400));
+        await _pumpUntil(tester, find.text('4 / 5'));
+
+        expect(
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+          findsOneWidget,
+          reason:
+              'S-174 the screen leaves for the summary on its own — red before '
+              'the change, when the screen stays on the ended session',
+        );
+        expect(
+          find.byType(WorkoutSessionScreen),
+          findsNothing,
+          reason: 'S-174 the session route is replaced, not left beneath',
+        );
+        expect(
+          find.text('4 / 5'),
+          findsWidgets,
+          reason:
+              'S-174 the summary reads the row as it stands — the rating the '
+              'watch wrote is on screen',
+        );
+        expect(
+          find.byType(EffortRatingSheet),
+          findsNothing,
+          reason:
+              'S-174 the phone must not prompt for a rating the watch already '
+              'gave (D-180, one end = one prompt)',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'S-184 a discard from the watch pops the screen and pushes no summary',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final harness = await _pumpSession(repo);
+        final sessionId = harness.workoutState.currentSession!.id;
+        await _pushSessionRoute(tester, harness);
+
+        // What the wrist's `abandoned` lifecycle leaves behind: the row is
+        // deleted and `currentSession` becomes null.
+        await harness.workoutState.discardCurrentSession();
+
+        await tester.pump();
+        // One frame runs the listener's post-frame pop, the rest let the exit
+        // transition finish (the session route is disposed when it ends).
+        for (var i = 0; i < 25; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+
+        expect(
+          find.byType(WorkoutSessionScreen),
+          findsNothing,
+          reason:
+              'S-184 the session route is popped — red before the change, when '
+              'the deleted session leaves the screen mounted',
+        );
+        expect(
+          find.text('home-stub'),
+          findsOneWidget,
+          reason: 'S-184 the stack\'s top is the route beneath the session',
+        );
+        expect(
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+          findsNothing,
+          reason: 'S-184 a discarded session has nothing to summarize',
+        );
+        expect(await repo.getSession(sessionId), isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'S-185a an edit-mode screen over an ended session stays put',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        // Edit mode is a review mount: an ended session whose row carries a
+        // feeling (the shape the summary's historical view hands it, D-179).
+        final harness = await _pumpSession(repo, editMode: true);
+        final sessionId = harness.workoutState.currentSession!.id;
+        await harness.workoutState.updateSessionFeeling(sessionId, 4);
+        await harness.workoutState.endSession();
+        await _pushSessionRoute(tester, harness);
+
+        // The lifecycle arrives while the review screen is up.
+        await harness.workoutState.updateSessionFeeling(sessionId, 4);
+        await harness.workoutState.endSession();
+
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+
+        expect(
+          find.byType(WorkoutSessionScreen),
+          findsOneWidget,
+          reason:
+              'S-185a a review mount must not replace itself with a summary — '
+              'red under the mutation that drops the `!editMode` clause',
+        );
+        expect(
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+          findsNothing,
+          reason: 'S-185a no summary is pushed for an edit-mode mount',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'S-185b the screen\'s own finish leaves exactly once while a same-session lifecycle arrives',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final harness = await _pumpSession(repo);
+        final sessionId = harness.workoutState.currentSession!.id;
+        await _pushSessionRoute(tester, harness);
+
+        await tester.tap(find.text('Finish Workout'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.tap(find.widgetWithText(FilledButton, 'Finish').last);
+        await tester.pump();
+
+        // The lifecycle naming the same session arrives while the screen's own
+        // finish flow is running.
+        await harness.workoutState.updateSessionFeeling(sessionId, 4);
+        await harness.workoutState.endSession();
+
+        // The route stack after each pump: never two summaries, exactly one
+        // by the end.
+        final summary = find.byType(SessionSummaryScreen, skipOffstage: false);
+        for (var i = 0; i < 40; i++) {
+          expect(
+            summary.evaluate().length,
+            lessThanOrEqualTo(1),
+            reason:
+                'S-185b exactly one replacement — red under the mutation that '
+                'drops the `_isFinishingSession` guard',
+          );
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+
+        expect(
+          summary,
+          findsOneWidget,
+          reason: 'S-185b the phone\'s own finish opened one summary',
+        );
+        expect(
+          find.byType(WorkoutSessionScreen),
+          findsNothing,
+          reason: 'S-185b the session route was replaced, not left beneath',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'S-185c an ended session the screen was not mounted for is ignored',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        // A different session, already ended — what a foreign row looks like
+        // when the state loads it (the summary's historical view).
+        final other = WorkoutState(repo);
+        await other.createNewSession();
+        final otherId = other.currentSession!.id;
+        await other.endSession();
+
+        final harness = await _pumpSession(repo);
+        await _pushSessionRoute(tester, harness);
+
+        await harness.workoutState.loadHistoricalSession(otherId);
+
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+
+        expect(
+          find.byType(WorkoutSessionScreen),
+          findsOneWidget,
+          reason:
+              'S-185c another session\'s end must not move the screen — the id '
+              'it was mounted for is what decides',
+        );
+        expect(
+          find.byType(SessionSummaryScreen, skipOffstage: false),
+          findsNothing,
+          reason: 'S-185c no summary is pushed for a foreign session id',
+        );
+        expect(tester.takeException(), isNull);
       },
     );
   });

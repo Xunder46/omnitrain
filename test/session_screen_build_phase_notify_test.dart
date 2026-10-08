@@ -24,6 +24,8 @@
 // evidence file, "Phase 1", records the harness the scenario text prescribed
 // first and why it cannot reproduce.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,6 +33,7 @@ import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/session/session_overview_screen.dart';
+import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
@@ -39,6 +42,21 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_rest_notification_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
+
+/// Delivers the external end from inside a `build` — the frame's build phase.
+/// D-179's rule is that the screen's listener must survive a notification that
+/// reaches it from there without notifying anybody itself.
+class _EndDuringBuild extends StatelessWidget {
+  const _EndDuringBuild({required this.onBuild});
+
+  final VoidCallback onBuild;
+
+  @override
+  Widget build(BuildContext context) {
+    onBuild();
+    return const SizedBox.shrink();
+  }
+}
 
 /// The screens of one frame, mounted one component element below the ancestor
 /// that listens to the same state.
@@ -322,4 +340,98 @@ void main() {
       reason: 'S-152 the overview finished its first load (spinner `:41` off)',
     );
   });
+
+  testWidgets(
+    'S-174 D-179 an end delivered while the frame builds notifies nobody and still leaves',
+    (WidgetTester tester) async {
+      // Two screens share the frame; the default 800x600 surface leaves the
+      // session screen less height than its body needs.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final phone = await _phone();
+      final sessionId = phone.workoutState.currentSession!.id;
+      phone.recordNotificationPhases();
+
+      // The deliverer is armed only after the screen's deferred first load has
+      // run: D-179's listener ignores everything until it has armed the session
+      // id it was mounted for.
+      final armed = ValueNotifier<bool>(false);
+      addTearDown(armed.dispose);
+
+      var delivered = false;
+      await tester.pumpWidget(
+        _harness(phone.workoutState, [
+          _sessionScreen(phone),
+          ValueListenableBuilder<bool>(
+            valueListenable: armed,
+            builder: (_, isArmed, _) => isArmed
+                ? _EndDuringBuild(
+                    onBuild: () {
+                      if (delivered) return;
+                      delivered = true;
+                      // The wrist's catch-up writes the rating and then ends
+                      // the session (`watch_session_adoption_bridge.dart`),
+                      // here from the frame that mounts the screen the
+                      // listener belongs to.
+                      unawaited(
+                        phone.workoutState.updateSessionFeeling(sessionId, 4),
+                      );
+                      unawaited(phone.workoutState.endSession());
+                    },
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ]),
+      );
+      await tester.pump();
+
+      armed.value = true;
+      await tester.pump();
+      final exception = tester.takeException();
+
+      expect(
+        delivered,
+        isTrue,
+        reason: 'D-179 the end was delivered from the frame\'s build phase',
+      );
+      expect(
+        find.byType(SessionSummaryScreen, skipOffstage: false),
+        findsNothing,
+        reason:
+            'D-179 the reaction is deferred out of the frame that carried the notification, so '
+            'nothing navigates while that frame builds',
+      );
+      expect(
+        phone.notificationPhases
+            .where((phase) => phase == SchedulerPhase.persistentCallbacks)
+            .toList(),
+        isEmpty,
+        reason:
+            'D-179 nothing reaches the listener from the build phase '
+            '(`docs/global_conventions.md`, "No state notification during the build phase")',
+      );
+      expect(
+        exception,
+        isNull,
+        reason:
+            'D-179 the listener navigates from a post-frame callback, so no element is marked '
+            'dirty while the frame that delivered the notification is building',
+      );
+
+      // The deferral is not a cancellation: the screen still leaves.
+      for (var i = 0; i < 60; i++) {
+        if (find.byType(SessionSummaryScreen).evaluate().isNotEmpty) break;
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(
+        find.byType(SessionSummaryScreen, skipOffstage: false),
+        findsOneWidget,
+        reason:
+            'D-179 the deferred reaction ran: the end delivered during the build opened the '
+            'summary',
+      );
+    },
+  );
 }

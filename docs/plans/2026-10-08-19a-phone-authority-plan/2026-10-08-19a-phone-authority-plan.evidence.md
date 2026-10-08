@@ -151,20 +151,71 @@ The same command before the last one-line fix (a redundant `wire_timestamps.dart
 
 ## Phase 3 — the phone's screen follows an end from the watch
 
+Base for this phase: `9851765` (Phase 2's head, named by the brief). Baselines there: `gateway.sh test`
+→ `+4090 ~1`, 0 failures; `gateway.sh lint` → 196 issues, 0 errors; `gateway.sh swift-test` not re-run
+(no `.swift` file is in this phase's Predicted Files).
+
 | # | Item (file · symbol) | Command | Result |
 | --- | --- | --- | --- |
-| 1–4 | `workout_session_screen.dart` · `initState`, `dispose`, the listener, `_pushSessionReplacement` | `gateway.sh test test/pr4_session_controls_test.dart` | |
-| 5 | `workout_session_finish.dart` (only if the helper moves) | the same command plus S-185 part B | |
-| 6–7 | `test/pr4_session_controls_test.dart`, `test/watch_session_finish_test.dart`, `test/session_screen_build_phase_notify_test.dart` | `gateway.sh test test/pr4_session_controls_test.dart test/watch_session_finish_test.dart test/session_screen_build_phase_notify_test.dart test/session_finish_timers_test.dart` | |
+| 1–4 | `workout_session_screen.dart` · `initState` subscription (`!editMode`), `dispose` unsubscribe, `_leaving`/`_mountedSessionId`, `_onWorkoutStateChanged` (guard → `popUntil(isFirst)` on a null session / post-frame `_pushSessionReplacement` to `SessionSummaryScreen` with `_finishSession`'s exact arguments) | `gateway.sh test test/pr4_session_controls_test.dart` | `01:01 +14: All tests passed!` (9 pre-existing + 5 new: S-174, S-184, S-185a/b/c) |
+| 5 | `workout_session_finish.dart` · `_leaving = true;` before the empty-session `discardCurrentSession()`; `workout_session_list_view.dart` · `_discardCurrentSession` first line. No helper moved: the listener reuses `_pushSessionReplacement` and `_isFinishingSession` | the same command + `test/watch_session_finish_test.dart` | item 6's run below; no second guard was added |
+| 6 | `test/pr4_session_controls_test.dart` · group `Watch authority — the session screen leaves on its own` | `gateway.sh test test/pr4_session_controls_test.dart test/watch_session_finish_test.dart test/session_screen_build_phase_notify_test.dart test/session_finish_timers_test.dart` (the phase's Done Criteria) | `00:01 +34: All tests passed!` |
+| 7 | `test/session_screen_build_phase_notify_test.dart` · `S-174 D-179 an end delivered while the frame builds notifies nobody and still leaves`; S-185 part B lives in the pr4 group (see the Assumption Log) | `gateway.sh test test/session_screen_build_phase_notify_test.dart` | `00:00 +5: All tests passed!` |
 
-| Mutation | Expected red | Observed |
-| --- | --- | --- |
-| the `!editMode` clause is dropped | S-185 part A | |
-| `endedAtMs != null` is ignored | S-174 | |
+Longer runs used while working (all green, nothing edited to make them pass):
+`test/watch_session_finish_test.dart test/session_finish_timers_test.dart test/screen_widget_test.dart`
+→ `+235`; after the last one-line helper fix `test/pr4_session_controls_test.dart
+test/session_screen_build_phase_notify_test.dart` → `00:01 +19: All tests passed!`.
 
-Widget-test discipline for every row above: Mock repository, `tester.pump()` only, no real
-`Future.delayed`, no Hive harness inside `testWidgets`, no `pumpAndSettle` on the session
-screen's one-second ticker.
+Ticker after a pop (the Done Criteria's record): the screen runs a one-second ticker, so every new
+case is Mock-first with `tester.pump()` and explicit 20 ms frames; nothing uses `pumpAndSettle`.
+Disposal is observed rather than assumed — S-184 pumps 25 × 20 ms after the pop and asserts
+`find.byType(WorkoutSessionScreen)` `findsNothing`, i.e. the route transition finished and `dispose`
+ran (where the subscription is removed and the ticker cancelled). `test/session_finish_timers_test.dart`,
+the suite that holds the ticker and timer expectations, is green in the Done-Criteria run above.
+
+`prove-red` verdicts (the tests cannot compile at base? they can — both files exist there):
+
+```
+$ .github/copilot/scripts/macos/gateway.sh prove-red 9851765 test test/pr4_session_controls_test.dart
+RED AT 9851765 (exit 1)
+  S-174 … Expected: <3> Actual: <2>   (the leave-once witness counts routes: base adds none)
+  S-184 … Found 1 widget with type WorkoutSessionScreen … (the screen stayed mounted)
+
+$ .github/copilot/scripts/macos/gateway.sh prove-red 9851765 test test/session_screen_build_phase_notify_test.dart
+RED AT 9851765 (exit 1)
+  the D-179 clause … Found 0 widgets with type SessionSummaryScreen (the reaction does not exist at base)
+```
+
+Mutation table — one-line changes in the working tree, each restored to the exact original and the
+diff re-checked as `48 insertions(+)` in `workout_session_screen.dart`:
+
+| Mutation | Command | Expected red | Observed |
+| --- | --- | --- | --- |
+| the `!editMode` clause is dropped **and** `initState`'s subscription made unconditional | `test test/pr4_session_controls_test.dart --plain-name "S-185a"` | S-185a | **S-185a red**: `Found 0 widgets with type WorkoutSessionScreen` — the edit-mode screen left for the summary. Dropping only the guard clause stays **green** (edit mode never subscribes), so the two conditions are one guard in practice; the plan's row is satisfied by the double mutation. Restored |
+| `&& session.endedAtMs != null` is dropped | the same file, `--plain-name "S-174"` | S-174 | first run **green** — the rating notification alone opened the summary, so the clause was uncovered. S-174 was strengthened with the live-session clause ("a live session's own lifecycle does not move the screen", the route witness counts what a live session adds: none), then the mutation gave **S-174 red** `Expected: <2> Actual: <3>`. Restored |
+| `_isFinishingSession` is dropped from the guard | the same file, `--plain-name "S-185b"` | S-185b | **S-185b red**: `Expected: a value less than or equal to <1> Actual: <2>` — the screen's own finish plus the same-session end produced two summaries. Restored |
+| `_leaving` is dropped (the initialiser and both assignments) | the same file, `--plain-name "S-174"` | S-185b (the plan's row) | **S-174 red**: `Expected: <3> Actual: <4>` — a second same-session notification navigated a second time. The witness is the leave-once clause in S-174, not S-185b (its `_isFinishingSession` covers that case); same guard, different scenario — recorded, not re-labelled. Restored |
+| the ended branch pushes inline instead of inside `addPostFrameCallback` (Trap 3's deferral) | `test test/session_screen_build_phase_notify_test.dart` | the D-179 clause | **green — this mutation is benign.** The state's end path notifies through `await`s, so a notification never lands inside `persistentCallbacks`; the clause's live assertions are "nothing is thrown" and "no notification phase during the delivery frame", and its proof is the RED AT base verdict above. Restored |
+
+Full suite at the phase's head: `gateway.sh test` → `01:42 +4096 ~1: All tests passed!` (4090 + 6 new:
+5 in the pr4 group, 1 build-phase clause; 1 pre-existing skip, 0 failures). The run before the phase's
+last one-line fix (a `use_null_aware_elements` info in my own helper, `navigatorObservers: [if (observer != null) observer]`
+→ `[?observer]`): `+4096 ~1`, also green; both touched files were re-run green after the fix (19/19 above).
+`gateway.sh lint` → **196 issues = baseline**, none in a line this phase authored. Invariant sweep
+(`grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core`, read with the
+file tools because the shell is the gateway): **no matches**.
+
+Honest notes. (1) The brief's S-174 fixture says "rating 7"; `updateSessionFeeling` clamps 1..5
+(`lib/state/workout/session_core_lifecycle.dart:183`), so the fixture rates 4 and asserts 4 — the
+scenario's point (the summary renders the watch's rating without asking) is unchanged. (2) `_leaving`
+is redundant on the screen's own finish (already `_isFinishingSession`) and on the two own-discard
+paths (the screen and the listener both call `popUntil(isFirst)`, so the listener's call is a no-op
+there); its load-bearing witness is an end arriving from outside the screen, which is what S-174's
+leave-once clause and the fourth mutation show. (3) The D-179 clause has to arm the screen first:
+`_mountedSessionId` is deliberately unset during the first frame, so an end delivered then is ignored
+by design; the clause arms it through a `ValueNotifier` after the deferred load and then delivers the
+end from inside `build`.
 
 ## Phase 4 — docs, contract, residue sweep
 

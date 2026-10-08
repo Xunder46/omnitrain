@@ -186,6 +186,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // Prevent duplicate finish flows from double taps.
   bool _isFinishingSession = false;
 
+  // D-179: true once this screen has begun leaving — set by its own exits
+  // (finish, discard) before the state call that would notify the listener,
+  // and by the listener itself, so the screen leaves exactly once.
+  bool _leaving = false;
+
+  // D-179: the session this screen was mounted for, captured after its first
+  // load; a notification naming any other session is ignored.
+  String? _mountedSessionId;
+
   // Edit-mode snapshot captured once after session data first loads.
   // Used by _discardEditChanges() to roll back structural mutations
   // (add/remove exercise, add/remove set) that bypass the edit buffer.
@@ -228,6 +237,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     WidgetsBinding.instance.addObserver(this);
     widget.settingsState.addListener(_onSettingsChanged);
     if (!widget.editMode) {
+      widget.workoutState.addListener(_onWorkoutStateChanged);
+    }
+    if (!widget.editMode) {
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
       _tick();
     } else {
@@ -264,6 +276,40 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   void _onSettingsChanged() {
     if (widget.editMode) return;
     _scheduleActiveRestNotifications();
+  }
+
+  /// D-179: a workout that ends or is discarded by anything other than this
+  /// screen's own flow (the watch, through the adoption bridge) takes the
+  /// screen with it, once.
+  void _onWorkoutStateChanged() {
+    if (!mounted || _leaving || _isFinishingSession || widget.editMode) return;
+    final expectedSessionId = _mountedSessionId;
+    if (expectedSessionId == null) return;
+    final session = widget.workoutState.currentSession;
+    if (session == null) {
+      _leaving = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      });
+    } else if (session.id == expectedSessionId && session.endedAtMs != null) {
+      _leaving = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _pushSessionReplacement(
+          context,
+          (_) => SessionSummaryScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+            onSessionSaved: widget.onSessionSaved,
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
+            restNotificationService: widget.restNotificationService,
+          ),
+        );
+      });
+    }
   }
 
   void _scheduleActiveRestNotifications() {
@@ -435,6 +481,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         await widget.workoutState.createNewSession();
       }
       await widget.workoutState.loadSessionData();
+      _mountedSessionId ??= widget.workoutState.currentSession?.id;
       final exercises = widget.workoutState.getExercisesWithEntries();
       setState(() {
         _exercises = exercises;
@@ -1570,6 +1617,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.settingsState.removeListener(_onSettingsChanged);
+    widget.workoutState.removeListener(_onWorkoutStateChanged);
     _setTransitionResetTimer?.cancel();
     _ticker?.cancel();
     // Cancel all effort timers

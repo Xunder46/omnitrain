@@ -12,6 +12,7 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
         .isNotEmpty;
     if (!hasExercises) {
       // No exercises logged — discard the empty session and exit immediately.
+      _leaving = true;
       await widget.workoutState.discardCurrentSession();
       if (mounted) Navigator.of(context).pop();
       return;

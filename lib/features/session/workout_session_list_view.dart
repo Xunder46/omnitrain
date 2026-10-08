@@ -915,6 +915,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
   /// cancels mid-flow we don't pop anything; if the discard succeeds we
   /// unwind to the bottom of the navigation stack (the hub / home).
   Future<void> _discardCurrentSession() async {
+    _leaving = true;
     await widget.workoutState.discardCurrentSession();
     if (!mounted) return;
     // The session was pushed on top of the home stack; pop until first
