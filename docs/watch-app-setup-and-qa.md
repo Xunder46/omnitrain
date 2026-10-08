@@ -382,9 +382,25 @@ foregrounded the wrist's session ends on its own, without a Sync
 `S-72 finishing on the phone ends the wrist's copy, once`), and the phone's
 calendar holds exactly one entry for it. Discarding the phone's session abandons
 the wrist's copy the same way
-(`S-73 discarding on the phone abandons the wrist's copy, once`).
+(`S-73 discarding on the phone abandons the wrist's copy, once`). A watch the
+phone cannot reach at that moment — locked, or apart — is not lost work: the
+finish is answered to it at its next sync, when the wrist itself asks
+(`test/watch_session_finish_test.dart`,
+`S-5 the phone's own finish is reported, and the wrist is answered at its next
+sync`).
 **(f) Finishing on the watch.** Answering the wrist's own End closes the session
-on the phone as well, with one history entry and the rating the wrist gave.
+on the phone as well, with one history entry and the rating the wrist gave. An
+End the phone was not there to hear — ended while the pair was apart — is
+re-announced by the wrist at its next catch-up, behind whatever the wrist still
+owes, and the phone's copy and its session screen end then, with the wrist's
+rating (`test/live_mirroring_test.dart`,
+`S-216 the catch-up re-announces the wrist's end behind what it owes`;
+`test/pr4_session_controls_test.dart`,
+`S-213 the end the wrist re-announces at its next catch-up leaves the screen for
+one summary carrying the wrist's rating`). The repeat is harmless by design: the
+same end travels under its own identity, and the phone reads a second copy as the
+end it already holds (`test/live_mirroring_test.dart`,
+`S-215 every catch-up repeats the same frame, and the phone stays still`).
 **(g) Sets the phone logged reach the wrist by themselves — (owner), not yet
 run.** Log two sets on the phone's regular session screen, in a session that is
 also on the watch. With the phone app in the foreground, the watch's logging
@@ -504,7 +520,15 @@ plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
     `S-72 finishing on the phone ends the wrist's copy, once`), and the phone
     holds one entry (step *(e)* above). Finish on the wrist: the phone's copy ends
     through its ordinary finish with the rating the wrist gave (step *(f)*
-    above).
+    above). Neither finish needs the other device in reach: a wrist that was
+    locked or apart when the phone finished is answered at its next sync, when it
+    asks (`test/watch_session_finish_test.dart`,
+    `S-5 the phone's own finish is reported, and the wrist is answered at its
+    next sync`), and an End that did not get through is re-announced by the wrist
+    at its own next catch-up, which ends the phone's copy and its session screen
+    with the wrist's rating (`test/pr4_session_controls_test.dart`,
+    `S-213 the end the wrist re-announces at its next catch-up leaves the screen
+    for one summary carrying the wrist's rating`).
 19. **Heart rate and steps reach the phone** *(needs Phase 8)*. With heart-rate
     and motion permission granted, run a session with a run, three rounds of a
     sports exercise and a block of sets. After sync the phone holds an average

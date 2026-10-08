@@ -97,10 +97,10 @@ the two stacks' agreement on a re-stated id in
 
 `WatchMirrorTransport` is the phone's half of the transport contract: `send`
 and `requestSnapshot`. Per-platform carriers (WatchConnectivity, the Wear OS
-data layer) implement it; it is fire-and-forget with retries, and the protocol's
-idempotency is what makes at-least-once delivery safe. There is deliberately no
-reachability flag on it — a send that cannot be carried yet is the transport's
-to buffer, not a decision the session logic should make.
+data layer) implement it; `send` answers a `WatchDelivery` — whether the radio
+handed the frame over while the counterpart was reachable, never whether it was
+applied, a refusal reported and an unreachable counterpart quiet — and the
+protocol's idempotency is what makes at-least-once delivery safe.
 
 Verified by `test/live_mirroring_test.dart` (`S-008`, `S-010`).
 
@@ -178,7 +178,8 @@ never the phone's current-session pointer, which browsing a past session
 repoints. A pending session that still runs is kept while the phone is not on
 another live session of its own, so browsing away and finishing it afterwards
 still announces its end. It adds no queue, no retry and no user-visible state: a
-send the transport cannot carry is dropped and leaves the phone undisturbed.
+frame the radio could not carry is not marked sent, and the next trigger offers
+it again.
 `bindWorkoutState` is idempotent, `rebaseline()` takes the current session as the
 baseline while sending nothing (D-82), and `dispose()` unbinds.
 
@@ -198,7 +199,12 @@ end the phone was told about`,
 landed in`, `S-87 a frame the wrist sends inside the window does not lose the
 discard it landed in`,
 `S-88 browsing a past session and then finishing the live one inside one window
-still announces the finish`).
+still announces the finish`, group `S-200 a frame the radio did not carry stays
+owed`, `S-200 the baseline does not advance on an undelivered send, so the same
+state is offered again when the radio comes back`, group `S-205 a frame from the
+wrist re-offers what is owed, never itself`, `S-205 (S-209) the wrist's own set
+arrives while a deletion is owed: it is applied, never echoed, and the deletion
+leaves after it`).
 
 ### `WatchSyncOrchestrator`
 
@@ -318,10 +324,10 @@ against the `WatchMessageChannel` interface, which is what lets a hand-rolled
 without touching a caller.
 
 **Nothing is queued in the app layer.** A send the radio refuses is reported
-through the transport's `onFailure` and dropped; what the peer still owes is
-re-sent from storage on the next sync (PROTOCOL.md, "Idempotency and
-reconciliation"). The transport is fire-and-forget by design — a queue here would
-be a second source of truth about what has been delivered.
+through the transport's `onFailure` and the frame is not marked sent, so what the
+peer still owes is offered again at the next trigger and re-sent from storage
+(PROTOCOL.md, "Idempotency and reconciliation"). A queue here would be a second
+source of truth about what has been delivered.
 
 **A request is not a message.** PROTOCOL.md says so normatively, and
 `WatchTransportRequest` is where that lives: a frame with no `type` is a request
@@ -335,8 +341,14 @@ until the Wear OS client is built. It reads `defaultTargetPlatform` rather than
 `dart:io`'s `Platform`, because this file is compiled for web too, and a failure
 to construct answers null rather than refusing to start the app.
 
-Verified by `test/watch_transport_test.dart` (S-001, S-002, S-003, S-006, S-009)
-over an in-memory two-ended channel.
+Verified by `test/watch_transport_test.dart` (S-001, S-002, S-003, S-006, S-009;
+group `S-206 a send answers whether the frame was handed over`,
+`S-206 a reachable counterpart means delivered, and the radio carried the frame`,
+`S-206 an unreachable counterpart is undelivered, unsent and unreported`,
+`S-206 a send reads reachability again rather than trusting the last answer`,
+`S-206 a radio that refuses the frame is undelivered and reported once`,
+`S-218 a transport that cannot carry a frame is undelivered and quiet`) over an
+in-memory two-ended channel.
 
 #### The wrist's half of the same radio
 

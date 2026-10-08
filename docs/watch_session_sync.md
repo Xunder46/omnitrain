@@ -165,11 +165,26 @@ When it names the session the phone holds, `completed` runs the ordinary finish 
 one history entry, and the rating the wrist recorded is read from the session row
 first so the finish cannot write a stale copy over it (D-8); `abandoned` runs the
 ordinary discard, which clears the phone's copy and deletes the row. A lifecycle
-naming any other session changes nothing. Verified by
+naming any other session changes nothing. An end pressed while the phone is
+apart is not lost: the wrist re-announces it at its next catch-up, from its own
+stored end row and in the live frame's own identity, and the phone's copy ends
+then, its session screen leaving for one summary carrying the wrist's rating.
+While the wrist still holds a finished session, every catch-up re-announces that
+end, and the phone reads the repeat as the end it already holds. Verified by
 `test/watch_session_finish_test.dart` (`S-4 the wrist ends its session, roster of
 logged sets first`, the same scenario with `S-4 the wrist ends its session, end
 before the logged sets`, `a wrist abandoned lifecycle discards the phone's copy`,
-and `a lifecycle naming another session changes nothing`).
+and `a lifecycle naming another session changes nothing`), by
+`test/watch_session_engine_test.dart` (group `S-212 the replay is the live end
+frame, not a new event`, `S-212 the replay repeats the live frame field for
+field`, `S-214 a session still running replays nothing`), by
+`test/live_mirroring_test.dart` (group `S-216 the catch-up re-announces the
+wrist's end behind what it owes`, `S-216 the replay is gated on reachability: an
+apart sync re-announces nothing, and the later one does`,
+`S-215 every catch-up repeats the same frame, and the phone stays still`) and by
+`test/pr4_session_controls_test.dart` (`S-213 the end the wrist re-announces at
+its next catch-up leaves the screen for one summary carrying the wrist's
+rating`).
 
 **The phone ends the session: the wrist is told (D-81).** The regular finish on
 the phone is `WorkoutState.endSession`; it writes history, and the push that
@@ -242,10 +257,24 @@ request for the wrist's, once per resume`,
 is bounded: a send that does not complete within its bound is reported through the
 device's failure hook and the chain moves on to the next frame — nothing is
 retried and nothing is queued, because the row the frame came from is still owed
-and the next sync re-sends it from storage. Verified on the phone by
+and the next sync re-sends it from storage. A frame the radio could not carry is
+not marked sent either: the push's baseline, a pending end and an owed deletion
+advance only on a delivered one, so what is owed is offered again at the next
+trigger — a WorkoutState pass, a resume, a frame applied from the wrist, or the
+answer to a wrist announcement. Delivery means the frame was handed to the radio
+while the counterpart was reachable, never that it was applied. A wrist whose app
+is not in the foreground is out of the phone's reach, so it hears from the phone
+at its next wake, when it asks. Verified on the phone by
 `test/watch_session_auto_push_test.dart`
 (`S-112 a send that never completes is abandoned and reported, and the change made
-while it hung still leaves the phone`) and on the wrist by
+while it hung still leaves the phone`, group `S-200 a frame the radio did not
+carry stays owed`, `S-200 the baseline does not advance on an undelivered send,
+so the same state is offered again when the radio comes back`, `S-200 a resume
+whose own snapshot the radio refused stays owed, and the push offers it again
+(D-191 site 4, D-198)`, group `S-205 a frame from the wrist re-offers what is
+owed, never itself`, `S-205 (S-209) the wrist's own set arrives while a deletion
+is owed: it is applied, never echoed, and the deletion leaves after it`) and on
+the wrist by
 `WatchEmitForwarderTests.testS112AHungSendCannotWedgeTheQueue` in
 `watch/watchos/Tests/WatchSessionEngineTests/WatchEmitForwarderTests.swift`.
 
@@ -441,9 +470,12 @@ remains out is listed below.
   change rather than a repeat the wrist drops (`test/watch_session_auto_push_test.dart`,
   `F2 a number the phone re-used and dropped again is announced again, under a
   change id the wrist has not applied`), and a deletion the push could not send
-  is announced by the next push under the id it was minted with, rather than
-  being lost (`test/watch_session_auto_push_test.dart`,
+  is announced by the next push under the id it was minted with rather than being
+  lost — the same case whether the radio refused the frame or reported it
+  `undelivered` (`test/watch_session_auto_push_test.dart`,
   `F7 the next pass announces the deletion the failed one could not, under the
+  change id it was minted with`,
+  `S-203 a deletion frame the radio reports `undelivered` stays owed under the
   change id it was minted with`). A snapshot that carries the id
   clears its deletion, so a slot whose set was deleted and re-created under the
   reused number converges (`test/watch_session_engine_test.dart`,
