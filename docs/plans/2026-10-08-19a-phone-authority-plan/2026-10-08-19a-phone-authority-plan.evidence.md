@@ -224,20 +224,77 @@ not written):
 
 | File · line | Sentence (short) | Test that shows it |
 | --- | --- | --- |
-| | | |
+| `docs/watch_session_sync.md:105` | D-10 rewritten: "a conflict resolves to the phone's session (D-170)" — the phone refuses to adopt, and its own state is preceded by a lifecycle naming the wrist's session `abandoned` | `test/watch_session_auto_push_test.dart` · `S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer is what converges the pair` |
+| `docs/watch_session_sync.md:113-128` | the same paragraph's four halves: the phone's, the retry, the wrist's, the adoption the reset leaves standing | S-172 (above); `S-180 a reset the radio cannot carry is dropped, re-sent by the next pass, and owed by nobody once the pair agrees`; `test/watch_session_projection_test.dart` · `S-183 case A the abandoned frame the reset carries ends the wrist's session and takes nothing else`; `test/watch_session_adoption_bridge_test.dart` · `S-6 the phone keeps the session it is already running` |
+| `docs/watch_session_sync.md:182`, `:305` | repaired citation of the test 19a Phase 2 renamed (the old name no longer exists) | `test/watch_session_auto_push_test.dart` · `S-86 the push ends the wrist's session as a deliberate reset and never as an end the phone was told about` |
+| `docs/watch_session_sync.md:245` | "A phone session now takes over the wrist's running one (D-102, D-170)" — the refusal stands, but the reset in front of the snapshot ends the wrist's session first | S-172; `S-183 case A …` and `S-183 case B a lifecycle naming a session the wrist is not holding is a no-op`; `WatchSessionEngineTests.swift` · `testS77AForeignSnapshotChangesNothingAndSaysNothing` and `testS77AWristWithAnEmptyLadderReservesNothing` |
+| `docs/watch_session_sync.md:269` | "A start on the wrist never opens a second session there (D-171, D-177)" | `test/watch_session_start_test.dart` · `S-177 startFreeWorkout on a live session returns it and emits nothing`, `S-170 startFromRoutine on a session with exercises is refused too`, `S-178 a routine fills an active empty session in place`; `WatchSessionStartPathsTests.swift` · `testS177StartFreeWorkoutOnALiveSessionReturnsItAndEmitsNothing`, `testS170StartFromRoutineOnASessionWithExercisesIsRefusedToo`, `testS178ARoutineFillsAnActiveEmptySessionInPlace` |
+| `docs/watch_session_sync.md:478-487` | both devices hold a session: the reset's three frames (lifecycle → snapshot → request) and its known limit ("until the next pass or the next reconnect's resume") | S-172; `S-182 the resume sends the reset before its own state, and the answer clears the debt`; S-180 |
+| `watch/sync_protocol/PROTOCOL.md:566` | one dated (2026-10-08) additive row: the MUST-send order, `abandoned` never `completed`, the placeholder case, no field/schema/validator/version/fixture change | S-172, S-180, `S-181 case A a pair that already agrees sends exactly what it sent before`, `S-181 case B a phone holding its own session over a wrist that holds nothing sends no lifecycle and never names the placeholder`, S-182, `S-183 case A`/`case B`, the Swift `testS77A…` pair |
+| `docs/state_management/watch_surface.md:117`, `:123` | the reset is the phone's to originate, like every other session frame | S-172 |
+| `docs/state_management/watch_surface.md:195` | repaired citation of the renamed S-86 test | `S-86 the push ends the wrist's session as a deliberate reset and never as an end the phone was told about` |
+| `docs/state_management/watch_surface.md:816` | "Reflection" entry: the phone's reset ends a wrist session the phone is not in | the D-170 row at `PROTOCOL.md:566`, which pins S-172 and S-183 case A/B |
+| `docs/watch-app-setup-and-qa.md:354-378` | two sessions at once: the phone's takes over, the wrist's own session ends and it shows the phone's; the wrist's S-77 refusal is what a phone that has not sent the reset meets; a second wrist start is refused and keeps the first | S-172, `S-183 case A …`, S-86, `test/watch_session_engine_test.dart` · `S-77 the wrist refuses a foreign snapshot, silently`, S-177, S-170, S-178 |
+| `docs/watch-app-setup-and-qa.md:444-449` | walkthrough step 5 restated the same way | `S-177 startFreeWorkout on a live session returns it and emits nothing` |
+| `docs/state_management/watch_surface.md:826` | doc-freshness line bumped to 2026-10-08 (metadata, no behaviour sentence) | — |
 
 Size measurements (the one file with a ceiling this feature presses):
 
 | File | Bytes before | Bytes after | Band |
 | --- | --- | --- | --- |
-| `docs/state_management/watch_surface.md` | | | under 80% of 64 KiB (`test/docs_indexing_contract_test.dart`) |
+| `docs/state_management/watch_surface.md` | ~51,300 B (the plan's record: ~50.1 KB, `-plan.md:62`) | ~51,800 B (before + 505 B, the sum of the hand-computed deltas of the edited lines) | 52,429 B = 80% of 64 KiB; green |
+
+Both figures are estimates: no check in the gateway reports a file's size, so the after-figure is the
+plan's before-figure plus the byte deltas of the lines this phase touched. The arbiter is
+`test/docs_indexing_contract_test.dart`, whose two tests fail above the ceiling and inside the 80%
+band and print the byte count when they do — it passed in the run below. Item 4 asked for the file to
+lose at least what it gained; every candidate removal was a sentence pinned to a test (the
+manage-bridge reachability note, the Vocabulary pointers), so this phase spent ~505 B of the file's
+~1.1 KB of headroom instead of deleting claims. Logged in the Assumption Log.
 
 Residue sweep (the exact grep and its output):
 
 ```
-$ grep -n "each keeps its own" docs/ watch/
-<only docs/watch_session_sync.md:497 (the rest-timer rule, 18b's territory) and docs/plans/ records may remain>
+$ grep -n "each keeps its own" docs/ watch/       # run with the file tools (shell grep is denied)
+docs/plans/2026-10-06-17-watch-auto-sync-index.md:42
+docs/plans/2026-10-05-15-watch-session-sync-index.md:21
+docs/plans/2026-10-08-19a-phone-authority-plan/2026-10-08-19a-phone-authority-plan.md:16,20,62,170
+docs/plans/2026-10-08-19a-phone-authority-plan/2026-10-08-19a-phone-authority-plan.evidence.md:238
+docs/plans/2026-10-08-18-watch-qa-index.md:19
 ```
+
+Every hit is under `docs/plans/` — records, exempt by D-181. No feature page and nothing under
+`watch/` matches. The plan's `:170` expected the rest-timer line (`docs/watch_session_sync.md:497`,
+now `:541`) to survive this grep; it reads "each **device** keeps its own", so it survives the wider
+sweep rather than this one:
+
+```
+$ grep -n "keeps its own|keeps their own|each keeps" docs/ watch/
+docs/watch_session_sync.md:541:- **The phone's rest timer is not carried; each device keeps its own
+watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift:1543:  "the wrist keeps its own row"
+docs/plans/** (46 hits across 12 plan files, records)
+docs/plans/food-serving-unit-normalization-plan.md:27,29 (serving units, unrelated)
+```
+
+`:541` is the rest-timer rule 18b owns (D-181's one exception, left untouched); the Swift line is a
+test's prose about its own *row*; the rest are plan records or unrelated. No session-level
+"keeps its own" survives in a feature doc: the two pages that carried it
+(`docs/watch_session_sync.md` D-10/D-102 and `docs/watch-app-setup-and-qa.md` steps (d) and 5) now
+say the phone's session takes over, the wrist's own ends, and a second wrist start is refused.
+
+Runs at the phase's head (docs-only: no Dart, no Swift and no test file changed, so nothing was
+edited to make them pass):
+
+| Check | Command | Result |
+| --- | --- | --- |
+| the phase's Done Criteria, targeted | `gateway.sh test test/docs_indexing_contract_test.dart test/sync_protocol_fixtures_test.dart test/watch_reconciliation_cross_stack_test.dart test/watch_session_auto_push_test.dart` | `All tests passed!` (155 cases) — the size gate and the contract fixtures, green after every doc edit |
+| full suite | `gateway.sh test` | `+4096 ~1: All tests passed!` — byte-identical to Phase 3's head, which is the expected result of a phase that adds no test |
+| linter | `gateway.sh lint` | `196 issues found.` = baseline; no issue line names a page this phase touched |
+| watch package | `gateway.sh swift-test` | 340 tests, 0 failures (no `.swift` file is in this phase's Predicted Files; re-run because the PROTOCOL row cites the Swift pair) |
+| invariant sweep | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no output |
+
+No prove-red for this phase: it changes no code and no test, so there is no guard to prove. The
+deliverable is prose, and `test/docs_indexing_contract_test.dart` is the check that binds it.
 
 ## Not covered by these checks (state it, never claim it)
 
@@ -254,3 +311,28 @@ $ grep -n "each keeps its own" docs/ watch/
 ## Assumption Log entries appended by executors
 
 One line per entry: phase, decision, options, choice. The Conductor ratifies or reverts each.
+
+- **Phase 4 · shell grep denied.** The residue sweep has to be run with the file tools (ripgrep), not
+  with `grep -n` in a shell. Options: ask the governor to run it, or run the same regex through the
+  tool. Choice: the tool; both greps and their exact output are in the sweep block above.
+- **Phase 4 · no way to measure a doc's bytes.** No gateway check reports file size and `wc` is denied,
+  so the size table's after-figure is the plan's before-figure plus the hand-computed deltas of the
+  touched lines. Options: state no number (the contract test prints one only when it fails), or
+  estimate and say so. Choice: estimate, and let `test/docs_indexing_contract_test.dart` be the arbiter.
+- **Phase 4 · item 4's byte balance.** The plan asked `watch_surface.md` to lose at least what it
+  gained; it gained ~505 B instead. Options: delete a test-pinned sentence (the manage-bridge
+  reachability note, or a `PROTOCOL.md` authority pointer) or spend the headroom. Choice: spend it —
+  the file sits ~600 B under the 80% band and the contract test passes — and report the deviation here.
+- **Phase 4 · three stale citations repaired.** 19a Phase 2 renamed
+  `S-86 the phone's own push does not end the wrist's live session`; `docs/watch_session_sync.md:182`,
+  `:305` and `docs/state_management/watch_surface.md:190-195` still carried the old name, which no
+  test has any more. The plan did not list them; every behaviour sentence must name a real test, so
+  they were repaired as part of the pages this phase already owns.
+- **Phase 4 · "no queue, no retry" left standing.** `watch_surface.md:180` says `WatchSessionAutoPush`
+  adds no queue and no retry. Options: qualify it for D-176's owed reset, or read it as what it says —
+  no retry *queue*, the reset being recomposed by the pass predicate like F7's owed deletion
+  announcement. Choice: leave it; the reset is owed by a predicate, not queued.
+- **Phase 4 · freshness line bumped.** `watch_surface.md:826`'s "Last reconciled against source" moved
+  from 2026-09-20 to 2026-10-08 (0 bytes). Its session-mirroring claims were reconciled against source
+  in this phase; the rest of the page was not re-derived, so the date claims only that this feature's
+  pages were touched.

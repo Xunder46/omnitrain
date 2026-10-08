@@ -114,11 +114,16 @@ mirror is where every one of those edits originates. Its named operations —
 the transport. They exist so no caller has to know a `structure_change` from an
 `exercise_push`: a searched catalog exercise is a push (it carries its own
 position), while managing the ladder is a change. Both are the phone's to
-originate — the watch never does (PROTOCOL.md, authority rules 1 and 2).
+originate — the watch never does — and so is the reset that ends a wrist session
+the phone is not in: an `abandoned` lifecycle naming that session, sent ahead of
+the phone's own state (PROTOCOL.md, authority rules 1 and 2; D-170).
 Verified by `test/phone_manage_bridge_test.dart` and
 `test/live_mirroring_test.dart`; no phone screen calls them yet, and
 `lib/state/watch/live_session_mirror_debug_main.dart` is the only caller of this
-object outside tests, through `applyStructureChange`.
+object outside tests, through `applyStructureChange`. The reset itself by
+`test/watch_session_auto_push_test.dart`
+(`S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer is
+what converges the pair`).
 
 `reorderExercises` takes a whole order and `moveExercise` is the one-place case
 of it, because the protocol carries the ladder rather than a pair of indices;
@@ -187,7 +192,8 @@ not sent back`, `S-71 the push reports the wrist's position, not slot 0`,
 `S-84 opening a past session pushes nothing for the live one`,
 `S-85 two finishes and a discard are announced once each, under each session's
 own id`, `S-85 the end the wrist itself caused is not announced back at it`,
-`S-86 the phone's own push does not end the wrist's live session`,
+`S-86 the push ends the wrist's session as a deliberate reset and never as an
+end the phone was told about`,
 `S-87 a frame the wrist sends inside the window does not lose the finish it
 landed in`, `S-87 a frame the wrist sends inside the window does not lose the
 discard it landed in`,
@@ -807,7 +813,9 @@ cases) and by watchOS
 it and is never edited; a correction is the phone's edit to an existing entry,
 which the watch reflects without rewriting its own history.
 - **Reflection** — a watch's copy of session structure or timer state, which it
-holds but does not originate. `PROTOCOL.md` authority rules 1 and 2 are what
+holds but does not originate, and which the phone's reset ends when the phone
+holds a different session of its own (D-170; `PROTOCOL.md`'s 2026-10-08 row).
+`PROTOCOL.md` authority rules 1 and 2 are what
 make the distinction consequential.
 - **Session end, set block** — defined in
 [Watch Session Capture](../watch_session_capture.md), which owns what the wrist
@@ -815,4 +823,4 @@ sends for the import.
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-09-20. This page is one part of [State Management & Services](../state_management.md); see that index for the full class list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+> **Doc freshness** — Last reconciled against source: 2026-10-08. This page is one part of [State Management & Services](../state_management.md); see that index for the full class list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.

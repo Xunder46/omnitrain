@@ -351,14 +351,30 @@ revision`). The phone's home shows it as a session in progress, and opening it
 shows the regular session screen with the wrist's exercise. With the phone back
 in reach after being out of range, the wrist catches up on its own
 (`WatchConnectivityBridgeTests.testS107TheWristCatchesUpOnAReachabilityEdgeOnce`).
-**(d) Different sessions on both devices: each keeps its own — (owner).** With a
-session running on the phone, start one on the watch (or the other way round) and
-sync. The phone keeps the session it was running and does not adopt the wrist's;
-the wrist keeps its own and takes nothing from the phone's frame either — it
-refuses a snapshot naming a session it is not in, silently
-(`test/watch_session_engine_test.dart`,
-`S-77 the wrist refuses a foreign snapshot, silently`). Nothing is merged,
-nothing about the other session is shown, and no history entry is invented.
+**(d) Two sessions at once: the phone's takes over, and the wrist's ends —
+(owner).** With a session running on the phone, start one on the watch (or the
+other way round) and sync. The phone holds the session it was running and does
+not adopt the wrist's; the wrist's own session *ends*, because the phone sends an
+`abandoned` lifecycle naming it ahead of its own state, and the wrist then shows
+the phone's session
+(`test/watch_session_auto_push_test.dart`,
+`S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer is
+what converges the pair`; `test/watch_session_projection_test.dart`,
+`S-183 case A the abandoned frame the reset carries ends the wrist's session and
+takes nothing else`). Nothing is merged and no history entry is invented for the
+wrist's session; a session the phone never held is never ended by the phone's own
+rule (`S-86 the push ends the wrist's session as a deliberate reset and never as
+an end the phone was told about`). A snapshot naming a session the wrist is not
+in is still refused silently by the wrist's own rule — that is what a phone that
+has not sent the reset meets (`test/watch_session_engine_test.dart`,
+`S-77 the wrist refuses a foreign snapshot, silently`). A second start *on the
+wrist* opens no second session there: **Free workout** returns the session it
+already has and emits nothing, a routine with exercises is refused, and a routine
+fills an active empty session in place
+(`test/watch_session_start_test.dart`,
+`S-177 startFreeWorkout on a live session returns it and emits nothing`,
+`S-170 startFromRoutine on a session with exercises is refused too`,
+`S-178 a routine fills an active empty session in place`).
 **(e) Finishing on the phone ends the wrist's session by itself — (owner).**
 Finish the phone's session from the regular session screen. With the watch app
 foregrounded the wrist's session ends on its own, without a Sync
@@ -425,12 +441,14 @@ enforced in code, so a failure points at the transport, not the logic:
    exercises, same order, same current slot. Step *(a)* of the one-session
    walkthrough is this one, and *(b)* is the same session after a change on the
    phone.
-5. **A session on each device stays where it started.** With the phone's session
-   running, start one on the watch and sync: the phone keeps its own and the wrist
-   keeps its own, showing nothing about the other's (step *(d)* above;
-   `test/watch_session_engine_test.dart`,
-   `S-77 the wrist refuses a foreign snapshot, silently`). No merge, no stray
-   history entry.
+5. **Two sessions at once: the phone's takes over.** With the phone's session
+   running, start one on the watch and sync: the phone holds the session it
+   started, the wrist's own session ends, and the wrist shows the phone's session
+   (step *(d)* above).
+   Starting again on the wrist while it already runs a session is refused and
+   keeps the first (`test/watch_session_start_test.dart`,
+   `S-177 startFreeWorkout on a live session returns it and emits nothing`). No
+   merge, and no stray history entry for the session that ended.
 6. **The wrist's own session becomes the phone's.** From a fresh state, start
    **Free workout** on the watch, pick an exercise and sync: the phone's home shows
    a session in progress and opens it in the regular session screen (step *(c)*

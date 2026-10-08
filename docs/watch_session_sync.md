@@ -102,12 +102,23 @@ the native watchOS client by `WatchPhoneEntriesTests`
 `testASecondEditWinsOverTheFirst`) in
 `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift`.
 
-**D-10 — a conflict resolves to "each keeps its own".** A phone already running a
-session refuses to adopt another, and a wrist session the phone is not in is left
-alone. A refusal is the rule working, not an error: it is reported once per
+**D-10 — a conflict resolves to the phone's session (D-170).** A phone already
+running a session refuses to adopt another, and a wrist session the phone is not
+in is left where it is — but the pair does not stay split: the phone's own state
+is preceded by a `session_lifecycle` naming the wrist's session `abandoned`, so
+the wrist ends that session and then holds the phone's. A refusal is the rule
+working, not an error: it is reported once per
 (held, offered) pair through the bridge's own `onSkipped` callback — one plain
 `debugPrint` line by default, carrying no stack — and never through the failure
-hook, which stays for a snapshot that cannot be written at all. Verified by
+hook, which stays for a snapshot that cannot be written at all. The phone's half
+of the reset is verified by `test/watch_session_auto_push_test.dart`
+(`S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer
+is what converges the pair`, and the retry
+`S-180 a reset the radio cannot carry is dropped, re-sent by the next pass, and
+owed by nobody once the pair agrees`), the wrist's half by
+`test/watch_session_projection_test.dart`
+(`S-183 case A the abandoned frame the reset carries ends the wrist's session
+and takes nothing else`), and the adoption half the reset leaves standing by
 `test/watch_session_adoption_bridge_test.dart`
 (`S-6 the phone keeps the session it is already running`, which asserts the skip
 arrives once and the failure list stays empty, `S-6 counter-case an empty phone
@@ -168,7 +179,8 @@ finishes the live one afterwards (S-88). Verified by `test/watch_session_auto_pu
 (`S-72 finishing on the phone ends the wrist's copy, once`,
 `S-85 two finishes and a discard are announced once each, under each session's
 own id`, `S-85 the end the wrist itself caused is not announced back at it`,
-`S-86 the phone's own push does not end the wrist's live session`,
+`S-86 the push ends the wrist's session as a deliberate reset and never as an
+end the phone was told about`,
 `S-87 a frame the wrist sends inside the window does not lose the finish it
 landed in`, `S-87 a frame the wrist sends inside the window does not lose the
 discard it landed in`,
@@ -230,18 +242,40 @@ fetch on a fresh watch (routines, preferences and the food catalog) and a manual
 retry. A session's own changes travel by themselves in both directions (D-90,
 D-91, D-96).
 
-**A wrist session left running keeps a new phone session off the watch (D-102).**
-While the wrist holds an active session **with a non-empty ladder**, a snapshot
-the phone sends for a different session is refused whole and silently, so a
-session the user starts on the phone afterwards does not appear on the watch until
-the wrist's own session is ended there. (A wrist whose own ladder is empty has
-nothing to interrupt, so it takes the phone's session instead.) This is how "each
-keeps its own" behaves — the alternative would silently discard work done on the
-wrist — so it is a consequence of the rule, not a defect. Pinned by
+**A phone session now takes over the wrist's running one (D-102, D-170).** A
+snapshot the phone sends for a different session is still refused whole and
+silently while the wrist holds an active session **with a non-empty ladder**, but
+it no longer arrives alone: the reset in front of it is an `abandoned` lifecycle
+naming that very session, so the wrist ends it and the snapshot that follows is
+the phone's session taking its place. (A wrist whose own ladder is empty has
+nothing to interrupt, so it takes the phone's session without the lifecycle.) The
+alternative — leaving the wrist's work standing and the two devices on two
+sessions — is the defect D-170 fixes. Pinned, for the phone's half, by
+`test/watch_session_auto_push_test.dart`
+(`S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer
+is what converges the pair`) and, for the wrist's half, by
+`test/watch_session_projection_test.dart`
+(`S-183 case A the abandoned frame the reset carries ends the wrist's session
+and takes nothing else`, `S-183 case B a lifecycle naming a session the wrist is
+not holding is a no-op`); the refusal the reset works around stays pinned by
 `WatchSessionEngineTests.testS77AForeignSnapshotChangesNothingAndSaysNothing`,
 with the empty-ladder counter-case
 `WatchSessionEngineTests.testS77AWristWithAnEmptyLadderReservesNothing`, in
 `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
+
+**A start on the wrist never opens a second session there (D-171, D-177).** A
+free start while the wrist holds a session hands that session back and emits
+nothing; a routine start over a session that has exercises is refused the same
+way, with the ladder untouched; a routine over an active *empty* session fills it
+in place, resending the structure as a snapshot and no new started lifecycle
+(`test/watch_session_start_test.dart`,
+`S-177 startFreeWorkout on a live session returns it and emits nothing`,
+`S-170 startFromRoutine on a session with exercises is refused too`,
+`S-178 a routine fills an active empty session in place`; on the watch target by
+`WatchSessionStartPathsTests.testS177StartFreeWorkoutOnALiveSessionReturnsItAndEmitsNothing`,
+`…testS170StartFromRoutineOnASessionWithExercisesIsRefusedToo` and
+`…testS178ARoutineFillsAnActiveEmptySessionInPlace`, in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchSessionStartPathsTests.swift`).
 
 ## Invariants
 
@@ -269,7 +303,8 @@ with the empty-ladder counter-case
   `S-84 opening a past session pushes nothing for the live one`,
   `S-85 two finishes and a discard are announced once each, under each session's
   own id`, `S-85 the end the wrist itself caused is not announced back at it`,
-  `S-86 the phone's own push does not end the wrist's live session`,
+  `S-86 the push ends the wrist's session as a deliberate reset and never as an
+  end the phone was told about`,
   `S-87 a frame the wrist sends inside the window does not lose the finish it
   landed in`, `S-87 a frame the wrist sends inside the window does not lose the
   discard it landed in`,
@@ -438,9 +473,18 @@ remains out is listed below.
   `…testS104AStructureChangeFromThePhoneIsNeverAnnouncedBack` and
   `…testS104ASnapshotFromThePhoneIsNeverAnsweredWithTheWristsOwn`. Routines,
   preferences and the food catalog still travel by their own paths. When both
-  devices hold their own session, each keeps its own and is told nothing
-  (`test/watch_session_engine_test.dart`,
-  `S-77 the wrist refuses a foreign snapshot, silently`). The wrist's own place
+  devices hold their own session, the phone's own state is preceded by the
+  reset — an `abandoned` lifecycle naming the wrist's session, then the phone's
+  snapshot, then one snapshot request — so the wrist ends W and holds P, and the
+  wrist's answer is what moves the phone's mirror off W
+  (`test/watch_session_auto_push_test.dart`,
+  `S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer
+  is what converges the pair`, and the resume
+  `S-182 the resume sends the reset before its own state, and the answer clears
+  the debt`). A reset the transport cannot carry leaves the wrist on W until the
+  next pass or the next reconnect's resume sends it, and is owed by nobody once
+  the pair agrees (`S-180 a reset the radio cannot carry is dropped, re-sent by
+  the next pass, and owed by nobody once the pair agrees`). The wrist's own place
   is the wrist's to report and the phone follows it, so the phone's own move of
   its current exercise does not move the watch
   (`test/watch_session_projection_test.dart`,
