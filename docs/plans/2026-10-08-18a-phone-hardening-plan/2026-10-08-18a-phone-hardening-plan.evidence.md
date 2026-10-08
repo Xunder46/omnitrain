@@ -89,9 +89,51 @@ classified by where its bounds come from. `num.clamp` throws `ArgumentError(lowe
 
 | Item | Command | Result |
 |---|---|---|
-| S-155 red at base | | _(pending)_ |
-| S-155 green after | | _(pending)_ |
-| The `endedAtMs:` writer sweep: every writer and its rule | | _(pending)_ |
+| S-155 red at base | `prove-red 323fcfe test test/session_window_never_inverted_test.dart` | `RED AT 323fcfe (exit 1)`, `+3 -2`. Both failures are the guarded order, not a load error: the headline test fails `endedAtMs >= startedAtMs must hold for the stored row` (`Expected: a value greater than or equal to <1791428252523> / Actual: <1791428252518>` — the post-end reset moved the start 5 ms past the stored end) and the writer-table row fails `endSession (future start) stored an end (1791428252555) before its start (1791431852554)` |
+| S-155 green after | `test test/session_window_never_inverted_test.dart` | `+5: All tests passed!` |
+| The neighbouring suites that pin the old writers | `test test/pr4_session_controls_test.dart test/watch_session_edit_restore_summaries_test.dart` | `+19: All tests passed!` |
+| Full suite | `test` | `02:09 +4075 ~1: All tests passed!` (exit 0) — baseline `+4070 ~1`; the +5 are the new file's tests, nothing else moved. Re-run on the final tree after the three doc clauses: `01:58 +4075 ~1: All tests passed!`, again exit 0 |
+| The doc clauses (item 6's fallout) | `test test/docs_indexing_contract_test.dart` | `+9: All tests passed!` — the two edited docs stay under the indexing ceiling and keep every link and hex rule intact |
+| `lint` | `lint` | `196 issues found. (ran in 2.9s)`, 0 errors, `lines that look like failures (0)` — identical to the baseline; searching the log for `session_core` / `session_window_never_inverted` finds nothing, so no file this phase touched carries a notice |
+| The `endedAtMs:` writer sweep | `grep -n "endedAtMs\s*:"` over `lib/` with the file tools (the gateway has no grep check) | 16 sites in 9 files; the classification is in "The `endedAtMs:` writer sweep" below |
+| The D-153 invariant grep | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches |
+
+### The `endedAtMs:` writer sweep — every site under `lib/` and its rule (item 6)
+
+| Site(s) | Class | Rule |
+|---|---|---|
+| `session_core_lifecycle.dart:23` `endSession` | **phone writer — fixed** | stores `math.max(_currentSession!.startedAtMs, now)` (item 2); guarded by S-155 |
+| `session_core_lifecycle.dart:78` `resetSessionTimerStart` | **phone writer — fixed** | carries the stored value and now writes nothing at all when an end exists (item 1); guarded by S-155 |
+| `session_core_lifecycle.dart:162` `updateSessionEndTime` | **phone writer — fixed** | stores `math.max(startedAtMs, startedAtMs + durationSecs * 1000)` (item 3); the pre-existing `durationSecs <= 0` early return makes a non-positive duration a no-op |
+| `session_core_lifecycle.dart:125` `updateSessionNote`, `:198` `updateSessionFeeling`, `:232` `updateSessionRpe` | phone writers that carry the end | write `_currentSession!.endedAtMs` unchanged, so they cannot invert a row they were handed ordered |
+| `hive_workout_repository.dart:953`, `mock_workout_repository.dart:437` (`updateSessionFeeling`) | repository carry-through | copy `existing.endedAtMs`; the same value in, the same value out, on both implementations |
+| `watch_session_importer.dart:517` `_createSession` | **exempt (D-153)** | the wrist owns that clock: the phone stores the window the wire carries, so an inverted pair from a watch with a skewed clock is still written. D-152's summary guard keeps it from crashing the summary and D-154 repairs the stored row |
+| `watch_session_importer.dart:1538`, `:1614`, `:1642` | wire-payload parse helpers (`_Entry` / `_End` / `_SetBlock`) | not session-row writers; they build the decoded payload the row is made from |
+| `models.dart:232` (`TrainingSession.fromMap`) | deserialization | reads the stored column; a reader, not a writer |
+| `session_summary_builder.dart:199` | `SessionSummary` view model | a reader over the session row |
+| `mock/seed_data.dart:5643` | demo seed literal | one literal pair, ordered by construction (`startedAtMs < endedAtMs`) |
+
+The sweep's plain conclusion: no phone-owned writer can store an end before its start any more, and a
+watch-owned row still can — which is exactly the split D-153 describes.
+
+**The end-before-start mechanism this fixes.** The wrist can end a session the phone adopted:
+`WatchSessionAdoptionBridge.onLifecycle` (`lib/state/watch/watch_session_adoption_bridge.dart:646-660`)
+calls `target.endSession()` on a `completed` lifecycle event, and that is the writer item 2 clamps. The
+brief cites this file as `lib/core/services/…`; the real path is `lib/state/watch/…`, and both the
+`completed` and the `abandoned` branches were read at that path.
+
+### The guard mutations (item 3's clamp cannot be isolated — see the third row)
+
+| Guard | Mutation | Verdict |
+|---|---|---|
+| `resetSessionTimerStart`'s early return (item 1) | delete `if (_currentSession!.endedAtMs != null) return;` | RED — the S-155 invariant assertion at test line 67 (`endedAtMs >= startedAtMs must hold for the stored row`); original restored exactly, then `+5: All tests passed!` |
+| `endSession`'s clamp (item 2) | `math.max(_currentSession!.startedAtMs, now)` -> `now` | RED — the future-start writer-table row at test line 131 (`endSession (future start) stored an end … before its start …`); original restored exactly, then `+5: All tests passed!` |
+| `updateSessionEndTime`'s clamp (item 3) | `math.max(started, started + durationSecs * 1000)` -> `started + durationSecs * 1000` | **GREEN — the mutant is unobservable, and the test says so.** The pre-existing `if (durationSecs <= 0) return;` (pinned by `test/state_test.dart:1576` and `test/session_edit_duration_test.dart`) makes every non-positive duration write nothing, and any admissible positive duration puts the candidate strictly above `startedAtMs` on both native and web ints, so no fixture can tell the two apart. The clamp stays because D-153 states the rule for every writer and because it survives the guard moving; removing the guard instead would turn those two existing suites red, which the plan did not predict. Also re-run as a whole-file check: `+5: All tests passed!` with the clamp gone |
+| the control row's own non-vacuity (item 5) | `if (_currentSession!.endedAtMs != null) return;` followed by an unconditional `return;` | RED — the control row `resetSessionTimerStart still moves a running session start` at test line 180 (`Expected: a value greater than <1791428341525> / Actual: <1791428341525>`: a live session's start must still move); original restored exactly, then `+5: All tests passed!` |
+
+Every mutation was reversed before the next step; the final `git-diff --stat` after all four is
+`lib/state/workout/session_core.dart | 2 ++` and `lib/state/workout/session_core_lifecycle.dart | 14
+++++++++++--`, i.e. the intended change and nothing else.
 
 ## Phase 4 — the repair migration
 
@@ -111,7 +153,7 @@ classified by where its bounds come from. `num.clamp` throws `ArgumentError(lowe
 | S-152 | the same phase assertion with the overview screen pumped in the same frame as the session screen | `S-152 the overview screen pumped in the same frame notifies nobody` |
 | S-153 | `computeSessionRestTimeMs` throws `ArgumentError(1791419191803)` from `int.clamp` at `session_summary_service.dart:33`, so the summary screen never renders | `S-153: an inverted session window contributes no rest and the summary still renders` |
 | S-154 | (passes at base by design — a negative guard: an ordinary session's total is 100000 with or without the fix; its non-vacuity is proven by the merge mutation instead) | `S-154: an ordinary session merges overlapping rests once and keeps its total` |
-| S-155 | `endedAtMs >= startedAtMs` fails after `resetSessionTimerStart()` | _(pending)_ |
+| S-155 | `endedAtMs >= startedAtMs` fails after the post-end `resetSessionTimerStart()` (Actual `1791428252518` < Expected `1791428252523`: the reset moved the start 5 ms past the stored end), and `endSession` on a start ahead of the phone clock stores an end 1 h before its start (`1791428252555` < `1791431852554`) | `S-155: the reset after an end writes nothing and the stored window stays ordered`; `S-155 writer table — every phone-owned writer leaves an ordered window endSession clamps a start that lies ahead of the phone clock` |
 | S-156 | the repaired `endedAtMs` still precedes `startedAtMs` | _(pending)_ |
 
 ## Reviewer findings

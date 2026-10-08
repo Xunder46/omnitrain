@@ -332,7 +332,7 @@ In edit mode (`editMode: true`) the session duration becomes editable.
 
 - Pending duration is stored in `_pendingDurationSecs`; `_originalDurationSecs` holds the value at edit entry.
 - `_hasDurationChanged()` returns `true` if the two differ — this feeds into the **Unsaved Changes** guard.
-- On **Save**: `workoutState.updateSessionEndTime(_pendingDurationSecs!)` writes `endedAtMs = startedAtMs + durationSecs × 1000`.
+- On **Save**: `workoutState.updateSessionEndTime(_pendingDurationSecs!)` writes `endedAtMs = max(startedAtMs, startedAtMs + durationSecs × 1000)` (D-153; a stored end never precedes its start).
 - On **Discard**: `_pendingDurationSecs` is reset to `_originalDurationSecs`; no repository write occurs.
 
 Discard throws away the user's own edits but never a wrist entry that arrived

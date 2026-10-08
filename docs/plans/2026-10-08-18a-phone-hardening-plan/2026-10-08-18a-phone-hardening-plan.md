@@ -317,23 +317,23 @@ every existing suite whose name mentions the summary (the implementer resolves t
 
 ### Phase 3: an end is never stored before its start (@developer)
 
-1. [ ] `SessionCoreLifecycleMethods.resetSessionTimerStart` — return after `_clearError()` without
+1. [x] `SessionCoreLifecycleMethods.resetSessionTimerStart` — return after `_clearError()` without
    writing when `_currentSession!.endedAtMs != null`; update the method's doc comment to say a
    finished window is never reopened · `resetSessionTimerStart`
    (`lib/state/workout/session_core_lifecycle.dart:59`)
-2. [ ] `SessionCoreLifecycleMethods.endSession` — store `max(_currentSession!.startedAtMs, now)` as
+2. [x] `SessionCoreLifecycleMethods.endSession` — store `max(_currentSession!.startedAtMs, now)` as
    `endedAtMs` (keep `now` for `updatedAtMs`); the early return when `endedAtMs != null` stays ·
    `endSession` (`:21`, `now` at `:28`)
-3. [ ] `SessionCoreLifecycleMethods.updateSessionEndTime` — store
+3. [x] `SessionCoreLifecycleMethods.updateSessionEndTime` — store
    `max(_currentSession!.startedAtMs, _currentSession!.startedAtMs + durationSecs * 1000)` so a
    zero-or-negative duration can never invert the window · `updateSessionEndTime` (`:152`)
-4. [ ] New `test/session_window_never_inverted_test.dart` — S-155: the real writer path
+4. [x] New `test/session_window_never_inverted_test.dart` — S-155: the real writer path
    (`createNewSession` -> `endSession` -> `resetSessionTimerStart`) with a 2 ms delay, asserting
    `endedAtMs >= startedAtMs` and that the reset wrote nothing · `S-155`
-5. [ ] Same file — the writer table: after each phone-owned writer (`endSession`,
+5. [x] Same file — the writer table: after each phone-owned writer (`endSession`,
    `updateSessionEndTime` with `durationSecs: 0`, `resetSessionTimerStart`) the row satisfies
    `endedAtMs == null || endedAtMs >= startedAtMs` · `S-155`
-6. [ ] The residue sweep: grep `lib/` for `endedAtMs:` assignments and list every writer with its rule
+6. [x] The residue sweep: grep `lib/` for `endedAtMs:` assignments and list every writer with its rule
    in `<…>.evidence.md` — `endSession`, `updateSessionEndTime` and `resetSessionTimerStart` per
    D-153, `WatchSessionImporter._createSession` (`watch_session_importer.dart:516-517`) exempt and
    named as such · the sweep's result
@@ -399,6 +399,8 @@ every existing suite whose name mentions the summary (the implementer resolves t
 | `test/session_window_never_inverted_test.dart` | 3 | new |
 | `test/data_migration_test.dart` | 4 | extended |
 | `docs/session_summary.md` | 2 | rest clipping sentence |
+| `docs/state_management/workout_state.md` | 3 | the `endSession()` / `updateSessionEndTime()` rows |
+| `docs/modality_based_exercise_ui.md` | 3 | the duration Save bullet |
 | `docs/plans/2026-10-08-18a-phone-hardening-plan/*` | 1-4 | this plan + its evidence file |
 
 ## Notes
@@ -436,6 +438,11 @@ every existing suite whose name mentions the summary (the implementer resolves t
 2026-10-08 · Phase 2 · item 4 — the clamp audit: 50 `.clamp(` sites in 28 files under `lib/`; `session_summary_service.dart:33-34` is the only one taking session-data bounds — every other site is a constant pair, a guarded list index/length, a layout metric or a single-value cap · evidence "The `.clamp(` audit"
 2026-10-08 · Phase 2 · item 5 — `docs/session_summary.md`: the clipping bullet, the load-order item 7 and the `computeSessionRestTimeMs` bullet now state `max(startedAtMs, endedAtMs)` and name S-153; `test/docs_indexing_contract_test.dart` green (`+9`) · evidence "Item 5 — the doc update"
 2026-10-08 · Phase 2 · verification — `lint` 196 issues / 0 errors (baseline), full `test` `01:41 +4070 ~1: All tests passed!`, the 8 summary-named suites `+87`, invariant grep clean, `git-diff --stat` = 1 source file (+6/-2) plus the new test file · evidence "Full suite", "`lint`"
+2026-10-08 · Phase 3 · items 1-3 — `resetSessionTimerStart` returns without writing when an end exists (doc comment updated), `endSession` stores `math.max(startedAtMs, now)`, `updateSessionEndTime` stores `math.max(startedAtMs, startedAtMs + durationSecs * 1000)` (`lib/state/workout/session_core_lifecycle.dart`, +14/-2; plus the `dart:math` import in `session_core.dart`, +2) · evidence "S-155 green after" and the guard-mutation table
+2026-10-08 · Phase 3 · items 4-5 — new `test/session_window_never_inverted_test.dart`: the S-155 headline path plus a four-row writer table; red at 323fcfe with `+3 -2`, both failures the guarded order · evidence "S-155 red at base"
+2026-10-08 · Phase 3 · item 6 — the `endedAtMs:` sweep: 16 sites in 9 files, three phone writers fixed, six carry-through sites unchanged, `WatchSessionImporter._createSession` named exempt (D-153), four readers/parse helpers and one seed literal · evidence "The `endedAtMs:` writer sweep"
+2026-10-08 · Phase 3 · verification — `lint` 196 issues / 0 errors (baseline), full `test` `01:58 +4075 ~1: All tests passed!` on the final tree, the neighbouring pair `+19`, the docs contract `+9`, invariant grep clean, `git-diff --stat` = the two source files only · evidence "Full suite", "`lint`"
+2026-10-08 · Phase 3 · docs — `docs/state_management/workout_state.md` (`endSession()` / `updateSessionEndTime()` rows) and `docs/modality_based_exercise_ui.md` (the duration Save bullet) now state `max(startedAtMs, …)` and name the S-155 tests · Assumption 12
 
 ## Assumption Log
 
@@ -467,6 +474,24 @@ every existing suite whose name mentions the summary (the implementer resolves t
    `.clamp(` sweep and the call-site reads used the file-tool grep over `lib/`; the pattern, the 50
    sites and the classification are recorded in the evidence section, since no shell alternative
    exists in Copilot mode.
+9. **`updateSessionEndTime`'s clamp is unobservable by design (Phase 3, item 3).** Its mutation stays
+   green: the pre-existing `if (durationSecs <= 0) return;` — pinned by `test/state_test.dart:1576`
+   and `test/session_edit_duration_test.dart`, which the plan did not predict — makes every
+   non-positive duration a no-op, and a positive one always yields a candidate above `startedAtMs`.
+   Chose to keep the clamp (D-153's rule for every writer, and it survives the guard moving) and to
+   leave the guard alone; removing it instead would turn those two suites red.
+10. **The `dart:math` import went into `session_core.dart` (Phase 3, items 2-3).** The three writers
+    live in the `session_core_lifecycle.dart` extension, but the members are private to
+    `session_core.dart`, so the `math.max` calls compile against the library's single import block —
+    one added import, +2 lines, outside the plan's Predicted Files.
+11. **The future-start fixture is seeded through the repository (Phase 3, items 4-5).** `SessionCore`
+    has no injectable clock, so `endSession`'s clamp cannot be reached by moving time: the test seeds
+    a `TrainingSession` whose `startedAtMs` is an hour ahead of the phone clock, loads it with
+    `loadHistoricalSession`, then ends it. That is the fixture that makes the clamp's mutation red.
+12. **Two doc rows state the stored expression (Phase 3, items 2-3).** The `endSession()` and
+    `updateSessionEndTime()` rows of `docs/state_management/workout_state.md` and the Save bullet of
+    `docs/modality_based_exercise_ui.md` now carry the `max(startedAtMs, …)` form and name the S-155
+    tests; all three sites are outside the plan's Predicted Files, which list no doc this phase.
 
 ## Feedback
 
