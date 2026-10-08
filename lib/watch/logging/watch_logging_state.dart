@@ -184,6 +184,28 @@ class WatchLoggingState {
   /// The newest timer of [kind], which is the one that applies.
   WatchTimerRecord? timerFor(String kind) => _engine.timerFor(kind);
 
+  /// D-161: a rest is running and the workout is live — the watch shows its
+  /// rest screen.
+  bool get isResting {
+    final rest = _engine.timerFor(WatchTimerKind.rest);
+    return _engine.session?.status == WatchSessionStatus.active &&
+        rest != null &&
+        rest.state != WatchTimerState.stopped;
+  }
+
+  /// Ends the running rest at this instant (the rest screen's Next, D-161).
+  Future<void> endRest() async {
+    await _engine.stopTimer(kind: WatchTimerKind.rest);
+  }
+
+  /// The running rest's elapsed time in whole seconds as of now, or null when
+  /// none is running.
+  int? restElapsedSeconds() {
+    final rest = _engine.timerFor(WatchTimerKind.rest);
+    if (!isResting || rest == null) return null;
+    return activeElapsedMs(rest, _clock()) ~/ 1000;
+  }
+
   /// The current instant, read through this state's clock, so the screen and
   /// the events it logs agree on the time.
   DateTime now() => _clock();
@@ -601,6 +623,10 @@ class WatchLoggingState {
       'exerciseId': slot['exerciseId'],
       ..._metricPayload(loggedAt),
     };
+
+    // D-162: a rest can never outlive the entry that follows it, whichever
+    // path logs — a running rest ends at this log's instant.
+    if (isResting) await endRest();
 
     final stored = await _engine.appendObservation(event);
     _dialled.clear();

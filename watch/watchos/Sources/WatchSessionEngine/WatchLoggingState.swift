@@ -259,6 +259,24 @@ public final class WatchLoggingState {
     /// The newest timer of `kind`, which is the one that applies.
     public func timer(for kind: String) -> WatchTimerRecord? { engine.timerFor(kind) }
 
+    /// D-161: a rest is running and the workout is live — the watch shows its
+    /// rest screen.
+    public var isResting: Bool {
+        guard let session = engine.session, session.status == WatchSessionStatus.active,
+              let rest = engine.timerFor(WatchTimerKind.rest) else { return false }
+        return rest.state != WatchTimerState.stopped
+    }
+
+    /// Ends the running rest at this instant (the rest screen's Next, D-161).
+    public func endRest() async { _ = await engine.stopTimer(kind: WatchTimerKind.rest) }
+
+    /// The running rest's elapsed time in whole seconds as of `now`, or nil when
+    /// none is running.
+    public func restElapsedSeconds() -> Int? {
+        guard isResting, let rest = engine.timerFor(WatchTimerKind.rest) else { return nil }
+        return activeElapsedMs(rest, now: clock()) / 1000
+    }
+
     /// The effort kind the current exercise is.
     ///
     /// A slot the routine produced says so itself: the routine's declared kind
@@ -565,6 +583,10 @@ public final class WatchLoggingState {
         for (field, value) in sensorSummary(of: event) {
             event[field] = value
         }
+
+        // D-162: a rest can never outlive the entry that follows it, whichever
+        // path logs — a running rest ends at this log's instant.
+        if isResting { await endRest() }
 
         let stored = try await engine.appendObservation(event)
         dialled.removeAll()

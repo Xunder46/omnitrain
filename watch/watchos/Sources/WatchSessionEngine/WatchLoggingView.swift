@@ -50,11 +50,18 @@ public struct WatchLoggingView: View {
 
     @StateObject private var model: WatchLoggingModel
 
+    /// Called after a successful log, so the app shell can re-evaluate which
+    /// surface it shows — logging a set starts a rest, and the shell swaps to
+    /// the rest surface on that nudge (D-161).
+    private let onLogged: (() -> Void)?
+
     public init(
         state: WatchLoggingState,
-        haptics: WatchHaptics = WristHaptics()
+        haptics: WatchHaptics = WristHaptics(),
+        onLogged: (() -> Void)? = nil
     ) {
         _model = StateObject(wrappedValue: WatchLoggingModel(state: state, haptics: haptics))
+        self.onLogged = onLogged
     }
 
     public var body: some View {
@@ -177,7 +184,10 @@ public struct WatchLoggingView: View {
     /// one glance and one confirm.
     private var logButton: some View {
         Button {
-            Task { await model.log() }
+            Task {
+                await model.log()
+                onLogged?()
+            }
         } label: {
             Text("Log").frame(maxWidth: .infinity)
         }

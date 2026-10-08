@@ -613,7 +613,12 @@ Dependents that only *read* a touched surface (no edits, tests must stay green):
   starts a rest with no plan, the new `WatchRestIsCountUpTests` scan in place; Swift 349/0, Dart
   `+4133 ~1` all passed, analyze 196/0, `prove-red HEAD` RED for the four count-up cases. Evidence:
   `2026-10-08-18b-watch-rest-count-up-plan.evidence.md`
-- [ ] Phase 2 — the rest screen, with one control (@developer)
+- [x] Phase 2 — the rest screen, with one control (@developer) — complete: `isResting`/`endRest()`/
+  `restElapsedSeconds()` in both stacks, `log()` ends a running rest first, `WatchRestView.swift` +
+  the `WatchRestScreen` twin, the `ContentView` branch second in the chain with `WatchLoggingView`'s
+  `onLogged` nudge; Dart `+4138 ~1` all passed (5 new cases), Swift 353/0 (4 new cases), analyze 196/0,
+  three mutations RED and restored, the `ContentView` branch order stated as governor-verified only.
+  Evidence: `2026-10-08-18b-watch-rest-count-up-plan.evidence.md`
 - [ ] Phase 3 — the wire refuses a rest length (@dba)
 - [ ] Phase 4 — the rule where agents will hit it (@developer)
 - [ ] 18c planned — the wrist's rest reaches the phone
@@ -646,6 +651,26 @@ RATIFIED (promote to a D-x) or REVERT (remediation).]
    countdown the user ended early never fires`, in both stacks, moved from rest+90 s to a round (60 s,
    stopped at 30 s), because a rest can no longer be owed a haptic at all; and the S-79 group's wrist
    rest is now started with no plan, since S-79 is about ownership, not length.
+
+### Phase 2 (@developer)
+
+1. **The Dart debug harness is not wired (item 5's "only if there is an obvious place" is not met).**
+   `lib/watch/debug/watch_logging_debug_main.dart` renders `WatchLoggingScreen` directly inside a
+   `Column` with a slot picker and no surface switch, so a rest branch would be a new behaviour in an
+   unpredicted file. Options: add a `ListenableBuilder` branch on `isResting` there, or leave it — left
+   it, because the Swift shell is the runtime and the plan's Predicted Files do not name the harness.
+2. **`prove-red` is not applicable to this phase; mutation proofs stand in its place.** The three
+   members and `watch_rest_screen.dart` do not exist at `3cab789`, so the test file cannot compile
+   there, and a prove-red over `watch_rest_screen.dart` would have to remove an untracked new file.
+   The brief directs the mutation form, so (a) stopped-state, (b) the `log()` guard and (c) the
+   count-up were each mutated, seen RED on both stacks, and restored exactly.
+3. **The two stacks tick differently, deliberately.** `WatchRestView` uses `TimelineView(.periodic(…,
+   by: 1))` (the brief's prescription, no state to own); `WatchRestScreen` uses a 1 s `Timer.periodic`
+   + `setState`, mirroring `watch_logging_screen.dart` and cancelling in `dispose`. Both re-read the
+   elapsed from the persisted row, so neither ticker is the source of the time.
+4. **`ContentView`'s branch order is stated, not proved.** `swift-test` compiles the package only, so
+   no package test can reach the app target's `body`; the evidence row records the claim and leaves the
+   watchOS-simulator `xcodebuild` to the governor, which is what the plan asks for.
 
 ## Feedback
 

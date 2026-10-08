@@ -179,6 +179,11 @@ struct ContentView: View {
         Group {
             if host.rating.isPromptOwed {
                 owedRating
+            } else if host.logging.isResting {
+                // D-161: while a rest runs, the rest surface replaces logging —
+                // an owed rating still wins above, and the rest is ended by
+                // Next (or by logging the next set) below.
+                WatchRestView(state: host.logging, onNext: { host.noteSurfaceChange() })
             } else if let session = host.engine.session,
                       session.status == WatchSessionStatus.active,
                       !session.exercises.isEmpty {
@@ -216,7 +221,10 @@ struct ContentView: View {
     /// session its slot and the body switches here on the host's nudge.
     private var loggingSurface: some View {
         NavigationStack {
-            WatchLoggingView(state: host.logging)
+            WatchLoggingView(
+                state: host.logging,
+                onLogged: { host.noteSurfaceChange() }
+            )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         WatchEndSessionView(state: host.rating)
