@@ -81,7 +81,7 @@ final class WatchLiveMirroringTests: XCTestCase {
             modality: "resistance_lifting",
             exercises: [exercise("sx-bench"), exercise("sx-plank"), exercise("sx-squat")]
         )
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90_000)
+        _ = try await engine.startTimer(WatchTimerKind.rest)
         let rest = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
 
         let applied = try await engine.applyMessage(
@@ -181,6 +181,12 @@ final class WatchLiveMirroringTests: XCTestCase {
                     "state": "running",
                     "startedAt": "2026-07-13T06:25:00Z",
                     "accumulatedPauseMs": 0,
+                ],
+                "round": [
+                    "kind": "round",
+                    "state": "running",
+                    "startedAt": "2026-07-13T06:25:00Z",
+                    "accumulatedPauseMs": 0,
                     "plannedDurationMs": 90_000,
                 ],
             ]
@@ -197,8 +203,12 @@ final class WatchLiveMirroringTests: XCTestCase {
         )
         XCTAssertEqual(engine.entries.map(\.entryId), ["e-phone-1"])
         XCTAssertEqual(engine.timerFor(WatchTimerKind.rest)?.state, WatchTimerState.running)
-        XCTAssertEqual(
+        XCTAssertNil(
             engine.timerFor(WatchTimerKind.rest).flatMap(completionInstant),
+            "a rest is a count-up: it has no end moment (D-160)"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.round).flatMap(completionInstant),
             try XCTUnwrap(parseUtcIso("2026-07-13T06:26:30Z"))
         )
     }

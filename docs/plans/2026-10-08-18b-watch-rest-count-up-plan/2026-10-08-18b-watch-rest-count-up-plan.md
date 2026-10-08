@@ -619,7 +619,12 @@ Dependents that only *read* a touched surface (no edits, tests must stay green):
   `onLogged` nudge; Dart `+4138 ~1` all passed (5 new cases), Swift 353/0 (4 new cases), analyze 196/0,
   three mutations RED and restored, the `ContentView` branch order stated as governor-verified only.
   Evidence: `2026-10-08-18b-watch-rest-count-up-plan.evidence.md`
-- [ ] Phase 3 — the wire refuses a rest length (@dba)
+- [x] Phase 3 — the wire refuses a rest length (@dba) — complete: the rest clause in both validators
+  (`message_validator.dart`, `SyncProtocolValidator.swift`), the schema conditional, the `PROTOCOL.md`
+  row, and the FIX run that repaired the rest-with-plan fixtures this clause turned red
+  (`test/watch_session_engine_test.dart`, `test/live_mirroring_test.dart`, `test/watch_session_auto_push_test.dart`,
+  the two Swift test files); Swift 357/0, Dart `+4141 ~1` all passed, analyze 196/0. Evidence:
+  `2026-10-08-18b-watch-rest-count-up-plan.evidence.md` (`## Phase 3 FIX — the rest-with-plan fixtures`)
 - [ ] Phase 4 — the rule where agents will hit it (@developer)
 - [ ] 18c planned — the wrist's rest reaches the phone
 
@@ -671,6 +676,30 @@ RATIFIED (promote to a D-x) or REVERT (remediation).]
 4. **`ContentView`'s branch order is stated, not proved.** `swift-test` compiles the package only, so
    no package test can reach the app target's `body`; the evidence row records the claim and leaves the
    watchOS-simulator `xcodebuild` to the governor, which is what the plan asks for.
+
+### Phase 3 FIX (@developer)
+
+1. **S-005's reference moved from a rest to a round timer, and the test was renamed.** A rest is a
+   count-up, so "the phone's end moment reaches the wrist's rest" has no premise left (D-160); the
+   guard — the wrist's own row adopts the phone's end for the *same* kind — survives on
+   `WatchTimerKind.round` (`test/live_mirroring_test.dart`, `'a round timer started on the wrist ends
+   when the phone says it does'`). Options: delete the case, or move it to a kind that has an end —
+   moved, because the cross-stack agreement it pins is still worth a test.
+2. **Every rest-with-plan fixture whose plan is *incidental* lost it; the rest were listed, not
+   converted.** Fixed: the `_runningRest` helper, the S-77/S-78 setUps and S-004's start
+   (`watch_session_engine_test.dart`, `live_mirroring_test.dart`), `autoPush`'s S-71 rest, the Swift
+   `timerJson` helper and `wristMidWorkout()` (`WatchSessionEngineTests.swift`), S-002
+   (`WatchLiveMirroringTests.swift`), and S-006's false premise on both stacks (its rest now has no end
+   and the countdown half moved to a `round` timer). Left, because their assertion *is* a rest's
+   remaining/end: `watch_session_engine_test.dart:309,352,1454,1562`, `phone_manage_bridge_test.dart:361`,
+   `WatchSessionEngineTests.swift:194,224,952,1412`, `WatchFileStoreTests.swift:151,419` — Phase 1's
+   Assumption Log 4 already assigns these to Phase 4's residue sweep, and converting them would change
+   what they exercise (`advanceExercise` disposes a rest, not a round).
+3. **A production gap found by the sweep, recorded and not fixed.** Neither hand-written validator
+   enforces `envelope.schema.json`'s `$defs.timer` `if kind == rest then not: plannedDurationMs`, so a
+   rest + plan inside a `session_snapshot` is accepted (only `timer_state` refuses it); the Dart
+   validator supports `maximum/pattern/allOf/oneOf/$ref` only. Fixing it is a production change, and
+   this brief is tests and fixtures only, so it goes to Phase 4/the owner.
 
 ## Feedback
 

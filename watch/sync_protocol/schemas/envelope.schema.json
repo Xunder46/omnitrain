@@ -346,7 +346,12 @@
           "type": "integer",
           "minimum": 1
         }
-      }
+      },
+      "if": {
+        "properties": { "kind": { "const": "rest" } },
+        "required": ["kind"]
+      },
+      "then": { "not": { "required": ["plannedDurationMs"] } }
     },
     "timers": {
       "type": "object",

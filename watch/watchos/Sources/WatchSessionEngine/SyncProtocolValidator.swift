@@ -192,7 +192,9 @@ public final class SyncProtocolValidator {
         }
     }
 
-    /// A timer must declare the kind it is filed under.
+    /// A timer must declare the kind it is filed under, and the one timer that
+    /// never carries a planned length is the rest: rest is a count-up
+    /// (`docs/global_conventions.md`, rest rule).
     private func timerKindRejections(_ timers: [String: Any]) -> [SyncProtocolRejection] {
         var rejections: [SyncProtocolRejection] = []
         for kind in Self.timerKinds {
@@ -204,6 +206,18 @@ public final class SyncProtocolValidator {
                     SyncRejectionCode.semanticViolation,
                     "\(Self.root).payload.timers.\(kind).kind",
                     "timer '\(kind)' declares kind \(describe(timer["kind"]))"
+                )
+            )
+        }
+        if let rest = timers["rest"] as? [String: Any],
+           rest["plannedDurationMs"] != nil
+        {
+            rejections.append(
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    "\(Self.root).payload.timers.rest.plannedDurationMs",
+                    "a rest has no planned length: rest is a count-up "
+                        + "(docs/global_conventions.md, rest rule)"
                 )
             )
         }

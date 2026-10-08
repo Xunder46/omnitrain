@@ -446,7 +446,11 @@ final class WatchTimerRecord extends WatchRecord {
     if (pausedAt != null) 'pausedAt': utcIso(pausedAt!),
     if (stoppedAt != null) 'stoppedAt': utcIso(stoppedAt!),
     'accumulatedPauseMs': accumulatedPauseMs,
-    if (plannedDurationMs != null) 'plannedDurationMs': plannedDurationMs,
+    // A rest is a count-up (docs/global_conventions.md, rest rule): a row
+    // written before that had a length still stores one, and the wire refuses
+    // it, so the frame never carries it.
+    if (plannedDurationMs != null && kind != 'rest')
+      'plannedDurationMs': plannedDurationMs,
   };
 
   @override

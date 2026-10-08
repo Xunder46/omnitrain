@@ -205,13 +205,13 @@ Map<String, Object?> _exercisePush(
   },
 };
 
-/// A running `rest` timer as the wire spells one.
+/// A running `rest` timer as the wire spells one: rest is a count-up, so it
+/// carries no planned length (D-160).
 Map<String, Object?> _runningRest(String startedAt) => {
   'kind': 'rest',
   'state': 'running',
   'startedAt': startedAt,
   'accumulatedPauseMs': 0,
-  'plannedDurationMs': 90000,
 };
 
 /// The value the projection shows for one entry's field — what the wrist's
@@ -915,10 +915,7 @@ void main() {
           modality: 'resistance_lifting',
           exercises: [_exercise('sx-9')],
         );
-        await engine.startTimer(
-          WatchTimerKind.rest,
-          plannedDurationMs: const Duration(seconds: 90).inMilliseconds,
-        );
+        await engine.startTimer(WatchTimerKind.rest);
         harness.emitted.clear();
 
         final applied = await engine.applyMessage(
@@ -1023,10 +1020,7 @@ void main() {
         modality: 'resistance_lifting',
         exercises: [_exercise('sx-9')],
       );
-      await engine.startTimer(
-        WatchTimerKind.rest,
-        plannedDurationMs: const Duration(seconds: 90).inMilliseconds,
-      );
+      await engine.startTimer(WatchTimerKind.rest);
       harness.emitted.clear();
     });
 
@@ -1077,7 +1071,7 @@ void main() {
           messageId: 'msg-timers-1',
           timers: {'rest': _runningRest('2026-07-13T06:29:50Z')},
         ),
-        // The wrist's own countdown reads the wrist's own row, not the phone's.
+        // The wrist's own rest reads the wrist's own row, not the phone's.
       );
       expect(
         engine.timerFor(WatchTimerKind.rest)!.recordId,
@@ -1481,6 +1475,32 @@ void main() {
         );
       },
     );
+
+    test('a stored rest row never carries its stale plan onto the wire', () {
+      final start = DateTime.utc(2026, 7, 13, 6);
+      WatchTimerRecord row(String kind, {int? plannedDurationMs}) =>
+          WatchTimerRecord(
+            recordId: 't-$kind',
+            sessionId: 's-1',
+            recordedAt: start,
+            kind: kind,
+            startedAt: start,
+            plannedDurationMs: plannedDurationMs,
+          );
+
+      // A row written before the rest became a count-up still stores a plan…
+      final rest = row(WatchTimerKind.rest, plannedDurationMs: 90000);
+      expect(rest.toJson()['plannedDurationMs'], 90000);
+      expect(
+        rest.toTimerJson().containsKey('plannedDurationMs'),
+        isFalse,
+        reason: 'a rest is a count-up: its frame carries no planned length',
+      );
+
+      // …and every other kind still sends the length it was started with.
+      final round = row(WatchTimerKind.round, plannedDurationMs: 60000);
+      expect(round.toTimerJson()['plannedDurationMs'], 60000);
+    });
 
     test('advancing past the last exercise stays on it', () async {
       final harness = _Harness();

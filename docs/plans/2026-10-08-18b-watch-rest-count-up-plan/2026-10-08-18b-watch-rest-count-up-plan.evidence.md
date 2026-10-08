@@ -160,10 +160,70 @@ governor's `xcodebuild` watchOS-simulator build is the check, and the branch's p
 | S-160/S-161/S-164 | `.github/copilot/scripts/macos/gateway.sh swift-test --filter WatchLoggingTimersTests`; full `.github/copilot/scripts/macos/gateway.sh swift-test` | `Executed 26 tests, with 0 failures` for the case; `Executed 349 tests, with 0 failures` for the package. S-161's "0:00 at the log instant / 0:07 later / 4:00 after a relaunch mid-rest" splits across Phase 1 (`testS161ARestSurvivesTheScreenTurningOff`) and Phase 2's rest surface |
 | S-162/S-163 | `.github/copilot/scripts/macos/gateway.sh swift-test --filter WatchRestSurfaceTests` | `Executed 4 tests, with 0 failures (0 unexpected) in 0.009 (0.009) seconds` — S-161 (0:00 at the log instant, 0:07 seven seconds later on the injected clock, 4:00 after rebuilding the engine over the same store mid-rest), S-162 (`stoppedAt` is the tap instant, `isResting` false after), S-163 (the log's instant stops the running rest and a new rest starts, 3 rests / 3 entries), plus the finished-session guard |
 | `ContentView` branch (S-161/S-162) | governor's watchOS simulator build — agents must not claim it | not run by this agent (`swift-test` does not compile the app target); the branch chain and its position are in the Phase 2 table above |
-| S-165 | `.github/copilot/scripts/macos/gateway.sh swift-test` | pending |
+| S-165 | `.github/copilot/scripts/macos/gateway.sh swift-test` | `Executed 357 tests, with 0 failures (0 unexpected) in 1.307 seconds` — includes `SyncProtocolValidatorTests`' rest-with-plan refusal (S-165's Swift half, the guards at `:34/69/90-93`), after the Phase 3 FIX repaired the fixtures this clause had turned red (see `## Phase 3 FIX — the rest-with-plan fixtures`) |
 | `ContentView` branch (S-161/S-162) | governor's watchOS simulator build — agents must not claim it | pending |
 
+## Phase 3 FIX — the rest-with-plan fixtures (@developer)
+
+Phase 3's validator clause (`semantic_violation at $.payload.timers.rest.plannedDurationMs`) turned
+three tests red that had built a **rest carrying a plan** — a shape D-160/D-164 forbids. The fix is
+tests and fixtures only; no production line changed (`git-diff HEAD --stat` lists no `lib/` file added
+by this run).
+
+| Item (brief) | Site | Change |
+|---|---|---|
+| 1 — S-78's session guard, both stacks | `test/watch_session_engine_test.dart` `_runningRest` (~208), S-77 setUp (~918), S-78 setUp (~1023), S-78 comment (~1080); `WatchSessionEngineTests.swift` `timerJson` (~1512), `wristMidWorkout()` (~1527) | the plan was noise in these frames: `timerJson` now takes `plannedDurationMs: Int? = nil` and writes the key only when non-nil (both call sites are `rest` → omitted); the two setUps' own rest starts and the helper lost `plannedDurationMs` (D-160 note added). S-77/S-78/S-81 assert store rows, recordIds and the session guard — never a rest's length |
+| 2 — S-005's dead premise | `test/live_mirroring_test.dart` S-005 group | moved from `WatchTimerKind.rest` to `WatchTimerKind.round` (plan kept at 90000), renamed `'a round timer started on the wrist ends when the phone says it does'`; `session.phone.state['timers']['round']`, `expect(onPhone['kind'], 'round')`, `session.phone.timerEnd('round')` |
+| 3 — the sweep | `test/watch_session_engine_test.dart` (S-004 site), `test/live_mirroring_test.dart` S-006, `test/watch_session_auto_push_test.dart:577`, `WatchSessionEngineTests.swift`, `WatchLiveMirroringTests.swift` S-002/S-006 | incidentals fixed: S-004's rest start drops the plan (it asserts `recordId`/`state` only), S-71's rest start drops it (it asserts position, frame count, `recordId`), S-002's rest start drops it. S-006's false premise fixed on both stacks: the snapshot's rest loses the plan, a `round` timer with `plannedDurationMs: 90000` joins it, and the assertion becomes `completionInstant(rest)` is null (D-160) plus the round's end `2026-07-13T06:26:30Z` |
+
+Reviewed and left in place, with the reason:
+
+- Rest-with-plan fixtures whose assertion **is** a rest's `remainingMs`/`completionInstant` (a stored
+  legacy row the plan's Notes bless; converting the kind would change what they exercise, because
+  `advanceExercise`/`AdvanceExercise` disposes a rest and not a round):
+  `test/watch_session_engine_test.dart:309,352,1454,1562`, `test/phone_manage_bridge_test.dart:361`,
+  `WatchSessionEngineTests.swift:194,224,952,1412`, `WatchFileStoreTests.swift:151,419`. Phase 1's
+  Assumption Log 4 already assigns these to Phase 4's residue sweep.
+- Deliberate guards that must keep the forbidden shape: `test/watch_session_engine_test.dart:1487-1508`
+  (a stored row never carries its stale plan onto the wire), `SyncProtocolValidatorTests.swift:34/69/90-93`
+  (S-165's refusal), `test/sync_protocol_fixtures_test.dart:256,280`, `WatchLoggingTimersTests.swift:56`,
+  `test/watch_logging_timers_test.dart:115`, `WatchConnectivityBridgeTests.swift:422`,
+  `test/watch_logging_surfaces_test.dart:812` (each asserts `plannedDurationMs` is null/refused).
+- Production, out of scope: `lib/watch/debug/watch_session_debug_surface.dart:244` still starts a rest
+  with `plannedDurationMs: _debugRestMs` (Phase 1's Assumption Log 4).
+
+### Red before (the three named tests, exact lines)
+
+| Test | Log | Failing line |
+|---|---|---|
+| Dart S-005 | `.work/gateway/test-20261008-101024-94058.log:28-29` | `S-005 … [E]` / `Expected: <null>` / `Actual: DateTime:<2026-07-13 06:01:30.000Z>` / `both sides derive the end from the same timestamps` at `test/live_mirroring_test.dart 577:9` |
+| Dart S-78 | `.work/gateway/test-20261008-101024-94058.log:38-39` | `S-78 timer state for another session adopts no timer [E]` / `refusing to apply a non-conformant message: rejected: semantic_violation at $.payload.timers.rest.plannedDurationMs: a rest has no planned length: rest is a count-up (docs/global_conventions.md, rest rule)` (thrown from `watch_session_engine.dart:1708:5`, asserted at `466:9`) |
+| Swift S-78 | `.work/gateway/swift-test-20261008-101140-94485.log:688-689` | `error: -[…testS78TimerStateForAnotherSessionAdoptsNoTimer] : failed: caught error: "refusing to apply a message this build cannot read: semantic_violation at $.payload.timers.rest.plannedDurationMs: a rest has no planned length…"`, and `:779-782` `Executed 357 tests, with 1 failure (1 unexpected)` |
+
+`prove-red` form is not applicable here: the change is test-side, so "RED AT HEAD" is invalid by
+construction — the tests *are* the change, and running them against the unmodified tree is the red run
+above (the failure reason is the `session` guard/`null` end, not a compile error).
+
+### Green after
+
+| Command | Result |
+|---|---|
+| `.github/copilot/scripts/macos/gateway.sh test test/watch_session_engine_test.dart test/live_mirroring_test.dart` | `+101: All tests passed!` (was `+99 -2`) — `.work/gateway/test-20261008-101820-96282.log` |
+| `.github/copilot/scripts/macos/gateway.sh test test/live_mirroring_test.dart test/watch_session_auto_push_test.dart test/watch_session_engine_test.dart` (after item 3's two extra sites) | `00:01 +155: All tests passed!` — `.work/gateway/test-20261008-102231-2189.log` |
+| `.github/copilot/scripts/macos/gateway.sh test` (full, once, after the last edit) | `02:25 +4141 ~1: All tests passed!` — `.work/gateway/test-20261008-102332-2530.log` (exit 0) |
+| `.github/copilot/scripts/macos/gateway.sh swift-test --filter testS78TimerStateForAnotherSessionAdoptsNoTimer` | `Executed 1 test, with 0 failures` |
+| `.github/copilot/scripts/macos/gateway.sh swift-test --filter WatchLiveMirroringTests` | `Executed 11 tests, with 0 failures` |
+| `.github/copilot/scripts/macos/gateway.sh swift-test` (full, once) | `Executed 357 tests, with 0 failures (0 unexpected) in 1.307 seconds` — `.work/gateway/swift-test-20261008-101849-96593.log` |
+| `.github/copilot/scripts/macos/gateway.sh lint` | `196 issues found. (ran in 8.3s)`, 0 errors — the baseline exactly; no issue names any file this run touched (`.work/gateway/lint-20261008-102603-8731.log`) |
+| `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches |
+| `.github/copilot/scripts/macos/gateway.sh git-diff HEAD --stat` | 19 files, `294 insertions(+), 48 deletions(-)` — Phase 3's 13 production/fixture files, the five test files this run touched, and the plan + evidence; no `lib/` file added by this run |
+
 ## Reviewer findings
+
+[empty — the reviewer fills this: diff versus Predicted Files, per-S-x conformance, the Impact Check
+rows re-run, cross-stack agreement (Swift package vs Dart twin), quantified defects, Assumption Log
+adjudication.]
+
 
 [empty — the reviewer fills this: diff versus Predicted Files, per-S-x conformance, the Impact Check
 rows re-run, cross-stack agreement (Swift package vs Dart twin), quantified defects, Assumption Log

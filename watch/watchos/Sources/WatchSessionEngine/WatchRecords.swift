@@ -477,7 +477,12 @@ public struct WatchTimerRecord {
         ]
         if let pausedAt { json["pausedAt"] = utcIso(pausedAt) }
         if let stoppedAt { json["stoppedAt"] = utcIso(stoppedAt) }
-        if let plannedDurationMs { json["plannedDurationMs"] = plannedDurationMs }
+        // A rest is a count-up (docs/global_conventions.md, rest rule): a row
+        // written before that had a length still stores one, and the wire
+        // refuses it, so the frame never carries it.
+        if kind != "rest", let plannedDurationMs {
+            json["plannedDurationMs"] = plannedDurationMs
+        }
         return json
     }
 

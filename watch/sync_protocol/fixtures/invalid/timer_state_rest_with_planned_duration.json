@@ -1,6 +1,6 @@
 {
   "protocolVersion": 1,
-  "messageId": "msg-timers-1",
+  "messageId": "msg-timers-bad-rest-plan-1",
   "sessionId": "s-2026-07-13-1",
   "type": "timer_state",
   "origin": "watch",
@@ -12,7 +12,8 @@
         "state": "paused",
         "startedAt": "2026-07-13T17:32:00Z",
         "pausedAt": "2026-07-13T17:32:45Z",
-        "accumulatedPauseMs": 45000
+        "accumulatedPauseMs": 45000,
+        "plannedDurationMs": 90000
       },
       "round": {
         "kind": "round",

@@ -244,6 +244,48 @@ void main() {
     }
   });
 
+  group('S-165 the wire refuses a rest length', () {
+    test('a rest carries no planned length, a round keeps one, and a rest '
+        'with one is refused', () {
+      final valid = _readJson('fixtures/valid/timer_state.json');
+      final rest = _asObject(
+        _asObject(_payloadOf(valid)['timers'])['rest'],
+      );
+      expect(rest['kind'], 'rest');
+      expect(
+        rest.containsKey('plannedDurationMs'),
+        isFalse,
+        reason: 'a rest is a count-up: it carries no planned length (D-164)',
+      );
+      expect(_validator.validateEnvelope(valid), isEmpty);
+
+      // The rule is about `rest` alone: every other kind keeps its length.
+      final roundWithPlan = _readJson('fixtures/valid/timer_state.json');
+      _asObject(
+        _asObject(_payloadOf(roundWithPlan)['timers'])['round'],
+      )['plannedDurationMs'] = 60000;
+      expect(_validator.validateEnvelope(roundWithPlan), isEmpty);
+
+      final rejections = _validator.validateEnvelope(
+        _readJson('fixtures/invalid/timer_state_rest_with_planned_duration.json'),
+      );
+      expect(
+        rejections,
+        isNotEmpty,
+        reason: 'a rest with a planned length must not conform',
+      );
+      expect(rejections.first.code, 'semantic_violation');
+      expect(
+        rejections.first.path,
+        r'$.payload.timers.rest.plannedDurationMs',
+      );
+      expect(
+        rejections.first.message,
+        contains('a rest has no planned length'),
+      );
+    });
+  });
+
   group('S-31 phone-logged entries', () {
     final fixture = _readJson(
       'fixtures/valid/session_snapshot_with_entries.json',

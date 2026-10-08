@@ -141,6 +141,14 @@
       "note": "The only fixture that carries a remaining-time field, on purpose: the field is the defect. Every fixture that represents timer state must be free of one — see test/sync_protocol_fixtures_test.dart (S-003)."
     },
     {
+      "path": "invalid/timer_state_rest_with_planned_duration.json",
+      "type": "timer_state",
+      "scenario": "S-165",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "a rest has no planned length",
+      "note": "A rest is a count-up, so a planned length on a rest timer is the defect (D-164, docs/global_conventions.md rest rule). Every other timer kind keeps its plannedDurationMs — valid/timer_state.json carries the rest without one."
+    },
+    {
       "path": "invalid/observations_up_steps_on_round.json",
       "type": "observations_up",
       "scenario": "S-202",

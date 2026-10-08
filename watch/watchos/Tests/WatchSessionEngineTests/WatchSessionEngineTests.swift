@@ -1509,13 +1509,23 @@ final class WatchSessionEngineTests: XCTestCase {
         ])
     }
 
-    private func timerJson(_ kind: String, startedAt: String, plannedDurationMs: Int = 60_000) -> [String: Any] {
-        [
+    /// A running timer as the wire spells one. A rest is a count-up, so a rest
+    /// carries no planned length (D-160); the length is written only when the
+    /// caller names one.
+    private func timerJson(
+        _ kind: String,
+        startedAt: String,
+        plannedDurationMs: Int? = nil
+    ) -> [String: Any] {
+        var json: [String: Any] = [
             "kind": kind,
             "state": WatchTimerState.running,
             "startedAt": startedAt,
-            "plannedDurationMs": plannedDurationMs,
         ]
+        if let plannedDurationMs = plannedDurationMs {
+            json["plannedDurationMs"] = plannedDurationMs
+        }
+        return json
     }
 
     /// The wrist mid-workout, holding its own `s-2` — the fixture S-77 and S-78
@@ -1524,7 +1534,7 @@ final class WatchSessionEngineTests: XCTestCase {
         let harness = Harness(sessionId: "s-2")
         let engine = await harness.runningEngine()
         _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-9")])
-        _ = try? await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90_000)
+        _ = try? await engine.startTimer(WatchTimerKind.rest)
         harness.clearEmitted()
         return (harness, engine)
     }

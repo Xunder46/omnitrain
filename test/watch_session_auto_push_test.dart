@@ -574,7 +574,7 @@ void main() {
 
       // The wrist moves to its second slot and re-asserts its own snapshot at
       // the next sync; the phone converges on it.
-      await engine.startTimer('rest', plannedDurationMs: 90000);
+      await engine.startTimer('rest');
       final restTimer = engine.timerFor('rest')!;
       await engine.advanceExercise();
       await radio.fromWrist(engine.sessionSnapshot()!);

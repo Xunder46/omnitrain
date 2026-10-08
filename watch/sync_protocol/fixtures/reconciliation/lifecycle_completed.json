@@ -45,8 +45,7 @@
           "kind": "rest",
           "state": "running",
           "startedAt": "2026-07-13T19:19:00Z",
-          "accumulatedPauseMs": 0,
-          "plannedDurationMs": 90000
+          "accumulatedPauseMs": 0
         }
       }
     }
@@ -98,8 +97,7 @@
         "kind": "rest",
         "state": "running",
         "startedAt": "2026-07-13T19:19:00Z",
-        "accumulatedPauseMs": 0,
-        "plannedDurationMs": 90000
+        "accumulatedPauseMs": 0
       }
     }
   }

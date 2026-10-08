@@ -518,10 +518,7 @@ void main() {
       await session.engine.appendObservation(
         _setEvent(session.clock, entryId: 'e-plank-1', slot: 'sx-plank'),
       );
-      await session.engine.startTimer(
-        WatchTimerKind.rest,
-        plannedDurationMs: 90000,
-      );
+      await session.engine.startTimer(WatchTimerKind.rest);
       final rest = session.engine.timerFor(WatchTimerKind.rest)!;
       await session.deliverEmitted();
 
@@ -548,7 +545,7 @@ void main() {
 
   group('S-005 the timer\'s end moment is the same on both devices', () {
     test(
-      'a rest timer started on the wrist ends when the phone says it does',
+      'a round timer started on the wrist ends when the phone says it does',
       () async {
         final session = _Session(
           phoneState: _snapshotPayload(exercises: [_slot('sx-bench')]),
@@ -560,15 +557,15 @@ void main() {
         await session.deliverEmitted();
 
         final timer = await session.engine.startTimer(
-          WatchTimerKind.rest,
+          WatchTimerKind.round,
           plannedDurationMs: 90000,
         );
         await session.deliverEmitted();
 
         final onPhone = asObject(
-          asObject(session.phone.state['timers'])['rest'],
+          asObject(session.phone.state['timers'])['round'],
         );
-        expect(onPhone['kind'], 'rest');
+        expect(onPhone['kind'], 'round');
         expect(
           onPhone.containsKey('remainingSeconds'),
           isFalse,
@@ -576,11 +573,11 @@ void main() {
         );
         expect(
           completionInstant(timer),
-          session.phone.timerEnd('rest'),
+          session.phone.timerEnd('round'),
           reason: 'both sides derive the end from the same timestamps',
         );
         expect(
-          session.phone.timerEnd('rest'),
+          session.phone.timerEnd('round'),
           equals(session.clock.now.add(const Duration(seconds: 90))),
         );
       },
@@ -622,6 +619,12 @@ void main() {
               'state': 'running',
               'startedAt': '2026-07-13T06:25:00Z',
               'accumulatedPauseMs': 0,
+            },
+            'round': {
+              'kind': 'round',
+              'state': 'running',
+              'startedAt': '2026-07-13T06:25:00Z',
+              'accumulatedPauseMs': 0,
               'plannedDurationMs': 90000,
             },
           },
@@ -647,7 +650,14 @@ void main() {
       );
       final rest = session.engine.timerFor(WatchTimerKind.rest)!;
       expect(rest.state, WatchTimerState.running);
-      expect(completionInstant(rest), DateTime.utc(2026, 7, 13, 6, 26, 30));
+      expect(
+        completionInstant(rest),
+        isNull,
+        reason: 'a rest is a count-up: it has no end moment (D-160)',
+      );
+      final round = session.engine.timerFor(WatchTimerKind.round)!;
+      expect(round.state, WatchTimerState.running);
+      expect(completionInstant(round), DateTime.utc(2026, 7, 13, 6, 26, 30));
     });
   });
 

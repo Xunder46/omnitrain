@@ -291,7 +291,9 @@ class SyncProtocolValidator {
     }
   }
 
-  /// A timer must declare the kind it is filed under.
+  /// A timer must declare the kind it is filed under, and the one timer that
+  /// never carries a planned length is the rest: rest is a count-up
+  /// (`docs/global_conventions.md`, rest rule).
   List<SyncProtocolRejection> _timerKindRejections(
     Map<String, Object?> timers,
   ) {
@@ -304,6 +306,18 @@ class SyncProtocolValidator {
           code: _semanticViolation,
           path: '$_root.payload.timers.$kind.kind',
           message: "timer '$kind' declares kind ${_describe(timer['kind'])}",
+        ),
+      );
+    }
+    final rest = timers['rest'];
+    if (rest is Map && rest['plannedDurationMs'] != null) {
+      rejections.add(
+        SyncProtocolRejection(
+          code: _semanticViolation,
+          path: '$_root.payload.timers.rest.plannedDurationMs',
+          message:
+              'a rest has no planned length: rest is a count-up '
+              '(docs/global_conventions.md, rest rule)',
         ),
       );
     }
