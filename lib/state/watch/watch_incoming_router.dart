@@ -35,6 +35,7 @@ class WatchIncomingReceipt {
     required this.inbox,
     required this.session,
     required this.nutrition,
+    this.answeredReset = false,
   });
 
   /// The watch session inbox's verdict. [WatchInboxOutcome.ignored] is the
@@ -53,6 +54,14 @@ class WatchIncomingReceipt {
 
   /// True when this message left a row in the phone's day log.
   bool get loggedFood => nutrition == WatchNutritionLogOutcome.applied;
+
+  /// True when the router answered the arriving snapshot with D-176's reset —
+  /// the wrist session's own end and then this phone's session (D-182) — and
+  /// those frames have already gone out. The auto-push reads it so the pass
+  /// after this frame does not send the same step a second time (19b D-202);
+  /// the reset debt itself is untouched, so a step the radio did not carry is
+  /// re-offered at the next trigger.
+  final bool answeredReset;
 }
 
 class WatchIncomingRouter {
@@ -109,6 +118,7 @@ class WatchIncomingRouter {
         ? _mirror.rememberedFateOf(named)
         : null;
 
+    var answeredReset = false;
     final staged = await _inbox.receive(envelope);
     final session = await _mirror.receive(envelope);
     if (isSnapshot && session == MirrorOutcome.applied) {
@@ -137,6 +147,7 @@ class WatchIncomingRouter {
             WatchLifecycleState.abandoned,
           );
           await _mirror.sendState(p);
+          answeredReset = true;
         }
       }
     }
@@ -152,6 +163,7 @@ class WatchIncomingRouter {
       inbox: staged.outcome,
       session: session,
       nutrition: logged.outcome,
+      answeredReset: answeredReset,
     );
   }
 }

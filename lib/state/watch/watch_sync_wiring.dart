@@ -22,6 +22,7 @@
 library;
 
 import '../../core/platform/no_watch_transport.dart';
+import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/utils/platform_watch_transport_factory.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -104,6 +105,10 @@ class WatchSyncGraph {
   /// work is discarded rather than rescued. The wrist's answer to the request
   /// below is what moves the mirror onto the phone's session.
   ///
+  /// A snapshot the radio did not carry is owed like any other: the push's
+  /// baseline is forgotten, so the next trigger offers this projection again
+  /// (D-191 site 4).
+  ///
   /// Verified by `test/watch_session_projection_test.dart` (`S-109 case A one
   /// resume is one catch-up: the phone's OWN session and then the request for
   /// the wrist's, once per resume`, `S-109 case B a phone holding no session
@@ -118,7 +123,8 @@ class WatchSyncGraph {
           WatchLifecycleState.abandoned,
         );
       }
-      await mirror.sendState(composed);
+      final delivery = await mirror.sendState(composed);
+      if (delivery == WatchDelivery.undelivered) autoPush.forgetBaseline();
     }
     await mirror.requestSnapshot();
   }
@@ -226,14 +232,21 @@ Future<WatchSyncGraph?> createWatchSync({
 
   resolved.onIncoming((frame) async {
     final request = WatchTransportRequest.nameOf(frame);
+    var answeredReset = false;
     if (request != null) {
       await requests.handle(request);
     } else {
-      await router.receive(frame);
+      answeredReset = (await router.receive(frame)).answeredReset;
     }
     // A frame the phone applied from the wrist is not news to push back (D-82):
     // the rows it just brought in become the baseline rather than a send.
     await push.rebaseline();
+    // D-192(c): the frame proves the radio works, so what is owed goes out now.
+    // The one exception is a snapshot the router has already answered with
+    // D-176's reset: those frames have just gone out, and a pass here would
+    // send the same step a second time. The debt is untouched either way, so a
+    // step the radio did not carry is re-offered at the next trigger (D-202).
+    if (!answeredReset) await push.flush();
   });
 
   await inbox.resume();

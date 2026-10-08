@@ -11,7 +11,7 @@
 //   S-75 a burst inside one window is one push         → `S-75 ...`
 //   S-80 an applied frame is not pushed back           → `S-80 ...`
 //   S-81 a re-delivered frame changes nothing          → `S-81 ...`
-//   S-83 a push the radio cannot carry is dropped      → `S-83 ...`
+//   S-83 a push the radio cannot carry is owed         → `S-83 ...`
 //   S-84 browsing another session pushes nothing       → `S-84 ...`
 //   S-85 every session in one run is announced once    → `S-85 ...`
 //   S-86 a session the phone never held is ended only by the reset
@@ -41,6 +41,21 @@
 //   S-180 a reset the radio cannot carry                → `S-180 ...`
 //   S-181 the pairs that owe no reset (negative guard)  → `S-181 ...`
 //   S-182 the wrist's answer clears the debt            → `S-182 ...`
+//
+// 19b Phase 2 (`docs/plans/2026-10-08-19b-honest-delivery-plan/`, D-191, D-192,
+// D-197, D-198, D-201, D-202): a frame the radio did not carry is never marked
+// sent, so what is owed is re-offered at the triggers that already exist.
+//   S-200 what the radio did not carry stays owed      → `S-200 ...` (×2)
+//   S-201 an end the radio did not carry stays pending → `S-201 ...`
+//   S-203 an undelivered deletion stays owed           → `S-203 ...`
+//   S-205/S-209 a frame from the wrist re-offers what is owed, never itself
+//                                                     → `S-205 ...`
+//   S-207 nothing owed is nothing sent                 → `S-207 ...`
+//   S-208 triggers in one window make one pass         → `S-208 ...`
+//   S-210 an undelivered reset is re-offered whole     → `S-210 ...`
+//   S-211 re-offering an arrived frame changes nothing → `S-211 ...`
+//   S-217 the phone's own end is not owed (D-197)      → `S-217 ...`
+//   S-218 ten changes while the wrist is apart are one owed frame → `S-218 ...`
 //
 // The delete half is 17c Phase 1 (D-110…D-114, S-120…S-126); S-124, S-125 and
 // S-126's dedupe half are the engine's and live in `watch_session_engine_test.dart`.
@@ -230,6 +245,15 @@ class _PhoneRadio implements WatchTransport {
   /// True while the wrist is out of range: `send` reports and carries nothing.
   bool failing = false;
 
+  /// True while the wrist is out of range and nothing reports it — the radio's
+  /// quiet half of D-201: `send` answers `undelivered` without a failure.
+  bool unreachable = false;
+
+  /// True while the frame reaches the wrist although the result cannot come
+  /// back (S-211): a real radio can lose the answer, so the frame is carried
+  /// even though the pass reads `undelivered`.
+  bool carriesWhileApart = false;
+
   /// True while the next `send` is not to complete at all — a radio that has
   /// gone silent (S-112's seam). One frame, then the flag clears itself.
   bool hangNext = false;
@@ -262,6 +286,10 @@ class _PhoneRadio implements WatchTransport {
     attempted.add(envelope);
     if (failing) {
       onFailure(StateError('the wrist is out of range'));
+      return WatchDelivery.undelivered;
+    }
+    if (unreachable) {
+      if (carriesWhileApart) sent.add(envelope);
       return WatchDelivery.undelivered;
     }
     if (throwing) throw Exception('the radio refused the frame');
@@ -991,9 +1019,10 @@ void main() {
     );
   });
 
-  group('S-83 a push the radio cannot carry is dropped', () {
+  group('S-83 a push the radio cannot carry is owed', () {
     test(
-      'S-83 a failed send is reported once, changes nothing, and is not retried',
+      'S-83 a failed send is reported per attempt, changes nothing, and the '
+      'same state is offered again',
       () async {
         await wristStartsSession();
         graph.autoPush.bindWorkoutState(phoneState);
@@ -1006,7 +1035,8 @@ void main() {
           failures,
           hasLength(1),
           reason:
-              'S-83 the radio reports what it cannot carry, once (D-83)',
+              'S-83 the radio reports what it cannot carry, once per attempt '
+              '(D-83)',
         );
         expect(
           radio.ofType('session_snapshot'),
@@ -1024,21 +1054,38 @@ void main() {
         await graph.autoPush.flush();
         expect(
           failures,
-          hasLength(1),
+          hasLength(2),
           reason:
-              'S-83 the payload that failed is baselined all the same, so the '
-              'same state is not attempted twice: catching up is PR 2\'s job',
+              'S-83 the payload that failed is NOT baselined, so the next '
+              'trigger composes it again and offers it again (D-191, S-200): '
+              'one report per attempt is what an owed frame costs',
+        );
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason: 'S-83 the radio still cannot carry it',
         );
 
-        await phoneState.addEntry(_firstSlot);
         radio.failing = false;
         await graph.autoPush.flush();
         expect(
           radio.ofType('session_snapshot'),
           hasLength(1),
-          reason: 'S-83 the next change the phone has is pushed again',
+          reason:
+              'S-83 the state the wrist never got leaves the phone as soon as '
+              'the radio carries it',
         );
-        expect(failures, hasLength(1));
+        expect(failures, hasLength(2));
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-83 and once it was delivered the baseline advances: the same '
+              'state is not offered a second time',
+        );
+        expect(failures, hasLength(2));
       },
     );
   });
@@ -1689,9 +1736,10 @@ void main() {
           pushes,
           hasLength(1),
           reason:
-              'S-112 the second change left the phone and nothing was queued '
-              'or retried for the hung one: the payload that failed is not '
-              'attempted twice (D-83: its baseline was already stored)',
+              'S-112 the second change left the phone, once: the newest state '
+              'supersedes what the hung pass carried, and the payload that '
+              'hung is not sent beside it (D-191: only a delivered send '
+              'advances the baseline)',
         );
         expect(
           [
@@ -1751,8 +1799,9 @@ void main() {
           pushes,
           hasLength(1),
           reason:
-              'S-113 the push still works on the next change: the send that '
-              'threw left nothing queued and nothing wedged (D-83)',
+              'S-113 the push still works on the next change: the throw left '
+              'the payload owed rather than queued, and the next change '
+              'composes the newest state, so one frame carries it (D-191)',
         );
         expect(
           [
@@ -2805,6 +2854,78 @@ void main() {
         expect(failures, hasLength(1));
       },
     );
+
+    test(
+      'S-203 a deletion frame the radio reports `undelivered` stays owed under '
+      'the change id it was minted with',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        final doomed = await logSetHeldByBoth();
+
+        // The wrist is out of range and the radio says so quietly: the frame
+        // is minted and refused, so the deletion is neither carried nor lost
+        // (D-191, D-197 site 3).
+        radio.unreachable = true;
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason: 'S-203 nothing left the phone: the radio carried no frame',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason:
+              'S-203 a radio that reports `undelivered` is quiet: there is no '
+              'failure to report (D-201)',
+        );
+        final attempted = [
+          for (final frame in radio.attempted)
+            if (frame['type'] == 'structure_change') frame,
+        ];
+        expect(
+          attempted,
+          hasLength(1),
+          reason: 'S-203 the pass did mint and offer the deletion it owes',
+        );
+
+        // The wrist comes back: the same deletion goes out, once, under the
+        // same change id — a new one would be a second change for one deletion.
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final retried = radio.ofType('structure_change');
+        expect(
+          retried,
+          hasLength(1),
+          reason:
+              'S-203 a deletion stays owed until its frame has been delivered '
+              '(D-191, D-197 site 3)',
+        );
+        expect(
+          _payload(retried.single)['changeId'],
+          _payload(attempted.single)['changeId'],
+          reason: 'S-203 the owed event keeps the change id it was minted with',
+        );
+
+        await engine.applyMessage(retried.single);
+        expect(
+          wristEntryIds(),
+          isNot(contains(doomed)),
+          reason: 'S-203 the retried frame hides the set the phone dropped',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          hasLength(1),
+          reason: 'S-203 a delivered deletion is not announced again',
+        );
+        expect(failures, isEmpty);
+      },
+    );
   });
 
   // 19a Phase 2: the phone resets a wrist that is running a session the phone
@@ -3212,6 +3333,979 @@ void main() {
           reason:
               'S-181 B the placeholder is not a session to reset, so the '
               'resume is exactly what S-109 pinned',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  // 19b Phase 2 (D-191, D-192, D-197, D-198, D-201, D-202): a frame the radio
+  // did not carry is never marked sent. What is owed stays owed and is offered
+  // again at the triggers that already exist — a WorkoutState pass, a resume, a
+  // frame from the wrist — and a pass that owes nothing sends nothing.
+  //
+  // `_PhoneRadio.unreachable` is the honest half of the radio's answer: the
+  // frame never left, the channel is not called, and nothing is reported. The
+  // `throwing` seam (S-83, F7, S-180) is the other half — an exception — and
+  // both leave the same sites owed.
+  group('S-200 a frame the radio did not carry stays owed', () {
+    test(
+      'S-200 the baseline does not advance on an undelivered send, so the same '
+      'state is offered again when the radio comes back',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await phoneState.addEntry(
+          _secondSlot,
+          previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
+        );
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason: 'S-200 nothing left the phone while the wrist was apart',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason:
+              'S-200 an unreachable radio is quiet: being out of range is not '
+              'a failure to report (D-201)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-200 the pass composed the change and offered it once: what '
+              'the radio refused is owed, not sent',
+        );
+        expect(
+          radio.attempted.single['type'],
+          'session_snapshot',
+          reason: 'S-200 a change on the phone is offered as a snapshot',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final offered = radio.ofType('session_snapshot');
+        expect(
+          offered,
+          hasLength(1),
+          reason:
+              'S-200 the payload the wrist never got is offered again at the '
+              'next trigger: the baseline did not advance (D-191, D-192(a))',
+        );
+        expect(
+          offered.single['sessionId'],
+          phoneState.currentSession!.id,
+          reason: 'S-200 and it is the phone\'s own session, unchanged',
+        );
+        expect(
+          _entryIds(_payload(offered.single)),
+          _entryIds(_payload(radio.attempted.first)),
+          reason:
+              'S-200 it carries the very state that was refused — nothing '
+              'changed on the phone in between',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-200 the delivered frame is the one the baseline takes: the '
+              'same state is not offered twice (S-207)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-200 a resume whose own snapshot the radio refused stays owed, and the '
+      'push offers it again (D-191 site 4, D-198)',
+      () async {
+        await wristStartsSession();
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await graph.sync();
+
+        expect(
+          radio.sent,
+          isEmpty,
+          reason: 'S-200 the resume carried nothing while the wrist was apart',
+        );
+        expect(
+          radio.attempted,
+          hasLength(2),
+          reason:
+              'S-200 the resume offered its own snapshot and the request that '
+              'follows it, and nothing else (S-181 B pins the pair)',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'S-200 and it reported nothing (D-201)',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-200 the resume\'s payload equalled the push\'s baseline when '
+              'the resume ran, so only `forgetBaseline()` makes the next pass '
+              'offer it again (D-198)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-201 an end the radio refused stays pending', () {
+    test(
+      'S-201 the phone\'s finish is offered once when the radio comes back, and '
+      'the pending set empties only on the delivered frame',
+      () async {
+        // The mismatched pair (D-10): the phone holds its own session P, the
+        // wrist announces its own live one, and the phone refuses to adopt it.
+        // P's end therefore travels as a lifecycle naming P — the branch D-197
+        // gates on the transport's answer.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final sessionId = phoneState.currentSession!.id;
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        // One settled pass, so P has been announced before the scenario's own
+        // window opens.
+        await graph.autoPush.flush();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason: 'S-201 the end did not leave the phone',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'S-201 an unreachable radio reports nothing (D-201)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-201 the pass composed nothing (the phone ended its session) '
+              'and offered the pending end, once',
+        );
+        expect(radio.attempted.single['sessionId'], sessionId);
+        expect(
+          _payload(radio.attempted.single)['state'],
+          WatchLifecycleState.completed,
+          reason: 'S-201 the row ended, so the end announced is `completed`',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final ends = radio.ofType('session_lifecycle');
+        expect(
+          ends,
+          hasLength(1),
+          reason:
+              'S-201 the end stayed pending and goes out at the next trigger, '
+              'once (D-191, D-197 site 2)',
+        );
+        expect(ends.single['sessionId'], sessionId);
+        expect(
+          _payload(ends.single)['state'],
+          WatchLifecycleState.completed,
+          reason: 'S-201 and it is the same end, not a second one',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          hasLength(1),
+          reason:
+              'S-201 the pending-ends set empties on the delivered frame: no '
+              'later pass announces the end again',
+        );
+        expect(
+          radio.attempted,
+          hasLength(2),
+          reason: 'S-201 and nothing else is ever attempted for it',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-201 a discard the radio did not carry stays pending and is announced '
+      'when the watch can be reached',
+      () async {
+        // The mismatched pair (D-10), as above: the phone holds its own session
+        // P, the wrist announces its own live one, and the phone refuses to
+        // adopt it. Discarding P removes its row, so its end travels as a
+        // lifecycle naming P — the `row == null` branch.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final sessionId = phoneState.currentSession!.id;
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        // One settled pass, so P has been announced before the scenario's own
+        // window opens.
+        await graph.autoPush.flush();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await phoneState.discardCurrentSession();
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason: 'S-201 the discard did not leave the phone',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'S-201 an unreachable radio reports nothing (D-201)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-201 the pass composed nothing (the phone discarded its '
+              'session) and offered the pending end, once',
+        );
+        expect(radio.attempted.single['sessionId'], sessionId);
+        expect(
+          _payload(radio.attempted.single)['state'],
+          WatchLifecycleState.abandoned,
+          reason: 'S-201 the row is gone, so the end announced is `abandoned`',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final ends = radio.ofType('session_lifecycle');
+        expect(
+          ends,
+          hasLength(1),
+          reason:
+              'S-201 the end stayed pending and goes out at the next trigger, '
+              'once (D-191, D-197 site 2)',
+        );
+        expect(ends.single['sessionId'], sessionId);
+        expect(
+          _payload(ends.single)['state'],
+          WatchLifecycleState.abandoned,
+          reason: 'S-201 and it is the same end, not a second one',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          hasLength(1),
+          reason:
+              'S-201 the pending-ends set empties on the delivered frame: no '
+              'later pass announces the end again',
+        );
+        expect(
+          radio.attempted,
+          hasLength(2),
+          reason: 'S-201 and nothing else is ever attempted for it',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-205 a frame from the wrist re-offers what is owed, never itself', () {
+    test(
+      'S-205 (S-209) the wrist\'s own set arrives while a deletion is owed: it '
+      'is applied, never echoed, and the deletion leaves after it',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        final doomed = await logSetHeldByBoth();
+
+        // A deletion the radio could not carry: still owed when the wrist
+        // speaks first.
+        radio.unreachable = true;
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+        final refused = [
+          for (final frame in radio.attempted)
+            if (frame['type'] == 'structure_change') frame,
+        ];
+        expect(
+          refused,
+          hasLength(1),
+          reason: 'the fixture: the deletion is minted and refused, still owed',
+        );
+        radio.sent.clear();
+        radio.attempted.clear();
+        radio.unreachable = false;
+
+        await engine.appendObservation(<String, Object?>{
+          'entryId': _wristEntryId2,
+          'eventId': _wristEntryId2,
+          'kind': 'set',
+          'loggedAt': _atIso(3),
+          'sessionExerciseId': _firstSlot,
+          'exerciseId': 'ex-squat',
+          'reps': 5,
+          'loadKg': 70.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+
+        expect(
+          await phoneEntries(_firstSlot),
+          3,
+          reason:
+              'S-205 the frame is applied to the phone\'s own session before '
+              'anything is offered (two sets left after the deletion, plus the '
+              'wrist\'s new one)',
+        );
+        final deletions = radio.ofType('structure_change');
+        expect(
+          deletions,
+          hasLength(1),
+          reason:
+              'S-205 the applied frame is the trigger that re-offers what is '
+              'owed (D-192(c), D-198)',
+        );
+        expect(
+          _payload(deletions.single)['changeId'],
+          _payload(refused.single)['changeId'],
+          reason: 'S-205 with the change id it was minted with (S-203)',
+        );
+        expect(
+          _payload(deletions.single)['changes'],
+          [
+            {'kind': 'delete_entry', 'entryId': doomed},
+          ],
+          reason: 'S-205 and it names the entry that vanished',
+        );
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason:
+              'S-205 the frame the wrist sent is the new baseline, not news '
+              'back to it: an applied frame is not echoed (D-82, D-198)',
+        );
+        expect(
+          [
+            for (final frame in radio.sent)
+              if (frame['type'] != 'receipt' &&
+                  '$frame'.contains(_wristEntryId2))
+                frame,
+          ],
+          isEmpty,
+          reason:
+              'S-205 nothing carries the observation\'s own row id back to the '
+              'wrist that logged it — no snapshot and no observation (the '
+              'receipt that acknowledges it is not an echo of its row)',
+        );
+        expect(
+          radio.ofType('receipt'),
+          hasLength(1),
+          reason: 'S-205 the applied frame is acknowledged once (D-82)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-207 nothing owed is nothing sent', () {
+    test(
+      'S-207 a pass with an unchanged payload and nothing owed sends nothing, '
+      'and one change sends one snapshot',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        await graph.autoPush.flush();
+        await graph.autoPush.flush();
+
+        expect(
+          radio.attempted,
+          isEmpty,
+          reason:
+              'S-207 the payload equals the baseline and nothing is owed, so '
+              'no site is even attempted — a push is not a heartbeat',
+        );
+        expect(radio.sent, isEmpty, reason: 'S-207 and no channel call');
+
+        await phoneState.addEntry(
+          _secondSlot,
+          previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
+        );
+        await graph.autoPush.flush();
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason: 'S-207 one change, one offer',
+        );
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason: 'S-207 and one frame on the wire',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-208 triggers inside one window make one drain', () {
+    test(
+      'S-208 three triggers in flight are one running pass and, at most, the '
+      'one pass they asked for',
+      () async {
+        await wristStartsSession();
+        // A hand-built push, so the pass count is observable through the one
+        // seam a pass always uses: it reads the row of every session whose end
+        // is still pending, and every pass composes a session.
+        var passes = 0;
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: (sessionId) async {
+            passes++;
+            return repository.getSession(sessionId);
+          },
+          heldWristEntryIds: graph.adoption.heldWristEntryIds,
+        );
+        push.bindWorkoutState(phoneState);
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await push.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason: 'the fixture: one settled pass, so the baseline is set',
+        );
+        radio.sent.clear();
+        radio.attempted.clear();
+        passes = 0;
+
+        await Future.wait(<Future<void>>[
+          push.flush(),
+          push.flush(),
+          push.flush(),
+        ]);
+
+        expect(
+          passes,
+          lessThanOrEqualTo(2),
+          reason:
+              'S-208 three triggers inside one window are bounded: the trigger '
+              'that arrives while a pass runs asks for one more, it never '
+              'starts a pass of its own',
+        );
+        expect(
+          radio.attempted,
+          isEmpty,
+          reason: 'S-208 and the drain has nothing to send',
+        );
+
+        passes = 0;
+        await phoneState.addEntry(
+          _secondSlot,
+          previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
+        );
+        await _until(
+          () => radio.ofType('session_snapshot').isNotEmpty,
+          reason: 'S-208 the window closes into the change\'s own pass',
+        );
+        expect(passes, 1, reason: 'S-208 one change, one pass');
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason: 'S-208 and one snapshot, the newest state',
+        );
+        expect(
+          radio.sent,
+          hasLength(1),
+          reason:
+              'S-208 nothing else is ever sent: no lifecycle for the session '
+              'the phone is still in, no deletion',
+        );
+        await _settle();
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason: 'S-208 and the pass does not offer the same state twice',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-210 an undelivered reset is re-offered whole', () {
+    test(
+      'S-210 pass one carries nothing and the debt stays, the next pass sends '
+      'the three frames in order, and the wrist\'s answer is what clears it',
+      () async {
+        // 19a's S-180 fixture: the phone holds its own session P; the wrist is
+        // running its own W, which the phone refused to adopt (D-10). The radio
+        // is apart while W's announcement arrives, so the router's own answer to
+        // it (D-182) is refused too, and neither the push nor the resume has
+        // landed the step.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final sessionId = phoneState.currentSession!.id;
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        graph.autoPush.bindWorkoutState(phoneState);
+        radio.unreachable = true;
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+        expect(
+          phoneState.currentSession?.id,
+          sessionId,
+          reason: 'the fixture: the phone kept its own session (D-10)',
+        );
+        expect(
+          graph.mirror.owesResetFor(sessionId),
+          isTrue,
+          reason: 'the fixture: the reset is owed (D-176)',
+        );
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        String kindOf(Map<String, Object?> frame) {
+          if (frame['type'] == 'session_lifecycle') {
+            return 'lifecycle:${frame['sessionId']}';
+          }
+          if (frame['type'] == 'session_snapshot') {
+            return 'snapshot:${frame['sessionId']}';
+          }
+          return 'request:${WatchTransportRequest.nameOf(frame)}';
+        }
+
+        // Pass 1: nothing at all leaves the phone, and no failure is reported.
+        await graph.autoPush.flush();
+        expect(
+          radio.sent,
+          isEmpty,
+          reason:
+              'S-210 the radio refuses before the channel, so pass one carries '
+              'nothing at all (D-201)',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'S-210 and it reports nothing (D-201)',
+        );
+        expect(
+          [
+            for (final frame in radio.attempted) kindOf(frame),
+          ],
+          [
+            'lifecycle:s-1',
+            'snapshot:$sessionId',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-210 the reset is one step of three frames, offered whole in '
+              'the order the live path uses (D-176, D-202)',
+        );
+        expect(
+          graph.mirror.owesResetFor(sessionId),
+          isTrue,
+          reason: 'S-210 and the debt is still owed (D-178, D-202)',
+        );
+
+        // Pass 2: the radio is back, and the whole step is offered again.
+        radio.unreachable = false;
+        final before = radio.attempted.length;
+        await graph.autoPush.flush();
+        expect(
+          [
+            for (final frame in radio.sent) kindOf(frame),
+          ],
+          [
+            'lifecycle:s-1',
+            'snapshot:$sessionId',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-210 the refused step is re-offered whole, in order: the '
+              '`abandoned(W)` frame was never marked sent (D-191, D-202)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(before + 3),
+          reason: 'S-210 exactly the same three frames, nothing more',
+        );
+
+        // What the wrist does with them, and its answer, which is the only
+        // thing that clears the debt.
+        await engine.applyMessage(radio.ofType('session_lifecycle').single);
+        await engine.applyMessage(radio.ofType('session_snapshot').single);
+        expect(
+          engine.session!.sessionId,
+          sessionId,
+          reason: 'S-210 the wrist ends W and installs the phone\'s session',
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          sessionId,
+          reason:
+              'S-210 the debt clears on the wrist\'s answer, not on anything '
+              'the phone wrote (D-176)',
+        );
+        expect(
+          graph.mirror.owesResetFor(sessionId),
+          isFalse,
+          reason: 'S-210 and with the pair agreeing the reset is owed to nobody',
+        );
+
+        final landed = radio.sent.length;
+        await graph.autoPush.flush();
+        expect(
+          radio.sent,
+          hasLength(landed),
+          reason:
+              'S-210 the settled pair sends nothing: no lifecycle, no second '
+              'assertion (D-202, S-207)',
+        );
+        expect(
+          radio.ofType('session_lifecycle'),
+          hasLength(1),
+          reason: 'S-210 the abandoned frame went out exactly once',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-211 re-offering an arrived frame changes nothing', () {
+    test(
+      'S-211 a frame that reached the wrist although its result did not is '
+      're-offered, and the wrist is unchanged by the second copy',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        // Every snapshot the phone has sent so far reaches the wrist, so the
+        // pair is converged before the change this test is about.
+        for (final frame in radio.ofType('session_snapshot')) {
+          await engine.applyMessage(frame);
+        }
+        radio.sent.clear();
+        radio.attempted.clear();
+        expect(
+          wristEntryIds(),
+          hasLength(2),
+          reason: 'the fixture: the wrist holds its own set and one copy',
+        );
+
+        radio.unreachable = true;
+        radio.carriesWhileApart = true;
+        await phoneState.addEntry(
+          _secondSlot,
+          previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
+        );
+        await graph.autoPush.flush();
+        final first = radio.ofType('session_snapshot');
+        expect(
+          first,
+          hasLength(1),
+          reason:
+              'the fixture: the frame reached the wrist although the result '
+              'did not come back — a lost answer, not a lost frame',
+        );
+        await engine.applyMessage(first.single);
+        // The state the second copy of the same payload must leave untouched.
+        final ids = wristEntryIds();
+        final slots = wristSlots();
+        expect(
+          ids,
+          hasLength(3),
+          reason:
+              'the fixture: the copy that arrived carried the phone\'s new set',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final second = [
+          for (final frame in radio.ofType('session_snapshot'))
+            if (frame['messageId'] != first.single['messageId']) frame,
+        ];
+        expect(
+          second,
+          hasLength(1),
+          reason:
+              'S-211 the pass read `undelivered`, so the payload is not owed '
+              'as delivered and is re-offered (D-191)',
+        );
+        expect(
+          _entryIds(_payload(second.single)),
+          _entryIds(_payload(first.single)),
+          reason: 'S-211 and it is the same state as the copy that arrived',
+        );
+        expect(
+          second.single['messageId'],
+          isNot(first.single['messageId']),
+          reason:
+              'S-211 it is a new frame, not a queued one: the re-offer is what '
+              'makes a lost result recoverable (D-196)',
+        );
+
+        await engine.applyMessage(second.single);
+        expect(
+          wristEntryIds(),
+          ids,
+          reason:
+              'S-211 the wrist applies the same state twice and nothing is '
+              'duplicated and nothing shifts (the safety property that makes '
+              're-offering legitimate)',
+        );
+        expect(wristSlots(), slots);
+        expect(
+          engine.session!.sessionId,
+          's-1',
+          reason: 'S-211 and the session is the same one',
+        );
+
+        final landed = radio.ofType('session_snapshot').length;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(landed),
+          reason:
+              'S-211 the delivered re-offer is what the baseline takes: the '
+              'state is not offered again',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-217 the phone\'s own end is not owed (D-197)', () {
+    test(
+      'S-217 a refused `completeSession()` frame is not re-offered: the '
+      'exclusion the plan kept, pinned as the behaviour it is',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-217 the phone\'s own end goes out as the mirror\'s own '
+              'lifecycle frame, once, and its result is refused',
+        );
+        expect(
+          _payload(radio.attempted.single)['state'],
+          WatchLifecycleState.completed,
+          reason: 'S-217 the frame is the session\'s own `completed`',
+        );
+        expect(radio.attempted.single['sessionId'], 's-1');
+        expect(radio.sent, isEmpty, reason: 'S-217 nothing arrived');
+        expect(failures, isEmpty, reason: 'S-217 and nothing is reported');
+        expect(
+          graph.mirror.status,
+          WatchSessionStatus.completed,
+          reason:
+              'S-217 the frame is applied to the mirror locally whatever the '
+              'radio answers: `completeSession` is not a site D-197 holds '
+              'owed, so the phone\'s copy is closed on both devices\' terms '
+              'only in name',
+        );
+
+        // Reachable again: the pass has nothing left to offer. `completeSession`
+        // reports through `reportLifecycle`, whose result it discards (D-197),
+        // and the "next pass's snapshot" cannot happen for the phone's own end
+        // at all: once the phone ends its session it composes nothing, so no
+        // snapshot follows (S-72 pins the same zero). This is the finding
+        // recorded against the plan's S-217 wording — see the plan's Open
+        // question 8 — and the test states the behaviour rather than pretending
+        // the end comes back.
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'S-217 the refused end is not re-offered by a later pass: '
+              '`completeSession()` has no owed site (D-197)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason: 'S-217 and nothing is attempted again for it',
+        );
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason:
+              'S-217 and no snapshot follows: a phone that ended its own '
+              'session composes nothing of its own (S-72)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-218 ten changes while the wrist is apart are one owed frame', () {
+    test(
+      'S-218 ten notifications with the radio unreachable attempt one frame — '
+      'the newest payload — and report nothing',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        for (var i = 0; i < 10; i++) {
+          await phoneState.addEntry(
+            _firstSlot,
+            previousValues: <String, dynamic>{'reps': 11 + i, 'weight': 60.0},
+          );
+        }
+        await _until(
+          () => radio.attempted.isNotEmpty,
+          reason:
+              'S-218 the ten notifications are one debounce window and it '
+              'closes into one pass',
+        );
+        await _settle();
+
+        expect(
+          radio.sent,
+          isEmpty,
+          reason: 'S-218 the channel is never reached: nothing is carried',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason:
+              'S-218 and the failure hook is not called — being apart is not a '
+              'failure (D-201)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-218 the ten changes are one owed frame, not ten reports: the '
+              'window coalesces and the payload supersedes what was never sent',
+        );
+        expect(
+          radio.attempted.single['type'],
+          'session_snapshot',
+          reason: 'S-218 and the owed frame is the newest state',
+        );
+        expect(
+          _entryIds(_payload(radio.attempted.single)),
+          hasLength(11),
+          reason:
+              'S-218 the newest payload carries every set the burst logged '
+              '(the fixture\'s one plus ten)',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-218 the owed state goes out once when the radio comes back',
+        );
+        expect(
+          _entryIds(_payload(radio.ofType('session_snapshot').single)),
+          hasLength(11),
+          reason: 'S-218 and it is that same newest payload, whole',
+        );
+
+        final landed = radio.ofType('session_snapshot').length;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(landed),
+          reason: 'S-218 delivered once, owed never again',
         );
         expect(failures, isEmpty);
       },

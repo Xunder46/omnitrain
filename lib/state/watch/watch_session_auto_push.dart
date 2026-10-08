@@ -21,9 +21,9 @@
 ///    that is gone → [LiveSessionMirrorState.reportLifecycleFor] `abandoned` for
 ///    it; a session still running is kept while it still runs and the phone is
 ///    not on another live session of its own. Each id is dropped as it is
-///    announced, so each session in an app run is announced once (F1), and a
-///    frame the wrist sends inside the window cannot erase a finished session's
-///    pending announcement (S-87).
+///    announced once its frame has been delivered, so each session in an app run
+///    is announced once (F1), and a frame the wrist sends inside the window
+///    cannot erase a finished session's pending announcement (S-87).
 ///    Never the phone's current-session pointer, which calendar browsing repoints
 ///    at a past session.
 /// 3. **Dropped, never queued** (D-83). The transport reports what it cannot
@@ -40,7 +40,8 @@
 ///    per session (D-111) and sends one `delete_entry` for every id that was in
 ///    it and is no longer held. The first pass for a session only seeds it. Each
 ///    deletion carries a change id minted per *event* (F2) and an id whose frame
-///    the transport threw on stays owed until it has gone (F7).
+///    the transport threw on — or answered `undelivered` — stays owed until it
+///    has gone (F7, D-191).
 ///
 /// It persists nothing and writes nothing: it reads the phone's session through
 /// the projection and the mirrored session's row through [getSession], and sends.
@@ -49,6 +50,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import '../../core/platform/watch_delivery.dart';
 import '../../data/models/models.dart' show TrainingSession;
 import '../../watch/session/watch_records.dart' show WatchLifecycleState;
 import '../workout/workout_state.dart';
@@ -111,8 +113,10 @@ class WatchSessionAutoPush {
   WorkoutState? _workoutState;
   Timer? _window;
 
-  /// The encoding of the last payload this push sent or baselined, or null
-  /// while it has none — the first composed payload is always sent.
+  /// The encoding of the last payload this push sent and had delivered, or
+  /// baselined, or null while it has none — the first composed payload is
+  /// always sent, and one the radio did not carry stays owed and is offered
+  /// again (D-191).
   String? _baseline;
 
   /// The ids of the sessions the phone itself composed or baselined whose end
@@ -125,6 +129,14 @@ class WatchSessionAutoPush {
   /// can start a workout of its own, which the phone refuses to adopt (D-10) and
   /// which is therefore not the phone's to end (F6).
   final List<String> _pendingEnds = [];
+
+  /// The sessions whose reset end (D-176's `abandoned` for the session the
+  /// mirror still holds) has already gone out on this app run.
+  ///
+  /// The reset debt itself clears only when the wrist answers the snapshot
+  /// request (D-178), which can take several triggers: the end that opened it is
+  /// offered once, not once per trigger (F1, AC-4).
+  final Set<String> _resetEndsSent = {};
 
   /// The entry ids the wrist was expected to hold at the end of this push's last
   /// pass, per composed session (D-111): what the phone told the wrist about,
@@ -140,12 +152,13 @@ class WatchSessionAutoPush {
   /// The deletions that have not gone out yet, per composed session, by entry id
   /// → the change id that event was minted (F2, F7).
   ///
-  /// An entry leaves it when its frame has been handed to the mirror, and the
-  /// change id it carries is minted once per deletion event and reused while the
-  /// frame is owed: a transport that fails the future costs a retry, never a new
-  /// change that would make the wrist apply the deletion twice. Dropped with the
-  /// ledger (D-114), except that an id the payload carries again — re-created
-  /// under a reused number — supersedes its deletion and is released at once.
+  /// An entry leaves it when its frame has been delivered, and the change id it
+  /// carries is minted once per deletion event and reused while the frame is
+  /// owed: a transport that fails the future or answers `undelivered` costs a
+  /// retry, never a new change that would make the wrist apply the deletion
+  /// twice (D-191). Dropped with the ledger (D-114), except that an id the
+  /// payload carries again — re-created under a reused number — supersedes its
+  /// deletion and is released at once.
   final Map<String, Map<String, String>> _owed = {};
 
   /// How many deletion frames this push has minted a change id for. Part of the
@@ -191,8 +204,9 @@ class WatchSessionAutoPush {
         // One pass is bounded (D-98): the drain completes when the pass does or
         // when the timeout expires, so a hung send cannot wedge every later
         // push. A timed-out pass is reported, never thrown, never retried and
-        // never queued — its baseline was already stored before the send, so
-        // nothing is re-sent for the same payload (D-83). The abandoned pass is
+        // never queued: only a delivered send advances its payload's baseline,
+        // so a send the pass could not finish leaves what it carried owed and
+        // offered again at the next trigger (D-191, D-83). The abandoned pass is
         // not cancelled, so it may also report on its own later failure: a
         // second report for the one pass, with no other effect.
         await _pushOnce().timeout(
@@ -209,6 +223,17 @@ class WatchSessionAutoPush {
       _draining = null;
       drained.complete();
     }
+  }
+
+  /// Clears the last-sent baseline so the next pass composes and offers its
+  /// payload again. It sends nothing and schedules nothing (D-198).
+  ///
+  /// Called from exactly one place — `WatchSyncGraph.sync()`, when its own
+  /// projection's snapshot came back `undelivered`: the radio carries no frame
+  /// it did not take, and the next trigger must offer the projection again
+  /// (D-191 site 4).
+  void forgetBaseline() {
+    _baseline = null;
   }
 
   /// One pass: every pending session's end, decided by its own row, then the
@@ -239,26 +264,38 @@ class WatchSessionAutoPush {
       // when it equals the baseline — a wrist holding W has no P yet — and the
       // request's answer is what moves the mirror onto P and clears the debt.
       // At most one reset per pass, never re-tried inside it (D-178).
+      var resetAttempted = false;
       if (_mirror.owesResetFor(composedId)) {
         final held = _mirror.sessionId!;
         // The pass's own end for that very session is the reset's first frame
         // already: the discard that made it pending is the same news.
-        if (!ended.contains(held)) {
-          await _mirror.reportLifecycleFor(
+        if (ended.contains(held)) {
+          _resetEndsSent.add(held);
+        } else if (!_resetEndsSent.contains(held)) {
+          final delivery = await _mirror.reportLifecycleFor(
             held,
             WatchLifecycleState.abandoned,
           );
+          if (delivery == WatchDelivery.delivered) _resetEndsSent.add(held);
         }
-        await _mirror.sendState(composed);
-        _baseline = _encode(composed);
+        // The debt stays owed by itself until the wrist's answer moves the
+        // mirror onto P (D-178): an `undelivered` snapshot advances nothing, so
+        // the whole step is offered again at the next trigger (D-202).
+        resetAttempted = true;
+        final delivery = await _mirror.sendState(composed);
+        if (delivery == WatchDelivery.delivered) _baseline = _encode(composed);
         await _mirror.requestSnapshot();
       }
 
       await _announceDeletions(composedId, composed);
       final encoded = _encode(composed);
       if (encoded == _baseline) return;
-      _baseline = encoded;
-      await _mirror.sendState(composed);
+      // The reset step already offered this very payload, so a pass never
+      // attempts one payload twice: a refusal is re-offered at the next
+      // trigger, not beside itself (D-202, D-191).
+      if (resetAttempted) return;
+      final delivery = await _mirror.sendState(composed);
+      if (delivery == WatchDelivery.delivered) _baseline = encoded;
     } on Exception catch (e, s) {
       // F4: a push that cannot be made must not disturb the phone — but it is
       // reported rather than swallowed (D-98, D-99).
@@ -327,11 +364,14 @@ class WatchSessionAutoPush {
     }
     try {
       for (final entryId in vanished) {
-        await _mirror.deleteEntryAs(
+        final delivery = await _mirror.deleteEntryAs(
           sessionId,
           entryId,
           changeId: owed[entryId]!,
         );
+        // A frame the radio did not carry stays owed, with the change id it
+        // was minted with, exactly as a thrown send leaves it (F7, D-191).
+        if (delivery != WatchDelivery.delivered) break;
         owed.remove(entryId);
       }
     } finally {
@@ -404,12 +444,14 @@ class WatchSessionAutoPush {
   /// by the phone's current-session pointer, which [WorkoutState.loadHistoricalSession]
   /// repoints at a past session while the mirrored one is still live.
   ///
-  /// Every pending id is decided on each pass, and dropped once it is, so one
-  /// session is announced once per app run (F1). A session whose row ended is
-  /// announced `completed`; one whose row is gone, `abandoned`; one that is still
-  /// running is kept unless the phone has moved on to a different live session
-  /// of its own — [currentId] — because a session the phone merely stopped
-  /// composing while it runs is not an end (S-88).
+  /// Every pending id is decided on each pass, and dropped once its end frame
+  /// has gone, so one session is announced once per app run (F1). A session
+  /// whose row ended is announced `completed`; one whose row is gone,
+  /// `abandoned`; one that is still running is kept unless the phone has moved
+  /// on to a different live session of its own — [currentId] — because a
+  /// session the phone merely stopped composing while it runs is not an end
+  /// (S-88). An end its radio did not carry stays pending and is offered again
+  /// at the next trigger (D-191, S-201).
   ///
   /// Returns the ids an end frame actually went out for, so the rest of the pass
   /// can tell its own end from a second one for the same session (D-176).
@@ -438,26 +480,36 @@ class WatchSessionAutoPush {
         continue;
       }
 
-      _pendingEnds.remove(sessionId);
       if (row == null) {
         // The row is gone: the phone discarded the session, and only for its own
-        // session does "no row" mean that.
-        await _mirror.reportLifecycleFor(
+        // session does "no row" mean that. An end the radio did not carry stays
+        // pending, so it is offered again at the next trigger (D-191).
+        final delivery = await _mirror.reportLifecycleFor(
           sessionId,
           WatchLifecycleState.abandoned,
         );
-        announced.add(sessionId);
+        if (delivery == WatchDelivery.delivered) {
+          _pendingEnds.remove(sessionId);
+          announced.add(sessionId);
+        }
         continue;
       }
       if (held) {
+        // `completeSession`'s own frame is not an owed site (D-197): what
+        // carries the phone's own end is the next pass's snapshot of the ended
+        // session, which is the baseline site S-217 pins.
         await _mirror.completeSession();
+        _pendingEnds.remove(sessionId);
         announced.add(sessionId);
       } else {
-        await _mirror.reportLifecycleFor(
+        final delivery = await _mirror.reportLifecycleFor(
           sessionId,
           WatchLifecycleState.completed,
         );
-        announced.add(sessionId);
+        if (delivery == WatchDelivery.delivered) {
+          _pendingEnds.remove(sessionId);
+          announced.add(sessionId);
+        }
       }
     }
     return announced;
