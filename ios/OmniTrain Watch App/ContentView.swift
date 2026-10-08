@@ -183,7 +183,11 @@ struct ContentView: View {
                 // D-161: while a rest runs, the rest surface replaces logging —
                 // an owed rating still wins above, and the rest is ended by
                 // Next (or by logging the next set) below.
-                WatchRestView(state: host.logging, onNext: { host.noteSurfaceChange() })
+                WatchRestView(
+                    state: host.logging,
+                    restPingSeconds: { host.preferences.restPingSeconds },
+                    onNext: { host.noteSurfaceChange() }
+                )
             } else if let session = host.engine.session,
                       session.status == WatchSessionStatus.active,
                       !session.exercises.isEmpty {

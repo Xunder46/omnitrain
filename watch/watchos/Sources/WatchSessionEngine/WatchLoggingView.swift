@@ -35,6 +35,12 @@ public struct WristHaptics: WatchHaptics {
     public func play(_ milestone: WatchTimerMilestone) {
         WKInterfaceDevice.current().play(.notification)
     }
+
+    /// A rest ping is not a countdown ending: it is a shorter nudge, so it does
+    /// not share the countdown's alert (D-251).
+    public func playRestPing() {
+        WKInterfaceDevice.current().play(.click)
+    }
 }
 
 public struct WatchLoggingView: View {

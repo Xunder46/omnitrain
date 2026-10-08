@@ -83,6 +83,19 @@ enum Fixtures {
         return object
     }
 
+    /// The rest ping both watch clients owe a rest, as one table of polls and
+    /// taps keyed by scenario.
+    static func restPingContract() throws -> [String: Any] {
+        let url = repositoryRoot.appendingPathComponent(
+            "watch/contract/watch_rest_ping_contract.json"
+        )
+        let data = try Data(contentsOf: url)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw FixtureError.malformed("watch/contract/watch_rest_ping_contract.json")
+        }
+        return object
+    }
+
     static func json(_ relativePath: String) throws -> [String: Any] {
         let url = protocolRoot.appendingPathComponent(relativePath)
         let data = try Data(contentsOf: url)

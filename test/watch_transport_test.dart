@@ -567,7 +567,7 @@ void main() {
       );
       expect(
         _asObject(link.phone.sent.single['payload']),
-        {'generatedAt': utcIso(_now), 'effortRatingPrompt': false},
+        {'generatedAt': utcIso(_now), 'effortRatingPrompt': false, 'restPingSeconds': 0},
         reason: 'S-253 the setting as SettingsState holds it, stamped with '
             'the phone clock at send',
       );
@@ -593,7 +593,7 @@ void main() {
       );
       expect(
         _asObject(link.phone.sent.first['payload']),
-        {'generatedAt': utcIso(phoneNow), 'effortRatingPrompt': true},
+        {'generatedAt': utcIso(phoneNow), 'effortRatingPrompt': true, 'restPingSeconds': 0},
         reason: 'S-253 the setting turned on reaches the wrist at its next '
             'sync',
       );

@@ -541,6 +541,7 @@ void main() {
       for (final prompt in [true, false]) {
         final message = WatchReferenceSync.buildPreferencesDown(
           effortRatingPrompt: prompt,
+          restPingSeconds: 90,
           generatedAt: _generatedAt,
         );
 
@@ -562,6 +563,7 @@ void main() {
           {
             'generatedAt': '2026-09-21T12:30:00.000Z',
             'effortRatingPrompt': prompt,
+            'restPingSeconds': 90,
           },
           reason: 'S-253 the payload is exactly the setting and its stamp',
         );
@@ -571,14 +573,17 @@ void main() {
     test('S-253 a copy with other content is another message', () {
       final on = WatchReferenceSync.buildPreferencesDown(
         effortRatingPrompt: true,
+        restPingSeconds: 90,
         generatedAt: _generatedAt,
       );
       final off = WatchReferenceSync.buildPreferencesDown(
         effortRatingPrompt: false,
+        restPingSeconds: 90,
         generatedAt: _generatedAt,
       );
       final rebuilt = WatchReferenceSync.buildPreferencesDown(
         effortRatingPrompt: true,
+        restPingSeconds: 90,
         generatedAt: _generatedAt,
       );
 

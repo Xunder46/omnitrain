@@ -15,7 +15,7 @@
     {
       "path": "valid/preferences_down.json",
       "type": "preferences_down",
-      "scenario": "S-204"
+      "scenario": "S-246"
     },
     {
       "path": "valid/observations_up_session_capture.json",
@@ -225,6 +225,27 @@
       "scenario": "S-202",
       "expectedCode": "missing_required_field",
       "expectedReasonContains": "effortRatingPrompt"
+    },
+    {
+      "path": "invalid/preferences_down_negative_rest_ping.json",
+      "type": "preferences_down",
+      "scenario": "S-246",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 0"
+    },
+    {
+      "path": "invalid/preferences_down_string_rest_ping.json",
+      "type": "preferences_down",
+      "scenario": "S-246",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer"
+    },
+    {
+      "path": "invalid/preferences_down_missing_rest_ping.json",
+      "type": "preferences_down",
+      "scenario": "S-246",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "restPingSeconds"
     },
     {
       "path": "invalid/session_snapshot_set_without_slot.json",

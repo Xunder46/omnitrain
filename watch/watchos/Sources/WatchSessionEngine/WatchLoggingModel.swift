@@ -111,16 +111,26 @@ public final class WatchLoggingModel: ObservableObject {
 /// wrist is owed one can be asserted.
 public final class RecordingHaptics: WatchHaptics {
     public private(set) var milestones: [WatchTimerMilestone] = []
+    public private(set) var restPings = 0
 
     public init() {}
 
     public func play(_ milestone: WatchTimerMilestone) {
         milestones.append(milestone)
     }
+
+    public func playRestPing() {
+        restPings += 1
+    }
 }
 
-/// How the wrist is told a countdown ended. The watchOS implementation lives in
+/// How the wrist is told a countdown ended, and that a rest has reached another
+/// multiple of its interval. The watchOS implementation lives in
 /// `WatchLoggingView.swift`, behind the platform guard; this is the contract.
 public protocol WatchHaptics {
     func play(_ milestone: WatchTimerMilestone)
+
+    /// The rest ping: a rest counts up and is owed nothing when it ends, so this
+    /// is its own cue rather than a `WatchTimerMilestone` case (D-244, D-251).
+    func playRestPing()
 }

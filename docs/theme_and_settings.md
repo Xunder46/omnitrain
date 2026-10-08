@@ -6,7 +6,7 @@ OmniTrain's Settings screen is fully implemented. It owns persisted preferences 
 
 - calendar display (`Start of Week`)
 - measurement units (`Weight`, `Distance`, `Height`)
-- timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`): the rest ping is a count-up nudge about the phone's own open rest, never a rest timer and never a rest alarm, and the wrist owes no alert for a rest at all — round and hold timer alerts are unchanged ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up"; `WatchLoggingTimersTests.testS164ARestIsNeverOwedAnAlert`)
+- timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`): the rest ping is a count-up nudge about the phone's own open rest, never a rest timer and never a rest alarm — round and hold timer alerts are unchanged ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up"; `WatchLoggingTimersTests.testS164ARestIsNeverOwedAnAlert`)
 - notification permission copy that covers both rest reminders and effort-expiry alerts
 - workout follow-up (`Effort Rating`, the automatic post-workout effort-rating prompt; copy verified by `test/screen_widget_test.dart`, `settings screen keeps the streamlined section layout`)
 - appearance (`AppTheme` selection)

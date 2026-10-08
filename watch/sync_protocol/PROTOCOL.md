@@ -67,7 +67,7 @@ counters are never part of a message.
 |------|-----------|---------|--------|---------|
 | `routines_down` | phone → watch | The user's routines (routine → segments → efforts → per-metric targets) plus the fallback exercise list | `schemas/messages/routines_down.schema.json` | `fixtures/valid/routines_down.json` |
 | `foods_down` | phone → watch | The user's Foods I Eat list — the foods the wrist may quick-log — plus the categories that order it | `schemas/messages/foods_down.schema.json` | `fixtures/valid/foods_down.json` |
-| `preferences_down` | phone → watch | The phone's settings the wrist honours: today, whether a session ended on the wrist asks for the session effort rating | `schemas/messages/preferences_down.schema.json` | `fixtures/valid/preferences_down.json` |
+| `preferences_down` | phone → watch | The phone's settings the wrist honours: whether a session ended on the wrist asks for the session effort rating, and the wrist's rest-ping interval in seconds (`0` = Off) | `schemas/messages/preferences_down.schema.json` | `fixtures/valid/preferences_down.json` |
 | `exercise_push` | phone → watch | A catalog exercise the user searched for on the phone, pushed into the live session | `schemas/messages/exercise_push.schema.json` | `fixtures/valid/exercise_push.json` |
 | `structure_change` | phone → watch | Add, remove, reorder, swap, correct a logged entry, delete a logged entry | `schemas/messages/structure_change.schema.json` | `fixtures/valid/structure_change.json` |
 | `observations_up` | watch → phone | Append-only observations: sets, timed entries, rounds, holds, nutrition quick-logs, the session effort rating, and the session end | `schemas/messages/observations_up.schema.json` | `fixtures/valid/observations_up.json` |
@@ -97,7 +97,14 @@ Notes that follow from the schemas:
   copy with the latest `generatedAt` applies, a tie goes to the copy received
   later, and an older copy that arrives late MUST NOT replace a newer one. A
   wrist that has never received one does not ask for an effort rating
-  (`watch/contract/watch_effort_rating_contract.json`).
+  (`watch/contract/watch_effort_rating_contract.json`). `restPingSeconds` is
+  required — the wrist's rest-ping interval in seconds, `0` for Off — and the
+  wrist pings only while its own rest is open, at the intervals the one contract
+  table names (`watch/contract/watch_rest_ping_contract.json`; the phone's half
+  of the rule is `test/rest_ping_contract_test.dart`, "S-241 one-second polls").
+  A fractional value (`90.5`), or a JSON number written with a fraction (`90.0`),
+  is refused on the wrist; the phone always sends an integer
+  (`WatchRestPingTests.swift`, `testS247AMalformedIntervalIsRefusedAndNothingIsStored`).
 - `exercise_push` is itself the structural edit: it carries `insertAtIndex`
   and the slot it creates. The phone MUST NOT follow it with an `add_exercise`
   change for the same slot.

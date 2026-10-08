@@ -292,7 +292,8 @@ abstract final class WatchReferenceSync {
 
   /// The phone's settings the wrist honours, as the `preferences_down` message
   /// it reads — today, whether a session ended on the wrist asks for the
-  /// session effort rating ([effortRatingPrompt]).
+  /// session effort rating ([effortRatingPrompt]) and how often the wrist pings
+  /// while a rest of its own is open ([restPingSeconds], 0 for Off).
   ///
   /// Its own message rather than a field on `routines_down`, because
   /// [buildRoutinesDown] answers null for a phone with no routines, and a
@@ -305,16 +306,18 @@ abstract final class WatchReferenceSync {
   /// that must not be dropped as a redelivery.
   static Map<String, Object?> buildPreferencesDown({
     required bool effortRatingPrompt,
+    required int restPingSeconds,
     required DateTime generatedAt,
   }) => phoneEnvelope(
     type: 'preferences_down',
     messageId:
         'msg-preferences-${generatedAt.toUtc().millisecondsSinceEpoch}-'
-        '${effortRatingPrompt ? 'on' : 'off'}',
+        '${effortRatingPrompt ? 'on' : 'off'}-$restPingSeconds',
     sentAt: generatedAt,
     payload: {
       'generatedAt': utcIso(generatedAt),
       'effortRatingPrompt': effortRatingPrompt,
+      'restPingSeconds': restPingSeconds,
     },
   );
 

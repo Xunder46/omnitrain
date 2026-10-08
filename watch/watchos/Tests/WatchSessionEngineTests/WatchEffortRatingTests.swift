@@ -20,14 +20,24 @@ import XCTest
 @testable import WatchSessionEngine
 
 /// The phone's `preferences_down`, as the phone builds it (A-22's id shape).
-func preferencesDown(_ asks: Bool, generatedAt: String, messageId: String? = nil) -> [String: Any] {
+func preferencesDown(
+    _ asks: Bool,
+    generatedAt: String,
+    messageId: String? = nil,
+    restPingSeconds: Int = 0
+) -> [String: Any] {
     [
         "protocolVersion": SyncProtocolValidator.protocolVersion,
-        "messageId": messageId ?? "msg-preferences-\(generatedAt)-\(asks ? "on" : "off")",
+        "messageId": messageId
+            ?? "msg-preferences-\(generatedAt)-\(asks ? "on" : "off")-\(restPingSeconds)",
         "type": "preferences_down",
         "origin": "phone",
         "sentAt": generatedAt,
-        "payload": ["generatedAt": generatedAt, "effortRatingPrompt": asks],
+        "payload": [
+            "generatedAt": generatedAt,
+            "effortRatingPrompt": asks,
+            "restPingSeconds": restPingSeconds,
+        ],
     ]
 }
 

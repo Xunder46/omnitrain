@@ -11,7 +11,7 @@
         "origin": { "const": "phone" },
         "payload": {
           "type": "object",
-          "required": ["generatedAt", "effortRatingPrompt"],
+          "required": ["generatedAt", "effortRatingPrompt", "restPingSeconds"],
           "additionalProperties": false,
           "properties": {
             "generatedAt": {
@@ -20,6 +20,11 @@
             "effortRatingPrompt": {
               "type": "boolean",
               "description": "Whether a session the wrist ends asks for the session effort rating. The phone's effort-rating setting, as it stood when generatedAt was written."
+            },
+            "restPingSeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "0 = Off; the wrist's rest-ping interval in seconds, from the phone's Rest Ping setting."
             }
           }
         }

@@ -68,12 +68,13 @@ class WatchSyncRequestHandler {
   /// The answer to the wrist's "sync routines": the preferences, always and
   /// first, then the routines when the phone holds any.
   ///
-  /// The setting is `SettingsState`'s own toggle — the one owner of it
-  /// (D-115) — so nothing here reads or parses the stored preference.
+  /// The settings are `SettingsState`'s own — the one owner of them (D-115) —
+  /// so nothing here reads or parses a stored preference.
   Future<bool> _sendRoutines() async {
     await _transport.send(
       WatchReferenceSync.buildPreferencesDown(
         effortRatingPrompt: _settings.showFeelingSurvey,
+        restPingSeconds: _settings.restPingInterval,
         generatedAt: _clock(),
       ),
     );
