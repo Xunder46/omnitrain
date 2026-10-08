@@ -2082,6 +2082,97 @@ void main() {
       );
     });
   });
+
+  group('S-176 a refused start emits nothing', () {
+    /// The S-176 fixture: a running engine whose first start mints `w1` and
+    /// whose next would mint `w2`, so a second session is distinguishable from
+    /// the session that should have been handed back.
+    Future<WatchSessionEngine> startW1(_Harness harness) async {
+      var records = 0;
+      var sessions = 0;
+      final engine = WatchSessionEngine(
+        harness.store,
+        onEmit: harness.emitted.add,
+        validator: _validator(),
+        clock: harness.clock.call,
+        idFactory: () => 'rec-${++records}',
+        sessionIdFactory: () => 'w${++sessions}',
+      );
+      await engine.restore();
+      final held = await engine.createSession(
+        modality: null,
+        exercises: [_exercise('u-squat'), _exercise('u-press')],
+      );
+      expect(held.sessionId, 'w1', reason: 'the fixture starts w1');
+      expect(held.recordId, 'rec-1', reason: 'the fixture appended one row');
+      expect(
+        harness.emitted.map((frame) => frame['type']),
+        ['session_lifecycle', 'session_snapshot'],
+        reason: 'the fixture emitted its started lifecycle and one snapshot',
+      );
+      return engine;
+    }
+
+    test('S-176 createSession on a live engine hands back w1, untouched', () async {
+      final harness = _Harness();
+      final engine = await startW1(harness);
+      final framesBefore = [...harness.emitted];
+      final rowsBefore = (await harness.store.readAll()).sessions;
+
+      final returned = await engine.createSession(
+        modality: null,
+        exercises: [_exercise('u-row')],
+      );
+
+      expect(returned.sessionId, 'w1', reason: 'w2 never exists (D-177)');
+      expect(returned.recordId, 'rec-1', reason: 'the held row comes back');
+      expect(
+        returned.exercises.map((slot) => slot['sessionExerciseId']),
+        ['u-squat', 'u-press'],
+        reason: "the refused start's exercises are absent (S-176)",
+      );
+      expect(
+        harness.emitted,
+        framesBefore,
+        reason: 'no second started lifecycle, no snapshot (D-177)',
+      );
+      expect((await harness.store.readAll()).sessions, rowsBefore);
+      expect(
+        rowsBefore,
+        hasLength(1),
+        reason: 'the row store still holds exactly one row (S-176)',
+      );
+      expect(
+        engine.session!.recordId,
+        'rec-1',
+        reason: 'the session getter still answers w1',
+      );
+    });
+
+    test('S-176 an empty second start is refused the same way', () async {
+      final harness = _Harness();
+      final engine = await startW1(harness);
+      final framesBefore = [...harness.emitted];
+
+      final returned = await engine.createSession(modality: null);
+
+      expect(returned.recordId, 'rec-1');
+      expect(returned.exercises.map((slot) => slot['sessionExerciseId']), [
+        'u-squat',
+        'u-press',
+      ]);
+      expect(
+        harness.emitted,
+        framesBefore,
+        reason: 'an empty start is still a start (D-177)',
+      );
+      expect(
+        (await harness.store.readAll()).sessions,
+        hasLength(1),
+        reason: 'no second row',
+      );
+    });
+  });
 }
 
 /// Names that may not appear on a synced entity: a record is appended and never

@@ -759,6 +759,9 @@ void main() {
       () async {
         final sensors = await sensorsFor();
         await sensors.start(await sessionFor(Modality.resistanceLifting));
+        // The wrist runs one session at a time (D-171): a second workout is
+        // only reachable once the first one has ended.
+        await engine.finishSession();
         await sensors.start(await sessionFor(null));
 
         expect(health.begun, [

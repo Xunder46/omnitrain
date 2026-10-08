@@ -481,6 +481,134 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(harness.engine.session?.sessionId, started.sessionId)
         XCTAssertTrue(harness.engine.session?.exercises.isEmpty ?? false)
     }
+
+    // MARK: - S-170/S-171/S-177/S-178 one session at a time
+
+    func testS177StartFreeWorkoutOnALiveSessionReturnsItAndEmitsNothing() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+        let held = try await harness.paths.startFromRoutine("routine-push-a")
+        let framesBefore = harness.emitted
+        let rowsBefore = await harness.store.readAll().sessions
+
+        let returned = await harness.paths.startFreeWorkout()
+        let rowsAfter = await harness.store.readAll().sessions
+
+        XCTAssertEqual(
+            returned.recordId,
+            held.recordId,
+            "the held session comes back, not a second one (D-177)"
+        )
+        XCTAssertEqual(returned.sessionId, held.sessionId)
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            held.exercises.compactMap { $0["sessionExerciseId"] as? String }
+        )
+        XCTAssertEqual(
+            harness.emitted.map { $0["type"] as? String },
+            framesBefore.map { $0["type"] as? String },
+            "a refused start emits nothing at all (S-177)"
+        )
+        XCTAssertEqual(
+            rowsAfter.count,
+            rowsBefore.count,
+            "and appends no row"
+        )
+        XCTAssertEqual(rowsBefore.count, 1)
+        XCTAssertEqual(harness.engine.session?.recordId, held.recordId)
+    }
+
+    func testS170StartFromRoutineOnASessionWithExercisesIsRefusedToo() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+        let held = try await harness.paths.startFromRoutine("routine-push-a")
+        let framesBefore = harness.emitted
+        let rowsBefore = await harness.store.readAll().sessions
+
+        let returned = try await harness.paths.startFromRoutine("routine-push-a")
+        let rowsAfter = await harness.store.readAll().sessions
+
+        XCTAssertEqual(
+            returned.recordId,
+            held.recordId,
+            "the live session is the one that answers (D-177)"
+        )
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            held.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            "a live ladder is never filled again (S-170)"
+        )
+        XCTAssertEqual(returned.exercises.count, 3)
+        XCTAssertEqual(harness.emitted.count, framesBefore.count)
+        XCTAssertEqual(rowsAfter.count, rowsBefore.count)
+    }
+
+    func testS178ARoutineFillsAnActiveEmptySessionInPlace() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+        let expected = try objects(try object(try startContract()["routineSession"])["expectedSlots"])
+        let empty = await harness.paths.startFreeWorkout()
+        XCTAssertTrue(empty.exercises.isEmpty)
+        XCTAssertEqual(empty.currentExerciseIndex, 0)
+        let framesBefore = harness.emitted.count
+
+        let returned = try await harness.paths.startFromRoutine("routine-push-a")
+        let rows = await harness.store.readAll().sessions
+
+        XCTAssertEqual(
+            returned.sessionId,
+            empty.sessionId,
+            "the routine fills the session already running (D-177)"
+        )
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            expected.compactMap { $0["sessionExerciseId"] as? String },
+            "the ladder is the routine, in template order (S-178)"
+        )
+        for (slot, expectedSlot) in zip(returned.exercises, expected) {
+            XCTAssertEqual(slot["exerciseId"] as? String, expectedSlot["exerciseId"] as? String)
+            XCTAssertEqual(slot["name"] as? String, expectedSlot["name"] as? String)
+            XCTAssertEqual(slot["capabilities"] as? [String], expectedSlot["capabilities"] as? [String])
+            XCTAssertEqual(slot["effortKind"] as? String, expectedSlot["effortKind"] as? String)
+        }
+        XCTAssertEqual(
+            returned.currentExerciseIndex,
+            0,
+            "the user stays where they were (S-178)"
+        )
+        XCTAssertEqual(
+            returned.startedAt,
+            empty.startedAt,
+            "the absorb does not restart the clock"
+        )
+        XCTAssertEqual(
+            harness.emitted("session_lifecycle").count,
+            1,
+            "no second started lifecycle (S-178)"
+        )
+        XCTAssertEqual(
+            Set(harness.emitted.dropFirst(framesBefore).compactMap { $0["type"] as? String }),
+            ["session_snapshot"],
+            "the absorb announces structure, no new frame kind (S-178)"
+        )
+        XCTAssertEqual(
+            Set(rows.map(\.sessionId)),
+            [empty.sessionId],
+            "every row still names the one session (D-171)"
+        )
+        XCTAssertEqual(rows.first?.recordId, empty.recordId)
+
+        // S-171: the free start on the filled session is refused like any other.
+        let afterAbsorb = harness.emitted.count
+        let again = await harness.paths.startFreeWorkout()
+        XCTAssertEqual(again.recordId, returned.recordId)
+        XCTAssertEqual(again.exercises.count, expected.count)
+        XCTAssertEqual(harness.emitted.count, afterAbsorb)
+    }
+
     // MARK: - S-006 session-started lifecycle event
 
     func testS006StartingFromARoutineEmitsOneConformantSessionStartedEvent() async throws {

@@ -832,6 +832,8 @@ class WatchSensorRecordingTests: XCTestCase {
         let sensors = sensors(for: engine)
 
         await sensors.start(await session(engine, modality: "resistance_lifting"))
+        // D-177 refuses a second start over a live session, so the first closes here.
+        _ = await engine.finishSession()
         await sensors.start(await session(engine, modality: nil, capabilities: []))
 
         XCTAssertEqual(

@@ -543,6 +543,130 @@ void main() {
     );
   });
 
+  group('S-170/S-171/S-177/S-178 one session at a time', () {
+    test(
+      'S-177 startFreeWorkout on a live session returns it and emits nothing',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        final held = await watch.paths.startFromRoutine('routine-push-a');
+        final framesBefore = [...harness.emitted];
+        final rowsBefore = (await harness.store.readAll()).sessions;
+
+        final returned = await watch.paths.startFreeWorkout();
+
+        expect(
+          returned.recordId,
+          held.recordId,
+          reason: 'the held session comes back, not a second one (D-177)',
+        );
+        expect(returned.sessionId, held.sessionId);
+        expect(returned.exercises, held.exercises);
+        expect(
+          harness.emitted,
+          framesBefore,
+          reason: 'a refused start emits nothing at all (S-177)',
+        );
+        expect(
+          (await harness.store.readAll()).sessions,
+          rowsBefore,
+          reason: 'and appends no row',
+        );
+        expect(rowsBefore, hasLength(1));
+        expect(watch.engine.session!.recordId, held.recordId);
+      },
+    );
+
+    test(
+      'S-170 startFromRoutine on a session with exercises is refused too',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        final held = await watch.paths.startFromRoutine('routine-push-a');
+        final framesBefore = [...harness.emitted];
+        final rowsBefore = (await harness.store.readAll()).sessions;
+
+        final returned = await watch.paths.startFromRoutine('routine-push-a');
+
+        expect(
+          returned.recordId,
+          held.recordId,
+          reason: 'the live session is the one that answers (D-177)',
+        );
+        expect(
+          returned.exercises,
+          held.exercises,
+          reason: 'a live ladder is never filled again (S-170)',
+        );
+        expect(returned.exercises, hasLength(3));
+        expect(harness.emitted, framesBefore);
+        expect((await harness.store.readAll()).sessions, rowsBefore);
+      },
+    );
+
+    test('S-178 a routine fills an active empty session in place', () async {
+      watch = await harness.launch();
+      await syncFirstMessage();
+      final expected = _objects(
+        _asObject(_contract()['routineSession'])['expectedSlots'],
+      );
+      final empty = await watch.paths.startFreeWorkout();
+      expect(empty.exercises, isEmpty);
+      expect(empty.currentExerciseIndex, 0);
+      final framesBefore = harness.emitted.length;
+
+      final returned = await watch.paths.startFromRoutine('routine-push-a');
+
+      expect(
+        returned.sessionId,
+        empty.sessionId,
+        reason: 'the routine fills the session already running (D-177)',
+      );
+      expect(
+        returned.exercises,
+        expected,
+        reason: 'the ladder is the routine, in template order (S-178)',
+      );
+      expect(
+        returned.currentExerciseIndex,
+        0,
+        reason: 'the user stays where they were (S-178)',
+      );
+      expect(
+        returned.startedAt,
+        empty.startedAt,
+        reason: 'the absorb does not restart the clock',
+      );
+      expect(
+        harness.emittedOf('session_lifecycle'),
+        hasLength(1),
+        reason: 'no second started lifecycle (S-178)',
+      );
+      expect(
+        harness.emitted
+            .skip(framesBefore)
+            .map((frame) => frame['type'])
+            .toSet(),
+        {'session_snapshot'},
+        reason: 'the absorb announces structure, no new frame kind (S-178)',
+      );
+      final rows = (await harness.store.readAll()).sessions;
+      expect(
+        rows.map((row) => row.sessionId).toSet(),
+        {empty.sessionId},
+        reason: 'every row still names the one session (D-171)',
+      );
+      expect(rows.first.recordId, empty.recordId);
+
+      // S-171: the free start on the filled session is refused like any other.
+      final afterAbsorb = harness.emitted.length;
+      final again = await watch.paths.startFreeWorkout();
+      expect(again.recordId, returned.recordId);
+      expect(again.exercises, expected);
+      expect(harness.emitted.skip(afterAbsorb), isEmpty);
+    });
+  });
+
   group('S-006 session-started lifecycle event', () {
     test(
       'starting from a routine emits one conformant session-started event',

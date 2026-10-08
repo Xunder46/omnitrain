@@ -345,6 +345,21 @@ public final class WatchSessionStartPaths {
         guard let routine = storedRoutines.first(where: { $0.routineId == routineId }) else {
             throw WatchStartPathError.unknownRoutine(routineId)
         }
+        // A routine picked while an empty session is live is what that session
+        // was waiting for: the routine's slots fill it in place, in template
+        // order, and the user stays where they were (D-177, S-178). Once the
+        // session has exercises the user is training, and the pick is refused
+        // like any other second start (S-170).
+        if let held = engine.session,
+            held.status == WatchSessionStatus.active,
+            held.exercises.isEmpty
+        {
+            var filled = held
+            for slot in routine.slots {
+                filled = await engine.insertExercise(slot, moveTo: false)
+            }
+            return filled
+        }
         return await engine.createSession(modality: nil, exercises: routine.slots)
     }
 

@@ -274,6 +274,15 @@ public final class WatchSessionEngine {
         source: String = "watch",
         exercises: [[String: Any]] = []
     ) async -> WatchSessionRecord {
+        // The wrist runs one session at a time: a start that arrives while a
+        // live session is held is refused and the held session is what the
+        // caller gets back — same row, no lifecycle, no snapshot (D-171,
+        // D-177). A session the wrist already ended does not hold the slot, so
+        // the next start is free.
+        if let held = current, held.status == WatchSessionStatus.active {
+            return held
+        }
+
         let now = clock()
         let row = WatchSessionRecord(
             recordId: newId(),

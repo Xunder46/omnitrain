@@ -76,6 +76,16 @@ final class Harness {
     }
 }
 
+/// Records the frames an engine emits where the shared harness's own emitter is
+/// not the one in use — an engine a test built to mint its own session ids.
+final class EmitRecorder {
+    private(set) var frames: [[String: Any]] = []
+
+    func append(_ frame: [String: Any]) { frames.append(frame) }
+
+    var types: [String?] { frames.map { $0["type"] as? String } }
+}
+
 func exercise(_ slot: String) -> [String: Any] {
     [
         "sessionExerciseId": slot,
@@ -1751,5 +1761,101 @@ final class WatchSessionEngineTests: XCTestCase {
             harness.emitted.isEmpty,
             "D-91 a snapshot is answered with silence: answering it would be a snapshot the phone did not ask for"
         )
+    }
+
+    // MARK: - S-176 a refused start emits nothing
+
+    /// The S-176 fixture: a running engine whose first start mints `w1` and
+    /// whose next would mint `w2`, so a second session is distinguishable from
+    /// the session that should have been handed back.
+    private func liveW1(_ harness: Harness) async -> (WatchSessionEngine, EmitRecorder) {
+        let recorder = EmitRecorder()
+        var records = 0
+        var sessions = 0
+        let engine = WatchSessionEngine(
+            store: harness.store,
+            onEmit: { recorder.append($0) },
+            validator: Harness.validator(),
+            clock: harness.clock.call,
+            idFactory: {
+                records += 1
+                return "rec-\(records)"
+            },
+            sessionIdFactory: {
+                sessions += 1
+                return "w\(sessions)"
+            }
+        )
+        await engine.restore()
+        let held = await engine.createSession(
+            modality: nil,
+            exercises: [exercise("u-squat"), exercise("u-press")]
+        )
+        XCTAssertEqual(held.sessionId, "w1", "the fixture starts w1")
+        XCTAssertEqual(held.recordId, "rec-1", "the fixture appended one row")
+        XCTAssertEqual(
+            recorder.types,
+            ["session_lifecycle", "session_snapshot"],
+            "the fixture emitted its started lifecycle and one snapshot"
+        )
+        return (engine, recorder)
+    }
+
+    func testS176ARefusedStartHandsBackW1AndChangesNothing() async throws {
+        let harness = Harness()
+        let (engine, recorder) = await liveW1(harness)
+        let framesBefore = recorder.types
+        let rowsBefore = await harness.store.readAll().sessions
+
+        let returned = await engine.createSession(
+            modality: nil,
+            exercises: [exercise("u-row")]
+        )
+        let rowsAfter = await harness.store.readAll().sessions
+
+        XCTAssertEqual(returned.sessionId, "w1", "w2 never exists (D-177)")
+        XCTAssertEqual(returned.recordId, "rec-1", "the held row comes back")
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["u-squat", "u-press"],
+            "the refused start's exercise is absent (S-176)"
+        )
+        XCTAssertEqual(
+            recorder.types,
+            framesBefore,
+            "no second started lifecycle, no snapshot (D-177)"
+        )
+        XCTAssertEqual(
+            rowsAfter.count,
+            rowsBefore.count,
+            "the row store still holds one row (S-176)"
+        )
+        XCTAssertEqual(rowsBefore.count, 1)
+        XCTAssertEqual(
+            engine.session?.recordId,
+            "rec-1",
+            "the session getter still answers w1"
+        )
+    }
+
+    func testS176AnEmptySecondStartIsRefusedTheSameWay() async throws {
+        let harness = Harness()
+        let (engine, recorder) = await liveW1(harness)
+        let framesBefore = recorder.types
+
+        let returned = await engine.createSession(modality: nil)
+        let rowsAfter = await harness.store.readAll().sessions
+
+        XCTAssertEqual(returned.recordId, "rec-1")
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["u-squat", "u-press"]
+        )
+        XCTAssertEqual(
+            recorder.types,
+            framesBefore,
+            "an empty start is still a start (D-177)"
+        )
+        XCTAssertEqual(rowsAfter.count, 1, "no second row")
     }
 }
