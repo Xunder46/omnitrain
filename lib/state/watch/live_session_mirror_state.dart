@@ -106,6 +106,14 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The session as the phone closed it. Null while it is running.
   Map<String, Object?>? _completedRecord;
 
+  /// How each session this phone announced an end for ended, by session id.
+  ///
+  /// [owesResetFor]'s status is the memory for the session this mirror is
+  /// holding; this is the memory for the ones it has moved off, which are
+  /// exactly the ones a wrist still announcing them is owed an answer for
+  /// (D-182's fourth row, S-190).
+  final Map<String, String> _fates = {};
+
   // ---------------------------------------------------------------------------
   // What the surface reads
   // ---------------------------------------------------------------------------
@@ -527,6 +535,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
   ///
   /// The index travels only with `exercise_advanced`, because the schema allows
   /// it nowhere else.
+  ///
+  /// An end announced here is remembered against the session it names, so the
+  /// wrist still holding that session is told how it ended rather than being
+  /// offered the session back (D-182, S-190).
   Future<Map<String, Object?>> reportLifecycle(
     String state, {
     int? exerciseIndex,
@@ -536,6 +548,7 @@ class LiveSessionMirrorState extends ChangeNotifier {
       'at': utcIso(_clock()),
       'exerciseIndex': ?exerciseIndex,
     });
+    _recordFate(sessionId, state);
     await _sendOwn(envelope);
     return envelope;
   }
@@ -553,6 +566,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
   ///
   /// The merged record a closed session leaves behind is [completeSession]'s to
   /// make, and is not made here.
+  ///
+  /// The end is remembered against [sessionId] — not against whatever this
+  /// mirror holds — for the same reason the frame names it: the wrist it is
+  /// owed to is the one still announcing that session (D-182, S-190).
   Future<Map<String, Object?>> reportLifecycleFor(
     String sessionId,
     String state,
@@ -561,6 +578,7 @@ class LiveSessionMirrorState extends ChangeNotifier {
       'state': state,
       'at': utcIso(_clock()),
     });
+    _recordFate(sessionId, state);
     if (sessionId == this.sessionId) {
       _reconciler.applyMessage(envelope);
       notifyListeners();
@@ -593,6 +611,38 @@ class LiveSessionMirrorState extends ChangeNotifier {
         held != composedId &&
         held != watchSessionPlaceholderId &&
         status != WatchSessionStatus.completed;
+  }
+
+  /// How this phone ended the session [sessionId], or null when it has no
+  /// record of ending it (D-182's fourth row).
+  ///
+  /// The announced fates come first: a session this mirror has since moved off
+  /// still owes its end to a wrist that is still announcing it, and that is the
+  /// case this memory exists for (S-190). A session this mirror is holding
+  /// answers with its own status, which is how a fate that arrived as a frame
+  /// rather than from one of the two senders above is still found. `active` is
+  /// not a fate.
+  ///
+  /// Memory only, like the rest of the mirror: a relaunched phone is the
+  /// placeholder again and adopts what the wrist announces (Open question 10).
+  String? rememberedFateOf(String sessionId) {
+    final announced = _fates[sessionId];
+    if (announced != null) return announced;
+    if (sessionId != this.sessionId) return null;
+    final held = status;
+    return held == WatchSessionStatus.active ? null : held;
+  }
+
+  /// Remembers that [sessionId] was announced as ended — the only two ends a
+  /// wrist is ever told about (D-182). Any other lifecycle leaves the memory as
+  /// it is; nothing an incoming frame does clears one.
+  void _recordFate(String? sessionId, String state) {
+    if (sessionId == null) return;
+    if (state != WatchLifecycleState.completed &&
+        state != WatchLifecycleState.abandoned) {
+      return;
+    }
+    _fates[sessionId] = state;
   }
 
   /// A message the phone originates: applied here first, then handed to the

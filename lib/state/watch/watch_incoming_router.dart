@@ -91,21 +91,53 @@ class WatchIncomingRouter {
   /// `session_lifecycle` ends the phone's copy of the session it names, through
   /// the ordinary finish (D-5). A snapshot of a session whose row is already
   /// history adopts nothing (G1) and is answered with that session's
-  /// `completed` lifecycle, so a wrist still looking at it catches up.
+  /// `completed` lifecycle, so a wrist still looking at it catches up. A
+  /// snapshot announcing a session this phone is holding another one *than* is
+  /// answered with that wrist's own end and then with the phone's session
+  /// (D-182, the requested form of D-176's reset); one announcing a session the
+  /// phone has already ended is answered with how it ended, and adopted no
+  /// further (D-182's fourth row).
   Future<WatchIncomingReceipt> receive(Map<String, Object?> envelope) async {
+    // D-182: the answer is composed from the phone's session and the phone's
+    // memory, and both reads have to happen before the mirror applies whatever
+    // arrived — applying an active snapshot moves the mirror off the id and the
+    // status that row needs.
+    final isSnapshot = envelope['type'] == 'session_snapshot';
+    final named = isSnapshot ? envelope['sessionId'] as String? : null;
+    final p = isSnapshot ? await _mirror.projectedSession() : null;
+    final fate = isSnapshot && named != null
+        ? _mirror.rememberedFateOf(named)
+        : null;
+
     final staged = await _inbox.receive(envelope);
     final session = await _mirror.receive(envelope);
-    if (envelope['type'] == 'session_snapshot' &&
-        session == MirrorOutcome.applied) {
-      final adopted = await _adoption?.consider(_mirror.state);
-      // G1: the snapshot named a session whose row is already history, so
-      // nothing was adopted and nothing was reloaded. The wrist is still
-      // looking at a session this phone has finished, and the only thing that
-      // tells it so is the session's own lifecycle: the mirror composes it
-      // from the session it has just converged on and sends it (G2 — the phone
-      // never pushes an end of its own accord, it answers one).
-      if (adopted == WatchSessionAdoption.alreadyEnded) {
-        await _mirror.reportLifecycle(WatchLifecycleState.completed);
+    if (isSnapshot && session == MirrorOutcome.applied) {
+      if (p == null && named != null && fate != null) {
+        // The phone has no session to offer and has already ended this one: the
+        // remembered fate is the whole answer. Adopting is skipped because it
+        // would reload the session the phone just ended (D-182, S-190).
+        await _mirror.reportLifecycleFor(named, fate);
+      } else {
+        final adopted = await _adoption?.consider(_mirror.state);
+        // G1: the snapshot named a session whose row is already history, so
+        // nothing was adopted and nothing was reloaded. The wrist is still
+        // looking at a session this phone has finished, and the only thing that
+        // tells it so is the session's own lifecycle: the mirror composes it
+        // from the session it has just converged on and sends it (G2 — the phone
+        // never pushes an end of its own accord, it answers one).
+        if (adopted == WatchSessionAdoption.alreadyEnded) {
+          await _mirror.reportLifecycle(WatchLifecycleState.completed);
+        } else if (named != null && p != null && p['sessionId'] != named) {
+          // The wrist's session is the one this phone is *not* running: it is
+          // ended under its own name first, and only then is the phone's handed
+          // over, so the wrist never holds two sessions' worth of state at once
+          // (D-182, S-189).
+          await _mirror.reportLifecycleFor(
+            named,
+            WatchLifecycleState.abandoned,
+          );
+          await _mirror.sendState(p);
+        }
       }
     }
     // The wrist is the authority on when its own session is over: its

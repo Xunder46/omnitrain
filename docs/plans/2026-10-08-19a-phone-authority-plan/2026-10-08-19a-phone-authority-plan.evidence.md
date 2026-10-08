@@ -296,6 +296,177 @@ edited to make them pass):
 No prove-red for this phase: it changes no code and no test, so there is no guard to prove. The
 deliverable is prose, and `test/docs_indexing_contract_test.dart` is the check that binds it.
 
+## Phase 5a — the receive-path answer and the fate memory (D-182; S-189 … S-193)
+
+Scope: `lib/state/watch/live_session_mirror_state.dart` (+50 lines: `_fates`, `rememberedFateOf`,
+`_recordFate` and its two call sites), `lib/state/watch/watch_incoming_router.dart` (+44/−12: the two
+reads before the apply, D-182's four rows inside `isSnapshot && applied`),
+`test/watch_session_finish_test.dart` (+340/−4: 5 new cases, the header's scenario map, two helpers,
+and the G1 counter-case's repaired second half). `git-diff --stat` at the head: 5 files,
+540 insertions, 20 deletions — mirror 50 lines of churn, router 56, test file 340, plan 15, this
+evidence file 99. The three source files are the plan's Predicted Files, nothing else.
+
+`prove-red` at the phase's base:
+
+```
+$ gateway.sh prove-red e47e331 test test/watch_session_finish_test.dart
+RED AT e47e331 (exit 1)
+```
+
+The failing assertions, for the guarded reasons (each at the head of the test that guards it):
+
+| Test | Line | Red at `e47e331` because |
+| --- | --- | --- |
+| G1 counter-case (repaired half) | 622 | the announced session's end is not answered — the old half expected no end at all |
+| S-189 | 842 | no answer is sent for the wrist's own announcement |
+| S-190 | 905 | the fate is not remembered: `Expected: ['abandoned'] Actual: []` |
+| S-193 | 1051 | the failing send does not throw / nothing is re-offered |
+
+S-191 and both halves of S-192 **pass at `e47e331`** — they are regression guards, so a prove-red
+run proves nothing about them and each was proved by mutation instead. Every mutant was applied,
+run, and then restored to the exact original line, with the file re-run green afterwards:
+
+| Mutant | Guard reddened | Observed |
+| --- | --- | --- |
+| `if (named != null) await _mirror.reportLifecycleFor(named, abandoned);` inserted into the else branch | S-191 | `Expected: <0> Actual: <1>` — the phone ADOPTS a wrist session when it holds none |
+| Row (b)'s condition drops `p['sessionId'] != named` | S-192 case A | `Expected: <0> Actual: <2>` — the converged echo is answered; S-192 case B unaffected |
+| `rememberedFateOf` returns `null` (mechanism-level: removing `_recordFate` alone stays green because `reportLifecycleFor` also applies the fate locally, so the map and the mirror's own status are interchangeable sources inside the one method) | S-190 | `Expected: ['abandoned'] Actual: []` — the announced fate is the whole answer |
+| `p` read moved to after `_mirror.receive(envelope)` | S-189 | `Expected: <0> Actual: <1>` — the answer is composed before W's index is applied |
+
+S-189's two frames, as the test asserts them (the envelope's `messageId`/`sentAt` are fresh per
+frame; everything below is what the case pins):
+
+```
+frame 0  {'type': 'session_lifecycle', 'sessionId': 'w1',
+          'payload': {'sessionId': 'w1', 'state': 'abandoned'}}
+frame 1  {'type': 'session_snapshot',  'sessionId': '<p1>',
+          'payload': {'sessionId': '<p1>', 'status': 'active', 'currentExerciseIndex': 0,
+                      'exercises': [<the phone's own 2 slots, in its own order>]}}
+```
+
+The order is asserted (`['session_lifecycle', 'session_snapshot']`), `p1` is the phone's own session
+(never `w1`), the ladder is the phone's own (not the wrist's `wl-1`/`wl-2`), the index is the
+phone's own `0`, the skip line is intact, and `currentSession?.id == p1` afterwards.
+
+Runs at the phase's head:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| the phase's own file | `gateway.sh test test/watch_session_finish_test.dart` | `All tests passed!` (14 cases) — run twice: after S-193's tightening and after the last mutant was restored |
+| full suite | `gateway.sh test` | `+4099 ~1 -3` — baseline was `+4096 ~1`; **three pre-existing expectations went red** (below) |
+| linter | `gateway.sh lint` | `196 issues found.` = baseline; no issue line names a file this phase touched |
+| invariant sweep | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` (file tools; shell `grep` is denied) | no output |
+| watch package | not run | no `.swift` file changed in this phase |
+
+The three unpredicted reds, all of them D-182's row (b) answering an input the case expects silence
+for — none of these files was edited:
+
+| File · test | Assertion |
+| --- | --- |
+| `test/watch_session_projection_test.dart` · "S-6 a wrist session this phone is not in is left alone" | `radio.ofType('session_snapshot')` is no longer empty: the phone answers `abandoned(w1)` then `snapshot(P)`. Its second block is S-189's own input. |
+| `test/watch_session_auto_push_test.dart` · S-86 (`:1287`) | `Expected: ['s-1:abandoned'] Actual: ['s-1:abandoned', 's-1:abandoned']` — the push's reset is answered by the wrist's echo, which names the session the phone just reset |
+| `test/watch_session_auto_push_test.dart` · S-180 (in the S-172 group) | `Expected: an object with length of <1>` — the retry pass carries the pair (lifecycle + snapshot) rather than the frame alone |
+
+The two frame-count cases are the class of red that the plan's Trap 2 rule says to read as "the
+predicate is too wide, not the suite", but the predicate here is D-182's row (b) itself, which
+S-189's prove-red shows is load-bearing; neither the receiver nor the tests were narrowed. Recorded
+as the phase's blocker in `## Open questions` 13 — the phase stops at this finished item.
+
+Causation, measured (one temporary mutant — row (b)'s condition forced false — applied, run, then
+restored to the exact original; the router diff above is the restored file, and the phase's own file
+re-runs green after it):
+
+```
+$ gateway.sh test test/watch_session_projection_test.dart test/watch_session_auto_push_test.dart
+84 cases: All tests passed!          # with row (b) disabled
+$ gateway.sh test test/watch_session_finish_test.dart
+14 cases: All tests passed!          # after the restore
+```
+
+So all three reds come from D-182's row (b) and from nothing else in this change: the files pass
+untouched once that one row is neutralised, and the row is what S-189 proves.
+
+## Phase 5a · fix run — the row-two reds repaired, the settle shown, the fate memory pinned
+
+Scope: the three test files only, no production line — `test/watch_session_auto_push_test.dart` (+40),
+`test/watch_session_projection_test.dart` (+43: the D-10 group's second block), and
+`test/watch_session_finish_test.dart` (+80: the header's S-190b row and S-190b itself). The decision is
+(a): the extra frames are D-182's row two as designed, not a loop and not a duplicate.
+
+The reds at the phase head, as observed (the brief named the first two; the plan's `## Open questions`
+13 named all three, and the third is real):
+
+| File · case | Observed while red |
+| --- | --- |
+| `test/watch_session_auto_push_test.dart` · S-86 | `Expected: ['s-1:abandoned']` · `Actual: ['s-1:abandoned', 's-1:abandoned']` — the wrist's own announcement is answered before the scenario's window opens, so the pass's window counted the answer's frame too |
+| `test/watch_session_auto_push_test.dart` · S-180 (pass 1) | `Expected: an object with length of <1>` on `radio.attempted`: the log carried the announcement's answer pair and then the pass's own first frame |
+| `test/watch_session_projection_test.dart` · S-6 (second block) | `Expected: empty` on `radio.ofType('session_snapshot')`, actual the three frames logged below |
+
+The answer `S-189` pins is what all three now assert, at the point the wrist announces its session —
+`['session_lifecycle:s-1', 'session_snapshot:<P>']` in the push harness, the mirror's own copy of W
+first in the projection one — followed by `radio.sent.clear()` (and `radio.attempted.clear()` in
+`mismatchedPair()`) so each scenario reads its own pass alone.
+
+The projection case's second block, frame for frame (end of the block, as the test now pins it):
+
+```
+frame 0  session_snapshot   sessionId <W>  status 'abandoned'  revision 0  ladder ['wl-1', 'wl-2']
+frame 1  session_lifecycle  sessionId <W>  state  'abandoned'
+frame 2  session_snapshot   sessionId <P>  status 'active'     revision 1  ladder [<the phone's own slot>]
+```
+
+Frame 0's ladder is the wrist's own (the mirror's copy of the session it converged on, never a ladder
+the phone is not running); frame 2 is the phone's own session; no frame in the block is a
+`WatchTransportRequest` (`'request'` key), so the answer asks for nothing back.
+
+**The settle log.** With the pair converged, S-180's third pass asserts nothing at all is carried —
+`radio.ofType('session_lifecycle')` empty and `sentOrder()` empty (no reset, no state, no request) —
+and the pass still reports its earlier failure once. The second pass is the retry and carries the whole
+reset (`['lifecycle:s-1', 'snapshot:<P>', 'request:snapshot']`), so the case's own title ("re-sent by
+the next pass") is still true and it was not retitled. Nothing in the answer is a request, so the
+announcement cannot provoke another announcement; the only frames after the answer are the pass's own.
+
+**S-190b** (the fate memory): the mirror adopts `w1`, the phone reports `completed` for it, the row is
+`discardCurrentSession()`d (not ended — an ended row would answer `alreadyEnded` and report `completed`
+anyway, masking the memory), a second session `x1` is adopted and discarded so the mirror has provably
+moved off `w1`, and the wrist announces `w1` again. The delta is exactly `['session_lifecycle:w1']`,
+`_sentFates` is `[completed]`, nothing is adopted and `skipped`/`failures` stay empty. Proved red by the
+brief's mutation — `_recordFate(sessionId, state);` removed from `reportLifecycleFor`:
+
+```
+Expected: ['session_lifecycle:w1']
+  Actual: []
+test/watch_session_finish_test.dart 991
+```
+
+The line was restored to the exact original and the file re-run green afterwards; S-190 alone stays
+green under that mutant, which is the point — only a mirror that has moved off the ended session
+exposes the missing record.
+
+**Prove-red** (the repaired pair cannot exist at the phase's base):
+
+```
+$ gateway.sh prove-red e47e331 test test/watch_session_auto_push_test.dart test/watch_session_projection_test.dart
+RED AT e47e331 (exit 1)
+  S-86      Expected: ['session_lifecycle:s-1', 'session_snapshot:session-…']  Actual: []
+  S-6       Expected: [['session_snapshot', <W>, 'abandoned'], …]              Actual: []
+  the fixture assertion at test/watch_session_auto_push_test.dart:2850 (the same pair) takes S-172,
+  S-180 and S-182 with it; the file otherwise passes there (+79 -5)
+```
+
+Runs at the fix run's head:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| the two auto-push/finish files | `gateway.sh test test/watch_session_auto_push_test.dart test/watch_session_finish_test.dart` | `+57: All tests passed!` — run twice, before and after the mutation |
+| the projection file | `gateway.sh test test/watch_session_projection_test.dart` | `+42: All tests passed!` (S-6 included) |
+| S-190b alone | same file, `--plain-name "S-190b …"` | `+1: All tests passed!` |
+| the mutation | as above | `+0 -1`, the guarded assertion (S-190b) |
+| linter | `gateway.sh lint` | `196 issues found.` = baseline; none in a touched file |
+| invariant sweep | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` (file tools) | no output |
+| full suite | `gateway.sh test` | `+4103 ~1: All tests passed!` (0 failures; the `~1` skip is pre-existing) |
+| watch package | not run | no `.swift` file changed in this run |
+
 ## Not covered by these checks (state it, never claim it)
 
 - `ios/OmniTrain Watch App/ContentView.swift` (the SwiftUI app target and its `onWatchResume`
@@ -336,3 +507,27 @@ One line per entry: phase, decision, options, choice. The Conductor ratifies or 
   from 2026-09-20 to 2026-10-08 (0 bytes). Its session-mirroring claims were reconciled against source
   in this phase; the rest of the page was not re-derived, so the date claims only that this feature's
   pages were touched.
+- **Phase 5a · S-190's fate.** The brief said the answer forwards "the fate the phone remembers"; the
+  plan's row (c) forwards `rememberedFateOf(named)` and nothing else. Options: a named fate per row,
+  or the plan's accessor. Choice: the plan's accessor, and the case asserts all three announcements
+  (`abandoned`, `abandoned`, then `completed`) so both sources inside it are pinned.
+- **Phase 5a · the two reads.** `projectedSession()` is read for every snapshot and
+  `rememberedFateOf(named)` only when the frame names a session (the brief's spec). Options: read the
+  fate unconditionally, or guard it. Choice: as written — both are pure accessors, and S-192 case A's
+  zero-frame silence shows reading P cannot emit anything by itself.
+- **Phase 5a · the G1 counter-case was repaired, not weakened.** Its second half is row (b)'s exact
+  input, so under D-182 the end names the announced session only; the "left alone" and D-9 claims
+  became delta-based assertions over the frames that half itself produced. Options: delete the half,
+  weaken the expectation, or restate it. Choice: restate it — D-182 is the later decision and S-189
+  proves the same answer.
+- **Phase 5a · a mechanism-level mutant was used for S-190.** `rememberedFateOf` has two
+  interchangeable sources (the `_fates` map and the mirror's own status when the id is the mirror's),
+  because `reportLifecycleFor` applies the fate locally as well, so removing `_recordFate` alone stays
+  green. Choice: the mutant that returns `null` from the accessor, which reddens S-190; recorded here
+  because it is weaker evidence than a removed line.
+- **Phase 5a · three pre-existing reds, reported not absorbed.** Row (b) answers an input
+  `test/watch_session_projection_test.dart` S-6 and `test/watch_session_auto_push_test.dart`
+  S-86/S-180 expect silence for; the plan's Existing-Functionality Impact table does not name them.
+  Options: repair those expectations (outside the phase's Predicted Files), narrow row (b)
+  (contradicts D-182/S-189), or stop. Choice: stop at the finished item and report — no test was
+  edited, and `## Open questions` 13 asks the planner to ratify or revert.

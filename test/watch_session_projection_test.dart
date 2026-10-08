@@ -945,17 +945,51 @@ void main() {
         reason: 'the switch is the mirror\'s business (protocol MUST rule)',
       );
 
-      // The wrist taps Sync again. The phone holds no ladder for the session
-      // the wrist is running, so it has none of its own to assert: the wrist's
-      // own ladder comes back, and agreeing peers stay silent.
+      // The wrist taps Sync again. D-182's row two answers an announcement of a
+      // session this phone is not running: the mirror re-asserts the copy it
+      // converged on, that session is ended under its own name, and only then
+      // is the phone's own session handed over (S-189). The answer asks for
+      // nothing back, so the exchange settles at these three frames.
       radio.sent.clear();
       await radio.fromWrist(engine.sessionSnapshot()!);
       await _settle();
 
       expect(
-        radio.ofType('session_snapshot'),
+        [
+          for (final frame in radio.sent)
+            [
+              frame['type'],
+              frame['sessionId'],
+              _payload(frame)['status'] ?? _payload(frame)['state'],
+            ],
+        ],
+        [
+          ['session_snapshot', wristSessionId, 'abandoned'],
+          ['session_lifecycle', wristSessionId, 'abandoned'],
+          ['session_snapshot', phoneSessionId, 'active'],
+        ],
+        reason:
+            'S-6 D-182 row two: the announced session is ended under its own '
+            'name, and the phone\'s own session follows it',
+      );
+      final announced = radio.ofType('session_snapshot');
+      expect(
+        _slotIds(_payload(announced.first)),
+        ['wl-1', 'wl-2'],
+        reason: 'S-6 the ended copy carries the wrist\'s own ladder, never a '
+            'ladder this phone is not running',
+      );
+      expect(
+        _slotIds(_payload(announced.last)),
+        [bench],
+        reason: 'S-6 and the session handed over is the phone\'s own',
+      );
+      expect(
+        radio.sent.where(
+          (frame) => WatchTransportRequest.nameOf(frame) != null,
+        ),
         isEmpty,
-        reason: 'S-6 the wrist snapshot is not answered with another session',
+        reason: 'S-6 the answer adds no request: one announcement, one answer',
       );
       expect(engine.session!.sessionId, wristSessionId);
       expect(wristSlots(), ['wl-1', 'wl-2']);

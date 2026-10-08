@@ -1277,6 +1277,23 @@ void main() {
         );
         expect(phoneState.currentSession?.id, ownSessionId);
 
+        // The announcement above is answered before this scenario's window
+        // opens: the phone holds a session of its own, so D-182's second row
+        // ends the wrist's under its own name and hands over the phone's
+        // ladder — the pair S-189 pins, in the frame order S-172 reads in
+        // full. What this scenario witnesses is the push pass, alone.
+        expect(
+          [
+            for (final frame in radio.sent)
+              '${frame['type']}:${frame['sessionId']}',
+          ],
+          ['session_lifecycle:s-1', 'session_snapshot:$ownSessionId'],
+          reason:
+              'D-182 row two: the wrist\'s own announcement is answered with '
+              'W\'s end, then P, before the pass',
+        );
+        radio.sent.clear();
+
         graph.autoPush.bindWorkoutState(phoneState);
         await phoneState.addEntry(
           own,
@@ -2826,7 +2843,22 @@ void main() {
       expect(failures, isEmpty);
 
       graph.autoPush.bindWorkoutState(phoneState);
+      // The announcement above is answered by D-182's second row before this
+      // scenario's window opens — W's end, then P, the pair S-189 pins in
+      // full — so both logs start after it and each scenario reads its own
+      // pass alone.
+      expect(
+        [
+          for (final frame in radio.sent)
+            '${frame['type']}:${frame['sessionId']}',
+        ],
+        ['session_lifecycle:s-1', 'session_snapshot:$sessionId'],
+        reason:
+            'the fixture: the wrist\'s own announcement is answered with the '
+            'reset pair, before the pass',
+      );
       radio.sent.clear();
+      radio.attempted.clear();
       return (sessionId: sessionId, slot: own);
     }
 
@@ -2998,6 +3030,14 @@ void main() {
           reason:
               'S-180 with the pair agreed the predicate is false: the phone '
               'never abandons the session it is working through (D-176)',
+        );
+        expect(
+          sentOrder(),
+          isEmpty,
+          reason:
+              'S-180 and the pass settles to nothing at all — no reset, no '
+              'state, no request — once the wrist\'s answer has converged the '
+              'pair (D-176, D-178)',
         );
         expect(failures, hasLength(1), reason: 'S-180 nothing else failed');
       },
