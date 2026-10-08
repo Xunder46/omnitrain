@@ -57,6 +57,15 @@ enum MirrorOutcome {
   refused,
 }
 
+/// The `sessionId` of `watchSessionPlaceholder` in `watch_sync_wiring.dart`:
+/// the phone's not-a-session, which names no wrist session and is therefore
+/// never named in a reset (D-176, D-173).
+///
+/// The constant lives here, beside the predicate that reads it, because the
+/// wiring constructs the mirror on top of this library: importing the wiring
+/// back would be a cycle. Both files read this one constant.
+const String watchSessionPlaceholderId = 's-phone-unjoined';
+
 class LiveSessionMirrorState extends ChangeNotifier {
   LiveSessionMirrorState({
     required WatchMirrorTransport transport,
@@ -558,6 +567,32 @@ class LiveSessionMirrorState extends ChangeNotifier {
     }
     await _transport.send(envelope);
     return envelope;
+  }
+
+  /// Whether this mirror's session is owed a reset before the phone asserts
+  /// the session [composedId] — D-176's one shared step.
+  ///
+  /// Owed when the phone composes a session `P` and this mirror holds a
+  /// different session `W` that is a wrist session: the placeholder is not one
+  /// (D-173), and a phone holding nothing has no structure to assert (D-11).
+  ///
+  /// Deliberately not conditioned on [isActive]: a first reset applies locally
+  /// and leaves this mirror's id on `W` — the wrist never confirmed it — so an
+  /// `isActive` test would drop the retry after the first pass while the
+  /// wrist's answer is what actually clears the debt (D-176, D-178).
+  ///
+  /// A `W` this phone already announced as `completed` is not reset either: the
+  /// wrist has been told how that session ended, and an `abandoned` under the
+  /// same name would rewrite a finished workout as a discarded one (S-85). An
+  /// `abandoned` `W` still is — the retry after a failed send has nothing but
+  /// the status to show for it, and that retry is what S-180 pins.
+  bool owesResetFor(String? composedId) {
+    final held = sessionId;
+    return composedId != null &&
+        held != null &&
+        held != composedId &&
+        held != watchSessionPlaceholderId &&
+        status != WatchSessionStatus.completed;
   }
 
   /// A message the phone originates: applied here first, then handed to the

@@ -229,9 +229,31 @@ class WatchSessionAutoPush {
       final composedId = composed?['sessionId'] as String?;
       _remember(composedId);
 
-      await _announceEnd(composedId);
+      final ended = await _announceEnd(composedId);
 
       if (composed == null || composedId == null) return;
+
+      // D-176: the mirror still holds the wrist's own session W, so the phone
+      // is not in the session the wrist is: W is ended by name first (a foreign
+      // snapshot would be refused while W is active), then P is asserted even
+      // when it equals the baseline — a wrist holding W has no P yet — and the
+      // request's answer is what moves the mirror onto P and clears the debt.
+      // At most one reset per pass, never re-tried inside it (D-178).
+      if (_mirror.owesResetFor(composedId)) {
+        final held = _mirror.sessionId!;
+        // The pass's own end for that very session is the reset's first frame
+        // already: the discard that made it pending is the same news.
+        if (!ended.contains(held)) {
+          await _mirror.reportLifecycleFor(
+            held,
+            WatchLifecycleState.abandoned,
+          );
+        }
+        await _mirror.sendState(composed);
+        _baseline = _encode(composed);
+        await _mirror.requestSnapshot();
+      }
+
       await _announceDeletions(composedId, composed);
       final encoded = _encode(composed);
       if (encoded == _baseline) return;
@@ -388,8 +410,12 @@ class WatchSessionAutoPush {
   /// running is kept unless the phone has moved on to a different live session
   /// of its own — [currentId] — because a session the phone merely stopped
   /// composing while it runs is not an end (S-88).
-  Future<void> _announceEnd(String? currentId) async {
-    if (_pendingEnds.isEmpty) return;
+  ///
+  /// Returns the ids an end frame actually went out for, so the rest of the pass
+  /// can tell its own end from a second one for the same session (D-176).
+  Future<Set<String>> _announceEnd(String? currentId) async {
+    if (_pendingEnds.isEmpty) return const <String>{};
+    final announced = <String>{};
     for (final sessionId in List<String>.of(_pendingEnds)) {
       // A session the wrist ended itself: its lifecycle is what ended the phone's
       // copy, through the router, so the mirror no longer holds it as active and
@@ -420,17 +446,21 @@ class WatchSessionAutoPush {
           sessionId,
           WatchLifecycleState.abandoned,
         );
+        announced.add(sessionId);
         continue;
       }
       if (held) {
         await _mirror.completeSession();
+        announced.add(sessionId);
       } else {
         await _mirror.reportLifecycleFor(
           sessionId,
           WatchLifecycleState.completed,
         );
+        announced.add(sessionId);
       }
     }
+    return announced;
   }
 
   /// The deterministic encoding two payloads are compared by: `jsonEncode` over

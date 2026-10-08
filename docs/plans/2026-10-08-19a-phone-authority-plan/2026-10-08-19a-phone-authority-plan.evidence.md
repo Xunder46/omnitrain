@@ -103,30 +103,51 @@ Each slot is compared field by field (`sessionExerciseId`, `exerciseId`, `name`,
 
 ## Phase 2 — the phone resets the wrist
 
+Base for this phase: `6c5da29` (HEAD when the brief was written; Phase 1's head). Baselines at that base: `gateway.sh test` → `+4083 ~1`, 0 failures; `gateway.sh lint` → 196 issues, 0 errors; `gateway.sh swift-test` → 340 tests, 0 failures (not re-run: no `.swift` file is in this phase's Predicted Files).
+
 | # | Item (file · symbol) | Command | Result |
 | --- | --- | --- | --- |
-| 1 | `live_session_mirror_state.dart` · `owesResetFor` | `gateway.sh test test/watch_session_auto_push_test.dart` | |
-| 2–3 | `watch_session_auto_push.dart` · `_pushOnce`, failure path | the same file's S-172/S-180/S-181 cases | |
-| 4–5 | `watch_sync_wiring.dart` · `WatchSyncGraph.sync()` | S-182, plus `test/watch_session_projection_test.dart` S-109 A/B/C unchanged | |
-| 6–7 | `test/watch_session_auto_push_test.dart`, `test/watch_session_projection_test.dart`, `test/watch_session_finish_test.dart` | `gateway.sh test test/watch_session_auto_push_test.dart test/watch_session_projection_test.dart test/watch_session_finish_test.dart test/watch_session_adoption_bridge_test.dart` | |
+| 1 | `live_session_mirror_state.dart` · `owesResetFor`, `watchSessionPlaceholderId` | `gateway.sh test test/watch_session_auto_push_test.dart` | `All tests passed!` (42 cases: 37 pre-existing incl. S-85/S-86/S-87, 5 new); also green in the two-file run below |
+| 2–3 | `watch_session_auto_push.dart` · `_pushOnce`, `_announceEnd` (returns the ids it announced an end for) | the same file's S-172/S-180/S-181 cases | S-172, S-180, S-181 A/B green |
+| 4–5 | `watch_sync_wiring.dart` · `WatchSyncGraph.sync()` (placeholder map uses `watchSessionPlaceholderId`) | S-182, plus `test/watch_session_projection_test.dart` S-109 A/B/C unchanged | S-182 green; S-109 A/B/C green; S-183 A/B green (new group) |
+| 6–7 | `test/watch_session_auto_push_test.dart`, `test/watch_session_projection_test.dart`, `test/watch_session_finish_test.dart`, `test/watch_session_adoption_bridge_test.dart` | `gateway.sh test test/watch_session_auto_push_test.dart test/watch_session_projection_test.dart` → `All tests passed!` (84); `gateway.sh test test/watch_session_projection_test.dart test/watch_session_finish_test.dart` → `All tests passed!` (50) | 7 new cases total (S-172, S-180, S-181 A/B, S-182, S-183 A/B); the adoption-bridge file is covered by the full suite below, not run on its own |
 
-Frame logs (paste verbatim, one line per frame kind, in order):
+Frame logs (verbatim from the runs; `s-1` is the wrist's live session in the S-172/S-180/S-182 fixtures, `session-<t>` the phone's own):
 
 ```
-S-172  pass 1 (pair disagrees): <frames>
-S-180  pass 1 (send throws) / pass 2 (retry) / sync() / final flush(): <frames>
-S-182  first sync() / second sync(): <frames>
-S-181  pair agrees: <frames, compared with the base's>   placeholder: <frames>
+S-172  pass 1 (pair disagrees): ['lifecycle:s-1', 'snapshot:session-<t>', 'request:snapshot']
+S-180  pass 1 (send throws): [] — the failure reported once, nothing carried; pass 2 (retry):
+       ['lifecycle:s-1', 'snapshot:session-<t>', 'request:snapshot']; then sync() and a final
+       flush(): by S-182's own rule an agreeing pair sends no lifecycle, and S-180's last
+       assertion — 'owed by nobody once the pair agrees' — holds: no second 'abandoned'
+S-182  first sync(): ['lifecycle:s-1', 'snapshot:session-<t>', 'request:snapshot']; second sync():
+       ['snapshot:session-<t>', 'request:snapshot'] — no lifecycle
+S-181  pair agrees: [] (compared with the base's own frames: nothing added)   placeholder: []
+       — nothing at all, and no frame in the whole run names 's-phone-unjoined'
 ```
+
+`prove-red 6c5da29 test test/watch_session_auto_push_test.dart` is **not** a valid proof for this file: the run reports `RED AT 6c5da29 (exit 1)` for a *load* error (`Undefined name 'watchSessionPlaceholderId'`), and the gateway's own rule is that a compile or load error means the test could not run there. The gateway's name filter does not help — the whole file must compile. Every guard below is therefore proved by a mutation, each recorded with its original line, run, and restore.
 
 Mutation table — each row is a one-line change in the working tree, the suite run, and the
 scenario that must go red:
 
 | Mutation | Command | Expected red | Observed |
 | --- | --- | --- | --- |
-| predicate becomes `!!mirror.isActive` | `gateway.sh prove-red <base-ref> test test/watch_session_auto_push_test.dart` | S-180, S-182 | |
-| reset skips the snapshot when `encoded == _baseline` | the same command | S-180 | |
-| (if used) predicate drops the placeholder clause | the same command | S-181 | |
+| predicate becomes `!!mirror.isActive` (the plan's own row) | `gateway.sh test test/watch_session_auto_push_test.dart` (whole file, mutation in the tree) | S-180, S-182 | **S-180 red** for the guarded reason (`Expected: ['lifecycle:s-1', 'snapshot:…', 'request:snapshot'] Actual: []` — "an owed reset is not cleared by the attempt that failed", D-178); **S-182 stayed green** — its wrist is `active`, so the narrowed clause fires for it. Result `+41 -1`. Restored: `status != WatchSessionStatus.completed` |
+| reset skips the snapshot when `encoded == _baseline` (the plan's own row) | the same command, `--plain-name "S-180"` | S-180 | **S-180 red**: `Expected: ['lifecycle:s-1', 'snapshot:…', 'request:snapshot'] Actual: ['lifecycle:s-1', 'request:snapshot']` — the retry carried the abandoned frame but dropped the phone's own state. Restored |
+| predicate drops the placeholder clause (the plan's own row) | the same command, `--plain-name "S-181"` | S-181 | **S-181 case B red** (`D-173`: "the mirror holds the placeholder, which is not a session"), actual frame `{'type': 'session_lifecycle', 'sessionId': 's-phone-unjoined', 'payload': {'state': 'abandoned'}}`; case A green. Result `+1 -1`. Restored |
+| predicate drops `held != composedId` | the same command, `--plain-name "S-181"` | S-181 case A | **S-181 case A red** (`S-181 A the push of an agreeing pair sends no lifecycle`: an `abandoned('s-1')` appears on an agreeing pair), case B green. Result `+1 -1`. Restored |
+| the both reset call sites disabled (`false &&`, `_pushOnce` and `WatchSyncGraph.sync()`) | the same command, `--plain-name "S-172"` | S-172, S-180, S-182 | **all three red**: S-172 `Actual: []`; S-180 "the failed pass is reported, once (D-98)" `Actual: []`; S-182 `Actual: ['snapshot:session-<t>', 'request:snapshot']` — the reset frame missing, which is the only mutation that proves the wiring's own call site. S-181 A/B green. Result `+2 -3`. Restored |
+| `watch_session_engine.dart` · `_applyLifecycle` maps `abandoned` to the session's own status | `gateway.sh test test/watch_session_projection_test.dart --plain-name "S-183"` | S-183 case A | **S-183 case A red** (`Expected: 'abandoned' Actual: 'active'`), case B green (`+1 -1`). Restored to `WatchSessionStatus.abandoned`'s exact original line. This is S-183's proof: it guards *existing* engine behaviour, so no prove-red and no production change of this phase can turn it red |
+
+An existing-test note (not a repair): the first targeted run reddened three pre-existing frame-count
+cases — S-85 (`:1188`), S-87 (`:1366`, `:1426`) — with two extra `abandoned(W)` frames for a stale
+wrist session. Trap 2 says exactly this: a red count there means the predicate is too wide. The
+predicate was narrowed (see the Assumption Log), not the suite; all three are green and unedited in
+the final run.
+
+Full suite at the phase's head: `gateway.sh test` → `01:43 +4090 ~1: All tests passed!` (4083 + 7 new, 1 pre-existing skip, 0 failures).
+The same command before the last one-line fix (a redundant `wire_timestamps.dart` import my new `watch_records.dart` import shadowed, the phase's only lint issue): `+4090 ~1`, also green.
 
 ## Phase 3 — the phone's screen follows an end from the watch
 

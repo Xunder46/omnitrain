@@ -32,6 +32,8 @@
 //         (this file: the graph's `sync()` sends the phone's OWN session or
 //         nothing, then asks for the wrist's; the observer is in
 //         watch_resume_sync_test.dart)
+//   S-183 the reset the wrist is sent ends its session, and
+//         never the one it is not holding               → `S-183 ...`
 //
 // S-42's "an entry the wire cannot carry is omitted" is now S-59/S-60: a
 // band-assisted set is carried with its sign, and only a row with no reps or a
@@ -49,7 +51,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
-import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -62,6 +63,7 @@ import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
 import 'package:omnitrain/watch/session/watch_session_engine.dart';
 
 import 'helpers/fake_preferences_service.dart';
@@ -2987,6 +2989,161 @@ void main() {
               'S-109 case C and the ladder in it is the phone\'s own, not the '
               'converged copy\'s',
         );
+        expect(reportedFailure, isNull);
+      },
+    );
+  });
+
+  // 19a Phase 2: the frame the reset is carried by, from the wrist's side. The
+  // phone sends `abandoned(W)` before its own snapshot, and the wrist's own
+  // engine decides what that means: it ends W where the wrist holds it, and it
+  // is refused outright where it does not.
+  group('S-183 the wrist applies the reset the phone sends', () {
+    /// S-109 case C's fixture: the phone is working through its own session and
+    /// the wrist is running one the phone refused to adopt. Answers the phone's
+    /// session id and the wrist's.
+    Future<({String held, String wristSessionId})> refusedPair() async {
+      await seed('sess-1', [
+        (reps: 8, loadKg: 62.5, skipped: false, atMs: _at(1)),
+      ]);
+      final held = phoneState.currentSession!.id;
+
+      await engine.createSession(
+        modality: null,
+        exercises: [
+          _slot('wl-1', 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+        ],
+      );
+      final wristSessionId = engine.session!.sessionId;
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+
+      expect(
+        skipped,
+        [(held: held, offered: wristSessionId)],
+        reason: 'the fixture: the phone refused the wrist\'s session (D-10)',
+      );
+      return (held: held, wristSessionId: wristSessionId);
+    }
+
+    test(
+      'S-183 case A the abandoned frame the reset carries ends the wrist\'s '
+      'session and owes it nothing',
+      () async {
+        final pair = await refusedPair();
+        radio.sent.clear();
+
+        await graph.sync();
+
+        final lifecycle = radio
+            .ofType('session_lifecycle')
+            .single;
+        final snapshot = radio.lastOfType('session_snapshot');
+        expect(
+          lifecycle['sessionId'],
+          pair.wristSessionId,
+          reason:
+              'S-183 case A the frame names the session the wrist is running, '
+              'which is what its guard reads (D-79, D-176)',
+        );
+        expect(
+          _payload(lifecycle)['state'],
+          WatchLifecycleState.abandoned,
+          reason:
+              'S-183 case A and it abandons it: an end the phone never held is '
+              'never announced as `completed` (D-173, D-176)',
+        );
+        expect(
+          radio.sent.indexOf(lifecycle) < radio.sent.indexOf(snapshot),
+          isTrue,
+          reason:
+              'S-183 case A it arrives before the phone\'s own snapshot: the '
+              'wrist refuses a foreign snapshot whole while it holds an active '
+              'session with a ladder (D-78), so the end has to land first',
+        );
+        expect(_payload(snapshot)['sessionId'], pair.held);
+
+        // What the wrist does with them, in the order they arrived.
+        expect(
+          await engine.applyMessage(lifecycle),
+          isTrue,
+          reason: 'S-183 case A the wrist holds that session, so it applies',
+        );
+        expect(engine.session!.status, WatchSessionStatus.abandoned);
+        expect(
+          engine.entries,
+          isEmpty,
+          reason:
+              'S-183 case A no entry and no row comes of a lifecycle frame: it '
+              'moves the session\'s status and nothing else',
+        );
+        expect(
+          engine.pendingObservations(),
+          isEmpty,
+          reason:
+              'S-183 case A and it owes the wrist nothing to send back — an '
+              'abandoned session is not an effort to rate (D-173). The wrist\'s '
+              'rating queue itself is Swift-only (WatchEffortRating.swift); '
+              'this is the Dart twin of that contract',
+        );
+
+        expect(await engine.applyMessage(snapshot), isTrue);
+        expect(
+          engine.session!.sessionId,
+          pair.held,
+          reason:
+              'S-183 case A with W ended, the phone\'s snapshot installs where '
+              'it would have been refused',
+        );
+        expect(wristSlots(), ['slot-bench']);
+        expect(reportedFailure, isNull);
+      },
+    );
+
+    test(
+      'S-183 case B a lifecycle naming a session the wrist is not holding is '
+      'refused whole',
+      () async {
+        // The wrist is running a session of its own; the phone holds one the
+        // mirror has not adopted either.
+        await seed('sess-2', [
+          (reps: 5, loadKg: 40.0, skipped: false, atMs: _at(2)),
+        ]);
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot('wl-2', 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        final wristSessionId = engine.session!.sessionId;
+
+        final foreign = await graph.mirror.reportLifecycleFor(
+          's-other',
+          WatchLifecycleState.abandoned,
+        );
+
+        expect(
+          await engine.applyMessage(foreign),
+          isFalse,
+          reason:
+              'S-183 case B the frame names a session the wrist does not hold, '
+              'so nothing of it is applied — no row, no status, nothing '
+              'emitted (D-79)',
+        );
+        expect(
+          engine.session!.sessionId,
+          wristSessionId,
+          reason: 'S-183 case B the wrist keeps the session it is in',
+        );
+        expect(
+          engine.session!.status,
+          WatchSessionStatus.active,
+          reason:
+              'S-183 case B a reset aimed at the wrong session cannot end the '
+              'one the user is working through',
+        );
+        expect(engine.entries, isEmpty);
+        expect(engine.pendingObservations(), isEmpty);
         expect(reportedFailure, isNull);
       },
     );

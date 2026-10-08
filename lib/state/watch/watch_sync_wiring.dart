@@ -25,6 +25,7 @@ import '../../core/platform/no_watch_transport.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/utils/platform_watch_transport_factory.dart';
 import '../../data/repositories/workout_repository.dart';
+import '../../watch/session/watch_records.dart' show WatchLifecycleState;
 import '../food_library_state.dart';
 import '../nutrition_state.dart';
 import '../settings/settings_state.dart';
@@ -48,7 +49,7 @@ import 'watch_sync_request_handler.dart';
 /// The status is `abandoned` so nothing offers this not-a-session as live: the
 /// home panel appears only while a session is active.
 const Map<String, Object?> watchSessionPlaceholder = {
-  'sessionId': 's-phone-unjoined',
+  'sessionId': watchSessionPlaceholderId,
   'status': 'abandoned',
   'revision': 0,
   'currentExerciseIndex': 0,
@@ -97,6 +98,12 @@ class WatchSyncGraph {
   /// wrist, not what it is working through, and a phone with nothing running
   /// must not assert the placeholder. The request follows either way.
   ///
+  /// When the mirror still holds a *different* wrist session `W`, that session
+  /// is ended by name before this phone's own is asserted (D-176): the wrist
+  /// holds W actively, so it would refuse a foreign snapshot, and W's unsynced
+  /// work is discarded rather than rescued. The wrist's answer to the request
+  /// below is what moves the mirror onto the phone's session.
+  ///
   /// Verified by `test/watch_session_projection_test.dart` (`S-109 case A one
   /// resume is one catch-up: the phone's OWN session and then the request for
   /// the wrist's, once per resume`, `S-109 case B a phone holding no session
@@ -104,7 +111,15 @@ class WatchSyncGraph {
   /// never the wrist's copy`).
   Future<void> sync() async {
     final composed = await mirror.projectedSession();
-    if (composed != null) await mirror.sendState(composed);
+    if (composed != null) {
+      if (mirror.owesResetFor(composed['sessionId'] as String?)) {
+        await mirror.reportLifecycleFor(
+          mirror.sessionId!,
+          WatchLifecycleState.abandoned,
+        );
+      }
+      await mirror.sendState(composed);
+    }
     await mirror.requestSnapshot();
   }
 }
