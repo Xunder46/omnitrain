@@ -191,9 +191,9 @@ final class WatchSessionEngineTests: XCTestCase {
             try await engine.appendObservation(setEvent(harness.clock, entryId: entryId))
             harness.clock.advance(120)
         }
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 180_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 180_000)
 
-        // Killed 30 s into the rest timer; relaunched two minutes later.
+        // Killed 30 s into the round timer; relaunched two minutes later.
         harness.clock.advance(30)
         _ = await engine.advanceExercise()
         harness.clock.advance(120)
@@ -206,10 +206,10 @@ final class WatchSessionEngineTests: XCTestCase {
         XCTAssertEqual(relaunched.observations.map(\.entryId), ["e-1", "e-2", "e-3"])
         XCTAssertEqual(relaunched.observations[0].payload["reps"] as? Int, 5)
 
-        let rest = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.rest))
-        XCTAssertEqual(rest.state, WatchTimerState.running)
+        let round = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(round.state, WatchTimerState.running)
         XCTAssertEqual(
-            remainingMs(rest, now: harness.clock.now),
+            remainingMs(round, now: harness.clock.now),
             180_000 - 150_000,
             "remaining time derives from startedAt and the current clock, "
                 + "never from a counter frozen at kill time"
@@ -221,15 +221,15 @@ final class WatchSessionEngineTests: XCTestCase {
         let engine = await harness.runningEngine()
         _ = await engine.createSession(modality: nil, exercises: [exercise("sx-plank")])
 
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 120_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 120_000)
         harness.clock.advance(20)
         _ = await engine.pauseTimer()
 
         let relaunched = await harness.runningEngine()
-        let rest = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.rest))
+        let round = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.round))
 
-        XCTAssertEqual(rest.state, WatchTimerState.paused)
-        XCTAssertEqual(remainingMs(rest, now: harness.clock.now), 120_000 - 20_000)
+        XCTAssertEqual(round.state, WatchTimerState.paused)
+        XCTAssertEqual(remainingMs(round, now: harness.clock.now), 120_000 - 20_000)
     }
 
     func testS001RestoringOverAnUntouchedStoreYieldsNoSession() async throws {
@@ -949,18 +949,18 @@ final class WatchSessionEngineTests: XCTestCase {
         _ = await engine.createSession(modality: nil, exercises: [exercise("sx-row")])
 
         let startedAt = harness.clock.now
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 120_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 120_000)
         harness.clock.advance(30)
         _ = await engine.pauseTimer()
         harness.clock.advance(40)
         _ = await engine.resumeTimer()
         harness.clock.advance(20)
 
-        let rest = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
-        XCTAssertEqual(rest.startedAt, startedAt)
-        XCTAssertEqual(rest.accumulatedPauseMs, 40_000)
-        XCTAssertEqual(rest.state, WatchTimerState.running)
-        XCTAssertEqual(remainingMs(rest, now: harness.clock.now), 120_000 - 50_000)
+        let round = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(round.startedAt, startedAt)
+        XCTAssertEqual(round.accumulatedPauseMs, 40_000)
+        XCTAssertEqual(round.state, WatchTimerState.running)
+        XCTAssertEqual(remainingMs(round, now: harness.clock.now), 120_000 - 50_000)
     }
 
     func testAdvancingPastTheLastExerciseStaysOnIt() async throws {
@@ -1409,11 +1409,11 @@ final class WatchSessionEngineTests: XCTestCase {
         let engine = await harness.runningEngine()
         _ = await engine.createSession(modality: nil, exercises: [exercise("sx-row")])
 
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 180_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 180_000)
         harness.clock.advance(45)
         _ = await engine.stopTimer()
 
-        let stopped = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
+        let stopped = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
         XCTAssertEqual(stopped.state, WatchTimerState.stopped)
         XCTAssertEqual(remainingMs(stopped, now: harness.clock.now), 135_000)
 
@@ -1421,7 +1421,7 @@ final class WatchSessionEngineTests: XCTestCase {
         // stop instant, so it must not have kept counting.
         harness.clock.advance(600)
         let relaunched = await harness.runningEngine()
-        let restored = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.rest))
+        let restored = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.round))
         XCTAssertEqual(restored.state, WatchTimerState.stopped)
         XCTAssertEqual(remainingMs(restored, now: harness.clock.now), 135_000)
     }

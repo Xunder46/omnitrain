@@ -284,6 +284,64 @@ above (the failure reason is the `session` guard/`null` end, not a compile error
 | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches |
 | `.github/copilot/scripts/macos/gateway.sh git-diff HEAD --stat` | 19 files, `294 insertions(+), 48 deletions(-)` — Phase 3's 13 production/fixture files, the five test files this run touched, and the plan + evidence; no `lib/` file added by this run |
 
+## Fix round 1 — F1–F6 (@developer; F2's fixture @dba)
+
+Every guard this round is either `prove-red` at HEAD (the guard's own test files are the change) or a
+mutation with the original line restored and a green re-run. No step ended with a mutation applied:
+`grep -rn "MUTATION (" .` returns nothing and `git-diff --stat` matches the pre-mutation stats
+(`test/rest_is_count_up_contract_test.dart` 143 changed lines; `SyncProtocolValidator.swift` and
+`message_validator.dart` as Phase 3 FIX left them).
+
+### F1 — the rest poll skip, both stacks (prove-red)
+
+| Command | Verdict |
+|---|---|
+| `prove-red HEAD test test/watch_logging_timers_test.dart` | `RED AT HEAD (exit 1)` — `+4 -1` at `S-164 a stored rest row with a stale plan owes no alert`, `Expected: [WatchTimerMilestone(round at …)]` / `Actual: [round…, WatchTimerMilestone(rest at 2026-07-13T17:01:30.000Z)]`, "the stale plan on a rest row is not a countdown to alarm", `test/watch_logging_timers_test.dart 209:7` |
+| `prove-red HEAD swift-test --filter WatchLoggingTimersTests -- watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift` | `RED AT HEAD (exit 1)` — `WatchLoggingTimersTests.swift:171: error: … testS164AStoredRestRowWithAStalePlanOwesNoAlert : XCTAssertEqual failed: ("[WatchSessionEngine.Wa…")`, `Executed 27 tests, with 1 failure (0 unexpected)` |
+
+Both failures name the extra `rest` milestone, which is the reason the test guards — not a compile or
+load error, and both ran the test file against HEAD's own `lib/`/`Sources`. `prove-red HEAD` *is* the
+brief's "remove the rest skip" mutation on both stacks: at HEAD the skip does not exist, and the only
+difference between that tree and this one on the F1 path is the two guard lines.
+
+### F2 — the snapshot branch of both validators (mutation: the clause is new code)
+
+| Stack | Original line | Mutation | Verdict | After restore |
+|---|---|---|---|---|
+| Dart | `lib/core/sync_protocol/message_validator.dart:283` `..._restLengthRejections(timers is Map ? _asObject(timers) : null),` | the line commented out | `+37 -1` / `+61 -2` — `S-001 fixtures invalid/session_snapshot_rest_with_planned_duration.json is rejected as semantic_violation` → `Expected: non-empty / Actual: []`, and `S-165 … [E] Bad state: a snapshot with a rest plan must be refused at $.payload.timers.rest.plannedDurationMs, got ()` (`test/sync_protocol_fixtures_test.dart 298:23`) | `+88: All tests passed!` |
+| Swift | `SyncProtocolValidator.swift:181` `return snapshotRejections(payload) + restLengthRejections(timers)` | the `+ restLengthRejections(timers)` term removed | `Executed 5 tests, with 3 failures` — `testS165ASnapshotThatCarriesARestPlanIsRefused`: `:81 XCTAssertFalse failed - a snapshot carrying a rest plan must not con…`, `:88 XCTAssertEqual failed: ("nil") is not equal to ("Optional("semantic_…")`, `:89 XCTAssertTrue failed - expected the rest rule's message, got []` | green in the round's `swift-test --filter WatchSessionEngineTests` (`Executed 359 tests, with 0 failures`) |
+
+### F3 — the eleven sites (test-side; no `prove-red` form)
+
+The change is test-side, so "RED AT HEAD" is invalid by construction (as in Phase 3 FIX): the sites
+already existed and were red for the opposite reason — they asserted a rest's remaining time, which
+this PR retires. Green after:
+
+| Command | Result |
+|---|---|
+| `.github/copilot/scripts/macos/gateway.sh test test/watch_session_engine_test.dart test/phone_manage_bridge_test.dart` | `00:00 +67: All tests passed!` |
+| `.github/copilot/scripts/macos/gateway.sh swift-test --filter WatchSessionEngineTests` | `Executed 359 tests, with 0 failures` |
+
+### F4 — the widened scan (mutations: the spellings and the prose rule are the new code)
+
+| Mutation | Original line | Verdict |
+|---|---|---|
+| M1 — narrow the token set | `test/rest_is_count_up_contract_test.dart:66-70` `_restLengthSpelling` (`rest_?seconds\|rest_?duration_?(?:ms\|seconds)\|rest_?length_?ms\|default_?rest_?(?:seconds\|ms)\|krest\w*(?:seconds\|ms)`) → `r'rest_?seconds'` | `+2 -1` — `S-166 the scanner flags a stored rest length under any spelling [E] Expected: an object with length of <1> / Actual: []`, "`restLengthMs` is a stored rest length under another name" (`test/rest_is_count_up_contract_test.dart 315:9`) |
+| M2 — remove the prose denial allowance | `:105-106` `if (prose && _deniesRestLength.hasMatch(lines[i])) continue;` and the `i - 1` line, deleted | `+4 -2` — the self-test `S-166 the scan reaches the app target and the documents, and prose is held to the countdown wording [E] Actual: ['docs/rest_tracking.md:1 counts a rest down…']`, and the tree scan `S-166 no scanned file plans a rest, counts one down or stores a rest length [E] Actual: [docs/global_conventions.md:17, docs/rest_tracking.md:12, docs/rest_tracking.md:21, docs/watch-app-setup-and-qa.md:490]` |
+
+Both restored exactly (the file's `git-diff --stat` is back to 143 changed lines), green in the full
+run below.
+
+### Fix round 1 — final counts
+
+| Command | Result |
+|---|---|
+| `.github/copilot/scripts/macos/gateway.sh test` (full, once, after the last edit) | `01:52 +4152 ~1: All tests passed!` (exit 0) — `.work/gateway/test-20261008-114358-58210.log:4802` (baseline `+4148 ~1`; +4 = the manifest's new invalid-fixture case, F1's stale-plan case, and the two F4 self-tests) |
+| `.github/copilot/scripts/macos/gateway.sh swift-test` (full, once) | `Executed 359 tests, with 0 failures (0 unexpected) in 1.329 seconds` (exit 0) — `.work/gateway/swift-test-20261008-114820-63574.log` |
+| `.github/copilot/scripts/macos/gateway.sh lint` | `196 issues found. (ran in 3.3s)` (exit 1, as the baseline does), and no issue names a file this round touched — `.work/gateway/lint-20261008-114820-63575.log` |
+| `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches |
+| `.github/copilot/scripts/macos/gateway.sh git-diff --stat` | 17 files, `618 insertions(+), 152 deletions(-)` |
+
 ## Reviewer findings
 
 [empty — the reviewer fills this: diff versus Predicted Files, per-S-x conformance, the Impact Check

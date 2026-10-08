@@ -283,6 +283,29 @@ void main() {
         rejections.first.message,
         contains('a rest has no planned length'),
       );
+
+      // The refusal is not `timer_state`-only: a snapshot carrying a rest plan
+      // is refused at the same path, so the plan is never adopted into the
+      // wrist's own row (D-169).
+      final snapshotRejections = _validator.validateEnvelope(
+        _readJson(
+          'fixtures/invalid/session_snapshot_rest_with_planned_duration.json',
+        ),
+      );
+      final restPlanRejection = snapshotRejections.firstWhere(
+        (rejection) =>
+            rejection.path == r'$.payload.timers.rest.plannedDurationMs',
+        orElse: () => throw StateError(
+          'a snapshot with a rest plan must be refused at '
+          r'$.payload.timers.rest.plannedDurationMs, got '
+          '${snapshotRejections.map((r) => '${r.code} ${r.path}')}',
+        ),
+      );
+      expect(restPlanRejection.code, 'semantic_violation');
+      expect(
+        restPlanRejection.message,
+        contains('a rest has no planned length'),
+      );
     });
   });
 

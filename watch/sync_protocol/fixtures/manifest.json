@@ -149,6 +149,14 @@
       "note": "A rest is a count-up, so a planned length on a rest timer is the defect (D-164, docs/global_conventions.md rest rule). Every other timer kind keeps its plannedDurationMs — valid/timer_state.json carries the rest without one."
     },
     {
+      "path": "invalid/session_snapshot_rest_with_planned_duration.json",
+      "type": "session_snapshot",
+      "scenario": "S-165",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "a rest has no planned length",
+      "note": "The refusal is not timer_state-only: a snapshot carrying a rest plan is refused too (D-164, D-169). Without this fixture the snapshot branch's clause is unreachable, which is exactly the gap it pins."
+    },
+    {
       "path": "invalid/observations_up_steps_on_round.json",
       "type": "observations_up",
       "scenario": "S-202",

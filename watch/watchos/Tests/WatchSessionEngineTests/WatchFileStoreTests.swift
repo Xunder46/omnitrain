@@ -137,7 +137,7 @@ private final class FileStoreHarness {
     }
 
     /// S-44's fixture: a free session with two slots, three sets on the bench,
-    /// the phone's receipts for the first two, a running rest timer and the
+    /// the phone's receipts for the first two, a running round timer and the
     /// ladder moved to the second exercise.
     func logS44Fixture() async throws {
         await startSession([
@@ -148,7 +148,7 @@ private final class FileStoreHarness {
             try await logSet(entryId, advanceBy: 30)
         }
         _ = await engine.confirmObservations(["entry-1", "entry-2"])
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 90_000)
         clock.advance(30)
         _ = await engine.advanceExercise()
     }
@@ -512,8 +512,8 @@ final class WatchFileStoreTests: XCTestCase {
         XCTAssertNotNil(relaunched.engine.observations[1].confirmedAt, "S-44 entry-2 carries its receipt")
         XCTAssertNil(relaunched.engine.observations[2].confirmedAt, "S-44 entry-3 is unconfirmed")
         XCTAssertNotNil(
-            relaunched.engine.timerFor(WatchTimerKind.rest),
-            "S-44 the rest timer survived with its startedAt"
+            relaunched.engine.timerFor(WatchTimerKind.round),
+            "S-44 the round timer survived with its startedAt"
         )
     }
 
@@ -552,21 +552,21 @@ final class WatchFileStoreTests: XCTestCase {
         relaunched.clock.now = wrist.clock.now
         await relaunched.launch()
 
-        let rest = try XCTUnwrap(relaunched.engine.timerFor(WatchTimerKind.rest))
+        let round = try XCTUnwrap(relaunched.engine.timerFor(WatchTimerKind.round))
         XCTAssertEqual(
-            rest.startedAt,
+            round.startedAt,
             killedAt.addingTimeInterval(-30),
             "S-46 the stored startedAt is the timer's, untouched"
         )
         XCTAssertEqual(
-            remainingMs(rest, now: relaunched.clock.now),
+            remainingMs(round, now: relaunched.clock.now),
             60_000,
             "S-46 60 s left when the kill happened"
         )
 
         relaunched.clock.advance(30)
         XCTAssertEqual(
-            remainingMs(rest, now: relaunched.clock.now),
+            remainingMs(round, now: relaunched.clock.now),
             30_000,
             "S-46 the countdown derives from the stored startedAt, not a frozen counter"
         )

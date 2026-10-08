@@ -1,7 +1,7 @@
 # Feature: the watch's rest is a count-up — and the rule becomes impossible to regress (18b)
 
-> Status: DRAFT — defaults applied, owner may veto any Open question before Phase 1 starts
-> Next handoff: @developer (Phase 1) — the wrist's rest stops having a length, in both stacks
+> Status: Phases 1–4 complete; review 1's findings F1–F6 are fixed in fix round 1 — awaiting re-review
+> Next handoff: @code-reviewer (fix round 1), then the 18c planner
 > Binding conventions: `docs/global_conventions.md` (+ `docs/rest_tracking.md`,
 > `docs/watch_session_sync.md`, `docs/state_management/watch_surface.md`,
 > `docs/documentation_standard.md`, by path)
@@ -574,7 +574,13 @@ Tests: `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swif
 
 Docs: `docs/global_conventions.md`, `docs/rest_tracking.md`, `docs/watch_session_sync.md`,
 `docs/state_management/watch_surface.md`, `docs/watch-app-setup-and-qa.md`,
-`docs/theme_and_settings.md`, `docs/README.md`, `docs/constants_reference.md`.
+`docs/theme_and_settings.md`, `docs/README.md`, `docs/modality_based_exercise_ui.md`.
+
+Also changed, and unplanned until review 1 (F5): `lib/watch/session/watch_records.dart` and
+`watch/watchos/Sources/WatchSessionEngine/WatchRecords.swift` (the wire form must omit a rest's plan,
+which Phase 3's assertions require) and the fix round's `WatchTimerHaptics.swift` /
+`watch_timer_haptics.dart`. `docs/constants_reference.md` is **not** affected: its single hit is a
+round timer, which item 8 exempts.
 
 Dependents that only *read* a touched surface (no edits, tests must stay green):
 `lib/state/watch/live_session_mirror_state.dart`, `lib/watch/session/watch_timer_math.dart`,
@@ -627,10 +633,17 @@ Dependents that only *read* a touched surface (no edits, tests must stay green):
   `2026-10-08-18b-watch-rest-count-up-plan.evidence.md` (`## Phase 3 FIX — the rest-with-plan fixtures`)
 - [x] Phase 4 — the rule where agents will hit it (@developer) — complete: the `docs/global_conventions.md`
   Rules row, `test/rest_is_count_up_contract_test.dart` (7 cases, RED at HEAD for the debug-surface
-  finding), the debug surface's rest started with no plan, the six docs rewritten, the residue sweep
+  finding), the debug surface's rest started with no plan, the eight docs rewritten, the residue sweep
   classified; Dart `+4148 ~1` all passed (4133 → 4148 = the 7 new cases + Phase 2's 5 + Phase 3's 3),
   Swift 357/0, analyze 196/0. Evidence:
   `2026-10-08-18b-watch-rest-count-up-plan.evidence.md`
+- [x] Fix round 1 — review 1's F1–F6 (@developer, F2's fixture @dba) — complete: the rest skipped in
+  both haptics polls, the rest-length clause extracted and called from the `timer_state` **and** the
+  `session_snapshot` branch of both validators, the new snapshot fixture asserted on both stacks, the
+  eleven test sites re-pointed, the S-166 scan widened (spellings, the app target, the eight docs) and
+  the F6/plan-hygiene edits; Dart `+4152 ~1` all passed (the full suite, exit 0), Swift 359/0, analyze
+  196/0, the four mutations RED and restored and two `prove-red HEAD` verdicts RED.
+  Evidence: `2026-10-08-18b-watch-rest-count-up-plan.evidence.md` (`## Fix round 1`)
 - [ ] 18c planned — the wrist's rest reaches the phone
 
 ## Assumption Log
@@ -738,9 +751,61 @@ RATIFIED (promote to a D-x) or REVERT (remediation).]
    (`_engine.timerFor(WatchTimerKind.round)`), which the debug surface still renders, so the sentence
    stays; the rest path no longer writes a plan at all.
 
+### Fix round 1 (@developer; F2's fixture @dba)
+
+1. **F3 — all eleven sites kept their guard and lost the false premise.** Every one asserted a rest's
+   remaining time or its plan, so each moved to `WatchTimerKind.round`, which still has a length:
+   `test/watch_session_engine_test.dart:309,352,1454,1562`,
+   `test/phone_manage_bridge_test.dart:361`, `WatchSessionEngineTests.swift:194,224,952,1412`,
+   `WatchFileStoreTests.swift:151` (S-44's fixture) and `:545` (S-46's remaining time). None was a
+   pure disposal case, so none shrank to `state == stopped`; the S-ids and messages are unchanged.
+2. **One rest-with-plan fixture outside F3's list was left.** `WatchFileStoreTests.swift:419` builds a
+   `rest` row with a plan for the store-parity round trip; the review named eleven sites and this is
+   not one of them, and the row still round-trips (the wire form omits the plan).
+3. **F4 — the tokens are case-insensitive over a spelling set, and prose is held to the countdown
+   wording only.** `restSeconds`/`rest_seconds`/`REST_SECONDS`, `restLengthMs`, `restDurationMs`/
+   `restDurationSeconds`, `defaultRestSeconds`/`defaultRestMs`, `kRestSeconds`/`kRestMs`; the eight
+   docs are read for countdown wording, not for tokens, because the docs that state the rule and
+   define the routine prescription must be able to name `restSeconds` in order to say it is never a
+   timer (S-166's own doc expectation is the countdown wording).
+4. **F4 — the allow-list is kept and now written down.** Validators' refusal text and the schema's
+   conditional are never flagged (they name `plannedDurationMs`, not a rest-length spelling, and
+   `restSchemaFindings` *requires* the conditional); the routine prescription is out of scope by root;
+   and a prose line is a finding only when neither it nor the line before it denies a rest countdown
+   (`no`/`not`/`never`/`none`/`forbid`/`refus`/`reject`/`fail`/`count-up`), which is what the rule's
+   own sentences, `docs/rest_tracking.md:12,21` and `docs/watch-app-setup-and-qa.md:489-490` are.
+5. **F4 says seven docs; the PR edited eight.** `docs/modality_based_exercise_ui.md` is the eighth
+   (F5 adds it to `## Files Affected`), so the scan covers all eight rather than the seven the review
+   counted; `docs/plans/**` is excluded by listing files, not the tree.
+6. **A pre-existing assertion in the contract test was stale after F2.** F2's extraction made
+   `lib/core/sync_protocol/message_validator.dart` read `timers?['rest']` where the contract test
+   pinned `timers['rest']`; the assertion was updated to the new spelling (same guard: the refusal is
+   still the only reason that file speaks of a rest length), and the Swift half was already unchanged.
+7. **F5 — header, file list and the count.** Status is now "Phases 1–4 complete … awaiting re-review"
+   with the next handoff `@code-reviewer`; `docs/modality_based_exercise_ui.md`,
+   `lib/watch/session/watch_records.dart` and `WatchRecords.swift` are in `## Files Affected`,
+   `docs/constants_reference.md` is out (untouched, and its one hit is a round timer), and "the six
+   docs rewritten" is now "the eight docs rewritten".
+8. **F6 — `docs/rest_tracking.md` cites the shipped screen and deletes the inventory.** The wrist's
+   screen is `WatchRestView.swift`, with `lib/watch/logging/watch_rest_screen.dart` named as its twin
+   mounted by no runtime harness; the control-inventory sentence went, the test pointers stayed.
+9. **The phone's "rest ping" is now Open question 7** (keep it; the rule's words do not settle it).
+
 ## Feedback
 
-[empty — fold into a new Iteration block when non-empty, then clear]
+Review 1 (18b) is in `2026-10-08-18b-watch-rest-count-up-plan.review.md` (section "Code review 1 (18b)").
+Verdict: **blocked** — two blockers, and this plan needs its next iteration block for them.
+
+Fix checklist, one round, no re-review:
+
+1. **[blocker, @developer]** F1 — `WatchTimerHaptics.poll` (`watch/watchos/Sources/WatchSessionEngine/WatchTimerHaptics.swift:45-58`) and `watch_timer_haptics.dart:53-65` fire for a `rest` row whose stale `plannedDurationMs` has elapsed, because `remainingMs` clamps to 0 (R-13 / AC-14). Skip `WatchTimerKind.rest` in both polls; guard: a stored `rest` row carrying a plan asserts no milestone is ever owed — the fixture S-164 enumerates but never builds.
+2. **[blocker, @dba]** F2 — the rest-with-a-plan clause is `timer_state`-only (`SyncProtocolValidator.swift:209-222`, `message_validator.dart:309-322`), yet `watch/sync_protocol/PROTOCOL.md:227` and R-15/D-164 claim both validators enforce it for an envelope. Add the clause to the snapshot branch of both validators plus a `session_snapshot` fixture that must be refused, or narrow the sentence and R-15/D-164 to `timer_state` and record it as a decision (Phase 3 FIX's Assumption Log 3 deferred this to the owner and it never arrived).
+3. **[warning, @developer]** F3 — `WatchFileStoreTests.swift:545`, `watch_session_engine_test.dart:309,352,1454`, `WatchSessionEngineTests.swift:194,224,952,1412` still assert a rest's plan or remaining time; move the remaining-time ones to a round timer and shrink the disposal ones to `state == stopped`. Assumption Log 2's "their assertion *is* a rest's remaining/end" is the reason they survived, and it no longer holds.
+4. **[warning, @developer]** F4 — `test/rest_is_count_up_contract_test.dart:29-35` scans five source roots and two literal spellings, where S-166 predicted the docs wording too and the app target is where the rest branch renders; widen the tokens (case-insensitive rest-length spellings) and add the `docs/` and `ios/OmniTrain Watch App` roots (minus `plans/`).
+5. **[suggestion, @developer]** F6 — cite `WatchRestView.swift` beside `lib/watch/logging/watch_rest_screen.dart` in `docs/rest_tracking.md:227` (the Dart twin is mounted by nothing).
+6. **[hygiene, planner]** F5 — `docs/modality_based_exercise_ui.md`, `watch_records.dart` and `WatchRecords.swift` are unplanned and missing from `## Files Affected`; `docs/constants_reference.md` is listed but correctly untouched; "the six docs rewritten" is eight in the diff; the header still reads `DRAFT — Next handoff: @developer (Phase 1)`.
+
+Also for the owner, not a fix: D-163's "rest ping" nudge on the phone versus the conventions row's "no rest alarm anywhere, on any device" — the plan's reading is defensible and now documented, but the rule's words do not settle it.
 
 ## Open questions
 
@@ -772,3 +837,9 @@ plan is written on the defaults.
 6. **Should the rest screen also show which exercise just ended?** Default: **yes, the name only** —
    the exercise's name is already on the logging surface, so the rest screen shows it for orientation
    and nothing else. Alternative: a bare timer with no name.
+7. **The phone's "rest ping" against "no rest alarm anywhere".** The phone has a rest-ping setting (an
+   optional nudge at intervals while the phone's own rest is open). The new rule says "no rest alarm
+   anywhere, on any device". Default: **keep the phone's ping** — it is a count-up nudge about the
+   phone's own open rest, existing behaviour, and the PR's reading is recorded in
+   `docs/theme_and_settings.md`. Alternative: remove the phone's ping. The rule's own words do not
+   settle it, so the owner is asked.

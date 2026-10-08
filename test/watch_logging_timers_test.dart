@@ -190,6 +190,33 @@ void main() {
         );
       }
     });
+
+    test('S-164 a stored rest row with a stale plan owes no alert', () async {
+      // A row an older build wrote: a rest that still carries its 90-second
+      // plan. Nothing in this build writes one, but an upgrade restores one
+      // from the store, and its clamped-to-zero remaining time must not read
+      // as a countdown to alarm (F1, R-13).
+      await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90000);
+      await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 60000);
+
+      final haptics = WatchTimerHaptics(engine);
+      final startedAt = clock.now;
+      final milestones = <WatchTimerMilestone>[];
+      for (var second = 0; second <= 300; second++) {
+        milestones.addAll(haptics.poll(startedAt.add(Duration(seconds: second))));
+      }
+
+      expect(
+        milestones,
+        [
+          WatchTimerMilestone(
+            kind: WatchTimerKind.round,
+            at: startedAt.add(const Duration(seconds: 60)),
+          ),
+        ],
+        reason: 'the stale plan on a rest row is not a countdown to alarm',
+      );
+    });
   });
 
   group('S-003 round countdown', () {

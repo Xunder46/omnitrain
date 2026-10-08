@@ -19,19 +19,33 @@ import 'package:flutter_test/flutter_test.dart';
 const String restRuleWhere =
     'docs/global_conventions.md, "Rest rule: rest is a count-up"';
 
-/// The trees that may not plan a rest, count a rest down, or hold a stored rest
-/// length.
+/// The trees, and the documents, that may not plan a rest, count a rest down,
+/// or hold a stored rest length.
 ///
 /// The routine prescription (`lib/data/models`, `lib/features/routine`,
 /// `lib/state/routine`, `lib/core/models`, `docs/my_routines.md`) is
 /// deliberately absent: a routine's `restSeconds` is a prescription read when a
 /// routine is set up, never a timer (D-168, S-168).
+///
+/// The app target is here because it is where the branch that picks the whole
+/// wrist surface lives (`ios/OmniTrain Watch App/ContentView.swift`), and the
+/// documents are the ones this change edited (minus `docs/plans/**`, which is
+/// history and freely quotes what it retired).
 const List<String> restRuleRoots = [
   'lib/watch',
   'lib/state/watch',
   'lib/core/sync_protocol',
   'watch/watchos/Sources',
   'watch/sync_protocol/schemas',
+  'ios/OmniTrain Watch App',
+  'docs/README.md',
+  'docs/global_conventions.md',
+  'docs/rest_tracking.md',
+  'docs/watch_session_sync.md',
+  'docs/state_management/watch_surface.md',
+  'docs/watch-app-setup-and-qa.md',
+  'docs/theme_and_settings.md',
+  'docs/modality_based_exercise_ui.md',
 ];
 
 /// A stored rest length under any spelling, including `restCountdown`.
@@ -41,18 +55,58 @@ final RegExp _restCountdownWording = RegExp(
   caseSensitive: false,
 );
 
+/// A stored rest length, under any of the spellings it comes back as.
+///
+/// `restSeconds`/`rest_seconds`, `restLengthMs`, `restDurationMs`/
+/// `restDurationSeconds`, `defaultRestSeconds`/`defaultRestMs` and
+/// `kRestSeconds`/`kRestMs` are one field under six names: a preset rest length
+/// a rest row, a routine step or a default would carry. Case-insensitive, so a
+/// constant's `REST_SECONDS` is caught too (F4).
+final RegExp _restLengthSpelling = RegExp(
+  r'rest_?seconds|rest_?duration_?(?:ms|seconds)|rest_?length_?ms|'
+  r'default_?rest_?(?:seconds|ms)|krest\w*(?:seconds|ms)',
+  caseSensitive: false,
+);
+
+/// The words that *deny* a rest countdown.
+///
+/// A document whose subject is the rule has to name what it forbids — the rule
+/// itself, the contract's restatement, the QA walkthrough's reminder — so a
+/// prose line is a finding only when neither it nor the line before it denies
+/// one. The rest of the allow-list is kept and unchanged: the validators'
+/// refusal text and the schema's conditional are never flagged at all, because
+/// they name `plannedDurationMs` (not a rest-length spelling) and the
+/// conditional is what `restSchemaFindings` requires to be there; the routine
+/// prescription is out of scope by root.
+final RegExp _deniesRestLength = RegExp(
+  r'\bno\b|\bnot\b|\bnever\b|\bnone\b|forbid|refus|reject|fail|count-?up',
+  caseSensitive: false,
+);
+
 /// Every way [content] breaks the rest rule, as human-readable findings.
 ///
 /// [path] is the repository-relative path; it appears in the findings only.
+/// Prose (`.md`) is read for rest-countdown wording only — the documents that
+/// state the rule, and the routine prescription they define, have to be able to
+/// name `restSeconds` in order to say it is a prescription, never a timer
+/// (D-168); what prose must never do is describe a rest as a remaining time.
+/// Code is held to the tokens themselves, under every spelling.
 List<String> restCountUpFindings(String path, String content) {
   final findings = <String>[];
   final lines = content.split('\n');
+  final prose = path.endsWith('.md');
 
   for (var i = 0; i < lines.length; i++) {
     final number = i + 1;
-    if (lines[i].contains('restSeconds')) {
+    // A sentence wraps, so a denial on the line before the match still governs
+    // it (`docs/rest_tracking.md:20-21`).
+    if (prose && _deniesRestLength.hasMatch(lines[i])) continue;
+    if (prose && i > 0 && _deniesRestLength.hasMatch(lines[i - 1])) continue;
+
+    final spelling = prose ? null : _restLengthSpelling.firstMatch(lines[i]);
+    if (spelling != null) {
       findings.add(
-        '$path:$number names `restSeconds`: a stored rest length is a preset '
+        '$path:$number names `${spelling[0]}`: a stored rest length is a preset '
         'rest length',
       );
     }
@@ -245,6 +299,78 @@ void main() {
       },
     );
 
+    test('S-166 the scanner flags a stored rest length under any spelling', () {
+      for (final spelling in [
+        'restSeconds',
+        'rest_seconds',
+        'REST_SECONDS',
+        'restLengthMs',
+        'rest_length_ms',
+        'restDurationMs',
+        'restDurationSeconds',
+        'defaultRestSeconds',
+        'defaultRestMs',
+        'kRestSeconds',
+        'kRestMs',
+      ]) {
+        expect(
+          restCountUpFindings(
+            'lib/watch/session/example.dart',
+            'final $spelling = 90;\n',
+          ),
+          hasLength(1),
+          reason: '`$spelling` is a stored rest length under another name',
+        );
+      }
+    });
+
+    test('S-166 the scan reaches the app target and the documents, and prose '
+        'is held to the countdown wording', () {
+      expect(
+        restRuleRoots,
+        containsAll(<String>[
+          'ios/OmniTrain Watch App',
+          'docs/global_conventions.md',
+          'docs/rest_tracking.md',
+          'docs/watch_session_sync.md',
+          'docs/state_management/watch_surface.md',
+          'docs/watch-app-setup-and-qa.md',
+        ]),
+        reason: 'the app target picks the surface; the docs carried the '
+            'countdown prose this change removed',
+      );
+      for (final root in restRuleRoots) {
+        expect(
+          FileSystemEntity.typeSync(root),
+          isNot(FileSystemEntityType.notFound),
+          reason: '$root has to exist, or the scan skips it in silence',
+        );
+      }
+
+      expect(
+        restCountUpFindings(
+          'docs/watch_session_sync.md',
+          'The rest countdown shows how much rest is left.\n',
+        ),
+        hasLength(1),
+        reason: 'a document describing a rest as a remaining time is exactly '
+            'the regression S-166 predicted',
+      );
+      for (final denial in [
+        'There is no rest countdown and no rest alarm anywhere.\n',
+        'the contract test fails if a scanned tree\n'
+            'reintroduces a rest length or a rest countdown.\n',
+        'A routine\'s stored `restSeconds` is a prescription, never a timer.\n',
+      ]) {
+        expect(
+          restCountUpFindings('docs/rest_tracking.md', denial),
+          isEmpty,
+          reason: 'the allow-list: prose that denies a rest countdown is the '
+              'rule stating itself, and the prescription may be named',
+        );
+      }
+    });
+
     test('S-166 a round countdown and a round plan are not this rule\'s', () {
       expect(
         restCountUpFindings(
@@ -302,7 +428,7 @@ void main() {
 
     test('S-166 both validators still refuse a planned length on a rest', () {
       final sites = {
-        'lib/core/sync_protocol/message_validator.dart': "timers['rest']",
+        'lib/core/sync_protocol/message_validator.dart': "timers?['rest']",
         'watch/watchos/Sources/WatchSessionEngine/SyncProtocolValidator.swift':
             'timers["rest"]',
       };
@@ -341,9 +467,14 @@ void main() {
   });
 }
 
-/// Every `.dart` and `.swift` file under [restRuleRoots].
+/// Every file under [restRuleRoots]: a listed document whole, and the `.dart`
+/// and `.swift` files of a source tree.
 Iterable<File> _scannedFiles() sync* {
   for (final root in restRuleRoots) {
+    if (FileSystemEntity.isFileSync(root)) {
+      yield File(root);
+      continue;
+    }
     final directory = Directory(root);
     if (!directory.existsSync()) continue;
     for (final entity in directory.listSync(

@@ -6,7 +6,7 @@
 //  count-up, so the wire refuses a rest that carries `plannedDurationMs`
 //  (D-164). The valid register's `timer_state` holds the rest without a plan and
 //  every other kind with one; `invalid/timer_state_rest_with_planned_duration.json`
-//  is the defect.
+//  and `invalid/session_snapshot_rest_with_planned_duration.json` are the defect.
 //
 
 import XCTest
@@ -70,6 +70,25 @@ final class SyncProtocolValidatorTests: XCTestCase {
         XCTAssertTrue(
             rejections.map(\.message).joined(separator: " | ")
                 .contains("a rest has no planned length")
+        )
+    }
+
+    func testS165ASnapshotThatCarriesARestPlanIsRefused() throws {
+        let rejections = validator.validateEnvelope(
+            try Fixtures.json("fixtures/invalid/session_snapshot_rest_with_planned_duration.json")
+        )
+
+        XCTAssertFalse(
+            rejections.isEmpty,
+            "a snapshot carrying a rest plan must not conform"
+        )
+        let restRejection = rejections.first {
+            $0.path == "$.payload.timers.rest.plannedDurationMs"
+        }
+        XCTAssertEqual(restRejection?.code, SyncRejectionCode.semanticViolation)
+        XCTAssertTrue(
+            restRejection?.message.contains("a rest has no planned length") ?? false,
+            "expected the rest rule's message, got \(rejections.map(\.message))"
         )
     }
 

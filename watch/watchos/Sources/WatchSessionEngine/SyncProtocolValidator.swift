@@ -174,9 +174,11 @@ public final class SyncProtocolValidator {
         let payload = message["payload"] as? [String: Any] ?? [:]
         switch message["type"] as? String {
         case "timer_state":
-            return timerKindRejections(payload["timers"] as? [String: Any] ?? [:])
+            let timers = payload["timers"] as? [String: Any] ?? [:]
+            return timerKindRejections(timers) + restLengthRejections(timers)
         case "session_snapshot":
-            return snapshotRejections(payload)
+            let timers = payload["timers"] as? [String: Any] ?? [:]
+            return snapshotRejections(payload) + restLengthRejections(timers)
         case "observations_up":
             return duplicateEventRejections(payload)
                 + captureRejections(
@@ -192,9 +194,7 @@ public final class SyncProtocolValidator {
         }
     }
 
-    /// A timer must declare the kind it is filed under, and the one timer that
-    /// never carries a planned length is the rest: rest is a count-up
-    /// (`docs/global_conventions.md`, rest rule).
+    /// A timer must declare the kind it is filed under.
     private func timerKindRejections(_ timers: [String: Any]) -> [SyncProtocolRejection] {
         var rejections: [SyncProtocolRejection] = []
         for kind in Self.timerKinds {
@@ -209,19 +209,26 @@ public final class SyncProtocolValidator {
                 )
             )
         }
-        if let rest = timers["rest"] as? [String: Any],
-           rest["plannedDurationMs"] != nil
-        {
-            rejections.append(
-                rejection(
-                    SyncRejectionCode.semanticViolation,
-                    "\(Self.root).payload.timers.rest.plannedDurationMs",
-                    "a rest has no planned length: rest is a count-up "
-                        + "(docs/global_conventions.md, rest rule)"
-                )
-            )
-        }
         return rejections
+    }
+
+    /// The one timer that never carries a planned length is the rest: rest is a
+    /// count-up (`docs/global_conventions.md`, rest rule). A `timer_state` and
+    /// a `session_snapshot` both carry `timers`, so both are held to this rule
+    /// and a rest with a plan is never adopted into the wrist's own row
+    /// (D-164, D-169).
+    private func restLengthRejections(_ timers: [String: Any]) -> [SyncProtocolRejection] {
+        guard let rest = timers["rest"] as? [String: Any],
+              rest["plannedDurationMs"] != nil
+        else { return [] }
+        return [
+            rejection(
+                SyncRejectionCode.semanticViolation,
+                "\(Self.root).payload.timers.rest.plannedDurationMs",
+                "a rest has no planned length: rest is a count-up "
+                    + "(docs/global_conventions.md, rest rule)"
+            )
+        ]
     }
 
     /// Position stays inside the exercise list, slots are unique, and workout

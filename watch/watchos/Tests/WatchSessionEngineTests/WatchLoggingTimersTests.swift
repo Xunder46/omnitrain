@@ -149,6 +149,37 @@ final class WatchLoggingTimersTests: XCTestCase {
         }
     }
 
+    func testS164AStoredRestRowWithAStalePlanOwesNoAlert() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+
+        // A row an older build wrote: a rest that still carries its 90-second
+        // plan. Nothing in this build writes one, but a restore brings one
+        // back, and its clamped-to-zero remaining time must not read as a
+        // countdown to alarm (F1, R-13).
+        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 60_000)
+
+        let haptics = WatchTimerHaptics(engine)
+        let startedAt = harness.clock.now
+        var milestones: [WatchTimerMilestone] = []
+        for second in 0...300 {
+            milestones += haptics.poll(now: startedAt.addingTimeInterval(Double(second)))
+        }
+
+        XCTAssertEqual(
+            milestones,
+            [
+                WatchTimerMilestone(
+                    kind: WatchTimerKind.round,
+                    at: startedAt.addingTimeInterval(60)
+                )
+            ],
+            "the stale plan on a rest row is not a countdown to alarm (D-163)"
+        )
+    }
+
     // MARK: - S-003 round countdown
 
     func testS003LoggingARoundStartsTheNextRoundCountdown() async throws {

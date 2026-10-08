@@ -46,6 +46,10 @@ public final class WatchTimerHaptics {
         var milestones: [WatchTimerMilestone] = []
 
         for kind in WatchTimerKind.all {
+            // No rest alarm whatever the row holds: a rest is a count-up, and a
+            // row an older build wrote may still carry its old plan, which
+            // `remainingMs` would clamp to zero (D-160, D-163).
+            guard kind != WatchTimerKind.rest else { continue }
             guard let timer = engine.timerFor(kind) else { continue }
             guard remainingMs(timer, now: now) == 0 else { continue }
             guard announced.insert(timer.recordId).inserted else { continue }

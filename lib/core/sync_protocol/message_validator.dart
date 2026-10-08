@@ -271,9 +271,17 @@ class SyncProtocolValidator {
     final payload = _asObject(message['payload']);
     switch (message['type']) {
       case 'timer_state':
-        return _timerKindRejections(_asObject(payload['timers']));
+        final timers = _asObject(payload['timers']);
+        return [
+          ..._timerKindRejections(timers),
+          ..._restLengthRejections(timers),
+        ];
       case 'session_snapshot':
-        return _snapshotRejections(payload);
+        final timers = payload['timers'];
+        return [
+          ..._snapshotRejections(payload),
+          ..._restLengthRejections(timers is Map ? _asObject(timers) : null),
+        ];
       case 'observations_up':
         return [
           ..._duplicateEventRejections(payload),
@@ -291,9 +299,7 @@ class SyncProtocolValidator {
     }
   }
 
-  /// A timer must declare the kind it is filed under, and the one timer that
-  /// never carries a planned length is the rest: rest is a count-up
-  /// (`docs/global_conventions.md`, rest rule).
+  /// A timer must declare the kind it is filed under.
   List<SyncProtocolRejection> _timerKindRejections(
     Map<String, Object?> timers,
   ) {
@@ -309,19 +315,28 @@ class SyncProtocolValidator {
         ),
       );
     }
-    final rest = timers['rest'];
-    if (rest is Map && rest['plannedDurationMs'] != null) {
-      rejections.add(
-        SyncProtocolRejection(
-          code: _semanticViolation,
-          path: '$_root.payload.timers.rest.plannedDurationMs',
-          message:
-              'a rest has no planned length: rest is a count-up '
-              '(docs/global_conventions.md, rest rule)',
-        ),
-      );
-    }
     return rejections;
+  }
+
+  /// The one timer that never carries a planned length is the rest: rest is a
+  /// count-up (`docs/global_conventions.md`, rest rule). A `timer_state` and a
+  /// `session_snapshot` both carry `timers`, so both are held to this rule and
+  /// a rest with a plan is never adopted into the wrist's own row (D-164,
+  /// D-169).
+  List<SyncProtocolRejection> _restLengthRejections(
+    Map<String, Object?>? timers,
+  ) {
+    final rest = timers?['rest'];
+    if (rest is! Map || rest['plannedDurationMs'] == null) return const [];
+    return [
+      SyncProtocolRejection(
+        code: _semanticViolation,
+        path: '$_root.payload.timers.rest.plannedDurationMs',
+        message:
+            'a rest has no planned length: rest is a count-up '
+            '(docs/global_conventions.md, rest rule)',
+      ),
+    ];
   }
 
   /// Position stays inside the exercise list, slots are unique, and workout

@@ -223,13 +223,12 @@ Logging the next entry or starting an effort timer still closes open rest as des
 
 ## The Wrist's Rest
 
-The watch runs its own rest, and it is a count-up with nothing to configure
-(`lib/watch/logging/watch_rest_screen.dart`; `docs/state_management/watch_surface.md`). The screen
-shows the exercise's name and the elapsed rest derived from the saved start instant, and exactly
-one control, `Next`, which ends the rest at the tap instant; logging a set ends a running rest
-first. Verified by `test/watch_rest_surface_test.dart` (`S-161 the rest elapsed counts up and
-survives the screen turning off`, `S-162 Next ends the rest at the tap instant`, `S-163 logging
-ends a running rest first`), its Swift twin
+The watch runs its own rest, and it is a count-up with nothing to configure. The shipped wrist
+screen is `watch/watchos/Sources/WatchSessionEngine/WatchRestView.swift`; the Dart file
+`lib/watch/logging/watch_rest_screen.dart` is its twin, mounted by no runtime harness
+(`docs/state_management/watch_surface.md`). Verified by `test/watch_rest_surface_test.dart` (`S-161
+the rest elapsed counts up and survives the screen turning off`, `S-162 Next ends the rest at the
+tap instant`, `S-163 logging ends a running rest first`), its Swift twin
 `WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`, and the logging path
 that starts the rest with no length (`test/watch_logging_timers_test.dart`, `S-160 a logged set
 starts a rest with no planned length`).

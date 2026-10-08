@@ -292,7 +292,7 @@ class _Harness {
 
 void main() {
   group('S-001 force-kill restores an in-progress session', () {
-    test('restores entries, position, and the wall-clock rest timer', () async {
+    test('restores entries, position, and the wall-clock round timer', () async {
       final harness = _Harness();
       final engine = await harness.runningEngine();
       await engine.createSession(
@@ -307,11 +307,11 @@ void main() {
         harness.clock.advance(const Duration(minutes: 2));
       }
       await engine.startTimer(
-        WatchTimerKind.rest,
+        WatchTimerKind.round,
         plannedDurationMs: const Duration(minutes: 3).inMilliseconds,
       );
 
-      // Killed 30 s into the rest timer; relaunched two minutes later.
+      // Killed 30 s into the round timer; relaunched two minutes later.
       harness.clock.advance(const Duration(seconds: 30));
       await engine.advanceExercise();
       harness.clock.advance(const Duration(minutes: 2));
@@ -327,10 +327,10 @@ void main() {
       ]);
       expect(relaunched.observations.first.payload['reps'], 5);
 
-      final rest = relaunched.timerFor(WatchTimerKind.rest)!;
-      expect(rest.state, WatchTimerState.running);
+      final round = relaunched.timerFor(WatchTimerKind.round)!;
+      expect(round.state, WatchTimerState.running);
       expect(
-        remainingMs(rest, harness.clock.now),
+        remainingMs(round, harness.clock.now),
         const Duration(minutes: 3).inMilliseconds -
             const Duration(minutes: 2, seconds: 30).inMilliseconds,
         reason:
@@ -350,18 +350,18 @@ void main() {
         );
 
         await engine.startTimer(
-          WatchTimerKind.rest,
+          WatchTimerKind.round,
           plannedDurationMs: const Duration(minutes: 2).inMilliseconds,
         );
         harness.clock.advance(const Duration(seconds: 20));
         await engine.pauseTimer();
 
         final relaunched = await harness.runningEngine();
-        final rest = relaunched.timerFor(WatchTimerKind.rest)!;
+        final round = relaunched.timerFor(WatchTimerKind.round)!;
 
-        expect(rest.state, WatchTimerState.paused);
+        expect(round.state, WatchTimerState.paused);
         expect(
-          remainingMs(rest, harness.clock.now),
+          remainingMs(round, harness.clock.now),
           const Duration(minutes: 2).inMilliseconds -
               const Duration(seconds: 20).inMilliseconds,
         );
@@ -1452,7 +1452,7 @@ void main() {
         );
 
         await engine.startTimer(
-          WatchTimerKind.rest,
+          WatchTimerKind.round,
           plannedDurationMs: const Duration(minutes: 2).inMilliseconds,
         );
         harness.clock.advance(const Duration(seconds: 30));
@@ -1461,15 +1461,15 @@ void main() {
         await engine.resumeTimer();
         harness.clock.advance(const Duration(seconds: 20));
 
-        final rest = engine.timerFor(WatchTimerKind.rest)!;
+        final round = engine.timerFor(WatchTimerKind.round)!;
         expect(
-          rest.startedAt,
+          round.startedAt,
           harness.clock.now.subtract(const Duration(minutes: 1, seconds: 30)),
         );
-        expect(rest.accumulatedPauseMs, 40000);
-        expect(rest.state, WatchTimerState.running);
+        expect(round.accumulatedPauseMs, 40000);
+        expect(round.state, WatchTimerState.running);
         expect(
-          remainingMs(rest, harness.clock.now),
+          remainingMs(round, harness.clock.now),
           const Duration(minutes: 2).inMilliseconds -
               const Duration(seconds: 50).inMilliseconds,
         );
@@ -1560,13 +1560,13 @@ void main() {
       );
 
       await engine.startTimer(
-        WatchTimerKind.rest,
+        WatchTimerKind.round,
         plannedDurationMs: const Duration(minutes: 3).inMilliseconds,
       );
       harness.clock.advance(const Duration(seconds: 45));
       await engine.stopTimer();
 
-      final stopped = engine.timerFor(WatchTimerKind.rest)!;
+      final stopped = engine.timerFor(WatchTimerKind.round)!;
       expect(stopped.state, WatchTimerState.stopped);
       expect(stopped.stoppedAt, harness.clock.now);
 
@@ -1574,7 +1574,7 @@ void main() {
       // stop instant, so it must not have kept counting.
       harness.clock.advance(const Duration(minutes: 10));
       final relaunched = await harness.runningEngine();
-      final restored = relaunched.timerFor(WatchTimerKind.rest)!;
+      final restored = relaunched.timerFor(WatchTimerKind.round)!;
       expect(restored.state, WatchTimerState.stopped);
       expect(
         remainingMs(restored, harness.clock.now),
