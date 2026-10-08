@@ -475,7 +475,7 @@ remains out is listed below.
   `undelivered` (`test/watch_session_auto_push_test.dart`,
   `F7 the next pass announces the deletion the failed one could not, under the
   change id it was minted with`,
-  `S-203 a deletion frame the radio reports `undelivered` stays owed under the
+  S-203 a deletion frame the radio reports `undelivered` stays owed under the
   change id it was minted with`). A snapshot that carries the id
   clears its deletion, so a slot whose set was deleted and re-created under the
   reused number converges (`test/watch_session_engine_test.dart`,

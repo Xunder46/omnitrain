@@ -97,10 +97,8 @@ the two stacks' agreement on a re-stated id in
 
 `WatchMirrorTransport` is the phone's half of the transport contract: `send`
 and `requestSnapshot`. Per-platform carriers (WatchConnectivity, the Wear OS
-data layer) implement it; `send` answers a `WatchDelivery` — whether the radio
-handed the frame over while the counterpart was reachable, never whether it was
-applied, a refusal reported and an unreachable counterpart quiet — and the
-protocol's idempotency is what makes at-least-once delivery safe.
+data layer) implement it; the protocol's idempotency is what makes at-least-once
+delivery safe.
 
 Verified by `test/live_mirroring_test.dart` (`S-008`, `S-010`).
 
@@ -177,9 +175,7 @@ ended row announces `completed`, a row that is gone announces `abandoned` —
 never the phone's current-session pointer, which browsing a past session
 repoints. A pending session that still runs is kept while the phone is not on
 another live session of its own, so browsing away and finishing it afterwards
-still announces its end. It adds no queue, no retry and no user-visible state: a
-frame the radio could not carry is not marked sent, and the next trigger offers
-it again.
+still announces its end. It adds no queue, no retry and no user-visible state.
 `bindWorkoutState` is idempotent, `rebaseline()` takes the current session as the
 baseline while sending nothing (D-82), and `dispose()` unbinds.
 
@@ -323,11 +319,9 @@ against the `WatchMessageChannel` interface, which is what lets a hand-rolled
 `MethodChannel` + `WCSession` layer, or a Wear OS data-layer one, replace it
 without touching a caller.
 
-**Nothing is queued in the app layer.** A send the radio refuses is reported
-through the transport's `onFailure` and the frame is not marked sent, so what the
-peer still owes is offered again at the next trigger and re-sent from storage
-(PROTOCOL.md, "Idempotency and reconciliation"). A queue here would be a second
-source of truth about what has been delivered.
+**Nothing is queued in the app layer.** A queue here would be a second source of
+truth about what has been delivered (PROTOCOL.md, "Idempotency and
+reconciliation").
 
 **A request is not a message.** PROTOCOL.md says so normatively, and
 `WatchTransportRequest` is where that lives: a frame with no `type` is a request
