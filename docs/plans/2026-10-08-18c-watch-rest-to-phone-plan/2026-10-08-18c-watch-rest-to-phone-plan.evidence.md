@@ -24,8 +24,8 @@ without a stated reason.
 
 | Phase | S-id / guard | Test (file · name) | Red evidence (paste the failure) | Green (counts) |
 |---|---|---|---|---|
-| 1A | S-330 wire | `test/sync_protocol_fixtures_test.dart` (manifest walks the four new fixtures) | run with the fixtures + manifest rows in place and the schemas unchanged — must fail on the unknown kind | |
-| 1A | S-330 window rule | `test/sync_protocol_fixtures_test.dart`, `SyncProtocolFixturesTests.swift` (`invalid/observations_up_rest_not_after.json`) | | |
+| 1A | S-330 wire | `test/sync_protocol_fixtures_test.dart` (manifest walks the four new fixtures) | run with the fixtures + manifest rows in place and the schemas unchanged — must fail on the unknown kind | `+95` all passed |
+| 1A | S-330 window rule | `test/sync_protocol_fixtures_test.dart`, `SyncProtocolFixturesTests.swift` (`invalid/observations_up_rest_not_after.json`) | see below | `+95` / swift 376 / 0 |
 | 1B | S-320/332/333/334/335 (Dart) | `test/watch_session_rest_timer_append_test.dart` | `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/watch_session_rest_timer_append_test.dart` must **fail** | |
 | 1B | S-320/322/331/332/334/335/336/339 (Swift) | `WatchRestSurfaceTests.swift`, `WatchRestIsCountUpTests.swift`, `WatchSessionEngineTests.swift`, `WatchFileStoreTests.swift` | | |
 | 2 | S-320/323/324/326/327/328 | `test/watch_session_import_test.dart`, `test/watch_session_rest_timer_append_test.dart` | `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/watch_session_import_test.dart` must **fail** | |
@@ -46,6 +46,47 @@ without a stated reason.
 `test/sync_protocol_fixtures_test.dart` lists every fixture on disk exactly once (`:158`) and checks that every
 `schemas/`/`fixtures/` path `PROTOCOL.md` names exists (`:764`); the Swift suite walks the same manifest, so a divergence
 between the two validators fails in `swift-test`.
+
+## Phase 1A — red first, then green
+
+Items 5–6 (the four fixtures and their manifest rows) landed first; with items 1–4 absent the Dart suite was run and
+failed on the new kind, exactly as the brief asked. Pasted failure (`flutter test test/sync_protocol_fixtures_test.dart`,
+`+66 -3`):
+
+```
+00:00 +24 -1: S-001 fixtures valid/observations_up_rest.json conforms to observations_up [E]
+  Expected: empty
+    Actual: [
+              'invalid_enum_value at $.payload.events[1].kind: "rest" is not one of ["set","timed","round","hold","nutrition_quick_log","effort_rating","session_end"]',
+              'unexpected_field at $.payload.events[1].afterEntryId: field "afterEntryId" is not defined by the schema',
+              'no_matching_variant at $.payload.events[1]: value matches 0 of 7 allowed shapes (first mismatch: required field "reps" is missing)',
+              ...
+            ]
+00:00 +65 -2: S-001 fixtures invalid/observations_up_rest_missing_after_entry_id.json is rejected as missing_required_field [E]
+  Expected: contains 'afterEntryId'
+    Actual: '"rest" is not one of ["set","timed","round","hold","nutrition_quick_log","effort_rating","session_end"] | ...'
+     Which: does not contain 'afterEntryId'
+00:00 +66 -3: S-001 fixtures invalid/observations_up_rest_not_after.json is rejected as semantic_violation [E]
+  Expected: contains 'semantic_violation'
+    Actual: [ 'invalid_enum_value', 'unexpected_field', 'no_matching_variant', ... ]
+     Which: does not contain 'semantic_violation'
+00:00 +66 -3: Some tests failed.
+```
+
+After items 1–4 (schema kind + `afterEntryId`, the eighth `oneOf` branch, and the window rule in both validators):
+
+- `gateway.sh test test/sync_protocol_fixtures_test.dart` → `00:00 +95: All tests passed!`
+- `gateway.sh swift-test` → `Executed 376 tests, with 0 failures (0 unexpected)` — both validators give the same answer
+  on all four fixtures.
+- `gateway.sh test test/rest_is_count_up_contract_test.dart test/watch_capture_contract_conformance_test.dart` →
+  `00:00 +27: All tests passed!`
+- `gateway.sh lint` → `196 issues found` (baseline 196; the touched files add none).
+
+**`prove-red cd1830f test test/sync_protocol_fixtures_test.dart` → GREEN AT.** This proof is not applicable to a
+data-driven contract guard: `prove-red` reverts the whole working tree to the base commit except the named test files, so
+it removes the fixtures and manifest rows the change adds — with nothing new to walk, the unchanged generic walker
+passes. The valid red proof is the manual run pasted above (fixtures + manifest present, schemas unchanged), which is
+exactly the red state the brief prescribes for Phase 1A.
 
 ## Reproducing the planner's verification answers
 

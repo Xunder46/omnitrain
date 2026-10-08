@@ -179,7 +179,8 @@
             "hold",
             "nutrition_quick_log",
             "effort_rating",
-            "session_end"
+            "session_end",
+            "rest"
           ]
         },
         "loggedAt": {
@@ -188,6 +189,11 @@
         "sessionExerciseId": {
           "type": "string",
           "minLength": 1
+        },
+        "afterEntryId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The id of the set this rest follows."
         },
         "exerciseId": {
           "type": "string",

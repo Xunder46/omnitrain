@@ -1,0 +1,23 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-rest-bad-window",
+  "sessionId": "s-cap-rest",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-10-08T10:12:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "rest-not-after",
+        "entryId": "rest-not-after",
+        "kind": "rest",
+        "loggedAt": "2026-10-08T10:06:10Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-bench",
+        "startedAt": "2026-10-08T10:06:10Z",
+        "endedAt": "2026-10-08T10:05:00Z",
+        "afterEntryId": "entry-a1"
+      }
+    ]
+  }
+}

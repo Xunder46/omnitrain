@@ -185,6 +185,7 @@ public final class SyncProtocolValidator {
                     payload["events"] as? [Any] ?? [],
                     path: "\(Self.root).payload.events"
                 )
+                + restWindowRejections(payload["events"] as? [Any] ?? [])
         case "receipt":
             return duplicateAcknowledgementRejections(payload)
         case "routines_down":
@@ -229,6 +230,32 @@ public final class SyncProtocolValidator {
                     + "(docs/global_conventions.md, rest rule)"
             )
         ]
+    }
+
+    /// A rest is a window between two instants, so one that does not end after
+    /// it starts is nothing to write: the wrist never builds one (D-166) and
+    /// the phone drops such a row (S-323). An unparseable instant adds nothing
+    /// here — the schema's `type` rule already reports it.
+    private func restWindowRejections(_ events: [Any]) -> [SyncProtocolRejection] {
+        var rejections: [SyncProtocolRejection] = []
+        for (index, event) in events.enumerated() {
+            guard let record = event as? [String: Any],
+                  (record["kind"] as? String) == "rest",
+                  let startedAt = try? parseUtcIso(record["startedAt"]),
+                  let endedAt = try? parseUtcIso(record["endedAt"]),
+                  endedAt <= startedAt
+            else { continue }
+            rejections.append(
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    "\(Self.root).payload.events[\(index)].endedAt",
+                    "a rest must end after it starts: "
+                        + "endedAt \(record["endedAt"] ?? "") is not after startedAt "
+                        + "\(record["startedAt"] ?? "")"
+                )
+            )
+        }
+        return rejections
     }
 
     /// Position stays inside the exercise list, slots are unique, and workout

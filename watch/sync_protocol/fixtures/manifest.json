@@ -64,6 +64,12 @@
       "type": "routines_down",
       "scenario": "S-66",
       "note": "A routine target may be negative too: `eff-bench` targets -20 kg and `eff-goblet-squat` the floor -200 kg."
+    },
+    {
+      "path": "valid/observations_up_rest.json",
+      "type": "observations_up",
+      "scenario": "S-330",
+      "note": "A rest is a window between two instants: `rest-a1` is the 70 s `rest` that follows the set `entry-a1`, named by `afterEntryId` and carrying no planned length."
     }
   ],
   "invalid": [
@@ -346,6 +352,30 @@
       "expectedCode": "constraint_violation",
       "expectedReasonContains": "expected at least -200",
       "note": "The floor is shared by every loadKg the protocol defines; -240 kg is below it and MUST be refused, not clamped."
+    },
+    {
+      "path": "invalid/observations_up_rest_missing_after_entry_id.json",
+      "type": "observations_up",
+      "scenario": "S-330",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "afterEntryId",
+      "note": "A rest must name the set it follows: the eighth event shape requires afterEntryId."
+    },
+    {
+      "path": "invalid/observations_up_rest_planned_duration.json",
+      "type": "observations_up",
+      "scenario": "S-330",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "plannedDurationMs",
+      "note": "A rest is a count-up: the shared entry shape carries no plannedDurationMs, so the event is refused."
+    },
+    {
+      "path": "invalid/observations_up_rest_not_after.json",
+      "type": "observations_up",
+      "scenario": "S-330",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "endedAt",
+      "note": "A rest of no length cannot travel: endedAt is not after startedAt, so the window rule refuses it."
     }
   ],
   "scenarios": [

@@ -314,30 +314,30 @@ wire's field contract), and both land before 18d begins.
 
 ### Phase 1A: the wire (@developer) — part A of the seeded Phase 1
 
-1. [ ] Add `"rest"` to `$defs.entry.properties.kind.enum` and declare
+1. [x] Add `"rest"` to `$defs.entry.properties.kind.enum` and declare
        `$defs.entry.properties.afterEntryId` (`type: string`, `minLength: 1`, a one-line description: the id of the set
        this rest follows) — `watch/sync_protocol/schemas/envelope.schema.json` · `$defs.entry` (D-222).
-2. [ ] Add the eighth `$defs.event.oneOf` branch, requiring
+2. [x] Add the eighth `$defs.event.oneOf` branch, requiring
        `kind, sessionExerciseId, exerciseId, startedAt, endedAt, afterEntryId` with `properties.kind.const = "rest"`
        (mirror the `timed` branch verbatim) — `watch/sync_protocol/schemas/messages/observations_up.schema.json` ·
        `$defs.event` (D-222).
-3. [ ] Add the window rule: a `rest` event whose `endedAt` is not after its `startedAt` is refused as
+3. [x] Add the window rule: a `rest` event whose `endedAt` is not after its `startedAt` is refused as
        `semantic_violation` at path `$.payload.events[i].endedAt`, reason naming both instants; call it from
        `_semanticRejections` beside `_restLengthRejections`, and parse both instants as UTC (`DateTime.tryParse`; an
        unparseable instant stays the schema's `type` rejection) — `lib/core/sync_protocol/message_validator.dart` ·
        `_semanticRejections` (`:268`), new `_restWindowRejections`.
-4. [ ] The same rule, same code, same path and same reason text, in the mirror validator — the fixtures pin both to one
+4. [x] The same rule, same code, same path and same reason text, in the mirror validator — the fixtures pin both to one
        answer — `watch/watchos/Sources/WatchSessionEngine/SyncProtocolValidator.swift` · its semantic layer (the mirror of
        `_semanticRejections`).
-5. [ ] Add the fixtures: `watch/sync_protocol/fixtures/valid/observations_up_rest.json` (one set `entry-a1`, then one
+5. [x] Add the fixtures: `watch/sync_protocol/fixtures/valid/observations_up_rest.json` (one set `entry-a1`, then one
        70 s `rest` with `afterEntryId: "entry-a1"`), `…/invalid/observations_up_rest_missing_after_entry_id.json`
        (`missing_required_field`, reason contains `afterEntryId`),
        `…/invalid/observations_up_rest_planned_duration.json` (`unexpected_field`, reason contains `plannedDurationMs`),
        `…/invalid/observations_up_rest_not_after.json` (`semantic_violation`, reason contains `endedAt`).
-6. [ ] Register all four in `watch/sync_protocol/fixtures/manifest.json` — one `valid` row (`type: "observations_up"`,
+6. [x] Register all four in `watch/sync_protocol/fixtures/manifest.json` — one `valid` row (`type: "observations_up"`,
        `"scenario": "S-330"`) and three `invalid` rows with `expectedCode`/`expectedReasonContains`. The on-disk test
        (`test/sync_protocol_fixtures_test.dart:158`) fails unless each file is listed exactly once.
-7. [ ] `watch/sync_protocol/PROTOCOL.md`: add the kind to the `observations_up` row of the message-families table, and
+7. [x] `watch/sync_protocol/PROTOCOL.md`: add the kind to the `observations_up` row of the message-families table, and
        one dated `1 (amended)` row in `## Version history` naming the kind, its fields, the four fixtures and S-330.
        A short row only (D-217), and every `schemas/`/`fixtures/` path the row names must exist
        (`test/sync_protocol_fixtures_test.dart:764`).
@@ -436,7 +436,11 @@ Dependents that only read a touched surface (no edit, but their tests must stay 
   path stops nothing today — D-211 pre-authorises the addition, now plan 18d's Phase 1 item 4). No phase has started.
 - Split (governor, 2026-10-08): the seeded Phase 1B and Phase 3 moved to plan 18d; this plan is the receiver-first half
   (1A the wire, 2 the phone writes it). Moved Ledger entries and scenarios stay here as one-line markers.
-- Phase 1A: not started. Phase 2: not started.
+- Phase 1A: **Complete** (developer, 2026-10-08, base cd1830f). All 7 items done; fixtures + manifest + schemas +
+  both validators + PROTOCOL.md. `test/sync_protocol_fixtures_test.dart` `+95`, `swift-test` 376 / 0,
+  `rest_is_count_up_contract_test.dart` + `watch_capture_contract_conformance_test.dart` `+27`, `lint` 196 (baseline).
+  Red evidence (fixtures present, schemas unchanged: `+66 -3`) and the `prove-red` not-applicable note are in
+  `.evidence.md`. Phase 2: not started.
 - Baselines to beat at the base commit: flutter +4181 ~1, swift 376 / 0, analyze 196 / 0, `xcodebuild "OmniTrain Watch
   App"` (governor-run).
 
