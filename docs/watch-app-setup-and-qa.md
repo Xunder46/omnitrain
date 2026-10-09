@@ -562,7 +562,7 @@ plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
 
 ### The wrist's own logging (PR 2b)
 
-This walkthrough exercises the wrist logging surface. It has not been run on
+This walkthrough exercises the wrist logging surface, which has not run on
 hardware yet.
 
 1. **Start a workout on the wrist and pick an exercise.** Tap **Free workout**.
@@ -603,6 +603,16 @@ hardware yet.
    still claims no load at all (`testS062AnUntouchedLoadDialSendsNoLoadKg`).
    Dialling back up to zero leaves a plain `0.0`, never a `-0.0`
    (`testS064AZeroLoadNeverPrintsASignedZero`).
+6. **A timed effort logs one Start-to-Log window** *(owner)*. Pick a timed
+   exercise: logging shows one clock readout and one **Start** button, with no
+   duration, distance, rounds or length row. Tap **Start** and the readout counts
+   up while the button reads **Log**
+   (`WatchTimedWorkTests.testS1300TimedWorkIsLoggedAsTheWindowFromStartToLog`);
+   log it and the phone's session shows one entry for that window. A round
+   exercise counts down from the wrist's preset instead
+   (`…testS1303APeriodCountsDownAndLogIsNotARoundButton`), and **Finish** still
+   ends the session
+   (`…testS1311FinishLeavesTheWorkClockRunningAndTakesTheReadout`).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

@@ -84,18 +84,20 @@ public final class WatchLoggingModel: ObservableObject {
         poll()
     }
 
+    /// Whether the one button is still offering Start: a timed effort whose
+    /// clock has not begun. A set is never awaiting a start, and neither is an
+    /// effort already running (D-1316).
+    private var isAwaitingStart: Bool { state.isTimedWork && !state.isWorkRunning }
+
     /// What the one button says: Start until the effort's clock is running, then
     /// Log — and always Log for a set, whose button never starts anything
     /// (D-1316).
-    public var primaryTitle: String {
-        guard state.isTimedWork else { return "Log" }
-        return state.isWorkRunning ? "Log" : "Start"
-    }
+    public var primaryTitle: String { isAwaitingStart ? "Start" : "Log" }
 
     /// What the one button does: starts the clock when nothing is running, and
     /// logs the effort otherwise (D-1316).
     public func primaryAction() async {
-        if state.isTimedWork && !state.isWorkRunning {
+        if isAwaitingStart {
             await state.startWork()
         } else {
             _ = try? await state.log()
@@ -112,6 +114,19 @@ public final class WatchLoggingModel: ObservableObject {
             return WatchLoggingState.clock(Double(remaining))
         }
         return WatchLoggingState.clock(Double(state.workElapsedSeconds()))
+    }
+
+    /// The period the next log will record, in this modality's own word and
+    /// singular ("Period 2"), or nil for the kinds without periods (D-1307).
+    /// The view renders this line; the rule lives here so the desktop toolchain
+    /// can assert it (D-1316).
+    public var periodLine: String? {
+        guard state.effortKind == WatchEffortKind.round else { return nil }
+        return "\(Self.singular(state.roundsLabel)) \(state.nextRoundNumber)"
+    }
+
+    private static func singular(_ label: String) -> String {
+        label.hasSuffix("s") ? String(label.dropLast()) : label
     }
 
     public func log() async {

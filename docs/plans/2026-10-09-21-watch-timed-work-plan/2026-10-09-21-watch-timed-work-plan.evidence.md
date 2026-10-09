@@ -440,4 +440,88 @@ The two source guards this phase could have broken are green in the same run: `t
 | Docs | — | no update required: Phase 3 owns the docs (D-1312) and no page names a watch test name (§10.6) |
 | Watch scheme | `xcodebuild` (governor only) | not run here — `WatchMenuView.swift` is watchOS-only and is not compiled by `swift-test`; the governor builds it |
 
+## 12. Phase 3 — the surface and the docs (@developer, run of 2026-10-09 18:58–19:06 UTC)
+
+Plan items 1–7: `WatchLoggingView` (D-1307), the `ContentView` check, and the three documents (D-1312). Four of the five predicted files changed —
+`watch/watchos/Sources/WatchSessionEngine/WatchLoggingView.swift`, `docs/state_management/watch_surface.md`, `docs/watch-app-setup-and-qa.md` and
+`docs/plans/2026-10-08-18-watch-qa-index.md`; item 4's `ios/OmniTrain Watch App/ContentView.swift` did **not**.
+
+### 12.1 The surface — what each item changed, and why `swift-test` alone proves it
+
+`WatchLoggingView.swift` is watchOS-only: its whole body sits under `#if os(watchOS)`, so `swift-test` compiles the module with the body excluded and the
+governor's `xcodebuild` is the only compiler that sees these lines. The rules the view *renders* are the model's, already proved in 1A — `primaryTitle`
+and `workReadout` are asserted by `testS1312ARelaunchKeepsTheButtonOnLog` (§8) — so Phase 3 adds rendering, and its proof is the toolchain that compiles
+that rendering plus the governor's build.
+
+| Item | The edit (exact) | Compiles under |
+|---|---|---|
+| 1 render the clock | `body`: `ForEach(model.state.fields)` stays; a non-nil `model.workReadout` renders as `Text(readout).font(.largeTitle).monospacedDigit()` between the rows and the button (replacing the removed `logButton` with `primaryButton` below it) | `swift-test` (module) + `xcodebuild` (body) |
+| 2 one button | `logButton` → `primaryButton`: label `model.primaryTitle`, action `Task { await model.primaryAction(); onLogged?() }`, `.disabled(!model.state.canLog)` kept | `swift-test` (module) + `xcodebuild` (body) |
+| 3 header | `header` gains `roundLine` — `"\(Self.singular(state.roundsLabel)) \(state.nextRoundNumber)"` for `state.effortKind == WatchEffortKind.round` (a new private `singular` drops the trailing "s": "Periods" → "Period 2") — and drops its "m:ss left" countdown line while `model.workReadout != nil` | `swift-test` (module) + `xcodebuild` (body) |
+| 4 check the shell | none needed: `ContentView.swift`'s only call is `WatchLoggingView(state: host.logging, onLogged: { … })` (~:229) and the initializer's signature is unchanged, so the file is not in the diff | — |
+
+A `set` still renders exactly as today: `workReadout` is nil for a `set` (D-1316), `primaryTitle` is always `"Log"`, `roundLine` is nil and the countdown
+line shows as before. The step buttons keep their `accessibilityLabel`s (`Less/More <label>`), untouched.
+
+No new guard, so no `prove-red` run: there is no test that can exercise a watchOS-only view on this toolchain (the v1A pattern is that the model carries
+the rule and the view renders it). The two model rules this view consumes are proved red→green in §8.2.
+
+### 12.2 The docs — remove before adding
+
+| Document | What changed | Why |
+|---|---|---|
+| `docs/state_management/watch_surface.md` · "The wrist shell's second surface" | the paragraph that listed "the value rows that effort needs" now says a set keeps its value rows and one Log button, a timed/drill/round effort shows one clock readout and one Start/Log button, a period counts down from the wrist's preset, and the menu is inert while an effort runs — each naming its test | D-1312; the file sits near its band, so the stale clause is dropped rather than kept |
+| `docs/watch-app-setup-and-qa.md` · "The wrist's own logging" | one numbered step (6): Start, the readout counts up, no duration/distance/rounds/length row, Log saves one window, a round counts down, Finish still works; the section's intro sentence is trimmed to stay net-neutral | D-1312; the file is a `_recordFile`, exempt from the ceiling, kept tight anyway |
+| `docs/plans/2026-10-08-18-watch-qa-index.md` | row 21's placeholder cells → the plan path, the one-line scope, track `watch client`, phase count 5, `D-1300…D-1316, S-1300…S-1312`, status `built — Phases 1A–3; review pending` | D-1312; Phase 3 item 7 |
+
+### 12.3 The end-of-run checks
+
+| Check | Command | Result |
+|---|---|---|
+| Watch tests | `swift-test` (no filter) | **Executed 418 tests, with 0 failures (0 unexpected)** — `All tests' passed`, same 418 as §11.4; the watchOS view lines are not compiled here |
+| Docs indexing contract | `test test/docs_indexing_contract_test.dart` | **9 passed, "All tests passed!"** — the size/ceiling, warning-band, link, orphan, hex, walkthrough and roadmap guards are all green, so `watch_surface.md` is still under the band |
+| Phone lint | `lint` | **196 issues** — identical to §8.5/§9.6/§10.6/§11.5; no Dart source file is in this diff |
+| Phone suite (full) | `test` | **`01:50 +4226 ~1: All tests passed!`** — 4226 passed, 1 skipped, 0 failed, no filter |
+| Persistence invariant | `grep` for `import .*hive_workout_repository` under `lib/state`, `lib/features`, `lib/widgets`, `lib/core` | **no matches** |
+| Footprint | `git-diff --stat` | six files: `WatchLoggingView.swift` (36 changed lines, the view items), `watch_surface.md` (14), `watch-app-setup-and-qa.md` (12), the QA index (2), plus this plan (32) and this evidence file (45) — the four non-record paths are exactly the plan's Predicted Files minus `ContentView.swift`, which is absent (item 4's "it needed nothing") |
+| Watch scheme | `xcodebuild` (governor only) | not run here — `WatchLoggingView.swift`'s body is watchOS-only; the governor builds it and reports the result |
+
+
+## 13. Fix round 1 — review findings 1–5 (@developer, run of 2026-10-09 19:19–19:21 UTC)
+
+The review's fix round, one pass, no re-review loop. Findings 1, 2 and 4 are code; 3 and 5 are plan-only records. The base is the
+working tree §12 recorded plus these edits, so every earlier row still stands and the only numbers that move are the test count
+(418 → 419) and the file list.
+
+| Finding | The edit (exact) | Proof |
+|---|---|---|
+| 1 unreachable `roundWindow` fallback | `WatchLoggingState.swift:747-753`: the `value(of: WatchMetricKey.roundDuration) ?? 0` fallback is gone; the guard now returns `(loggedAt, loggedAt)` | unreachable by the review's own analysis — `metricPayload` has one caller, `log()` (`:666`), which sits behind the D-1304 guard (`:652-654`), and `round` has no `fields` row, so no fixture can enter the branch and no test can tell the change apart. Recorded as analysis-only; the observable effect is the full suite unchanged at 419/0 |
+| 2 the label rule in the view | `WatchLoggingModel.periodLine` (new, `:119-131`) owns `"\(Self.singular(state.roundsLabel)) \(state.nextRoundNumber)"` with private `singular`; `WatchLoggingView.roundLine` now reads `model.periodLine` and `singular` is deleted | the mutation below, red for exactly the guarded reason |
+| 3 stale `Status:` line | plan `:3` → the CLOSED line quoted by the brief | the plan's own header |
+| 4 the button's halves spelled out twice | `WatchLoggingModel.isAwaitingStart` (private, `:87-90`) = `state.isTimedWork && !state.isWorkRunning`, read by both `primaryTitle` (`:95`) and `primaryAction` (`:102`) | the full suite: the S-1303/S-1312 button assertions are green, and the refactor is behaviour-identical, so no new guard exists to add |
+| 5 the one altered S-003 assertion | plan Phase 1B-i item 5 (`:251-253`): the `:348` sentence now names the logged `roundNumber` as **1** where it was 2, with D-1306 as the reason | the plan's own sentence |
+
+### 13.1 The mutation for finding 2 — "return the plural label"
+
+`periodLine`'s body was changed from `"\(Self.singular(state.roundsLabel)) \(state.nextRoundNumber)"` to
+`"\(state.roundsLabel) \(state.nextRoundNumber)"`, run, then restored to the character-identical original.
+
+| Step | Command | Observed |
+|---|---|---|
+| mutant | `swift-test --filter testS1303ThePeriodLineNamesTheNextPeriodInTheModalitysOwnWord` | **red at 19:19:46**: `WatchTimedWorkTests.swift:272: XCTAssertEqual failed: ("Optional("Periods 1")") is not equal to ("Optional("Period 1")")` and `:278: ("Optional("Periods 2")") is not equal to ("Optional("Period 2")")` — 1 test, 2 failures, 0 unexpected |
+| restored | `swift-test` (no filter) | **Executed 419 tests, with 0 failures (0 unexpected)** — `All tests' passed` |
+
+`prove-red HEAD` is not available for this guard: the test names `model.periodLine`, which does not exist at HEAD, so the file cannot
+compile against the old code (the rule's "new code" case). The mutation above is the substitute and the red is for the guarded reason.
+
+### 13.2 The end-of-run checks
+
+| Check | Command | Result |
+|---|---|---|
+| Watch tests, targeted | `swift-test --filter WatchTimedWorkTests` | **Executed 11 tests, with 0 failures (0 unexpected)** — §8's 10 plus the new period-line test |
+| Watch tests, full | `swift-test` (no filter) | **Executed 419 tests, with 0 failures (0 unexpected)** — `All tests' passed`; log `.work/gateway/swift-test-20261009-192004-93981.log` |
+| Footprint | `git-diff --stat` | four Swift paths: `WatchLoggingModel.swift` (25), `WatchLoggingState.swift` (8), `WatchLoggingView.swift` (29, Phase 3's view items included), `WatchTimedWorkTests.swift` (39); the plan (41, Phase 3's records included) and this evidence file — **no Dart file, no doc outside the plan folder** |
+| Phone lint / suite | not re-run | no Dart, SQL or model file changed in this run, so §12.3's 196 / 4226+1 results stand unchanged |
+| Watch scheme | `xcodebuild` (governor only) | not run here — the one view file this round touches (`WatchLoggingView.swift`, the `roundLine` body) is inside `#if os(watchOS)`; `swift-test` compiles the module and the governor builds the body |
+
 

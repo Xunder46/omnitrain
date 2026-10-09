@@ -255,6 +255,45 @@ final class WatchTimedWorkTests: XCTestCase {
         XCTAssertEqual(try loggedEvent(harness).event["roundNumber"] as? Int, 2)
     }
 
+    // MARK: - D-1307 the period line
+
+    @MainActor
+    func testS1303ThePeriodLineNamesTheNextPeriodInTheModalitysOwnWord() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [slot("sx-bjj", capabilities: ["time", "rounds"])]
+        )
+        let periodSurface = surface(harness, engine: engine)
+        let model = WatchLoggingModel(state: periodSurface, haptics: RecordingHaptics())
+
+        XCTAssertEqual(model.periodLine, "Period 1", "the first period is what Start will record")
+
+        await model.startWork()
+        harness.clock.advance(30)
+        await model.log()
+
+        XCTAssertEqual(
+            model.periodLine,
+            "Period 2",
+            "one period logged: the line names the next in the modality's own word, singular (D-1307)"
+        )
+
+        let other = Harness()
+        let otherEngine = await other.runningEngine()
+        _ = await otherEngine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let timed = WatchLoggingModel(
+            state: surface(other, engine: otherEngine),
+            haptics: RecordingHaptics()
+        )
+        XCTAssertNil(timed.periodLine, "a timed slot has no periods to name")
+    }
+
     // MARK: - S-1304 a late Log on a period
 
     func testS1304ALateLogOnAPeriodEndsWhereTheCountdownDid() async throws {

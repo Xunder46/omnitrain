@@ -1,6 +1,6 @@
 # Plan 21 — timed work on the watch: one Start button that turns into Log
 
-> Status: SEEDED — governor seed written; the planner expands the phases. Seeded Ledger D-1300…D-1313, scenarios S-1300…S-1309.
+> Status: CLOSED — built in five phases (1A, 1B-i, 1B-ii, 2, 3); independent review round 1 APPROVE, findings 1–5 fixed; finding 6 (QA script vs doc standard §3.1) left open on purpose
 > **Expanded 2026-10-09 by the planner.** Every seeded entry is kept verbatim; D-1314…D-1316 and S-1310…S-1312 are appended after
 > them, and `## Iteration 1` below specifies phases 1A, 1B-i, 1B-ii, 2 and 3 (1B is split so no run exceeds 8 items — the by-name
 > list is 20 tests over 6 files; it is in the evidence file). **Next handoff: @developer (Phase 1A).**
@@ -248,8 +248,9 @@ surface file's 10 and the timer file's 3) and 1B-ii (7). Any failure outside tha
    `duration`/`distance` dials and Start at the instant the old dial implied (`:255`: Start 10:00:00, Log 10:06:00, window unchanged at 300 s; `:282`: the
    fresh-period read becomes the next period's own Start); `:299` becomes "a `time`-only slot shows no row at all" (`fields.isEmpty`); `:326` becomes
    `testS003StartStartsTheRoundCountdown` (Start creates the countdown at `plannedDurationMs == 180_000`, Log **stops** it and bumps `nextRoundNumber` to 2 —
-   today it relies on the follow-on countdown and asserts nothing about Start); `:348` inserts a Start at 10:00:00 and keeps every assertion (window
-   10:00:00 → the completion instant 10:03:00, logged at 10:03:20); `:381` drops the `duration` dial, Starts 60 s before the log and keeps `extraWeight` and
+   today it relies on the follow-on countdown and asserts nothing about Start); `:348` inserts a Start at 10:00:00 and keeps every assertion but the logged
+   `roundNumber`, which is now **1** where it was 2 (the old test relied on the follow-on countdown that D-1306 removes) — the window is unchanged
+   10:00:00 → the completion instant 10:03:00, logged at 10:03:20; `:381` drops the `duration` dial, Starts 60 s before the log and keeps `extraWeight` and
    `extraLoadKg == -10`; `:409` becomes `testS006AManualDistanceNeverReachesTheObservation`; `:592` routes its distance through a `WatchSensorRecorder`
    (`FakeSensorSource`, `WatchSensorRecordingTests.swift:72`) instead of a dial — see the evidence's check 4. `:313` and `:429` read the contract and need
    **no change**: verify, do not edit.
@@ -316,26 +317,13 @@ surface file's 10 and the timer file's 3) and 1B-ii (7). Any failure outside tha
 
 ### Phase 3: the surface and the docs (@developer)
 
-1. [ ] Render the clock — `watch/watchos/Sources/WatchSessionEngine/WatchLoggingView.swift` · `body` (:50): a `timed`/`drill`/`round` effort renders one readout
-   from `model.workReadout` (the elapsed time counting up, the remaining time for a round, the preset before Start) instead of `ForEach(model.state.fields)`;
-   a `set` keeps its rows exactly as they are (D-1307, S-1308).
-2. [ ] One button — same file · `logButton` (:191) → `primaryButton` reading `model.primaryTitle` and calling `model.primaryAction()`; `.disabled(!model.state.canLog)`
-   stays (D-1307).
-3. [ ] Header — same file · `header` (:104): the name and sensor line stay; a `round` adds "Period 2" / "Interval 2" / "Round 2" from `state.roundsLabel` (:316)
-   and `state.nextRoundNumber` (:325) (D-1307).
-4. [ ] Check the shell — `ios/OmniTrain Watch App/ContentView.swift`: change it **only** if its construction of the state/view needs it (it should not, since the
-   state is injected as it is); record the check, and the fact that it needed nothing, in the evidence file.
-5. [ ] Docs — `docs/state_management/watch_surface.md` · "The wrist shell's second surface" (:428–483) (D-1312): reword the paragraph that lists "the value rows
-   that effort needs" so it says a set keeps its rows while a timed/drill/round effort shows one Start/Log button and a clock, and that the period's length is
-   the phone's (21b). The file is about 50.6 KB against its 51.2 KB split band, and `test/docs_indexing_contract_test.dart` **fails** above 0.80 of
-   the 64 KiB ceiling: reword the same paragraph, cut a redundant clause, add no heading and no arrow chain that names a user action (the contract
-   test greps for both).
-6. [ ] Docs — `docs/watch-app-setup-and-qa.md` · "The wrist's own logging" (:563–616): add one numbered QA step for the timed/round flow (Start, the readout
-   counts up or down, Log saves one period, no duration/distance/rounds/length row, Finish still works) and trim a redundant sentence in the same
-   section to stay net-neutral. This file is a `_recordFile` for the indexing contract, so it is exempt from the size ceiling and the content guards —
-   keep it tight anyway.
-7. [ ] Docs — `docs/plans/2026-10-08-18-watch-qa-index.md` · row 21 (:23): replace the placeholder cells with the plan path, the one-line scope, the track
-   `watch client`, the phase count, `D-1300…D-1316, S-1300…S-1312` and the status `planned — @developer Phase 1A`.
+1. [x] Render the clock … — done: `body` shows `model.workReadout` as one `.largeTitle`/`.monospacedDigit()` readout between the rows and the button, `ForEach(model.state.fields)` kept; `set` unchanged (§12.1).
+2. [x] One button … — done: `logButton` → `primaryButton` (`model.primaryTitle` / `model.primaryAction()`, `.disabled(!model.state.canLog)` kept) (§12.1).
+3. [x] Header … — done: `roundLine` + a private `singular` produce "Period 2"/"Interval 2"/"Round 2"; the countdown line is dropped while the readout shows (§12.1).
+4. [x] Check the shell … — done: `ContentView.swift`'s call is `WatchLoggingView(state:onLogged:)` and the initializer is unchanged; the file is not in the diff (§12.1, item 4).
+5. [x] Docs — `docs/state_management/watch_surface.md` … — done: the paragraph now says a set keeps its rows and a timed/drill/round effort shows one clock and one Start/Log button, a period counts down from the wrist's preset, the menu inert while an effort runs (§12.2).
+6. [x] Docs — `docs/watch-app-setup-and-qa.md` … — done: one numbered step (6) for Start → readout → Log, no length row, Finish; the section intro trimmed (§12.2).
+7. [x] Docs — `docs/plans/2026-10-08-18-watch-qa-index.md` · row 21 … — done: plan path, one-line scope, track `watch client`, 5 phases, `D-1300…D-1316, S-1300…S-1312`, status `built — Phases 1A–3; review pending` (§12.2).
 
 **Done Criteria**: `.github/copilot/scripts/macos/gateway.sh swift-test` (fully green);
 `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart`; the governor runs `xcodebuild` for the watch scheme and reports it in the
@@ -399,11 +387,11 @@ evidence file. Both docs stay inside the 51.2 KB band.
 | Phase | Status |
 |---|---|
 | 1A | **Complete** — 10/10 in `WatchTimedWorkTests`; full `swift-test` 414 tests / 39 failures (33 unexpected) against the plan's predicted 25; every extra failure is in 1B-i/1B-ii's own files and fails only for D-1304/D-1305 — see the Assumption Log and evidence §8.4 |
-| 1B | Not started — split into 1B-i and 1B-ii (the by-name list is 20 tests over 6 files; the brief allows 8 items per run) |
+| 1B | **Complete** — split into 1B-i and 1B-ii, both Complete (the by-name list is 20 tests over 6 files; the brief allows 8 items per run) |
 | 1B-i | **Complete** — the F-CAP fixture migrated and its four files green: contract 6/6, surfaces 24/24, timers 28/28; full `swift-test` 415 tests / 15 failures, all 12 names inside 1B-ii's three files; `lint` 196 = baseline — see evidence §9 |
 | 1B-ii | **Complete** — the three files green: summary 17/17, recording 38/38, steps-denied 38/38, phone 8/8; full `swift-test` **415 tests / 0 failures, no filter**; `test/docs_indexing_contract_test.dart` 9/9; `lint` 196 = baseline — see evidence §10 |
 | 2 | **Complete** — `WatchMenuState.isLocked` + the `jump(to:)` refusal in `WatchMenu.swift`, inert rows + one caption in `WatchMenuView.swift`, S-1307's 3 tests; full `swift-test` **418 tests / 0 failures, no filter** (`testS1108…`/`testS1202…` green); `lint` 196 = baseline — see evidence §11 |
-| 3 | Not started |
+| 3 | **Complete** — the view items (readout + Start/Log button + the period header) in `WatchLoggingView.swift`; `ContentView.swift` needed nothing; the three docs reworded; full `swift-test` **418 tests / 0 failures, no filter**; `test/docs_indexing_contract_test.dart` 9/9; full phone `test` **4226 passed / 0 failed / 1 skipped**; `lint` 196 = baseline; `xcodebuild` is the governor's — see evidence §12 |
 
 ## Assumption Log
 
@@ -453,6 +441,13 @@ evidence file. Both docs stay inside the 51.2 KB band.
   rows only while `state.isLocked`; the `rest` case proves itself by logging a set through `WatchLoggingState` (the real `startFollowOnTimer` path) rather than
   pumping a raw `engine.startTimer(.rest)`. Options: a `Text` literal inline — rejected, the file's other copy is a named constant; a raw rest row — rejected,
   it would not exercise the path the user takes.
+- (developer, 3) `watch_surface.md` says a period counts down from "the wrist's preset", not that its length is the phone's (Phase 3 item 5's wording):
+  the brief's wording supersedes it, and the phone's length does not arrive yet (D-1313/D-1314), so naming the phone would assert a length no user can set.
+  Options: name 21b — rejected, a doc may not carry a plan reference for behaviour that does not ship.
+- (developer, fix 1) Review findings 1/2/4: the `roundWindow` fallback is deleted rather than `assertionFailure`d — the D-1304 guard already
+  makes the branch unreachable, so no fixture can reach it and no test distinguishes the change (analysis-only, evidence §13). `periodLine` and
+  `isAwaitingStart` moved into `WatchLoggingModel`; the render is identical, so no doc page changed (evidence §13.2). Options: leave the fallback
+  as a supported path — rejected, it writes a zero-length window that D-1304 forbids.
 
 ## Feedback
 

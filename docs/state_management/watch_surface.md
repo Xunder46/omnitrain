@@ -429,10 +429,16 @@ the fallback list minus what the ladder already shows behind them. Verified by
 
 Once a session is open, the second surface is the package's logging view for the
 current exercise — its own effort kind (a set, a timed hold, a round or a drill)
-with the value rows that effort needs — and one list button opening the session
-menu: the ladder's exercises with their logged counts to jump to, then Finish.
-Exercises are added on the phone. A logged set starts a rest with no length,
-which the rest screen counts up, and whose end reaches the phone
+— and one list button opening the session menu: the ladder's exercises with
+their logged counts to jump to, then Finish. Exercises are added on the phone. A
+set keeps its value rows and one Log button; a timed, drill or round effort shows
+one clock readout and one Start/Log button
+(`WatchTimedWorkTests.testS1312ARelaunchKeepsTheButtonOnLog`), a period counting
+down from the wrist's preset
+(`…testS1303APeriodCountsDownAndLogIsNotARoundButton`), and the menu inert while
+an effort runs (`WatchMenuTests.testS1307TheMenuDoesNotJumpWhileAWorkClockRuns`).
+A logged set starts a rest with no length, which the rest screen counts up, and
+whose end reaches the phone
 (`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`;
 `test/watch_session_engine_test.dart`, S-320).
 

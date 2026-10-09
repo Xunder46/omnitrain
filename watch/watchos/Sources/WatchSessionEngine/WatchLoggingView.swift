@@ -77,8 +77,13 @@ public struct WatchLoggingView: View {
             ForEach(model.state.fields, id: \.metricKey) { field in
                 row(field)
             }
+            if let readout = model.workReadout {
+                Text(readout)
+                    .font(.largeTitle)
+                    .monospacedDigit()
+            }
             Spacer(minLength: 0)
-            logButton
+            primaryButton
         }
         .padding(.horizontal, Self.surfaceInset)
         .onAppear { model.start() }
@@ -98,7 +103,14 @@ public struct WatchLoggingView: View {
             Text(model.state.exerciseName ?? "No exercise")
                 .font(.caption2)
                 .lineLimit(1)
-            if let countdown = model.countdown {
+            if let round = roundLine {
+                Text(round)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            // The readout already carries the period's time, so the header drops
+            // its own countdown line rather than repeating it.
+            if model.workReadout == nil, let countdown = model.countdown {
                 Text("\(WatchLoggingState.clock(countdown)) left")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -112,6 +124,10 @@ public struct WatchLoggingView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    /// The period the next log will record, in this modality's own word and
+    /// singular ("Period 2"), or nil for the kinds without periods (D-1307).
+    private var roundLine: String? { model.periodLine }
 
     /// What the sensors are reading, as one line: the heart rate, the distance,
     /// and the pace it is being covered at. Absent pieces are left out rather
@@ -187,15 +203,16 @@ public struct WatchLoggingView: View {
     }
 
     /// The primary action, and the largest thing on the screen: a wrist log is
-    /// one glance and one confirm.
-    private var logButton: some View {
+    /// one glance and one confirm. It reads Start while the effort's clock is
+    /// stopped and Log once it runs (D-1307).
+    private var primaryButton: some View {
         Button {
             Task {
-                await model.log()
+                await model.primaryAction()
                 onLogged?()
             }
         } label: {
-            Text("Log").frame(maxWidth: .infinity)
+            Text(model.primaryTitle).frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .disabled(!model.state.canLog)

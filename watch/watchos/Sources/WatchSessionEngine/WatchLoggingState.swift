@@ -744,11 +744,13 @@ public final class WatchLoggingState {
 
     /// A round's window. The countdown is the round's clock: while one is
     /// running, the round started with it and — if it reached zero — ended with
-    /// it, however long the user took to look down.
+    /// it, however long the user took to look down. The D-1304 guard leaves a
+    /// round effort no way here without a row, and `round` has no field to read a
+    /// length from, so the fallback ends the window where the log happened rather
+    /// than inventing one.
     private func roundWindow(loggedAt: Date) -> (startedAt: Date, endedAt: Date) {
         guard let countdown = engine.timerFor(WatchTimerKind.round) else {
-            let length = value(of: WatchMetricKey.roundDuration) ?? 0
-            return (loggedAt.addingTimeInterval(-length), loggedAt)
+            return (loggedAt, loggedAt)
         }
 
         let completed = remainingMs(countdown, now: loggedAt) == 0
