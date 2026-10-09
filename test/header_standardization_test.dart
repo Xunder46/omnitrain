@@ -2057,11 +2057,11 @@ void main() {
         // single entry's value (since minV == maxV). The chart frame
         // is stable; only the data is a single point.
         expect(
-          find.descendant(of: bwSparkline, matching: find.text('80.0')),
+          find.descendant(of: bwSparkline, matching: find.text('80')),
           findsNWidgets(2),
           reason:
               'A19: both Y-axis labels render the single entry value '
-              '(minV == maxV → both labels show 80.0).',
+              '(minV == maxV → both labels show 80).',
         );
 
         // X-axis labels render — both X-first and X-last show the
@@ -2161,7 +2161,7 @@ void main() {
           reason: 'Y-axis min value label must render.',
         );
         expect(
-          find.descendant(of: bwSparkline, matching: find.text('80.0')),
+          find.descendant(of: bwSparkline, matching: find.text('80')),
           findsOneWidget,
           reason:
               'Y-axis max label renders the formatted max value (unit dropped in A18).',
@@ -2269,15 +2269,15 @@ void main() {
           findsOneWidget,
         );
 
-        // The Y-axis range covers both values (82.0 and 79.0).
+        // The Y-axis range covers both values (82 and 79).
         expect(
-          find.descendant(of: bwSparkline, matching: find.text('82.0')),
+          find.descendant(of: bwSparkline, matching: find.text('82')),
           findsOneWidget,
           reason:
               'Y-axis max label renders the older (higher) entry (unit dropped in A18).',
         );
         expect(
-          find.descendant(of: bwSparkline, matching: find.text('79.0')),
+          find.descendant(of: bwSparkline, matching: find.text('79')),
           findsOneWidget,
           reason:
               'Y-axis min label renders the newer (lower) entry (unit dropped in A18).',
@@ -2359,11 +2359,11 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.descendant(of: bwSparkline, matching: find.text('80.0')),
+          find.descendant(of: bwSparkline, matching: find.text('80')),
           findsOneWidget,
         );
         expect(
-          find.descendant(of: bwSparkline, matching: find.text('79.0')),
+          find.descendant(of: bwSparkline, matching: find.text('79')),
           findsOneWidget,
         );
 
@@ -2493,7 +2493,7 @@ void main() {
         // wiring checked above. A18 dropped the unit suffix; the
         // header above already names the measurement.
         expect(
-          find.descendant(of: bwSparkline, matching: find.text('82.0')),
+          find.descendant(of: bwSparkline, matching: find.text('82')),
           findsOneWidget,
           reason: 'Y-max label renders the older entry (no unit).',
         );

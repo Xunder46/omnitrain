@@ -112,6 +112,11 @@ only one entry exists and a line-with-dots chart otherwise.
 
 X positioning is **time-based** (each entry's `recordedAtMs` is mapped linearly across the chart width) so two entries months apart sit at the chart's leftmost and rightmost x positions while many entries clustered in time sit close together. Falls back to chart mid when all timestamps are equal.
 
+The y-axis scale and the drawn line are converted to the active display unit: a
+`unit-kg` measurement goes through `UnitFormatter.convertWeight`, so the quick
+chart matches the history sheet; other measurements plot as stored. It takes the
+`SettingsState` for this reason. See [Profile & Measurements](../profile_and_measurements.md).
+
 Tapping the chart opens the measurement's history sheet; the `+` control opens the log sheet.
 
 ## Logo & Brand

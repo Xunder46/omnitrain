@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/constants/profile_measurements.dart';
 import '../../../core/utils/chart_axis_helper.dart';
+import '../../../core/utils/unit_formatter.dart';
 import '../../../data/models/models.dart';
 import '../../../state/profile/profile_state.dart';
 import '../../../state/settings/settings_state.dart';
@@ -30,15 +31,19 @@ import '../../../state/settings/settings_state.dart';
 ///   - **Y-axis scale**: a max value label at top-LEFT and a min
 ///     value label at bottom-LEFT of the chart area (in the
 ///     y-axis label column to the left of the Y-axis line),
-///     rendered in `labelSmall` + `textMuted` + 9 pt. Format is the
-///     raw numeric value via `toStringAsFixed(1)` — the unit is
-///     intentionally **omitted** because the header above the card
-///     (`BODY WEIGHT` / `HEIGHT` / etc.) already names the
-///     measurement, and the value column to the right shows the
-///     current value WITH its unit (e.g. `159 lbs`). Adding the
-///     unit to the axis label would crowd the 38 dp LEFT column
-///     and force a smaller font; dropping the unit lets the label
-///     fit comfortably at the same font size as the x-axis date
+///     rendered in `labelSmall` + `textMuted` + 9 pt. The value is
+///     the **display-unit** value: a `unit-kg` measurement is
+///     converted from canonical kilograms to the active weight unit
+///     (kg/lbs) via `UnitFormatter`, matching the history sheet, and
+///     every other measurement is plotted as stored. Format is
+///     `ProfileMeasurements.formatValue` (integer when whole, else
+///     one decimal) — the unit is intentionally **omitted** because
+///     the header above the card (`BODY WEIGHT` / `HEIGHT` / etc.)
+///     already names the measurement, and the value column to the
+///     right shows the current value WITH its unit (e.g. `159 lbs`).
+///     Adding the unit to the axis label would crowd the 38 dp LEFT
+///     column and force a smaller font; dropping the unit lets the
+///     label fit comfortably at the same font size as the x-axis date
 ///     labels. `overflow: TextOverflow.ellipsis` clips gracefully
 ///     if the column is too narrow for any edge case.
 ///   - **X-axis scale**: a first date label at bottom-left and a
@@ -93,10 +98,11 @@ class MeasurementSparkline extends StatefulWidget {
   /// Source of the measurement history (loaded via `getMeasurementHistory`).
   final ProfileState profileState;
 
-  /// Injected for symmetry with the surrounding surface chrome.
-  /// No longer used internally (A18 dropped the unit suffix from the
-  /// y-axis labels). Reserved for future hooks (e.g. unit-aware
-  /// tooltip overlays).
+  /// The active unit preferences. Only the weight unit is read: a
+  /// `unit-kg` measurement is converted from canonical kilograms to the
+  /// preferred unit (kg/lbs) before the chart plots and labels it, matching
+  /// `MeasurementHistoryChartSheet`. Every other measurement is plotted in
+  /// its stored unit.
   final SettingsState settingsState;
 
   /// Tapping anywhere inside the sparkline area fires this callback.
@@ -149,6 +155,19 @@ class _MeasurementSparklineState extends State<MeasurementSparkline> {
     });
   }
 
+  /// Canonical → display value for one entry, in the active unit.
+  ///
+  /// `unit-kg` measurements are stored in kilograms and convert to the
+  /// preferred weight unit; every other measurement is plotted in its stored
+  /// unit. Mirrors `MeasurementHistoryChartSheet._toChartValue` so the quick
+  /// chart and the history sheet never disagree on the scale.
+  double _toChartValue(BodyMeasurementEntry entry) {
+    if (entry.unitId == 'unit-kg') {
+      return UnitFormatter.convertWeight(entry.value, widget.settingsState);
+    }
+    return entry.value;
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -188,7 +207,7 @@ class _MeasurementSparklineState extends State<MeasurementSparkline> {
   Widget _lineChart(BuildContext context, List<BodyMeasurementEntry> entries) {
     final theme = Theme.of(context);
 
-    final values = entries.map((e) => e.value).toList();
+    final values = entries.map(_toChartValue).toList();
     final maxV = values.reduce((a, b) => a > b ? a : b);
     final minV = values.reduce((a, b) => a < b ? a : b);
 
@@ -216,6 +235,7 @@ class _MeasurementSparklineState extends State<MeasurementSparkline> {
             child: CustomPaint(
               painter: _SparklinePainter(
                 entries: entries,
+                values: values,
                 color: theme.colorScheme.primary,
                 axisColor: theme.dividerColor,
                 yAxisLineX: 40,
@@ -234,7 +254,7 @@ class _MeasurementSparklineState extends State<MeasurementSparkline> {
             left: 0,
             width: 38,
             child: Text(
-              maxV.toStringAsFixed(1),
+              ProfileMeasurements.formatValue(maxV),
               style: scaleStyle,
               textAlign: TextAlign.right,
               maxLines: 1,
@@ -247,7 +267,7 @@ class _MeasurementSparklineState extends State<MeasurementSparkline> {
             left: 0,
             width: 38,
             child: Text(
-              minV.toStringAsFixed(1),
+              ProfileMeasurements.formatValue(minV),
               style: scaleStyle,
               textAlign: TextAlign.right,
               maxLines: 1,
@@ -345,6 +365,7 @@ class _MeasurementSparklineState extends State<MeasurementSparkline> {
 class _SparklinePainter extends CustomPainter {
   const _SparklinePainter({
     required this.entries,
+    required this.values,
     required this.color,
     required this.axisColor,
     required this.yAxisLineX,
@@ -352,6 +373,12 @@ class _SparklinePainter extends CustomPainter {
   });
 
   final List<BodyMeasurementEntry> entries;
+
+  /// Display values for [entries], aligned 1:1 by index, already converted
+  /// from canonical kilograms to the active unit by the host. The painter
+  /// only positions by value and must not read `entry.value` directly.
+  final List<double> values;
+
   final Color color;
 
   /// Color used for the Y-axis and X-axis lines.
@@ -385,7 +412,6 @@ class _SparklinePainter extends CustomPainter {
 
     if (entries.isEmpty) return;
 
-    final values = entries.map((e) => e.value).toList();
     final maxV = values.reduce((a, b) => a > b ? a : b);
     final minV = values.reduce((a, b) => a < b ? a : b);
     final range = (maxV - minV).abs();
@@ -437,7 +463,7 @@ class _SparklinePainter extends CustomPainter {
       // falls back to chart mid, so the dot lands at the visual
       // centre of the chart.
       final entry = entries.first;
-      final y = yForValue(entry.value);
+      final y = yForValue(values.first);
       final x = xForTimestamp(entry.recordedAtMs);
 
       final linePaint = Paint()
@@ -461,7 +487,7 @@ class _SparklinePainter extends CustomPainter {
     final path = Path();
     for (var i = 0; i < entries.length; i++) {
       final x = xForTimestamp(entries[i].recordedAtMs);
-      final y = yForValue(entries[i].value);
+      final y = yForValue(values[i]);
       if (i == 0) {
         path.moveTo(x, y);
       } else {
@@ -478,9 +504,9 @@ class _SparklinePainter extends CustomPainter {
     canvas.drawPath(path, linePaint);
 
     final dotPaint = Paint()..color = color;
-    for (final entry in entries) {
-      final x = xForTimestamp(entry.recordedAtMs);
-      final y = yForValue(entry.value);
+    for (var i = 0; i < entries.length; i++) {
+      final x = xForTimestamp(entries[i].recordedAtMs);
+      final y = yForValue(values[i]);
       canvas.drawCircle(Offset(x, y), 2.0, dotPaint);
     }
   }
@@ -488,6 +514,7 @@ class _SparklinePainter extends CustomPainter {
   @override
   bool shouldRepaint(_SparklinePainter oldDelegate) =>
       oldDelegate.entries != entries ||
+      oldDelegate.values != values ||
       oldDelegate.color != color ||
       oldDelegate.axisColor != axisColor ||
       oldDelegate.yAxisLineX != yAxisLineX ||
