@@ -182,7 +182,7 @@ final class WatchLoggingTimersTests: XCTestCase {
 
     // MARK: - S-003 round countdown
 
-    func testS003LoggingARoundStartsTheNextRoundCountdown() async throws {
+    func testS003StartStartsTheRoundCountdown() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
         _ = await engine.createSession(
@@ -191,10 +191,20 @@ final class WatchLoggingTimersTests: XCTestCase {
         )
         let surface = surface(harness, engine: engine)
 
-        try await surface.log()
+        await surface.startWork()
 
         let round = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
         XCTAssertEqual(round.plannedDurationMs, 180_000)
+        XCTAssertEqual(round.state, WatchTimerState.running)
+
+        harness.clock.advance(60)
+        try await surface.log()
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.round)?.state,
+            WatchTimerState.stopped,
+            "Log stops the period instead of starting the next one (D-1306)"
+        )
     }
 
     func testS003TheRoundHapticFiresAtTheInstantTheRoundEnds() async throws {
@@ -204,7 +214,8 @@ final class WatchLoggingTimersTests: XCTestCase {
             modality: "sports",
             exercises: [slot("sx-round", capabilities: ["time", "rounds"])]
         )
-        try await surface(harness, engine: engine).log()
+        let surface = surface(harness, engine: engine)
+        await surface.startWork()
 
         let haptics = WatchTimerHaptics(engine)
         let roundEnd = harness.clock.now.addingTimeInterval(180)
@@ -224,19 +235,21 @@ final class WatchLoggingTimersTests: XCTestCase {
             exercises: [slot("sx-round", capabilities: ["time", "rounds"])]
         )
         let surface = surface(harness, engine: engine)
-
-        try await surface.log()
         let haptics = WatchTimerHaptics(engine)
 
+        // Each period is its own countdown: Start opens it, Log stops it, and
+        // the next Start is a new row owed its own haptic (D-1306).
+        await surface.startWork()
         harness.clock.advance(180)
         XCTAssertEqual(haptics.poll(now: harness.clock.now).count, 1)
 
         try await surface.log()
+        await surface.startWork()
         harness.clock.advance(180)
         XCTAssertEqual(
             haptics.poll(now: harness.clock.now).count,
             1,
-            "round two is owed its own haptic"
+            "the second period is owed its own haptic"
         )
     }
 

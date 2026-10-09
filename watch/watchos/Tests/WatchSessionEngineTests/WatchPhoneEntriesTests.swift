@@ -298,8 +298,9 @@ final class WatchPhoneEntriesTests: XCTestCase {
 
     /// The phone sends a `timed`, a `hold` and a `round` over three slots. The
     /// wrist stores each under its own id — not only the sets — and the logging
-    /// surface reads them back as work it did: the round's number is spent, the
-    /// hold's length and its added load are what the next hold starts from.
+    /// surface reads them back as work it did: the round's number is spent, and
+    /// the hold's own window and added load are what the wrist's next hold
+    /// repeats.
     func testS145APhoneEntryOfEveryKindIsTheWristsOwn() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
@@ -343,13 +344,13 @@ final class WatchPhoneEntriesTests: XCTestCase {
 
         XCTAssertEqual(surface.effortKind, WatchEffortKind.round, "S-145 the round slot is shown")
         XCTAssertEqual(
-            value(surface, WatchMetricKey.rounds),
+            surface.nextRoundNumber,
             2,
             "S-145 the phone's round 1 is counted: the wrist's next round is 2"
         )
 
         // One frame later the wrist is on the hold slot: what the phone logged
-        // for it is what the surface's next hold starts from.
+        // for it is what the surface's next hold carries.
         _ = try await engine.applyMessage(
             phoneEntriesSnapshot(
                 messageId: "msg-kinds-2",
@@ -360,19 +361,43 @@ final class WatchPhoneEntriesTests: XCTestCase {
 
         XCTAssertEqual(surface.effortKind, WatchEffortKind.drill, "S-145 the hold slot is shown")
         XCTAssertEqual(
-            value(surface, WatchMetricKey.duration),
-            60,
-            "S-145 the phone's hold is the length the wrist carries over"
+            engine.entries.count,
+            3,
+            "S-145 a second frame carrying the same three ids adds no fourth row"
+        )
+        let phoneHold = try XCTUnwrap(
+            engine.entries.first { $0.entryId == "entry-sx-plank-0" }
+        )
+        XCTAssertEqual(
+            phoneHold.payload["startedAt"] as? String,
+            "2026-07-13T06:00:00Z",
+            "S-145 the phone's hold is the minute from 06:00 the wrist carries"
+        )
+        XCTAssertEqual(
+            phoneHold.payload["endedAt"] as? String,
+            "2026-07-13T06:01:00Z",
+            "S-145 …to 06:01"
         )
         XCTAssertEqual(
             value(surface, WatchMetricKey.extraWeight),
             12,
             "S-145 and the phone's added load with it"
         )
+
+        // The wrist's own hold, started and logged over the same minute, is the
+        // same window: a phone entry of every kind is the wrist's own.
+        await surface.startWork()
+        harness.clock.advance(60)
+        let wristHold = try await surface.log().payload
+
+        XCTAssertEqual(wristHold["kind"] as? String, "hold")
+        XCTAssertEqual(wristHold["startedAt"] as? String, "2026-07-13T06:00:00.000Z")
+        XCTAssertEqual(wristHold["endedAt"] as? String, "2026-07-13T06:01:00.000Z")
+        XCTAssertEqual(wristHold["extraLoadKg"] as? Double, 12)
         XCTAssertEqual(
             engine.entries.count,
-            3,
-            "S-145 a second frame carrying the same three ids adds no fourth row"
+            4,
+            "S-145 the wrist's own hold is one more row, once"
         )
     }
 

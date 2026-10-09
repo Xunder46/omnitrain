@@ -189,31 +189,37 @@ rows into `2026-10-09-21-watch-timed-work-plan.evidence.md` (pass counts, never 
 
 ### Phase 1A: the work clock and the surface state (@developer)
 
-1. [ ] Add the work-clock accessors — `watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift` · `isTimedWork`, `workTimerKind`, `workTimer`,
+1. [x] Add the work-clock accessors — `watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift` · `isTimedWork`, `workTimerKind`, `workTimer`,
    `isWorkRunning`, `workElapsedSeconds(now:)`, `workRemainingSeconds(now:)` (D-1301, D-1302). `workTimerKind` maps `timed`→`WatchTimerKind.elapsed`,
    `drill`→`.hold`, `round`→`.round`, `set`→nil; `workTimer` is the newest `engine.timerFor(kind)` row whose state is not `.stopped`, and nil unless `canLog`;
    `workElapsedSeconds` reads `activeElapsedMs` and `workRemainingSeconds` reads `remainingMs` (`WatchTimerMath.swift`).
-2. [ ] Add `startWork() async` and the preset seam — same file · `startWork()`, `init` (`:167`) (D-1301, D-1302, D-1303, D-1311, D-1314). One clock read; end a
+   **Done** — 10/10 in `WatchTimedWorkTests`; guards proved by mutations 3 and 5 (evidence §8.3).
+2. [x] Add `startWork() async` and the preset seam — same file · `startWork()`, `init` (`:167`) (D-1301, D-1302, D-1303, D-1311, D-1314). One clock read; end a
    running rest with `endRest(at: now)`; then `engine.startTimer(workTimerKind, plannedDurationMs: kind == .round ? roundPresetMs : nil)` (`WatchSessionEngine.swift:1524`).
    No-op when `!canLog`, when `!isTimedWork`, or when `isWorkRunning`. `init` gains `roundPresetMs: Int? = nil`, which initialises the stored
    `plannedRoundMs` (D-1303) to the argument `?? WatchLoggingDefaults.roundDurationSeconds * 1000` (`:24`); nothing else reads the default.
-3. [ ] Rewrite the timed-kind payload and its guard — same file · `log(now:)` (`:568`), `metricPayload` (`:606`), `windowPayload` (`:647`) (D-1304). No running
+   **Done** — S-1303 asserts `plannedDurationMs == 180_000`; the second-Start guard is mutation 6 (evidence §8.3).
+3. [x] Rewrite the timed-kind payload and its guard — same file · `log(now:)` (`:568`), `metricPayload` (`:606`), `windowPayload` (`:647`) (D-1304). No running
    work timer → throw `WatchRecordError.malformed` and store nothing. `timed`: `startedAt` = the timer's start, `endedAt` = the log instant, `distanceMeters`
    only when `sensors?.isMeasuringDistance == true` and the reading > 0. `drill`: the same window plus `extraLoadKg` when the dialled value is not 0. `round`:
    `roundWindow` (`:662`) as today, `roundNumber = nextRoundNumber` (`:325`), `pausedMs` as today. Stop the timer at the log instant after the append.
-4. [ ] Prune the rows and the follow-on — same file · `fields` (`:337`), `metricKeysByKind` (`:149`), `targetsByKind` (`:157`), `startFollowOnTimer` (`:731`)
+   **Done** — S-1300/S-1302/S-1304 green; guard and window proved by mutations 1, 2 and 7 (evidence §8.3).
+4. [x] Prune the rows and the follow-on — same file · `fields` (`:337`), `metricKeysByKind` (`:149`), `targetsByKind` (`:157`), `startFollowOnTimer` (`:731`)
    (D-1305, D-1306). `fields` is `[]` for `timed`/`round`, `[extraWeight]` for `drill`, unchanged for `set`; drop `duration`, `distance`, `rounds` and
    `roundDuration` from both tables for those kinds; `startFollowOnTimer` keeps only the `set` → rest case. `WatchMetricKey.all` and `WatchMetricStepping` are
    not touched.
-5. [ ] Give the model the button and the readout — `watch/watchos/Sources/WatchSessionEngine/WatchLoggingModel.swift` · `startWork()`, `primaryTitle`,
+   **Done** — S-1302/S-1303 green; mutation 8 found that no test covered the follow-on prune, so S-1303 gained a rest-row assertion, then went red under it.
+5. [x] Give the model the button and the readout — `watch/watchos/Sources/WatchSessionEngine/WatchLoggingModel.swift` · `startWork()`, `primaryTitle`,
    `primaryAction()`, `workReadout` (D-1308, D-1316), each followed by `poll()`.
-6. [ ] New `watch/watchos/Tests/WatchSessionEngineTests/WatchTimedWorkTests.swift` — the suite · `testS1300TimedWorkIsLoggedAsTheWindowFromStartToLog`,
+   **Done** — S-1303 asserts Start/"3:00" before Start and Log/"1:30" while running.
+6. [x] New `watch/watchos/Tests/WatchSessionEngineTests/WatchTimedWorkTests.swift` — the suite · `testS1300TimedWorkIsLoggedAsTheWindowFromStartToLog`,
    `testS1301LogBeforeStartStoresNothing`, `testS1302ADrillKeepsItsExtraLoadRow`, `testS1303APeriodCountsDownAndLogIsNotARoundButton`,
    `testS1304ALateLogOnAPeriodEndsWhereTheCountdownDid`, `testS1305StartEndsARunningRest`, `testS1306TheClockIsTheStoredTimers`,
    `testS1310APhoneSnapshotLeavesTheWristsWorkClockRunning`, `testS1311FinishLeavesTheWorkClockRunningAndTakesTheReadout`,
    `testS1312ARelaunchKeepsTheButtonOnLog` (S-1300…S-1306 and the guards S-1310…S-1312). Fixtures exactly as the scenarios give them, on the
    `Harness`/`TestClock` of `WatchSessionEngineTests.swift:32`; slots `sx-run` (`time`,`distance`), `sx-plank` (`hold`,`time`), a `rounds` slot.
    S-1303 must assert the milestone count across polls (`WatchTimerHaptics.poll`), not just the window.
+   **Done** — 10 tests covering all ten scenario ids, 0 failures (evidence §8.2).
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh swift-test` — green in `WatchTimedWorkTests` and everywhere else, with
 **exactly** this red list, and no other failure: the five `testFCap*` cases in `WatchCaptureContractTests` plus the 20 tests named in Phase 1B-i (13: the
@@ -263,20 +269,24 @@ surface file's 10 and the timer file's 3) and 1B-ii (7). Any failure outside tha
 
 ### Phase 1B-ii: the summary, recording and phone-entry tests (@developer)
 
-1. [ ] Migrate the summary tests — `watch/watchos/Tests/WatchSessionEngineTests/WatchSensorSummaryTests.swift` ·
+1. [x] Migrate the summary tests — `watch/watchos/Tests/WatchSessionEngineTests/WatchSensorSummaryTests.swift` ·
    `testS235HeartRateWithoutAStepCountSendsNoStepTotal` (:209), `testS235AStepCountThatDidNotMoveIsAMeasuredZero` (:227),
    `testS236AHoldIsSummarisedOverItsOwnWindow` (:252): Start at the window's opening instant, keep the log instant, keep every asserted number.
-2. [ ] Migrate the recording tests — `watch/watchos/Tests/WatchSessionEngineTests/WatchSensorRecordingTests.swift` ·
+   — done: Start at 10:04 / 10:02 / 11:00, logs unchanged; summary 17 tests / 0 failures (evidence §10.3).
+2. [x] Migrate the recording tests — `watch/watchos/Tests/WatchSessionEngineTests/WatchSensorRecordingTests.swift` ·
    `testS004TheLoggedEffortCarriesTheGpsTotal` (:277, no dial today — it logs with no running timer, so it Starts 1200 s before the log and keeps
    `distanceMeters == 3000`), `testS004WithoutAFixTheDistanceRowIsTheUsersToFill` (:295, dials `distance`; replaced by
    `testS004WithoutAFixTheTimedSurfaceOffersNoDistanceRow`), `testAMeasuredDistanceOutranksTheDial` (:883, reads the measured distance **row**; becomes "the
    measured distance is what the logged observation carries and the surface shows no distance row" — the dial it outranked no longer exists). Route a measured
    distance through `FakeSensorSource.fix(_:)` (`:72`) plus `eventually` (`:106`).
-3. [ ] Migrate the phone-entry test — `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift` ·
+   — done: the two renames landed, the fix is latched before Start; recording 38 / 0 and steps-denied 38 / 0 (evidence §10.3, mutation 1 in §10.4).
+3. [x] Migrate the phone-entry test — `watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift` ·
    `testS145APhoneEntryOfEveryKindIsTheWristsOwn` (:303): replace the `value(surface, .rounds)` (:346) and `value(surface, .duration)` (:363) reads with
    `state.nextRoundNumber` and the engine's own rows, then Start → Log at the same instants.
-4. [ ] Re-verify, sweep and record — `swift-test` **fully green**; then re-run the `fields` reads that must be unaffected
+   — done: `nextRoundNumber == 2`, the phone's own hold rows, then the wrist's own Start → +60 s → Log over the same minute; phone 8 / 0.
+4. [x] Re-verify, sweep and record — `swift-test` **fully green**; then re-run the `fields` reads that must be unaffected
    (`WatchLoggingSurfacesTests` :128/:503/:532/:575) and write the red→green table for 1A, 1B-i and 1B-ii into the evidence file, with the pass counts.
+   — done: `swift-test` no filter **415 executed / 0 failures**; surfaces 24 / 0 in the same run; evidence §10.5 holds the three-phase table.
 
 **Done Criteria**: `.github/copilot/scripts/macos/gateway.sh swift-test` (no filter, no expected red), plus
 `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart` (docs unchanged so far — it must already be green).
@@ -387,10 +397,10 @@ evidence file. Both docs stay inside the 51.2 KB band.
 
 | Phase | Status |
 |---|---|
-| 1A | Not started |
+| 1A | **Complete** — 10/10 in `WatchTimedWorkTests`; full `swift-test` 414 tests / 39 failures (33 unexpected) against the plan's predicted 25; every extra failure is in 1B-i/1B-ii's own files and fails only for D-1304/D-1305 — see the Assumption Log and evidence §8.4 |
 | 1B | Not started — split into 1B-i and 1B-ii (the by-name list is 20 tests over 6 files; the brief allows 8 items per run) |
-| 1B-i | Not started |
-| 1B-ii | Not started |
+| 1B-i | **Complete** — the F-CAP fixture migrated and its four files green: contract 6/6, surfaces 24/24, timers 28/28; full `swift-test` 415 tests / 15 failures, all 12 names inside 1B-ii's three files; `lint` 196 = baseline — see evidence §9 |
+| 1B-ii | **Complete** — the three files green: summary 17/17, recording 38/38, steps-denied 38/38, phone 8/8; full `swift-test` **415 tests / 0 failures, no filter**; `test/docs_indexing_contract_test.dart` 9/9; `lint` 196 = baseline — see evidence §10 |
 | 2 | Not started |
 | 3 | Not started |
 
@@ -407,6 +417,37 @@ evidence file. Both docs stay inside the 51.2 KB band.
   Finish stop the work clock — rejected, D-1309 records the behaviour and the owner has not asked for it.
 - (planner) Phase 2's lock reads timer states (`engine.timerFor`), never `plannedDurationMs`: the menu sources are greped by
   `WatchMenuTests.testS1108…` (:502) for exactly that token. Options: read the row's plan — rejected, it is a source-guard violation.
+- (developer, 1A) **The 1A red list is under-enumerated: 37 names, not the predicted 25.** The extras are 6 more in `WatchSensorSummaryTests`
+  (9 vs 3) and 7 more in `WatchSensorRecordingTests`/its `…StepsDenied` subclass (10 vs 3) — the same two files, failing only for
+  "the surface has no duration to dial" or "start the effort first, then log it", i.e. exactly D-1305/D-1304. Options: block the phase on the count
+  — rejected, the decisions require these failures and the files are already 1B-ii's; or absorb them — rejected, not this run's scope. Ratify before 1B.
+- (developer, 1A) `workRemainingSeconds()` returns the preset when no countdown row runs, so a period reads "3:00" before Start (D-1303). Options: return
+  nil and render a blank readout — rejected, S-1303's Expected Outcome names the preset as what a period shows before Start.
+- (developer, 1A) S-1310 is driven as a `timer_state` message (id `m-phone`) adopting the phone's round row, then an authoritative snapshot naming no
+  timers: the wrist's own UUID-id `elapsed` row keeps running. Options: read the guard from `adoptTimers` alone — rejected, the scenario is only
+  observable end-to-end through a message.
+- (developer, 1B-i) **The 1A red count reconciles: 39 → 15 failures.** This phase's four files account for 18 (5 contract + 10 surfaces + 3 timers) and the
+  fixture migration for another 6 — the `WatchSensorSummaryTests` tests that replay the timeline and threw from `WatchCaptureContractTests.swift:159`
+  (`.work/gateway/swift-test-20261009-174658-44740.log:686-713`). The remaining 15 are the recording (5 + 5) and phone (2) failures 1B-ii owns. Options:
+  leave the 1A note open — rejected, the arithmetic is now observed.
+- (developer, 1B-i) `CaptureReplay.dial` was made `internal` so `testS1303ATimedSurfaceHasNoLengthToDial` can assert the replay *op* is refused; the guard's
+  other half (a timed surface has no row) needs no access. Options: assert through `adjust(_:detents:)` alone — rejected, the migration is about the op the
+  fixture used to carry.
+- (developer, 1B-i) The fixture's three rest record ids shift +2 (`rec-13/15/17-rest` → `rec-15/17/19-rest`) in all three cases, because each inserted Start
+  mints a timer row. No `expectedEvents`/`expectedImport` value moves (evidence §6). Options: change the replay's `idFactory` — rejected, that would hide
+  the rows the engine really mints.
+- (developer, 1B-i) No doc update required: the two docs that name the fixture (`docs/watch_session_capture.md`, `docs/state_management/watch_surface.md`)
+  name `WatchCaptureContractTests`, which is unchanged, and no doc names a renamed test; `watch_surface.md`'s size band is untouched by this phase.
+- (developer, 1B-ii) `WatchSensorRecordingTests`' S-237 rest ids take the same +2 shift 1B-i applied to the fixture (`rec-13/15/17-rest` →
+  `rec-15/17/19-rest`), the brief's extra item. The three assertions hold with or without it (`confirmObservations` is idempotent and the prune needs every
+  receipt), so it is realism, not a guard. Options: leave the stale ids — rejected, they would name rows the engine no longer mints.
+- (developer, 1B-ii) Two test names changed with the migration: `testS004WithoutAFixTheDistanceRowIsTheUsersToFill` →
+  `…TheTimedSurfaceOffersNoDistanceRow` and `testAMeasuredDistanceOutranksTheDial` → `testAMeasuredDistanceIsWhatTheObservationCarries`; the assertions they
+  replaced were about a dial that no longer exists (D-1305). Options: keep the old names — rejected, a name that names a deleted row misleads the next reader.
+- (developer, 1B-ii) The brief calls `WatchPhoneEntriesTests`' pre-migration red "1 failure" where §9.5 records 2; both are stale reads of the same
+  `rounds`/`duration` dials, so the migration clears both. Options: treat the discrepancy as a blocker — rejected, the suite is green and no other file moved.
+- (developer, 1B-ii) No doc update required: no page in `docs/` names a watch test name (checked by `grep` across `docs/` and `watch/` — only this plan and
+  the evidence file carry them), and this phase changes no doc page's structure or behaviour claims.
 
 ## Feedback
 

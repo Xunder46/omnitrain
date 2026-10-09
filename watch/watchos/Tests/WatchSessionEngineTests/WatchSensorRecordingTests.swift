@@ -279,19 +279,22 @@ class WatchSensorRecordingTests: XCTestCase {
         await sensors.start(try XCTUnwrap(engine.session))
         source.fix(3000)
         await eventually { sensors.recorder.readings.distanceMeters == 3000 }
-        clock.advance(1200)
 
         let state = WatchLoggingState(
             engine: engine,
             clock: clock.call,
             sensors: sensors.recorder
         )
+        // Timed work is its own clock: Start opens the window the log closes
+        // 1200 s later, where the old dial left it empty.
+        await state.startWork()
+        clock.advance(1200)
         let logged = try await state.log()
 
         XCTAssertEqual(logged.payload["distanceMeters"] as? Double, 3000)
     }
 
-    func testS004WithoutAFixTheDistanceRowIsTheUsersToFill() async throws {
+    func testS004WithoutAFixTheTimedSurfaceOffersNoDistanceRow() async throws {
         source.locationGrant = .denied
         let engine = await harness.runningEngine()
         _ = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
@@ -303,10 +306,21 @@ class WatchSensorRecordingTests: XCTestCase {
             clock: clock.call,
             sensors: sensors.recorder
         )
+        XCTAssertFalse(state.isMeasuringDistance, "no fix, so nothing is measured")
+        XCTAssertTrue(
+            state.fields.isEmpty,
+            "a timed surface has no rows: the distance is neither measured nor the user's to dial"
+        )
         state.adjust(WatchMetricKey.distance, detents: 15)
+
+        await state.startWork()
+        clock.advance(1200)
         let logged = try await state.log()
 
-        XCTAssertEqual(logged.payload["distanceMeters"] as? Double, 1500)
+        XCTAssertNil(
+            logged.payload["distanceMeters"],
+            "with nothing measured the observation carries no distance"
+        )
     }
 
     // MARK: - S-005 a kill leaves nothing running in the health store
@@ -593,7 +607,7 @@ class WatchSensorRecordingTests: XCTestCase {
         _ = await engine.confirmObservations(
             [
                 "e-run", "e-r1", "e-r2", "e-r3", "e-set1", "e-set2", "e-set3",
-                "rec-13-rest", "rec-15-rest", "rec-17-rest",
+                "rec-15-rest", "rec-17-rest", "rec-19-rest",
             ]
         )
         let afterEntries = await engine.pruneSettledSensorSamples()
@@ -884,7 +898,7 @@ class WatchSensorRecordingTests: XCTestCase {
 
     // MARK: - Distance readout
 
-    func testAMeasuredDistanceOutranksTheDial() async throws {
+    func testAMeasuredDistanceIsWhatTheObservationCarries() async throws {
         let engine = await harness.runningEngine()
         _ = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
         let sensors = sensors(for: engine)
@@ -893,23 +907,22 @@ class WatchSensorRecordingTests: XCTestCase {
         await eventually { sensors.recorder.readings.distanceMeters == 3200 }
 
         let state = WatchLoggingState(engine: engine, clock: clock.call, sensors: sensors.recorder)
-        let distance = try XCTUnwrap(
-            state.fields.first { $0.metricKey == WatchMetricKey.distance }
-        )
 
-        XCTAssertTrue(distance.isMeasured)
+        XCTAssertTrue(state.isMeasuringDistance, "the fix is being kept")
+        XCTAssertTrue(
+            state.fields.isEmpty,
+            "a timed surface has no distance row, so there is no dial for a measurement to outrank"
+        )
         state.adjust(WatchMetricKey.distance, detents: 15)
-        XCTAssertEqual(
-            distance.value,
-            3200,
-            "a measured row is not a number the user can add to"
-        )
 
+        await state.startWork()
+        clock.advance(1200)
         let logged = try await state.log()
+
         XCTAssertEqual(
             logged.payload["distanceMeters"] as? Double,
             3200,
-            "the phone receives the measured total, not the last thing the dial was set to"
+            "the phone receives the measured total, not a number the user added to it"
         )
     }
 }

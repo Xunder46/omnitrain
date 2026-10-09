@@ -13,11 +13,10 @@
 //  Phase 4a (the replay up to End) and Phase 4b (all three cases, rating
 //  included).
 //
-//  One deliberate difference from a user's taps (O-13): after a round is
-//  logged, the replay starts the next round's countdown itself, planned at the
-//  round length that was dialled, as the contract's description states. The
-//  wrist's own follow-on countdown reverts to the default length after a
-//  dialled round, and PR 2 leaves that behaviour as it is.
+//  The replay follows the wrist's own flow (D-1315): `startWork` is the Start
+//  that begins the current effort's clock — planned at the case's
+//  `periodSeconds` for a period — and `log` ends that clock at the log
+//  instant. Nothing starts a clock the user did not, so no op dials a length.
 //
 
 import XCTest
@@ -28,6 +27,8 @@ import XCTest
 /// instant, through the same engine and logging surface a wrist runs.
 final class CaptureReplay {
     let captureCase: [String: Any]
+    /// The length a period is planned at: the case's own `periodSeconds`.
+    let periodSeconds: Double
     let clock: TestClock
     let store: InMemoryWatchSessionStore
     private(set) var emitted: [[String: Any]] = []
@@ -47,6 +48,10 @@ final class CaptureReplay {
             throw ReplayError.malformed("F-CAP has no case \"\(name)\"")
         }
         captureCase = found
+        guard let period = numericValue(found["periodSeconds"]) else {
+            throw ReplayError.malformed("F-CAP case \"\(name)\" has no periodSeconds")
+        }
+        periodSeconds = period
 
         let first = (found["timeline"] as? [[String: Any]])?.first
         clock = TestClock(try parseUtcIso(first?["at"]))
@@ -115,6 +120,9 @@ final class CaptureReplay {
                 modality: op["modality"] as? String,
                 exercises: (op["exercises"] as? [[String: Any]]) ?? []
             )
+        case "startWork":
+            // The wrist's Start: the current effort's own clock (D-1304).
+            await surface.startWork()
         case "hr":
             _ = await engine.appendSensorSample(
                 kind: WatchSensorKind.heartRate,
@@ -153,8 +161,9 @@ final class CaptureReplay {
         }
     }
 
-    /// Dials `metric` to exactly `value`, in whole detents.
-    private func dial(_ metric: String, to value: Double) throws {
+    /// Dials `metric` to exactly `value`, in whole detents. The guard for
+    /// S-1303: a surface that offers no such row refuses the dial.
+    func dial(_ metric: String, to value: Double) throws {
         guard let field = surface.fields.first(where: { $0.metricKey == metric }) else {
             throw ReplayError.malformed("the surface has no \(metric) to dial")
         }
@@ -166,22 +175,9 @@ final class CaptureReplay {
     }
 
     private func log(_ entryId: String) async throws {
-        let roundLength = surface.effortKind == WatchEffortKind.round
-            ? surface.fields.first { $0.metricKey == WatchMetricKey.roundDuration }?.value
-            : nil
-
         let logged = try await surface.log()
         guard logged.entryId == entryId else {
             throw ReplayError.malformed("logged \(logged.entryId), the timeline says \(entryId)")
-        }
-
-        // O-13: the next round's countdown, planned at the length dialled for
-        // the round that started it — started here, explicitly.
-        if let roundLength {
-            _ = try await engine.startTimer(
-                WatchTimerKind.round,
-                plannedDurationMs: Int((roundLength * 1000).rounded())
-            )
         }
     }
 
@@ -204,7 +200,8 @@ final class CaptureReplay {
             idFactory: { [weak self] in
                 guard let self, !self.scriptedEntryIds.isEmpty else { return UUID().uuidString }
                 return self.scriptedEntryIds.removeFirst()
-            }
+            },
+            roundPresetMs: Int((periodSeconds * 1000).rounded())
         )
         preferences = WatchPhonePreferences(store: store, validator: Harness.validator(), clock: clock.call)
         rating = WatchEffortRatingState(engine: engine, store: store, preferences: preferences, clock: clock.call)
@@ -314,5 +311,45 @@ final class WatchCaptureContractTests: XCTestCase {
         assertEventsEqual(replay.emittedEvents, replay.expectedEvents, "F-CAP prompt-off")
         XCTAssertEqual(replay.emittedEvents.count, 11, "F-CAP prompt-off: no rating, so eleven events")
         XCTAssertFalse(replay.rating.isPromptOwed, "F-CAP prompt-off: the setting is off, so nothing is owed")
+    }
+
+    // MARK: - S-1303: a length is never dialled
+
+    /// S-1303 (D-1305): the effort's own clock is its length, so neither the
+    /// timed effort nor a period offers a row to dial, and the replay refuses
+    /// the dial that the timeline used to carry.
+    func testS1303ATimedSurfaceHasNoLengthToDial() async throws {
+        let timed = try CaptureReplay("full")
+        try await timed.run(stoppingBefore: ["log"])
+        XCTAssertEqual(timed.surface.effortKind, WatchEffortKind.timed, "S-1303: the timed effort is current")
+        XCTAssertTrue(timed.surface.fields.isEmpty, "S-1303: a timed effort shows no row to dial")
+        assertMalformed("the surface has no duration to dial") {
+            try timed.dial(WatchMetricKey.duration, to: 1200)
+        }
+
+        let period = try CaptureReplay("full")
+        try await period.run(stoppingBefore: ["pauseRound"])
+        XCTAssertEqual(period.surface.effortKind, WatchEffortKind.round, "S-1303: the period is current")
+        XCTAssertTrue(period.surface.fields.isEmpty, "S-1303: a period shows no length to dial")
+        assertMalformed("the surface has no round-duration to dial") {
+            try period.dial(WatchMetricKey.roundDuration, to: 300)
+        }
+    }
+
+    /// Asserts `body` throws the replay's own malformed error, naming `message`.
+    private func assertMalformed(
+        _ message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ body: () throws -> Void
+    ) {
+        do {
+            try body()
+            XCTFail("S-1303: expected \"\(message)\" and nothing was thrown", file: file, line: line)
+        } catch CaptureReplay.ReplayError.malformed(let thrown) {
+            XCTAssertEqual(thrown, message, "S-1303: the replay's own message", file: file, line: line)
+        } catch {
+            XCTFail("S-1303: expected \"\(message)\", got \(error)", file: file, line: line)
+        }
     }
 }

@@ -130,3 +130,262 @@ Today the three cases dial the window; after the change each `timed`/`round` eff
   red — if they stay green, the guard is not wired to the code path it claims.
 - **Mutation for D-1304's guard:** remove the `canLog`/no-timer throw and S-1301 must go red.
 - **Mutation for Phase 2's lock:** make `isLocked` read `plannedDurationMs` and `WatchMenuTests.testS1108…` (:502) goes red on the source grep.
+
+## 8. Phase 1A — results (@developer, run of 2026-10-09 17:44–17:49 UTC)
+
+Logs: `.work/gateway/swift-test-20261009-174342-42914.log` (first full run), `…-174117-42008.log` (filtered red build),
+`…-174658-44740.log` (full run at the end of the run), `.work/gateway/lint-20261009-174811-45091.log`.
+
+### 8.1 Phase 0.3 — red before implementation
+
+`.github/copilot/scripts/macos/gateway.sh swift-test --filter WatchTimedWorkTests` on the pre-change tree:
+**build failed, 26 compile errors**, every one of them "no member `startWork`/`isWorkRunning`/`workElapsedSeconds`/`workRemainingSeconds`/`workTimer`/
+`workTimerKind`" or "extra argument `roundPresetMs` in call". The suite cannot compile without the change, so `prove-red HEAD` is RED for a compile
+reason and proves nothing: every guard below is proved by mutation instead (recorded original → mutant → verdict → restore).
+
+### 8.2 The new suite, green
+
+| Run | Command | Result |
+|---|---|---|
+| S-1300…S-1306, S-1310…S-1312 | `swift-test --filter WatchTimedWorkTests` | **10 tests, 0 failures** |
+
+The last filtered run (after every mutation was restored) is `Executed 10 tests, with 0 failures (0 unexpected) in 0.023 s`.
+
+### 8.3 Mutation table — each guard, proved
+
+One mutation at a time; the original text was restored exactly and the suite re-run green before the next one. No step ended with a mutation applied.
+
+| # | Guard | Mutation (the mutant) | Verdict |
+|---|---|---|---|
+| 1 | D-1304 "no running clock → nothing stored" | `if isTimedWork, workTimer == nil, engine.session == nil` | **RED AT S-1301** (lines 144/148/149) — `1 tests, 3 failures` |
+| 2 | the window's start instant | `"startedAt": utcIso(loggedAt)` | **RED AT S-1300, S-1302, S-1312** — `3 failures` |
+| 3 | `workTimer` is nil unless `canLog` | dropped `canLog` from its guard | **RED AT S-1311** (lines 459/460) — `2 failures` |
+| 4 | D-1305 no dialable row for a drill | `metricKeysByKind[.drill] += duration` | **RED AT S-1302** (line 171) — `1 failure` |
+| 5 | D-1303 the preset before Start | `workRemainingSeconds`: `guard let timer = workTimer else { return nil }` | **RED AT S-1303** (lines 205/207) — `2 failures` |
+| 6 | D-1302 a second Start does not stack | dropped `!isWorkRunning` from `startWork()` | **RED AT S-1301** (line 154) — `1 failure` |
+| 7 | D-1304 Log ends the clock | `if false, let kind = workTimerKind { … stopTimer … }` | **RED AT S-1300, S-1303** — `6 failures` |
+| 8 | D-1306 only a set starts a rest | `startFollowOnTimer`: rest started for every kind | **GREEN — no test covered it**; S-1303 gained `engine.timerRows(WatchTimerKind.rest).isEmpty` and then went **RED** at line 241 |
+| 9 | D-1306 the round follow-on is gone | `startFollowOnTimer` restored to set→rest, round→countdown | **RED AT S-1303 (5 assertions) and S-1304** — `6 failures` |
+
+Mutations 8 and 9 are the two halves of the same guard: 8 is the "nothing else starts a timer" half (it found the gap and the assertion that closes it),
+9 is the exact pre-change behaviour the plan deletes.
+
+### 8.4 The full suite at the end of Phase 1A
+
+`swift-test` (no filter): **414 tests executed, 39 failures (33 unexpected)**, 37 distinct failing test names. Unchanged by the two assertion
+additions to S-1303 (identical counts before and after).
+
+| File | Failing tests | Reason (all intended by D-1304/D-1305) |
+|---|---|---|
+| `WatchCaptureContractTests` | 5 `testFCap*` | `malformed("the surface has no duration to dial")` — the fixture still dials a length (1B-i migrates it) |
+| `WatchLoggingSurfacesTests` | 9 | 7 × "start the effort first, then log it"; 2 stale assertions (`fields` has no `duration` row) |
+| `WatchLoggingTimersTests` | 3 | "start the effort first, then log it" (the follow-on countdown they relied on is gone) |
+| `WatchPhoneEntriesTests` | 1 | 2 stale assertions reading a `rounds`/`duration` dial that no longer exists |
+| `WatchSensorSummaryTests` | 9 | 5 × no-duration-to-dial; 4 × start-the-effort-first |
+| `WatchSensorRecordingTests` + `WatchSensorRecordingStepsDeniedTests` | 5 + 5 | 6 × no-duration-to-dial; 4 × start-the-effort-first |
+| **total** | **37 names / 39 failures** | 33 thrown errors with those two messages, 6 stale assertions |
+
+**Done-Criteria deviation, recorded:** the plan predicts exactly 25 red (the 5 `testFCap*` + 1B-i's 13 + 1B-ii's 7). The actual list is 37 names:
+the extras are 12 more tests in `WatchSensorSummaryTests` (9 actual vs 3 predicted) and `WatchSensorRecordingTests`/its `…StepsDenied` subclass
+(10 actual vs 3 predicted) — the same two files, failing only for the two intended reasons. No failure falls outside the plan's Predicted Files, and
+nothing fails for a reason the decisions do not require. `WatchLoggingSurfacesTests` is 9, not the predicted 10. Flagged for the planner to ratify the
+count before 1B (see the plan's Assumption Log).
+
+### 8.5 The other end-of-run checks
+
+| Check | Command | Result |
+|---|---|---|
+| Phone lint | `lint` | **196 issues, 0 errors, 0 warnings** — all pre-existing `info` notices (`deprecated_member_use`, `constant_identifier_names`, …); no Dart file is in this diff, so the baseline is unchanged. This is the number the plan's row 1 asked to capture |
+| Persistence invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | **no matches** |
+| Phone tests | `test` | **4226 passed, 1 skipped, "All tests passed!"** — byte-identical to the plan's "no Dart file moves" expectation (`.work/gateway/test-20261009-174822-45226.log`) |
+| Watch scheme | `xcodebuild` (governor only) | not run here — Phase 3's view items; the package compiles under `swift-test` |
+
+## 9. Phase 1B-i — the F-CAP fixture and the surface/timer tests (@developer, run of 2026-10-09 18:29–18:39 UTC)
+
+Logs: `.work/gateway/swift-test-20261009-183611-63837.log` (the full run at the end), `.work/gateway/test-20261009-183656-64114.log` (Dart),
+`.work/gateway/lint-20261009-183908-64739.log` (phone lint). Filtered and mutation runs stayed under the gateway's line limit, so they are quoted inline.
+
+### 9.1 The red this phase had to clear (same source, pre-migration fixture)
+
+| Suite | Command | Before |
+|---|---|---|
+| `WatchCaptureContractTests` | `swift-test --filter WatchCaptureContractTests` | **5 red** — the five `testFCap*` replays |
+| `WatchLoggingSurfacesTests` | `… --filter WatchLoggingSurfacesTests` | **9 red** — `testEveryValidObservationsEventIsReproducedByTheSurfaceShape`, `testS002AnExerciseThatCannotCoverDistanceOffersNoDistance`, `testS002DurationIsLoggedAsTheWindowThatEndedAtTheLog`, `testS002TheNextEffortPresentsAFreshDuration`, `testS003ARoundThatRanItsCountdownEndsWhereTheCountdownDid`, `testS003LoggingARoundNumbersItAndStartsTheNextCountdown`, `testS004HoldDurationAndExtraLoadAreLoggedTogether`, `testS006AManualDistanceReachesTheObservationWithNoFixNeeded`, `testS062ADrillSendsItsExtraLoadAndNeverALoadKg` |
+| `WatchLoggingTimersTests` | `… --filter WatchLoggingTimersTests` | **3 red** — `testS003ANewRoundIsANewCountdownSoItFiresAgain`, `testS003LoggingARoundStartsTheNextRoundCountdown`, `testS003TheRoundHapticFiresAtTheInstantTheRoundEnds` |
+
+### 9.2 The same four files green
+
+| Run | Command | Result |
+|---|---|---|
+| Contract | `swift-test --filter WatchCaptureContractTests` | **Executed 6 tests, with 0 failures** (5 migrated + the new guard) |
+| Surfaces | `swift-test --filter WatchLoggingSurfacesTests` | **Executed 24 tests, with 0 failures** |
+| Timers | `swift-test --filter WatchLoggingTimersTests` | **Executed 28 tests, with 0 failures** |
+
+Red → green, test by test (the rename is the only name change; `:line` are the pre-edit lines of the evidence §3 register):
+
+| File | Test | Was red for | Now |
+|---|---|---|---|
+| `WatchCaptureContractTests` | the five `testFCap*` | the fixture dialled a length (`malformed("the surface has no duration to dial")`) | the timeline Starts each effort, so the replay never dials; the numbers are unchanged |
+| `WatchCaptureContractTests` | `testS1303ATimedSurfaceHasNoLengthToDial` (new) | — | asserts a timed surface has no row at all *and* that the replay's `dial` op is refused |
+| `WatchLoggingSurfacesTests` | `testS002DurationIsLoggedAsTheWindowThatEndedAtTheLog` (:255) | logged with no running clock | Start at the instant the old dial implied, 300 s to the log; window and numbers unchanged |
+| `WatchLoggingSurfacesTests` | `testS002TheNextEffortPresentsAFreshDuration` (:282) | read a fresh *dial* | the next period is its own Start; the second window is `loggedAt − 60` |
+| `WatchLoggingSurfacesTests` | `testS002AnExerciseThatCannotCoverDistanceOffersNoDistance` (:299) | expected a `duration` row | asserts `fields.isEmpty` — a timed surface shows nothing to dial (D-1305) |
+| `WatchLoggingSurfacesTests` | `testS003LoggingARoundNumbersItAndStartsTheNextCountdown` (:326) → `testS003StartStartsTheRoundCountdown` | relied on the follow-on countdown | Start plans 180 000 ms, Log stops the row and bumps `nextRoundNumber` (D-1303/D-1306) |
+| `WatchLoggingSurfacesTests` | `testS003ARoundThatRanItsCountdownEndsWhereTheCountdownDid` (:348) | the second log had no clock | Start opens the countdown, one Log reads it; every asserted instant unchanged |
+| `WatchLoggingSurfacesTests` | `testS004HoldDurationAndExtraLoadAreLoggedTogether` (:381) | dialled `duration` | Start 60 s before the log; `extraLoadKg == -10` and the drill's row unchanged |
+| `WatchLoggingSurfacesTests` | `testS006AManualDistanceReachesTheObservationWithNoFixNeeded` (:409) → `testS006AManualDistanceNeverReachesTheObservation` | dialled `distance` (4 → 400 m) | a timed surface offers no distance row, so the observation carries none |
+| `WatchLoggingSurfacesTests` | `testEveryValidObservationsEventIsReproducedByTheSurfaceShape` (:592) | dialled the fixture's distance | the distance now arrives as a `FakeSensorSource` fix through a `WatchSensorRecorder`; the field set is unchanged |
+| `WatchLoggingSurfacesTests` | `testS062ADrillSendsItsExtraLoadAndNeverALoadKg` (:173) | logged with no running clock | Start before Log |
+| `WatchLoggingTimersTests` | `testS003LoggingARoundStartsTheNextRoundCountdown` (:185) → `testS003StartStartsTheRoundCountdown` | the follow-on countdown was what it asserted | Start plans the countdown, Log stops it |
+| `WatchLoggingTimersTests` | `testS003ANewRoundIsANewCountdownSoItFiresAgain` (:200) | logged to get a countdown | Start opens it; milestone instants unchanged |
+| `WatchLoggingTimersTests` | `testS003TheRoundHapticFiresAtTheInstantTheRoundEnds` (:219) | two logs, two follow-on countdowns | Start → 180 s → poll → Log → Start → 180 s → poll; both milestone instants unchanged |
+
+Untouched and re-verified: `testS003TheRoundCarriesTheTerminologyThePhoneUses` (:313) and `testS004HoldDurationAndExtraLoadAreLoggedTogether`'s siblings
+that read the contract; `testSteppingMatchesTheSharedContract`; the timer-math tests (:356–:406) and the two S-79 snapshot tests (:601/:642).
+
+### 9.3 The fixture's rest record ids moved +2, by arithmetic
+
+The replay's `idFactory` mints `rec-1`, `rec-2`, … per engine record. The migrated timeline Starts each effort, and a Start mints a work-timer row, so
+the two efforts that previously relied on the follow-on countdown now mint two more rows: every `rec-N` after the second Start shifts by two. The three
+rest ids therefore move `rec-13-rest → rec-15-rest`, `rec-15-rest → rec-17-rest`, `rec-17-rest → rec-19-rest` — in `expectedEvents` (both `entryId` and
+`eventId`), in `receiptedEntryIds`, and in the three derivations (whose time ranges do not move). **No `expectedEvents` or `expectedImport` value moved**,
+exactly as evidence §6 predicted. The Dart half reads no record id from a timeline: `test/watch_capture_contract_conformance_test.dart` takes
+`preferences`/`answer` only (:248–:256).
+
+### 9.4 prove-red, and the two mutations
+
+`.github/copilot/scripts/macos/gateway.sh prove-red HEAD swift-test --filter WatchCaptureContractTests -- watch/watchos/Tests/WatchSessionEngineTests/WatchCaptureContractTests.swift`
+→ **RED AT HEAD (exit 1) for a compile reason**, not an assertion: `error: value of type 'WatchLoggingState' has no member 'startWork'` (:125) and
+`error: extra argument 'roundPresetMs' in call` (:204). The 1A source is uncommitted, so HEAD is the pre-1A tree and no guard in these four files can
+compile there — the gateway's own verdict line says "use a mutation instead". Every guard is therefore proved by mutation, one at a time, with the
+original restored exactly and re-run green (no step ended with a mutation applied).
+
+| # | Guard | Mutant (the exact edit, on the working tree) | Verdict |
+|---|---|---|---|
+| 1 | D-1303 the round period's 3:00 plan, and D-1306 that Log ends it | `WatchLoggingState.swift:356` `plannedDurationMs: kind == WatchTimerKind.round ? plannedRoundMs : nil` → `plannedDurationMs: nil` | **RED**: surfaces `24 tests, 2 failures` — `testS003StartStartsTheRoundCountdown` (:365 `("nil") is not equal to ("Optional(180000)")`), `testS003ARoundThatRanItsCountdownEndsWhereTheCountdownDid` (:396 XCTUnwrap nil `Date`); timers `28 tests, 4 failures` — `testS003StartStartsTheRoundCountdown` (:197), `testS003ANewRoundIsANewCountdownSoItFiresAgain` (:244/:249), `testS003TheRoundHapticFiresAtTheInstantTheRoundEnds` (:224) |
+| 2 | D-1305 a timed surface has no row to dial | `WatchLoggingState.swift:159` `WatchEffortKind.timed: []` → `[WatchMetricKey.duration]` | **RED**: contract `6 tests, 2 failures` — `testS1303ATimedSurfaceHasNoLengthToDial` (:325/:326); surfaces `24 tests, 1 failure` — `testS002AnExerciseThatCannotCoverDistanceOffersNoDistance` (:329) |
+
+Restore verified by `grep` on the source: `:159` is `WatchEffortKind.timed: [],` and `:356` is the round preset again, with no `plannedDurationMs: nil`
+anywhere in the file; the full run in §9.5 is the green re-run. S-006's own guard (no distance row ⇒ no manual distance) cannot be told apart from
+mutation 2's sibling by a mutant, so it rests on §9.1's red baseline: the pre-migration test dialled a distance and the observation carried 400 m.
+
+### 9.5 The full suite at the end of Phase 1B-i
+
+`swift-test` (no filter): **415 tests executed, 15 failures (7 unexpected), 12 distinct names** — every one inside the three files 1B-ii owns.
+
+| Suite | Executed | Failures | Names |
+|---|---|---|---|
+| `WatchCaptureContractTests` | 6 | 0 | — |
+| `WatchLoggingSurfacesTests` | 24 | 0 | — |
+| `WatchLoggingTimersTests` | 28 | 0 | — |
+| `WatchTimedWorkTests` (1A's suite) | 10 | 0 | — |
+| `WatchPhoneEntriesTests` | 8 | 2 | 1 — `testS145APhoneEntryOfEveryKindIsTheWristsOwn` |
+| `WatchSensorRecordingTests` | 38 | 5 | 4 — `testAMeasuredDistanceOutranksTheDial`, `testS004TheLoggedEffortCarriesTheGpsTotal`, `testS004WithoutAFixTheDistanceRowIsTheUsersToFill`, `testS237TheLogIsReleasedOnlyOnceTheSessionEndIsAcknowledged` |
+| `WatchSensorRecordingStepsDeniedTests` | 38 | 5 | the same four |
+| `WatchSensorSummaryTests` | 17 | 3 | `testS235AStepCountThatDidNotMoveIsAMeasuredZero`, `testS235HeartRateWithoutAStepCountSendsNoStepTotal`, `testS236AHoldIsSummarisedOverItsOwnWindow` |
+| every other suite | — | 0 | — |
+
+**Reconciles with §8.4 (39 failures → 15):** −5 contract, −10 surfaces, −3 timers (this phase's own files) and −6 in `WatchSensorSummaryTests`. Those six
+were red in 1A because they replay the fixture (`…-174658-44740.log:686–713` shows the error thrown from `WatchCaptureContractTests.swift:159`), so
+migrating the timeline fixed them without a test edit. The recording file (5 + 5) and the phone file (2) are unchanged, and both are 1B-ii's. **Done
+Criteria met:** green in the four Predicted Files, red only in the three files 1B-ii names.
+
+### 9.6 The other end-of-run checks
+
+| Check | Command | Result |
+|---|---|---|
+| Phone lint | `lint` | **196 issues** — identical to §8.5's baseline; no Dart file is in this diff |
+| Phone tests | `test test/watch_capture_contract_conformance_test.dart test/watch_capture_contract_test.dart test/watch_session_import_test.dart` | **88 passed, "All tests passed!"** — the migrated fixture imports value-for-value on both repositories |
+| Persistence invariant | `grep` for `import .*hive_workout_repository` under `lib/state`, `lib/features`, `lib/widgets`, `lib/core` | **no matches** (only `lib/main.dart`, the composition root, imports it) |
+| Footprint | `git-diff --stat` | 4 test/fixture files + the two plan records; nothing under `lib/` |
+| Watch scheme | `xcodebuild` (governor only) | not run here — Phase 3's view items |
+
+## 10. Phase 1B-ii — the three remaining test files (@developer, run of 2026-10-09 18:48–18:51 UTC)
+
+Logs: `.work/gateway/swift-test-20261009-185015-69866.log` (the full run at the end), `…-184955-69614.log` (mutation 2, red),
+`…-185008-69745.log` (green after both restores), `…-184857-69206.log` (the first full run, green), `.work/gateway/lint-20261009-184909-69353.log` (phone
+lint). The filtered, mutation and Dart runs stayed under the gateway's line limit, so they are quoted inline.
+
+### 10.1 The red this phase had to clear
+
+| Suite | Command | Before |
+|---|---|---|
+| `WatchSensorSummaryTests` | `swift-test --filter WatchSensorSummaryTests` | **3 red** — `testS235AStepCountThatDidNotMoveIsAMeasuredZero`, `testS235HeartRateWithoutAStepCountSendsNoStepTotal`, `testS236AHoldIsSummarisedOverItsOwnWindow` |
+| `WatchSensorRecordingTests` | `… --filter WatchSensorRecordingTests` | **5 failures / 4 names** — `testAMeasuredDistanceOutranksTheDial`, `testS004TheLoggedEffortCarriesTheGpsTotal`, `testS004WithoutAFixTheDistanceRowIsTheUsersToFill`, `testS237TheLogIsReleasedOnlyOnceTheSessionEndIsAcknowledged` |
+| `WatchSensorRecordingStepsDeniedTests` | `… --filter WatchSensorRecordingStepsDeniedTests` | **5 failures / the same 4 names** |
+| `WatchPhoneEntriesTests` | `… --filter WatchPhoneEntriesTests` | **2 failures / 1 name** — `testS145APhoneEntryOfEveryKindIsTheWristsOwn` (the brief names 1 failure; §9.5 also shows 2. Both assertions are the same stale read of a `rounds`/`duration` dial, so the migration clears both and the discrepancy is moot) |
+
+### 10.2 The same three files green
+
+| Run | Command | Result |
+|---|---|---|
+| Summary | `swift-test --filter WatchSensorSummaryTests` | **Executed 17 tests, with 0 failures** |
+| Recording | `swift-test --filter WatchSensorRecordingTests` | **Executed 38 tests, with 0 failures** |
+| Steps denied | `… --filter WatchSensorRecordingStepsDeniedTests` | **Executed 38 tests, with 0 failures** |
+| Phone | `… --filter WatchPhoneEntriesTests` | **Executed 8 tests, with 0 failures** |
+| All four together | `… --filter 'WatchSensorRecordingTests\|WatchSensorRecordingStepsDeniedTests\|WatchPhoneEntriesTests\|WatchSensorSummaryTests'` | **Executed 101 tests, with 0 failures** — the run after both mutations were restored |
+
+### 10.3 Red → green, test by test
+
+Every migration follows the brief's rule: Start at the instant the old dial implied (the window's opening instant), the log instant and every asserted
+number unchanged. Detent sizes: duration/round-duration 5 s, distance 0.1 unit = 100 m.
+
+| File | Test | Was red for | Now |
+|---|---|---|---|
+| `WatchSensorSummaryTests` | `testS235HeartRateWithoutAStepCountSendsNoStepTotal` (:227) | dialled 120 × 5 s for the window | `startWork()` at 10:04:00, Log at 10:10:00 — the same 6-minute window; `avgHeartRateBpm` unchanged |
+| `WatchSensorSummaryTests` | `testS235AStepCountThatDidNotMoveIsAMeasuredZero` (:248) | dialled 96 × 5 s | `startWork()` at 10:02:00, Log at 10:10:00 — the same 8-minute window; the measured `0.0` unchanged |
+| `WatchSensorSummaryTests` | `testS236AHoldIsSummarisedOverItsOwnWindow` (:279/:280) | dialled 12 × 5 s | `startWork()` at 11:00:00, Log at 11:01:00 — the same window; the summary instant and `135.0`/`130.0` unchanged |
+| `WatchSensorRecordingTests` | `testS004TheLoggedEffortCarriesTheGpsTotal` (:279) | logged with no running clock | `startWork()` before `clock.advance(1200)`; the fix is latched before Start, so the log still carries 3000 m |
+| `WatchSensorRecordingTests` | `testS004WithoutAFixTheDistanceRowIsTheUsersToFill` (:292) → `testS004WithoutAFixTheTimedSurfaceOffersNoDistanceRow` | expected the dialled 1500 m | asserts `!isMeasuringDistance`, `fields.isEmpty`, that `adjust(distance, 15)` is a no-op, and that the log carries no `distanceMeters` (D-1305 + S-006) |
+| `WatchSensorRecordingTests` | `testAMeasuredDistanceOutranksTheDial` (:886) → `testAMeasuredDistanceIsWhatTheObservationCarries` | read a measured distance **row** | asserts `isMeasuringDistance`, `fields.isEmpty`, and that the log carries the measured 3200 m |
+| `WatchSensorRecordingTests` | `testS237TheLogIsReleasedOnlyOnceTheSessionEndIsAcknowledged` (:596) | the fixture's rest ids | the three ids shift +2 (`rec-15/17/19-rest`), mirroring the fixture §9.3 |
+| `WatchPhoneEntriesTests` | `testS145APhoneEntryOfEveryKindIsTheWristsOwn` (:343) | read the phone's `rounds`/`duration` as dials | `nextRoundNumber == 2`, the phone's own hold rows (`entry-sx-plank-0` 06:00:00–06:01:00Z), `extraWeight == 12`, then the wrist's own `startWork()` → +60 s → Log over the same minute (`startedAt` 06:00:00.000Z, `endedAt` 06:01:00.000Z, `extraLoadKg == 12`), and `engine.entries.count == 4` |
+
+The two renames are the only name changes; no other test file was edited. `value(_:_:)` in `WatchPhoneEntriesTests` stays — the extra-load row still
+reads through it.
+
+### 10.4 prove-red, and the two mutations
+
+`prove-red HEAD swift-test -- <these files>` cannot be used: HEAD is the pre-1A tree, so the files do not compile there (no `startWork`, no
+`roundPresetMs`), exactly as §9.4 records. Every guard is therefore proved by mutation, one at a time, with the original restored exactly and re-run
+green.
+
+| # | Guard | Mutant (the exact edit, on the working tree) | Verdict |
+|---|---|---|---|
+| 1 | D-1305 a timed surface has no row to dial, so nothing measured and nothing dialled reaches the observation | `WatchLoggingState.swift:159` `WatchEffortKind.timed: []` → `[WatchMetricKey.distance]` | **RED**: recording `38 tests, 2 failures` — `testAMeasuredDistanceIsWhatTheObservationCarries` (:912) and `testS004WithoutAFixTheTimedSurfaceOffersNoDistanceRow` (:310), both "a timed surface has no … row"; steps-denied `38 tests, 2 failures` — the same two |
+| 2 | D-1304 the window is the work clock's own start → the log instant | `WatchLoggingState.swift:736` `"startedAt": utcIso(workTimer?.startedAt ?? loggedAt)` → `"startedAt": utcIso(loggedAt)` | **RED**: summary `17 tests, 9 failures` — `testS236AHoldIsSummarisedOverItsOwnWindow` (:279/:280, the window instant and `135.0` vs `130.0`), `testS235AStepCountThatDidNotMoveIsAMeasuredZero` (:248), `testS235HeartRateWithoutAStepCountSendsNoStepTotal` (:227); phone `8 tests, 1 failure` — `testS145APhoneEntryOfEveryKindIsTheWristsOwn` (:394, the wrist's own hold window) |
+
+Restore verified by `grep` on the source and by `git-diff --stat`: `:159` is `WatchEffortKind.timed: [],`, `:736` is
+`utcIso(workTimer?.startedAt ?? loggedAt)`, and the file's footprint is back to **104 insertions / 28 deletions** — the same as before the first
+mutation. §10.2's 101-test run and §10.5's full run are the green re-runs.
+
+`testS004WithoutAFixTheTimedSurfaceOffersNoDistanceRow`'s *last* assertion (nothing measured ⇒ the observation carries no distance) cannot be told
+apart from the rest by a mutant: with the location denied there are no readings at all, so `readings.distanceMeters` is nil whatever the row set is.
+That half rests on §8.4's red baseline (the pre-migration test dialled 1500 m and the observation carried it) and on the existing S-006 guard.
+
+### 10.5 The full suite, and the red → green table across the three phases
+
+`swift-test` (no filter, the run after both mutations were restored): **Executed 415 tests, with 0 failures (0 unexpected)** — no expected red left,
+no filter, `All tests' passed`. Per suite: contract 6/0, surfaces 24/0, timers 28/0, summary 17/0, recording 38/0, steps-denied 38/0, phone 8/0,
+timed work 10/0, start paths 37/0, everything else 0 failures.
+
+| Phase | Suites it owned | Red before the phase | Green after the phase | Full suite at the phase's end |
+|---|---|---|---|---|
+| 1A | `WatchTimedWorkTests` (new, 10 tests) | 26 compile errors on the pre-change tree (§8.1) | 10 / 0 (§8.2) | 414 executed, **39 failures** (§8.4) |
+| 1B-i | `WatchCaptureContractTests`, `WatchLoggingSurfacesTests`, `WatchLoggingTimersTests` + the fixture | contract 5, surfaces 9, timers 3 (§9.1) | contract 6 / 0, surfaces 24 / 0, timers 28 / 0 (§9.2) | 415 executed, **15 failures** (§9.5) |
+| 1B-ii | `WatchSensorSummaryTests`, `WatchSensorRecordingTests` + `…StepsDenied`, `WatchPhoneEntriesTests` | summary 3, recording 5, steps-denied 5, phone 2 (§10.1) | summary 17 / 0, recording 38 / 0, steps-denied 38 / 0, phone 8 / 0 (§10.2) | 415 executed, **0 failures** |
+
+**Done Criteria met:** the whole watch package is green with no filter; nothing is red and nothing is filtered out.
+
+### 10.6 The other end-of-run checks
+
+| Check | Command | Result |
+|---|---|---|
+| Phone lint | `lint` | **196 issues** — identical to §8.5's and §9.6's baseline; no Dart file is in this diff |
+| Phone tests | `test test/docs_indexing_contract_test.dart` | **9 passed, "All tests passed!"** — no doc page changed in this phase, so the indexing contract is byte-identical |
+| Persistence invariant | `grep` for `import .*hive_workout_repository` under `lib/state`, `lib/features`, `lib/widgets`, `lib/core` | **no matches** |
+| Docs naming the renamed tests | `grep` for `testAMeasuredDistanceOutranksTheDial`, `testS004WithoutAFixTheDistanceRowIsTheUsersToFill` across `docs/` and `watch/` | only this plan and this evidence file (the migration register, §3) — **no doc page names a test name, so no doc update is required** |
+| Footprint | `git-diff --stat` | the three test files (**43 / 43 / 21** changed lines, matching the edits) + the plan and evidence records; the other eight paths are 1A's and 1B-i's |
+| Watch scheme | `xcodebuild` (governor only) | not run here — Phase 3's view items; the package compiles under `swift-test` |
+
+

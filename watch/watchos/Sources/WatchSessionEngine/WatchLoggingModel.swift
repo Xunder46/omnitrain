@@ -78,6 +78,42 @@ public final class WatchLoggingModel: ObservableObject {
         poll()
     }
 
+    /// Starts the effort's work clock (D-1308).
+    public func startWork() async {
+        await state.startWork()
+        poll()
+    }
+
+    /// What the one button says: Start until the effort's clock is running, then
+    /// Log — and always Log for a set, whose button never starts anything
+    /// (D-1316).
+    public var primaryTitle: String {
+        guard state.isTimedWork else { return "Log" }
+        return state.isWorkRunning ? "Log" : "Start"
+    }
+
+    /// What the one button does: starts the clock when nothing is running, and
+    /// logs the effort otherwise (D-1316).
+    public func primaryAction() async {
+        if state.isTimedWork && !state.isWorkRunning {
+            await state.startWork()
+        } else {
+            _ = try? await state.log()
+        }
+        poll()
+    }
+
+    /// The readout, or nil for a set, whose rows are what it shows instead: a
+    /// period's remaining time (its preset before Start), and the elapsed time
+    /// for the kinds that count up (D-1316).
+    public var workReadout: String? {
+        guard state.isTimedWork else { return nil }
+        if let remaining = state.workRemainingSeconds() {
+            return WatchLoggingState.clock(Double(remaining))
+        }
+        return WatchLoggingState.clock(Double(state.workElapsedSeconds()))
+    }
+
     public func log() async {
         _ = try? await state.log()
         poll()

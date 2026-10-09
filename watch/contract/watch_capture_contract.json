@@ -1,5 +1,5 @@
 {
-  "description": "F-CAP: one wrist session end to end, in three cases, shared by both stacks so the wrist's capture and the phone's import are checked against the same numbers. `timeline` is the script: ops apply in array order, the array is ordered by `at`, and a sensor sample (`hr`, `steps`) is applied before any other op at the same instant. `start` creates the session with no modality over `exercises` (no slot declares an effort kind, so kinds derive from capabilities: timed, round, set), and the wrist's entry-id factory yields `entryIds` in order. `dial` sets a metric (a `WatchMetricKey`) to `value`, in seconds or kilograms, before the next `log`; a follow-on round timer is planned at the round length dialled for the round that started it. `pauseRound` and `resumeRound` pause and resume the running round timer. `end` is the wrist's own End; `answer` confirms the effort-rating prompt. `sensorPermissions` says which sensors the case grants. `expectedEvents` are the wrist's observations in store order, timestamps in the wrist's wire form. `expectedImport` is what the phone holds after importing them. `derivation` explains every summary value so the arithmetic can be rechecked by hand.",
+  "description": "F-CAP: one wrist session end to end, in three cases, shared by both stacks so the wrist's capture and the phone's import are checked against the same numbers. `timeline` is the script: ops apply in array order, the array is ordered by `at`, and a sensor sample (`hr`, `steps`) is applied before any other op at the same instant. `start` creates the session with no modality over `exercises` (no slot declares an effort kind, so kinds derive from capabilities: timed, round, set), and the wrist's entry-id factory yields `entryIds` in order. `dial` sets a metric (a `WatchMetricKey`) to `value`, in kilograms, before the next `log`: a length is never dialled. `startWork` is the wrist's Start; it begins the current effort's own clock (the timed effort's elapsed timer, the period's countdown planned at the case's `periodSeconds`), and `log` ends it at the log instant. `pauseRound` and `resumeRound` pause and resume the running round timer. `end` is the wrist's own End; `answer` confirms the effort-rating prompt. `sensorPermissions` says which sensors the case grants. `expectedEvents` are the wrist's observations in store order, timestamps in the wrist's wire form. `expectedImport` is what the phone holds after importing them. `derivation` explains every summary value so the arithmetic can be rechecked by hand.",
   "phoneCatalog": [
     {
       "exerciseId": "ex-run",
@@ -31,6 +31,7 @@
     {
       "name": "full",
       "sessionId": "s-cap-1",
+      "periodSeconds": 300,
       "sensorPermissions": {
         "heartRate": true,
         "steps": true
@@ -88,6 +89,10 @@
           ]
         },
         {
+          "at": "2026-09-25T10:00:00.000Z",
+          "op": "startWork"
+        },
+        {
           "at": "2026-09-25T10:05:00.000Z",
           "op": "hr",
           "bpm": 120
@@ -119,12 +124,6 @@
         },
         {
           "at": "2026-09-25T10:20:00.000Z",
-          "op": "dial",
-          "metric": "duration",
-          "value": 1200
-        },
-        {
-          "at": "2026-09-25T10:20:00.000Z",
           "op": "log",
           "entryId": "e-run"
         },
@@ -134,15 +133,13 @@
           "sessionExerciseId": "sx-bjj"
         },
         {
-          "at": "2026-09-25T10:21:00.000Z",
-          "op": "dial",
-          "metric": "round-duration",
-          "value": 300
-        },
-        {
           "at": "2026-09-25T10:24:30.000Z",
           "op": "hr",
           "bpm": 100
+        },
+        {
+          "at": "2026-09-25T10:25:00.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:26:00.000Z",
@@ -163,6 +160,10 @@
           "at": "2026-09-25T10:30:00.000Z",
           "op": "log",
           "entryId": "e-r1"
+        },
+        {
+          "at": "2026-09-25T10:30:00.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:31:00.000Z",
@@ -196,6 +197,10 @@
           "at": "2026-09-25T10:37:05.000Z",
           "op": "log",
           "entryId": "e-r2"
+        },
+        {
+          "at": "2026-09-25T10:37:05.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:40:00.000Z",
@@ -339,8 +344,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-13-rest",
-          "eventId": "rec-13-rest",
+          "entryId": "rec-15-rest",
+          "eventId": "rec-15-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:48:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -360,8 +365,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-15-rest",
-          "eventId": "rec-15-rest",
+          "entryId": "rec-17-rest",
+          "eventId": "rec-17-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:51:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -381,8 +386,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-17-rest",
-          "eventId": "rec-17-rest",
+          "entryId": "rec-19-rest",
+          "eventId": "rec-19-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:55:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -573,22 +578,22 @@
           "e-r2",
           "e-r3",
           "e-set1",
-          "rec-13-rest",
-          "e-set2",
           "rec-15-rest",
-          "e-set3",
+          "e-set2",
           "rec-17-rest",
+          "e-set3",
+          "rec-19-rest",
           "end-s-cap-1",
           "rating-s-cap-1"
         ]
       },
       "derivation": {
-        "e-run": "Window 10:00:00-10:20:00: loggedAt minus the dialled 1200 s. HR in the window: 120 (10:05:00), 140 (10:10:00), 160 (10:15:00), so avg 140, max 160. Steps: baseline 0 (no steps sample before 10:00:00); the chain 0 -> 800 -> 1600 -> 3200 (10:20:00, window end inclusive) adds 800 + 800 + 1600 = 3200. The 3300 at 10:30:00 is outside the window.",
-        "e-r1": "No round timer is running, so the window is 10:25:00-10:30:00: loggedAt minus the dialled 300 s. HR: 150 (10:26:00), 170 (10:28:00), so avg 160, max 170. The 100 at 10:24:30 is before the window. Rounds carry no steps, even though the steps sample at 10:30:00 lies inside this window and e-r2's.",
-        "e-r2": "The follow-on round timer starts at 10:30:00, planned 300 s, and is paused over [10:32:00, 10:34:00), so it completes at 10:37:00; logged at 10:37:05, the window is 10:30:00-10:37:00 and pausedMs is 120000. HR: 150 (10:31:00), 180 (10:36:00), so avg 165, max 180. The 100 at 10:33:00 falls inside the pause and is excluded; including it would give 143.33.",
-        "e-r3": "The next round timer starts at 10:37:05, planned 300 s, and completes at 10:42:05; logged at 10:42:10, the window is 10:37:05-10:42:05. HR: 145 (10:37:05, window start inclusive; the sample is applied before e-r2's log at the same instant), 165 (10:40:00), so avg 155, max 165. The 175 at 10:42:08 is after the window end.",
+        "e-run": "Window 10:00:00-10:20:00: the Start instant to the log instant. HR in the window: 120 (10:05:00), 140 (10:10:00), 160 (10:15:00), so avg 140, max 160. Steps: baseline 0 (no steps sample before 10:00:00); the chain 0 -> 800 -> 1600 -> 3200 (10:20:00, window end inclusive) adds 800 + 800 + 1600 = 3200. The 3300 at 10:30:00 is outside the window.",
+        "e-r1": "The period's countdown starts at 10:25:00, planned 300 s (the case's periodSeconds), so it reaches zero at 10:30:00; logged at 10:30:00, the window is 10:25:00-10:30:00. HR: 150 (10:26:00), 170 (10:28:00), so avg 160, max 170. The 100 at 10:24:30 is before the window. Rounds carry no steps, even though the steps sample at 10:30:00 lies inside this window and e-r2's.",
+        "e-r2": "The period's countdown starts at 10:30:00, planned 300 s, and is paused over [10:32:00, 10:34:00), so it completes at 10:37:00; logged at 10:37:05, the window is 10:30:00-10:37:00 and pausedMs is 120000. HR: 150 (10:31:00), 180 (10:36:00), so avg 165, max 180. The 100 at 10:33:00 falls inside the pause and is excluded; including it would give 143.33.",
+        "e-r3": "The period's countdown starts at 10:37:05, planned 300 s, and completes at 10:42:05; logged at 10:42:10, the window is 10:37:05-10:42:05. HR: 145 (10:37:05, window start inclusive; the sample is applied before e-r2's log at the same instant), 165 (10:40:00), so avg 155, max 165. The 175 at 10:42:08 is after the window end.",
         "e-set1, e-set2, e-set3": "Set events never carry heart rate. Each is 5 reps x 80 kg.",
-        "rec-13-rest, rec-15-rest, rec-17-rest": "Every completed rest is its own event (D-219, D-224): the follow-on rest timer a set's log starts, ended by the next log (rec-13-rest 10:45:00-10:48:00, rec-15-rest 10:48:00-10:51:00) or by the finish (rec-17-rest 10:51:00-10:55:00). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221).",
+        "rec-15-rest, rec-17-rest, rec-19-rest": "Every completed rest is its own event (D-219, D-224): the follow-on rest timer a set's log starts, ended by the next log (rec-15-rest 10:45:00-10:48:00, rec-17-rest 10:48:00-10:51:00) or by the finish (rec-19-rest 10:51:00-10:55:00). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221).",
         "end-s-cap-1 session": "Session window 10:00:00-10:55:00. Fifteen positive samples sum to 2145, so avg 143; max 180. A round's pause is not a session pause, so the 100 at 10:33:00 counts. The 0 at 10:50:00 is a glitch and is ignored.",
         "end-s-cap-1 set block sx-bench/ex-bench": "The span starts at the loggedAt of the latest effort entry logged before e-set1 (e-r3, 10:42:10) and ends at e-set3's loggedAt (10:51:00, inclusive). HR: 110 (10:44:00), 130 (10:47:00), 150 (10:51:00), so avg 130, max 150. The 175 at 10:42:08 is before the span; the 0 at 10:50:00 is ignored.",
         "rating-s-cap-1": "The user answers 4 at 10:55:20."
@@ -597,6 +602,7 @@
     {
       "name": "no-sensors",
       "sessionId": "s-cap-1",
+      "periodSeconds": 300,
       "sensorPermissions": {
         "heartRate": false,
         "steps": false
@@ -654,10 +660,8 @@
           ]
         },
         {
-          "at": "2026-09-25T10:20:00.000Z",
-          "op": "dial",
-          "metric": "duration",
-          "value": 1200
+          "at": "2026-09-25T10:00:00.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:20:00.000Z",
@@ -670,15 +674,17 @@
           "sessionExerciseId": "sx-bjj"
         },
         {
-          "at": "2026-09-25T10:21:00.000Z",
-          "op": "dial",
-          "metric": "round-duration",
-          "value": 300
+          "at": "2026-09-25T10:25:00.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:30:00.000Z",
           "op": "log",
           "entryId": "e-r1"
+        },
+        {
+          "at": "2026-09-25T10:30:00.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:32:00.000Z",
@@ -692,6 +698,10 @@
           "at": "2026-09-25T10:37:05.000Z",
           "op": "log",
           "entryId": "e-r2"
+        },
+        {
+          "at": "2026-09-25T10:37:05.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:42:10.000Z",
@@ -796,8 +806,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-13-rest",
-          "eventId": "rec-13-rest",
+          "entryId": "rec-15-rest",
+          "eventId": "rec-15-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:48:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -817,8 +827,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-15-rest",
-          "eventId": "rec-15-rest",
+          "entryId": "rec-17-rest",
+          "eventId": "rec-17-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:51:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -838,8 +848,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-17-rest",
-          "eventId": "rec-17-rest",
+          "entryId": "rec-19-rest",
+          "eventId": "rec-19-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:55:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -966,24 +976,25 @@
           "e-r2",
           "e-r3",
           "e-set1",
-          "rec-13-rest",
-          "e-set2",
           "rec-15-rest",
-          "e-set3",
+          "e-set2",
           "rec-17-rest",
+          "e-set3",
+          "rec-19-rest",
           "end-s-cap-1",
           "rating-s-cap-1"
         ]
       },
       "derivation": {
         "all": "Heart-rate and steps permission are denied, so the wrist holds no samples: no event carries a summary field, the session end carries no heart-rate pair and no set blocks, and the phone holds no sensor summary. e-r2 still carries pausedMs 120000, because the pause is the round timer's, not a sensor's.",
-        "rec-13-rest, rec-15-rest, rec-17-rest": "Every completed rest is its own event (D-219, D-224): the follow-on rest timer a set's log starts, ended by the next log (rec-13-rest 10:45:00-10:48:00, rec-15-rest 10:48:00-10:51:00) or by the finish (rec-17-rest 10:51:00-10:55:00). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221). A rest carries no sensor fields, so denying them changes nothing here.",
+        "rec-15-rest, rec-17-rest, rec-19-rest": "Every completed rest is its own event (D-219, D-224): the follow-on rest timer a set's log starts, ended by the next log (rec-15-rest 10:45:00-10:48:00, rec-17-rest 10:48:00-10:51:00) or by the finish (rec-19-rest 10:51:00-10:55:00). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221). A rest carries no sensor fields, so denying them changes nothing here.",
         "rating-s-cap-1": "The user answers 4 at 10:55:20."
       }
     },
     {
       "name": "prompt-off",
       "sessionId": "s-cap-1",
+      "periodSeconds": 300,
       "sensorPermissions": {
         "heartRate": true,
         "steps": true
@@ -1041,6 +1052,10 @@
           ]
         },
         {
+          "at": "2026-09-25T10:00:00.000Z",
+          "op": "startWork"
+        },
+        {
           "at": "2026-09-25T10:05:00.000Z",
           "op": "hr",
           "bpm": 120
@@ -1072,12 +1087,6 @@
         },
         {
           "at": "2026-09-25T10:20:00.000Z",
-          "op": "dial",
-          "metric": "duration",
-          "value": 1200
-        },
-        {
-          "at": "2026-09-25T10:20:00.000Z",
           "op": "log",
           "entryId": "e-run"
         },
@@ -1087,15 +1096,13 @@
           "sessionExerciseId": "sx-bjj"
         },
         {
-          "at": "2026-09-25T10:21:00.000Z",
-          "op": "dial",
-          "metric": "round-duration",
-          "value": 300
-        },
-        {
           "at": "2026-09-25T10:24:30.000Z",
           "op": "hr",
           "bpm": 100
+        },
+        {
+          "at": "2026-09-25T10:25:00.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:26:00.000Z",
@@ -1116,6 +1123,10 @@
           "at": "2026-09-25T10:30:00.000Z",
           "op": "log",
           "entryId": "e-r1"
+        },
+        {
+          "at": "2026-09-25T10:30:00.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:31:00.000Z",
@@ -1149,6 +1160,10 @@
           "at": "2026-09-25T10:37:05.000Z",
           "op": "log",
           "entryId": "e-r2"
+        },
+        {
+          "at": "2026-09-25T10:37:05.000Z",
+          "op": "startWork"
         },
         {
           "at": "2026-09-25T10:40:00.000Z",
@@ -1287,8 +1302,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-13-rest",
-          "eventId": "rec-13-rest",
+          "entryId": "rec-15-rest",
+          "eventId": "rec-15-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:48:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -1308,8 +1323,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-15-rest",
-          "eventId": "rec-15-rest",
+          "entryId": "rec-17-rest",
+          "eventId": "rec-17-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:51:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -1329,8 +1344,8 @@
           "loadKg": 80
         },
         {
-          "entryId": "rec-17-rest",
-          "eventId": "rec-17-rest",
+          "entryId": "rec-19-rest",
+          "eventId": "rec-19-rest",
           "kind": "rest",
           "loggedAt": "2026-09-25T10:55:00.000Z",
           "sessionExerciseId": "sx-bench",
@@ -1514,21 +1529,21 @@
           "e-r2",
           "e-r3",
           "e-set1",
-          "rec-13-rest",
-          "e-set2",
           "rec-15-rest",
-          "e-set3",
+          "e-set2",
           "rec-17-rest",
+          "e-set3",
+          "rec-19-rest",
           "end-s-cap-1"
         ]
       },
       "derivation": {
-        "e-run": "Window 10:00:00-10:20:00: loggedAt minus the dialled 1200 s. HR in the window: 120 (10:05:00), 140 (10:10:00), 160 (10:15:00), so avg 140, max 160. Steps: baseline 0 (no steps sample before 10:00:00); the chain 0 -> 800 -> 1600 -> 3200 (10:20:00, window end inclusive) adds 800 + 800 + 1600 = 3200. The 3300 at 10:30:00 is outside the window.",
-        "e-r1": "No round timer is running, so the window is 10:25:00-10:30:00: loggedAt minus the dialled 300 s. HR: 150 (10:26:00), 170 (10:28:00), so avg 160, max 170. The 100 at 10:24:30 is before the window. Rounds carry no steps, even though the steps sample at 10:30:00 lies inside this window and e-r2's.",
-        "e-r2": "The follow-on round timer starts at 10:30:00, planned 300 s, and is paused over [10:32:00, 10:34:00), so it completes at 10:37:00; logged at 10:37:05, the window is 10:30:00-10:37:00 and pausedMs is 120000. HR: 150 (10:31:00), 180 (10:36:00), so avg 165, max 180. The 100 at 10:33:00 falls inside the pause and is excluded; including it would give 143.33.",
-        "e-r3": "The next round timer starts at 10:37:05, planned 300 s, and completes at 10:42:05; logged at 10:42:10, the window is 10:37:05-10:42:05. HR: 145 (10:37:05, window start inclusive; the sample is applied before e-r2's log at the same instant), 165 (10:40:00), so avg 155, max 165. The 175 at 10:42:08 is after the window end.",
+        "e-run": "Window 10:00:00-10:20:00: the Start instant to the log instant. HR in the window: 120 (10:05:00), 140 (10:10:00), 160 (10:15:00), so avg 140, max 160. Steps: baseline 0 (no steps sample before 10:00:00); the chain 0 -> 800 -> 1600 -> 3200 (10:20:00, window end inclusive) adds 800 + 800 + 1600 = 3200. The 3300 at 10:30:00 is outside the window.",
+        "e-r1": "The period's countdown starts at 10:25:00, planned 300 s (the case's periodSeconds), so it reaches zero at 10:30:00; logged at 10:30:00, the window is 10:25:00-10:30:00. HR: 150 (10:26:00), 170 (10:28:00), so avg 160, max 170. The 100 at 10:24:30 is before the window. Rounds carry no steps, even though the steps sample at 10:30:00 lies inside this window and e-r2's.",
+        "e-r2": "The period's countdown starts at 10:30:00, planned 300 s, and is paused over [10:32:00, 10:34:00), so it completes at 10:37:00; logged at 10:37:05, the window is 10:30:00-10:37:00 and pausedMs is 120000. HR: 150 (10:31:00), 180 (10:36:00), so avg 165, max 180. The 100 at 10:33:00 falls inside the pause and is excluded; including it would give 143.33.",
+        "e-r3": "The period's countdown starts at 10:37:05, planned 300 s, and completes at 10:42:05; logged at 10:42:10, the window is 10:37:05-10:42:05. HR: 145 (10:37:05, window start inclusive; the sample is applied before e-r2's log at the same instant), 165 (10:40:00), so avg 155, max 165. The 175 at 10:42:08 is after the window end.",
         "e-set1, e-set2, e-set3": "Set events never carry heart rate. Each is 5 reps x 80 kg.",
-        "rec-13-rest, rec-15-rest, rec-17-rest": "Every completed rest is its own event (D-219, D-224): the follow-on rest timer a set's log starts, ended by the next log (rec-13-rest 10:45:00-10:48:00, rec-15-rest 10:48:00-10:51:00) or by the finish (rec-17-rest 10:51:00-10:55:00). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221).",
+        "rec-15-rest, rec-17-rest, rec-19-rest": "Every completed rest is its own event (D-219, D-224): the follow-on rest timer a set's log starts, ended by the next log (rec-15-rest 10:45:00-10:48:00, rec-17-rest 10:48:00-10:51:00) or by the finish (rec-19-rest 10:51:00-10:55:00). The id is the rest timer row's record id plus \"-rest\"; loggedAt is the end, and afterEntryId names the effort the rest followed (D-221).",
         "end-s-cap-1 session": "Session window 10:00:00-10:55:00. Fifteen positive samples sum to 2145, so avg 143; max 180. A round's pause is not a session pause, so the 100 at 10:33:00 counts. The 0 at 10:50:00 is a glitch and is ignored.",
         "end-s-cap-1 set block sx-bench/ex-bench": "The span starts at the loggedAt of the latest effort entry logged before e-set1 (e-r3, 10:42:10) and ends at e-set3's loggedAt (10:51:00, inclusive). HR: 110 (10:44:00), 130 (10:47:00), 150 (10:51:00), so avg 130, max 150. The 175 at 10:42:08 is before the span; the 0 at 10:50:00 is ignored.",
         "no rating": "The preferences say effortRatingPrompt false, so the wrist's End owes no prompt: there is no rating-s-cap-1, the phone's sessionFeeling stays null, and eleven entries are receipted."

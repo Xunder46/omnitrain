@@ -139,6 +139,10 @@ public final class WatchLoggingState {
     /// observation (for a set) or start fresh (for measured work).
     private var dialled: [String: Double] = [:]
 
+    /// How long a period is prescribed, in milliseconds: the phone's number once
+    /// the wire carries it, the shared default until then (D-1303, D-1314).
+    private var plannedRoundMs: Int
+
     /// Which capability decides the effort kind, in the order that matters: an
     /// isometric exercise usually carries `time` as well, and it is still a
     /// hold. Mirrors `ModalityConfig.effortKindFromMetric`.
@@ -146,22 +150,23 @@ public final class WatchLoggingState {
 
     /// The metrics each effort kind calls for, in the order the wrist reads
     /// them. Mirrors `EffortDefaults`' primary and secondary metrics.
+    ///
+    /// Timed work has no row at all: its length is its own clock, not a number
+    /// the user dials, so the clock replaces the rows (D-1305). A drill keeps
+    /// only its extra load, which is assistance rather than load.
     private static let metricKeysByKind: [String: [String]] = [
         WatchEffortKind.set: [WatchMetricKey.reps, WatchMetricKey.weight],
-        WatchEffortKind.timed: [WatchMetricKey.duration, WatchMetricKey.distance],
-        WatchEffortKind.round: [WatchMetricKey.rounds, WatchMetricKey.roundDuration],
-        WatchEffortKind.drill: [WatchMetricKey.duration, WatchMetricKey.extraWeight],
+        WatchEffortKind.timed: [],
+        WatchEffortKind.round: [],
+        WatchEffortKind.drill: [WatchMetricKey.extraWeight],
     ]
 
     /// The starting values `EffortDefaults.getDefaultTargets` prescribes.
     private static let targetsByKind: [String: [String: Double]] = [
         WatchEffortKind.set: [WatchMetricKey.reps: 10, WatchMetricKey.weight: 0],
-        WatchEffortKind.timed: [WatchMetricKey.duration: 0, WatchMetricKey.distance: 0],
-        WatchEffortKind.round: [
-            WatchMetricKey.rounds: 1,
-            WatchMetricKey.roundDuration: Double(WatchLoggingDefaults.roundDurationSeconds),
-        ],
-        WatchEffortKind.drill: [WatchMetricKey.duration: 0, WatchMetricKey.extraWeight: 0],
+        WatchEffortKind.timed: [:],
+        WatchEffortKind.round: [:],
+        WatchEffortKind.drill: [WatchMetricKey.extraWeight: 0],
     ]
 
     public init(
@@ -169,13 +174,16 @@ public final class WatchLoggingState {
         clock: @escaping () -> Date = { Date() },
         idFactory: @escaping () -> String = { UUID().uuidString },
         units: WatchUnitPreferences = WatchUnitPreferences(),
-        sensors: WatchSensorRecorder? = nil
+        sensors: WatchSensorRecorder? = nil,
+        roundPresetMs: Int? = nil
     ) {
         self.engine = engine
         self.clock = clock
         self.newId = idFactory
         self.units = units
         self.sensors = sensors
+        self.plannedRoundMs = roundPresetMs
+            ?? WatchLoggingDefaults.roundDurationSeconds * 1000
     }
 
     // MARK: - What the view is showing
@@ -280,6 +288,73 @@ public final class WatchLoggingState {
     public func restElapsedSeconds() -> Int? {
         guard isResting, let rest = engine.timerFor(WatchTimerKind.rest) else { return nil }
         return activeElapsedMs(rest, now: clock()) / 1000
+    }
+
+    // MARK: - The work clock
+
+    /// Whether the current effort is timed work rather than a set: the kinds
+    /// whose work is a clock rather than a row of values (D-1300).
+    public var isTimedWork: Bool { effortKind != WatchEffortKind.set }
+
+    /// The stored timer kind the current effort's clock is, or nil for a set,
+    /// which has none (D-1301).
+    public var workTimerKind: String? {
+        switch effortKind {
+        case WatchEffortKind.timed: return WatchTimerKind.elapsed
+        case WatchEffortKind.drill: return WatchTimerKind.hold
+        case WatchEffortKind.round: return WatchTimerKind.round
+        default: return nil
+        }
+    }
+
+    /// The running work clock, or nil when none is running or the session is no
+    /// longer one to log into (D-1302).
+    ///
+    /// Derived from storage rather than counted here, so a state built after a
+    /// relaunch reads the same clock the screen that started it did (S-1306,
+    /// S-1312).
+    public var workTimer: WatchTimerRecord? {
+        guard canLog, let kind = workTimerKind,
+              let timer = engine.timerFor(kind),
+              timer.state != WatchTimerState.stopped
+        else { return nil }
+        return timer
+    }
+
+    /// Whether the effort's clock is running: exactly when the one button says
+    /// Log rather than Start (D-1307).
+    public var isWorkRunning: Bool { workTimer != nil }
+
+    /// How long the effort has been running as of `now`.
+    public func workElapsedSeconds(now instant: Date? = nil) -> Int {
+        guard let timer = workTimer else { return 0 }
+        return activeElapsedMs(timer, now: instant ?? clock()) / 1000
+    }
+
+    /// What is left of a period's countdown as of `now` — its preset before it
+    /// has been started — or nil for the kinds that count up (D-1302).
+    public func workRemainingSeconds(now instant: Date? = nil) -> Int? {
+        guard effortKind == WatchEffortKind.round else { return nil }
+        guard let timer = workTimer else { return plannedRoundMs / 1000 }
+        guard let remaining = remainingMs(timer, now: instant ?? clock()) else { return nil }
+        return remaining / 1000
+    }
+
+    /// Starts the effort's clock: the only way timed work begins, and — like Log
+    /// — the way a running rest is left (D-1311).
+    ///
+    /// One clock read serves both the rest's ending instant and the clock's
+    /// start, so a rest can never end after the effort that followed it began.
+    /// A no-op for a set, and for a Start while one already runs (D-1302).
+    public func startWork() async {
+        guard canLog, isTimedWork, let kind = workTimerKind, !isWorkRunning else { return }
+
+        let startedAt = clock()
+        if isResting { await endRest(at: startedAt) }
+        _ = try? await engine.startTimer(
+            kind,
+            plannedDurationMs: kind == WatchTimerKind.round ? plannedRoundMs : nil
+        )
     }
 
     /// The effort kind the current exercise is.
@@ -572,6 +647,12 @@ public final class WatchLoggingState {
             )
         }
 
+        // D-1304: timed work is logged as the window its own clock ran, so there
+        // is nothing to log until that clock has been started.
+        if isTimedWork, workTimer == nil {
+            throw WatchRecordError.malformed("start the effort first, then log it")
+        }
+
         let loggedAt = instant ?? clock()
         let id = newId()
         var event: [String: Any] = [
@@ -596,6 +677,9 @@ public final class WatchLoggingState {
 
         let stored = try await engine.appendObservation(event)
         dialled.removeAll()
+        // D-1304: Log ends the clock at the instant the entry's own window ends
+        // (D-223). A set has no clock; it starts its rest instead.
+        if let kind = workTimerKind { _ = await engine.stopTimer(kind: kind, at: loggedAt) }
         await startFollowOnTimer()
         return stored
     }
@@ -610,7 +694,7 @@ public final class WatchLoggingState {
             var payload: [String: Any] = [
                 "startedAt": utcIso(window.startedAt),
                 "endedAt": utcIso(window.endedAt),
-                "roundNumber": Int((value(of: WatchMetricKey.rounds) ?? Double(nextRoundNumber)).rounded()),
+                "roundNumber": nextRoundNumber,
             ]
             // The time the countdown spent paused, which the round's own
             // duration excludes (D-126). A round with no countdown was never
@@ -644,13 +728,15 @@ public final class WatchLoggingState {
         }
     }
 
+    /// The window timed work or a hold was logged over: the work clock's own
+    /// start to the log instant (D-1304). A distance is saved only when the
+    /// wrist's sensors were keeping it and read something (S-1300, S-006).
     private func windowPayload(loggedAt: Date, coversDistance: Bool) -> [String: Any] {
-        let duration = value(of: WatchMetricKey.duration) ?? 0
         var payload: [String: Any] = [
-            "startedAt": utcIso(loggedAt.addingTimeInterval(-duration)),
+            "startedAt": utcIso(workTimer?.startedAt ?? loggedAt),
             "endedAt": utcIso(loggedAt),
         ]
-        if coversDistance, let covered = value(of: WatchMetricKey.distance), covered > 0 {
+        if coversDistance, isMeasuringDistance, let covered = readings.distanceMeters, covered > 0 {
             payload["distanceMeters"] = covered
         }
         return payload
@@ -726,21 +812,11 @@ public final class WatchLoggingState {
     }
 
     /// The timer the effort kind runs next: a rest after a set is a count-up
-    /// with no length (D-160), the next round after a round is a countdown,
-    /// nothing after work that is measured rather than prescribed.
+    /// with no length (D-160), and nothing else — timed work leaves the screen on
+    /// Start, because the next effort is the user's own (D-1306).
     private func startFollowOnTimer() async {
-        switch effortKind {
-        case WatchEffortKind.set:
-            _ = try? await engine.startTimer(WatchTimerKind.rest)
-        case WatchEffortKind.round:
-            let length = value(of: WatchMetricKey.roundDuration) ?? 0
-            _ = try? await engine.startTimer(
-                WatchTimerKind.round,
-                plannedDurationMs: Int((length * 1000).rounded())
-            )
-        default:
-            return
-        }
+        guard effortKind == WatchEffortKind.set else { return }
+        _ = try? await engine.startTimer(WatchTimerKind.rest)
     }
 
     /// The protocol field a metric key travels in. Values the protocol carries
