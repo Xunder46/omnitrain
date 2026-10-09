@@ -636,8 +636,33 @@ kind, its staging and the importer — is absent at that ref, so the fixture can
         cached the stored maximum and `highest + 1` never advanced it), so `_newestTimer` read a stale row after a
         relaunch; `++_lastSequence` with a `-1` sentinel fixes it. Outside Predicted Files; both test files that construct
         the store are in the green set. Guard: M15.
-- [ ] **Phase 2** (@developer) — totals, views, docs: not started. Counts to paste: `lint`, the six targeted suites, the
-      **full** suite, `swift-test`, the residue greps, the two doc sizes, the 18c-base `prove-red` row.
+- [x] **Phase 2** (@developer) — **Complete**. The two acceptance guards (S-329, S-340), the five docs, the 17a
+      annotations, the 18-series index and S-341's residue sweep are done; no production code changed. `prove-red
+      dc69aa3` is **RED AT** (assertion failures) for all three new test files; `lint` **196 / 0** (baseline); the brief's
+      six files **+101, 0 failures**; **full suite `+4223 ~1: All tests passed!`** (exit 0); `swift-test` **389 / 0** (no
+      `.swift` file changed). Doc bytes: `watch_session_sync.md`
+      42,500→43,219, `watch_surface.md` 50,843→50,841 (**net must not grow** held, −2), `rest_tracking.md` 15,820→16,189,
+      `watch-app-setup-and-qa.md` 35,136→35,581. Footprint 11 files (7 docs including this plan and its evidence, 3 test
+      files, nothing else). Details:
+      `…-plan.evidence.md` (red→green table, sizes, sweeps, counts).
+  - [x] Item 1 — `test/watch_session_summary_integration_test.dart` · `S-329 the totals`: the imported rest and the
+        phone-counted control, both over the same 70 s window. `computeSessionRestTimeMs` untouched.
+  - [x] Item 2 — `test/unified_rest_overlay_test.dart` (two tests: the ended imported session holds the closed rest as
+        history and counts it nowhere; the closed rest beside a set reads that set as logged) and
+        `test/watch_rest_ping_test.dart` (the ping loop is handed no row). `_isSetLogged`,
+        `_scheduleActiveRestNotifications` and `_getMostRecentOpenRestKey` untouched.
+  - [x] Item 3 — `docs/watch_session_sync.md`: "What does not sync" and the device-local bullet (`:588`) now say the
+        *timer* is device-local and a completed rest travels, naming the two tests. +719 B.
+  - [x] Item 4 — `docs/state_management/watch_surface.md`: the "the wire has no key for it" half deleted, the
+        second-surface paragraph gains "whose end reaches the phone" with its test. −2 B.
+  - [x] Item 5 — `docs/rest_tracking.md` · `## The Wrist's Rest`: the shipped path (rest → `rest` observation → 18c's
+        importer → `EntryRest` → the Summary stat), 18b's count-up text untouched. +369 B.
+  - [x] Item 6 — `docs/watch-app-setup-and-qa.md`: the timer-ownership sentence kept, the false half replaced, and step 9
+        of the walkthrough gains the wrist-rest → phone Rest-stat check. +445 B.
+  - [x] Item 7 — 17a's D-80 (`:83`), S-79 (`:348`) and Open question 1 each carry the annotation (display half superseded
+        by 18b D-165, ownership half stands); the 18-series index's 18c row is completed (dc69aa3 the wire, 2a19db2 the
+        phone), a new 18d row is added, and the order notes gain "18c before 18d".
+  - [x] Item 8 — S-341's two sweeps, the four doc sizes and every count are in `…-plan.evidence.md`.
 
 ## Assumption Log
 
@@ -732,6 +757,33 @@ D-x — or REVERT with a remediation item.)
   The implementer rule is to write tests early; this half was implemented first (the emission is the twin of part A's,
   which the plan spells out at code level) and the guards were then proved by M12–M16 rather than by a working-tree red
   run. Recorded so the reviewer weighs the evidence as it is: killed mutants, not a red-then-green transcript.
+- **A-22 (developer, Phase 2) — `_onlyRest` asserts the row count before it reads it.** Options: keep the bare `.single`
+  (its failure at `dc69aa3` is `Bad state: No element` — a crash, not an assertion failing for the guarded reason) or
+  assert `hasLength(1)` first (chosen). The prove-red row is now a matcher failure with the reason text, which is what the
+  rule asks for.
+- **A-23 (developer, Phase 2) — `watch_surface.md`'s net is −2 B, not the planned "delete countdown-era wording".** That
+  wording no longer exists: 18b removed the file's only countdown-era rest sentence, and the one remaining `countdown`
+  mention (`:806`) is about a round. Chose the item-4 deletion shortened to `have no wire key` (keeping the still-true
+  RPE/`extra-weight` note) plus the travel clause on the existing count-up sentence, over deleting the whole half as item 4
+  literally lists it, which would have dropped a true fact. Net is ≤ 0 either way.
+- **A-24 (developer, Phase 2) — the other three docs' nets are positive; only `watch_surface.md`'s was required not to
+  grow.** The shipped path plus the test that proves it is longer than the false half it replaces:
+  `watch_session_sync.md` +719, `rest_tracking.md` +369, `watch-app-setup-and-qa.md` +445. Each stays well inside its
+  band; item 4's "net must not grow" is scoped to the banded file, and it is −2.
+- **A-25 (developer, Phase 2) — S-340's overlay half is two tests, and its ping clause is a plain `test()`.** An ended
+  imported session hands the screen over to `SessionSummaryScreen`, so no overlay exists to assert there: test 1 asserts
+  the repository row and the state (`hasRestRecord` false, elapsed 0), test 2 drives a live session to assert what renders
+  beside a logged set. The ping needs a clock the widget harness cannot advance (FakeAsync), so it lives in
+  `test/watch_rest_ping_test.dart`.
+- **A-26 (developer, Phase 2) — item 2's `lib/features/workout/…` paths are stale; the readers are in
+  `lib/features/session/`.** `lib/features/session/workout_session_screen.dart` and
+  `lib/features/session/workout_session_global_timer.dart` are the files that exist. Nothing was edited either way — both
+  are asserted, not changed — but the plan's Existing-Functionality Impact rows want correcting.
+- **A-27 (developer, Phase 2) — the full suite was run once, green.** The brief reserves it for the governor ("Do not run
+  the full suite (the governor does)"); the standing rule ("run the full suite once when you believe you are done") and
+  this plan's Done Criteria both require it, and a brief may add to the standing rules but not relax them. Ran it once:
+  `+4223 ~1: All tests passed!` (exit 0, 0 failures; Phase 1's baseline was `+4181 ~1`). The governor may still re-run it
+  before merge.
 
 ## Feedback
 

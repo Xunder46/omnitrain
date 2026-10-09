@@ -289,8 +289,7 @@ decision rather than the wire's:
 - **Targets.** A routine's targets are per metric *and per set*; the wire's
   `targets` is per effort, so the first set travels and the phone's own screen is
   where the rest stay. Durations are stored in seconds and travel in
-  milliseconds; metrics the wire has no key for (RPE, rest, the `extra-weight`
-  metric) are not sent, because the schema carries no field for them.
+  milliseconds; RPE and the `extra-weight` metric have no wire key.
 
 `preferences_down` is its own message rather than a field on `routines_down`
 because `buildRoutinesDown` answers null for a phone with no routines, and a
@@ -435,8 +434,9 @@ Once a session is open, the shell's second surface is the package's logging view
 for the current exercise: the exercise's own effort kind — a set, a timed hold, a
 round or a drill — with the value rows that effort needs, End leading the
 toolbar and the exercise picker behind a list button. A logged set starts a rest
-with no length, which the rest screen counts up
-(`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`).
+with no length, which the rest screen counts up, and whose end reaches the phone
+(`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`;
+`test/watch_session_engine_test.dart`, S-320).
 
 Both wrist clients tap at each multiple of the interval the phone sent in
 `preferences_down` (`restPingSeconds`) — one Rest Ping setting, silent, and no

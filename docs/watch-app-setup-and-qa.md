@@ -196,10 +196,13 @@ device owns only the timer it started, so a Sync stops a countdown the phone
 wrote and leaves a wrist-started one running, because the phone's answer carries
 no timers (D-26, D-80; `test/watch_logging_timers_test.dart`,
 `S-79 a snapshot leaves the wrist's countdown running and stops the phone's own`).
-A rest is not one of those timers: it is device-local and has no length, so a
-wrist rest never travels to the phone and never appears in the phone's history
+A rest is not one of those timers: it is device-local and has no length, but the
+rest itself travels — when it ends (Next, or the next logged set) the wrist emits
+a `rest` observation and the phone's importer writes it into the session's
+history, so the Session Summary counts it
 ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up";
-`test/rest_is_count_up_contract_test.dart`).
+`test/rest_is_count_up_contract_test.dart`;
+`test/watch_session_summary_integration_test.dart`, `S-329 the totals`).
 
 ---
 
@@ -480,7 +483,10 @@ enforced in code, so a failure points at the transport, not the logic:
 9. **Come back.** Disable Airplane Mode. Everything logged offline should land
    exactly once. Duplicate delivery is the failure to watch for, and the
    idempotency keys (`eventId`, `entryId`, `changeId`) are what should prevent
-   it.
+   it. Then log a set on the wrist, let the rest run, tap **Next** and sync: the
+   phone's session Summary counts that rest, once, beside the rests the phone
+   itself recorded (`test/watch_session_summary_integration_test.dart`,
+   `S-329 the totals`).
 10. **Kill the phone app mid-session** and relaunch. The session should restore
    from timestamps, not from a counter — a restored rest showing a fresh full
    duration means someone reintroduced remaining-time, which the protocol

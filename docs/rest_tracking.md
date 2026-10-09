@@ -237,8 +237,12 @@ tap instant`, `S-163 logging ends a running rest first`), its Swift twin
 that starts the rest with no length (`test/watch_logging_timers_test.dart`, `S-160 a logged set
 starts a rest with no planned length`).
 
-A rest is device-local, so the wrist's rest does not yet reach the phone's history: the phone
-records rest from its own open rest window, and no rest row is imported from the wrist.
+A rest's timer is device-local — no message carries a rest length or a countdown — but the rest
+itself travels: when it ends, the wrist emits a `rest` observation and the phone's importer writes
+it as an `EntryRest` row, so the Session Summary counts it like the phone's own rest (18d
+D-219/D-220, 18c D-215; `test/watch_session_summary_integration_test.dart`, `S-329 a rest the wrist
+sent and a rest the phone counted, over the same window, total the same`; Swift wrist,
+`WatchSessionEngineTests.testS320TheRestTheWristEndsTravelsAsARestEvent`).
 
 ---
 

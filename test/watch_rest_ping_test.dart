@@ -23,11 +23,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/watch_session_inbox.dart';
+import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/watch/logging/watch_metric_stepping.dart';
 import 'package:omnitrain/watch/logging/watch_rest_ping.dart';
 
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/sync_protocol_harness.dart';
+import 'helpers/watch_capture_import_harness.dart';
 
 /// `watch/contract/watch_rest_ping_contract.json`, parsed.
 Map<String, Object?> _contract() => asObject(
@@ -54,6 +57,68 @@ Map<String, Object?> _case(String scenario) => _casesFor(scenario).first;
 List<int> _seconds(Map<String, Object?> row, String key) => [
   for (final second in row[key]! as List) second! as int,
 ];
+
+/// S-340's fixture as the wrist delivered it: one set at `T0 = 10:00:00`, the
+/// rest that followed it from `T0+10s` to `T0+80s`, and the end at `T0+3600s`.
+/// Staged one `observations_up` per event and imported.
+const String _importedSessionId = 's-cap-1';
+const String _importedSessionStart = '2026-09-25T10:00:00.000Z';
+const String _importedSessionEnd = '2026-09-25T11:00:00.000Z';
+const String _importedRestStart = '2026-09-25T10:00:10.000Z';
+const String _importedRestEnd = '2026-09-25T10:01:20.000Z';
+
+Future<MockWorkoutRepository> _importedRepoWithRest() async {
+  final repository = MockWorkoutRepository();
+  await repository.initialize();
+  await seedCaptureCatalog(repository);
+  var ids = 0;
+  final inbox = WatchSessionInbox(
+    repository: repository,
+    transport: CaptureTransport(),
+    validator: loadProtocolValidator(),
+    clock: () => DateTime.utc(2026, 9, 25, 11),
+    idFactory: () => 'msg-phone-${++ids}',
+    onFailure: Error.throwWithStackTrace,
+  );
+  final events = <Map<String, Object?>>[
+    {
+      'entryId': 'e-set-a',
+      'eventId': 'e-set-a',
+      'kind': 'set',
+      'loggedAt': _importedSessionStart,
+      'sessionExerciseId': 'sx-bench',
+      'exerciseId': 'ex-bench',
+      'reps': 5,
+      'loadKg': 80,
+    },
+    {
+      'entryId': 'e-rest-a',
+      'eventId': 'e-rest-a',
+      'kind': 'rest',
+      'loggedAt': _importedRestEnd,
+      'sessionExerciseId': 'sx-bench',
+      'exerciseId': 'ex-bench',
+      'startedAt': _importedRestStart,
+      'endedAt': _importedRestEnd,
+      'afterEntryId': 'e-set-a',
+    },
+    {
+      'entryId': 'end-$_importedSessionId',
+      'eventId': 'end-$_importedSessionId',
+      'kind': 'session_end',
+      'loggedAt': _importedSessionEnd,
+      'startedAt': _importedSessionStart,
+      'endedAt': _importedSessionEnd,
+      'status': 'completed',
+    },
+  ];
+  for (var i = 0; i < events.length; i++) {
+    await inbox.receive(
+      observationsUp(_importedSessionId, [events[i]], messageId: 'msg-s340-$i'),
+    );
+  }
+  return repository;
+}
 
 /// The rule driven the way the wrist drives it: once per poll second, with the
 /// open rest row's id carried between polls.
@@ -304,5 +369,60 @@ void main() {
         reason: 'S-224 no elapsed means no rest to judge',
       );
     });
+  });
+
+  group('S-340 an imported wrist rest', () {
+    test(
+      'S-340 the phone hands the ping loop no row to evaluate: what the wrist '
+      'sent is over before it arrives',
+      () async {
+        final repository = await _importedRepoWithRest();
+        final workout = WorkoutState(repository);
+        await workout.loadHistoricalSession(_importedSessionId);
+
+        final segment =
+            (await repository.getSessionSegments(_importedSessionId)).single;
+        final effortId = (await repository.getSegmentEfforts(segment.id))
+            .single
+            .id;
+
+        final rests = workout.getEntryRests(effortId);
+        expect(rests, hasLength(1), reason: 'S-340 the import left one rest');
+
+        // The loop `_checkRestPings` runs: every row whose `restEndMs` is
+        // null. One closed row means the loop has nothing to hand the rule.
+        final open = [
+          for (final rest in rests)
+            if (rest.restEndMs == null) rest,
+        ];
+        expect(
+          open,
+          isEmpty,
+          reason:
+              'S-340 the phone holds no open rest, so nothing on the session '
+              'screen is owed a ping',
+        );
+
+        // Positive control: the row's id against a boundary the rule does
+        // tap, so the assertions below are not passing on an id it ignores.
+        final rule = WatchRestPing();
+        expect(
+          rule.isOwed(restId: rests.single.id, elapsed: 30, interval: 30),
+          isTrue,
+          reason: 'S-340 the boundary at 30 taps while a rest is open',
+        );
+
+        expect(
+          workout.getRestElapsedSeconds(effortId, rests.single.entryIndex),
+          0,
+          reason: 'S-340 the elapsed getter answers zero once the rest is over',
+        );
+        expect(
+          rule.isOwed(restId: rests.single.id, elapsed: 0, interval: 30),
+          isFalse,
+          reason: 'S-340 an elapsed of zero is no boundary: nothing taps',
+        );
+      },
+    );
   });
 }

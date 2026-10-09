@@ -19,6 +19,7 @@ import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/utils/modality_color_utils.dart';
+import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/calendar/day_session_list_screen.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
@@ -167,6 +168,152 @@ Color? _rowTint(WidgetTester tester) {
       .color;
 }
 
+// ─── S-329 — the totals ─────────────────────────────────────────────────────
+//
+// The rest total the Summary counts is the same whether the rest came from
+// the wrist or from the phone's own timer, because both are one closed
+// `EntryRest` of the effort the set preceded, over the same window
+// (18c D-210 – D-219, 18d D-235).
+
+/// The window the imported session covers, and the window inside it the one
+/// rest covers, as the wrist sends them.
+const String _sessionStart = '2026-09-25T10:00:00.000Z';
+const String _sessionEnd = '2026-09-25T10:30:00.000Z';
+const String _restStart = '2026-09-25T10:05:00.000Z';
+const String _restEnd = '2026-09-25T10:06:10.000Z';
+
+/// 10:05:00 → 10:06:10.
+const int _restWindowMs = 70000;
+
+/// The phone's own session, the control.
+const String _phoneSessionId = 's-phone-1';
+
+DateTime _at(String iso) => DateTime.parse(iso).toUtc();
+int _atMs(String iso) => _at(iso).millisecondsSinceEpoch;
+
+/// A phone that took a wrist session's set and rest over the wire: the set,
+/// then the rest that followed it, then the end.
+Future<MockWorkoutRepository> _importedSessionWithRest() async {
+  final repository = MockWorkoutRepository();
+  await repository.initialize();
+  await seedCaptureCatalog(repository);
+  var ids = 0;
+  final inbox = WatchSessionInbox(
+    repository: repository,
+    transport: CaptureTransport(),
+    validator: loadProtocolValidator(),
+    clock: () => DateTime.utc(2026, 9, 25, 11),
+    idFactory: () => 'msg-phone-${++ids}',
+    onFailure: Error.throwWithStackTrace,
+  );
+  final events = <Map<String, Object?>>[
+    {
+      'entryId': 'e-set1',
+      'eventId': 'e-set1',
+      'kind': 'set',
+      'loggedAt': _restStart,
+      'sessionExerciseId': 'sx-bench',
+      'exerciseId': 'ex-bench',
+      'reps': 5,
+      'loadKg': 80,
+    },
+    {
+      'entryId': 'e-rest1',
+      'eventId': 'e-rest1',
+      'kind': 'rest',
+      'loggedAt': _restEnd,
+      'sessionExerciseId': 'sx-bench',
+      'exerciseId': 'ex-bench',
+      'startedAt': _restStart,
+      'endedAt': _restEnd,
+      'afterEntryId': 'e-set1',
+    },
+    {
+      'entryId': 'end-$_capId',
+      'eventId': 'end-$_capId',
+      'kind': 'session_end',
+      'loggedAt': _sessionEnd,
+      'startedAt': _sessionStart,
+      'endedAt': _sessionEnd,
+      'status': 'completed',
+    },
+  ];
+  for (var i = 0; i < events.length; i++) {
+    await inbox.receive(
+      observationsUp(_capId, [events[i]], messageId: 'msg-s329-$i'),
+    );
+  }
+  return repository;
+}
+
+/// The phone's own session over the same window, with the rest its timer
+/// leaves at the spot the set precedes — `rest-{effortId}-1`, closed and
+/// never paused, exactly as `TimerManager.recordRestEnd` persists it.
+Future<MockWorkoutRepository> _phoneCountedSessionWithRest() async {
+  final repository = MockWorkoutRepository();
+  await repository.initialize();
+  final startedAtMs = _atMs(_sessionStart);
+  await repository.createSession(
+    TrainingSession(
+      id: _phoneSessionId,
+      ownerUserId: 'user-1',
+      startedAtMs: startedAtMs,
+      endedAtMs: _atMs(_sessionEnd),
+      title: 'Bench Session',
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+  await repository.createSegment(
+    SessionSegment(
+      id: 'seg-$_phoneSessionId',
+      sessionId: _phoneSessionId,
+      orderIndex: 0,
+      segmentType: 'workout',
+      name: 'Main Workout',
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+  final effortId = 'e-$_phoneSessionId-0';
+  await repository.createEffort(
+    SegmentEffort(
+      id: effortId,
+      segmentId: 'seg-$_phoneSessionId',
+      orderIndex: 0,
+      topLevelOrderIndex: 0,
+      effortKind: 'set',
+      exerciseId: 'ex-bench',
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+  await repository.createEntryRest(
+    EntryRest(
+      id: 'rest-$effortId-1',
+      effortId: effortId,
+      entryIndex: 1,
+      restStartMs: _atMs(_restStart),
+      restEndMs: _atMs(_restEnd),
+      createdAtMs: _atMs(_restEnd),
+      updatedAtMs: _atMs(_restEnd),
+    ),
+  );
+  return repository;
+}
+
+/// The one rest row of [sessionId]'s single effort.
+Future<EntryRest> _onlyRest(
+  MockWorkoutRepository repository,
+  String sessionId,
+) async {
+  final segment = (await repository.getSessionSegments(sessionId)).single;
+  final effort = (await repository.getSegmentEfforts(segment.id)).single;
+  final rests = await repository.getEntryRests(effort.id);
+  expect(rests, hasLength(1), reason: 'S-329 the session holds one rest');
+  return rests.single;
+}
+
 void main() {
   group('S-285 the Summary offers to add a rating', () {
     testWidgets('S-285 an imported watch session with no rating offers '
@@ -273,6 +420,75 @@ void main() {
         find.text('How hard was this session?'),
         findsNothing,
         reason: 'S-286 and asks nothing on its own',
+      );
+    });
+  });
+
+  group('S-329 the totals', () {
+    test('S-329 a rest the wrist sent and a rest the phone counted, over the '
+        'same window, total the same', () async {
+      final imported = await _importedSessionWithRest();
+      final counted = await _phoneCountedSessionWithRest();
+
+      // The imported rest landed as one closed, unpaused row after the set
+      // it followed (18c D-210, D-214) — the shape the total counts.
+      final importedRest = await _onlyRest(imported, _capId);
+      expect(importedRest.entryIndex, 1, reason: 'S-329 the rest follows the set');
+      expect(importedRest.id, 'rest-${importedRest.effortId}-1', reason: 'S-329');
+      expect(
+        importedRest.restStartMs,
+        _atMs(_restStart),
+        reason: 'S-329 the window is the one the wrist sent',
+      );
+      expect(importedRest.restEndMs, _atMs(_restEnd), reason: 'S-329');
+      expect(
+        importedRest.restIsPaused,
+        isFalse,
+        reason: 'S-329 a watch rest arrives closed and unpaused',
+      );
+      expect(importedRest.restPausedDurationMs, 0, reason: 'S-329');
+
+      final importedTotal = await SessionSummaryService(
+        imported,
+      ).computeSessionRestTimeMs(_capId);
+      final countedTotal = await SessionSummaryService(
+        counted,
+      ).computeSessionRestTimeMs(_phoneSessionId);
+
+      expect(
+        importedTotal,
+        _restWindowMs,
+        reason: 'S-329 the wrist’s 10:05:00…10:06:10 rest is 70 s of the '
+            'session’s 10:00:00…10:30:00 window',
+      );
+      expect(
+        countedTotal,
+        _restWindowMs,
+        reason: 'S-329 the phone’s own rest over that window is 70 s too',
+      );
+      expect(
+        importedTotal,
+        countedTotal,
+        reason: 'S-329 the wrist’s rest is counted exactly as the phone’s own',
+      );
+      final countedRest = await _onlyRest(counted, _phoneSessionId);
+      expect(
+        [
+          countedRest.entryIndex,
+          countedRest.restStartMs,
+          countedRest.restEndMs,
+          countedRest.restIsPaused,
+          countedRest.restPausedDurationMs,
+        ],
+        [
+          importedRest.entryIndex,
+          importedRest.restStartMs,
+          importedRest.restEndMs,
+          importedRest.restIsPaused,
+          importedRest.restPausedDurationMs,
+        ],
+        reason: 'S-329 both writers leave the same rest: the same spot, the '
+            'same window, never paused',
       );
     });
   });

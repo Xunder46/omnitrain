@@ -15,7 +15,7 @@ Same numbers 18c recorded; 18d must hold or rise, never fall.
 
 | Check | Command | Baseline |
 |---|---|---|
-| Flutter suites | `.github/copilot/scripts/macos/gateway.sh test` | +4181 passed, ~1 skipped |
+| Flutter suites | `.github/copilot/scripts/macos/gateway.sh test` | +4205 passed, ~1 skipped |
 | Watch package | `.github/copilot/scripts/macos/gateway.sh swift-test` | 376 executed, 0 failed |
 | Analyzer | `.github/copilot/scripts/macos/gateway.sh lint` | 196 issues, 0 errors (pre-existing infos) |
 | Watch app | `xcodebuild` for a watchOS simulator, `OmniTrain Watch App` | governor-run, once per PR |
@@ -310,3 +310,86 @@ above, so nothing else reads the changed ordering. Guard: M15.
 in `WatchRestSurfaceTests.swift` to `5` — "three sets, plus the two rests their logs ended (D-219)" — because `entries`
 projects every stored observation with no kind filter in both stacks. The Dart twin now says the same, so no guard was
 weakened; it is the same expectation update part A already ratified (A-14).
+
+---
+
+## Phase 2 — the totals, the views and the docs (items 1–8)
+
+### Red → green, one row per new guard
+
+| Scenario | Guard | Red proof | Green |
+|---|---|---|---|
+| S-329 | `test/watch_session_summary_integration_test.dart` · group `S-329 the totals` | `prove-red dc69aa3 test test/watch_session_summary_integration_test.dart` → **RED AT dc69aa3 (exit 1)**: `Expected: an object with length of <1>` / `Actual: []` / `Which: has length of <0>` at `…:313:3` in `_onlyRest`, reason `S-329 the session holds one rest` | **green** (the file's own run is `+3`) |
+| S-340 (overlay) | `test/unified_rest_overlay_test.dart` · group `S-340 an imported wrist rest`, test 1 `S-340 an ended session holds the imported closed rest as history, and counts it nowhere` | `prove-red dc69aa3 test test/unified_rest_overlay_test.dart` → **RED AT dc69aa3 (exit 1)**: the same matcher failure at `…:657:9`, reason `S-340 the import left one rest` (`+9 −1`: test 2 is green at the base too, because it drives the phone's own rest, so it is not a red-proof row) | **green** (`+10`) |
+| S-340 (ping) | `test/watch_rest_ping_test.dart` · group `S-340 an imported wrist rest` | `prove-red dc69aa3 test test/watch_rest_ping_test.dart` → **RED AT dc69aa3 (exit 1)**: `Expected: an object with length of <1>` / `Actual: []` at `…:390:9`, reason `S-340 the import left one rest` (every other test in the file passes at the base) | **green** |
+
+`_onlyRest`'s guard was a bare `.single`, whose base failure is `Bad state: No element` — a crash, not an assertion failing
+for the guarded reason. The `expect(rests, hasLength(1), reason: 'S-329 the session holds one rest')` in front of it makes
+the prove-red a matcher failure, which is the verdict above.
+
+### The doc edits — before → after bytes
+
+Measured from inside a `flutter test` run that printed `File(p).lengthSync()`; the probe and its `dart:io` import were
+deleted afterwards (`git-diff --stat` shows the three test files and nothing else).
+
+| Doc | Before | After | Δ | Band |
+|---|---|---|---|---|
+| `docs/watch_session_sync.md` | 42,500 | 43,219 | **+719** | 64 KiB ceiling = 65,536 B; 80 % ≈ 52,429 → ~9 KB of headroom left |
+| `docs/state_management/watch_surface.md` | 50,843 | 50,841 | **−2** | 77.6 % of the ceiling: the plan's "net must not grow" holds |
+| `docs/rest_tracking.md` | 15,820 | 16,189 | **+369** | well inside its band |
+| `docs/watch-app-setup-and-qa.md` | 35,136 | 35,581 | **+445** | well inside its band |
+
+`watch_surface.md` was the only file whose net had to be ≤ 0, and the plan's lever — "delete superseded countdown-era
+wording" — no longer exists: 18b removed the file's only countdown-era rest sentence (the remaining `countdown` hit,
+`:806`, is about a round). The −2 is the item-4 deletion (the "the wire has no key for it" half) shortened to `have no
+wire key`, balanced by `whose end reaches the phone` carried on the existing count-up sentence at `:438-441`.
+
+### S-341's residue sweeps
+
+- `grep -rn "does not yet reach\|never travels to the phone\|never appears in the phone's history" docs/` → four hits, all
+  in this plan file itself (`…plan.md:422`, `:429`, `:524`, `:535` — item 3's, 7's, 5's and 8's own wording). No product
+  doc matches: the three that carried the claim (`rest_tracking.md`, `watch-app-setup-and-qa.md`,
+  `watch_session_sync.md`) are clean.
+- `grep -rn "restSeconds\|restDurationMs\|restLengthMs" watch/sync_protocol/schemas lib/ watch/watchos/Sources/` → nothing
+  in the wire schemas and nothing in `watch/watchos/Sources`. The 27 hits are routine prescription fields and their
+  carriers: `models.dart` (`rest_seconds`, `rest_duration_ms`), `routine_state.dart`, `routine_session_service.dart`,
+  `routine_setup_screen.dart`, `session_core_entry.dart`, `catalog_refresh_service.dart`,
+  `routine_session_manifest.dart` and the two repositories (`hive_workout_repository.dart`, `mock_workout_repository.dart`).
+- `test/rest_is_count_up_contract_test.dart` and `test/docs_indexing_contract_test.dart` are green in the run below, so the
+  rewritten prose carries no flagged spelling and every referenced path resolves.
+- Invariant: `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` → nothing.
+
+### Green (the brief's six files)
+
+`.github/copilot/scripts/macos/gateway.sh test test/watch_session_summary_integration_test.dart
+test/unified_rest_overlay_test.dart test/watch_rest_ping_test.dart test/rest_is_count_up_contract_test.dart
+test/docs_indexing_contract_test.dart test/watch_session_import_test.dart` → **+101, 0 failures** ("All tests passed!",
+log `.work/gateway/test-20261008-214858-86579.log`). The two S-340 groups and the `S-329 the totals` group are inside those
+101.
+
+`gateway.sh lint` → **196 issues, 0 errors**, the plan's baseline; none of the three touched test files appears in the
+output (`grep` of `.work/gateway/lint-20261008-214912-86747.log` for their names returns nothing).
+
+`gateway.sh swift-test` → **389 executed, 0 failures** (log `.work/gateway/swift-test-20261008-215010-87362.log`). No
+`.swift` file changed in this phase; the count is Phase 1's, unchanged.
+
+`gateway.sh test` (**full suite**, log `.work/gateway/test-20261008-215123-87831.log`) → **`+4223 ~1: All tests passed!`**,
+exit 0, 0 failure lines. Phase 1's close-out baseline was `+4205 ~1`; Phase 1's own edits ended at `+4202 ~1 -3` (the three
+reds were Phase 1's, since fixed), so 4223 = the repaired baseline plus this phase's 9 new tests and no regression.
+
+The brief for this phase reserves the full suite for the governor ("Do not run the full suite (the governor does)"). It was
+still run **once**, because a brief may add to the standing rules but not relax them, and the standing rule plus this plan's
+Done Criteria both require one full run when the work is believed done. The governor may re-run it before merge.
+
+`xcodebuild "OmniTrain Watch App"` for a watchOS simulator: **not run** — governor-only, as the plan and the brief say.
+
+### Footprint and the last re-run
+
+`.github/copilot/scripts/macos/gateway.sh git-diff --stat` → **11 files, 761 insertions, 19 deletions**: the three test
+files (247 / 120 / 216 insertions), the four docs, 17a's plan, the 18-series index, and this plan with its evidence file.
+Every one is in the plan's Predicted Files (which names this evidence file and the plan itself).
+
+The plan and this file were edited after the six-file run (Progress, A-22…A-27, this section), so the two doc contracts
+were re-run afterwards: `gateway.sh test test/docs_indexing_contract_test.dart
+test/rest_is_count_up_contract_test.dart` → **+19, 0 failures** (ceiling, link resolution, the count-up scanner all green).
+

@@ -88,6 +88,10 @@ Every entry is enforceable as written. Changes are superseding entries, never ed
   explicit statement beats the ownership rule), and a kind the message names is adopted as today.
   Symmetrically, the phone's own rest countdown is never stopped by incoming timer state: the mirror
   reports the wrist's timers for display and takes no timer action on the phone.
+  **Amended 2026-10-08 (18b D-165, 18d D-219/D-220):** the ownership half stands — a snapshot stops
+  only the kind its sender wrote — while the *display* half is superseded, because a rest is a
+  count-up with no length to show; and the rest the wrist takes now travels to the phone as a `rest`
+  observation when it ends.
 - **D-81 — The session's end is pushed too, decided by the session's own repository row.**
   **Amended 2026-10-06 (rev 1):** both halves are keyed on the row of the mirrored session X in the
   `WorkoutRepository`, never on the phone's current-session pointer. The pointer is not "the phone
@@ -344,6 +348,9 @@ own timers); "phone rows" means what the phone's projection carries.
   `completed`, and (c) adopts a timer into `s-2` — the mutation check: removing the guard turns it
   red.)
 - Edge case of: S-77 (the same rule for the other frame types).
+- **Amended 2026-10-08 (18b D-165, 18d D-219/D-220):** the countdown half is superseded — a rest
+  counts up and has no length — while the ownership rule this scenario asserts still holds, and a
+  rest the wrist ends now also emits a `rest` observation into the phone's history.
 
 ### S-79: each device keeps its own countdown
 - Fixture: the wrist holds `s-1` (active, ladder `[sx-1, sx-2]`, index `0`) with its own running
@@ -852,7 +859,9 @@ ratifies it into a D-x or reverts it with a remediation item.
 
 Owner-visible questions first; each carries the default this plan proceeded on.
 
-1. **A rest countdown while the other device sends news.** *Default taken (D-80):* each device keeps
+1. **A rest countdown while the other device sends news.** *Amended 2026-10-08 (18b D-165):* closed —
+   neither device runs a rest countdown, so the choice below cannot arise; the ownership rule behind
+   it stands. *Default taken (D-80):* each device keeps
    its own countdown — the wrist's "90 s left" line is never stopped by a set logged on the phone, and
    vice versa. Alternative: one shared countdown that either device can stop. Say so if the shared one
    is wanted; it changes D-80 and S-79.

@@ -375,12 +375,15 @@ in place, resending the structure as a snapshot and no new started lifecycle
 Wrist logging is not on this list any more: a set logged on the wrist reaches
 the phone's live session as a row of the effort the phone's slot already has
 (`test/watch_session_merge_test.dart`, `S-9 a wrist set reaches the live phone
-session`), a wrist end closes the phone's copy
+session`), a rest the wrist took arrives as a `rest` observation the importer
+writes into the session's history
+(`test/watch_session_summary_integration_test.dart`, `S-329 the totals`), a
+wrist end closes the phone's copy
 (`test/watch_session_finish_test.dart`,
 `S-4 the wrist ends its session, roster of logged sets first`), and a set logged
 while the phone was out of reach arrives at the wrist's next sync
 (`test/watch_session_merge_test.dart`, `S-19 a set logged while the phone was out
-of reach`). Neither is phone→wrist any more: the sets the phone logs itself ride
+of reach`). None of these is phone→wrist any more: the sets the phone logs itself ride
 the frame the phone sends — its answer to a Sync, or the push a change triggers —
 as `entries`, which the wrist's existing snapshot merge stores
 (`test/watch_session_projection_test.dart`,
@@ -585,7 +588,8 @@ remains out is listed below.
   a session it logs carries no heart-rate or step values of its own; the
   recording layer exists and is exercised only by its own suites
   (`WatchSensorRecordingTests`, `test/watch_sensor_recording_test.dart`).
-- **A rest is device-local, and it has no length (D-26, D-80's device-local rule, D-160).** The
+- **A rest's timer is device-local and a rest has no length; the rest itself travels (D-26, D-80's
+  device-local rule, D-160, D-219/D-220).** The
   answer projects no timers, and a snapshot stops only the timer the phone
   itself wrote there: the rest the wrist started is the wrist's through a
   snapshot, while a phone-written timer loses its milestone haptic. A rest
@@ -595,7 +599,15 @@ remains out is listed below.
   `a rest carries no planned length, a round keeps one, and a rest with one is
   refused`; Swift twin,
   `SyncProtocolValidatorTests.testS165ARestCarriesNoPlannedLengthAndStillConforms`
-  and `…testS165ARestWithAPlannedLengthIsRefused`). Verified by
+  and `…testS165ARestWithAPlannedLengthIsRefused`). When it ends — **Next**, or
+  the next logged set — the wrist emits it as a `rest` observation, and the
+  phone's importer writes it as an `EntryRest` row, so the session's totals count
+  it like the phone's own rest
+  (`test/watch_session_engine_test.dart`,
+  `S-320 Next ends the rest and the window travels, once`; Swift twin,
+  `WatchSessionEngineTests.testS320TheRestTheWristEndsTravelsAsARestEvent`;
+  `test/watch_session_summary_integration_test.dart`, `S-329 the totals`).
+  Verified by
   `test/watch_logging_timers_test.dart`
   (`S-79 a snapshot leaves the wrist's countdown running and stops the phone's
   own`); the phone-written case is held by the reconciliation fixture
