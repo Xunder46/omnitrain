@@ -268,7 +268,12 @@ public final class WatchLoggingState {
     }
 
     /// Ends the running rest at this instant (the rest screen's Next, D-161).
-    public func endRest() async { _ = await engine.stopTimer(kind: WatchTimerKind.rest) }
+    ///
+    /// `at` is the ending instant the caller already has (D-223) — the instant
+    /// of the frame it is about to send — and defaults to the engine's clock.
+    public func endRest(at instant: Date? = nil) async {
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest, at: instant)
+    }
 
     /// The running rest's elapsed time in whole seconds as of `now`, or nil when
     /// none is running.
@@ -585,8 +590,9 @@ public final class WatchLoggingState {
         }
 
         // D-162: a rest can never outlive the entry that follows it, whichever
-        // path logs — a running rest ends at this log's instant.
-        if isResting { await endRest() }
+        // path logs — a running rest ends at this log's instant, the same one
+        // the new entry's own frame reports (D-223).
+        if isResting { await endRest(at: loggedAt) }
 
         let stored = try await engine.appendObservation(event)
         dialled.removeAll()

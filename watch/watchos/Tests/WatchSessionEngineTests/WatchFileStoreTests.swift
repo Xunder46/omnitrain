@@ -1046,4 +1046,39 @@ final class WatchFileStoreTests: XCTestCase {
             ] as [String: Any],
         ]
     }
+
+    // MARK: - S-339 the rest a relaunched wrist ends is emitted from the store
+
+    func testS339TheRestARelaunchedWristEndsIsEmittedFromTheStore() async throws {
+        let wrist = FileStoreHarness(directory: directory)
+        await wrist.launch()
+        await wrist.startSession([fileSlot("sx-bench", capabilities: ["reps", "sets", "load"])])
+        let t0 = wrist.clock.now
+        try await wrist.logSet("entry-1", advanceBy: 0)
+        _ = try await wrist.engine.startTimer(WatchTimerKind.rest)
+
+        // A kill: a brand-new store and a brand-new engine over the same file.
+        let relaunched = FileStoreHarness(directory: directory)
+        await relaunched.launch()
+
+        relaunched.clock.advance(40)
+        _ = await relaunched.engine.stopTimer(kind: WatchTimerKind.rest)
+
+        let rest = try XCTUnwrap(
+            relaunched.engine.observations.first { $0.kind == WatchObservationKind.rest },
+            "the rest the relaunched wrist ended travels, from the stored rows alone"
+        )
+        XCTAssertEqual(rest.payload["startedAt"] as? String, utcIso(t0))
+        XCTAssertEqual(
+            rest.payload["endedAt"] as? String,
+            utcIso(t0.addingTimeInterval(40))
+        )
+        XCTAssertEqual(rest.payload["afterEntryId"] as? String, "entry-1")
+        XCTAssertEqual(rest.payload["sessionExerciseId"] as? String, "sx-bench")
+        XCTAssertEqual(rest.payload["exerciseId"] as? String, "ex-sx-bench")
+        XCTAssertEqual(
+            relaunched.engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped
+        )
+    }
 }

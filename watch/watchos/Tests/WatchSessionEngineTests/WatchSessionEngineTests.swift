@@ -2028,4 +2028,359 @@ final class WatchSessionEngineTests: XCTestCase {
         )
         XCTAssertEqual(rowsAfter.count, 1, "no second row")
     }
+
+    // MARK: - S-320…S-336 the wrist emits the rests it took
+
+    /// A phone's `timer_state` naming `timers`, sent at the instant the fixture
+    /// names rather than at `phoneFrame`'s fixed one.
+    private func timerStateAt(
+        _ sessionId: String,
+        messageId: String,
+        sentAt: Date,
+        timers: [String: Any]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": sessionId,
+            "type": "timer_state",
+            "origin": "phone",
+            "sentAt": utcIso(sentAt),
+            "payload": ["timers": timers],
+        ]
+    }
+
+    /// One slot and one logged set — the fixture S-320 to S-336 share. Returns
+    /// the engine and the set's `entryId`, the entry a rest hangs on.
+    private func sessionWithOneSet(
+        _ harness: Harness
+    ) async throws -> (WatchSessionEngine, String) {
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        let entry = try await engine.appendObservation(
+            setEvent(harness.clock, entryId: "entry-1")
+        )
+        return (engine, entry.entryId)
+    }
+
+    func testS320TheRestTheWristEndsTravelsAsARestEvent() async throws {
+        let harness = Harness()
+        let (engine, entryId) = try await sessionWithOneSet(harness)
+        let t0 = harness.clock.now
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+
+        harness.clock.advance(70)
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 1, "one rest ended, one event")
+        let rest = try XCTUnwrap(rests.first)
+        XCTAssertEqual(rest["kind"] as? String, WatchObservationKind.rest)
+        XCTAssertEqual(rest["sessionExerciseId"] as? String, "sx-bench")
+        XCTAssertEqual(rest["exerciseId"] as? String, "ex-sx-bench")
+        assertRest(rest, startedAt: t0, endedAt: harness.clock.now, afterEntryId: entryId)
+        XCTAssertEqual(
+            rest["loggedAt"] as? String,
+            rest["endedAt"] as? String,
+            "the rest was written when it ended"
+        )
+
+        let row = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
+        XCTAssertEqual(
+            rest["eventId"] as? String,
+            "\(row.recordId)-rest",
+            "the id is derived from the row, so a re-send is the same event (D-224)"
+        )
+        XCTAssertNotEqual(
+            rest["eventId"] as? String,
+            row.recordId,
+            "and can never collide with the row's own timer_state frame"
+        )
+        XCTAssertEqual(
+            engine.observations.last?.kind,
+            WatchObservationKind.rest,
+            "the emission is a stored row, not a frame built at send time"
+        )
+    }
+
+    func testS322ARestRunningAtTheEndIsEmittedBeforeTheEnd() async throws {
+        let harness = Harness()
+        let (engine, entryId) = try await sessionWithOneSet(harness)
+        let t0 = harness.clock.now
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+
+        harness.clock.advance(30)
+        _ = await engine.finishSession()
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 1, "a rest running at the end still travels")
+        assertRest(
+            try XCTUnwrap(rests.first),
+            startedAt: t0,
+            endedAt: t0.addingTimeInterval(30),
+            afterEntryId: entryId
+        )
+        XCTAssertEqual(
+            emittedKinds(harness),
+            ["set", "rest", "session_end"],
+            "the rest travels after the set it followed and before the end it is closed by"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped,
+            "and it is over: no rest outlives the workout"
+        )
+    }
+
+    func testS323ARestThatEndsWhereItStartedIsNotSent() async throws {
+        let harness = Harness()
+        let (engine, _) = try await sessionWithOneSet(harness)
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        XCTAssertTrue(
+            emittedRests(harness).isEmpty,
+            "a rest that ends where it started is nothing to write"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped,
+            "the stop itself still happened: only the travel is skipped"
+        )
+        XCTAssertEqual(
+            engine.observations.filter { $0.kind == WatchObservationKind.rest }.count,
+            0
+        )
+    }
+
+    func testS332ASecondStopOfTheSameRestSendsNothing() async throws {
+        let harness = Harness()
+        let (engine, entryId) = try await sessionWithOneSet(harness)
+        let t0 = harness.clock.now
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+
+        harness.clock.advance(70)
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+        assertRest(
+            try XCTUnwrap(emittedRests(harness).first),
+            startedAt: t0,
+            endedAt: t0.addingTimeInterval(70),
+            afterEntryId: entryId
+        )
+
+        harness.clearEmitted()
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        XCTAssertTrue(
+            emittedRests(harness).isEmpty,
+            "a rest that has already ended ends once"
+        )
+        XCTAssertEqual(
+            engine.observations.filter { $0.kind == WatchObservationKind.rest }.count,
+            1,
+            "and nothing was written a second time"
+        )
+        XCTAssertEqual(
+            engine.timerRows(WatchTimerKind.rest).count,
+            2,
+            "the running row and the row that stopped it"
+        )
+    }
+
+    func testS333APhoneSentStopEmitsNothing() async throws {
+        let harness = Harness()
+        let (engine, _) = try await sessionWithOneSet(harness)
+        let sessionId = try XCTUnwrap(engine.session?.sessionId)
+
+        // The phone owns this rest: it starts one at T0+5s and stops it at
+        // T0+20s, and the wrist only mirrors both.
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clock.advance(5)
+        _ = try await engine.applyMessage(
+            timerStateAt(
+                sessionId,
+                messageId: "msg-phone-rest",
+                sentAt: harness.clock.now,
+                timers: [
+                    "rest": timerJson(
+                        WatchTimerKind.rest,
+                        startedAt: utcIso(harness.clock.now)
+                    ),
+                ]
+            )
+        )
+        harness.clearEmitted()
+
+        harness.clock.advance(15)
+        _ = try await engine.applyMessage(
+            timerStateAt(
+                sessionId,
+                messageId: "msg-phone-stop",
+                sentAt: harness.clock.now,
+                timers: ["rest": NSNull()]
+            )
+        )
+
+        XCTAssertTrue(
+            emittedRests(harness).isEmpty,
+            "the phone ended it, so the wrist must not hand it back (D-219)"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped,
+            "the stop itself applied"
+        )
+    }
+
+    func testS334ARestWithNoEntryToFollowIsNotSent() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        harness.clock.advance(5)
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+
+        harness.clock.advance(35)
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        XCTAssertTrue(
+            emittedRests(harness).isEmpty,
+            "there is no effort entry for the rest to hang on"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped
+        )
+    }
+
+    func testS336ARestThePhoneStartedAndTheWristEndsStillTravels() async throws {
+        let harness = Harness()
+        let (engine, entryId) = try await sessionWithOneSet(harness)
+        let sessionId = try XCTUnwrap(engine.session?.sessionId)
+        let t0 = harness.clock.now
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+
+        // The phone's rest, started at T0+8s, arriving at T0+10s: the wrist's
+        // own row is superseded by the row the phone owns.
+        harness.clock.advance(10)
+        _ = try await engine.applyMessage(
+            timerStateAt(
+                sessionId,
+                messageId: "msg-phone-rest",
+                sentAt: harness.clock.now,
+                timers: [
+                    "rest": timerJson(
+                        WatchTimerKind.rest,
+                        startedAt: utcIso(t0.addingTimeInterval(8))
+                    ),
+                ]
+            )
+        )
+        harness.clearEmitted()
+
+        harness.clock.advance(30)
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 1, "the wrist ended it, so the wrist reports it")
+        assertRest(
+            try XCTUnwrap(rests.first),
+            startedAt: t0.addingTimeInterval(8),
+            endedAt: t0.addingTimeInterval(40),
+            afterEntryId: entryId
+        )
+    }
+
+    func testS335ThreeSetsLeaveThreeRests() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        var minted = 0
+        let state = WatchLoggingState(
+            engine: engine,
+            clock: harness.clock.call,
+            idFactory: { minted += 1; return "entry-\(minted)" }
+        )
+        let t0 = harness.clock.now
+
+        try await state.log()
+        harness.clock.advance(45)
+        try await state.log()
+        harness.clock.advance(15)
+        try await state.log()
+        harness.clock.advance(30)
+        await state.endRest()
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 3, "one rest per set that followed one")
+        XCTAssertEqual(
+            rests.compactMap { $0["afterEntryId"] as? String },
+            ["entry-1", "entry-2", "entry-3"],
+            "each rest hangs on the entry that started it"
+        )
+        XCTAssertEqual(
+            rests.map { restLengthSeconds($0) },
+            [45, 15, 30],
+            "the three windows the two stacks have to agree on"
+        )
+        XCTAssertEqual(
+            emittedKinds(harness),
+            ["set", "rest", "set", "rest", "set", "rest"],
+            "and the order they were taken in"
+        )
+        XCTAssertEqual(
+            rests.map { $0["startedAt"] as? String },
+            [
+                utcIso(t0),
+                utcIso(t0.addingTimeInterval(45)),
+                utcIso(t0.addingTimeInterval(60)),
+            ]
+        )
+    }
+}
+
+/// Every `rest` observation in the frames the harness's engine emitted.
+func emittedRests(_ harness: Harness) -> [[String: Any]] {
+    harness.emitted
+        .filter { $0["type"] as? String == "observations_up" }
+        .flatMap { ($0["payload"] as? [String: Any])?["events"] as? [[String: Any]] ?? [] }
+        .filter { $0["kind"] as? String == WatchObservationKind.rest }
+}
+
+/// The kinds of every observation in the frames the harness's engine emitted,
+/// in the order they were sent.
+func emittedKinds(_ harness: Harness) -> [String] {
+    harness.emitted
+        .filter { $0["type"] as? String == "observations_up" }
+        .flatMap { ($0["payload"] as? [String: Any])?["events"] as? [[String: Any]] ?? [] }
+        .compactMap { $0["kind"] as? String }
+}
+
+/// The seconds between a `rest` event's own two instants.
+func restLengthSeconds(_ rest: [String: Any]) -> Double {
+    guard let started = (rest["startedAt"] as? String).flatMap({ try? parseUtcIso($0) }),
+          let ended = (rest["endedAt"] as? String).flatMap({ try? parseUtcIso($0) })
+    else { return -1 }
+    return ended.timeIntervalSince(started)
+}
+
+/// Asserts a `rest` event is the window it should be, hung on the entry it
+/// should be — the shape the phone's importer reads.
+func assertRest(
+    _ rest: [String: Any],
+    startedAt: Date,
+    endedAt: Date,
+    afterEntryId: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    XCTAssertEqual(rest["startedAt"] as? String, utcIso(startedAt), file: file, line: line)
+    XCTAssertEqual(rest["endedAt"] as? String, utcIso(endedAt), file: file, line: line)
+    XCTAssertEqual(rest["afterEntryId"] as? String, afterEntryId, file: file, line: line)
+    XCTAssertNotNil(rest["entryId"] as? String, file: file, line: line)
+    XCTAssertNotNil(rest["eventId"] as? String, file: file, line: line)
 }

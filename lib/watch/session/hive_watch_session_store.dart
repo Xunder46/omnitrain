@@ -19,7 +19,9 @@ class HiveWatchSessionStore implements WatchSessionStore {
   /// Box-name prefix. Distinct engines on one device stay separable.
   final String _name;
 
-  int? _lastSequence;
+  /// The highest sequence this process has assigned, or −1 before the first
+  /// append of the process, when it is rebuilt from the stored rows.
+  int _lastSequence = -1;
 
   Future<Box<String>> _boxFor(String recordType) =>
       Hive.openBox<String>('${_name}_${recordType}s');
@@ -137,10 +139,12 @@ class HiveWatchSessionStore implements WatchSessionStore {
   /// The append counter lives in memory and is rebuilt from stored rows the
   /// first time this process appends, so a relaunch never reuses a sequence.
   Future<int> _nextSequence() async {
-    final highest = _lastSequence ??= (await _allRows()).fold<int>(
-      0,
-      (sequence, row) => row.sequence > sequence ? row.sequence : sequence,
-    );
-    return highest + 1;
+    if (_lastSequence < 0) {
+      _lastSequence = (await _allRows()).fold<int>(
+        0,
+        (sequence, row) => row.sequence > sequence ? row.sequence : sequence,
+      );
+    }
+    return ++_lastSequence;
   }
 }

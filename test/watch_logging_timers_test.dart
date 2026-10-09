@@ -219,6 +219,50 @@ void main() {
     });
   });
 
+  group('S-321 a set logged mid-rest ends it at that set\'s own instant', () {
+    test('S-321 the rest ends at the instant the set carries', () async {
+      await surface.log();
+      final setA = engine.observations.single;
+      final restStartedAt = engine.timerFor(WatchTimerKind.rest)!.startedAt;
+      // The set's own instant, ahead of the clock the surface reads: a stop
+      // that read the clock instead would end the rest where it started.
+      final setBAt = clock.now.add(const Duration(seconds: 45));
+
+      await surface.log(now: setBAt);
+
+      final rest = engine.observations.singleWhere(
+        (row) => row.kind == WatchObservationKind.rest,
+      );
+      final setB = engine.observations.last;
+      expect(setB.kind, WatchObservationKind.set);
+      expect(rest.payload['afterEntryId'], setA.entryId);
+      expect(rest.payload['startedAt'], utcIso(restStartedAt));
+      expect(
+        rest.payload['endedAt'],
+        utcIso(setBAt),
+        reason: "the log's own instant, not a second read of the clock",
+      );
+      expect(rest.payload['endedAt'], setB.payload['loggedAt']);
+      expect(
+        rest.sequence,
+        lessThan(setB.sequence),
+        reason: 'the rest was written before the set that ended it',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.running,
+        reason: 'the set that ended the rest started one of its own',
+      );
+      expect(
+        engine.observations.where(
+          (row) => row.kind == WatchObservationKind.rest,
+        ),
+        hasLength(1),
+        reason: "and that new rest has no observation yet",
+      );
+    });
+  });
+
   group('S-003 round countdown', () {
     // A round lives in a round-based modality, which is the language S-008 is
     // about; the timer derivation underneath is the same one sets use.

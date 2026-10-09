@@ -72,4 +72,55 @@ final class WatchRestIsCountUpTests: XCTestCase {
 
         XCTAssertTrue(offenders.isEmpty, "\(rule) Offending sites: \(offenders)")
     }
+
+    // MARK: - S-331 the finish path ends a rest, and the count-up still holds
+
+    func testS331NoRestSurvivesTheWorkoutAndTheCountUpStillHolds() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.appendObservation(setEvent(harness.clock, entryId: "entry-1"))
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+        let t0 = harness.clock.now
+
+        harness.clock.advance(30)
+        _ = await engine.finishSession()
+
+        // A rebuild over the same store: what survived is what the rows say.
+        let rebuilt = await harness.runningEngine(harness.newEngine())
+        let rest = try XCTUnwrap(
+            rebuilt.timerRows(WatchTimerKind.rest).last,
+            "the rest is still a row"
+        )
+
+        XCTAssertEqual(rest.state, WatchTimerState.stopped, "no rest survives the workout")
+        XCTAssertEqual(rest.stoppedAt, t0.addingTimeInterval(30))
+        XCTAssertNil(rest.plannedDurationMs, "and it still has no length to plan (D-160)")
+        XCTAssertNil(
+            remainingMs(rest, now: harness.clock.now),
+            "the row it ended is still a count-up: nothing is left to show"
+        )
+        XCTAssertEqual(
+            activeElapsedMs(rest, now: harness.clock.now),
+            30_000,
+            "the time it reached is the whole account of it"
+        )
+        XCTAssertEqual(
+            rebuilt.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped,
+            "the rebuilt wrist holds no running rest"
+        )
+        XCTAssertEqual(
+            rebuilt.observations.filter { $0.kind == WatchObservationKind.rest }.count,
+            1,
+            "one rest observation, as S-322"
+        )
+        XCTAssertEqual(
+            rebuilt.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-bench"],
+            "the terminal row keeps the session's own rows"
+        )
+        XCTAssertEqual(emittedRests(harness).count, 1)
+    }
 }

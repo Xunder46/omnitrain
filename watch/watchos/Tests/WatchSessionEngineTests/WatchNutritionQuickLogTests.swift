@@ -587,9 +587,13 @@ final class WatchNutritionQuickLogTests: XCTestCase {
             Set(WatchObservationKind.all),
             Set([
                 "set", "timed", "round", "hold", WatchObservationKind.nutritionQuickLog,
-                "effort_rating", "session_end",
+                "effort_rating", "session_end", WatchObservationKind.rest,
             ]),
             "what the phone can be sent is a list, not whatever a client happens to spell"
+        )
+        XCTAssertFalse(
+            WatchObservationKind.efforts.contains(WatchObservationKind.rest),
+            "a rest records no work in a slot, so it is never an effort entry"
         )
     }
 }

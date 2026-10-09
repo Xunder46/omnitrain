@@ -67,8 +67,13 @@ public enum WatchObservationKind {
     /// (`WatchSessionCapture.sessionEndId`).
     public static let sessionEnd = "session_end"
 
+    /// The window between two efforts, hung on the entry it followed. It
+    /// records no work in a slot, so it is not an effort: it never joins
+    /// `efforts`, and the set block's span and the effort debt do not see it.
+    public static let rest = "rest"
+
     public static let all = [
-        set, timed, round, hold, nutritionQuickLog, effortRating, sessionEnd,
+        set, timed, round, hold, nutritionQuickLog, effortRating, sessionEnd, rest,
     ]
 
     /// The kinds that record work done in a slot — what "an effort entry" means

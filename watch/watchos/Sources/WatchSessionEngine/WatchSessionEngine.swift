@@ -1078,6 +1078,11 @@ public final class WatchSessionEngine {
         let session = requireSession()
         let now = clock()
         if let status {
+            // A rest cannot outlive the workout (D-223). The stop happens before
+            // the terminal row below, which replaces the session the appender
+            // resolves, and it emits the rest's own observation while the
+            // session it names is still the one the wrist is on.
+            await stopTimer(kind: WatchTimerKind.rest, at: now)
             // The wrist's own End or abandon: its end is the wrist's clock at
             // this moment, the same instant the new row records (D-120).
             await captureSessionEnd(session.sessionId, status: status, endedAt: now)
@@ -1565,13 +1570,77 @@ public final class WatchSessionEngine {
 
     /// Ends the newest timer, or the newest one of `kind`. A stopped timer keeps
     /// the time it had reached.
+    ///
+    /// The rest is the one timer whose ending the phone also has to hear: the
+    /// window it spanned travels as a `rest` observation (D-211/D-220), built
+    /// from the stopped row and emitted through the same append-then-emit path
+    /// every other log uses. `at` is the ending instant the caller already has
+    /// (D-223) — the instant the frame it is about to send reports — and
+    /// defaults to the clock.
     @discardableResult
-    public func stopTimer(kind: String? = nil) async -> WatchTimerRecord? {
+    public func stopTimer(kind: String? = nil, at instant: Date? = nil) async -> WatchTimerRecord? {
         guard let timer = activeTimer(kind), timer.state != WatchTimerState.stopped
         else { return activeTimer(kind) }
 
-        let now = clock()
-        return await appendTimer(timerRowFrom(timer, recordedAt: now, stoppedAt: now))
+        let now = instant ?? clock()
+        let stopped = await appendTimer(timerRowFrom(timer, recordedAt: now, stoppedAt: now))
+        if stopped.kind == WatchTimerKind.rest {
+            await emitRestEnded(stopped, following: timer)
+        }
+        return stopped
+    }
+
+    /// Emits the rest the stopped row was: the window it spanned, hung on the
+    /// entry it followed (D-166, D-220, D-221).
+    ///
+    /// Nothing is emitted when the window is empty — a rest that ends where it
+    /// started is nothing to write — and nothing when D-221 finds no entry to
+    /// hang it on. The stop itself has already happened either way: only the
+    /// travel is skipped, and the timer row is stored all the same.
+    private func emitRestEnded(
+        _ row: WatchTimerRecord,
+        following preStop: WatchTimerRecord
+    ) async {
+        guard let endedAt = row.stoppedAt, endedAt > row.startedAt else { return }
+        guard let followed = restFollowOnEntryId(before: preStop) else { return }
+
+        // D-224: the id is derived from the row, so a re-send is the same event,
+        // and suffixed so it cannot collide with the `timer_state` frame the
+        // same row already sent.
+        let eventId = "\(row.recordId)-rest"
+        let event: [String: Any] = [
+            "entryId": eventId,
+            "eventId": eventId,
+            "kind": WatchObservationKind.rest,
+            "loggedAt": utcIso(endedAt),
+            "sessionExerciseId": followed.payload["sessionExerciseId"] as? String ?? "",
+            "exerciseId": followed.payload["exerciseId"] as? String ?? "",
+            "startedAt": utcIso(row.startedAt),
+            "endedAt": utcIso(endedAt),
+            "afterEntryId": followed.entryId,
+        ]
+        // A rest whose event cannot be built is a rest that does not travel:
+        // the ending is the user's, and it must not fail with the frame.
+        _ = try? await appendObservation(event, sessionId: row.sessionId)
+    }
+
+    /// The entry a rest hangs on (D-221): the newest effort observation of the
+    /// same session whose stored row precedes the rest timer's own row.
+    ///
+    /// Positional, against the store's row order, because the timer row names no
+    /// slot: it reads the rows the store holds, which is what makes the answer
+    /// survive a relaunch and what makes a rest the wrist adopted from the phone
+    /// answer with the entry that was logged last. No preceding effort
+    /// observation → nil, and the rest is not emitted.
+    private func restFollowOnEntryId(before timerRow: WatchTimerRecord) -> WatchObservationRecord? {
+        var newest: WatchObservationRecord?
+        for observation in storedObservations {
+            if observation.sessionId != timerRow.sessionId { continue }
+            if observation.sequence >= timerRow.sequence { continue }
+            guard WatchObservationKind.efforts.contains(observation.kind) else { continue }
+            if newest.map({ observation.sequence > $0.sequence }) ?? true { newest = observation }
+        }
+        return newest
     }
 
     /// Copies the timer's identity into a new row — timers advance by append too.

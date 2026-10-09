@@ -591,7 +591,10 @@ class WatchSensorRecordingTests: XCTestCase {
         XCTAssertGreaterThan(samples, 0, "S-237 F-CAP full records heart rate and steps")
 
         _ = await engine.confirmObservations(
-            ["e-run", "e-r1", "e-r2", "e-r3", "e-set1", "e-set2", "e-set3"]
+            [
+                "e-run", "e-r1", "e-r2", "e-r3", "e-set1", "e-set2", "e-set3",
+                "rec-13-rest", "rec-15-rest", "rec-17-rest",
+            ]
         )
         let afterEntries = await engine.pruneSettledSensorSamples()
         XCTAssertEqual(afterEntries, [], "S-237 every effort acknowledged, the end not yet: nothing released")

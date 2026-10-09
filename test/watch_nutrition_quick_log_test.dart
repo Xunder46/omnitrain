@@ -1344,10 +1344,18 @@ void main() {
           'round',
           'hold',
           WatchObservationKind.nutritionQuickLog,
+          WatchObservationKind.rest,
         ]),
         reason:
             'what the phone can be sent is a list, not whatever a client '
             'happens to spell',
+      );
+      expect(
+        WatchObservationKind.efforts,
+        unorderedEquals(['set', 'timed', 'round', 'hold']),
+        reason:
+            'a rest records no work in a slot, so it is never an effort: the '
+            'set a rest hangs on and the effort debt read this list',
       );
     });
   });

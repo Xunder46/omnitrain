@@ -1153,11 +1153,20 @@ class WatchSessionEngine {
     required String? lifecycle,
   }) async {
     final session = _requireSession();
+    final now = _clock();
+    // A rest can never outlive the workout (D-223, V-1): it is stopped at the
+    // session's end instant, before the terminal row is built — the row copies
+    // `session.exercises`, so a stop after it would land on a session already
+    // over — and the stop emits the rest's own observation while the session it
+    // names is still the one the wrist is on.
+    if (status != null) {
+      await stopTimer(kind: WatchTimerKind.rest, at: now);
+    }
     return _appendSessionRow(
       WatchSessionRecord(
         recordId: _newId(),
         sessionId: session.sessionId,
-        recordedAt: _clock(),
+        recordedAt: now,
         startedAt: session.startedAt,
         modality: session.modality,
         source: session.source,
@@ -1438,12 +1447,86 @@ class WatchSessionEngine {
 
   /// Ends the newest timer, or the newest one of [kind]. A stopped timer keeps
   /// the time it had reached.
-  Future<WatchTimerRecord?> stopTimer({String? kind}) async {
+  ///
+  /// The rest is the one timer whose ending the phone also has to hear: the
+  /// window it spanned travels as a `rest` observation (D-211/D-220), built
+  /// from the stopped row and emitted through the same append-then-emit path
+  /// every other log uses. [at] is the ending instant the caller already has
+  /// (D-223) — the instant the frame it is about to send reports — and defaults
+  /// to the clock.
+  Future<WatchTimerRecord?> stopTimer({String? kind, DateTime? at}) async {
     final timer = _activeTimer(kind);
     if (timer == null || timer.state == WatchTimerState.stopped) return timer;
 
-    final now = _clock();
-    return _appendTimer(_timerRowFrom(timer, recordedAt: now, stoppedAt: now));
+    final now = at ?? _clock();
+    final stopped = await _appendTimer(
+      _timerRowFrom(timer, recordedAt: now, stoppedAt: now),
+    );
+    if (stopped.kind == WatchTimerKind.rest) {
+      await _emitRestEnded(stopped, following: timer);
+    }
+    return stopped;
+  }
+
+  /// Emits the rest the stopped row was: the window it spanned, hung on the
+  /// entry it followed (D-166, D-220, D-221).
+  ///
+  /// Nothing is emitted when the window is empty — a rest that ends where it
+  /// started is nothing to write — and nothing when D-221 finds no entry to
+  /// hang it on. The stop itself has already happened either way: only the
+  /// travel is skipped, and the timer row is stored all the same.
+  Future<void> _emitRestEnded(
+    WatchTimerRecord row, {
+    required WatchTimerRecord following,
+  }) async {
+    final endedAt = row.stoppedAt;
+    if (endedAt == null || !endedAt.isAfter(row.startedAt)) return;
+    final followed = _restFollowOnEntryId(following);
+    if (followed == null) return;
+
+    // D-224: the id is derived from the row, so a re-send is the same event,
+    // and suffixed so it cannot collide with the `timer_state` frame the same
+    // row already sent.
+    final eventId = '${row.recordId}-rest';
+    final event = <String, Object?>{
+      'entryId': eventId,
+      'eventId': eventId,
+      'kind': WatchObservationKind.rest,
+      'loggedAt': utcIso(endedAt),
+      'sessionExerciseId': followed.payload['sessionExerciseId'] ?? '',
+      'exerciseId': followed.payload['exerciseId'] ?? '',
+      'startedAt': utcIso(row.startedAt),
+      'endedAt': utcIso(endedAt),
+      'afterEntryId': followed.entryId,
+    };
+    // A rest whose event cannot be built is a rest that does not travel: the
+    // ending is the user's, and it must not fail with the frame.
+    try {
+      await _appendObservation(event, sessionId: row.sessionId);
+    } catch (_) {
+      // Swallowed on purpose: the stop stands, only its travel is skipped.
+    }
+  }
+
+  /// The entry a rest hangs on (D-221): the newest effort observation of the
+  /// same session whose stored row precedes the rest timer's own row.
+  ///
+  /// Positional, against the store's row order, because the timer row names no
+  /// slot: it reads the rows the store holds, which is what makes the answer
+  /// survive a relaunch and what makes a rest the wrist adopted from the phone
+  /// answer with the entry that was logged last. No preceding effort
+  /// observation → null, and the rest is not emitted.
+  WatchObservationRecord? _restFollowOnEntryId(WatchTimerRecord before) {
+    WatchObservationRecord? newest;
+    for (final observation in _observations) {
+      if (observation.sessionId != before.sessionId) continue;
+      if (observation.sequence >= before.sequence) continue;
+      if (!WatchObservationKind.efforts.contains(observation.kind)) continue;
+      if (newest == null || observation.sequence > newest.sequence) {
+        newest = observation;
+      }
+    }
+    return newest;
   }
 
   /// Copies [timer]'s identity into a new row — timers advance by append too.

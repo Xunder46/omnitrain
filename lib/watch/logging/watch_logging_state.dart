@@ -194,8 +194,11 @@ class WatchLoggingState {
   }
 
   /// Ends the running rest at this instant (the rest screen's Next, D-161).
-  Future<void> endRest() async {
-    await _engine.stopTimer(kind: WatchTimerKind.rest);
+  ///
+  /// [at] is the ending instant the caller already has — the instant the frame
+  /// it is about to send reports (D-223) — and defaults to this state's clock.
+  Future<void> endRest({DateTime? at}) async {
+    await _engine.stopTimer(kind: WatchTimerKind.rest, at: at);
   }
 
   /// The running rest's elapsed time in whole seconds as of now, or null when
@@ -626,7 +629,8 @@ class WatchLoggingState {
 
     // D-162: a rest can never outlive the entry that follows it, whichever
     // path logs — a running rest ends at this log's instant.
-    if (isResting) await endRest();
+    if (isResting) await endRest(at: loggedAt);
+
 
     final stored = await _engine.appendObservation(event);
     _dialled.clear();

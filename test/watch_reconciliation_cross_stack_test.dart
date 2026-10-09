@@ -26,12 +26,26 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/sync_protocol/session_reconciler.dart';
+import 'package:omnitrain/watch/logging/watch_logging_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
 import 'package:omnitrain/watch/session/watch_session_engine.dart';
 
 const String _fixtures = 'watch/sync_protocol/fixtures/reconciliation';
 
 final DateTime _now = DateTime.utc(2026, 9, 21, 12);
+
+/// Deterministic clock: both engines read time only through an injected clock,
+/// so the scripted five-step run is a list of instants, not a wait.
+class _Clock {
+  _Clock(this.now);
+
+  DateTime now;
+
+  DateTime call() => now;
+
+  void advance(Duration delta) => now = now.add(delta);
+}
 
 Map<String, Object?> _asObject(Object? value) =>
     (value as Map).cast<String, Object?>();
@@ -342,5 +356,94 @@ void main() {
     );
     expect(engine.session!.currentExerciseIndex, after['currentExerciseIndex']);
     expect(engine.session!.currentExerciseIndex, lessThan(ladderAfter.length));
+  });
+
+  test('S-335 the scripted run leaves three rests, the same in both stacks',
+      () async {
+    final clock = _Clock(_now);
+    final emitted = <Map<String, Object?>>[];
+    final store = InMemoryWatchSessionStore();
+    final engine = WatchSessionEngine(
+      store,
+      clock: clock.call,
+      onEmit: emitted.add,
+    );
+    await engine.createSession(
+      modality: 'resistance_lifting',
+      exercises: [
+        {
+          'sessionExerciseId': 'sx-bench',
+          'exerciseId': 'ex-bench',
+          'name': 'Bench Press',
+          'capabilities': const ['reps', 'sets', 'load'],
+        },
+      ],
+    );
+    final surface = WatchLoggingState(engine: engine, clock: clock.call);
+
+    await surface.log(); // A at T0
+    clock.advance(const Duration(seconds: 45));
+    await surface.log(); // B at T0+45s, which ends R1
+    clock.advance(const Duration(seconds: 15));
+    await surface.log(); // C at T0+60s, which ends R2
+    clock.advance(const Duration(seconds: 30));
+    await surface.endRest(); // Next at T0+90s, which ends R3
+    clock.advance(const Duration(seconds: 30));
+    await engine.finishSession(); // End at T0+120s, no rest running
+
+    final events = [
+      for (final envelope in emitted)
+        if (envelope['type'] == 'observations_up')
+          for (final event in _objectsIn(_payloadOf(envelope)['events'])) event,
+    ];
+    expect(
+      [for (final event in events) event['kind']],
+      ['set', 'rest', 'set', 'rest', 'set', 'rest'],
+      reason: 'S-335 rest(R1) < B < rest(R2) < C < rest(R3), and End adds none',
+    );
+
+    final sets = [
+      for (final event in events)
+        if (event['kind'] == 'set') event,
+    ];
+    final rests = [
+      for (final event in events)
+        if (event['kind'] == 'rest') event,
+    ];
+    expect(
+      [for (final rest in rests) rest['afterEntryId']],
+      [for (final set in sets) set['entryId']],
+      reason: 'S-335 each rest follows the set that ended it',
+    );
+    expect(
+      [for (final rest in rests) rest['startedAt']],
+      [
+        utcIso(_now),
+        utcIso(_now.add(const Duration(seconds: 45))),
+        utcIso(_now.add(const Duration(seconds: 60))),
+      ],
+      reason: 'S-335 each rest starts at the instant its set was logged',
+    );
+    expect(
+      [for (final rest in rests) rest['endedAt']],
+      [
+        utcIso(_now.add(const Duration(seconds: 45))),
+        utcIso(_now.add(const Duration(seconds: 60))),
+        utcIso(_now.add(const Duration(seconds: 90))),
+      ],
+      reason: 'S-335 the windows are 45 s, 15 s and 30 s',
+    );
+
+    expect(
+      [
+        for (final row in (await store.readAll()).observations)
+          if (row.kind == WatchObservationKind.rest)
+            [row.payload['startedAt'], row.payload['endedAt']],
+      ],
+      [
+        for (final rest in rests) [rest['startedAt'], rest['endedAt']],
+      ],
+      reason: 'S-335 emitted state is stored state',
+    );
   });
 }

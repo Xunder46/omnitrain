@@ -230,6 +230,25 @@ Future<bool> _rowsExist(
       return (await repository.getRoundInstances(effortId)).any(
         (r) => r.id == WatchSessionImporter.roundInstanceIdFor(_capId, entryId),
       );
+    case 'rest':
+      final effortId = WatchSessionImporter.effortIdFor(
+        _capId,
+        event['sessionExerciseId']! as String,
+        event['exerciseId']! as String,
+        'set',
+      );
+      final setEntries = [
+        for (final e in captureEvents(caseName))
+          if (e['kind'] == 'set') e['entryId'],
+      ];
+      final index = setEntries.indexOf(event['afterEntryId']! as String) + 1;
+      return (await repository.getEntryRests(effortId)).any(
+        (row) =>
+            row.id == 'rest-$effortId-$index' &&
+            row.entryIndex == index &&
+            row.restStartMs == _msOf(event['startedAt']! as String) &&
+            row.restEndMs == _msOf(event['endedAt']! as String),
+      );
     default:
       final effortId = WatchSessionImporter.effortIdFor(
         _capId,
@@ -290,7 +309,7 @@ class _RecordingHealthPlatform implements HealthPlatformService {
 void main() {
   group('S-261 import from the offline stream', () {
     for (final caseName in const ['full', 'no-sensors', 'prompt-off']) {
-      test('S-261 $caseName: nine envelopes through the router import exactly '
+      test('S-261 $caseName: every envelope through the router imports exactly '
           'the contract', () async {
         final repository = await _repository();
         final transport = CaptureTransport();

@@ -656,4 +656,37 @@ final class WatchLoggingTimersTests: XCTestCase {
             "a kind the phone names is a kind the phone is speaking about"
         )
     }
+
+    // MARK: - S-321 the rest the next set ends travels before that set
+
+    func testS321TheRestTheNextSetEndsTravelsBeforeIt() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        let surface = surface(harness, engine: engine)
+        let t0 = harness.clock.now
+
+        let first = try await surface.log()
+        harness.clock.advance(45)
+        _ = try await surface.log()
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 1, "one rest ended, one event")
+        assertRest(
+            try XCTUnwrap(rests.first),
+            startedAt: t0,
+            endedAt: t0.addingTimeInterval(45),
+            afterEntryId: first.entryId
+        )
+        XCTAssertEqual(
+            emittedKinds(harness),
+            ["set", "rest", "set"],
+            "the rest travels before the entry that closed it"
+        )
+        XCTAssertEqual(
+            engine.timerRows(WatchTimerKind.rest).first { $0.stoppedAt != nil }?.stoppedAt,
+            t0.addingTimeInterval(45),
+            "the window ends at the instant the new entry's own frame reports (D-223)"
+        )
+    }
 }

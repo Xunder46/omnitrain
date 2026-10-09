@@ -65,7 +65,24 @@ abstract final class WatchObservationKind {
   /// slot: it names a food and a portion, and nothing else.
   static const String nutritionQuickLog = 'nutrition_quick_log';
 
-  static const List<String> all = [set, timed, round, hold, nutritionQuickLog];
+  /// The window between two efforts, hung on the entry it followed. It records
+  /// no work in a slot, so it is not an effort: it never joins [efforts], and
+  /// the set block's span and the effort debt do not see it.
+  static const String rest = 'rest';
+
+  static const List<String> all = [
+    set,
+    timed,
+    round,
+    hold,
+    nutritionQuickLog,
+    rest,
+  ];
+
+  /// The kinds that record work done in a slot — what "an effort entry" means
+  /// to a set block's span and to whether an effort rating is owed. The set a
+  /// rest may hang on is one of these, and nothing else.
+  static const List<String> efforts = [set, timed, round, hold];
 }
 
 /// The session id a nutrition quick-log carries when the wrist has no session

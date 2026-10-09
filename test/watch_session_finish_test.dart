@@ -19,6 +19,10 @@
 //   S-192 agreeing and history are both answered → `S-192 ...` (two cases)
 //   S-193 a dropped answer returns at the next announcement → `S-193 ...`
 //
+// Plan: `docs/plans/2026-10-08-18d-watch-rest-emit-and-docs-plan/2026-10-08-18d-watch-rest-emit-and-docs-plan.md`,
+// Phase 1 — D-220, D-223. Scenarios: S-322, S-331 (the wrist's own finish is a
+// rest's end too; the last group here is the wrist's engine, not the phone's).
+//
 // Every frame arrives through the real `LiveSessionMirrorState` behind the real
 // `WatchIncomingRouter`, the inbox is wired the way `createWatchSync` wires it
 // (including the adoption bridge's answer to "is this the phone's own
@@ -41,7 +45,9 @@ import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
 import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
+import 'package:omnitrain/watch/session/watch_session_engine.dart';
 
 import 'helpers/sync_protocol_harness.dart';
 import 'helpers/watch_capture_import_harness.dart'
@@ -349,6 +355,38 @@ Future<void> _expectOneEndedSession(
   );
   expect(phone.failures, isEmpty);
 }
+
+/// Deterministic clock for the wrist's engine: a rest's window is asserted
+/// against instants, never against a real clock.
+class _WristClock {
+  _WristClock(this.now);
+
+  DateTime now;
+
+  DateTime call() => now;
+
+  void advance(Duration delta) => now = now.add(delta);
+}
+
+/// The one ladder slot the wrist's own session holds.
+Map<String, Object?> _wristSlot() => {
+  'sessionExerciseId': 'sl-1',
+  'exerciseId': 'ex-bench',
+  'name': 'ex-bench',
+  'capabilities': ['reps', 'sets', 'load'],
+};
+
+/// The set the wrist logs, as the logging surface hands it to the engine.
+Map<String, Object?> _wristSet(DateTime at) => {
+  'entryId': 'entry-1',
+  'eventId': 'entry-1',
+  'kind': 'set',
+  'loggedAt': utcIso(at),
+  'sessionExerciseId': 'sl-1',
+  'exerciseId': 'ex-bench',
+  'reps': 8,
+  'loadKg': 40,
+};
 
 void main() {
   test('S-4 the wrist ends its session, roster of logged sets first', () async {
@@ -1176,5 +1214,107 @@ void main() {
     expect(phone.state.currentSession?.id, p1);
     expect(phone.mirror.state['sessionId'], 'w1');
     expect(phone.failures, isEmpty);
+  });
+
+  // The wrist's own End is a rest's ending too (D-220, D-223): the rest left
+  // running is stopped at the instant the terminal row records, and reported,
+  // so the phone's total has both of its ends. The real engine over a real
+  // store — no phone graph is involved here.
+  group('S-322 / S-331 a rest cannot outlive the workout', () {
+    late _WristClock clock;
+    late InMemoryWatchSessionStore store;
+    late WatchSessionEngine engine;
+    late String setEntryId;
+
+    setUp(() async {
+      clock = _WristClock(DateTime.utc(2026, 10, 8, 12));
+      store = InMemoryWatchSessionStore();
+      engine = WatchSessionEngine(
+        store,
+        clock: clock.call,
+        sessionIdFactory: () => 's-w1',
+      );
+      await engine.createSession(
+        modality: 'resistance_lifting',
+        exercises: [_wristSlot()],
+      );
+      await engine.appendObservation(_wristSet(clock.now));
+      setEntryId = engine.observations.single.entryId;
+      await engine.startTimer(WatchTimerKind.rest);
+    });
+
+    test('S-322 End stops the rest, reports it, and the end comes last', () async {
+      final restStartedAt = clock.now;
+      clock.advance(const Duration(seconds: 30));
+      await engine.finishSession();
+
+      final rest = engine.observations.singleWhere(
+        (row) => row.kind == WatchObservationKind.rest,
+      );
+      expect(rest.payload['afterEntryId'], setEntryId);
+      expect(rest.payload['sessionExerciseId'], 'sl-1');
+      expect(rest.payload['startedAt'], utcIso(restStartedAt));
+      expect(
+        rest.payload['endedAt'],
+        utcIso(clock.now),
+        reason: 'S-322 the rest ends where the workout did',
+      );
+      expect(
+        engine.observations.map((row) => row.kind),
+        ['set', 'rest'],
+        reason: 'S-322 the rest is written before the terminal row is built',
+      );
+
+      final stopped = engine.timerFor(WatchTimerKind.rest)!;
+      expect(stopped.state, WatchTimerState.stopped);
+      expect(stopped.stoppedAt, clock.now);
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(
+        engine.session!.exercises.map((slot) => slot['sessionExerciseId']),
+        ['sl-1'],
+        reason: 'the terminal row was built after the stop, so it kept the slot',
+      );
+
+      final written = engine.observations.length;
+      engine.replaySessionEnd();
+      expect(
+        engine.observations.length,
+        written,
+        reason: 'S-322 a replayed end adds nothing: the rest is already over',
+      );
+    });
+
+    test('S-331 the rebuilt engine holds no running rest', () async {
+      clock.advance(const Duration(seconds: 30));
+      await engine.finishSession();
+
+      final relaunched = WatchSessionEngine(
+        store,
+        clock: clock.call,
+        sessionIdFactory: () => 's-w1',
+      );
+      await relaunched.restore();
+
+      expect(relaunched.session!.status, WatchSessionStatus.completed);
+      expect(
+        relaunched.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.stopped,
+        reason: 'S-331 no rest survives the workout it was running in',
+      );
+      expect(
+        relaunched.observations.map((row) => row.kind),
+        ['set', 'rest'],
+        reason:
+            'S-331 the rest the end reported is stored, so the phone still '
+            'owes it a receipt',
+      );
+      expect(
+        relaunched.observations
+            .singleWhere((row) => row.kind == WatchObservationKind.rest)
+            .payload['afterEntryId'],
+        setEntryId,
+        reason: 'S-331 and it still names the set it followed',
+      );
+    });
   });
 }

@@ -312,7 +312,7 @@ final class WatchCaptureContractTests: XCTestCase {
         try await replay.run()
 
         assertEventsEqual(replay.emittedEvents, replay.expectedEvents, "F-CAP prompt-off")
-        XCTAssertEqual(replay.emittedEvents.count, 8, "F-CAP prompt-off: no rating, so eight events")
+        XCTAssertEqual(replay.emittedEvents.count, 11, "F-CAP prompt-off: no rating, so eleven events")
         XCTAssertFalse(replay.rating.isPromptOwed, "F-CAP prompt-off: the setting is off, so nothing is owed")
     }
 }

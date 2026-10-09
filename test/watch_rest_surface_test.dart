@@ -15,6 +15,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/watch/logging/watch_logging_state.dart';
 import 'package:omnitrain/watch/logging/watch_rest_screen.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
@@ -42,16 +43,57 @@ Map<String, Object?> _slot(String id, List<String> capabilities) => {
   'capabilities': capabilities,
 };
 
+/// A running `rest` timer as the wire spells one: rest is a count-up, so it
+/// carries no planned length (D-160).
+Map<String, Object?> _runningRest(DateTime startedAt) => {
+  'kind': 'rest',
+  'state': 'running',
+  'startedAt': utcIso(startedAt),
+  'accumulatedPauseMs': 0,
+};
+
+/// One `timer_state` from the phone.
+Map<String, Object?> _timerState(
+  String sessionId, {
+  required String messageId,
+  required DateTime sentAt,
+  required Map<String, Object?> timers,
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'timer_state',
+  'origin': 'phone',
+  'sentAt': utcIso(sentAt),
+  'payload': <String, Object?>{'timers': timers},
+};
+
+/// The rest events the surface's stops have emitted.
+List<Map<String, Object?>> _emittedRests(List<Map<String, Object?>> emitted) {
+  final rests = <Map<String, Object?>>[];
+  for (final envelope in emitted) {
+    if (envelope['type'] != 'observations_up') continue;
+    final payload = (envelope['payload']! as Map).cast<String, Object?>();
+    for (final event in payload['events']! as List) {
+      final map = (event! as Map).cast<String, Object?>();
+      if (map['kind'] == 'rest') rests.add(map);
+    }
+  }
+  return rests;
+}
+
 void main() {
   late _Clock clock;
   late WatchSessionStore store;
   late WatchSessionEngine engine;
   late WatchLoggingState surface;
+  late List<Map<String, Object?>> emitted;
 
   setUp(() async {
     clock = _Clock(DateTime.utc(2026, 10, 8, 10));
     store = InMemoryWatchSessionStore();
-    engine = WatchSessionEngine(store, clock: clock.call);
+    emitted = <Map<String, Object?>>[];
+    engine = WatchSessionEngine(store, clock: clock.call, onEmit: emitted.add);
     await engine.createSession(
       modality: 'resistance_lifting',
       exercises: [
@@ -139,7 +181,12 @@ void main() {
         3,
         reason: 'one rest per logged set',
       );
-      expect(engine.entries.length, 3);
+      expect(
+        engine.entries.length,
+        5,
+        reason: 'three sets, plus the two rests their logs ended (D-219): the '
+            'third rest is still running',
+      );
     });
 
     test('a rest left over from a finished session shows nothing', () async {
@@ -150,6 +197,77 @@ void main() {
 
       expect(surface.isResting, isFalse);
       expect(surface.restElapsedSeconds(), isNull);
+    });
+  });
+
+  group("S-332 / S-336 the surface's own stop emits", () {
+    test('S-332 Next emits once, and the stop again is silent', () async {
+      await surface.log();
+      clock.advance(const Duration(seconds: 70));
+      await surface.endRest();
+
+      final first = _emittedRests(emitted);
+      expect(first, hasLength(1), reason: 'Next reports the rest it ended');
+      expect(
+        first.single['entryId'],
+        endsWith('-rest'),
+        reason: 'D-224 the row it was built from names it',
+      );
+
+      await surface.endRest();
+
+      expect(
+        _emittedRests(emitted),
+        hasLength(1),
+        reason: 'a rest that has already ended ends once',
+      );
+      expect(
+        (await store.readAll()).observations.where(
+          (row) => row.kind == WatchObservationKind.rest,
+        ),
+        hasLength(1),
+        reason: 'and nothing was written a second time',
+      );
+    });
+
+    test('S-336 a rest the phone started and the wrist ends still travels',
+        () async {
+      await surface.log(); // A at T0, and the wrist's own rest with it
+      final entryId = engine.observations.single.entryId;
+      final sessionId = engine.session!.sessionId;
+      final t0 = clock.now;
+
+      // The phone's rest, started at T0+8s, arriving at T0+10s: the wrist's own
+      // row is superseded by the row the phone owns.
+      clock.advance(const Duration(seconds: 10));
+      await engine.applyMessage(
+        _timerState(
+          sessionId,
+          messageId: 'msg-phone-rest',
+          sentAt: clock.now,
+          timers: {
+            'rest': _runningRest(t0.add(const Duration(seconds: 8))),
+          },
+        ),
+      );
+      emitted.clear();
+
+      clock.advance(const Duration(seconds: 30));
+      await surface.endRest();
+
+      final rests = _emittedRests(emitted);
+      expect(rests, hasLength(1), reason: 'the wrist ended it, so it travels');
+      expect(
+        rests.single['afterEntryId'],
+        entryId,
+        reason: 'D-221 is positional: it does not care who started the rest',
+      );
+      expect(
+        rests.single['startedAt'],
+        utcIso(t0.add(const Duration(seconds: 8))),
+        reason: "the adopted row's own start",
+      );
+      expect(rests.single['endedAt'], utcIso(t0.add(const Duration(seconds: 40))));
     });
   });
 

@@ -608,8 +608,34 @@ kind, its staging and the importer — is absent at that ref, so the fixture can
 - [x] **Planner** — read the brief, 18c's trimmed plan and evidence, the seed, and the wrist/engine/phone sources;
       wrote this plan from 18c's moved Phase 1B and Phase 3. Baselines confirmed on read: flutter `+4181 ~1`,
       swift `376 / 0`, analyze `196 / 0`; `xcodebuild` governor-run.
-- [ ] **Phase 1** (@developer) — the wrist emits: not started. Counts to paste: `lint`, the seven targeted suites,
-      `swift-test` (baseline 376/0), the `prove-red` row and the pasted Swift red list.
+- [x] **Phase 1** (@developer) — **Complete** (both halves). Items 1 and 3–7 (Swift) and items 2 and 8 (the Dart twin) are
+      done; `swift-test` 389 executed / 0 failures, the ten Dart files green (`+232`, 0 failures), `lint` back at 196 / 0
+      after removing the six imports this half's own change made redundant. Footprint: part A 9 files, plus fix round 1's
+      contract and four Swift test files; part B 12 files, 1090 changed lines. Mutation tables (Swift M1/M4/M5/M7–M11
+      killed, M2/M3/M6 survived; Dart M12–M16 killed), the `prove-red` verdict and every count: `…-plan.evidence.md`.
+  - [x] Fix round 1 (part A) — the nine pre-existing reds were all legitimate expectation updates (the contract's
+        `expectedEvents` and `receiptedEntryIds`, the forwarder's 7-frame list, S-237's ack list, S-163's entry count); no
+        production defect. Contract: the three rest events with their windows, slots and `afterEntryId`s.
+  - [x] Item 1 — `WatchObservationKind.rest` and `all`; `WatchNutritionQuickLogTests` names it. Guard: M7.
+  - [x] Item 3 — the emission at the one rest-stop site, stored then emitted. Guard: M1.
+  - [x] Item 4 — `stopTimer(kind:at:)`, `endRest(at:)`, `log` passes its own `loggedAt`. Guard: S-321.
+  - [x] Item 5 — the finish-path stop, before the terminal row. Guard: S-322.
+  - [x] Item 6 — `restFollowOnEntryId` over `storedObservations` × `efforts`. Guard: S-334 (M3 survived, see Feedback).
+  - [x] Item 7 — 13 Swift tests green; the 8 pre-existing cases went red and fix round 1 closed them (`swift-test` 389
+        executed, 0 failures; see Feedback).
+  - [x] Item 2 (part B) — `WatchObservationKind.rest` joins the twin's own `all` (no `effort_rating`/`session_end`) and the
+        twin gains the missing `efforts` list; `test/watch_nutrition_quick_log_test.dart`'s closed-set guard names both.
+        Guard: M16.
+  - [x] Item 8 (part B) — the Dart tests: S-320/S-322/S-332/S-333/S-334/S-336 in `test/watch_session_engine_test.dart`,
+        S-322/S-331 in `test/watch_session_finish_test.dart`, S-332/S-336 through the surface in
+        `test/watch_rest_surface_test.dart`, S-321 in `test/watch_logging_timers_test.dart`, the rest row + emission in
+        `test/watch_session_rest_timer_append_test.dart`, S-335's five-step fixture in
+        `test/watch_reconciliation_cross_stack_test.dart`. Ten files, `+232`, 0 failures; the three S-261 reds handed over
+        by fix round 1 are closed by `_rowsExist`'s new `rest` branch. Guards: M12–M16.
+  - [x] Part B's unplanned fix — `HiveWatchSessionStore._nextSequence` handed every row the same `sequence` (the `??=`
+        cached the stored maximum and `highest + 1` never advanced it), so `_newestTimer` read a stale row after a
+        relaunch; `++_lastSequence` with a `-1` sentinel fixes it. Outside Predicted Files; both test files that construct
+        the store are in the green set. Guard: M15.
 - [ ] **Phase 2** (@developer) — totals, views, docs: not started. Counts to paste: `lint`, the six targeted suites, the
       **full** suite, `swift-test`, the residue greps, the two doc sizes, the 18c-base `prove-red` row.
 
@@ -647,10 +673,125 @@ D-x — or REVERT with a remediation item.)
   final verification read: Dart has no `WatchObservationKind.efforts` (grep finds only a comment at
   `lib/watch/session/watch_records.dart:644`), so Phase 1 adds it beside `all`; and the gateway's `prove-red` takes
   source files after `--` (18a's review table, 18b's A-2), not a bare test path. Both are recorded in the evidence file.
+- **A-8 (developer) — the finish-path stop is at `transitionTo`'s `now`, before `captureSessionEnd`.** D-223 leaves the
+  instant to the caller; the terminal row must carry the latest instant, so the rest's `endedAt` cannot be later than it.
+  Chosen: stop first, at the same `now`. Guarded by S-322.
+- **A-9 (developer) — the rest row is stored before it is emitted, and a failed append is swallowed (`try?`).** Chosen to
+  match `appendObservation`'s existing call sites: an emission that cannot reach the wire must not break the timer stop,
+  and the stored row is what the next set's lookup reads (S-339).
+- **A-10 (developer) — item 7's tests are split by surface, not by scenario.** The engine-facing half of S-332/S-336 sits
+  in `WatchSessionEngineTests.swift`; the surface-facing half in `WatchRestSurfaceTests.swift`, beside S-163. Chosen so a
+  reader finds a scenario's guard where its subject lives; the alternative (one new file per scenario) adds harnesses.
+- **A-11 (developer) — S-322 asserts the *event* sequence, not the frame list.** `emittedKinds` filters to
+  `observations_up` and flattens each frame's `events`, so `["set", "rest", "session_end"]` shows the rest sitting between
+  the set it followed and the end that closed it, while the `timer_state` frame goes uncounted. Chosen over clearing the
+  harness, which would have made the assertion order-blind. Guarded by M1 (removing the finish-path call).
+- **A-12 (developer) — M2, M3 and M6 are recorded as surviving, not chased.** Each guards a state the wire validator or
+  the emission order already makes unreachable, so the fixture cannot tell the mutant apart without a new adversarial
+  fixture the plan does not name. Options were to invent one (unplanned scope) or record it (chosen; evidence file).
+  Open item 3 asks the planner to decide.
+- **A-13 (developer, fix round 1) — the shared contract gains the rest events, rather than the F-CAP tests being taught
+  to expect them.** Options: edit the five Swift replay tests' expectations, or make
+  `watch/contract/watch_capture_contract.json` carry the events the wrist now emits. Chose the contract: the F-CAP tests
+  replay it, and the phone half reads the same file — the conformance test confirms the phone really receipts the three
+  ids. Its `expectedEvents` and `receiptedEntryIds` gain `rec-13-rest`, `rec-15-rest`, `rec-17-rest`, and each case's
+  `derivation` names them.
+- **A-14 (developer, fix round 1) — all nine reds were expectation updates, so no production code moved.** Options:
+  treat any of them as a defect (e.g. stop emitting the rest, or keep it out of `engine.entries`), or accept the new row
+  as the intended output. Chose accept: D-210/D-211/D-219 make the rest a stored, emitted observation, and M9 shows the
+  emission is exactly what the rest-stop contract needs. `WatchSessionEngine.swift` is byte-identical to what the run
+  above left.
+- **A-15 (developer, fix round 1) — the three Dart S-261 reds are handed to part B, not fixed here.** The contract change
+  reaches `test/watch_session_import_test.dart`, whose `_rowsExist` helper has no `rest` branch (Dart scope, and the brief
+  forbids it here). Part B adds the branch and renames the three tests, which now feed twelve envelopes in `full`.
+- **A-16 (developer, part B) — the Hive store's append counter is fixed rather than the S-331 rebuild guard dropped.**
+  `HiveWatchSessionStore._nextSequence` returned the same sequence for every row (`??=` cached the stored maximum and
+  `highest + 1` never wrote it back), so a relaunch read a stale timer row and S-331's rebuild half was red for a reason
+  the emission does not cause. Options: keep the rebuild guard but assert observation counts only (weaker — it would not
+  catch a stale `_newestTimer`), or fix the counter (chosen). The file is outside Predicted Files and Dart-only — the
+  Swift twin's `WatchFileStoreTests` S-339 is green — so it needs the governor's ratification; the two test files that
+  construct the store are both in part B's green set, and nothing else reads the changed ordering.
+- **A-17 (developer, part B) — `prove-red` cannot prove new Dart guards; the mutation table is part B's red proof.**
+  Options: report the plan's `prove-red` invocation as the red proof (it returns GREEN AT, because it runs the base tree's
+  copy of the test file), or mutate the five new behaviours (chosen). M12–M16, each restored exactly and re-run green, are
+  the verdicts; the raw `GREEN AT` line is pasted in the evidence file with the reason.
+- **A-18 (developer, part B) — S-322/S-331's Dart tests sit in `test/watch_session_finish_test.dart` over the in-memory
+  store, not Hive.** Item 8 names that file, and the finish path is the engine's own state machine; the Hive relaunch
+  shape (S-339's twin) is the engine file's `S-331` group, whose Hive harness is seeded in `setUp`. Chosen so no
+  `testWidgets`/FakeAsync hazard enters the finish file and the two aspects stay separately guarded.
+- **A-19 (developer, part B) — the six `wire_timestamps.dart` imports this half made redundant were removed.** Adding the
+  `watch_records.dart` import to six test files made the direct import unnecessary (the record file exports
+  `utcIso`/`parseUtcIso`/`parseOptionalUtcIso`), which took `lint` from 196 to 202. Options: leave the notices and explain
+  them, or remove the imports (chosen: the phase's Done Criteria hold analyze at 196). No test's behaviour changed — the
+  ten-file run is `+232` before and after.
+- **A-20 (developer, part B) — S-163's `engine.entries` expectation moved 3 → 5 in `test/watch_rest_surface_test.dart`.**
+  Options: leave it red (it is an existing guard) or match part A's identical Swift change, which already carries the
+  reason "three sets, plus the two rests their logs ended (D-219)". Chose match: `entries` projects every stored
+  observation in both stacks, so the Dart twin must read the same. Ratified by A-14; not a weakened guard.
+- **A-21 (developer, part B) — the Dart implementation was written before its tests, so the red evidence is mutation-based.**
+  The implementer rule is to write tests early; this half was implemented first (the emission is the twin of part A's,
+  which the plan spells out at code level) and the guards were then proved by M12–M16 rather than by a working-tree red
+  run. Recorded so the reviewer weighs the evidence as it is: killed mutants, not a red-then-green transcript.
 
 ## Feedback
 
-[empty — fold into a new Iteration block when non-empty, then clear]
+**Phase 1, Swift half — Blocked (scope).** *(Superseded by fix round 1 below: the eight reds were legitimate expectation
+updates and are closed; the contract change moved the red to Dart.)* One cause, one class of reader: the rest observation
+is now a stored row and a
+sent frame, so every fixture that *enumerates* a session's observations, entries or emitted frames sees one more of them.
+Eight pre-existing tests in five files went red; three of those files are outside Predicted Files. Only one was predicted
+(`WatchEmitForwarderTests`). `swift-test` 389 executed, 120 assertions failing across those 8 cases:
+
+- `WatchCaptureContractTests` — 5 F-CAP replay tests: the event list gains `rec-13-rest`, `rec-15-rest`, `rec-17-rest`,
+  every later index is then compared with the wrong contract event, and prompt-off counts 11 events, not 8. Reproduced in
+  isolation: `swift-test --filter WatchCaptureContractTests` → `Executed 5 tests, with 112 failures`.
+- `WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder` — 7 frames, not 6; frame 5 is the new
+  `observations_up` (the predicted red).
+- `WatchSensorRecordingTests.testS237TheLogIsReleasedOnlyOnceTheSessionEndIsAcknowledged` — its ack list never names the
+  rest ids, so no reading is released (`"0" != "20"`). Reproduced in isolation:
+  `swift-test --filter WatchSensorRecordingTests` → `Executed 38 tests, with 2 failures`.
+- `WatchRestSurfaceTests.testS163LoggingEndsARunningRestFirst` — `engine.entries` counts the two stopped rest rows beside
+  the three sets (`"5" != "3"` at `:127`); deterministic.
+
+All eight are deterministic; none is an ordering artefact of the full suite.
+
+Readers the Existing-Functionality Impact table does not list: `engine.entries` (`WatchSessionEngine.swift:199`), the
+snapshot's `"entries"` (`:248`), and `WatchLoggingState.observations` (`:347`, whose `sessionExerciseId` filter a rest
+matches because it copies the field). Not edited: other features' tests, and the plan did not predict them.
+
+**Fix round 1 (part A) — the eight Swift reds are closed; the contract change moved the red to Dart.** All eight were
+legitimate expectation updates (the contract's `expectedEvents`/`receiptedEntryIds`, the forwarder's 7-frame list, S-237's
+ack list, S-163's entry count) and no production code moved; `swift-test` is 389 / 0. Because the contract now carries
+the three rest events, `test/watch_session_import_test.dart`'s three S-261 tests go red — the full suite is
+`+4202 ~1 -3` against the `+4205 ~1` baseline — and the cause is that test's own `_rowsExist` helper, which has no `rest`
+branch. Dart is part B's; `…-plan.evidence.md` has the diagnosis and the minimal fix.
+
+**Part B — the Dart half is Complete; fix round 1's three Dart reds are closed.** `_rowsExist` gained the `rest` branch
+(the effort's `EntryRest` at `entryIndex` = the index of `afterEventId`'s set among the set entries, its window compared
+with `startedAt`/`endedAt`) and the three S-261 names now say "twelve envelopes", which is what `full` feeds. The ten files
+the brief names are green: `+232`, 0 failures. Three readers outside the run's own files could have moved and did not:
+`test/live_mirroring_test.dart`, `test/watch_logging_surfaces_test.dart`, `test/sync_protocol_fixtures_test.dart` →
+`+181`, 0 failures. `lint` 196 / 0, `swift-test` 389 / 0. One unplanned, required change outside Predicted Files:
+`HiveWatchSessionStore._nextSequence` gave every row the same `sequence`, so the planned S-331 rebuild guard was red for a
+reason the emission does not cause (A-16; guard M15).
+
+Open items for the planner (max 5 lines):
+
+1. Add the four reader rows above to Existing-Functionality Impact, and the five red test files to Predicted Files.
+2. Decide whether a rest belongs in `engine.entries` at all — S-163 and the F-CAP replays read it as the wrist's *entry*
+   list, so a rest row there may be a design answer, not a test that needs updating.
+3. Decide the three surviving mutants: M2 (zero-length rest — the validator already rejects it), M3 (no after-entry), M6
+   (an entry that lands mid-rest). Each needs either a fixture the plan names or an explicit "defence in depth, untestable
+   here" note in the plan.
+4. `prove-red HEAD swift-test` cannot prove Swift guards (the new enum member is absent at HEAD → compile error). The plan
+   should name the mutation route as the Swift proof, as this run did.
+5. **Done in part B.** The three S-261 reds are closed: a `rest` branch in `test/watch_session_import_test.dart`'s
+   `_rowsExist` (the row is `getEntryRests(effortId)` at the index of `afterEntryId` among the set entries) and the three
+   test names' envelope count, which is twelve in `full`, not nine.
+6. **Ratify or revert A-16:** `HiveWatchSessionStore._nextSequence` had to be fixed for the planned S-331 rebuild guard to
+   pass; the file is outside Predicted Files, so it needs the governor's decision (and a Predicted Files row if kept).
+7. **`prove-red` cannot prove new Dart guards** (it runs the base tree's copy of the test file): the plan's Phase 1
+   red-proof row should name the mutation route for Dart as it already does for Swift.
 
 ## Open questions
 

@@ -124,7 +124,11 @@ final class WatchRestSurfaceTests: XCTestCase {
             3,
             "three rests were started, one per logged set"
         )
-        XCTAssertEqual(engine.entries.count, 3)
+        XCTAssertEqual(
+            engine.entries.count,
+            5,
+            "three sets, plus the two rests their logs ended (D-219): the third rest is still running"
+        )
     }
 
     // MARK: - the rest surface shows nothing once the session is not live
@@ -141,5 +145,88 @@ final class WatchRestSurfaceTests: XCTestCase {
 
         XCTAssertFalse(state.isResting, "a finished session has no rest surface")
         XCTAssertNil(state.restElapsedSeconds())
+    }
+
+    // MARK: - S-332/S-336 the surface's own Next emits the rest it ends
+
+    /// A phone's `timer_state` carrying a running rest the wrist did not start.
+    private func phoneRestFrame(
+        _ sessionId: String,
+        messageId: String,
+        sentAt: Date,
+        startedAt: Date
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": sessionId,
+            "type": "timer_state",
+            "origin": "phone",
+            "sentAt": utcIso(sentAt),
+            "payload": [
+                "timers": [
+                    "rest": [
+                        "kind": WatchTimerKind.rest,
+                        "state": WatchTimerState.running,
+                        "startedAt": utcIso(startedAt),
+                    ],
+                ],
+            ],
+        ]
+    }
+
+    func testS332NextEmitsTheRestItEndsExactlyOnce() async throws {
+        let harness = Harness()
+        let engine = await runningBench(harness)
+        let state = restingState(harness, engine: engine)
+        let t0 = harness.clock.now
+
+        let logged = try await state.log()
+        harness.clock.advance(70)
+        await state.endRest()
+        await state.endRest()
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 1, "Next ends one rest once")
+        assertRest(
+            try XCTUnwrap(rests.first),
+            startedAt: t0,
+            endedAt: t0.addingTimeInterval(70),
+            afterEntryId: logged.entryId
+        )
+        XCTAssertFalse(state.isResting, "and the shell is back to logging")
+    }
+
+    func testS336NextEndsARestThePhoneStartedAndTheWristStillReportsIt() async throws {
+        let harness = Harness()
+        let engine = await runningBench(harness)
+        let state = restingState(harness, engine: engine)
+        let t0 = harness.clock.now
+        let logged = try await state.log()
+        let sessionId = try XCTUnwrap(engine.session?.sessionId)
+
+        // The phone's rest, started at T0+8s, arriving at T0+10s.
+        harness.clock.advance(10)
+        _ = try await engine.applyMessage(
+            phoneRestFrame(
+                sessionId,
+                messageId: "msg-phone-rest",
+                sentAt: harness.clock.now,
+                startedAt: t0.addingTimeInterval(8)
+            )
+        )
+        harness.clearEmitted()
+
+        harness.clock.advance(30)
+        await state.endRest()
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 1, "the wrist ended it, so the wrist reports it")
+        assertRest(
+            try XCTUnwrap(rests.first),
+            startedAt: t0.addingTimeInterval(8),
+            endedAt: t0.addingTimeInterval(40),
+            afterEntryId: logged.entryId
+        )
     }
 }

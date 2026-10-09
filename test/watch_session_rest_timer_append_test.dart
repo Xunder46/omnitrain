@@ -1,10 +1,13 @@
-// A running rest timer survives the append a wrist snapshot asks for, and a
-// rest the wrist logged lands beside the phone's own running rest.
+// A running rest timer survives the append a wrist snapshot asks for, a rest
+// the wrist logged lands beside the phone's own running rest, and the wrist's
+// own stop appends the rest row and reports it.
 //
 // Plan: `docs/plans/2026-10-06-17b-watch-auto-sync-pr2-plan/2026-10-06-17b-watch-auto-sync-pr2-plan.md`,
 // Phase 1 — D-94. Scenario: S-110.
 // Plan: `docs/plans/2026-10-08-18c-watch-rest-to-phone-plan/2026-10-08-18c-watch-rest-to-phone-plan.md`,
 // Phase 2 — D-210. Scenario: S-320.
+// Plan: `docs/plans/2026-10-08-18d-watch-rest-emit-and-docs-plan/2026-10-08-18d-watch-rest-emit-and-docs-plan.md`,
+// Phase 1 — D-219. Scenario: S-320.
 //
 // Plain `test()`: a rest is a wall-clock record, so its timing is derived from
 // the row at whatever `nowMs` the caller passes — no widget, no real clock, and
@@ -24,7 +27,10 @@ import 'package:omnitrain/state/watch/watch_session_adoption_bridge.dart';
 import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/logging/watch_logging_state.dart';
+import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
+import 'package:omnitrain/watch/session/watch_session_engine.dart';
 
 import 'helpers/sync_protocol_harness.dart';
 import 'helpers/watch_capture_import_harness.dart'
@@ -74,6 +80,31 @@ const String _restEnd = '2026-10-06T11:57:10Z';
 const String _endAt = '2026-10-06T12:00:00Z';
 
 int _msOf(String iso) => DateTime.parse(iso).toUtc().millisecondsSinceEpoch;
+
+/// Deterministic clock: the wrist reads time only through its injected clock,
+/// so a rest's window is asserted against instants, not counters.
+class _Clock {
+  _Clock(this.now);
+
+  DateTime now;
+
+  DateTime call() => now;
+
+  void advance(Duration delta) => now = now.add(delta);
+}
+
+/// The `rest` events the wrist emitted, in the order they travelled.
+List<Map<String, Object?>> _restEvents(List<Map<String, Object?>> frames) {
+  final events = <Map<String, Object?>>[];
+  for (final frame in frames) {
+    if (frame['type'] != 'observations_up') continue;
+    for (final event in (frame['payload']! as Map)['events']! as List) {
+      final carried = Map<String, Object?>.from(event as Map);
+      if (carried['kind'] == WatchObservationKind.rest) events.add(carried);
+    }
+  }
+  return events;
+}
 
 /// One set the wrist logged.
 Map<String, Object?> _set(String entryId) => {
@@ -367,6 +398,60 @@ void main() {
       phone.state.hasRestRecord('sl-1', 0),
       isTrue,
       reason: 'S-320 the timer the phone started is still running',
+    );
+  });
+
+  test('S-320 the wrist\'s stop appends the rest row and emits it', () async {
+    final clock = _Clock(_at);
+    final store = InMemoryWatchSessionStore();
+    final emitted = <Map<String, Object?>>[];
+    final engine = WatchSessionEngine(
+      store,
+      clock: clock.call,
+      onEmit: emitted.add,
+      sessionIdFactory: () => 's-w1',
+    );
+    await engine.createSession(
+      modality: 'resistance_lifting',
+      exercises: [_slot('sl-1', 'ex-bench')],
+    );
+    final surface = WatchLoggingState(engine: engine, clock: clock.call);
+
+    // The set the wrist logs leaves a rest running behind it. A rest is a
+    // count-up with no length (D-160), so only its start is known until the
+    // wrist stops it.
+    await surface.log();
+    final setEntryId = engine.observations.single.entryId;
+    clock.advance(const Duration(seconds: 45));
+    await surface.endRest();
+
+    final restRows = [
+      for (final row in (await store.readAll()).timers)
+        if (row.kind == WatchTimerKind.rest) row,
+    ];
+    expect(
+      restRows,
+      hasLength(2),
+      reason: 'the row that ran, and the row the stop appended',
+    );
+    final stopped = restRows.last;
+    expect(stopped.startedAt, _at, reason: 'it started where the set was logged');
+    expect(stopped.stoppedAt, clock.now, reason: 'it stopped at the tap instant');
+    expect(stopped.state, WatchTimerState.stopped);
+
+    final rests = _restEvents(emitted);
+    expect(rests, hasLength(1), reason: 'S-320 one rest ended, one event');
+    expect(rests.single['startedAt'], utcIso(_at));
+    expect(rests.single['endedAt'], utcIso(clock.now));
+    expect(
+      rests.single['afterEntryId'],
+      setEntryId,
+      reason: 'S-320 the rest names the set it followed',
+    );
+    expect(
+      rests.single['eventId'],
+      '${stopped.recordId}-rest',
+      reason: 'the event is derived from the row, so a re-send is the same one',
     );
   });
 }
