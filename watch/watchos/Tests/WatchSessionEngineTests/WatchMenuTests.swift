@@ -508,11 +508,13 @@ final class WatchMenuTests: XCTestCase {
     // MARK: - S-1108 the source guard
 
     func testS1108TheMenuSourceNamesNoRestEditOrDelete() throws {
-        let url = Fixtures.sourcesRoot.appendingPathComponent("WatchMenu.swift")
-        let source = try String(contentsOf: url, encoding: .utf8)
+        for file in ["WatchMenu.swift", "WatchMenuView.swift"] {
+            let url = Fixtures.sourcesRoot.appendingPathComponent(file)
+            let source = try String(contentsOf: url, encoding: .utf8)
 
-        for token in ["restSeconds", "plannedDurationMs", "deleteEntry", "removeExercise"] {
-            XCTAssertFalse(source.contains(token), "S-1108 the menu source must not name \(token)")
+            for token in ["restSeconds", "plannedDurationMs", "deleteEntry", "removeExercise"] {
+                XCTAssertFalse(source.contains(token), "S-1108 \(file) must not name \(token)")
+            }
         }
     }
 }

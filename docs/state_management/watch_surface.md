@@ -418,12 +418,9 @@ is simply nothing to do. Verified by
 **An arrival is a revision, not a listener.** `WatchSessionStartPaths` is a plain
 class that publishes nothing, so the app target's host bumps its own revision on
 every frame it routes and hands it to the start surface, which is what re-runs
-the picker's body; the rows themselves are derived on every read. Whether a push
-that lands while the picker is open appears without the user leaving and
-re-entering it is an owner-run check — step 7 of the push-path walkthrough in
-[the setup and QA guide](../watch-app-setup-and-qa.md) — not a tested behaviour.
-A row is keyed by its own slot id rather than by the exercise, because one
-exercise may legitimately hold two slots, and the session's slots come first with
+the picker's body; the rows themselves are derived on every read. A row is keyed
+by its own slot id rather than by the exercise, because one exercise may
+legitimately hold two slots, and the session's slots come first with
 the fallback list minus what the ladder already shows behind them. Verified by
 `WatchConnectivityBridgeTests.testPickerRowsListTheSessionFirstAndNeverTwice` and
 `…testPickerRowsFallBackToTheFallbackListWhileTheSessionIsEmpty`.
@@ -432,8 +429,9 @@ the fallback list minus what the ladder already shows behind them. Verified by
 
 Once a session is open, the shell's second surface is the package's logging view
 for the current exercise: the exercise's own effort kind — a set, a timed hold, a
-round or a drill — with the value rows that effort needs, End leading the
-toolbar and the exercise picker behind a list button. A logged set starts a rest
+round or a drill — with the value rows that effort needs, and one list button
+opening the session menu: the ladder's exercises with their logged counts to
+jump to, then Add exercise and Finish. A logged set starts a rest
 with no length, which the rest screen counts up, and whose end reaches the phone
 (`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`;
 `test/watch_session_engine_test.dart`, S-320).

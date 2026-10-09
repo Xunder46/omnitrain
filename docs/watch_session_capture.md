@@ -226,7 +226,7 @@ session end, summary or effort rating.
 | The phone's preferences, as the newest `preferences_down` brought them | `WatchPhonePreferences`, fed by `WatchSyncOrchestrator` |
 | The End action, whether it owes an effort rating, and the prompt that asks for it | `WatchEffortRatingState` |
 | The session's one effort rating | `WatchSessionEngine.recordEffortRating` |
-| The prompt and End views | `WatchEffortRatingView` and `WatchEndSessionView`, which bind to `WatchEffortRatingState` and compile only for watchOS; where they appear is the app target's to decide |
+| The prompt view | `WatchEffortRatingView`, which binds to `WatchEffortRatingState` and compiles only for watchOS; where it appears is the app target's to decide |
 
 **Why the wrist sends the end, whoever ended the session.** The import waits for
 a `session_end`, and only the wrist holds the readings its summaries come from.

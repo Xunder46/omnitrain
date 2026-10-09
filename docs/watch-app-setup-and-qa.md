@@ -173,7 +173,8 @@ Written, by Phases 1–4 of the shell-bridge plan:
   exercise; and the start surface (`WatchStartView`, in the package, with its
   exercise picker). The logging surface logs the current exercise's own effort —
   a set, a timed hold, a round or a drill, chosen from the exercise's
-  capabilities — and hosts End and the exercise picker. An ended session can no
+  capabilities — and hosts the session menu: the ladder's exercises with their
+  logged counts to jump to, then Add exercise and Finish. An ended session can no
   longer be logged into
   (`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
   Logged rows leave through `WatchEmitForwarder` over the connectivity bridge —
@@ -395,9 +396,10 @@ finish is answered to it at its next sync, when the wrist itself asks
 (`test/watch_session_finish_test.dart`,
 `S-5 the phone's own finish is reported, and the wrist is answered at its next
 sync`).
-**(f) Finishing on the watch.** Answering the wrist's own End closes the session
-on the phone as well, with one history entry and the rating the wrist gave. An
-End the phone was not there to hear — ended while the pair was apart — is
+**(f) Finishing on the watch.** Answering the wrist's own Finish — the menu's
+**Finish**, reached from the list button — closes the session on the phone as
+well, with one history entry and the rating the wrist gave. A Finish the phone
+was not there to hear — the session ended while the pair was apart — is
 re-announced by the wrist at its next catch-up, behind whatever the wrist still
 owes, and the phone's copy and its session screen end then, with the wrist's
 rating (`test/live_mirroring_test.dart`,
@@ -524,10 +526,11 @@ plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
     phone and sync from the wrist: ending a session asks nothing, and the
     phone's Summary offers Add rating. A wrist that has never synced does not
     ask either. A session with nothing logged is never asked about.
-17. **The question survives a kill** **(owner)**. End a session on the wrist and
-    force-quit the watch app while the question shows. Relaunch: the question
-    comes back before anything else, and one answer records one rating. The
-    engine restores it from the store that outlives the process
+17. **The question survives a kill** **(owner)**. Finish the session on the wrist
+    (the menu's **Finish**, from the list button) and force-quit the watch app
+    while the question shows. Relaunch: the question comes back before anything
+    else, and one answer records one rating. The engine restores it from the
+    store that outlives the process
     (`WatchEffortRatingTests.testS215AKillDuringThePromptAsksAgainAndRecordsOneAnswer`);
     the shipped shell builds that store on disk, so this runs on a paired device.
 18. **Finishing on either device.** Finish on the phone: the wrist's session ends
@@ -539,7 +542,7 @@ plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
     locked or apart when the phone finished is answered at its next sync, when it
     asks (`test/watch_session_finish_test.dart`,
     `S-5 the phone's own finish is reported, and the wrist is answered at its
-    next sync`), and an End that did not get through is re-announced by the wrist
+    next sync`), and a Finish that did not get through is re-announced by the wrist
     at its own next catch-up, which ends the phone's copy and its session screen
     with the wrist's rating (`test/pr4_session_controls_test.dart`,
     `S-213 the end the wrist re-announces at its next catch-up leaves the screen
@@ -573,10 +576,10 @@ hardware yet.
    this wrist session shows the set. The phone must show it before any Sync —
    only an untouched wrist proves the set is handed over as it is logged.
    Nothing is sent on a timer.
-3. **End and answer once.** Turn Settings → Effort Rating on, on the phone, and
-   sync from the wrist. On the wrist tap **End**; the question appears alone —
-   no skip, back or swipe. Answer 4. The phone's calendar holds one entry for
-   the session and its Summary shows 4 / 5.
+3. **Finish and answer once.** Turn Settings → Effort Rating on, on the phone, and
+   sync from the wrist. On the wrist tap the list button, then **Finish**; the
+   question appears alone — no skip, back or swipe. Answer 4. The phone's
+   calendar holds one entry for the session and its Summary shows 4 / 5.
 4. **A workout logged with the phone out of reach catches up by itself — (owner).**
    Start another wrist workout and log a set with the phone in Airplane Mode.
    Nothing arrives. Turn Airplane Mode off: with the phone back in reach the wrist

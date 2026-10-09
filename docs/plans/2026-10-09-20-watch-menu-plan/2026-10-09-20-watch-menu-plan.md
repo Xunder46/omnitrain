@@ -1,7 +1,7 @@
 # Plan 20 — the watch menu: navigate the exercises, add one, finish
 
-> Status: Iteration 1 active — planner-expanded. The seeded Ledger (D-1100…D-1108), scenarios (S-1100…S-1109) and phase outline are unchanged; D-1109…D-1114 and S-1110…S-1113 are appended.
-> Next handoff: @developer (Phase 1)
+> Status: CLOSED — both phases built and committed; independent review round 1 fixed (findings 1, 3, 4, 7); findings 5 and 6 (a doc scope line, an archived plan record) left open on purpose. Seeded Ledger D-1100…D-1108, scenarios S-1100…S-1109; D-1109…D-1114 and S-1110…S-1113 appended.
+> Next handoff: governor: commit
 > Series: `docs/plans/2026-10-08-18-watch-qa-index.md` row 20 (the planner linked it to this plan; its status flips after Phase 2's governor build). Base: see `.work/watch-20/base.txt`.
 > Evidence: `2026-10-09-20-watch-menu-plan.evidence.md` · Review: `2026-10-09-20-watch-menu-plan.review.md` (both beside this file).
 > Track: Apple Watch client only (`watch/watchos/`, `ios/OmniTrain Watch App/`) + docs. No wire, phone or Dart change.
@@ -266,21 +266,21 @@ Files below (the evidence file, this plan's `## Progress` and its `## Assumption
 
 Six items. WatchOS-only view code plus docs; the app target is compiled by the governor.
 
-1. [ ] Create `watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift` — `#if os(watchOS)`-gated like
+1. [x] Create `watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift` — `#if os(watchOS)`-gated like
        `WatchStartView.swift`, `public struct WatchMenuView: View` taking `state: WatchMenuState` plus
        `onClose: () -> Void` and `onFinish: () -> Void`: a `ScrollView` over `state.rows`, one row per
        `WatchMenuRow` (title `row.name`, subtitle `row.countLabel` when non-nil, the current row marked the way
        `WatchExercisePickerView` marks its own — `WatchStartView.swift:188-230`), wrist-scale spacing (4.0) and a
        `NavigationStack` title reading `"Exercises"`. Tapping a row runs
        `Task { if await state.jump(to: row.slotId) { onClose() } }`. · `WatchMenuView`, `WatchMenuView.body`
-2. [ ] In the same file add the two actions under the rows: an "Add exercise" row that presents
+2. [x] In the same file add the two actions under the rows: an "Add exercise" row that presents
        `WatchExercisePickerView(paths: state.paths, addOnly: true)` as a **nested** sheet inside the menu (D-1113)
        and whose `onExerciseAdded` dismisses both the picker and the menu through `onClose()`, and a "Finish" row
        that calls a `Task { await state.finish(); onFinish() }` (D-1105, D-1112). `WatchMenuState` must therefore
        expose `paths` (and, if the view needs it, `rating`) as `let` properties. The nested picker's presentation
        flag is `WatchMenuView`'s own `@State` — `WatchMenuState` itself stays stateless (D-1111).
        · `WatchMenuView.addExerciseRow`, `WatchMenuView.finishRow`, `WatchMenuState.paths`
-3. [ ] Rewire `ios/OmniTrain Watch App/ContentView.swift` for D-1100: rename `@State private var pickingExercise = false`
+3. [x] Rewire `ios/OmniTrain Watch App/ContentView.swift` for D-1100: rename `@State private var pickingExercise = false`
        (`:176`) to `showingMenu = false`; delete the `.topBarLeading` `WatchEndSessionView` item (`:233-235`) so the
        toolbar holds one control — the `list.bullet` button, whose action (`:236-241`) now sets `showingMenu = true`;
        retarget the sheet (`:244-252`) at
@@ -289,12 +289,12 @@ Six items. WatchOS-only view code plus docs; the app target is compiled by the g
        update the `.onDisappear` (`:256`) to clear `showingMenu`. The doc comment above `loggingSurface`
        (`:224-229`, "with the picker one tap away and the package's own End on the same screen") becomes the menu.
        · `WatchAppHost.loggingSurface`, `showingMenu`
-4. [ ] Delete `WatchEndSessionView` from `WatchEffortRatingView.swift` (`:99`; D-1105) and rename it wherever the
+4. [x] Delete `WatchEndSessionView` from `WatchEffortRatingView.swift` (`:99`; D-1105) and rename it wherever the
        docs name it — `docs/watch_session_capture.md:229` calls it the End control, so that sentence becomes the
        rating prompt (`WatchEffortRatingView`). Nothing else references it (`grep -rn WatchEndSessionView` leaves
        only the docs and this plan). Must land with item 3: item 3 unmounts the view, item 4 deletes it.
        · `WatchEffortRatingView.swift`, `docs/watch_session_capture.md`
-5. [ ] Docs. `docs/state_management/watch_surface.md` — in the second-surface paragraph (`:431-439`) the sentence
+5. [x] Docs. `docs/state_management/watch_surface.md` — in the second-surface paragraph (`:431-439`) the sentence
        "End leading the toolbar and the exercise picker behind a list button" becomes the menu (list button →
        rows, Add exercise, Finish); in the picker paragraph (`:415-429`) delete the trailing narration from
        "Whether a push that lands while the picker is open appears…" through "…WhileTheSessionIsEmpty`." — it is
@@ -306,7 +306,7 @@ Six items. WatchOS-only view code plus docs; the app target is compiled by the g
        **Finish**). `docs/plans/2026-10-08-18-watch-qa-index.md` — the planner linked row 20 to this plan; set its
        status to the landing state only once Phase 2's governor build has passed.
        · `docs/state_management/watch_surface.md`, `docs/watch-app-setup-and-qa.md`, `docs/plans/2026-10-08-18-watch-qa-index.md`
-6. [ ] Record the evidence and hand the build over: append the `swift-test` and docs-contract counts, the
+6. [x] Record the evidence and hand the build over: append the `swift-test` and docs-contract counts, the
        `git-diff --name-only` listing against the Predicted Files below, and one line per item to
        `2026-10-09-20-watch-menu-plan.evidence.md`; fill `## Progress`; log guesses under `## Assumption Log`;
        state in the evidence file that the watch scheme build (`xcodebuild`, watchOS simulator, the
@@ -399,7 +399,7 @@ The planner resolved these by default (see the Assumption Log); each is vetoable
 | Phase | Status |
 |---|---|
 | 1 | Complete |
-| 2 | not started |
+| 2 | Complete |
 
 Item results (implementers append one line per item: item, what changed, result):
 
@@ -409,12 +409,12 @@ Item results (implementers append one line per item: item, what changed, result)
 - P1.4 — S-1105…S-1107 and S-1113 added (add-only rows, the pick's append-and-move, both branches of Finish). Result: 4 tests green.
 - P1.5 — S-1108 (source-token scan through `Fixtures.sourcesRoot`) and S-1109…S-1112 added. Result: 5 tests green.
 - P1.6 — evidence appended: `403 tests / 0 failures`, the `prove-red` verdict, the seven mutation verdicts. Result: done.
-- P2.1 —
-- P2.2 —
-- P2.3 —
-- P2.4 —
-- P2.5 —
-- P2.6 —
+- P2.1 — `WatchMenuView.swift` created (`#if os(watchOS)`): a `NavigationStack` titled "Exercises" over a `ScrollView` of one `Button` per `WatchMenuRow` — current `.borderedProminent`, the rest `.bordered`, the name with `countLabel` as a `.footnote` line — at wrist-scale 4.0 spacing. Result: `swift-test` green; the file is lexed by the target (`Compiling WatchSessionEngine WatchMenuView.swift`), its body is watchOS-only.
+- P2.2 — The same file's `addExerciseRow` (nested `WatchExercisePickerView(paths:rev:, addOnly: true)` sheet; a pick clears the flag and calls `onClose()`) and `finishRow` (`await state.finish()` then `onFinish()`); the sheet flag is the view's own `@State`, so `WatchMenuState` stays stateless. Result: green.
+- P2.3 — `ContentView.swift`: `pickingExercise` → `showingMenu`; the `.topBarLeading` `WatchEndSessionView` removed so the toolbar holds the one `list.bullet` button setting `showingMenu = true`; the sheet presents `WatchMenuView(state: WatchMenuState(engine:paths:rating:), revision:, onClose:, onFinish:)` with both closures `{ showingMenu = false; host.noteSurfaceChange() }`; `.onDisappear` clears `showingMenu`; the `loggingSurface` doc comment describes the menu. Result: governor's build is this target's only compile.
+- P2.4 — `WatchEndSessionView` deleted from `WatchEffortRatingView.swift` (header retitled "the effort-rating prompt") and `docs/watch_session_capture.md`'s "The prompt and End views" row reduced to "The prompt view" / `WatchEffortRatingView`. Result: `grep -rn WatchEndSessionView` leaves no source or doc-set hit.
+- P2.5 — `docs/state_management/watch_surface.md`: the second-surface clause names the list button and the menu (rows, Add exercise, Finish) and the stale "step 7 of the push-path walkthrough" narration is deleted; `docs/watch-app-setup-and-qa.md`: the surfaces list names the menu and walkthrough step 3 taps the list button then **Finish**. Result: docs contract 9/9 green; net −11 lines, `watch_surface.md` shrunk.
+- P2.6 — evidence appended (counts, diff listing, the governor-build note); plan filled. Result: done.
 
 ## Assumption Log
 
@@ -435,6 +435,22 @@ decision, options considered, rationale.
   `derivePickerRows(...)` call — "exact signature" read as signature and behaviour, not as forbidding a shared helper.
 - No doc update in Phase 1: the menu and the picker's new mode reach no surface yet; Phase 2 owns
   `docs/navigation_and_screens.md` and the watch docs. Recorded as N/A for this phase, not as an omission.
+- Phase 2 item 5's deletion scope: the plan ranged the cut from "Whether a push that lands…" through
+  "…WhileTheSessionIsEmpty`", but the brief names only the stale "step 7 of the push-path walkthrough" sentence, and
+  the rest of the range is the row-keyed-by-slot-id invariant with its live verified-by citation. Read as the brief
+  (delete the narration sentence alone), which still shrinks the file — the alternative would delete verified behaviour.
+- `WatchMenuView`'s fixed copy (D-1114) lives in `static let` constants on the view (`title`, `addExerciseLabel`,
+  `finishLabel`) rather than inline literals, so the governor's build reads one definition; the values are the plan's
+  literals verbatim. The nested picker's sheet hangs off the menu's `NavigationStack` and the add path clears the view's
+  own flag before `onClose()`, so both presentations die with the one callback (D-1113).
+- `ContentView`'s `onClose` nudges the host (`showingMenu = false; host.noteSurfaceChange()`) on the row-jump path too,
+  not only the add path: the picker it replaces nudged on every pick, and a jump moves `currentExerciseIndex` without
+  the logging view's own `@Published` firing. Follows the brief's `onClose` wording and keeps the old surface refresh.
+- `docs/navigation_and_screens.md` needs no edit: it carries no watch surface row (`grep -n Watch|End` finds only the
+  Flutter `StartupFailureScreen`), and Phase 2's Predicted Files do not list it.
+- Fix pass (review findings 1/4/7, `brief-fix-1.md`): S-1108 also scans `WatchMenuView.swift`; the watch QA walkthrough's
+  wrist-end wording is Finish; and `pickerRows` now delegates to `pickerRows(addOnly: false)` — the earlier bullet above
+  about it calling `derivePickerRows` directly is superseded.
 
 ## Feedback
 

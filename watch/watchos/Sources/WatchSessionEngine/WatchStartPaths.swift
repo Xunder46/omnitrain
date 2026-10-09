@@ -402,10 +402,7 @@ public final class WatchSessionStartPaths {
     /// they could add. Derived on every read rather than cached, so a push that
     /// arrived while the picker was open is already in the list the user sees.
     public var pickerRows: [WatchExercisePickerRow] {
-        derivePickerRows(
-            sessionExercises: engine.session?.exercises ?? [],
-            fallback: fallbackExercises
-        )
+        pickerRows(addOnly: false)
     }
 
     /// The same rows, in the add-only mode the menu's picker uses: no in-session

@@ -71,14 +71,44 @@ the next one; the final state is the green run above. No mutation is left applie
 
 | Check | Command | Expectation | Result |
 |---|---|---|---|
-| Package suite | `.github/copilot/scripts/macos/gateway.sh swift-test` | green (view files are `#if os(watchOS)`-gated, so they are not compiled here) | |
-| Docs contract | `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart` | green | |
-| Diff in bounds | `gateway.sh git-diff --name-only` | exactly the Predicted Files | |
+| Package suite | `.github/copilot/scripts/macos/gateway.sh swift-test` | green (view files are `#if os(watchOS)`-gated, so their bodies are not compiled here) | ✅ `Executed 403 tests, with 0 failures (0 unexpected)` at `15:28`, the Phase 1 count exactly; the log's build line `Compiling WatchSessionEngine WatchMenuView.swift` shows the new file is at least lexed by this target |
+| Docs contract | `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart` | green | ✅ `00:00 +9: All tests passed!` — 9/9, including the walkthrough-narration and roadmap guards |
+| Full Flutter suite | `.github/copilot/scripts/macos/gateway.sh test` | no worse than the baseline (`4061 tests / ~1 pre-existing failure`); no Dart source changed | ✅ `01:54 +4226 ~1: All tests passed!` (exit 0) — 4226 passed, 1 skipped, 0 failed, better than the recorded baseline |
+| Analysis | `.github/copilot/scripts/macos/gateway.sh lint` | no worse than baseline (196 / 0 errors) | ✅ `196 issues found`, 0 errors — the baseline exactly; no touched file appears in the output |
+| Diff in bounds | `gateway.sh git-diff --name-only` | the Predicted Files (five tracked edits + the new `WatchMenuView.swift`; the plan's own Progress/Assumption Log edits are not source) | ✅ tracked: `docs/state_management/watch_surface.md`, `docs/watch-app-setup-and-qa.md`, `docs/watch_session_capture.md`, `ios/OmniTrain Watch App/ContentView.swift`, `watch/watchos/Sources/WatchSessionEngine/WatchEffortRatingView.swift`, plus this plan and this evidence file (the non-source Progress/Assumption-Log edits); untracked and new: `watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift`. `docs/plans/2026-10-08-18-watch-qa-index.md` is deliberately **not** edited: its row 20 status is the governor's to flip after the build |
 | Watch scheme build | `xcodebuild` (watchOS simulator, `OmniTrain Watch App`) | **governor only** — no agent run may claim it | not run by any agent |
+
+One line per Phase 2 item (detail in `## Progress` of the plan):
+
+- **P2.1/P2.2** — `WatchMenuView.swift` created: `#if os(watchOS)`-gated, `state`/`revision`/`onClose`/`onFinish`, a `NavigationStack` titled "Exercises" over a `ScrollView` of one `Button` per `WatchMenuRow` (current row `.borderedProminent`, the rest `.bordered`, the count a `.footnote` secondary line), then `addExerciseRow` (nested `WatchExercisePickerView(addOnly: true)` sheet; its pick sets the flag back and calls `onClose()`) and `finishRow` (`await state.finish()` then `onFinish()`). Result: green under `swift-test` (file lexed, body not compiled here).
+- **P2.3** — `ContentView.swift`: `pickingExercise` → `showingMenu`; the `.topBarLeading` `WatchEndSessionView` item deleted so the toolbar holds the one `list.bullet` button; the sheet presents `WatchMenuView(state: WatchMenuState(engine:paths:rating:), revision:onClose:onFinish:)` with `onClose`/`onFinish` both `{ showingMenu = false; host.noteSurfaceChange() }`; `.onDisappear` clears `showingMenu`; the `loggingSurface` doc comment describes the menu. Result: governor's build is the only compile of this target.
+- **P2.4** — `WatchEndSessionView` deleted from `WatchEffortRatingView.swift` (file header retitled "the effort-rating prompt"); `docs/watch_session_capture.md`'s "The prompt and End views" row became "The prompt view" with `WatchEffortRatingView` alone. Result: `grep -rn WatchEndSessionView` leaves no `docs/` or source hit outside `docs/plans/`.
+- **P2.5** — `docs/state_management/watch_surface.md`: the second-surface clause now reads "and one list button opening the session menu: the ladder's exercises with their logged counts to jump to, then Add exercise and Finish", and the stale "step 7" narration sentence is gone; `docs/watch-app-setup-and-qa.md`: the surfaces list says the menu and walkthrough step 3 taps the list button then **Finish**. Result: net −11 lines across the two docs; `watch_surface.md` lost more than it gained, so it moved away from the ceiling.
+- **P2.6** — this evidence and the plan's `## Progress`/`## Assumption Log`. Result: done.
 
 Prose checks the reviewer makes by hand (no command covers them):
 
-- `grep -rn WatchEndSessionView` leaves no source hit (D-1105); `docs/watch_session_capture.md:229` no longer names it.
-- `docs/state_management/watch_surface.md` shrank (the stale narration is gone with D-1105's sentence change) and does
-  not approach the 64 KiB per-file ceiling.
-- `docs/watch-app-setup-and-qa.md` says the menu, not "End and the exercise picker".
+- `grep -rn WatchEndSessionView` leaves no source hit (D-1105); `docs/watch_session_capture.md:229` no longer names it
+  (the only remaining hits are under `docs/plans/`, a record folder).
+- `docs/state_management/watch_surface.md` shrank: the removed narration sentence (~4 wrapped lines) is longer than the
+  clause that replaced it (~1 extra wrapped line), so the file moves away from the 64 KiB ceiling; the docs contract
+  test's ceiling and warning-band checks both pass.
+- `docs/watch-app-setup-and-qa.md` says the menu, not "End and the exercise picker", and its End walkthrough step taps
+  the list button then **Finish**.
+
+## Fix pass — review findings 1, 3, 4 and 7 (`.work/watch-20/brief-fix-1.md`)
+
+| Check | Command | Expectation | Result |
+|---|---|---|---|
+| S-1108 scans both sources | `gateway.sh swift-test --filter WatchMenuTests` | green, 14 tests | ✅ `Executed 14 tests, with 0 failures (0 unexpected)` at `15:38` |
+| Mutation: `deleteEntry` in a `WatchMenuView.swift` comment | `gateway.sh swift-test --filter testS1108` | RED, at the assertion naming the file | ✅ `error: … XCTAssertFalse failed - S-1108 WatchMenuView.swift must not name deleteEntry` (`WatchMenuTests.swift:516`); comment restored to the original text, `swift-test` re-run below green |
+| Swift suite | `gateway.sh swift-test` | green, 403 tests | ✅ `Executed 403 tests, with 0 failures (0 unexpected)` at `15:39` |
+| Docs contract | `gateway.sh test test/docs_indexing_contract_test.dart` | green | ✅ `00:00 +9: All tests passed!` |
+
+One line per finding:
+
+- **F1 (major)** — `testS1108TheMenuSourceNamesNoRestEditOrDelete` now loops over `["WatchMenu.swift", "WatchMenuView.swift"]`, same `Fixtures.sourcesRoot`, same four tokens, and the failure message names the file (`S-1108 \(file) must not name \(token)`).
+- **F3** — the plan's Phase 2 items 1–6 are ticked `[x]` and line 4's next handoff reads `governor: commit`.
+- **F4 (narrow)** — `docs/watch-app-setup-and-qa.md` only: the `(f) Finishing on the watch` paragraph, walkthrough steps 17 and 18 and the wrist walkthrough's step-3 heading now say Finish (the menu's **Finish**, reached from the list button). `docs/watch_session_capture.md` was not touched.
+- **F7** — `WatchSessionStartPaths.pickerRows`'s body is now `pickerRows(addOnly: false)`; the signature and the rows it returns are unchanged, so the property has one derivation instead of two.
+

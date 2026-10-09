@@ -170,10 +170,10 @@ struct ContentView: View {
     /// without the user pressing Sync (D-183).
     @Environment(\.scenePhase) private var scenePhase
 
-    /// The exercise picker on the logging surface. The start surface keeps its
-    /// own sheet for the empty Free workout; this one moves between exercises and
-    /// adds new ones (R-1, S-30).
-    @State private var pickingExercise = false
+    /// The session menu on the logging surface (D-1100). The start surface keeps
+    /// its own sheet for the empty Free workout; this one hosts the menu the
+    /// list button opens.
+    @State private var showingMenu = false
 
     var body: some View {
         Group {
@@ -216,8 +216,9 @@ struct ContentView: View {
         WatchEffortRatingView(state: host.rating)
     }
 
-    /// D-24's second surface: logging, with the picker one tap away and the
-    /// package's own End on the same screen (D-25, R-1).
+    /// D-24's second surface: logging, with the session menu one tap away behind
+    /// its list button — the ladder's exercises with their logged counts to jump
+    /// to, then Add exercise and Finish (D-25, D-1100).
     ///
     /// The branch only shows this while the session is active and holds an
     /// exercise. A Free workout starts with none, so the start surface and its
@@ -230,29 +231,35 @@ struct ContentView: View {
                 onLogged: { host.noteSurfaceChange() }
             )
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        WatchEndSessionView(state: host.rating)
-                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            pickingExercise = true
+                            showingMenu = true
                         } label: {
                             Image(systemName: "list.bullet")
                         }
                     }
                 }
-                .sheet(isPresented: $pickingExercise) {
-                    WatchExercisePickerView(
-                        paths: host.paths,
-                        revision: host.revision
-                    ) { _ in
-                        pickingExercise = false
-                        host.noteSurfaceChange()
-                    }
+                .sheet(isPresented: $showingMenu) {
+                    WatchMenuView(
+                        state: WatchMenuState(
+                            engine: host.engine,
+                            paths: host.paths,
+                            rating: host.rating
+                        ),
+                        revision: host.revision,
+                        onClose: {
+                            showingMenu = false
+                            host.noteSurfaceChange()
+                        },
+                        onFinish: {
+                            showingMenu = false
+                            host.noteSurfaceChange()
+                        }
+                    )
                 }
         }
-        // The picker is a presentation, not the screen: a session that ends
+        // The menu is a presentation, not the screen: a session that ends
         // underneath it must not leave it owed when the surface comes back.
-        .onDisappear { pickingExercise = false }
+        .onDisappear { showingMenu = false }
     }
 }
