@@ -32,6 +32,10 @@ public struct WatchMenuView: View {
     public static let title = "Exercises"
     public static let finishLabel = "Finish"
 
+    /// The one line the menu shows while a work clock is running, so the inert
+    /// rows say why they are inert (D-1309).
+    public static let lockCaptionText = "An effort is running"
+
     /// Wrist-scale inset, as the other wrist surfaces use.
     private static let surfaceInset = 4.0
 
@@ -51,6 +55,10 @@ public struct WatchMenuView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Self.surfaceInset) {
+                    if state.isLocked {
+                        lockCaption
+                    }
+
                     ForEach(state.rows, id: \.slotId) { row in
                         rowButton(row)
                     }
@@ -76,10 +84,19 @@ public struct WatchMenuView: View {
         }
 
         if row.isCurrent {
-            button.buttonStyle(.borderedProminent)
+            button.buttonStyle(.borderedProminent).disabled(state.isLocked)
         } else {
-            button.buttonStyle(.bordered)
+            button.buttonStyle(.bordered).disabled(state.isLocked)
         }
+    }
+
+    /// The one line naming why the rows are inert while a work clock runs
+    /// (D-1309). Finish is never disabled, so it stays reachable.
+    private var lockCaption: some View {
+        Text(Self.lockCaptionText)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// The exercise's name, and the count of what is already logged on it when

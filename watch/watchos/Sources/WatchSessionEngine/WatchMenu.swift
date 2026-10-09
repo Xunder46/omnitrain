@@ -123,11 +123,30 @@ public final class WatchMenuState {
         }
     }
 
+    /// Whether a work clock is running on the session, so a jump would change
+    /// the exercise out from under the effort being logged (D-1309).
+    ///
+    /// The three kinds a work clock can be — the elapsed count-up, a drill's
+    /// hold and a period's countdown — read through `engine.timerFor`, which is
+    /// already scoped to the current session. A rest is not work, so its row
+    /// leaves the menu free.
+    public var isLocked: Bool {
+        let workKinds = [WatchTimerKind.elapsed, WatchTimerKind.hold, WatchTimerKind.round]
+        return workKinds.contains { kind in
+            guard let timer = engine.timerFor(kind) else { return false }
+            return timer.state != WatchTimerState.stopped
+        }
+    }
+
     /// Moves the session to the slot `slotId` names, through the existing
     /// select path. False when the slot is gone by the time the tap lands, which
     /// changes nothing.
+    ///
+    /// A work clock running also refuses the jump, before the slot lookup, so a
+    /// tap on a vanished slot is refused for the lock's reason too (D-1309).
     @discardableResult
     public func jump(to slotId: String) async -> Bool {
+        guard !isLocked else { return false }
         guard let slot = ladderSlot(slotId), let exercise = WatchCatalogExercise(slot: slot) else {
             return false
         }

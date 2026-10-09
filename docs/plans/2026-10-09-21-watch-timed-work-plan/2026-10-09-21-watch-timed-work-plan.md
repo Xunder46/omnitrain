@@ -296,17 +296,18 @@ surface file's 10 and the timer file's 3) and 1B-ii (7). Any failure outside tha
 
 ### Phase 2: the menu lock (@developer)
 
-1. [ ] Add the lock — `watch/watchos/Sources/WatchSessionEngine/WatchMenu.swift` · `WatchMenuState.isLocked` (D-1309): true when the engine holds a running
+1. [x] Add the lock — `watch/watchos/Sources/WatchSessionEngine/WatchMenu.swift` · `WatchMenuState.isLocked` (D-1309): true when the engine holds a running
    timer of kind `elapsed`, `hold` or `round` — read `engine.timerFor(kind)?.state`, never `plannedDurationMs` and never the entries
-   (`WatchMenuTests.testS1108TheMenuSourceNamesNoRestEditOrDelete` :502 greps this file for that token).
-2. [ ] Refuse the jump — same file · `jump(to:)`: return false and change nothing while `isLocked`, before the slot lookup (a locked menu also refuses a slot
-   that has vanished).
-3. [ ] Show it — `watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift` · `rowButton` (:69), `finishRow` (:101): rows are inert while `state.isLocked`
-   (`.disabled`), with one caption row naming why ("An effort is running"); **Finish stays live** (D-1309) and `rowLabel` (:87) is unchanged.
-4. [ ] Test it — `watch/watchos/Tests/WatchSessionEngineTests/WatchMenuTests.swift` · `testS1307TheMenuDoesNotJumpWhileAWorkClockRuns` (S-1307): on the
+   (`WatchMenuTests.testS1108TheMenuSourceNamesNoRestEditOrDelete` :502 greps this file for that token). — done: greps clean (§11.5).
+2. [x] Refuse the jump — same file · `jump(to:)`: return false and change nothing while `isLocked`, before the slot lookup (a locked menu also refuses a slot
+   that has vanished). — done: guard is the first line of `jump`; mutation red (§11.3).
+3. [x] Show it — `watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift` · `rowButton` (:69), `finishRow` (:101): rows are inert while `state.isLocked`
+   (`.disabled`), with one caption row naming why ("An effort is running"); **Finish stays live** (D-1309) and `rowLabel` (:87) is unchanged. — done: cascade
+   build is the governor's (`xcodebuild`); the file is watchOS-only.
+4. [x] Test it — `watch/watchos/Tests/WatchSessionEngineTests/WatchMenuTests.swift` · `testS1307TheMenuDoesNotJumpWhileAWorkClockRuns` (S-1307): on the
    `WatchMenuHarness` (:70), Start a `timed` slot through a `WatchLoggingState` over the harness engine, then `isLocked` is true, `jump(to:)` returns false and
    `currentExerciseIndex` is unchanged; after Log the jump returns true and `isLocked` is false. Add a case for a `round` slot's countdown and one for a `rest`
-   (a rest must **not** lock).
+   (a rest must **not** lock). — done: 3 tests green (§11.2).
 
 **Done Criteria**: `.github/copilot/scripts/macos/gateway.sh swift-test` (fully green; `testS1108…` and `testS1202…` still green).
 
@@ -401,7 +402,7 @@ evidence file. Both docs stay inside the 51.2 KB band.
 | 1B | Not started — split into 1B-i and 1B-ii (the by-name list is 20 tests over 6 files; the brief allows 8 items per run) |
 | 1B-i | **Complete** — the F-CAP fixture migrated and its four files green: contract 6/6, surfaces 24/24, timers 28/28; full `swift-test` 415 tests / 15 failures, all 12 names inside 1B-ii's three files; `lint` 196 = baseline — see evidence §9 |
 | 1B-ii | **Complete** — the three files green: summary 17/17, recording 38/38, steps-denied 38/38, phone 8/8; full `swift-test` **415 tests / 0 failures, no filter**; `test/docs_indexing_contract_test.dart` 9/9; `lint` 196 = baseline — see evidence §10 |
-| 2 | Not started |
+| 2 | **Complete** — `WatchMenuState.isLocked` + the `jump(to:)` refusal in `WatchMenu.swift`, inert rows + one caption in `WatchMenuView.swift`, S-1307's 3 tests; full `swift-test` **418 tests / 0 failures, no filter** (`testS1108…`/`testS1202…` green); `lint` 196 = baseline — see evidence §11 |
 | 3 | Not started |
 
 ## Assumption Log
@@ -448,6 +449,10 @@ evidence file. Both docs stay inside the 51.2 KB band.
   `rounds`/`duration` dials, so the migration clears both. Options: treat the discrepancy as a blocker — rejected, the suite is green and no other file moved.
 - (developer, 1B-ii) No doc update required: no page in `docs/` names a watch test name (checked by `grep` across `docs/` and `watch/` — only this plan and
   the evidence file carry them), and this phase changes no doc page's structure or behaviour claims.
+- (developer, 2) The lock caption is `WatchMenuView.lockCaption` ("An effort is running"), a `public static` beside `title`/`finishLabel`, rendered above the
+  rows only while `state.isLocked`; the `rest` case proves itself by logging a set through `WatchLoggingState` (the real `startFollowOnTimer` path) rather than
+  pumping a raw `engine.startTimer(.rest)`. Options: a `Text` literal inline — rejected, the file's other copy is a named constant; a raw rest row — rejected,
+  it would not exercise the path the user takes.
 
 ## Feedback
 

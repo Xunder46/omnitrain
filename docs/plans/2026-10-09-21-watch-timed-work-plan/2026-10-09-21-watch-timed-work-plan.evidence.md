@@ -388,4 +388,56 @@ timed work 10/0, start paths 37/0, everything else 0 failures.
 | Footprint | `git-diff --stat` | the three test files (**43 / 43 / 21** changed lines, matching the edits) + the plan and evidence records; the other eight paths are 1A's and 1B-i's |
 | Watch scheme | `xcodebuild` (governor only) | not run here — Phase 3's view items; the package compiles under `swift-test` |
 
+## 11. Phase 2 — the menu lock (@developer, run of 2026-10-09 18:52–18:56 UTC)
+
+Plan items 1–4: `WatchMenuState.isLocked` (D-1309), the `jump(to:)` refusal, the view's inert rows + caption, and S-1307's tests. Only the three
+predicted files changed; no state/model source, no `WatchLoggingView.swift`, no doc.
+
+### 11.1 Phase 0.3 — red before implementation
+
+`swift-test --filter testS1307` on the pre-change tree: **build failure, 4 errors**, one per `harness.menu.isLocked` read, each
+`value of type 'WatchMenuState' has no member 'isLocked'` (WatchMenuTests.swift :424, :436, :455, :477). The API the tests name does not exist yet, so
+the whole S-1307 set is red for the reason it guards.
+
+### 11.2 The same tests green
+
+`swift-test --filter testS1307`: **Executed 3 tests, with 0 failures (0 unexpected)** —
+
+| Test | Scenario | Passed |
+|---|---|---|
+| `testS1307TheMenuDoesNotJumpWhileAWorkClockRuns` | `elapsed` timer locks; jump false, index unchanged; after Log unlocked and the jump lands | yes |
+| `testS1307APeriodCountdownLocksTheMenu` | `round` countdown locks; jump false, index unchanged | yes |
+| `testS1307ARunningRestDoesNotLockTheMenu` | a running `rest` leaves `isLocked` false and the jump through | yes |
+
+### 11.3 prove-red
+
+`prove-red HEAD swift-test` cannot be used: HEAD is the pre-Phase-2 tree, where the test file does not compile (no `isLocked`), exactly as §9.4/§10.4
+record for the earlier phases. The guard is therefore proved by mutation: the original line
+`        guard !isLocked else { return false }` (`WatchMenu.swift`, first line of `jump`) was removed, leaving `isLocked` in place so the file still
+compiled.
+
+| Guard | Mutant (the exact edit, on the working tree) | Verdict |
+|---|---|---|
+| D-1309 the menu refuses a jump while a work clock runs | delete `guard !isLocked else { return false }` from `jump(to:)` | **RED**: `swift-test --filter testS1307` → **Executed 3 tests, with 5 failures** — timed `:426` "the locked menu refuses the jump", `:427` "the refused jump leaves the session where it was" (`Optional(1)` vs `Optional(0)`), `:436` "logging ends the clock, so the menu frees up"; period `:457` "the locked menu refuses the jump", `:458` "the session stays on the period". The rest test stayed green (it is not about the guard), which is the discrimination the mutation needs. |
+
+Restore verified by `grep` on the source (`guard !isLocked else { return false }` is the first line of `jump`) and by `git-diff --stat`: the file's
+footprint is back to the pre-mutation **+19** lines. §11.2's and §11.4's runs are the green re-runs.
+
+### 11.4 The full suite at the end of Phase 2
+
+`swift-test` (no filter): **Executed 418 tests, with 0 failures (0 unexpected)** — 415 + S-1307's 3, `All tests' passed`, no filter, no expected red.
+The two source guards this phase could have broken are green in the same run: `testS1108TheMenuSourceNamesNoRestEditOrDelete` and
+`testS1202TheMenuSourceNamesNoExercisePicker`.
+
+### 11.5 The other end-of-run checks
+
+| Check | Command | Result |
+|---|---|---|
+| Phone lint | `lint` | **196 issues** — identical to §8.5/§9.6/§10.6; no Dart file is in this diff |
+| Persistence invariant | `grep` for `import .*hive_workout_repository` under `lib/state`, `lib/features`, `lib/widgets`, `lib/core` | **no matches** |
+| Menu source guards | `swift-test` (in §11.4's run) | `testS1108…` passed, `testS1202…` passed — `WatchTimerKind.rest` was not introduced into either menu source |
+| Footprint | `git-diff --stat` | the three predicted files (**19 / 21 / 82** changed lines) — nothing outside the plan's Predicted Files |
+| Docs | — | no update required: Phase 3 owns the docs (D-1312) and no page names a watch test name (§10.6) |
+| Watch scheme | `xcodebuild` (governor only) | not run here — `WatchMenuView.swift` is watchOS-only and is not compiled by `swift-test`; the governor builds it |
+
 

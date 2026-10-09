@@ -22,12 +22,16 @@ import XCTest
 @testable import WatchSessionEngine
 
 /// One slot of a menu fixture ladder.
-private func menuSlot(_ id: String, _ name: String) -> [String: Any] {
+private func menuSlot(
+    _ id: String,
+    _ name: String,
+    capabilities: [String] = ["reps", "sets", "load"]
+) -> [String: Any] {
     [
         "sessionExerciseId": id,
         "exerciseId": "ex-\(id)",
         "name": name,
-        "capabilities": ["reps", "sets", "load"],
+        "capabilities": capabilities,
     ]
 }
 
@@ -400,6 +404,80 @@ final class WatchMenuTests: XCTestCase {
 
         XCTAssertFalse(moved, "S-1104 a slot the session does not hold finds no row")
         XCTAssertEqual(harness.engine.session?.currentExerciseIndex, 1, "S-1104 the session stays where it was")
+    }
+
+    // MARK: - S-1307 the menu lock
+
+    func testS1307TheMenuDoesNotJumpWhileAWorkClockRuns() async throws {
+        let harness = await WatchMenuHarness().launch()
+        _ = await harness.engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [
+                menuSlot("sx-run", "Run", capabilities: ["time", "distance"]),
+                menuSlot("sx-row", "Row"),
+            ]
+        )
+        let surface = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+
+        await surface.startWork()
+
+        XCTAssertTrue(harness.menu.isLocked, "S-1307 a running effort clock locks the menu")
+        let refused = await harness.menu.jump(to: "sx-row")
+        XCTAssertFalse(refused, "S-1307 the locked menu refuses the jump")
+        XCTAssertEqual(
+            harness.engine.session?.currentExerciseIndex,
+            0,
+            "S-1307 the refused jump leaves the session where it was"
+        )
+
+        harness.clock.advance(754)
+        try await surface.log()
+
+        XCTAssertFalse(harness.menu.isLocked, "S-1307 logging ends the clock, so the menu frees up")
+        let moved = await harness.menu.jump(to: "sx-row")
+        XCTAssertTrue(moved, "S-1307 the jump goes through once the clock has stopped")
+        XCTAssertEqual(harness.engine.session?.currentExerciseIndex, 1, "S-1307 and moves the session")
+    }
+
+    func testS1307APeriodCountdownLocksTheMenu() async {
+        let harness = await WatchMenuHarness().launch()
+        _ = await harness.engine.createSession(
+            modality: "sports",
+            exercises: [
+                menuSlot("sx-period", "Period", capabilities: ["rounds"]),
+                menuSlot("sx-row", "Row"),
+            ]
+        )
+        let surface = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+
+        await surface.startWork()
+
+        XCTAssertTrue(harness.menu.isLocked, "S-1307 a running period countdown locks the menu")
+        let refused = await harness.menu.jump(to: "sx-row")
+        XCTAssertFalse(refused, "S-1307 the locked menu refuses the jump")
+        XCTAssertEqual(
+            harness.engine.session?.currentExerciseIndex,
+            0,
+            "S-1307 the session stays on the period"
+        )
+    }
+
+    func testS1307ARunningRestDoesNotLockTheMenu() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        let surface = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+
+        try await surface.log()
+
+        XCTAssertEqual(
+            harness.engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.running,
+            "S-1307 the fixture is resting, so the rest case is the one exercised"
+        )
+        XCTAssertFalse(harness.menu.isLocked, "S-1307 a rest is not work, so it leaves the menu free")
+        let moved = await harness.menu.jump(to: "s3")
+        XCTAssertTrue(moved, "S-1307 the jump goes through while a rest runs")
+        XCTAssertEqual(harness.engine.session?.currentExerciseIndex, 2, "S-1307 and moves the session")
     }
 
     // MARK: - S-1200 / S-1201 the menu is the session alone
