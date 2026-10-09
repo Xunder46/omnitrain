@@ -427,12 +427,12 @@ the fallback list minus what the ladder already shows behind them. Verified by
 
 #### The wrist shell's second surface
 
-Once a session is open, the shell's second surface is the package's logging view
-for the current exercise: the exercise's own effort kind — a set, a timed hold, a
-round or a drill — with the value rows that effort needs, and one list button
-opening the session menu: the ladder's exercises with their logged counts to
-jump to, then Add exercise and Finish. A logged set starts a rest
-with no length, which the rest screen counts up, and whose end reaches the phone
+Once a session is open, the second surface is the package's logging view for the
+current exercise — its own effort kind (a set, a timed hold, a round or a drill)
+with the value rows that effort needs — and one list button opening the session
+menu: the ladder's exercises with their logged counts to jump to, then Finish.
+Exercises are added on the phone. A logged set starts a rest with no length,
+which the rest screen counts up, and whose end reaches the phone
 (`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`;
 `test/watch_session_engine_test.dart`, S-320).
 

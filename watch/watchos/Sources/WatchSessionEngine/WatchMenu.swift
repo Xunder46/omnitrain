@@ -2,11 +2,10 @@
 //  WatchMenu.swift
 //  WatchSessionEngine
 //
-//  The session menu's model: the ladder as rows, the jump, and Finish. Mirrors
-//  the derivation style of `derivePickerRows` in `WatchStartPaths.swift` — a
-//  pure function over the session and the engine's corrected projection, read on
-//  every access rather than cached, so a frame that lands while the menu is open
-//  is already in the list the user sees.
+//  The session menu's model: the ladder as rows, the jump, and Finish. `rows` is
+//  a pure function over the session and the engine's corrected projection, read
+//  on every access rather than cached, so a frame that lands while the menu is
+//  open is already in the list the user sees.
 //
 //  The menu writes no session structure of its own: a jump is the engine's
 //  `selectExercise(slotId:)` through the start paths, and Finish is the rating
@@ -45,10 +44,16 @@ public struct WatchMenuRow: Equatable {
     }
 }
 
+/// The id a slot answers to: its own `sessionExerciseId`, or the exercise's when
+/// the slot carries none. What a menu row is keyed by and what a jump names.
+private func menuSlotId(of slot: [String: Any], _ exercise: WatchCatalogExercise) -> String {
+    (slot["sessionExerciseId"] as? String) ?? exercise.slotId
+}
+
 /// The session's ladder as menu rows, in the session's own order.
 ///
 /// A slot `WatchCatalogExercise(slot:)` rejects — no exercise id or no name — is
-/// skipped, exactly as `derivePickerRows` skips it. `isCurrent` compares the
+/// skipped, exactly as the picker's own rows skip it. `isCurrent` compares the
 /// slot's position in the ladder with the clamped `currentIndex`, the reading
 /// `WatchSessionRecord.currentExercise` applies, so a skipped slot shifts
 /// nothing.
@@ -63,7 +68,7 @@ public func deriveMenuRows(
     var rows: [WatchMenuRow] = []
     for (index, slot) in sessionExercises.enumerated() {
         guard let exercise = WatchCatalogExercise(slot: slot) else { continue }
-        let slotId = (slot["sessionExerciseId"] as? String) ?? exercise.slotId
+        let slotId = menuSlotId(of: slot, exercise)
         let count = entries.filter {
             WatchObservationKind.efforts.contains($0.kind)
                 && ($0.payload["sessionExerciseId"] as? String) == slotId
@@ -84,13 +89,12 @@ public func deriveMenuRows(
 /// The menu over a live session: its rows, the jump to a slot, and Finish.
 ///
 /// A plain class, not an `ObservableObject`: the host's `revision` bump is what
-/// re-runs the view body, the same rule `pickerRows` follows. `rows` is derived
-/// on every read and never cached.
+/// re-runs the view body. `rows` is derived on every read and never cached.
 public final class WatchMenuState {
     private let engine: WatchSessionEngine
 
-    /// The start paths, so the menu can present the add-only picker.
-    public let paths: WatchSessionStartPaths
+    /// The start paths, so a jump goes through the session's own select path.
+    private let paths: WatchSessionStartPaths
 
     /// The rating state Finish ends through.
     public let rating: WatchEffortRatingState
@@ -110,15 +114,24 @@ public final class WatchMenuState {
         )
     }
 
+    /// The ladder's own slot, read here rather than out of a list of the
+    /// exercises the wrist could add: nil when the session does not hold it.
+    private func ladderSlot(_ slotId: String) -> [String: Any]? {
+        (engine.session?.exercises ?? []).first { slot in
+            guard let exercise = WatchCatalogExercise(slot: slot) else { return false }
+            return menuSlotId(of: slot, exercise) == slotId
+        }
+    }
+
     /// Moves the session to the slot `slotId` names, through the existing
     /// select path. False when the slot is gone by the time the tap lands, which
     /// changes nothing.
     @discardableResult
     public func jump(to slotId: String) async -> Bool {
-        guard let row = paths.pickerRows.first(where: { $0.isInSession && $0.id == slotId }) else {
+        guard let slot = ladderSlot(slotId), let exercise = WatchCatalogExercise(slot: slot) else {
             return false
         }
-        return await paths.selectExercise(row) != nil
+        return await paths.selectExercise(.inSession(slotId: slotId, exercise: exercise)) != nil
     }
 
     /// Finishes the session through the rating state's `end()`, so the owed

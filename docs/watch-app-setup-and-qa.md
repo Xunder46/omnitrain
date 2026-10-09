@@ -174,8 +174,8 @@ Written, by Phases 1–4 of the shell-bridge plan:
   exercise picker). The logging surface logs the current exercise's own effort —
   a set, a timed hold, a round or a drill, chosen from the exercise's
   capabilities — and hosts the session menu: the ladder's exercises with their
-  logged counts to jump to, then Add exercise and Finish. An ended session can no
-  longer be logged into
+  logged counts to jump to, then Finish. Exercises are added on the phone. An
+  ended session can no longer be logged into
   (`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
   Logged rows leave through `WatchEmitForwarder` over the connectivity bridge —
   the outward sink wired in this PR;

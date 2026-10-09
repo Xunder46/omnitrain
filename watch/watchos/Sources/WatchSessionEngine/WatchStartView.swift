@@ -185,10 +185,6 @@ public struct WatchStartView: View {
 /// on the ladder is offered once, as the row that moves the user to it, and not
 /// again as one that would add a second copy. When the phone is reachable, the
 /// screen says where the rest lives and waits for the push.
-///
-/// With `addOnly`, the session it belongs to already has its own list: the rows
-/// are only the exercises that could be added, and the ladder's own exercises are
-/// absent — not offered as something to add.
 public struct WatchExercisePickerView: View {
     private let paths: WatchSessionStartPaths
 
@@ -199,24 +195,18 @@ public struct WatchExercisePickerView: View {
 
     private let onExerciseAdded: (WatchSessionRecord) -> Void
 
-    /// True when the picker is the menu's "Add exercise": the session's own rows
-    /// belong to the menu below it, so the list offers only what could be added.
-    private let addOnly: Bool
-
     public init(
         paths: WatchSessionStartPaths,
         revision: Int = 0,
-        addOnly: Bool = false,
         onExerciseAdded: @escaping (WatchSessionRecord) -> Void
     ) {
         self.paths = paths
         self.revision = revision
-        self.addOnly = addOnly
         self.onExerciseAdded = onExerciseAdded
     }
 
     public var body: some View {
-        let rows = paths.pickerRows(addOnly: addOnly)
+        let rows = paths.pickerRows
 
         return ScrollView {
             VStack(spacing: 4) {

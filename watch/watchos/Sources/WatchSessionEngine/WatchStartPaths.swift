@@ -176,28 +176,19 @@ public enum WatchExercisePickerRow: Equatable {
 /// An exercise already on the ladder appears once, as its in-session row, so
 /// picking it moves the user to it instead of adding a duplicate — while a
 /// second slot for the same exercise still gets a row of its own.
-///
-/// `addOnly` drops the in-session rows: they are the menu's rows, not the
-/// picker's, so the menu's own picker offers only exercises the ladder does not
-/// already hold. The exercises on the ladder are still excluded from the
-/// addable ones — adding a copy of what the session already runs is not what
-/// "Add exercise" means.
 public func derivePickerRows(
     sessionExercises: [[String: Any]],
-    fallback: [WatchCatalogExercise],
-    addOnly: Bool = false
+    fallback: [WatchCatalogExercise]
 ) -> [WatchExercisePickerRow] {
     var rows: [WatchExercisePickerRow] = []
     var onLadder = Set<String>()
 
     for slot in sessionExercises {
         guard let exercise = WatchCatalogExercise(slot: slot) else { continue }
-        if !addOnly {
-            rows.append(.inSession(
-                slotId: (slot["sessionExerciseId"] as? String) ?? exercise.slotId,
-                exercise: exercise
-            ))
-        }
+        rows.append(.inSession(
+            slotId: (slot["sessionExerciseId"] as? String) ?? exercise.slotId,
+            exercise: exercise
+        ))
         onLadder.insert(exercise.exerciseId)
     }
 
@@ -402,16 +393,9 @@ public final class WatchSessionStartPaths {
     /// they could add. Derived on every read rather than cached, so a push that
     /// arrived while the picker was open is already in the list the user sees.
     public var pickerRows: [WatchExercisePickerRow] {
-        pickerRows(addOnly: false)
-    }
-
-    /// The same rows, in the add-only mode the menu's picker uses: no in-session
-    /// row, so the list is only what could be added.
-    public func pickerRows(addOnly: Bool) -> [WatchExercisePickerRow] {
         derivePickerRows(
             sessionExercises: engine.session?.exercises ?? [],
-            fallback: fallbackExercises,
-            addOnly: addOnly
+            fallback: fallbackExercises
         )
     }
 

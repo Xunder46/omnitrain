@@ -2,22 +2,21 @@
 //  WatchMenuView.swift
 //  WatchSessionEngine
 //
-//  The native watchOS session menu: the ladder's exercises to jump to, then the
-//  two actions that close a session out — Add exercise and Finish. Compiled only
-//  into a watch target, like the other views in this module; the model it reads
-//  is `WatchMenuState` (`WatchMenu.swift`), which the suite covers.
+//  The native watchOS session menu: the session's own exercises to jump to, then
+//  Finish. Compiled only into a watch target, like the other views in this
+//  module; the model it reads is `WatchMenuState` (`WatchMenu.swift`), which the
+//  suite covers.
 //
-//  The menu never edits or deletes anything: a row is the engine's existing
-//  select path, and Finish is the rating state's `end()`. It carries no rest
-//  control and mints no ids.
+//  The menu never edits, adds or deletes anything: a row is the engine's existing
+//  select path, and Finish is the rating state's `end()`. Exercises are added on
+//  the phone. It carries no rest control and mints no ids.
 //
 
 #if os(watchOS)
 
 import SwiftUI
 
-/// The session menu: one row per exercise on the ladder, then Add exercise and
-/// Finish.
+/// The session menu: one row per exercise on the ladder, then Finish.
 public struct WatchMenuView: View {
     private let state: WatchMenuState
 
@@ -29,17 +28,12 @@ public struct WatchMenuView: View {
     private let onClose: () -> Void
     private let onFinish: () -> Void
 
-    /// The sheet's title, and the fixed copy of the two action rows (D-1114).
+    /// The screen's title, and the fixed copy of its one action row (D-1114).
     public static let title = "Exercises"
-    public static let addExerciseLabel = "Add exercise"
     public static let finishLabel = "Finish"
 
     /// Wrist-scale inset, as the other wrist surfaces use.
     private static let surfaceInset = 4.0
-
-    /// Whether the nested add-only picker is up. The menu's own presentation
-    /// state, so `WatchMenuState` stays stateless (D-1111).
-    @State private var addingExercise = false
 
     public init(
         state: WatchMenuState,
@@ -61,26 +55,16 @@ public struct WatchMenuView: View {
                         rowButton(row)
                     }
 
-                    addExerciseRow
                     finishRow
                 }
                 .padding(Self.surfaceInset)
             }
             .navigationTitle(Self.title)
         }
-        .sheet(isPresented: $addingExercise) {
-            WatchExercisePickerView(paths: state.paths, revision: revision, addOnly: true) { _ in
-                // The picker's own dismissal, then the menu's: the nested sheet
-                // dies with the menu it hangs from.
-                addingExercise = false
-                onClose()
-            }
-        }
     }
 
-    /// A row the session is on wears the picked style and every other row the
-    /// plain one — the mark `WatchExercisePickerView` uses for its own
-    /// in-session rows.
+    /// A row the session is on wears the picked style, every other row the plain
+    /// one.
     @ViewBuilder
     private func rowButton(_ row: WatchMenuRow) -> some View {
         let button = Button {
@@ -110,15 +94,6 @@ public struct WatchMenuView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// The menu's own way to add: the add-only picker over the exercises the
-    /// session does not hold yet.
-    private var addExerciseRow: some View {
-        Button(Self.addExerciseLabel) {
-            addingExercise = true
-        }
-        .buttonStyle(.bordered)
     }
 
     /// Finish ends the session through the rating state, so the owed prompt and

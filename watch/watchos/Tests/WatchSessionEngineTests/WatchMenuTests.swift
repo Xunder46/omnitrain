@@ -8,6 +8,10 @@
 //  toolchain. The wrist's view over them is Phase 2, compiled only by the watch
 //  scheme build.
 //
+//  S-1200 to S-1202 of
+//  `docs/plans/2026-10-09-20b-watch-menu-session-only-plan/2026-10-09-20b-watch-menu-session-only-plan.md`:
+//  the menu is the session and nothing else, and it reaches for no catalog.
+//
 //  Fixture A is the register's three-slot ladder: two live efforts on `s1`, none
 //  on `s2`, one on `s3`, and a fourth `s1` effort the phone deleted.
 //
@@ -154,8 +158,8 @@ final class WatchMenuHarness {
         return self
     }
 
-    /// The phone's fallback list, so the picker has exercises to add beyond the
-    /// ladder. Squat is on the ladder; Pull-up and Dip are not.
+    /// The phone's fallback list, of which the menu must show nothing. Squat is
+    /// on the ladder; Pull-up and Dip are not.
     @discardableResult
     func applyFallbackCatalog() async -> WatchMenuHarness {
         _ = await store.append(
@@ -398,50 +402,38 @@ final class WatchMenuTests: XCTestCase {
         XCTAssertEqual(harness.engine.session?.currentExerciseIndex, 1, "S-1104 the session stays where it was")
     }
 
-    // MARK: - S-1105 / S-1106 the add-only picker
+    // MARK: - S-1200 / S-1201 the menu is the session alone
 
-    func testS1105AddOnlyRowsDropTheLadder() async {
+    func testS1200MenuRowsNeverReadTheFallbackCatalog() async {
         let harness = await WatchMenuHarness().launch()
         await harness.fixtureA()
         await harness.applyFallbackCatalog()
 
-        let addOnly = harness.paths.pickerRows(addOnly: true)
         XCTAssertEqual(
-            addOnly.map(\.name),
-            ["Pull-up", "Dip"],
-            "S-1105 the add-only list drops Squat, which is already on the ladder"
-        )
-        XCTAssertTrue(addOnly.allSatisfy { !$0.isInSession }, "S-1105 no in-session row survives the add-only mode")
-
-        let all = harness.paths.pickerRows
-        XCTAssertEqual(
-            Array(all.prefix(3)).map(\.name),
+            harness.menu.rows.map(\.name),
             ["Squat", "Bench Press", "Row"],
-            "S-1105 the default property still lists the ladder rows first"
+            "S-1200 the fallback catalog's Pull-up and Dip stay out of the menu"
         )
-        XCTAssertEqual(all.count, 5, "S-1105 the default list still holds the ladder and the addable exercises")
     }
 
-    func testS1106PickingAnAddOnlyRowAppendsAndMoves() async {
+    func testS1201OneRowPerExerciseWhateverItsEffortCount() async throws {
         let harness = await WatchMenuHarness().launch()
         await harness.fixtureA()
-        await harness.applyFallbackCatalog()
+        _ = await harness.store.append(menuEntry("e-s3-2", slot: "s3", at: "2026-07-13T06:06:00Z"))
+        _ = await harness.store.append(menuEntry("e-s3-3", slot: "s3", at: "2026-07-13T06:07:00Z"))
+        _ = await harness.store.append(menuEntry("e-s3-4", slot: "s3", at: "2026-07-13T06:08:00Z"))
+        await harness.engine.restore()
 
-        guard let dip = harness.paths.pickerRows(addOnly: true).first(where: { $0.name == "Dip" }),
-              case .available(let exercise) = dip
-        else {
-            return XCTFail("S-1106 the add-only list offers Dip as an exercise to add")
-        }
-
-        _ = await harness.paths.selectExercise(dip)
-
-        XCTAssertEqual(harness.engine.session?.exercises.count, 4, "S-1106 picking Dip appends a slot")
-        XCTAssertEqual(harness.engine.session?.currentExerciseIndex, 3, "S-1106 and moves the session to it")
+        let rows = harness.menu.rows
+        XCTAssertEqual(rows.count, 3, "S-1201 four efforts on Row still make one row")
         XCTAssertEqual(
-            harness.engine.session?.exercises.last?["sessionExerciseId"] as? String,
-            exercise.slotId,
-            "S-1106 the new slot is the picked exercise's own"
+            Set(rows.map(\.slotId)).count,
+            rows.count,
+            "S-1201 no slot id repeats, so no effort gets a row of its own"
         )
+        let row = try XCTUnwrap(rows.first { $0.slotId == "s3" })
+        XCTAssertEqual(row.loggedCount, 4, "S-1201 the row counts all four of Row's efforts")
+        XCTAssertEqual(row.countLabel, "4 logged", "S-1201 the row says how many, not which set")
     }
 
     // MARK: - S-1107 / S-1113 Finish
@@ -514,6 +506,25 @@ final class WatchMenuTests: XCTestCase {
 
             for token in ["restSeconds", "plannedDurationMs", "deleteEntry", "removeExercise"] {
                 XCTAssertFalse(source.contains(token), "S-1108 \(file) must not name \(token)")
+            }
+        }
+    }
+
+    // MARK: - S-1202 the menu reaches nothing but the session
+
+    func testS1202TheMenuSourceNamesNoExercisePicker() throws {
+        for file in ["WatchMenu.swift", "WatchMenuView.swift"] {
+            let url = Fixtures.sourcesRoot.appendingPathComponent(file)
+            let source = try String(contentsOf: url, encoding: .utf8)
+
+            for token in [
+                "WatchExercisePickerView",
+                "addExercise",
+                "pickerRows",
+                "fallbackExercises",
+                "Add exercise",
+            ] {
+                XCTAssertFalse(source.contains(token), "S-1202 \(file) must not name \(token)")
             }
         }
     }
