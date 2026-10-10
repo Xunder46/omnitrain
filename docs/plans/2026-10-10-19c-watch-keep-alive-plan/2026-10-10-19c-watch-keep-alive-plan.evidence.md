@@ -129,8 +129,12 @@ healthStore.requestAuthorization(toShare: [HKObjectType.workoutType()], read: []
 `try await healthStore.recoverActiveWorkoutSession()`. The store never throws: every call is inside a
 `do`/`catch` and a failure leaves `session`/`builder` nil.
 
-**(governor)** watch-target compile, `xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator build`:
-(to fill — command, exit status, the last few lines). Nothing off-device compiles the app target:
+**(governor)** watch-target compile. The plan's `-target` form cannot resolve the local Swift package (it fails
+at baseline: `unable to resolve module dependency: WatchSessionEngine`, in `ContentView.swift` too), so the
+governor ran the workspace + scheme form:
+`xcodebuild -workspace ios/Runner.xcworkspace -scheme "OmniTrain Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (42mm)' -configuration Debug build`
+→ ** BUILD SUCCEEDED **, with `HealthKitWorkoutStore.swift` in the target (`.work/watch-19c/governor-readbacks.md`, Phase 2A).
+Nothing off-device compiles the app target:
 `HealthKitWorkoutStore.swift` is `#if os(watchOS)` and `HealthKit` does not exist on macOS, so
 `swift-test` only exercises the source guard that reads the file. If the compile reports a spelling
 difference, it is the store's to fix and the store's alone (the package and the coordinator are
@@ -166,7 +170,8 @@ xcodebuild -workspace ios/Runner.xcworkspace -scheme "OmniTrain Watch App" \
   -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (42mm)' build
 ```
 
-Exit status and the last lines: (to fill — governor). A compile error here is the wiring's to fix; the
+Exit status and the last lines: ** BUILD SUCCEEDED **, `WatchAppHost` wired to `WatchWorkoutCoordinator`
+(`.work/watch-19c/governor-readbacks.md`, Phase 2B; the same command as 2A's witness above). A compile error here is the wiring's to fix; the
 package and the coordinator are unaffected.
 
 ### Phase 3A — configuration, S-1506
@@ -198,32 +203,36 @@ stays, so Xcode merges the fragment with the generated keys; no `PBXFileReferenc
 3 lines removed and 3 added against the phase-3A state (the HEAD diff stays at 12 insertions, 0 deletions).
 Re-checked `.github/copilot/scripts/macos/gateway.sh test test/pre_release_gate_ios_artifact_test.dart`:
 **12 passed, 0 failed**, last line `00:35 +12: All tests passed!`. The merged-product read-back (§2 below) is
-the governor's to paste.
+now pasted from the governor's receipts (`.work/watch-19c/governor-readbacks.md`).
 
 `.github/copilot/scripts/macos/gateway.sh test test/pre_release_gate_ios_artifact_test.dart`: **12 passed,
 0 failed**, last line `00:34 +12: All tests passed!` (the pbxproj's only Dart reader; the watch target is
 excluded from `runner_pbxproj_settings`, so it stays green).
 
-All four rows below are the governor's; each command is run exactly as written and its output pasted.
-The exact command list (item 6):
+All four rows below are filled from the governor's receipts (`.work/watch-19c/governor-readbacks.md`), quoted,
+not invented. The command list (item 6) as the governor ran it:
 
 ```sh
-xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator build
-xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator -showBuildSettings \
-  | grep -E ' (TARGET_BUILD_DIR|FULL_PRODUCT_NAME) = '        # resolves the two path variables below
+xcodebuild -workspace ios/Runner.xcworkspace -scheme "OmniTrain Watch App" \
+  -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (42mm)' -configuration Debug build
 plutil -p ios/OmniTrainWatchApp-Info.plist                                           # the fragment itself (D-1511 fallback)
 plutil -p "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>/Info.plist"
 codesign -d --entitlements :- "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>"
-find ~/Library/Developer/Xcode/DerivedData -name '*.xcent' -newermt '-2 hours' -exec plutil -p {} \;   # fallback witness
+plutil -p "<TARGET_BUILD_DIR>/../OmniTrain Watch App.build/OmniTrain Watch App.app-Simulated.xcent"   # the fallback witness
 find "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>" -name '*.entitlements'                                  # expect no output
 ```
 
+The plan's `xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator build`
+does not appear above: a target-only build cannot resolve the local Swift package and fails at baseline
+(`unable to resolve module dependency: WatchSessionEngine`), so the governor replaced it with the workspace +
+scheme form (`.work/watch-19c/governor-readbacks.md`).
+
 | # | Command | What it proves | Result |
 |---|---|---|---|
-| 1 | `xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator build` | the target builds with the new settings | (governor) |
-| 2 | `plutil -p "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>/Info.plist"` | `NSHealthShareUsageDescription`, `NSHealthUpdateUsageDescription`, `WKBackgroundModes` are present with D-1511's exact strings, and nothing else was added | (governor) |
-| 3 | `codesign -d --entitlements :- "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>"`; if an unsigned simulator build shows none, the processed file under the intermediates via `plutil -p` on the `**/*.xcent` | `com.apple.developer.healthkit` is on the product | (governor) |
-| 4 | `find "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>" -name '*.entitlements'` | no `*.entitlements` file is bundled as a resource | (governor) |
+| 1 | `xcodebuild -workspace ios/Runner.xcworkspace -scheme "OmniTrain Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (42mm)' -configuration Debug build` (the plan's `-target` form cannot resolve the local Swift package — see above) | the target builds with the new settings | **(governor)** `-> BUILD SUCCEEDED`, built product `Runner.app/Watch/OmniTrain Watch App.app`, Debug, watchsimulator (`.work/watch-19c/governor-readbacks.md`) |
+| 2 | `plutil -p "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>/Info.plist"` | `NSHealthShareUsageDescription`, `NSHealthUpdateUsageDescription`, `WKBackgroundModes` are present with D-1511's exact strings, and nothing else was added | **(governor)** `"NSHealthShareUsageDescription" => "OmniTrain saves the workouts you finish on the watch to Health."`, `"NSHealthUpdateUsageDescription" => "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings."`, `"WKBackgroundModes" => [ 0 => "workout-processing" ]` |
+| 3 | `codesign -d --entitlements :- "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>"`; if an unsigned simulator build shows none, the processed file under the intermediates via `plutil -p` on the `**/*.xcent` | `com.apple.developer.healthkit` is on the product | **(governor)** `codesign -d` shows none (unsigned simulator build), so the fallback witness applies — `Intermediates.noindex/Runner.build/Debug-watchsimulator/OmniTrain Watch App.build/OmniTrain Watch App.app-Simulated.xcent`, `plutil -p` → `"application-identifier" => "S3976AA7K8.dev.sasha.omnitrain.watchkitapp"`, `"com.apple.developer.healthkit" => true` |
+| 4 | `find "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>" -name '*.entitlements'` | no `*.entitlements` file is bundled as a resource | **(governor)** no output — "no `*.entitlements` / `OmniTrainWatchApp*` file inside the `.app`" |
 
 ### Phase 3B — docs and the residue sweep
 
@@ -259,6 +268,9 @@ lines changed, `watch-app-setup-and-qa.md` 52 lines changed, `2026-10-08-18-watc
   band is to be known before phase 3B.
 - `rg` for the phase 3B residue sweep: the rows above are the governor's to fill (the plan records the
   exact patterns). The planner verified the touched files by reading them.
+  *(Closing run: the residue rows were already filled by the developer from `rg`-equivalent reads; the
+  remaining governor slots — S-1506's four rows and the 2A/2B compile witnesses — are now filled from
+  `.work/watch-19c/governor-readbacks.md`.)*
 - The directory `docs/plans/2026-10-10-19c-watch-keep-alive-plan/` already existed (it holds the
   plan); no directory had to be created.
 

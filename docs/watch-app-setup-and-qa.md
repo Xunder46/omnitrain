@@ -50,7 +50,8 @@ do work an agent could have done.
 ### An agent can do these (all plain text, all in-repo)
 
 - [x] The Swift `@main` App type and SwiftUI scene for watchOS (§3.6).
-- [ ] `Info.plist` and `.entitlements` edits — these are plain XML.
+- [x] `Info.plist` and `.entitlements` edits — these are plain XML.
+  (Landed in plan 19c: `ios/OmniTrainWatchApp-Info.plist`, `ios/OmniTrainWatchApp.entitlements`.)
 - [x] The watchOS platform entry in `watch/watchos/Package.swift`.
 - [x] The transport Dart interface implementation and the Swift bridge code
   (`lib/core/platform/`; `watch_connectivity` is imported in exactly one file).
