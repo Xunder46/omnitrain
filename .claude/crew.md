@@ -64,3 +64,4 @@ rate on Omniscience, matching this repo's history of invented names and false "d
   and writer-cap refusals fire. No product work run yet.
 - 2026-10-10: runner fixes found by the smoke tests: scope globs were shell-expanded; `check` dry-run command
   added; git warning for not-yet-existing scope directories silenced.
+- 2026-10-10 (unit 19d, the first real unit): agent descriptions quoted and `check`/`start` validate the frontmatter (6 of 8 files could not load); a narrowed `--scope` keeps `.work/crew/**`; `crew-builder-watch` may write `ios/OmniTrain Watch App/**`. Result of the unit and the measured numbers: `.work/friction.md` "[crew] SUMMARY (first crew unit)". Open follow-ups: the prover must show the arithmetic behind a predicted failing value; split `docs/state_management/watch_surface.md` (52,408 bytes) before the next watch unit.
