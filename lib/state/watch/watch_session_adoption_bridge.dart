@@ -471,6 +471,18 @@ class WatchSessionAdoptionBridge {
     final capabilities = exercise?.capabilities ?? const <String>[];
     if (exerciseId == null || capabilities.isEmpty) return null;
 
+    // D-1409: the length of the period the wrist counts down is the one the
+    // phone's own round control counts from — the effort's last round, or the
+    // exercise's own default when it holds no round yet. The app-wide 180 s
+    // fallback is deliberately not sent: a number the user never chose is not
+    // one the wrist may show as theirs.
+    final rounds = effort.effortKind == BlockTypes.round
+        ? target.getRoundsForEffort(effort.id)
+        : const <RoundInstance>[];
+    final secs = rounds.isNotEmpty
+        ? rounds.last.plannedDurationSecs
+        : exercise?.defaultRoundDurationSecs;
+
     return <String, Object?>{
       'sessionExerciseId': effort.id,
       'exerciseId': exerciseId,
@@ -478,6 +490,8 @@ class WatchSessionAdoptionBridge {
       if (_declaredKinds.contains(effort.effortKind))
         'effortKind': effort.effortKind,
       'capabilities': [...capabilities],
+      if (effort.effortKind == BlockTypes.round && secs != null && secs >= 1)
+        'roundDurationSecs': secs,
     };
   }
 
@@ -515,6 +529,9 @@ class WatchSessionAdoptionBridge {
 
   /// The identity of a ladder as the wrist can see it: the facts a change to
   /// would make the wrist's copy stale.
+  ///
+  /// The length of a period is one of them (D-1410): the wrist renders it, so a
+  /// length-only edit is a changed ladder and must state a newer revision.
   static String _ladderOf(
     String sessionId,
     List<Map<String, Object?>> slots,
@@ -523,7 +540,8 @@ class WatchSessionAdoptionBridge {
     for (final slot in slots)
       '${slot['sessionExerciseId']}:${slot['exerciseId']}:${slot['name']}:'
           '${(slot['capabilities']! as List).join(',')}:'
-          '${slot['effortKind'] ?? ''}',
+          '${slot['effortKind'] ?? ''}:'
+          '${slot['roundDurationSecs'] ?? ''}',
   ].join('|');
 
   /// The session a wrist frame names, or null when it names none.

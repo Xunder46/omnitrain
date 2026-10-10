@@ -247,6 +247,7 @@ Future<void> _seedPhoneSession(
   WorkoutRepository repository, {
   required String sessionId,
   List<(String effortId, String exerciseId)> efforts = const [],
+  List<String> kinds = const [],
   String? loggedEffortId,
 }) async {
   const at = 1780000000000;
@@ -274,7 +275,7 @@ Future<void> _seedPhoneSession(
         segmentId: segmentId,
         orderIndex: index,
         topLevelOrderIndex: index,
-        effortKind: BlockTypes.set,
+        effortKind: kinds.isEmpty ? BlockTypes.set : kinds[index],
         exerciseId: effort.$2,
         createdAtMs: at,
         updatedAtMs: at,
@@ -1308,4 +1309,240 @@ void main() {
       );
     },
   );
+
+  // Plan 2026-10-09-21b, Phase 2 (D-1409, D-1410, D-1411). The length a wrist
+  // counts a period down from is the number the phone's own round control would
+  // count from, and a length-only edit is a changed ladder.
+  group('S-1405 the phone sends the number', () {
+    /// One slot of a projection, by its id, so a scenario reads a field without
+    /// pinning the frame's shape.
+    Map<String, Object?> slotOf(Map<String, Object?> projection, String id) =>
+        (projection['exercises']! as List)
+            .cast<Map<String, Object?>>()
+            .firstWhere((slot) => slot['sessionExerciseId'] == id);
+
+    /// The harness catalog plus a round exercise whose period length the phone
+    /// knows: Soccer, a 40-minute half. Squat keeps its capabilities but gains
+    /// none of the number, which is the exercise-with-no-length case.
+    Future<WorkoutRepository> roundRepository() async {
+      final repository = await _repository();
+      await repository.createExercise(
+        Exercise(
+          id: 'ex-soccer',
+          name: 'Soccer',
+          defaultRoundDurationSecs: 2400,
+          createdAtMs: _adoptedAt.millisecondsSinceEpoch,
+          updatedAtMs: _adoptedAt.millisecondsSinceEpoch,
+        ),
+      );
+      await repository.setExerciseCapabilities('ex-soccer', const [
+        ExerciseCapability.time,
+        ExerciseCapability.rounds,
+      ]);
+      await repository.setExerciseCapabilities('ex-squat', const [
+        ExerciseCapability.time,
+        ExerciseCapability.rounds,
+      ]);
+      return repository;
+    }
+
+    test('S-1405 a round effort carries the exercise default, or its own round',
+        () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-round',
+        efforts: const [('sx-soccer', 'ex-soccer')],
+        kinds: const [BlockTypes.round],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-round');
+
+      expect(
+        slotOf(
+          (await phone.bridge.projectSession(null))!,
+          'sx-soccer',
+        )['roundDurationSecs'],
+        2400,
+        reason:
+            'S-1405 an effort holding no round yet carries the exercise\'s own '
+            'period length, the number the phone would start the first round '
+            'from',
+      );
+
+      // The user re-times the slot's round: the effort's own number wins over
+      // the exercise default.
+      await phone.state.addRound('sx-soccer', plannedDurationSecs: 180);
+      await phone.state.updateRoundPlannedDuration('sx-soccer', 0, 900);
+      expect(
+        slotOf(
+          (await phone.bridge.projectSession(null))!,
+          'sx-soccer',
+        )['roundDurationSecs'],
+        900,
+        reason:
+            'S-1405 the effort\'s own round is what the phone counts the next '
+            'one from (D-1409)',
+      );
+    });
+
+    test('S-1405 a timed effort and an exercise with no length send no field',
+        () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-mixed',
+        efforts: const [
+          ('sx-round', 'ex-soccer'),
+          ('sx-timed', 'ex-soccer'),
+          ('sx-no-length', 'ex-squat'),
+          ('sx-set', 'ex-squat'),
+        ],
+        kinds: const [
+          BlockTypes.round,
+          BlockTypes.timed,
+          BlockTypes.round,
+          BlockTypes.set,
+        ],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-mixed');
+      final projection = (await phone.bridge.projectSession(null))!;
+
+      expect(
+        slotOf(projection, 'sx-round')['roundDurationSecs'],
+        2400,
+        reason:
+            'the frame carries the field at all, so each absence below is that '
+            'slot\'s and not the frame\'s',
+      );
+      expect(
+        slotOf(projection, 'sx-timed').containsKey('roundDurationSecs'),
+        isFalse,
+        reason:
+            'S-1405 a timed effort is not a period: the number is omitted '
+            'whatever the exercise knows',
+      );
+      expect(
+        slotOf(projection, 'sx-no-length').containsKey('roundDurationSecs'),
+        isFalse,
+        reason:
+            'S-1405 a round effort on an exercise with no default and no round '
+            'has no number to send',
+      );
+      expect(
+        slotOf(projection, 'sx-no-length')['capabilities'],
+        isNotEmpty,
+        reason: 'the fixture: that slot rides the ladder, so the absence is the '
+            'field\'s and not the slot\'s',
+      );
+      expect(
+        slotOf(projection, 'sx-set').containsKey('roundDurationSecs'),
+        isFalse,
+        reason: 'S-1405 a set effort never carries a period length',
+      );
+    });
+
+    test('S-1408 a non-round kind never gets the field', () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-amrap',
+        efforts: const [
+          ('sx-amrap', 'ex-soccer'),
+          ('sx-round', 'ex-soccer'),
+        ],
+        kinds: const [BlockTypes.amrap, BlockTypes.round],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-amrap');
+
+      // An AMRAP holds a round record of 900 s, and a receiver still resolves
+      // `round` from its capabilities — but the phone's own round control does
+      // not count an AMRAP down, so no number travels (D-1409). The round
+      // effort beside it, re-timed to the same 900 s, does travel.
+      await phone.state.addRound('sx-amrap', plannedDurationSecs: 900);
+      await phone.state.addRound('sx-round', plannedDurationSecs: 900);
+      final projection = (await phone.bridge.projectSession(null))!;
+
+      expect(
+        slotOf(projection, 'sx-round')['roundDurationSecs'],
+        900,
+        reason: 'the round effort\'s own 900 s is exactly what must travel',
+      );
+      expect(
+        slotOf(projection, 'sx-amrap').containsKey('roundDurationSecs'),
+        isFalse,
+        reason:
+            'S-1408 the kind that decides is the phone\'s own effort kind, and '
+            'an AMRAP is not a round',
+      );
+    });
+
+    test('S-1409 a length-only change moves the revision', () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-retime',
+        efforts: const [('sx-soccer', 'ex-soccer')],
+        kinds: const [BlockTypes.round],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-retime');
+      await phone.state.addRound('sx-soccer', plannedDurationSecs: 180);
+
+      final first = (await phone.bridge.projectSession(null))!;
+      expect(slotOf(first, 'sx-soccer')['roundDurationSecs'], 180);
+
+      await phone.state.updateRoundPlannedDuration('sx-soccer', 0, 600);
+
+      final second = (await phone.bridge.projectSession(null))!;
+      expect(slotOf(second, 'sx-soccer')['roundDurationSecs'], 600);
+      expect(
+        second['revision'],
+        (first['revision']! as int) + 1,
+        reason:
+            'D-1410 the wrist renders the length, so a length-only edit is a '
+            'changed ladder and must state a newer revision',
+      );
+
+      final third = (await phone.bridge.projectSession(null))!;
+      expect(
+        third['revision'],
+        second['revision'],
+        reason:
+            'D-1410 a ladder that has not changed keeps the revision already '
+            'stated',
+      );
+    });
+
+    test('S-1411 the same number twice is the same bytes', () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-twice',
+        efforts: const [('sx-soccer', 'ex-soccer')],
+        kinds: const [BlockTypes.round],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-twice');
+
+      final first = (await phone.bridge.projectSession(null))!;
+      final second = (await phone.bridge.projectSession(null))!;
+
+      expect(
+        slotOf(second, 'sx-soccer'),
+        slotOf(first, 'sx-soccer'),
+        reason:
+            'S-1411 nothing changed between the two projections, so the slot is '
+            'the same map, field for field',
+      );
+      expect(slotOf(second, 'sx-soccer')['roundDurationSecs'], 2400);
+      expect(
+        second['revision'],
+        first['revision'],
+        reason: 'S-1411 and the revision does not move for an unchanged ladder',
+      );
+    });
+  });
 }

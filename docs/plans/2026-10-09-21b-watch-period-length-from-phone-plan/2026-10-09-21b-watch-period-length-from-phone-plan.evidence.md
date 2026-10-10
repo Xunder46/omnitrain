@@ -102,21 +102,56 @@ Facts to confirm here (they are the plan's assumptions, not findings):
 
 Command(s):
 
-- `.github/copilot/scripts/macos/gateway.sh test test/watch_session_adoption_bridge_test.dart test/watch_reference_sync_test.dart test/watch_session_projection_test.dart test/live_mirroring_test.dart test/watch_reconciliation_cross_stack_test.dart test/watch_transport_test.dart test/watch_session_start_test.dart test/sync_protocol_fixtures_test.dart`
+- `.github/copilot/scripts/macos/gateway.sh test test/watch_session_adoption_bridge_test.dart test/watch_reference_sync_test.dart` (red, then green)
+- `.github/copilot/scripts/macos/gateway.sh prove-red HEAD test test/watch_session_adoption_bridge_test.dart test/watch_reference_sync_test.dart`
+- `.github/copilot/scripts/macos/gateway.sh test test/watch_session_projection_test.dart test/live_mirroring_test.dart test/watch_reconciliation_cross_stack_test.dart test/watch_transport_test.dart test/phone_manage_bridge_test.dart test/watch_session_start_test.dart test/sync_protocol_fixtures_test.dart`
+- `.github/copilot/scripts/macos/gateway.sh test` (full suite)
 - `.github/copilot/scripts/macos/gateway.sh lint`
+
+Counts: red `00:00 +33 -5: Some tests failed.` (5 new tests, each on the absent key) → green `00:00 +37: All tests passed!`;
+regression set `00:00 +300: All tests passed!`; full suite `01:53 +4238 ~1: All tests passed!` (Phase 1 was 4232 — the +6 are
+this phase's new tests); `lint` `196 issues found. (ran in 3.1s)` — the plan's baseline, none in the four files touched;
+`grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` returns nothing.
+
+**Red — `prove-red HEAD test …`:** `gateway: prove-red: RED AT HEAD (exit 1)`, six assertion failures, every one the absent
+field and not a load error:
+
+```
+00:00 +31 -2: S-1405 a round effort carries the exercise default, or its own round [E]
+  Expected: <2400>    Actual: <null>
+00:00 +31 -3: S-1405 a timed effort and an exercise with no length send no field [E]
+  Expected: <2400>    Actual: <null>   the frame carries the field at all, so each absence below is that slot's
+00:00 +31 -4: S-1405 the phone sends the number S-1408 a non-round kind never gets the field [E]
+  Expected: <900>     Actual: <null>   the round effort's own 900 s is exactly what must travel
+00:00 +31 -5: S-1405 the phone sends the number S-1409 a length-only change moves the revision [E]
+  Expected: <180>     Actual: <null>
+00:00 +31 -6: S-1405 the phone sends the number S-1411 the same number twice is the same bytes [E]
+  Expected: <2400>    Actual: <null>
+00:00 +15 -1: S-1406 a round exercise's default travels, a set exercise's does not [E]
+  Expected: <2400>    Actual: <null>
+```
 
 | Scenario | Red before (paste) | Green after (paste) |
 |---|---|---|
-| S-1405 the phone sends the length (`_slotFor`) | no `roundDurationSecs` key, ever | `2400` from the exercise default; `900` after the round is re-timed; absent for `timed`; absent with no default and no rounds |
-| S-1406 (Dart half) the catalog carries the default | the fallback entry has no number | Soccer's entry has `roundDurationSecs: 2400`; Squat's has none |
-| S-1408 a non-round kind never gets the field | guard: absent for the right reason once the key exists | AMRAP at 900 s and a wire-`timed` effort: absent |
-| S-1409 a length-only change moves the revision | the revision does not move (the ladder string ignores the length) | revision `n` → `n + 1` on the re-timing; a third projection stays `n + 1` |
-| S-1411 the same number twice is the same bytes | — (idempotency guard) | two projections equal; two `toSlot`s equal |
+| S-1405 the phone sends the length (`_slotFor`) | `Expected: <2400> / Actual: <null>` — no `roundDurationSecs` key, ever | `2400` from the exercise default; `900` after the round is re-timed; absent for `timed`; absent with no default and no rounds (that frame's control slot carries `2400`, so each absence is the slot's) |
+| S-1406 (Dart half) the catalog carries the default | `Expected: <2400> / Actual: <null>` in the `routines_down` fallback entry | Soccer's entry has `roundDurationSecs: 2400`; Squat's has none; `_rejections(message)` empty, so the amended schema accepts it |
+| S-1408 a non-round kind never gets the field | `Expected: <900> / Actual: <null>` on the control round effort; the AMRAP absence alone was green at HEAD and proves nothing | AMRAP holding a 900 s round: absent, while the round effort beside it sends `900` |
+| S-1409 a length-only change moves the revision | `Expected: <180> / Actual: <null>`; the ladder string ignored the length | revision `n` → `n + 1` on the re-timing; a third projection stays `n + 1` |
+| S-1411 the same number twice is the same bytes | `Expected: <2400> / Actual: <null>` | two projections equal; the revision does not move for an unchanged ladder |
 
-Regression expectations that must be re-read, not assumed: revision assertions at
+Two guards were strengthened during Phase 0 rather than left trivially green at HEAD: S-1405's absence test and S-1408 both now
+assert a positive control (a `round` slot in the same frame carrying its number) beside the absences, which is what makes the
+`Expected: <2400>` / `<900>` failures above possible.
+
+Regression expectations re-read, not assumed: revision assertions at
 `test/watch_session_adoption_bridge_test.dart:717-730,786`, and the slot comparisons at
 `test/watch_session_projection_test.dart:635-650` (per-field) and `test/watch_reconciliation_cross_stack_test.dart`
-(id/exerciseId/position/revision/status/timers only).
+(id/exerciseId/position/revision/status/timers only) — all green in the 300-test regression run and the full suite.
+
+**Diff footprint** (`.github/copilot/scripts/macos/gateway.sh git-diff --stat`): `lib/core/utils/watch_reference_sync.dart` 21,
+`lib/state/watch/watch_session_adoption_bridge.dart` 20, `test/watch_reference_sync_test.dart` 86,
+`test/watch_session_adoption_bridge_test.dart` 239 — 4 files, 362 insertions, 4 deletions, all inside the Predicted Files.
+No `.swift` file and no schema file was touched, so no `swift-test` run belongs to this phase.
 
 ## Phase 3 — the wrist reads the number
 

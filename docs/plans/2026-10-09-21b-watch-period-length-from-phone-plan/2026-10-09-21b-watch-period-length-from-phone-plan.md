@@ -1,7 +1,8 @@
 # Plan 21b — the watch counts a period down from the phone's number
 
 > Status: IN PROGRESS — Phase 1 complete (the contract: schema, fixtures, PROTOCOL.md); phases 2–3 planned. The seed is kept verbatim (D-1400…D-1408, S-1400…S-1406); the planner appended D-1409…D-1414 and S-1407…S-1412 and expanded phases 1–3.
-> Next handoff: @developer (Phase 2 — the phone sends the number)
+> Next handoff: @code-reviewer (Phase 2 complete — the phone sends the number). Phase 3 (@developer, the wrist reads it) is
+> still to run.
 > Binding conventions: `docs/global_conventions.md`; `docs/README.md` (docs index), `docs/documentation_standard.md` (doc rules), `watch/sync_protocol/PROTOCOL.md` (the wire contract this plan amends).
 > Series: `docs/plans/2026-10-08-18-watch-qa-index.md` (row 21b). Follows plan 21 (`2026-10-09-21-watch-timed-work-plan`). Base: `.work/watch-21b/base.txt`.
 > Evidence: `2026-10-09-21b-watch-period-length-from-phone-plan.evidence.md` · Review: `…-plan.review.md` (both beside this file).
@@ -315,21 +316,21 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
 
 ### Phase 2: the phone sends the number (@developer)
 
-1. [ ] Emit it for a round effort exactly as D-1409 pins — `lib/state/watch/watch_session_adoption_bridge.dart` · `_slotFor`
+1. [x] Emit it for a round effort exactly as D-1409 pins — `lib/state/watch/watch_session_adoption_bridge.dart` · `_slotFor`
    (`:468-483`): read `target.getRoundsForEffort(effort.id)`, take `rounds.last.plannedDurationSecs` when the list is not
    empty, else `target.getExercise(effort.exerciseId)?.defaultRoundDurationSecs`, and add
    `if (secs != null && secs >= 1) 'roundDurationSecs': secs` only when `effort.effortKind == BlockTypes.round`. No
    `WorkoutConstants.defaultRoundDurationSecs` step; no repository access.
-2. [ ] Make the length part of the ladder's identity — `watch_session_adoption_bridge.dart` · `_ladderOf` (`:530-541`): append
+2. [x] Make the length part of the ladder's identity — `watch_session_adoption_bridge.dart` · `_ladderOf` (`:530-541`): append
    `':${slot['roundDurationSecs'] ?? ''}'` to each slot's segment (D-1410).
-3. [ ] Carry the exercise's default into the sync view — `lib/core/utils/watch_reference_sync.dart` · `_SyncedExercise`
+3. [x] Carry the exercise's default into the sync view — `lib/core/utils/watch_reference_sync.dart` · `_SyncedExercise`
    (`:40-44`) gains `int? defaultRoundDurationSecs`, filled in `_ExerciseResolver.resolve` (`:55-72`) from the
    `await _repository.getExercises()` pass it already makes (`exercise.defaultRoundDurationSecs`), and returned in the record.
-4. [ ] Emit it on the catalog entry — `watch_reference_sync.dart` · `_fallbackJson` (`:143-153`): add
+4. [x] Emit it on the catalog entry — `watch_reference_sync.dart` · `_fallbackJson` (`:143-153`): add
    `if (exercise.defaultRoundDurationSecs != null && exercise.defaultRoundDurationSecs! >= 1) 'roundDurationSecs': exercise.defaultRoundDurationSecs!`
    per D-1411. `_segmentsJson` needs no change: a round routine effort already travels as `targets.durationMs`
    (`_wireTargetKey` `:269`, `_targetValue` `:283-292`).
-5. [ ] Tests, Dart half — `test/watch_session_adoption_bridge_test.dart` (harness `_Phone`, `_seedPhoneSession`; add a round
+5. [x] Tests, Dart half — `test/watch_session_adoption_bridge_test.dart` (harness `_Phone`, `_seedPhoneSession`; add a round
    exercise via the seeded repository): `S-1405 phone sends it for a live session` (2400 from the exercise default; 900 after the
    round is re-timed; absent for a `timed` effort; absent for an exercise with no default and no rounds — the last needs the
    harness's `setExerciseCapabilities` call for `["time","rounds"]`), `S-1409 a length-only change moves the revision` (project,
@@ -337,11 +338,11 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
    twice is the same bytes`, `S-1408 a non-round kind never gets the field` (AMRAP effort at 900 s → absent) ·
    `test/watch_reference_sync_test.dart` `S-1406 the catalog carries the default` (built from a repository whose Soccer has
    `defaultRoundDurationSecs: 2400` → the fallback entry has it; Squat → absent).
-6. [ ] Regression run and record (counts + any expectation touched): `test/watch_session_projection_test.dart`,
+6. [x] Regression run and record (counts + any expectation touched): `test/watch_session_projection_test.dart`,
    `test/live_mirroring_test.dart`, `test/watch_reconciliation_cross_stack_test.dart`, `test/watch_transport_test.dart`,
    `test/phone_manage_bridge_test.dart`, `test/watch_session_start_test.dart`, `test/sync_protocol_fixtures_test.dart` — the
    revision assertions at `test/watch_session_adoption_bridge_test.dart:717-730,786` are the ones D-1410 can move.
-7. [ ] Evidence: fill this plan's `.evidence.md` Phase 2 rows with the pasted test counts, the red→green pairs for S-1405/S-1406,
+7. [x] Evidence: fill this plan's `.evidence.md` Phase 2 rows with the pasted test counts, the red→green pairs for S-1405/S-1406,
    and any Assumption Log entry this phase needed.
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh lint`,
@@ -491,13 +492,19 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
 | Phase | Status |
 |---|---|
 | 1 | Complete |
-| 2 | Not started |
+| 2 | Complete |
 | 3 | Not started |
 
 Phase 1 items (all done — `watch/sync_protocol/` only): 1.1 `roundDurationSecs` on `$defs.sessionExercise`; 1.2 the same on
 `$defs.catalogExercise`; 1.3 `valid/session_snapshot_round_length.json` (2400 + omitted) + row; 1.4
 `valid/routines_down_round_length.json` + row; 1.5 four `invalid/session_snapshot_round_length_*` files + rows; 1.6 the
 normative bullet in PROTOCOL.md; 1.7 the version-history row. Red→green in the evidence file.
+
+Phase 2 items (all done — the two sender files and their two test files): 2.1 `_slotFor` emits the number (D-1409); 2.2
+`_ladderOf` carries it (D-1410); 2.3 `_SyncedExercise.defaultRoundDurationSecs` resolved in one pass; 2.4 `_fallbackJson`
+emits it (D-1411); 2.5 the five Dart tests (S-1405 ×2, S-1408, S-1409, S-1411) and S-1406; 2.6 the seven-file regression run;
+2.7 evidence. Counts and the red→green pairs are in the evidence file: red `+33 -5`, green `+37`, regression `+300`, full
+suite `+4238 ~1`, `lint` 196 (baseline). No `.swift`, schema or doc file was touched.
 
 ## Assumption Log
 
@@ -513,3 +520,7 @@ normative bullet in PROTOCOL.md; 1.7 the version-history row. Red→green in the
 - (dba) Valid item 1.3's second slot is `sx-soccer-plain` (same exercise, same shape, field omitted) so the register holds a
   before/after pair in one file; the plan said only "the same shape without the field".
 - (conductor) `live_session_mirror_state._sameSlots` is left untouched (impact row). Options: add the length to the compared fields, or keep the three identity fields. Kept, because the file's own comment (`:697-701`) says a comparison that disagrees about a field two peers may hold differently answers for ever; the correction is the phone's projection.
+- (developer) The tests re-time a round through `WorkoutState.updateRoundPlannedDuration` (`workout_state.dart:233`), not `setRoundDuration` (`:284`). Options: the plan's S-1409 text names `setRoundDuration`, which writes `actualDurationSecs`; `updateRoundPlannedDuration` writes `plannedDurationSecs`, the field D-1409 reads and the one `getRoundsForEffort` returns. Chosen so the test drives the value the wire carries; the round is added with `addRound` first because `updateRoundPlannedDuration` refuses a finished round.
+- (developer) `_seedPhoneSession` gained an optional parallel `List<String> kinds = const []` (default = the existing `BlockTypes.set` for every effort) rather than a new seeding helper, so its nine existing callers are unchanged.
+- (developer) The fixture repository is built inside the new group (`roundRepository()`): `ex-soccer` at `defaultRoundDurationSecs: 2400` with `[time, rounds]`, plus `ex-squat` re-declared `[time, rounds]` for the no-number case. Options: reuse the seeded Soccer Match (2700 s, and its capabilities are not round) or seed per test. Seeded per test, so the number in each assertion is the one the fixture states and no seeded row is re-used as a length.
+- (developer) No `docs/` file was touched in Phase 2 (outside its Predicted Files). Options: extend `docs/state_management/watch_surface.md`'s "revision rises only when the ladder changes" sentence with the length case, or leave it. Left: no sentence there became false — the doc enumerates no slot field, `watch/sync_protocol/PROTOCOL.md` already carries the field (Phase 1's normative bullet), and Phase 3 item 7 owns that file's edit (it records the size before and after). The behaviour is pinned by `test/watch_session_adoption_bridge_test.dart` (`S-1409 a length-only change moves the revision`) and `test/watch_reference_sync_test.dart` (`S-1406 a round exercise's default travels, a set exercise's does not`), which Phase 3's doc pass can cite.

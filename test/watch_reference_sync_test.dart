@@ -600,6 +600,92 @@ void main() {
       );
     });
   });
+
+  // Plan 2026-10-09-21b, Phase 2 (D-1404, D-1411): the free-workout catalog
+  // carries the exercise's own period length, so a wrist picking it can count
+  // the period down from the phone's number.
+  group('S-1406 the catalog carries the exercise\'s length', () {
+    test(
+      'S-1406 a round exercise\'s default travels, a set exercise\'s does not',
+      () async {
+        await repository.createExercise(
+          Exercise(
+            id: 'exercise-soccer',
+            name: 'Soccer',
+            defaultRoundDurationSecs: 2400,
+            createdAtMs: _now.millisecondsSinceEpoch,
+            updatedAtMs: _now.millisecondsSinceEpoch,
+          ),
+        );
+        await repository.setExerciseCapabilities('exercise-soccer', const [
+          'time',
+          'rounds',
+        ]);
+
+        await _addTemplate(
+          repository,
+          id: 'routine-periods',
+          name: 'Periods',
+          segmentIds: ['seg-periods'],
+        );
+        await _addEffort(
+          repository,
+          id: 'eff-soccer-half',
+          segmentId: 'seg-periods',
+          orderIndex: 0,
+          effortKind: 'round',
+          exerciseId: 'exercise-soccer',
+          targets: [
+            {'metric': 'metric-rounds', 'int': 2},
+            {'metric': 'metric-round-duration', 'int': 600},
+          ],
+        );
+        await _addEffort(
+          repository,
+          id: 'eff-goblet',
+          segmentId: 'seg-periods',
+          orderIndex: 1,
+          effortKind: 'set',
+          exerciseId: 'exercise-goblet-squat',
+          targets: [
+            {'metric': 'metric-sets', 'int': 3},
+            {'metric': 'metric-reps', 'int': 5},
+          ],
+        );
+
+        final message = (await WatchReferenceSync.buildRoutinesDown(
+          repository: repository,
+          generatedAt: _generatedAt,
+        ))!;
+
+        expect(
+          _rejections(message),
+          isEmpty,
+          reason:
+              'S-1406 the catalog entry carries a field the wire declares, so '
+              'the whole message stays one the wrist accepts',
+        );
+
+        final fallback = {
+          for (final exercise
+              in _objects(_asObject(message['payload'])['fallbackExercises']))
+            exercise['exerciseId']! as String: exercise,
+        };
+        expect(
+          fallback['exercise-soccer']!['roundDurationSecs'],
+          2400,
+          reason:
+              'S-1406 the free-workout pick reads the exercise\'s own period '
+              'length off the catalog entry',
+        );
+        expect(
+          fallback['exercise-goblet-squat']!.containsKey('roundDurationSecs'),
+          isFalse,
+          reason: 'S-1406 a set exercise has no period length to send',
+        );
+      },
+    );
+  });
 }
 
 /// A transport that never invents a reply: the reply arrives through `receive`.
