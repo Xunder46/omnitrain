@@ -1,0 +1,6 @@
+# crew-builder-watch: Swift watch package, sync contract, Dart watch bridge, tests; docs. Narrow per run with --scope.
+--allow-tool=write(watch/**)
+--allow-tool=write(lib/watch/**)
+--allow-tool=write(test/**)
+--allow-tool=write(docs/**)
+--allow-tool=write(.work/crew/**)
