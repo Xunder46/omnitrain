@@ -40,28 +40,53 @@ Guards measured at the same time (these are the constraints the phases must resp
 
 | Scenario | Test | Red at HEAD | Green after |
 |---|---|---|---|
-| S-1500 | `testS1500OpensForAnActiveSession` | (to fill) | (to fill) |
-| S-1501 | `testS1501IdempotentAcrossFiveRefreshes` | (to fill) | (to fill) |
-| S-1502 | `testS1502ClosesWhenTheSessionEnds` | (to fill) | (to fill) |
-| S-1507 | `testS1507ALaunchWithNothingToDo` | (to fill) | (to fill) |
+| S-1500 | `testS1500OpensForAnActiveSession` | `.work/gateway/swift-test-20261010-015120-83840.log`: `error: cannot find type 'WatchWorkoutCoordinator' in scope`; mutation M1 (`action` returns `.start` for any active session) → `XCTAssertEqual failed: ("start") is not equal to ("none")` at `WatchWorkoutCoordinatorTests.swift:183` | passed (`swift-test-20261010-015204-84493.log`) |
+| S-1501 | `testS1501IdempotentAcrossFiveRefreshes` | mutation M1 → `("5") is not equal to ("1")` at `:213`, `("4") is not equal to ("0")` at `:214` | passed (same log) |
+| S-1502 | `testS1502ClosesWhenTheSessionEnds` | mutation M2 (`case .end` drops `await platform.end()`) → `("0") is not equal to ("1")` at `:235`, `XCTAssertNil failed` at `:239` | passed (same log) |
+| S-1507 | `testS1507ALaunchWithNothingToDo` | mutation M3 (`recover()` skips `platform.recoverInProgress()`) → `("[]") is not equal to ("["inProgressActivityTypes"]")` at `:299` | passed (same log) |
 
 `prove-red HEAD swift-test` receipt (the whole file is absent at HEAD, so the guard is the compile of a
-non-existent `WatchWorkoutCoordinator`): (to fill — paste the failing line).
+non-existent `WatchWorkoutCoordinator`) — `prove-red: RED AT HEAD (exit 1)`, first failure line:
+`WatchWorkoutCoordinatorTests.swift:160:24: error: cannot find type 'WatchWorkoutCoordinator' in scope`
+(`.work/gateway/swift-test-20261010-015120-83840.log`). Because that is a compile error, each scenario's
+guard is proved by the mutation above instead: original lines recorded, mutated, red observed, restored
+byte-for-byte (`git-diff --stat` = 105 insertions, 0 deletions), re-run green.
 
-`swift-test` after the phase: (to fill — expected 433 tests, 0 failures; paste the summary line and the
-four `passed` lines).
+`swift-test` after the phase: **433 tests, 0 failures** — `Test Suite 'All tests' passed at
+2026-10-10 01:52:06.955. Executed 433 tests, with 0 failures (0 unexpected)`; the four new
+`passed` lines are in `Test Suite 'WatchWorkoutCoordinatorTests'` (S-1500, S-1501, S-1502, S-1507,
+each `passed`), log `.work/gateway/swift-test-20261010-015204-84493.log`.
+
+Other checks after the phase: `gateway.sh test` — **4240 passed, 1 skipped, 0 failed** (last line
+`01:52 +4240 ~1: All tests passed!`, `.work/gateway/test-20261010-015228-84781.log`); `gateway.sh test
+test/rest_is_count_up_contract_test.dart` — passed, 10 tests; `git-diff --stat` — only
+`WatchPlatformWorkout.swift`, `105 insertions(+)`, nothing deleted.
+
 
 ### Phase 1B — S-1503, S-1504, S-1505, S-1508, S-1510
 
 | Scenario | Test | Red at HEAD | Green after |
 |---|---|---|---|
-| S-1503 | `testS1503RelaunchEndsTheStrandedWorkoutThenOpensTheSessions` | (covered by 1A's receipt) | (to fill) |
-| S-1504 | `testS1504ADifferentSessionReplacesTheRunningOne` | (covered by 1A's receipt) | (to fill) |
-| S-1505 | `testS1505DenialIsNotFailure` | (covered by 1A's receipt) | (to fill) |
-| S-1508 | `testS1508TwoRacingRefreshesOpenOneWorkout` | (covered by 1A's receipt) | (to fill) |
-| S-1510 | `testS1510AKilledWorkoutWithNoSessionToReplaceIt` | (covered by 1A's receipt) | (to fill) |
+| S-1503 | `testS1503RelaunchEndsTheStrandedWorkoutThenOpensTheSessions` | `prove-red HEAD swift-test --filter WatchWorkoutCoordinatorTests -- <the test file>`: **RED AT HEAD (exit 1)**, `error: cannot find type 'WatchWorkoutCoordinator' in scope` at the file's `:170:24` (`.work/gateway/swift-test-20261010-015806-92440.log`) — the coordinator the scenario drives is absent from HEAD's package | passed (`swift-test-20261010-015722-92004.log`) |
+| S-1504 | `testS1504ADifferentSessionReplacesTheRunningOne` | same receipt (the scenario needs the coordinator and its `openedForSessionId` comparison) | passed (same log) |
+| S-1505 | `testS1505DenialIsNotFailure` | same receipt (`refresh` against a refusing store does not exist at HEAD) | passed (same log) |
+| S-1508 | `testS1508TwoRacingRefreshesOpenOneWorkout` | same receipt (the serial tail the scenario parks inside does not exist at HEAD) | passed (same log) |
+| S-1510 | `testS1510AKilledWorkoutWithNoSessionToReplaceIt` | same receipt (`recoverInProgress` does not exist at HEAD) | passed (same log) |
 
-`swift-test` after the phase: (to fill — expected 438 tests, 0 failures).
+The whole `WatchWorkoutCoordinatorTests.swift` is absent at HEAD, so one receipt covers all nine scenarios; it
+is a *compile* failure, so per the gateway's own note each scenario's guard is what 1A proved by mutation
+(this phase ran no mutation — the brief forbids editing `Sources/`).
+
+`swift-test` after the phase: **438 tests, 0 failures** — `Test Suite 'All tests' passed at
+2026-10-10 01:57:24.655. Executed 438 tests, with 0 failures (0 unexpected)`; `Test Suite
+'WatchWorkoutCoordinatorTests'` executed 9, with 0 failures (S-1500, S-1501, S-1502, S-1503, S-1504,
+S-1505, S-1507, S-1508, S-1510 each `passed`); log `.work/gateway/swift-test-20261010-015722-92004.log`.
+No `Sources/` file was touched by this phase.
+
+Other checks after the phase: `gateway.sh test` — **4240 passed, 1 skipped, 0 failed**, last line
+`01:48 +4240 ~1: All tests passed!` (`test-20261010-015859-93060.log`); `gateway.sh lint` — **196 issues,
+0 errors, exit 1**, the baseline (`lint-20261010-015854-92932.log`); the invariant
+`grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` — no output.
 
 ### Phase 2A — the real store in the app target
 
@@ -118,4 +143,20 @@ All four rows are the governor's; each command is run exactly as written and its
 ## Assumption Log entries recorded by implementers
 
 (Implementers append here as well as in the plan's Assumption Log; one line each, with the phase.)
+
+- (developer, 1A) `prove-red` is a compile error (the type is new), so the four guards are proved by
+  mutations M1/M2/M3 of the new source; each red line is in the table above and each mutation was
+  restored before the green run (`git-diff --stat`: 105 insertions, 0 deletions).
+- (developer, 1A) `ScriptedPlatformStore` routes its state through a synchronous `withState` helper so
+  `NSLock` is never called from an `async` body — the direct form warns under Swift 5.9 while compiling
+  for Swift 6, and the new file compiles warning-free.
+- (developer, 1A) `WatchWorkoutCoordinator.openedForSessionId` is `private(set) var` (internal read,
+  private write), the plan's "internal `openedForSessionId`": 1B's S-1504 reads it.
+- (developer, 1B) S-1508 waits on `ScriptedPlatformStore.beginIsParked`, a new read-only accessor on the
+  1A fake, before releasing the gate: `begun` is appended on entry, so polling it would resume a
+  continuation that has not been stored yet and hang. `yieldUntil` polls a bounded `Task.yield()` loop,
+  never a wall-clock threshold. No `Sources/` file was touched.
+- (developer, 1B) S-1504's replacement session is built on a second `Harness(sessionId: "s-watch-2")`:
+  the harness mints one session id per engine, and the coordinator reads only the record's `sessionId`,
+  so both legs go through the real engine (`createSession` / `abandonSession`).
 
