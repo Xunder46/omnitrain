@@ -136,6 +136,39 @@ healthStore.requestAuthorization(toShare: [HKObjectType.workoutType()], read: []
 difference, it is the store's to fix and the store's alone (the package and the coordinator are
 unaffected).
 
+### Phase 2B — the host drives it (compile-only off-device)
+
+No package source changed, so there is no red→green row: the coordinator's behaviour is 1A/1B's, and
+`ContentView.swift` is app-target only (`swift test` cannot compile it). What the phase proves is that
+the wiring compiles and that nothing in the package moved.
+
+| Check | Command | Result |
+|---|---|---|
+| package suite unchanged | `.github/copilot/scripts/macos/gateway.sh swift-test` | **439 tests, 0 failures** — `Executed 439 tests, with 0 failures (0 unexpected) in 1.464 (1.492) seconds` (`swift-test-20261010-024502-39149.log`), the same totals as after 2A |
+| lint unchanged | `.github/copilot/scripts/macos/gateway.sh lint` | **196 issues, 0 errors, exit 1** (`lint-20261010-024512-39280.log`), the baseline; none in `ContentView.swift` |
+| footprint | `.github/copilot/scripts/macos/gateway.sh git-diff --stat` | `ios/OmniTrain Watch App/ContentView.swift | 25 +++++` — 25 insertions, 0 deletions, nothing else (the `.claude/` and `project.pbxproj` entries are the governor's pre-existing modifications, left alone) |
+| interface invariant | `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` | no matches (unchanged; this phase touches no Dart) |
+| full suite (not required — no Dart changed) | `.github/copilot/scripts/macos/gateway.sh test` | **4240 passed, 1 skipped, 0 failed** — `01:59 +4240 ~1: All tests passed!` (`test-20261010-024724-40108.log`), the baseline |
+| docs guards (this run edited two plan files) | `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart test/rest_is_count_up_contract_test.dart` | **9 passed / 0 failed** and **10 passed / 0 failed**, both `All tests passed!` |
+
+**What the wiring does (the three brief items).** `WatchAppHost.workout: WatchWorkoutCoordinator` is built
+once in `init()` right after `rating`, over `WatchPlatformWorkout(store: HealthKitWorkoutStore())`; the
+`$revision` sink beside the `rating.objectWillChange` sink calls `await self.workout.refresh(self.engine.session)`
+on every emission (its immediate first emission is the empty pre-`restore()` session, `.none`); `restore()`
+opens with `await workout.recoverInProgress()` before `await engine.restore()`. `engine.session` is a
+`public var session: WatchSessionRecord?` on a nonisolated class, readable from the main actor.
+
+**(governor)** the compile witness. The plan's `-target` form cannot resolve the local Swift package, so the
+governor runs:
+
+```sh
+xcodebuild -workspace ios/Runner.xcworkspace -scheme "OmniTrain Watch App" \
+  -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (42mm)' build
+```
+
+Exit status and the last lines: (to fill — governor). A compile error here is the wiring's to fix; the
+package and the coordinator are unaffected.
+
 ### Phase 3A — configuration, S-1506
 
 **Implemented (developer).** `ios/OmniTrainWatchApp.entitlements` (new: `com.apple.developer.healthkit` = true,

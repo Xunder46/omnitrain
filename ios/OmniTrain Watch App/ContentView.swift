@@ -29,6 +29,12 @@ final class WatchAppHost: ObservableObject {
     let logging: WatchLoggingState
     let rating: WatchEffortRatingState
 
+    /// The platform workout, following the session's life. One coordinator for
+    /// the life of the app (D-1504, D-1508): it remembers the session it opened
+    /// the workout for, so a refresh never opens a second one for the same
+    /// session.
+    let workout: WatchWorkoutCoordinator
+
     /// Bumped whenever `paths` changes underneath us. `WatchSessionStartPaths` is
     /// a plain class that publishes nothing, so without this SwiftUI would never
     /// re-read it — and a restore that loaded routines would leave the surface
@@ -75,12 +81,16 @@ final class WatchAppHost: ObservableObject {
             store: store,
             preferences: preferences
         )
+        let workout = WatchWorkoutCoordinator(
+            platform: WatchPlatformWorkout(store: HealthKitWorkoutStore())
+        )
 
         self.engine = engine
         self.paths = paths
         self.preferences = preferences
         self.logging = logging
         self.rating = rating
+        self.workout = workout
         self.orchestrator = orchestrator
         self.forwarder = forwarder
 
@@ -115,6 +125,19 @@ final class WatchAppHost: ObservableObject {
                 Task { @MainActor in self?.revision += 1 }
             }
             .store(in: &cancellables)
+
+        // Every session change the surfaces see also settles the platform
+        // workout (D-1504). The subscription's first emission is the empty
+        // session before `restore()`, which the lifecycle rule answers with
+        // `.none`, so it is left as it is.
+        $revision
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    await self.workout.refresh(self.engine.session)
+                }
+            }
+            .store(in: &cancellables)
     }
 
     /// Reads whatever the wrist already holds, in the order the surfaces need it:
@@ -125,6 +148,8 @@ final class WatchAppHost: ObservableObject {
     /// and the rating are empty on a fresh install, because all three only arrive
     /// when the user asks the phone for them.
     func restore() async {
+        // A stranded workout must end before a restored session can open one.
+        await workout.recoverInProgress()
         await engine.restore()
         await paths.restore()
         await preferences.restore()
