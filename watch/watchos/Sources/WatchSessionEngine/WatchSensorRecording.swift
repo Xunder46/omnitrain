@@ -18,10 +18,12 @@
 //     device does not have, skips the subscription and nothing else. Logging is
 //     the primary action of the watch and never depends on a sensor (S-006).
 //
-//  The OS bindings — `HKWorkoutSession`, `HKLiveWorkoutBuilder`,
-//  `CLLocationManager` — satisfy `WatchSensorSource` and
-//  `WatchPlatformWorkoutStore`; this file stays free of them so the behaviour is
-//  testable and identical to the Flutter client's.
+//  The workout seam has a real binding outside this module: `HealthKitWorkoutStore`
+//  in the watch app target (`ios/OmniTrain Watch App/`), over `HKWorkoutSession`
+//  and `HKLiveWorkoutBuilder`. The sensor seam does not — `WatchSessionSensors` has
+//  no production caller, so its platform side is still only a test fake. Either
+//  way this file stays free of the OS types so the behaviour is testable and
+//  identical to the Flutter client's.
 //
 
 import Foundation

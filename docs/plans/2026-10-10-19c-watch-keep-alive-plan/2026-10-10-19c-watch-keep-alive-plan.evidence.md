@@ -92,13 +92,49 @@ Other checks after the phase: `gateway.sh test` — **4240 passed, 1 skipped, 0 
 
 | Scenario | Test | Red at HEAD | Green after |
 |---|---|---|---|
-| S-1509 | `testS1509TheStoreMapsEveryContractActivityName` | (to fill — the app-target file does not exist at HEAD; `prove-red HEAD swift-test` receipt) | (to fill) |
+| S-1509 | `testS1509TheStoreMapsEveryContractActivityName` | `gateway: prove-red: RED AT HEAD (exit 1)` — `error: -[... testS1509TheStoreMapsEveryContractActivityName] : failed: caught error: "Error Domain=NSCocoaErrorDomain Code=260 ..."` at `WatchWorkoutStoreSourceTests.swift:27` (the app-target file does not exist at HEAD; 1 test, 1 failure) | `Test Case '-[WatchSessionEngineTests.WatchWorkoutStoreSourceTests testS1509TheStoreMapsEveryContractActivityName]' passed (0.001 seconds)`; `Executed 1 test, with 0 failures (0 unexpected)` |
 
-`swift-test` after the phase: (to fill — expected 439 tests, 0 failures).
+**Mutation receipts (the guard cannot compile at HEAD, so its two arms are proved by mutation of the
+new source, each restored byte-for-byte and re-run green).**
+
+- M1 — `case "flexibility":` → `case "flexibilityX":` in `HealthKitWorkoutStore.activityType(for:)`:
+  `error: ... : XCTAssertEqual failed: ("["crossTraining", "traditionalStrengthT ...` at
+  `WatchWorkoutStoreSourceTests.swift:73`, 1 test / 1 failure; restored → `passed (0.002 seconds)`.
+- M2 — the mapping's `default:` arm `.other` → `.running`:
+  `error: ... : XCTAssertTrue failed - an unmapped name has to land on the gener ...` at
+  `WatchWorkoutStoreSourceTests.swift:80`, 1 test / 1 failure; restored → `passed (0.002 seconds)`.
+
+`swift-test` after the phase: **439 tests, 0 failures** —
+`Executed 439 tests, with 0 failures (0 unexpected) in 1.429 (1.456) seconds`
+(`swift-test-20261010-023620-29878.log`), i.e. the 438 of 1A+1B plus the S-1509 guard.
+
+Other checks after the phase: `gateway.sh test` — **4240 passed, 1 skipped, 0 failed**, the baseline,
+`01:59 +4240 ~1: All tests passed!` (`test-20261010-023852-30962.log`), run because the new file lives
+in a directory the Dart contract tests scan; `gateway.sh test test/rest_is_count_up_contract_test.dart` — **10 passed,
+0 failed**, `00:00 +10: All tests passed!`, so the new app-target file carries none of D-1512(c)'s
+forbidden wording; `gateway.sh lint` — **196 issues, 0 errors, exit 1**, the baseline, none in
+`HealthKitWorkoutStore.swift`, `WatchWorkoutStoreSourceTests.swift` or the `WatchSensorRecording.swift`
+comment (`lint-20261010-023723-30523.log`); `gateway.sh git-diff --stat` for the comment-only edit —
+`WatchSensorRecording.swift | 10 +++++---` (5 comment lines replaced, nothing else).
+
+**API forms used (no fallback needed).** All of D-1502's calls exist in the async form on this
+deployment target, so no `withCheckedContinuation` bridge and no `[]`-only recovery was needed:
+`HKHealthStore()`, `HKHealthStore.isHealthDataAvailable()`, `try await
+healthStore.requestAuthorization(toShare: [HKObjectType.workoutType()], read: [])`,
+`healthStore.authorizationStatus(for:)`, `HKWorkoutConfiguration()` (`.activityType`,
+`.locationType = .unknown`), `try HKWorkoutSession(healthStore:configuration:)`,
+`session.associatedWorkoutBuilder()`, `builder.dataSource = HKLiveWorkoutDataSource(...)`,
+`session.startActivity(with:)`, `try await builder.beginCollection(at:)`, `session.end()`,
+`try await builder.endCollection(at:)`, `try await builder.finishWorkout()`,
+`try await healthStore.recoverActiveWorkoutSession()`. The store never throws: every call is inside a
+`do`/`catch` and a failure leaves `session`/`builder` nil.
 
 **(governor)** watch-target compile, `xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator build`:
-(to fill — command, exit status, the last few lines; record the actual Apple API spellings the
-implementer chose if any fallback in phase 2A item 1 was used).
+(to fill — command, exit status, the last few lines). Nothing off-device compiles the app target:
+`HealthKitWorkoutStore.swift` is `#if os(watchOS)` and `HealthKit` does not exist on macOS, so
+`swift-test` only exercises the source guard that reads the file. If the compile reports a spelling
+difference, it is the store's to fix and the store's alone (the package and the coordinator are
+unaffected).
 
 ### Phase 3A — configuration, S-1506
 
