@@ -102,16 +102,59 @@ implementer chose if any fallback in phase 2A item 1 was used).
 
 ### Phase 3A — configuration, S-1506
 
-All four rows are the governor's; each command is run exactly as written and its output pasted.
+**Implemented (developer).** `ios/OmniTrainWatchApp.entitlements` (new: `com.apple.developer.healthkit` = true,
+same plist shape as `ios/Runner/Runner.entitlements`, outside both Xcode groups per D-1510) and the three
+watch build configurations only (Debug `46AC7A22…`, Release `46AC7A23…`, Profile `46AC7A24…`; the blocks
+whose `PRODUCT_BUNDLE_IDENTIFIER = dev.sasha.omnitrain.watchkitapp`). Four settings per block, alphabetical:
+`CODE_SIGN_ENTITLEMENTS = OmniTrainWatchApp.entitlements;` above `CODE_SIGN_STYLE`;
+`INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;` below `GENERATE_INFOPLIST_FILE = YES;`;
+`INFOPLIST_KEY_NSHealthShareUsageDescription` and `INFOPLIST_KEY_NSHealthUpdateUsageDescription` after
+`INFOPLIST_KEY_CFBundleDisplayName`. Footprint: `git-diff --stat` on
+`ios/Runner.xcodeproj/project.pbxproj` = **12 insertions(+), 0 deletions** (4 per block — the brief said
+"+15 expected: 5 per block", but its own enumerated edits are four settings); `grep -c OmniTrainWatchApp.entitlements
+ios/Runner.xcodeproj/project.pbxproj` = **3**. No `PBXFileReference`/`PBXBuildFile`/`PBXGroup`/`exceptions`
+entry, phone and RunnerTests blocks untouched (D-1510).
+
+**D-1511 fallback — `WKBackgroundModes` (fix run).** The primary mechanism, `INFOPLIST_KEY_WKBackgroundModes =
+workout-processing;` on the same three blocks, was placed in all three and read back by the governor from the
+built product (`…/OmniTrain Watch App.app/Info.plist`, full `plutil -p`): the two `NSHealth…UsageDescription`
+keys are present and the entitlements witness (`…-Simulated.xcent`) holds
+`com.apple.developer.healthkit = true`, but **`WKBackgroundModes` read back MISSING** — no
+`INFOPLIST_KEY_WKBackgroundModes` key is generated. D-1511's recorded fallback therefore applies: the build
+setting was deleted from all three watch blocks and replaced by
+`INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;` pointing at the new fragment `ios/OmniTrainWatchApp-Info.plist`
+(holds only `WKBackgroundModes = [workout-processing]`; outside both Xcode groups; `GENERATE_INFOPLIST_FILE = YES`
+stays, so Xcode merges the fragment with the generated keys; no `PBXFileReference`/`PBXBuildFile`/group entry).
+`grep -c "INFOPLIST_FILE = OmniTrainWatchApp-Info.plist"` = **3**; no `INFOPLIST_KEY_WKBackgroundModes` remains;
+3 lines removed and 3 added against the phase-3A state (the HEAD diff stays at 12 insertions, 0 deletions).
+Re-checked `.github/copilot/scripts/macos/gateway.sh test test/pre_release_gate_ios_artifact_test.dart`:
+**12 passed, 0 failed**, last line `00:35 +12: All tests passed!`. The merged-product read-back (§2 below) is
+the governor's to paste.
+
+`.github/copilot/scripts/macos/gateway.sh test test/pre_release_gate_ios_artifact_test.dart`: **12 passed,
+0 failed**, last line `00:34 +12: All tests passed!` (the pbxproj's only Dart reader; the watch target is
+excluded from `runner_pbxproj_settings`, so it stays green).
+
+All four rows below are the governor's; each command is run exactly as written and its output pasted.
+The exact command list (item 6):
+
+```sh
+xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator build
+xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator -showBuildSettings \
+  | grep -E ' (TARGET_BUILD_DIR|FULL_PRODUCT_NAME) = '        # resolves the two path variables below
+plutil -p ios/OmniTrainWatchApp-Info.plist                                           # the fragment itself (D-1511 fallback)
+plutil -p "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>/Info.plist"
+codesign -d --entitlements :- "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>"
+find ~/Library/Developer/Xcode/DerivedData -name '*.xcent' -newermt '-2 hours' -exec plutil -p {} \;   # fallback witness
+find "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>" -name '*.entitlements'                                  # expect no output
+```
 
 | # | Command | What it proves | Result |
 |---|---|---|---|
-| 1 | `xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator build` | the target builds with the new settings | (to fill) |
-| 2 | `plutil -p "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>/Info.plist"` | `NSHealthShareUsageDescription`, `NSHealthUpdateUsageDescription`, `WKBackgroundModes` are present with D-1511's exact strings, and nothing else was added | (to fill) |
-| 3 | `codesign -d --entitlements :- "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>"`; if an unsigned simulator build shows none, the processed file under the intermediates via `plutil -p` on the `**/*.xcent` | `com.apple.developer.healthkit` is on the product | (to fill) |
-| 4 | a directory listing of the product directory (`ls`/`find` by the governor) | no `*.entitlements` file is bundled as a resource | (to fill) |
-
-`gateway.sh test test/pre_release_gate_ios_artifact_test.dart`: (to fill — green).
+| 1 | `xcodebuild -project ios/Runner.xcodeproj -target "OmniTrain Watch App" -configuration Debug -sdk watchsimulator build` | the target builds with the new settings | (governor) |
+| 2 | `plutil -p "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>/Info.plist"` | `NSHealthShareUsageDescription`, `NSHealthUpdateUsageDescription`, `WKBackgroundModes` are present with D-1511's exact strings, and nothing else was added | (governor) |
+| 3 | `codesign -d --entitlements :- "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>"`; if an unsigned simulator build shows none, the processed file under the intermediates via `plutil -p` on the `**/*.xcent` | `com.apple.developer.healthkit` is on the product | (governor) |
+| 4 | `find "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>" -name '*.entitlements'` | no `*.entitlements` file is bundled as a resource | (governor) |
 
 ### Phase 3B — docs and the residue sweep
 
