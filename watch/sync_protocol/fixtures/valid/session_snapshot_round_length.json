@@ -25,6 +25,14 @@
         "name": "Soccer",
         "capabilities": ["time", "rounds"],
         "effortKind": "round"
+      },
+      {
+        "sessionExerciseId": "sx-marathon",
+        "exerciseId": "ex-marathon",
+        "name": "Marathon",
+        "capabilities": ["time", "rounds"],
+        "effortKind": "round",
+        "roundDurationSecs": 86400
       }
     ],
     "entries": [],

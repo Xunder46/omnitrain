@@ -190,7 +190,7 @@ Counts (observed, this phase — commands in the order above):
 | S-1407 the routine keeps it through the start paths | — | the same slot after a relaunch that reads the stored catalog row |
 | S-1406 (Swift half) the free-workout pick | the picked slot has no number | Soccer `2400`; Squat absent |
 | S-1410 a wrist snapshot carries it back | — | the phone accepts and applies the snapshot; no disagreement loop |
-| S-1412 the ends of the range on the wrist | — | `"0:01"`/`1000` and `"1440:00"`/`86_400_000` |
+| S-1412 the ends of the range on the wrist | — | `"0:01"`/`1000` and `"24:00:00"`/`86_400_000` |
 
 Doc sizes (remove-before-add): `docs/state_management/watch_surface.md` 51,018 → 51,127 bytes (+109). The removal is the
 superseded `…testS1303APeriodCountsDownAndLogIsNotARoundButton` citation, which the phone's number replaces; the sentence added
@@ -226,3 +226,36 @@ inside the phase's Predicted Files. The three doc diffs are 3/5/9 changed lines:
   second source, now behind the slot's own number.
 - `.github/copilot/scripts/macos/gateway.sh git-diff --stat` — the 9 files in the footprint above. No out-of-bounds file; the
   only predicted file this phase did not touch was `lib/watch/`-side Dart code, which D-1408 keeps out of scope.
+
+## Fix round 1 — review round 1, findings 1–3 (plan closed)
+
+Review: `…-plan.review.md` — CHANGES_REQUESTED (one prose blocker; no code change required by any item). Finding 4 (the Wear
+client keeps its own preset) is left open on purpose: owner-approved scope, recorded in the plan's Open question 2 and the
+Assumption Log.
+
+| # | Finding | Fix | Check (paste) |
+|---|---|---|---|
+| 1 | BLOCKER — the plan and evidence stated a readout the product does not print | the wrong figure replaced with `"24:00:00"` at `…-plan.md:166`, `…-plan.md:382` and `…-plan.evidence.md:193` — both clients print hours as `h:mm:ss` and `WatchLoggingTimersTests.testS1412TheEndsOfTheRangeCountDown` asserts `24:00:00`. The plan's own fix-checklist item was reworded so it no longer spells the wrong figure either. No code change. | the old minute-count readout appears in neither `…-plan.md` nor `…-plan.evidence.md` any more (the review file quotes the finding; it is not ours to edit) |
+| 2 | Minor — S-1412's "both validators" half was unverified on the Dart side | a third slot `sx-marathon` (`exerciseId: ex-marathon`, `effortKind: round`, `roundDurationSecs: 86400`) added to `valid/session_snapshot_round_length.json`, and that fixture's `manifest.json` note extended to say the slot is the top of the range (S-1412) | `test` (fixtures + transport) `+131: All tests passed!`; `swift-test` `Executed 429 tests, with 0 failures (0 unexpected)` |
+| 3 | WARNING — register drift in the transport test's hardcoded list | `session_snapshot_round_length` and `routines_down_round_length` added to `test/watch_transport_test.dart`'s list; that list reads `fixtures/valid/$name.json`, so the four `invalid/` fixtures stay out | `test test/watch_transport_test.dart` → `+131`, including the two new cases `Phase 2 item 6: session_snapshot_round_length has no JSON null anywhere` / `… routines_down_round_length …` |
+
+**Mutation check for finding 2** (the new slot must be what pins the schema's "no maximum"): `"maximum": 3600` inserted into
+`$defs.sessionExercise.roundDurationSecs` in `watch/sync_protocol/schemas/envelope.schema.json`, then
+`test test/sync_protocol_fixtures_test.dart` → **RED, for the guarded reason**: `+25 -1`, `S-001 fixtures
+valid/session_snapshot_round_length.json conforms to session_snapshot` → `Expected: empty / Actual:
+['constraint_violation at $.payload.exercises[2].roundDurationSecs: expected at most 3600, found 86400']` (all other 99 tests
+still passed). The `"maximum"` line was then removed — the schema carries **no diff** against `de0757f`
+(`git-diff --stat` lists no `envelope.schema.json`) — and the same two-file run is green: `+131: All tests passed!`
+
+**Fix-round footprint** (`.github/copilot/scripts/macos/gateway.sh git-diff --stat`): `test/watch_transport_test.dart` 8,
+`watch/sync_protocol/fixtures/manifest.json` 2, `watch/sync_protocol/fixtures/valid/session_snapshot_round_length.json` 8,
+`…-plan.md` 14, `…-plan.evidence.md` 2 — 5 files, 29 insertions, 5 deletions. No `lib/`, `watch/watchos/Sources`, schema or doc
+file was touched, and `PROTOCOL.md`'s amendment row enumerates slot properties rather than slot values, so the added slot leaves
+it true.
+
+**Close-out checks after the fix round**: `test` (full suite) `+4240 ~1: All tests passed!` — the pre-fix total plus this
+round's two new transport cases (`+4238 ~1` → `+4240 ~1`); `swift-test` `Executed 429 tests, with 0 failures (0 unexpected)`;
+`lint` 196 (the plan's baseline, no issue in a file this round touched).
+Logs: `test` (fixtures + transport, after restore) `.work/gateway/test-20261010-003736-58327.log`, `test` (full suite)
+`.work/gateway/test-20261010-003834-58799.log`, `swift-test` `.work/gateway/swift-test-20261010-003743-58449.log`, `lint`
+`.work/gateway/lint-20261010-003822-58706.log`.

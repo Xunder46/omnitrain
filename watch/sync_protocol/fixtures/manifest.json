@@ -75,7 +75,7 @@
       "path": "valid/session_snapshot_round_length.json",
       "type": "session_snapshot",
       "scenario": "S-1400",
-      "note": "A slot MAY carry the phone's period length: `sx-soccer` is a round slot at 2400 s and `sx-soccer-plain` the same slot with the field omitted."
+      "note": "A slot MAY carry the phone's period length: `sx-soccer` is a round slot at 2400 s and `sx-soccer-plain` the same slot with the field omitted. `sx-marathon` carries 86400 s — the schema declares `minimum: 1` and no maximum, so this slot is the top of the range the walker accepts (S-1412)."
     },
     {
       "path": "valid/routines_down_round_length.json",

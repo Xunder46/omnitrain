@@ -1,6 +1,6 @@
 # Plan 21b — the watch counts a period down from the phone's number
 
-> Status: IN PROGRESS — Phase 1 complete (the contract: schema, fixtures, PROTOCOL.md); phases 2–3 planned. The seed is kept verbatim (D-1400…D-1408, S-1400…S-1406); the planner appended D-1409…D-1414 and S-1407…S-1412 and expanded phases 1–3.
+> Status: CLOSED — built in three phases (contract, phone senders, wrist); independent review round 1 CHANGES_REQUESTED (one prose blocker), findings 1–3 fixed, finding 4 (Wear client keeps its own preset) left open on purpose
 > Next handoff: @code-reviewer (Phase 2 complete — the phone sends the number). Phase 3 (@developer, the wrist reads it) is
 > still to run.
 > Binding conventions: `docs/global_conventions.md`; `docs/README.md` (docs index), `docs/documentation_standard.md` (doc rules), `watch/sync_protocol/PROTOCOL.md` (the wire contract this plan amends).
@@ -163,7 +163,7 @@ A sports or martial-arts period counts down from the number the phone has for th
   (`sessionExercise` and `catalogExercise`), plus the wrist rendering each.
 - Trigger: both validators on the two values; Start on each slot.
 - Flow: schema `minimum: 1` (D-1400) → the wrist's read (D-1405).
-- Expected outcome: both validate (no maximum); the readouts are `"0:01"` and `"1440:00"`; `plannedDurationMs` is `1000` and
+- Expected outcome: both validate (no maximum); the readouts are `"0:01"` and `"24:00:00"`; `plannedDurationMs` is `1000` and
   `86_400_000`; and `0` (the value `minimum` rejects) is the only boundary the invalid fixtures need.
 - Edge case of: S-1400, S-1401
 
@@ -379,7 +379,7 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
    2400 → idle `"40:00"`, Start at 10:00:00 → `plannedDurationMs == 2_400_000`, remaining 1800 s at 10:10:00), S-1402
    (absent → `"3:00"`/`180_000`; a `timed` slot carrying the field → count-up `0:00`, no planned duration; keep the plan-21
    `roundPresetMs:` case green), S-1403 (jump 2400 → 600 changes the idle readout; a running period is not re-timed), S-1412
-   (`1` → `"0:01"`/`1000`, `86400` → `"1440:00"`/`86_400_000`) ·
+   (`1` → `"0:01"`/`1000`, `86400` → `"24:00:00"`/`86_400_000`) ·
    `WatchSessionStartPathsTests.swift`: S-1404/S-1407 (start `routine-soccer` from the contract's new `roundRoutine` key →
    `roundDurationSecs == 600` in the slot; the stored-catalog run after a relaunch); S-1406 (a pick of Soccer →
    `2400` in the slot, a pick of Squat → absent) · `WatchConnectivityBridgeTests.swift`: S-1410 (a wrist snapshot whose slot
@@ -446,6 +446,16 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
 
 [empty — the only trigger to re-invoke the planner]
 
+**Review round 1 — see `2026-10-09-21b-watch-period-length-from-phone-plan.review.md`. Fix checklist (findings 1–3 fixed in fix
+round 1, finding 4 left open on purpose — the round-by-round record is in the evidence file):**
+1. S-1412's expected readout is `"24:00:00"` (both clients print hours as `h:mm:ss`), not the minute-count form — corrected at
+   `:166`, `:382` and the evidence row (`:193`), and pinned by `WatchLoggingTimersTests.testS1412TheEndsOfTheRangeCountDown`.
+2. A third `roundDurationSecs: 86400` slot (`sx-marathon`) added to `valid/session_snapshot_round_length.json` so the Dart walker
+   pins the schema's "no maximum", with that fixture's `manifest.json` note updated.
+3. The two valid fixture names added to `test/watch_transport_test.dart:863`'s hardcoded list (that list is valid-only, so the
+   four `invalid/` files stay out).
+No code change was required by any item; the shipped behaviour and both suites are correct.
+
 ## Code pointers
 
 `envelope.schema.json` :67 catalogExercise, :90 sessionExercise. `message_validator.dart` (slot checks ~:408, schema walker ~:798). `SyncProtocolValidator.swift` (~:293). `watch_reference_sync.dart` :40 `_SyncedExercise`, :55-72 `_ExerciseResolver`, :183 efforts, :269 `_wireTargetKey`.
@@ -494,6 +504,7 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
 | 1 | Complete |
 | 2 | Complete |
 | 3 | Complete |
+| Fix round 1 | Complete |
 
 Phase 1 items (all done — `watch/sync_protocol/` only): 1.1 `roundDurationSecs` on `$defs.sessionExercise`; 1.2 the same on
 `$defs.catalogExercise`; 1.3 `valid/session_snapshot_round_length.json` (2400 + omitted) + row; 1.4
@@ -513,6 +524,13 @@ precedence list; 3.2 `WatchCatalogExercise.roundDurationSecs`; 3.3 `toSlot` writ
 the red→green pair are in the evidence file: `swift-test` 429 tests / 0 failures (429 / 3 with the leftover mutation still
 applied), the phase's five-file `test` set 197 / 0, the full suite `+4238 ~1`, `lint` 196 (baseline). `flutter run` is not
 available in Copilot mode, so the governor or the owner exercises the wrist.
+
+Fix round 1 items (all done — the review's findings 1–3; no code, schema or doc file): 1 the readout corrected from the
+minute-count form to `"24:00:00"` in this plan (`:166`, `:382`) and the evidence row; 2 item 1.3's fixture now carries a third
+slot, `sx-marathon` at `roundDurationSecs: 86400`, with its `manifest.json` note extended, so the Dart walker pins the schema's
+"no maximum" (S-1412); 3 the two valid `round_length` fixture names added to `test/watch_transport_test.dart`'s hardcoded list
+(valid-only pattern). Counts, the mutation check and the footprint are in the evidence file. Finding 4 (the Wear client keeps
+its own preset) is left open on purpose.
 
 ## Assumption Log
 

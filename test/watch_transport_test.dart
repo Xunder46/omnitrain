@@ -858,7 +858,13 @@ void main() {
   });
 
   group('Phase 2 item 6: phone fixtures carry no null', () {
-    for (final name in ['routines_down', 'preferences_down', 'exercise_push']) {
+    for (final name in [
+      'routines_down',
+      'preferences_down',
+      'exercise_push',
+      'session_snapshot_round_length',
+      'routines_down_round_length',
+    ]) {
       test('Phase 2 item 6: $name has no JSON null anywhere', () {
         final fixture = _readJson('$_protocolRoot/fixtures/valid/$name.json');
 
