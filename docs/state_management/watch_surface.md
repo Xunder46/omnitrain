@@ -676,8 +676,8 @@ cannot call a function. Verified by the protocol fixture suites.
 
 Both watch clients run the same layer: `lib/watch/sensors/`
 and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
-`WatchSensorRecording.swift`. The steps sensor and the summaries computed from the
-readings (`WatchSensorSummaries.swift`) exist only in the watchOS package:
+`WatchSensorRecording.swift`. The steps sensor and the summaries
+(`WatchSensorSummaries.swift`) exist only in the watchOS package:
 `lib/watch/` records no steps and computes no summaries.
 
 ### Structure
@@ -689,28 +689,42 @@ readings (`WatchSensorSummaries.swift`) exist only in the watchOS package:
 | What the device's sensors read | `WatchSensorRecorder`, over a `WatchSensorSource` the app target implements |
 | Writing the readings one at a time | `WatchSensorWrites`, inside `WatchSensorRecorder` |
 | Starting and stopping both together | `WatchSessionSensors` |
+| Starting and stopping the sensors with the session | `WatchSensorCoordinator` |
+| The real sensor source on the wrist | `HealthKitSensorFeed` (`HealthKitWorkoutStore.sensorSource`) |
 | Whether a session records GPS | `WatchGpsPolicy`, reading the modality's capability profile |
 | Modality → platform workout type | `WatchActivityTypes` |
 | What is computed from the readings before they may go | `WatchSensorSummaries`, pure functions over stored rows, called by `WatchLoggingState.log` for an entry and by `WatchSessionEngine` for a `session_end` |
 
 `WatchSensorSource` and `WatchPlatformWorkoutStore` are the seam the OS bindings
-sit behind, and they are why this layer is testable: `HKWorkoutSession`,
-`HKLiveWorkoutBuilder` and `CLLocationManager` exist only in an app target, so
-neither `swift test` nor a Dart suite can reach them directly. The workout seam's
-real binding is the watch app target's `HealthKitWorkoutStore`; the sensor seam's
-implementations are the two suites' fakes and the QA harness's own defaults:
-`test/watch_sensor_recording_test.dart`,
-`watch/watchos/Tests/WatchSessionEngineTests/WatchSensorRecordingTests.swift`, and
-`lib/watch/debug/watch_session_debug_surface.dart`, which takes both seams as
-constructor parameters and passes a no-permission source and a no-op store when it
-is given none.
+sit behind: `HKWorkoutSession`, `HKLiveWorkoutBuilder` and `CLLocationManager`
+exist only in an app target, beyond `swift test` and any Dart suite. The workout seam's real binding is the watch app target's
+`HealthKitWorkoutStore`; the sensor seam's is `HealthKitSensorFeed`
+(`ios/OmniTrain Watch App/HealthKitSensorFeed.swift`), exposed as
+`HealthKitWorkoutStore.sensorSource` and wired by the host into a
+`WatchSensorRecorder` inside a `WatchSensorCoordinator` that the host refreshes after the workout (`ContentView.swift`;
+`WatchSensorSourceSourceTests.testS3110TheHostWiresTheSensorsAndRefreshesTheWorkoutFirst`).
+The coordinator starts the sensors with the session and stops them when it ends
+or is replaced, and the exercise screen's live heart-rate line reads the newest
+beat
+(`WatchSensorCoordinatorTests.testS3100StartSubscribesAndTheFirstBeatIsStored`,
+`…testS3101EndStopsAndClearsTheRecordingSessionId`,
+`…testS3102AReplacedSessionStopsOneAndStartsTheOther`,
+`…testS3108TheLiveLabelShowsTheNewestBeat`); the feed reduces the builder's
+statistics to beats per minute and cumulative steps, reports location
+unavailable (no location subscription) and never prompts
+(`WatchSensorSourceSourceTests.testS3109TheFeedIsTheRealSourceAndTheStoreReadsBothTypes`,
+`…testS3114TheFeedNeverPromptsAndAnswersUnavailableWithoutHealthData`); the
+summaries reach the phone through the existing capture path: the session-end
+carries the sensors' heart rate
+(`…testS3107TheSessionEndCarriesTheHeartRateTheSensorsFedIt`), a timed entry the
+step total (`…testS3115ATimedEntryCarriesTheStepTotalTheRecorderFedIt`).
 
 ### Rationale
 
 **Sensor readings are stored rows, not fields.** A heart rate or a distance is
 appended to the watch's own store like everything else, and the live readout is
 derived from the newest stored row. A value held in memory would be the one thing
-on the wrist that a kill loses, and the whole watch design exists to avoid that.
+on the wrist that a kill loses.
 
 **Sensor rows are dropped with the session, not with a receipt.** Observations
 are gated on the phone's receipt because the phone is their destination. A
@@ -733,16 +747,15 @@ states; the session's heart rate and each set block's are computed into the
 it was logged. Nothing is recomputed afterwards: the stored event is what is re-sent,
 so the phone never sees one entry with two sets of values.
 
-**One writer.** Every sensor streams on a task of its own, and because steps are
-recorded in every session the user allows it for, at least two streams run at
-once. The engine and its store are built for one writer, so the recorder chains
-its writes (`WatchSensorWrites`) rather than letting a second always-on sensor
-become a second concurrent writer.
+**One writer.** Every sensor streams on a task of its own — with steps recorded
+in every session the user allows it for, at least two run at once — and the
+engine and its store are built for one writer, so the recorder chains its writes
+(`WatchSensorWrites`).
 
 **The workout is recovered, not resumed.** A kill cannot be caught, so the next
 launch ends whatever the health store still reports as running rather than trying
-to adopt it. The session it belonged to is already over as far as the process is
-concerned, and its logged entries are in storage either way. Verified by
+to adopt it. The session it belonged to is already over, and its logged entries
+are in storage either way. Verified by
 `test/watch_sensor_recording_test.dart` (`S-005`) and by watchOS
 `WatchSensorRecordingTests.testS005TheNextLaunchEndsTheWorkoutTheKillLeftBehind`.
 

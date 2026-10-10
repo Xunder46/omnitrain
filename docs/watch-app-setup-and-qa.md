@@ -512,14 +512,18 @@ enforced in code, so a failure points at the transport, not the logic:
     and a redelivery must not double it.
 13. **Sensor path** (after HealthKit is configured): heart rate appears during a
     session; a finished session closes its `HKWorkoutSession`. A workout left
-    "in progress" after you force-quit is the specific bug to hunt.
+    "in progress" after you force-quit is the specific bug to hunt. The capture
+    rules are plan 19d's
+    (`docs/plans/2026-10-10-19d-watch-heart-rate-and-steps-plan/2026-10-10-19d-watch-heart-rate-and-steps-plan.md`):
+    the sensors start and stop with the session
+    (`WatchSensorCoordinatorTests.testS3100StartSubscribesAndTheFirstBeatIsStored`,
+    `…testS3101EndStopsAndClearsTheRecordingSessionId`).
 14. **Check Apple Health.** The session should appear there once, not twice.
 
 Steps 15–18 check the session effort rating and all run on the shipped shell.
-Steps 19–20 check the heart-rate and step capture and stay with the shipping
-plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
-(`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). Steps 21–22 are
-the keep-alive checks plan 19c added and need a real watch.
+Steps 19–20 check the heart-rate and step capture plan 19d shipped
+(`docs/plans/2026-10-10-19d-watch-heart-rate-and-steps-plan/2026-10-10-19d-watch-heart-rate-and-steps-plan.md`).
+Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
 
 15. **The wrist asks how hard it was.** Turn Settings →
     Effort Rating on, on the phone, then sync from the wrist. Log a set on the
@@ -554,18 +558,20 @@ the keep-alive checks plan 19c added and need a real watch.
     with the wrist's rating (`test/pr4_session_controls_test.dart`,
     `S-213 the end the wrist re-announces at its next catch-up leaves the screen
     for one summary carrying the wrist's rating`).
-19. **Heart rate and steps reach the phone** *(needs Phase 8)*. With heart-rate
-    and motion permission granted, run a session with a run, three rounds of a
+19. **Heart rate and steps reach the phone**. With the Health permission granted
+    (workout share, heart rate, steps), run a session with a run, three rounds of a
     sports exercise and a block of sets. After sync the phone holds an average
     and maximum heart rate for the session, the run, each round and the set
-    block, and a step total for the run only. The phone has no screen for
-    these yet: inspect them with a debug build that lists
-    `getSensorSummariesForSession`. With heart-rate permission denied the
-    session still syncs, with no heart-rate values and no zeros.
-20. **Samples arrive in time** *(Phase 8)*. Compare when heart-rate and step
+    block, and a step total for the run only. The session's average heart rate
+    shows in the phone's Stats; inspect the per-entry values with a debug build
+    that lists `getSensorSummariesForSession`. With heart-rate permission denied
+    the session still syncs, with no heart-rate values and no zeros
+    (`WatchSensorCoordinatorTests.testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected`).
+20. **Samples arrive in time**. Compare when heart-rate and step
     samples arrive with when each entry is logged. An entry's values are
     computed as it is logged, so a sample that arrives after that is missing
-    from them — the shipping plan's Phase 8 item 4 decides whether to wait.
+    from them
+    (`WatchSensorSummaryTests.testS238ALateReadingNeverRewritesWhatWasSent`).
 21. **The app stays alive with the wrist down — (owner).** The entitlement, the
     usage strings and the background mode are in the built product and the watch
     app compiles, but nothing has run on a device. Enable the HealthKit
@@ -579,6 +585,15 @@ the keep-alive checks plan 19c added and need a real watch.
     working, and a session still begins and ends on the wrist: a refused begin
     is recorded, never retried while the same session is live
     (`WatchWorkoutCoordinatorTests.testS1505DenialIsNotFailure`).
+23. **The wrist measures heart rate and steps — (owner).** Install on a real
+    watch and accept the new Health prompt (workout share, heart rate, steps).
+    Run a session and watch the exercise screen's grey "bpm" line move
+    (`WatchSensorCoordinatorTests.testS3108TheLiveLabelShowsTheNewestBeat` pins
+    the label; the line itself is `WatchLoggingView.sensorLine`). End the
+    session and sync, then check the phone's Stats for an average heart rate.
+    Decline the prompt once instead: logging, rest, the menu and sync keep
+    working and no number appears
+    (`WatchSensorCoordinatorTests.testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected`).
 
 ### The wrist's own logging (PR 2b)
 
@@ -650,8 +665,9 @@ holds the kilogram payload underneath).
 ### What "QA passed" means
 
 Levels 1 and 2 green, plus every step at Level 3 on real paired hardware —
-steps 15–18 now, steps 19–20 once shipping-plan Phase 8 makes them runnable, and
-steps 21–22 on a real watch with the HealthKit capability enabled.
+steps 15–18 now, steps 19–20 and 23 on a real watch with the Health permission
+accepted (23 also with it declined once), and steps 21–22 on a real watch with
+the HealthKit capability enabled.
 Anything less and the integration is still a test-suite reality.
 
 ---
