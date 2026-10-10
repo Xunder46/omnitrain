@@ -5,8 +5,8 @@
 //  Source guards for the app target's live sensor side and its host wiring.
 //
 //  Plan: `docs/plans/2026-10-10-19d-watch-heart-rate-and-steps-plan/2026-10-10-19d-watch-heart-rate-and-steps-plan.md`,
-//  scenarios S-3109, S-3110, S-3114 and S-3116 (decisions D-2103, D-2104,
-//  D-2105, D-2106, D-2113).
+//  scenarios S-3109, S-3110, S-3114, S-3116 and S-3117 (decisions D-2103,
+//  D-2104, D-2105, D-2106, D-2113).
 //
 //  The app target has no test target and `HKLiveWorkoutBuilder` does not exist on
 //  macOS where `swift test` runs, so the feed and the host cannot be executed
@@ -205,6 +205,11 @@ final class WatchSensorSourceSourceTests: XCTestCase {
             view.contains("WatchSensorCoordinator("),
             "the host follows the session with a sensor coordinator (D-2106)"
         )
+        XCTAssertTrue(
+            view.contains("source: healthStore.sensorSource"),
+            "the recorder reads the shared store, one authorization outcome: a "
+                + "second store would mean a second prompt (D-2106)"
+        )
 
         let sink = try XCTUnwrap(
             revisionSink(in: view),
@@ -274,6 +279,32 @@ final class WatchSensorSourceSourceTests: XCTestCase {
         XCTAssertTrue(
             declaration.contains("final class HealthKitSensorFeed"),
             "the declaration is `nonisolated final class HealthKitSensorFeed` (D-2113)"
+        )
+    }
+
+    // MARK: - S-3117: the store makes its builder collect and hands it the feed
+
+    func testS3117TheStoreMakesTheBuilderCollectAndHandsItTheFeed() throws {
+        let store = try storeSource()
+
+        XCTAssertTrue(
+            store.contains("collection.delegate = sensorFeed"),
+            "without them the builder collects nothing and the feed never fires "
+                + "while every suite stays green (D-2105)"
+        )
+        XCTAssertTrue(
+            store.contains(
+                "dataSource.enableCollection(for: HKQuantityType(.heartRate), predicate: nil)"
+            ),
+            "without them the builder collects nothing and the feed never fires "
+                + "while every suite stays green (D-2105)"
+        )
+        XCTAssertTrue(
+            store.contains(
+                "dataSource.enableCollection(for: HKQuantityType(.stepCount), predicate: nil)"
+            ),
+            "without them the builder collects nothing and the feed never fires "
+                + "while every suite stays green (D-2105)"
         )
     }
 }

@@ -52,12 +52,13 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     private var session: HKWorkoutSession?
     private var builder: HKLiveWorkoutBuilder?
 
-    /// Whether the one authorization request this process is allowed has already
-    /// happened, and what it decided. The prompt is asked for on the first
+    /// The one authorization request this process is allowed, from the moment it
+    /// starts until the process ends. The prompt is asked for on the first
     /// session that is about to open a workout and never at launch, so a user
-    /// who never trains is never asked (D-1503).
-    private var authorizationResolved = false
-    private var authorizationGranted = false
+    /// who never trains is never asked (D-1503). Concurrent callers — `begin`
+    /// and the feed's closure — await the same task rather than reading a
+    /// half-settled answer.
+    private var authorization: Task<Bool, Never>?
 
     /// The live readings of the workout this store opens (D-2103). Built on
     /// first use, over a closure that asks this store for its authorization
@@ -191,7 +192,9 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     // MARK: - Authorization
 
     /// Asks for permission the first time a workout is about to open, and answers
-    /// the same way for the life of the process afterwards (D-1503).
+    /// the same way for the life of the process afterwards (D-1503); concurrent
+    /// callers share that one in-flight request rather than each reading a
+    /// half-settled answer.
     ///
     /// Share the workout type; read heart rate and steps. The builder's
     /// statistics only carry the types asked for here, so a read left out is a
@@ -200,22 +203,22 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// running without a workout, exactly as it does when the phone denies a
     /// sync.
     private func resolveAuthorization() async -> Bool {
-        if authorizationResolved { return authorizationGranted }
-        authorizationResolved = true
+        if let task = authorization { return await task.value }
 
-        do {
-            try await healthStore.requestAuthorization(
-                toShare: [HKObjectType.workoutType()],
-                read: [HKQuantityType(.heartRate), HKQuantityType(.stepCount)]
-            )
-            authorizationGranted =
-                healthStore.authorizationStatus(for: HKObjectType.workoutType())
-                == .sharingAuthorized
-        } catch {
-            authorizationGranted = false
+        let task = Task<Bool, Never> {
+            do {
+                try await healthStore.requestAuthorization(
+                    toShare: [HKObjectType.workoutType()],
+                    read: [HKQuantityType(.heartRate), HKQuantityType(.stepCount)]
+                )
+                return healthStore.authorizationStatus(for: HKObjectType.workoutType())
+                    == .sharingAuthorized
+            } catch {
+                return false
+            }
         }
-
-        return authorizationGranted
+        authorization = task
+        return await task.value
     }
 }
 
