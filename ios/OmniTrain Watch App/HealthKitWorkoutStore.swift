@@ -5,8 +5,12 @@
 //  The wrist's real workout registration: `HKWorkoutSession` +
 //  `HKLiveWorkoutBuilder` behind the package's `WatchPlatformWorkoutStore` seam.
 //
-//  Plan: `docs/plans/2026-10-10-19c-watch-keep-alive-plan/2026-10-10-19c-watch-keep-alive-plan.md`,
-//  D-1502, D-1503 and D-1509. Every rule about *when* a workout opens or closes
+//  Plans: `docs/plans/2026-10-10-19c-watch-keep-alive-plan/2026-10-10-19c-watch-keep-alive-plan.md`
+//  (D-1502, D-1503 and D-1509), and
+//  `docs/plans/2026-10-10-19d-watch-heart-rate-and-steps-plan/2026-10-10-19d-watch-heart-rate-and-steps-plan.md`
+//  (D-2103 to D-2105: this store now reads heart rate and steps, turns its
+//  builder into a collecting one, and owns the `HealthKitSensorFeed` that hands
+//  those readings to the package). Every rule about *when* a workout opens or closes
 //  lives in the package, where `swift test` exercises it on macOS
 //  (`WatchWorkoutCoordinatorTests`). What is left here is the platform call
 //  itself, so this file is the one part of the keep-alive no desktop test can
@@ -55,6 +59,19 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     private var authorizationResolved = false
     private var authorizationGranted = false
 
+    /// The live readings of the workout this store opens (D-2103). Built on
+    /// first use, over a closure that asks this store for its authorization
+    /// outcome: the feed holds no reference back to the store, and the store is
+    /// the only thing holding the feed.
+    private lazy var sensorFeed = HealthKitSensorFeed { [weak self] in
+        guard let self else { return false }
+        return await self.resolveAuthorization()
+    }
+
+    /// The sensor seam the package sees. Permission comes from the store's own
+    /// resolution, so the feed reports it without asking anyone (D-2104, D-2105).
+    var sensorSource: WatchSensorSource { sensorFeed }
+
     init() {}
 
     // MARK: - WatchPlatformWorkoutStore
@@ -74,10 +91,18 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         do {
             let opened = try HKWorkoutSession(healthStore: healthStore, configuration: configuration)
             let collection = opened.associatedWorkoutBuilder()
-            collection.dataSource = HKLiveWorkoutDataSource(
+            let dataSource = HKLiveWorkoutDataSource(
                 healthStore: healthStore,
                 workoutConfiguration: configuration
             )
+            // The data source only collects the types it was told to, and the
+            // delegate is what turns its callbacks into the package's streams
+            // (D-2103, D-2105).
+            dataSource.enableCollection(for: HKQuantityType(.heartRate), predicate: nil)
+            dataSource.enableCollection(for: HKQuantityType(.stepCount), predicate: nil)
+
+            collection.dataSource = dataSource
+            collection.delegate = sensorFeed
 
             session = opened
             builder = collection
@@ -168,9 +193,12 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// Asks for permission the first time a workout is about to open, and answers
     /// the same way for the life of the process afterwards (D-1503).
     ///
-    /// Share only the workout type; nothing is read. A refusal, or a request that
-    /// cannot be answered, means `begin` does nothing — the session keeps running
-    /// without a workout, exactly as it does when the phone denies a sync.
+    /// Share the workout type; read heart rate and steps. The builder's
+    /// statistics only carry the types asked for here, so a read left out is a
+    /// stream that never produces anything (D-2103). A refusal, or a request
+    /// that cannot be answered, means `begin` does nothing — the session keeps
+    /// running without a workout, exactly as it does when the phone denies a
+    /// sync.
     private func resolveAuthorization() async -> Bool {
         if authorizationResolved { return authorizationGranted }
         authorizationResolved = true
@@ -178,7 +206,7 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         do {
             try await healthStore.requestAuthorization(
                 toShare: [HKObjectType.workoutType()],
-                read: []
+                read: [HKQuantityType(.heartRate), HKQuantityType(.stepCount)]
             )
             authorizationGranted =
                 healthStore.authorizationStatus(for: HKObjectType.workoutType())
