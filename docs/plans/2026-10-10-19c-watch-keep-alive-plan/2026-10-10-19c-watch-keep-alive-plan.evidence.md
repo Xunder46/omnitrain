@@ -227,13 +227,23 @@ find "<TARGET_BUILD_DIR>/<FULL_PRODUCT_NAME>" -name '*.entitlements'            
 
 ### Phase 3B — docs and the residue sweep
 
+**Implemented (developer).** Six items, four files. Item 1: the stale audit-pointer sentence deleted and the
+fakes-only sentence narrowed to the sensor seam, with the true workout-seam sentence added
+(`watch_surface.md:695-706`). Item 2: the structure row names `HealthKitWorkoutStore` and a new row names
+`WatchWorkoutCoordinator` (`:687-688`). Item 3: the invariant bullet added at `:752-755`. Item 4: the
+**(owner)** capability step in §3.4 and two **(owner)** walkthrough steps 21–22, plus the lines the phase
+made false (the fragment `ios/OmniTrainWatchApp-Info.plist`, the `INFOPLIST_KEY_*` usage strings, the
+step-range sentences). Item 5: row 19c replaced. Footprint: `git-diff --stat` = `watch_surface.md` 18
+lines changed, `watch-app-setup-and-qa.md` 52 lines changed, `2026-10-08-18-watch-qa-index.md` 1 line.
+
 | Check | Command | Result |
 |---|---|---|
-| full suite | `.github/copilot/scripts/macos/gateway.sh test` | (to fill — expected 4240 passed, 1 skipped, 0 failed) |
-| size band + link + wording guards | `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart test/rest_is_count_up_contract_test.dart` | (to fill — green) |
-| lint | `.github/copilot/scripts/macos/gateway.sh lint` | (to fill — 196 issues, 0 errors) |
-| residue | `rg -n "provides the real bindings" docs` | (to fill — no output) |
-| residue | `rg -n "WatchPlatformWorkoutStore" docs/state_management/watch_surface.md` | (to fill — only lines naming the real binding or the test fakes) |
+| full suite | `.github/copilot/scripts/macos/gateway.sh test` | **4240 passed, 1 skipped, 0 failed**, last line `01:59 +4240 ~1: All tests passed!` (log `.work/gateway/test-20261010-030057-49663.log`) |
+| size band + link + wording guards | `.github/copilot/scripts/macos/gateway.sh test test/docs_indexing_contract_test.dart test/rest_is_count_up_contract_test.dart` | **19 passed, 0 failed**, last line `00:00 +19: All tests passed!` |
+| lint | `.github/copilot/scripts/macos/gateway.sh lint` | **196 issues, 0 errors** (exit 1 is the repo's pre-existing info notices; baseline) |
+| residue | `grep -n "provides the real bindings" docs` | no output in any doc — only the plan's own two lines (`2026-10-10-19c-...-plan.md:104,183,188`) name the phrase, which is the record, not the claim |
+| residue | `grep -n "WatchPlatformWorkoutStore" docs/state_management/watch_surface.md` | one line: `:696` — "`WatchSensorSource` and `WatchPlatformWorkoutStore` are the seam the OS bindings sit behind", which names the seam generally; `:700` names the real binding (`HealthKitWorkoutStore`); no line claims the seam is unimplemented in the app target |
+| residue | banned rest wording (D-1512(c)) in the two touched docs | none — `test/rest_is_count_up_contract_test.dart` green above, which is the mechanical proof |
 
 ## What the planner could not do (tools denied)
 

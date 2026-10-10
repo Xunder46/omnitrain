@@ -141,20 +141,25 @@ in the portal:
   via a shared container rather than `WCSession` file transfer. Skip until the
   transport decision (D-1 in the plan) says otherwise.
 
-**HealthKit you do need**, but only for the sensor path (plan item 11):
+**HealthKit you do need**, for the sensor path (plan item 11) and for the workout
+that keeps the app alive (plan 19c):
 
-- Add the HealthKit capability to the **watch** target. The iOS target already
-  has it — `ios/Runner/Runner.entitlements` declares
-  `com.apple.developer.healthkit` and is correctly referenced from the build
-  settings.
-- Add `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` to
-  the **watch app's** Info.plist. The iOS strings already exist in
-  `ios/Runner/Info.plist:47-50`; write watch-appropriate equivalents.
-- Add `WKBackgroundModes` = `workout-processing` to the watch app's Info.plist.
-  This is what keeps the app alive with the wrist down during a session — the
-  exact behavior `lib/watch/sensors/watch_platform_workout.dart` documents as
-  the reason for registering a platform workout at all. Without it the app is
-  suspended mid-set and the session dies.
+- The HealthKit capability is configured for the **watch** target:
+  `ios/OmniTrainWatchApp.entitlements` declares `com.apple.developer.healthkit`
+  and the watch configurations name it with `CODE_SIGN_ENTITLEMENTS`. The iOS
+  target already had it — `ios/Runner/Runner.entitlements`.
+- `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` are
+  `INFOPLIST_KEY_*` build settings on the watch target;
+  `WKBackgroundModes` = `workout-processing` lives in the watch target's Info.plist
+  fragment `ios/OmniTrainWatchApp-Info.plist`. The background mode is what keeps
+  the app alive with the wrist down during a session — the exact behavior
+  `lib/watch/sensors/watch_platform_workout.dart` documents as the reason for
+  registering a platform workout at all. Without it the app is suspended mid-set
+  and the session dies.
+- **(owner)** Enable the HealthKit capability for `dev.sasha.omnitrain.watchkitapp`
+  (team `S3976AA7K8`) in the Apple developer portal so provisioning signs the
+  entitlement. A device build fails to sign until then; the simulator build is
+  unaffected.
 
 ### 3.5 Link the engine
 
@@ -512,7 +517,8 @@ enforced in code, so a failure points at the transport, not the logic:
 Steps 15–18 check the session effort rating and all run on the shipped shell.
 Steps 19–20 check the heart-rate and step capture and stay with the shipping
 plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
-(`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`).
+(`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). Steps 21–22 are
+the keep-alive checks plan 19c added and need a real watch.
 
 15. **The wrist asks how hard it was.** Turn Settings →
     Effort Rating on, on the phone, then sync from the wrist. Log a set on the
@@ -559,6 +565,19 @@ plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
     samples arrive with when each entry is logged. An entry's values are
     computed as it is logged, so a sample that arrives after that is missing
     from them — the shipping plan's Phase 8 item 4 decides whether to wait.
+21. **The app stays alive with the wrist down — (owner).** The entitlement, the
+    usage strings and the background mode are in the built product and the watch
+    app compiles, but nothing has run on a device. Enable the HealthKit
+    capability for `dev.sasha.omnitrain.watchkitapp` (team `S3976AA7K8`) in the
+    Apple developer portal first: a device build fails to sign until then.
+    Install on a real watch, start a session and let the wrist drop mid-session:
+    the workout must stay open and the session keep running, rather than
+    suspending mid-set.
+22. **Declining the permission is not a failure — (owner).** Deny the Health
+    permission when the watch asks. Logging, the menu and sync must all keep
+    working, and a session still begins and ends on the wrist: a refused begin
+    is recorded, never retried while the same session is live
+    (`WatchWorkoutCoordinatorTests.testS1505DenialIsNotFailure`).
 
 ### The wrist's own logging (PR 2b)
 
@@ -630,7 +649,8 @@ holds the kilogram payload underneath).
 ### What "QA passed" means
 
 Levels 1 and 2 green, plus every step at Level 3 on real paired hardware —
-steps 15–18 now and steps 19–20 once shipping-plan Phase 8 makes them runnable.
+steps 15–18 now, steps 19–20 once shipping-plan Phase 8 makes them runnable, and
+steps 21–22 on a real watch with the HealthKit capability enabled.
 Anything less and the integration is still a test-suite reality.
 
 ---

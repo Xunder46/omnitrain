@@ -684,7 +684,8 @@ readings (`WatchSensorSummaries.swift`) exist only in the watchOS package:
 
 | Concern | Owner |
 |---------|-------|
-| The OS-level workout registration | `WatchPlatformWorkout`, over a `WatchPlatformWorkoutStore` the app target implements |
+| The OS-level workout registration | `WatchPlatformWorkout`, over the watch app target's `HealthKitWorkoutStore` |
+| What keeps the workout in step with the session | `WatchWorkoutCoordinator`, asking `WatchWorkoutLifecycle`'s rule over `WatchPlatformWorkout` |
 | What the device's sensors read | `WatchSensorRecorder`, over a `WatchSensorSource` the app target implements |
 | Writing the readings one at a time | `WatchSensorWrites`, inside `WatchSensorRecorder` |
 | Starting and stopping both together | `WatchSessionSensors` |
@@ -695,15 +696,14 @@ readings (`WatchSensorSummaries.swift`) exist only in the watchOS package:
 `WatchSensorSource` and `WatchPlatformWorkoutStore` are the seam the OS bindings
 sit behind, and they are why this layer is testable: `HKWorkoutSession`,
 `HKLiveWorkoutBuilder` and `CLLocationManager` exist only in an app target, so
-neither `swift test` nor a Dart suite can reach them directly. The
-implementations in the tree are the two suites' fakes and the QA harness's own
-defaults: `test/watch_sensor_recording_test.dart`,
+neither `swift test` nor a Dart suite can reach them directly. The workout seam's
+real binding is the watch app target's `HealthKitWorkoutStore`; the sensor seam's
+implementations are the two suites' fakes and the QA harness's own defaults:
+`test/watch_sensor_recording_test.dart`,
 `watch/watchos/Tests/WatchSessionEngineTests/WatchSensorRecordingTests.swift`, and
 `lib/watch/debug/watch_session_debug_surface.dart`, which takes both seams as
 constructor parameters and passes a no-permission source and a no-op store when it
-is given none. Which app target provides the real bindings, and what that means
-for acceptance criterion 2, is recorded in
-[the documentation audit](../docs-audit-2026-07-26.md) §8.6.
+is given none.
 
 ### Rationale
 
@@ -748,6 +748,10 @@ concerned, and its logged entries are in storage either way. Verified by
 
 ### Invariants
 
+- **The workout follows the session.** One workout at a time: exactly one begin and one
+end per session however often the surface refreshes, and a launch ends what a previous
+process left open before a session can open another. Verified by watchOS
+`WatchWorkoutCoordinatorTests` (S-1500...S-1505, S-1507, S-1508, S-1510).
 - **GPS activation derives from the modality's capability profile, never from its
 name.** A modality added later is handled without touching the policy, and one
 that merely sounds like distance work does not wake the radio. Verified by
