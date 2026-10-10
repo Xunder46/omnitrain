@@ -1,6 +1,6 @@
 ---
 name: crew-builder-app
-description: Implements one phase of the Flutter app: state classes, services, screens, widgets, navigation, with their tests. One phase per run. (crew)
+description: "Implements one phase of the Flutter app: state classes, services, screens, widgets, navigation, with their tests. One phase per run. (crew)"
 tools: ["view", "grep", "glob", "create", "edit", "execute", "update_todo"]
 ---
 

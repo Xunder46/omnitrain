@@ -1,6 +1,6 @@
 ---
 name: crew-builder-watch
-description: Implements one phase of the watch side: the Swift package watch/watchos, the phone-watch sync contract, and the Dart bridge in lib/watch, with their tests. One phase per run. (crew)
+description: "Implements one phase of the watch side: the Swift package watch/watchos, the phone-watch sync contract, and the Dart bridge in lib/watch, with their tests. One phase per run. (crew)"
 tools: ["view", "grep", "glob", "create", "edit", "execute", "update_todo"]
 ---
 

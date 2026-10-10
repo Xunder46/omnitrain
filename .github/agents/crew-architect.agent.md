@@ -1,6 +1,6 @@
 ---
 name: crew-architect
-description: Expands the governor's seeded plan into a plan folder that builders can execute without research: phases of at most 8 items, each with file and symbol, done criteria and predicted files. Writes plans only. (crew)
+description: "Expands the governor's seeded plan into a plan folder that builders can execute without research: phases of at most 8 items, each with file and symbol, done criteria and predicted files. Writes plans only. (crew)"
 tools: ["view", "grep", "glob", "create", "edit", "execute", "update_todo"]
 ---
 

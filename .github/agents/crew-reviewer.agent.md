@@ -1,6 +1,6 @@
 ---
 name: crew-reviewer
-description: Reviews a finished unit of work against its plan, the conventions and the architecture, with findings a maintainer can act on. Writes the review file only. (crew)
+description: "Reviews a finished unit of work against its plan, the conventions and the architecture, with findings a maintainer can act on. Writes the review file only. (crew)"
 tools: ["view", "grep", "glob", "create", "edit", "execute", "update_todo"]
 ---
 

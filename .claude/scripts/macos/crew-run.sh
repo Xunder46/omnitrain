@@ -126,6 +126,15 @@ load_permissions() {
   else
     for g in ${CEILING[@]+"${CEILING[@]}"}; do EFFECTIVE+=("$g"); done
   fi
+  # A narrowed scope must not cost the agent its reports: .work/crew/** stays writable whenever the
+  # profile's ceiling has it (friction 2026-10-10: both 19d builders were denied their report path).
+  local has_notes=0 c2
+  for c2 in ${CEILING[@]+"${CEILING[@]}"}; do [[ $c2 == ".work/crew/**" ]] && has_notes=1; done
+  if [[ $has_notes -eq 1 ]]; then
+    ok=0
+    for g in ${EFFECTIVE[@]+"${EFFECTIVE[@]}"}; do [[ $g == ".work/crew/**" ]] && ok=1; done
+    [[ $ok -eq 1 ]] || EFFECTIVE+=(".work/crew/**")
+  fi
   for g in ${EFFECTIVE[@]+"${EFFECTIVE[@]}"}; do PERM_FLAGS+=("--allow-tool=write($g)"); done
 }
 
@@ -196,6 +205,18 @@ known_hangs() {
   [[ -f $file ]] || return 0
   awk '/^## Known long-running or hanging commands/ { on = 1; next } on && /^## / { exit }
        on && /<!--/ { c = 1 } on && c { if (/-->/) c = 0; next } on { print }' "$file" | sed '/^[[:space:]]*$/d'
+}
+
+# Copilot's loader rejects an agent whose frontmatter is not valid YAML; the usual cause is an unquoted
+# description containing ": ". Catch it here, before a run is started and fails after one request.
+check_frontmatter() {
+  local f="$AGENTS_DIR/$1.agent.md" desc
+  desc="$(sed -n '2,6p' "$f" | grep -m1 '^description:' | sed 's/^description:[[:space:]]*//')"
+  case "$desc" in
+    \"*\") ;;
+    *": "*|*" #"*) echo "Agent $1: description in $f contains ': ' or ' #' and is not quoted; Copilot will refuse to load it. Wrap it in double quotes." >&2; exit 2 ;;
+  esac
+  [[ "$(sed -n 1p "$f")" == "---" ]] || { echo "Agent $1: $f does not start with '---'." >&2; exit 2; }
 }
 
 usage() {
@@ -316,6 +337,7 @@ start_run() {
   abs="$(cd "$(dirname "$abs")" && pwd)/$(basename "$abs")"
   local rel="${abs#"$REPO_ROOT"/}"
   if [[ ! -f $AGENTS_DIR/$agent.agent.md ]]; then echo "No agent .github/agents/$agent.agent.md" >&2; exit 2; fi
+  check_frontmatter "$agent"
   load_permissions "$agent" "$scope_arg"   # validate now: a bad profile or scope fails before anything starts
   if [[ -z $model ]]; then model="$(model_for "$agent")"; fi
   case "$model" in
@@ -596,6 +618,7 @@ case "$cmd" in
             agent="${1:-}"; scope=""; shift || true
             while [[ $# -gt 0 ]]; do case "$1" in --scope) scope="${2:-}"; shift 2 ;; *) shift ;; esac; done
             [[ -f $AGENTS_DIR/$agent.agent.md ]] || { echo "No agent $agent" >&2; exit 2; }
+            check_frontmatter "$agent"
             load_permissions "$agent" "$scope"
             echo "OK $agent model=$(model_for "$agent")"
             echo "ceiling: ${CEILING[*]:-none}"; echo "effective write scope: ${EFFECTIVE[*]:-none}"

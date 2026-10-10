@@ -1,6 +1,6 @@
 ---
 name: crew-docs-keeper
-description: Brings docs in step with a change (or audits them) so every behaviour sentence names a test that exists and no doc names something that does not. Writes docs and plan evidence only. (crew)
+description: "Brings docs in step with a change (or audits them) so every behaviour sentence names a test that exists and no doc names something that does not. Writes docs and plan evidence only. (crew)"
 tools: ["view", "grep", "glob", "create", "edit", "execute", "update_todo"]
 ---
 

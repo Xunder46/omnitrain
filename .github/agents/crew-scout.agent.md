@@ -1,6 +1,6 @@
 ---
 name: crew-scout
-description: Read-only. Answers "where is X and what does it look like now" with file, symbol, line and the current lines quoted. Feeds briefs so builders start editing at once. (crew)
+description: "Read-only. Answers \"where is X and what does it look like now\" with file, symbol, line and the current lines quoted. Feeds briefs so builders start editing at once. (crew)"
 tools: ["view", "grep", "glob", "create"]
 ---
 

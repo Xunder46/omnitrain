@@ -1,6 +1,6 @@
 ---
 name: crew-builder-data
-description: Implements one phase of the data layer: models, the WorkoutRepository interface and both implementations, seed data and the SQL contract, with their tests. One phase per run. (crew)
+description: "Implements one phase of the data layer: models, the WorkoutRepository interface and both implementations, seed data and the SQL contract, with their tests. One phase per run. (crew)"
 tools: ["view", "grep", "glob", "create", "edit", "execute", "update_todo"]
 ---
 
