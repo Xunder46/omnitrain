@@ -35,6 +35,12 @@ final class WatchAppHost: ObservableObject {
     /// session.
     let workout: WatchWorkoutCoordinator
 
+    /// The sensors follow the session (D-2106): one coordinator for the life of
+    /// the app, over the recorder reading the store's own feed. It runs a
+    /// subscription exactly while a session is active, so the readings the
+    /// logging surface shows belong to the session on screen.
+    let sensors: WatchSensorCoordinator
+
     /// Bumped whenever `paths` changes underneath us. `WatchSessionStartPaths` is
     /// a plain class that publishes nothing, so without this SwiftUI would never
     /// re-read it — and a restore that loaded routines would leave the surface
@@ -75,15 +81,21 @@ final class WatchAppHost: ObservableObject {
             engine: engine,
             preferences: preferences
         )
-        let logging = WatchLoggingState(engine: engine)
+        // The health store is built once and shared (D-2106): it owns the
+        // workout builder and the sensor feed, so the workout coordinator and
+        // the sensors read one authorization outcome, not two.
+        let healthStore = HealthKitWorkoutStore()
+        let recorder = WatchSensorRecorder(engine: engine, source: healthStore.sensorSource)
+        let logging = WatchLoggingState(engine: engine, sensors: recorder)
         let rating = WatchEffortRatingState(
             engine: engine,
             store: store,
             preferences: preferences
         )
         let workout = WatchWorkoutCoordinator(
-            platform: WatchPlatformWorkout(store: HealthKitWorkoutStore())
+            platform: WatchPlatformWorkout(store: healthStore)
         )
+        let sensors = WatchSensorCoordinator(recorder: recorder)
 
         self.engine = engine
         self.paths = paths
@@ -91,6 +103,7 @@ final class WatchAppHost: ObservableObject {
         self.logging = logging
         self.rating = rating
         self.workout = workout
+        self.sensors = sensors
         self.orchestrator = orchestrator
         self.forwarder = forwarder
 
@@ -127,7 +140,9 @@ final class WatchAppHost: ObservableObject {
             .store(in: &cancellables)
 
         // Every session change the surfaces see also settles the platform
-        // workout (D-1504). The subscription's first emission is the empty
+        // workout (D-1504) and then the sensors (D-2106): the workout first, so
+        // by the time a subscription starts the builder, the permission outcome
+        // and the feed exist. The subscription's first emission is the empty
         // session before `restore()`, which the lifecycle rule answers with
         // `.none`, so it is left as it is.
         $revision
@@ -135,6 +150,7 @@ final class WatchAppHost: ObservableObject {
                 Task { @MainActor in
                     guard let self else { return }
                     await self.workout.refresh(self.engine.session)
+                    await self.sensors.refresh(self.engine.session)
                 }
             }
             .store(in: &cancellables)
