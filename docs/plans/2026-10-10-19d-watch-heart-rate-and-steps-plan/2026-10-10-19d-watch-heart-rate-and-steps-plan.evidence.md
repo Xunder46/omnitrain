@@ -162,6 +162,10 @@ run's `Test Case ... failed` lines):
 | M11 | testS3110 | `ContentView.swift`: the two refresh awaits swapped | RED (1) |
 | M12 | testS3114 | `HealthKitSensorFeed.swift`: no-health-data branch returns `.denied` | RED (1) |
 | M13 | testS3116 | `HealthKitSensorFeed.swift`: `nonisolated` removed from the declaration | RED (1) |
+| S-3117 | testS3117 | (new guard from review round 1, no own mutation; killed by N1 and N2) | — |
+| N1 | testS3117 | `HealthKitWorkoutStore.swift`: `collection.delegate = sensorFeed` deleted | RED (exactly S-3117) |
+| N2 | testS3117 | `HealthKitWorkoutStore.swift`: the steps `enableCollection` call dropped | RED (exactly S-3117) |
+| N3 | testS3110 | `ContentView.swift`: the recorder built over a second private `HealthKitWorkoutStore()` | RED (exactly S-3110) |
 
 On M9: the prover's predicted failing value was wrong (it had not computed it); the governor's
 application of the corrected fixture (pre-window count 500, expected 2700) is the proof.
@@ -193,3 +197,24 @@ Correction to the earlier note: the governor reproduced **both** figures — 452
 ~19:27) and 456 (after the prover's guard fix and the S-3115 fix, ~20:05) — so "456 tests is the
 builder's own run" no longer holds; the builder's run in report-2B is corroborated by the
 governor's.
+
+## Review round 1 and fix round
+
+From the review (`.review.md`, verdict APPROVE WITH FIXES) and the fix commit
+`fix(watch): review round 1 of plan 19d`:
+
+- Finding 1 (pbxproj churn, `objectVersion 70` etc.) is the OWNER's staged Xcode format upgrade of
+  `ios/Runner.xcodeproj/project.pbxproj`, not crew work: no fix; left for the owner to commit
+  together with the three D-2107 usage strings.
+- Finding 2 fixed: new guard `testS3117TheStoreMakesTheBuilderCollectAndHandsItTheFeed` (S-3117, in
+  `WatchSensorSourceSourceTests.swift`) asserts the store source holds
+  `collection.delegate = sensorFeed` and both `enableCollection(for: HKQuantityType…)` calls.
+- Finding 3 fixed: S-3110 also asserts `source: healthStore.sensorSource`.
+- Finding 4 fixed: `HealthKitWorkoutStore.resolveAuthorization` memoises the in-flight `Task`, so
+  concurrent callers share one request.
+- Governor verification after the fix: swift test 457 tests / 0 failures; xcodebuild watch scheme
+  BUILD SUCCEEDED with no warning in the changed app files; the mutations N1–N3 (rows added to the
+  table above) each turned exactly the named guard red and were restored byte-identical.
+- The review's coverage table uses mutation numbers that do not match this table's M-numbers
+  (cosmetic; this table is the authority). Finding 4 has no off-device guard: S-3110's order pin
+  plus the in-flight memo hold it; the on-wrist prompt check is the owner's.

@@ -351,7 +351,8 @@ writes the `.review.md` (the architect does not create it).
 | 3A | 1–3 prove-red | done (RED AT ed14570 from a compile error; guards proved by the governor's mutations, see the evidence file's Prover verdicts) |
 | 3B | 1–8 docs | done (full suite + lint are the governor's) |
 | gov | mutations, final suites | done (13 mutations + 2 variants, 1 initial MISS on S-3115 fixed and re-proven; 456/0 by the governor; flutter analyze 196/0 errors; flutter test +4240 ~1; layer invariant clean) |
-| 4 | review | not started |
+| 4 | review round 1 | done (APPROVE WITH FIXES; see the `.review.md`'s Round 1 outcome) |
+| fix | fix round 1 | done |
 
 ## Assumption Log
 
@@ -369,6 +370,7 @@ writes the `.review.md` (the architect does not create it).
 ## Feedback
 
 - **F-1 (governor, 2026-10-10, after the first watch-scheme build)** The app target builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` (Xcode 26.4.1, Swift 5 mode; `project.pbxproj:673`), so `HealthKitSensorFeed` was silently main-actor-bound while HealthKit calls its `HKLiveWorkoutBuilderDelegate` methods on its own queues: two compiler warnings (`HealthKitSensorFeed.swift:93`, `:115`) and a probable runtime isolation trap on a real watch. **D-2113**: the class is declared `nonisolated final class HealthKitSensorFeed`, so none of its members is main-actor-bound; the `HealthKitWorkoutStore` that owns it stays as it is. **S-3116** (source guard, in `WatchSensorSourceSourceTests.swift`, phase 2B): the feed's declaration line contains `nonisolated` and `final class HealthKitSensorFeed`. Mutation: delete `nonisolated` from the declaration, the guard goes red. Proof on the app target: the governor's `xcodebuild` shows no isolation warning for the feed.
+- **D-2114 (review round 1, 2026-10-10)** Authorization is one memoised in-flight request shared by the workout and the feed: `HealthKitWorkoutStore.resolveAuthorization` stores the `Task<Bool, Never>` and concurrent callers await its value, instead of a second caller reading a half-settled answer while the first request is still in flight. **S-3117** (source guard, in `WatchSensorSourceSourceTests.swift`, fix round 1): the store source holds `collection.delegate = sensorFeed` and both `dataSource.enableCollection(for: HKQuantityType(.heartRate/.stepCount), predicate: nil)` calls. Mutations N1 (delete the delegate line) and N2 (drop the steps call) each turn exactly S-3117 red; N3 (the recorder built over a second private store) turns exactly S-3110 red.
 
 ## Open questions
 
