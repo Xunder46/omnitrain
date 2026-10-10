@@ -17,23 +17,43 @@ import Foundation
 
 /// A catalog exercise: what it is, not where it sits in a session.
 public struct WatchCatalogExercise: Equatable {
+    /// The protocol key the phone's period length travels under, shared by the
+    /// catalog entry and the slot so the two can never drift (D-1400).
+    public static let roundDurationKey = "roundDurationSecs"
+
     public let exerciseId: String
     public let name: String
 
     /// The capability flags the effort kind and the metric rows are derived from.
     public let capabilities: [String]
 
-    public init(exerciseId: String, name: String, capabilities: [String]) {
+    /// How long one round of this exercise is prescribed to run, in whole
+    /// seconds, or nil when the phone prescribed no length for it.
+    ///
+    /// It rides with the exercise, not the slot: the catalog declares no effort
+    /// kind (PROTOCOL.md, "Exercise identity"), so only the pick knows which
+    /// kind the slot will take, and only a round kind carries a length
+    /// (D-1404, D-1413).
+    public let roundDurationSecs: Int?
+
+    public init(
+        exerciseId: String,
+        name: String,
+        capabilities: [String],
+        roundDurationSecs: Int? = nil
+    ) {
         self.exerciseId = exerciseId
         self.name = name
         self.capabilities = capabilities
+        self.roundDurationSecs = roundDurationSecs
     }
 
     public init(json: [String: Any]) throws {
         self.init(
             exerciseId: try requiredString(json, "exerciseId"),
             name: try requiredString(json, "name"),
-            capabilities: (json["capabilities"] as? [String]) ?? []
+            capabilities: (json["capabilities"] as? [String]) ?? [],
+            roundDurationSecs: Self.roundSeconds(json[Self.roundDurationKey])
         )
     }
 
@@ -45,8 +65,26 @@ public struct WatchCatalogExercise: Equatable {
         self.init(
             exerciseId: exerciseId,
             name: name,
-            capabilities: (slot["capabilities"] as? [String]) ?? []
+            capabilities: (slot["capabilities"] as? [String]) ?? [],
+            roundDurationSecs: Self.roundSeconds(slot[Self.roundDurationKey])
         )
+    }
+
+    /// A wire number as a length in whole seconds, or nil when it is missing or
+    /// below the one second the schema accepts: a length the phone did not write
+    /// is not one the wrist reads (D-1400).
+    public static func roundSeconds(_ value: Any?) -> Int? {
+        guard let seconds = (value as? NSNumber)?.intValue, seconds >= 1 else { return nil }
+        return seconds
+    }
+
+    /// A `targets.durationMs` value as a length in whole seconds, or nil when the
+    /// target is missing, not numeric or not positive. The wire carries
+    /// milliseconds and the slot carries seconds, rounded to the nearest one and
+    /// never below a second (D-1402).
+    public static func roundSeconds(fromMillis value: Any?) -> Int? {
+        guard let milliseconds = (value as? NSNumber)?.doubleValue, milliseconds > 0 else { return nil }
+        return max(1, Int((milliseconds / 1000).rounded()))
     }
 
     /// The slot id this exercise takes when the user picks it for a session.
@@ -59,9 +97,17 @@ public struct WatchCatalogExercise: Equatable {
     /// `effortKind` is the routine's declared kind, and only a routine has one:
     /// a slot without it carries no `effortKind` at all, and the receiver
     /// resolves the kind from the capabilities (PROTOCOL.md, `sessionExercise`).
+    ///
+    /// `roundDurationSecs` is the length the slot's period counts down from, and
+    /// it rides with the kind that owns it: the routine's declared kind when it
+    /// has one, the capabilities otherwise — the same resolution the logging
+    /// surface renders the slot with (D-1412) — and only a round carries a length
+    /// at all. A timed effort holding a `durationMs` target is a count-up, so it
+    /// gets none (D-1413).
     public func toSlot(
         sessionExerciseId: String? = nil,
-        effortKind: String? = nil
+        effortKind: String? = nil,
+        roundDurationSecs: Int? = nil
     ) -> [String: Any] {
         var slot: [String: Any] = [
             "sessionExerciseId": sessionExerciseId ?? slotId,
@@ -70,11 +116,25 @@ public struct WatchCatalogExercise: Equatable {
             "capabilities": capabilities,
         ]
         if let effortKind { slot["effortKind"] = effortKind }
+
+        let declared = effortKind.flatMap { WatchEffortKind.declared.contains($0) ? $0 : nil }
+        let governingKind = declared ?? WatchEffortKind.resolved(capabilities)
+        if governingKind == WatchEffortKind.round,
+           let seconds = roundDurationSecs ?? self.roundDurationSecs,
+           seconds >= 1 {
+            slot[Self.roundDurationKey] = seconds
+        }
         return slot
     }
 
     public func toJson() -> [String: Any] {
-        ["exerciseId": exerciseId, "name": name, "capabilities": capabilities]
+        var json: [String: Any] = [
+            "exerciseId": exerciseId,
+            "name": name,
+            "capabilities": capabilities,
+        ]
+        if let roundDurationSecs { json[Self.roundDurationKey] = roundDurationSecs }
+        return json
     }
 }
 
@@ -119,10 +179,18 @@ public struct WatchRoutineEffort {
     /// carrying the routine's declared effort kind, which is the one the wrist
     /// renders (a Plank in an isometric routine is timed because the routine says
     /// so, not because a capability suggests otherwise).
+    ///
+    /// A round effort's period length is the routine's own prescription —
+    /// `targets.durationMs`, which is how the phone sends a round's length
+    /// (D-1402) — and an effort with no such target carries none: the wrist's
+    /// preset stays the only other source (D-1405).
     public var slot: [String: Any] {
         catalogExercise.toSlot(
             sessionExerciseId: "sx-\(effortId)",
-            effortKind: effortKind
+            effortKind: effortKind,
+            roundDurationSecs: effortKind == WatchEffortKind.round
+                ? WatchCatalogExercise.roundSeconds(fromMillis: targets["durationMs"])
+                : nil
         )
     }
 

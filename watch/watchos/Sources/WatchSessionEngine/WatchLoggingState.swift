@@ -40,6 +40,34 @@ public enum WatchEffortKind {
     public static func eventKind(_ effortKind: String) -> String {
         effortKind == drill ? "hold" : effortKind
     }
+
+    /// Which capability decides the effort kind, in the order that matters: an
+    /// isometric exercise usually carries `time` as well, and it is still a
+    /// hold. Mirrors `ModalityConfig.effortKindFromMetric`.
+    public static let precedence = ["hold", "rounds", "reps", "sets", "load", "time", "distance"]
+
+    /// The kind `capabilities` resolve to, or nil when none of them is decisive.
+    ///
+    /// One resolver, two callers: the logging surface renders a slot with it and
+    /// the catalog's `toSlot` decides with it whether the slot may carry a
+    /// length, so a slot can never resolve to one kind for display and another
+    /// for the number it holds (D-1412).
+    public static func resolved(_ capabilities: [String]) -> String? {
+        for capability in precedence where capabilities.contains(capability) {
+            return fromMetric(capability)
+        }
+        return nil
+    }
+
+    /// Mirrors `ModalityConfig.effortKindFromMetric`.
+    public static func fromMetric(_ metric: String) -> String {
+        switch metric {
+        case "time", "distance": return timed
+        case "hold": return drill
+        case "rounds": return round
+        default: return set
+        }
+    }
 }
 
 /// One adjustable value on a logging surface. `value` is canonical — the unit
@@ -139,14 +167,10 @@ public final class WatchLoggingState {
     /// observation (for a set) or start fresh (for measured work).
     private var dialled: [String: Double] = [:]
 
-    /// How long a period is prescribed, in milliseconds: the phone's number once
-    /// the wire carries it, the shared default until then (D-1303, D-1314).
-    private var plannedRoundMs: Int
-
-    /// Which capability decides the effort kind, in the order that matters: an
-    /// isometric exercise usually carries `time` as well, and it is still a
-    /// hold. Mirrors `ModalityConfig.effortKindFromMetric`.
-    private static let kindPrecedence = ["hold", "rounds", "reps", "sets", "load", "time", "distance"]
+    /// The period length this wrist falls back to when the phone's number is
+    /// not in the slot: a caller's preset (the plan-21 seam), else the shared
+    /// default (D-1303).
+    private let presetRoundMs: Int
 
     /// The metrics each effort kind calls for, in the order the wrist reads
     /// them. Mirrors `EffortDefaults`' primary and secondary metrics.
@@ -182,8 +206,22 @@ public final class WatchLoggingState {
         self.newId = idFactory
         self.units = units
         self.sensors = sensors
-        self.plannedRoundMs = roundPresetMs
+        self.presetRoundMs = roundPresetMs
             ?? WatchLoggingDefaults.roundDurationSeconds * 1000
+    }
+
+    /// How long the current period is prescribed to run, in milliseconds: the
+    /// phone's number when the slot carries one, this wrist's preset otherwise
+    /// (D-1314, D-1402). A wrist slot's number is never smaller than a second —
+    /// `toSlot` floors it there — so anything under that is a value the wrist
+    /// did not write and does not read.
+    private var plannedRoundMs: Int {
+        if let seconds = WatchCatalogExercise.roundSeconds(
+            slot?[WatchCatalogExercise.roundDurationKey]
+        ) {
+            return seconds * 1000
+        }
+        return presetRoundMs
     }
 
     // MARK: - What the view is showing
@@ -370,20 +408,7 @@ public final class WatchLoggingState {
            WatchEffortKind.declared.contains(declared) {
             return declared
         }
-        for capability in Self.kindPrecedence where capabilities.contains(capability) {
-            return Self.effortKindFromMetric(capability)
-        }
-        return WatchEffortKind.set
-    }
-
-    /// Mirrors `ModalityConfig.effortKindFromMetric`.
-    private static func effortKindFromMetric(_ metric: String) -> String {
-        switch metric {
-        case "time", "distance": return WatchEffortKind.timed
-        case "hold": return WatchEffortKind.drill
-        case "rounds": return WatchEffortKind.round
-        default: return WatchEffortKind.set
-        }
+        return WatchEffortKind.resolved(capabilities) ?? WatchEffortKind.set
     }
 
     /// The word this modality uses for a round, exactly as the phone says it

@@ -1,5 +1,5 @@
 {
-  "description": "What both watch clients must agree on when a session starts on the wrist: the fallback list's contents and order, the slots a synced routine turns into, the position rule when the phone pushes an exercise into a live session, the effort-kind each capability set resolves to, and the lifecycle event a session start emits. Neither client owns these values — both suites read this file, so a change on one platform fails the other's tests instead of diverging silently. The two routines_down messages below are schema-conformant phone messages, fed through the same validator the protocol fixtures use. `effortKindParity` is the rule for a slot that declares no kind of its own — a free workout, or an exercise the phone pushed. A slot a routine produced carries the routine's declared `effortKind`, and both clients render that instead: it is what the user set up on the phone, and `routineSession.expectedSlots` pins it. `startSurface` is the sentence the start surface must carry about sync being watch-initiated — nothing arrives unless the user asks, and a user who is not told waits for routines that are never coming. `transportRequests` pins the three request frames a wrist's transport builds — the two ways it asks for routines (with and without the instant it already has) and its request for the phone's session — so the phone's transport and the wrist's cannot drift: a request carries no `type` key, because that key is what makes a frame a protocol message, and `since` is omitted rather than nulled when the wrist has never synced.",
+  "description": "What both watch clients must agree on when a session starts on the wrist: the fallback list's contents and order, the slots a synced routine turns into, the position rule when the phone pushes an exercise into a live session, the effort-kind each capability set resolves to, and the lifecycle event a session start emits. Neither client owns these values — both suites read this file, so a change on one platform fails the other's tests instead of diverging silently. The two routines_down messages below are schema-conformant phone messages, fed through the same validator the protocol fixtures use. `effortKindParity` is the rule for a slot that declares no kind of its own — a free workout, or an exercise the phone pushed. A slot a routine produced carries the routine's declared `effortKind`, and both clients render that instead: it is what the user set up on the phone, and `routineSession.expectedSlots` pins it. `roundRoutine` pins the length a round slot counts down from: the routine's own `targets.durationMs` on a round effort, the catalog entry's `roundDurationSecs` on a pick, and neither on an effort whose kind is not a round. `startSurface` is the sentence the start surface must carry about sync being watch-initiated — nothing arrives unless the user asks, and a user who is not told waits for routines that are never coming. `transportRequests` pins the three request frames a wrist's transport builds — the two ways it asks for routines (with and without the instant it already has) and its request for the phone's session — so the phone's transport and the wrist's cannot drift: a request carries no `type` key, because that key is what makes a frame a protocol message, and `since` is omitted rather than nulled when the wrist has never synced.",
   "fallback": {
     "recents": [
       {
@@ -113,6 +113,108 @@
         "effortKind": "set"
       }
     ]
+  },
+  "roundRoutine": {
+    "routinesDown": {
+      "protocolVersion": 1,
+      "messageId": "msg-routines-contract-3",
+      "type": "routines_down",
+      "origin": "phone",
+      "sentAt": "2026-07-13T19:00:00Z",
+      "payload": {
+        "generatedAt": "2026-07-13T19:00:00Z",
+        "routines": [
+          {
+            "routineId": "routine-soccer",
+            "name": "Soccer Practice",
+            "updatedAt": "2026-07-13T19:00:00Z",
+            "segments": [
+              {
+                "segmentId": "seg-soccer",
+                "name": "Halves",
+                "efforts": [
+                  {
+                    "effortId": "eff-soccer-half",
+                    "exerciseId": "ex-soccer",
+                    "exerciseName": "Soccer",
+                    "effortKind": "round",
+                    "capabilities": ["time", "rounds"],
+                    "targets": { "rounds": 2, "durationMs": 600000 }
+                  },
+                  {
+                    "effortId": "eff-soccer-open",
+                    "exerciseId": "ex-soccer",
+                    "exerciseName": "Soccer",
+                    "effortKind": "round",
+                    "capabilities": ["time", "rounds"],
+                    "targets": { "rounds": 4 }
+                  },
+                  {
+                    "effortId": "eff-soccer-interval",
+                    "exerciseId": "ex-soccer",
+                    "exerciseName": "Soccer",
+                    "effortKind": "timed",
+                    "capabilities": ["time", "rounds"],
+                    "targets": { "durationMs": 300000 }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "fallbackExercises": [
+          {
+            "exerciseId": "ex-soccer",
+            "name": "Soccer",
+            "capabilities": ["time", "rounds"],
+            "roundDurationSecs": 2400
+          },
+          {
+            "exerciseId": "ex-goblet-squat",
+            "name": "Goblet Squat",
+            "capabilities": ["sets", "reps", "load"]
+          },
+          {
+            "exerciseId": "ex-plank",
+            "name": "Plank",
+            "capabilities": ["time", "hold"],
+            "roundDurationSecs": 2400
+          }
+        ]
+      }
+    },
+    "expectedSlots": [
+      {
+        "sessionExerciseId": "sx-eff-soccer-half",
+        "exerciseId": "ex-soccer",
+        "name": "Soccer",
+        "capabilities": ["time", "rounds"],
+        "effortKind": "round",
+        "roundDurationSecs": 600
+      },
+      {
+        "sessionExerciseId": "sx-eff-soccer-open",
+        "exerciseId": "ex-soccer",
+        "name": "Soccer",
+        "capabilities": ["time", "rounds"],
+        "effortKind": "round"
+      },
+      {
+        "sessionExerciseId": "sx-eff-soccer-interval",
+        "exerciseId": "ex-soccer",
+        "name": "Soccer",
+        "capabilities": ["time", "rounds"],
+        "effortKind": "timed"
+      }
+    ],
+    "expectedReadout": "10:00",
+    "picker": {
+      "exerciseId": "ex-soccer",
+      "slotId": "sx-ex-soccer",
+      "roundDurationSecs": 2400,
+      "noLengthExerciseId": "ex-goblet-squat",
+      "noLengthCarryingAFieldExerciseId": "ex-plank"
+    }
   },
   "routineEdit": {
     "routinesDown": {

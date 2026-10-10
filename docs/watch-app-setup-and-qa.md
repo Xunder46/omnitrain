@@ -609,9 +609,12 @@ hardware yet.
    up while the button reads **Log**
    (`WatchTimedWorkTests.testS1300TimedWorkIsLoggedAsTheWindowFromStartToLog`);
    log it and the phone's session shows one entry for that window. A round
-   exercise counts down from the wrist's preset instead
-   (`…testS1303APeriodCountsDownAndLogIsNotARoundButton`), and **Finish** still
-   ends the session
+   exercise picked with the phone's number counts down from it — 40:00 for a
+   soccer half
+   (`WatchLoggingTimersTests.testS1401TheWristCountsDownFromTheSlotsOwnLength`),
+   while one whose slot carries no number keeps the wrist's preset at 3:00
+   (`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`). **Finish** still ends the
+   session
    (`…testS1311FinishLeavesTheWorkClockRunningAndTakesTheReadout`).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns

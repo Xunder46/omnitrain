@@ -32,13 +32,34 @@ final class WatchLoggingTimersTests: XCTestCase {
         )
     }
 
-    private func slot(_ id: String, capabilities: [String]) -> [String: Any] {
-        [
+    private func slot(
+        _ id: String,
+        capabilities: [String],
+        roundDurationSecs: Int? = nil
+    ) -> [String: Any] {
+        var slot: [String: Any] = [
             "sessionExerciseId": id,
             "exerciseId": "ex-\(id)",
             "name": id,
             "capabilities": capabilities,
         ]
+        if let roundDurationSecs {
+            slot[WatchCatalogExercise.roundDurationKey] = roundDurationSecs
+        }
+        return slot
+    }
+
+    /// The readout model over `engine`, so a case can assert what the user reads
+    /// as well as what the clock was given.
+    @MainActor
+    private func model(
+        _ harness: Harness,
+        engine: WatchSessionEngine
+    ) -> WatchLoggingModel {
+        WatchLoggingModel(
+            state: surface(harness, engine: engine),
+            haptics: RecordingHaptics()
+        )
     }
 
     // MARK: - S-160 / S-161 / S-164 the wrist's rest is a count-up
@@ -251,6 +272,159 @@ final class WatchLoggingTimersTests: XCTestCase {
             1,
             "the second period is owed its own haptic"
         )
+    }
+
+    // MARK: - S-1401 / S-1402 / S-1403 / S-1412 the period length comes from the slot
+
+    @MainActor
+    func testS1401TheWristCountsDownFromTheSlotsOwnLength() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [slot("sx-half", capabilities: ["time", "rounds"], roundDurationSecs: 2400)]
+        )
+        let surface = surface(harness, engine: engine)
+        let model = model(harness, engine: engine)
+
+        XCTAssertEqual(surface.effortKind, WatchEffortKind.round)
+        XCTAssertEqual(surface.workRemainingSeconds(), 2400, "the phone's number, not the wrist's preset")
+        XCTAssertEqual(model.workReadout, "40:00", "the readout before Start is the phone's number")
+
+        await surface.startWork()
+
+        let countdown = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(countdown.plannedDurationMs, 2_400_000, "the countdown runs from the slot's length")
+        XCTAssertEqual(countdown.startedAt, harness.clock.now)
+
+        harness.clock.advance(600)
+
+        XCTAssertEqual(surface.workRemainingSeconds(), 1800)
+        XCTAssertEqual(model.workReadout, "30:00")
+    }
+
+    @MainActor
+    func testS1402ASlotWithNoNumberKeepsTheWristsPreset() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [slot("sx-round", capabilities: ["time", "rounds"])]
+        )
+        let surface = surface(harness, engine: engine)
+        let model = model(harness, engine: engine)
+
+        XCTAssertEqual(surface.workRemainingSeconds(), 180)
+        XCTAssertEqual(model.workReadout, "3:00", "no number anywhere leaves the preset (D-1303)")
+
+        await surface.startWork()
+
+        XCTAssertEqual(engine.timerFor(WatchTimerKind.round)?.plannedDurationMs, 180_000)
+    }
+
+    @MainActor
+    func testS1402ATimedEffortIgnoresALengthOnItsSlot() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: nil,
+            exercises: [slot("sx-row", capabilities: ["time", "distance"], roundDurationSecs: 2400)]
+        )
+        let surface = surface(harness, engine: engine)
+        let model = model(harness, engine: engine)
+
+        XCTAssertEqual(surface.effortKind, WatchEffortKind.timed, "a count-up, whatever the slot says")
+        XCTAssertNil(surface.workRemainingSeconds(), "nothing is left of a count-up")
+        XCTAssertEqual(model.workReadout, "0:00", "a timed effort counts up from zero")
+
+        await surface.startWork()
+
+        XCTAssertNil(
+            engine.timerFor(WatchTimerKind.elapsed)?.plannedDurationMs,
+            "the field is a round's length, so a count-up gets no planned duration"
+        )
+    }
+
+    @MainActor
+    func testS1403TheLengthFollowsTheSlotTheUserIsOn() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [
+                slot("sx-half", capabilities: ["time", "rounds"], roundDurationSecs: 2400),
+                slot("sx-shift", capabilities: ["time", "rounds"], roundDurationSecs: 600),
+            ]
+        )
+        let surface = surface(harness, engine: engine)
+        let model = model(harness, engine: engine)
+
+        XCTAssertEqual(model.workReadout, "40:00")
+
+        _ = await engine.advanceExercise()
+
+        XCTAssertEqual(surface.workRemainingSeconds(), 600, "the next slot's length, not the last one's")
+        XCTAssertEqual(model.workReadout, "10:00")
+    }
+
+    @MainActor
+    func testS1403ARunningPeriodIsNotRetimedByTheJump() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [
+                slot("sx-half", capabilities: ["time", "rounds"], roundDurationSecs: 2400),
+                slot("sx-shift", capabilities: ["time", "rounds"], roundDurationSecs: 600),
+            ]
+        )
+        let surface = surface(harness, engine: engine)
+        let model = model(harness, engine: engine)
+        await surface.startWork()
+        harness.clock.advance(60)
+        XCTAssertEqual(model.workReadout, "39:00")
+
+        _ = await engine.advanceExercise()
+
+        let countdown = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(
+            countdown.plannedDurationMs,
+            2_400_000,
+            "the period the user started keeps the length it started with"
+        )
+        XCTAssertEqual(
+            model.workReadout,
+            "39:00",
+            "the clock they started is the one they are still reading"
+        )
+    }
+
+    @MainActor
+    func testS1412TheEndsOfTheRangeCountDown() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [
+                slot("sx-second", capabilities: ["time", "rounds"], roundDurationSecs: 1),
+                slot("sx-day", capabilities: ["time", "rounds"], roundDurationSecs: 86_400),
+            ]
+        )
+        let surface = surface(harness, engine: engine)
+        let model = model(harness, engine: engine)
+
+        XCTAssertEqual(model.workReadout, "0:01", "the shortest length the schema accepts")
+        await surface.startWork()
+        XCTAssertEqual(engine.timerFor(WatchTimerKind.round)?.plannedDurationMs, 1000)
+
+        try await surface.log()
+        _ = await engine.advanceExercise()
+
+        XCTAssertEqual(model.workReadout, "24:00:00", "a whole day, read in the shared clock's own shape")
+        await surface.startWork()
+        XCTAssertEqual(engine.timerFor(WatchTimerKind.round)?.plannedDurationMs, 86_400_000)
     }
 
     // MARK: - The shared contract (S-007)

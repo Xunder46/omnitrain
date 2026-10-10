@@ -434,8 +434,9 @@ their logged counts to jump to, then Finish. Exercises are added on the phone. A
 set keeps its value rows and one Log button; a timed, drill or round effort shows
 one clock readout and one Start/Log button
 (`WatchTimedWorkTests.testS1312ARelaunchKeepsTheButtonOnLog`), a period counting
-down from the wrist's preset
-(`…testS1303APeriodCountsDownAndLogIsNotARoundButton`), and the menu inert while
+down from the phone's number, or the wrist's preset with none
+(`WatchLoggingTimersTests.testS1401TheWristCountsDownFromTheSlotsOwnLength` and
+`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`), and the menu inert while
 an effort runs (`WatchMenuTests.testS1307TheMenuDoesNotJumpWhileAWorkClockRuns`).
 A logged set starts a rest with no length, which the rest screen counts up, and
 whose end reaches the phone

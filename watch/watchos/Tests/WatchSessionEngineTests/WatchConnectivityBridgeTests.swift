@@ -380,6 +380,57 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(session.exercises as NSArray, expectedSlots as NSArray)
     }
 
+    // MARK: - S-1410 the wrist's snapshot carries the number back
+
+    /// A wrist that picked a round exercise off the catalog states the length in
+    /// its own snapshot. The frame is the shared schema's to judge, and the
+    /// phone's shape comparison reads three identity fields, so a length the two
+    /// peers hold differently starts no disagreement (D-1413).
+    @MainActor
+    func testS1410AWristSnapshotCarriesTheNumberBack() async throws {
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+
+        let roundRoutine = try bridgeObject(try bridgeContract()["roundRoutine"])
+        await harness.deliver(try bridgeObject(roundRoutine["routinesDown"]))
+        let picker = try bridgeObject(roundRoutine["picker"])
+        let number = picker["roundDurationSecs"] as? Int
+        let soccer = try XCTUnwrap(harness.paths.fallbackExercises.first {
+            $0.exerciseId == picker["exerciseId"] as? String
+        })
+
+        _ = await harness.paths.startFreeWorkout()
+        _ = await harness.paths.addExerciseToSession(soccer)
+
+        let snapshot = try XCTUnwrap(harness.engine.sessionSnapshot())
+        let payload = try bridgeObject(snapshot["payload"])
+        let slot = try XCTUnwrap(try bridgeObjects(payload["exercises"]).first)
+        XCTAssertEqual(slot[WatchCatalogExercise.roundDurationKey] as? Int, number)
+
+        await harness.bridge.send(snapshot)
+        XCTAssertTrue(harness.failures.isEmpty, "a slot with the field is still a property list")
+
+        let sent = try XCTUnwrap(harness.session.sent.last)
+        let sentPayload = try bridgeObject(sent["payload"])
+        let sentSlot = try XCTUnwrap(try bridgeObjects(sentPayload["exercises"]).first)
+        XCTAssertEqual(
+            sentSlot[WatchCatalogExercise.roundDurationKey] as? Int,
+            number,
+            "the number survives the plist round trip"
+        )
+
+        XCTAssertTrue(
+            SyncProtocolValidator.incomingRejections(Harness.validator(), sent).isEmpty,
+            "the shared schema declares the field on a sessionExercise"
+        )
+
+        // Sending changed nothing: the ladder the wrist holds still states the
+        // number, and reading it again is the same bytes.
+        let second = try XCTUnwrap(harness.engine.sessionSnapshot())
+        let secondSlots = try bridgeObjects(try bridgeObject(second["payload"])["exercises"])
+        XCTAssertEqual(secondSlots as NSArray, [slot] as NSArray)
+    }
+
     // MARK: - S-112 the frames the wrist sends survive the plist round trip
 
     func testS112TheFramesTheWristSendsSurviveThePlistRoundTrip() async throws {

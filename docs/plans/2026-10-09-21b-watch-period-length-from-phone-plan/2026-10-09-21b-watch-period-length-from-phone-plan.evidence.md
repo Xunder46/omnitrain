@@ -161,6 +161,26 @@ Command(s):
 - `.github/copilot/scripts/macos/gateway.sh test test/watch_logging_surfaces_test.dart test/docs_indexing_contract_test.dart test/sync_protocol_fixtures_test.dart test/watch_session_start_test.dart test/watch_reconciliation_cross_stack_test.dart`
 - `.github/copilot/scripts/macos/gateway.sh lint`
 
+Counts (observed, this phase — commands in the order above):
+
+- `swift-test` (full): `Executed 429 tests, with 0 failures (0 unexpected) in 1.475 (1.503) seconds`, exit 0
+  (`.work/gateway/swift-test-20261010-002215-41805.log`). The same suite stood at 429 tests with **3 failures** immediately
+  before the leftover mutation at `WatchRoutineRecords.swift:56` (the catalog read in `init(json:)`) was restored, and 0 after:
+  the three reds were this phase's own guards — S-1401 `WatchLoggingTimersTests.testS1401TheWristCountsDownFromTheSlotsOwnLength`,
+  S-1404 `WatchSessionStartPathsTests.testS1404ARoutineRoundEffortCarriesTheRoutinesOwnLength` and S-1406
+  `WatchSessionStartPathsTests.testS1406APickKeepsTheCatalogNumberOnlyForARoundKind`. Each was re-run filtered and green after
+  the restore: `swift-test --filter WatchSessionStartPathsTests` → `Executed 40 tests, with 0 failures`;
+  `swift-test --filter WatchConnectivityBridgeTests/testS1410AWristSnapshotCarriesTheNumberBack` → 1 test, 0 failures.
+  The mutation itself was the red proof for those three (S-1406/S-1407's catalog path cannot compile without the field it
+  writes, so no `prove-red` on the base commit can compile); it was restored verbatim, not left applied.
+- `test` on the five Done-Criteria files: `All tests passed!` — 197 tests, 0 failures
+  (`.work/gateway/test-20261010-002220-41860.log`, exit 0). `docs_indexing_contract_test.dart` green, including the
+  warning-band test, so `watch_surface.md` stayed under 52,428 bytes.
+- `lint`: `196 issues found. (ran in 3.0s)` (`.work/gateway/lint-20261010-002227-41978.log`) — exactly the plan's baseline of
+  196; none of the issues names a file this phase touched.
+- `test` (full suite, run once after the phase's files): `+4238 ~1: All tests passed!`
+  (`.work/gateway/test-20261010-002355-42429.log`, exit 0) — the same total Phase 2 recorded, so no other feature's test moved.
+
 | Scenario | Red before (paste) | Green after (paste) |
 |---|---|---|
 | S-1401 the wrist counts down from the slot | idle readout `"3:00"`, `plannedDurationMs == 180_000` | `"40:00"`, `2_400_000`, 1800 s left at 10:10:00 |
@@ -172,17 +192,37 @@ Command(s):
 | S-1410 a wrist snapshot carries it back | — | the phone accepts and applies the snapshot; no disagreement loop |
 | S-1412 the ends of the range on the wrist | — | `"0:01"`/`1000` and `"1440:00"`/`86_400_000` |
 
-Doc constraints to record here: `docs/state_management/watch_surface.md` is near its 52 KB band — record the file's size before
-and after the remove-before-add edit; `test/docs_indexing_contract_test.dart` caps every `docs/` file at 64 KiB and bans
-walkthrough narration and roadmap phrasing. `watch/sync_protocol/PROTOCOL.md` is not covered by that test.
+Doc sizes (remove-before-add): `docs/state_management/watch_surface.md` 51,018 → 51,127 bytes (+109). The removal is the
+superseded `…testS1303APeriodCountsDownAndLogIsNotARoundButton` citation, which the phone's number replaces; the sentence added
+in its place names `WatchLoggingTimersTests.testS1401TheWristCountsDownFromTheSlotsOwnLength` and
+`WatchLoggingTimersTests.testS1402ASlotWithNoNumberKeepsTheWristsPreset`. Both the 52,428-byte warning band and the 64 KiB
+ceiling in `test/docs_indexing_contract_test.dart` still pass — that file is in the command list above.
+`docs/watch-app-setup-and-qa.md` QA step 6 now states a round exercise picked with the phone's number counts down from it
+(40:00 for a soccer half, S-1401) while one whose slot carries no number keeps the wrist's preset (S-1402), and the 18-series QA
+index carries the new 21b row. `watch/sync_protocol/PROTOCOL.md` is not covered by that test and was not touched this phase.
+
+**Diff footprint** (`.github/copilot/scripts/macos/gateway.sh git-diff --stat`): `docs/plans/2026-10-08-18-watch-qa-index.md` 3,
+`docs/state_management/watch_surface.md` 5, `docs/watch-app-setup-and-qa.md` 9, `watch/contract/watch_start_paths_contract.json`
+104, `WatchLoggingState.swift` 71, `WatchRoutineRecords.swift` 80, `WatchConnectivityBridgeTests.swift` 51,
+`WatchLoggingTimersTests.swift` 178, `WatchSessionStartPathsTests.swift` 121 — 9 files, 584 insertions, 38 deletions, every one
+inside the phase's Predicted Files. The three doc diffs are 3/5/9 changed lines: nothing else in those files moved.
 
 ## Residue sweep (Phase 3.8)
 
-Paste the outputs of:
-
-- `grep -rn "plannedRoundMs" watch/watchos/Sources watch/watchos/Tests` — every remaining reader is the per-slot read (D-1405).
-- `grep -rn "roundDurationSecs" lib/ watch/ test/` — every reader and writer of the new field, with the Dart Wear client
-  (`lib/watch/`) intentionally absent (D-1408).
-- `grep -rn "roundPresetMs" watch/watchos` — the plan-21 seam still honoured as the second source.
-- `.github/copilot/scripts/macos/gateway.sh git-diff` — files touched versus the plan's Predicted Files (out-of-bounds files and
-  untouched predicted files are both findings).
+- `grep -rn "plannedRoundMs" watch/watchos/Sources watch/watchos/Tests` — 4 hits, all the per-slot read (D-1405):
+  `WatchLoggingState.swift:218` (the declaration, `private var plannedRoundMs: Int`), `:376` (`workTimer` idle → `plannedRoundMs / 1000`)
+  and `:394` (`plannedDurationMs: kind == .round ? plannedRoundMs : nil`); no test names it, so no test can pin a preset where a
+  slot's number belongs.
+- `grep -rn "roundDurationSecs" lib/ watch/ test/` — every reader and writer: the wrist's `WatchCatalogExercise`
+  (`roundDurationKey` `:22`, stored property `:37`, `init(json:)` `:56`, `init?(slot:)` `:69`, `toSlot` writing it only for a
+  round kind `:136`/`:191`), the Dart phone's sender (`lib/state/watch/watch_session_adoption_bridge.dart:494`,
+  `lib/core/utils/watch_reference_sync.dart:165`), the contract `watch/contract/watch_start_paths_contract.json`, the protocol
+  schema `watch/sync_protocol/schemas/envelope.schema.json` and `PROTOCOL.md`, the four new fixtures, and the tests
+  (`test/watch_session_adoption_bridge_test.dart`, `test/watch_reference_sync_test.dart`, `WatchSessionStartPathsTests`,
+  `WatchLoggingTimersTests`, `WatchConnectivityBridgeTests`). The Dart Wear client `lib/watch/` is absent — intentional (D-1408).
+- `grep -rn "roundPresetMs" watch/watchos` — 5 hits: the plan-21 seam
+  (`WatchLoggingState.swift:202` parameter, `:209` `presetRoundMs = roundPresetMs ?? WatchLoggingDefaults.roundDurationSeconds * 1000`)
+  and the two tests that exercise it (`WatchTimedWorkTests.swift:41/46`, `WatchCaptureContractTests.swift:204`). It is still the
+  second source, now behind the slot's own number.
+- `.github/copilot/scripts/macos/gateway.sh git-diff --stat` — the 9 files in the footprint above. No out-of-bounds file; the
+  only predicted file this phase did not touch was `lib/watch/`-side Dart code, which D-1408 keeps out of scope.

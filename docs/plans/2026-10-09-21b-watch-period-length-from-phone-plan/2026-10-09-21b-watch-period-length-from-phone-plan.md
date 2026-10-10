@@ -355,27 +355,27 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
 
 ### Phase 3: the wrist reads the number (@developer)
 
-1. [ ] One capability→kind resolver — `watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift` ·
+1. [x] One capability→kind resolver — `watch/watchos/Sources/WatchSessionEngine/WatchLoggingState.swift` ·
    `WatchEffortKind` (`:26-40`) gains `static func resolved(_ capabilities: [String]) -> String?` carrying
    `WatchLoggingState.kindPrecedence` (`:200`) verbatim; `WatchLoggingState.effortKind` (`:~365`) and the new `toSlot` call it
    (D-1412). The precedence list and its comment move with it.
-2. [ ] The catalog exercise carries the phone's number — `watch/watchos/Sources/WatchSessionEngine/WatchRoutineRecords.swift` ·
+2. [x] The catalog exercise carries the phone's number — `watch/watchos/Sources/WatchSessionEngine/WatchRoutineRecords.swift` ·
    `WatchCatalogExercise` (`:19-77`): `public let roundDurationSecs: Int?` (init parameter, written by `init(json:)` from
    `(json["roundDurationSecs"] as? NSNumber)?.intValue` when `>= 1`, by `init?(slot:)` the same way, and by `toJson()` only when
    non-nil), plus `Equatable` stays synthesized.
-3. [ ] Write it into the slot only for a round kind — `WatchRoutineRecords.swift` · `WatchCatalogExercise.toSlot`
+3. [x] Write it into the slot only for a round kind — `WatchRoutineRecords.swift` · `WatchCatalogExercise.toSlot`
    (`:60-77`) gains `roundDurationSecs: Int? = nil`; the slot gets `"roundDurationSecs"` iff the governing kind is round —
    `effortKind` when `WatchEffortKind.declared.contains(effortKind)`, else `WatchEffortKind.resolved(capabilities)` — and the
    length is `>= 1` (defaulting to the exercise's own value). D-1413.
-4. [ ] The routine's target as the slot's length — `WatchRoutineRecords.swift` · `WatchRoutineEffort.slot` (`:123`): pass
+4. [x] The routine's target as the slot's length — `WatchRoutineRecords.swift` · `WatchRoutineEffort.slot` (`:123`): pass
    `effortKind == WatchEffortKind.round ? roundSeconds(from: targets["durationMs"]) : nil`, where `roundSeconds` is
    `max(1, ms / 1000)` and nil when the target is missing or not numeric (D-1402; the app's own routine validator requires both
    `rounds` and `round-duration` for a round effort, `lib/core/services/demo_routines_validator.dart:198-202`).
-5. [ ] Read it per slot at Start and in the idle readout — `WatchLoggingState.swift` · `plannedRoundMs` (`:144`, set once at
+5. [x] Read it per slot at Start and in the idle readout — `WatchLoggingState.swift` · `plannedRoundMs` (`:144`, set once at
    `:178-186`) becomes a private computed property: `Int(slot?["roundDurationSecs"] as? NSNumber) * 1000` when that is `>= 1000`,
    else the stored `roundPresetMs` captured in `init` (`:172-186`), else `WatchLoggingDefaults.roundDurationSeconds * 1000`
    (`:23-24`). `workRemainingSeconds` (`:334-339`) and `startWork` (`:349-357`) keep reading the same name (D-1405).
-6. [ ] Tests, Swift half — `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift`: S-1401 (round slot at
+6. [x] Tests, Swift half — `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift`: S-1401 (round slot at
    2400 → idle `"40:00"`, Start at 10:00:00 → `plannedDurationMs == 2_400_000`, remaining 1800 s at 10:10:00), S-1402
    (absent → `"3:00"`/`180_000`; a `timed` slot carrying the field → count-up `0:00`, no planned duration; keep the plan-21
    `roundPresetMs:` case green), S-1403 (jump 2400 → 600 changes the idle readout; a running period is not re-timed), S-1412
@@ -384,13 +384,13 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
    `roundDurationSecs == 600` in the slot; the stored-catalog run after a relaunch); S-1406 (a pick of Soccer →
    `2400` in the slot, a pick of Squat → absent) · `WatchConnectivityBridgeTests.swift`: S-1410 (a wrist snapshot whose slot
    carries the field is accepted and applied) and the existing `:380` comparison stays per-field.
-7. [ ] Docs: in `docs/state_management/watch_surface.md` (`:436-438`) replace "a period counting down from the wrist's preset"
+7. [x] Docs: in `docs/state_management/watch_surface.md` (`:436-438`) replace "a period counting down from the wrist's preset"
    with the phone's number — **remove before adding** (the file is near its 52 KB band) and keep the remove-before-add
    accounting in the evidence file · in `docs/watch-app-setup-and-qa.md` (`:608-613`) replace/extend one QA step: a round
    exercise started on the wrist shows the phone's period length (40:00 for a soccer half), and an exercise with no number
    still shows 3:00 · add the `21b` row to the PR table of `docs/plans/2026-10-08-18-watch-qa-index.md` (after the `21` row:
    plan, status, the checks run, the counts).
-8. [ ] Evidence and residue sweep: fill the `.evidence.md` Phase 3 rows; then
+8. [x] Evidence and residue sweep: fill the `.evidence.md` Phase 3 rows; then
    `.github/copilot/scripts/macos/gateway.sh git-diff` plus a grep for `plannedRoundMs` and `roundDurationSecs` across
    `watch/watchos/Sources` and `lib/` showing every reader of the old preset is gone or intentionally kept, and that no test
    still asserts a fixed 3:00 for a slot that carries a number.
@@ -493,7 +493,7 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
 |---|---|
 | 1 | Complete |
 | 2 | Complete |
-| 3 | Not started |
+| 3 | Complete |
 
 Phase 1 items (all done — `watch/sync_protocol/` only): 1.1 `roundDurationSecs` on `$defs.sessionExercise`; 1.2 the same on
 `$defs.catalogExercise`; 1.3 `valid/session_snapshot_round_length.json` (2400 + omitted) + row; 1.4
@@ -505,6 +505,14 @@ Phase 2 items (all done — the two sender files and their two test files): 2.1 
 emits it (D-1411); 2.5 the five Dart tests (S-1405 ×2, S-1408, S-1409, S-1411) and S-1406; 2.6 the seven-file regression run;
 2.7 evidence. Counts and the red→green pairs are in the evidence file: red `+33 -5`, green `+37`, regression `+300`, full
 suite `+4238 ~1`, `lint` 196 (baseline). No `.swift`, schema or doc file was touched.
+
+Phase 3 items (all done — the watch package, its three test files, and three docs): 3.1 `WatchEffortKind.resolved` carries the
+precedence list; 3.2 `WatchCatalogExercise.roundDurationSecs`; 3.3 `toSlot` writes the key only for a round kind; 3.4
+`WatchRoutineEffort.slot` passes the routine's own target; 3.5 `plannedRoundMs` is a computed per-slot read; 3.6 the Swift tests
+(S-1401/S-1402/S-1403/S-1412, S-1404/S-1407, S-1406, S-1410); 3.7 the three doc edits; 3.8 evidence and residue sweep. Counts and
+the red→green pair are in the evidence file: `swift-test` 429 tests / 0 failures (429 / 3 with the leftover mutation still
+applied), the phase's five-file `test` set 197 / 0, the full suite `+4238 ~1`, `lint` 196 (baseline). `flutter run` is not
+available in Copilot mode, so the governor or the owner exercises the wrist.
 
 ## Assumption Log
 
@@ -524,3 +532,14 @@ suite `+4238 ~1`, `lint` 196 (baseline). No `.swift`, schema or doc file was tou
 - (developer) `_seedPhoneSession` gained an optional parallel `List<String> kinds = const []` (default = the existing `BlockTypes.set` for every effort) rather than a new seeding helper, so its nine existing callers are unchanged.
 - (developer) The fixture repository is built inside the new group (`roundRepository()`): `ex-soccer` at `defaultRoundDurationSecs: 2400` with `[time, rounds]`, plus `ex-squat` re-declared `[time, rounds]` for the no-number case. Options: reuse the seeded Soccer Match (2700 s, and its capabilities are not round) or seed per test. Seeded per test, so the number in each assertion is the one the fixture states and no seeded row is re-used as a length.
 - (developer) No `docs/` file was touched in Phase 2 (outside its Predicted Files). Options: extend `docs/state_management/watch_surface.md`'s "revision rises only when the ladder changes" sentence with the length case, or leave it. Left: no sentence there became false — the doc enumerates no slot field, `watch/sync_protocol/PROTOCOL.md` already carries the field (Phase 1's normative bullet), and Phase 3 item 7 owns that file's edit (it records the size before and after). The behaviour is pinned by `test/watch_session_adoption_bridge_test.dart` (`S-1409 a length-only change moves the revision`) and `test/watch_reference_sync_test.dart` (`S-1406 a round exercise's default travels, a set exercise's does not`), which Phase 3's doc pass can cite.
+- (developer) The leftover mutation in `WatchRoutineRecords.swift:56` (`roundDurationSecs: nil`) was restored to the catalog read
+  and no new mutation checks were run: S-1406/S-1407's catalog path cannot compile without the field it writes, so a
+  `prove-red HEAD` there proves nothing. The red proof for S-1401/S-1404/S-1406 is the recorded pre-restore `swift-test`
+  (429 tests, 3 failures), with the three filter re-runs green afterwards.
+- (developer) The one other in-repo `MUTANT` string is a `-`/`+` diff quote in
+  `docs/plans/2026-10-05-15a-watch-session-sync-pr1-plan/2026-10-05-15a-watch-session-sync-pr1-plan.evidence.md:736` — an earlier
+  plan's mutation-check record. Left untouched: it records a past phase's proof, not residue in shipped code.
+- (developer) `watch_surface.md` fits its 52 KB band by deleting the superseded
+  `…testS1303APeriodCountsDownAndLogIsNotARoundButton` citation from the same sentence it rewrites (+109 bytes, 51,018 → 51,127).
+  Options: split the page into a part page — a doc-structure change no phase predicted — or swap the citation. Swapped, because
+  D-1402 supersedes exactly that sentence.
