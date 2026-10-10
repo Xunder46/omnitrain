@@ -1,7 +1,7 @@
 # Plan 21b — the watch counts a period down from the phone's number
 
-> Status: PLANNED — the seed is kept verbatim (D-1400…D-1408, S-1400…S-1406); the planner appended D-1409…D-1414 and S-1407…S-1412 and expanded phases 1–3.
-> Next handoff: @dba (Phase 1)
+> Status: IN PROGRESS — Phase 1 complete (the contract: schema, fixtures, PROTOCOL.md); phases 2–3 planned. The seed is kept verbatim (D-1400…D-1408, S-1400…S-1406); the planner appended D-1409…D-1414 and S-1407…S-1412 and expanded phases 1–3.
+> Next handoff: @developer (Phase 2 — the phone sends the number)
 > Binding conventions: `docs/global_conventions.md`; `docs/README.md` (docs index), `docs/documentation_standard.md` (doc rules), `watch/sync_protocol/PROTOCOL.md` (the wire contract this plan amends).
 > Series: `docs/plans/2026-10-08-18-watch-qa-index.md` (row 21b). Follows plan 21 (`2026-10-09-21-watch-timed-work-plan`). Base: `.work/watch-21b/base.txt`.
 > Evidence: `2026-10-09-21b-watch-period-length-from-phone-plan.evidence.md` · Review: `…-plan.review.md` (both beside this file).
@@ -258,36 +258,39 @@ inside its phase.
 
 ### Phase 1: the contract — schema, fixtures, PROTOCOL.md (@dba)
 
-1. [ ] Add `"roundDurationSecs": { "type": "integer", "minimum": 1 }` to `$defs.sessionExercise` properties, immediately after
+1. [x] Add `"roundDurationSecs": { "type": "integer", "minimum": 1 }` to `$defs.sessionExercise` properties, immediately after
    `effortKind` — `watch/sync_protocol/schemas/envelope.schema.json` · `$defs.sessionExercise`. Keep `additionalProperties:
-   false` and the property order style of the neighbours.
-2. [ ] Add the same property to `$defs.catalogExercise` — `envelope.schema.json` · `$defs.catalogExercise` (D-1400: both objects
-   are closed, so without this the valid fixture is rejected).
-3. [ ] New fixture `watch/sync_protocol/fixtures/valid/session_snapshot_round_length.json` (copy the shape of
+   false` and the property order style of the neighbours. — done; `additionalProperties: false` kept.
+2. [x] Add the same property to `$defs.catalogExercise` — `envelope.schema.json` · `$defs.catalogExercise` (D-1400: both objects
+   are closed, so without this the valid fixture is rejected). — done; after `capabilities` (that def declares no `effortKind`).
+3. [x] New fixture `watch/sync_protocol/fixtures/valid/session_snapshot_round_length.json` (copy the shape of
    `valid/session_snapshot.json`): `exercises[0]` a round slot — `sessionExerciseId: "sx-soccer"`, `exerciseId: "ex-soccer"`,
    `name: "Soccer"`, `capabilities: ["time","rounds"]`, `effortKind: "round"`, `roundDurationSecs: 2400`; `exercises[1]` the same
    shape without the field; entries empty · plus a `valid` row in `watch/sync_protocol/fixtures/manifest.json`
    (`{"path": "valid/session_snapshot_round_length.json", "type": "session_snapshot", "scenario": "S-1400", "note": …}`).
-4. [ ] New fixture `watch/sync_protocol/fixtures/valid/routines_down_round_length.json`: one routine with three efforts — a
+   — done; slot 2 is `sx-soccer-plain` (same shape, field omitted), `entries: []`, `timers: {}`.
+4. [x] New fixture `watch/sync_protocol/fixtures/valid/routines_down_round_length.json`: one routine with three efforts — a
    round effort `targets {rounds: 2, durationMs: 600000}`, a round effort with `targets {rounds: 3}` and no `durationMs`, and a
    wire-`timed` effort with `durationMs: 300000`; `fallbackExercises` holds `ex-soccer` (`["time","rounds"]`,
    `roundDurationSecs: 2400`) and `ex-plank` (no number) · plus its `manifest.json` `valid` row (`scenario: "S-1404"`),
    keeping the schema's "every referenced exercise is in the fallback list" rule (`invalid/routines_down_unlisted_fallback_exercise.json`).
-5. [ ] Four rejection fixtures + rows: `invalid/session_snapshot_round_length_zero.json` (`expectedCode: "constraint_violation"`,
+   — done; the fallback-coverage rule passes (both referenced ids are listed).
+5. [x] Four rejection fixtures + rows: `invalid/session_snapshot_round_length_zero.json` (`expectedCode: "constraint_violation"`,
    `expectedReasonContains: "expected at least"`), `…_negative.json` (same codes), `…_fractional.json` and `…_string.json`
    (`expectedCode: "invalid_type"`, `expectedReasonContains: "expected integer"`) — each a copy of fixture 1.3 with
    `roundDurationSecs` set to `0`, `-5`, `12.5`, `"2400"` · plus four `manifest.json` `invalid` rows with
    `scenario: "S-1400"`, mirroring `manifest.json:236-248`. If the walker's actual code/reason text differs from these
    precedents, the row must state what the validator returns — a mismatched row is a failing test, not a passing one.
-6. [ ] One normative sentence in the `effortKind` neighbourhood of the "Exercise identity (normative)" list: a slot MAY carry
+   — done; the walkers return exactly the precedents (`constraint_violation` / `expected at least 1`; `invalid_type` / `expected integer`).
+6. [x] One normative sentence in the `effortKind` neighbourhood of the "Exercise identity (normative)" list: a slot MAY carry
    `roundDurationSecs` (integer, minimum 1) — the length of ONE round or period in seconds as the phone knows it, omitted when
    unknown, ignored by a receiver for any effort that is not a round, and never settable from the wrist — `watch/sync_protocol/PROTOCOL.md`
-   (after the `effortKind` bullet, `:~203-215`).
-7. [ ] One row in the version-history table: `| 1 (amended) | 2026-10-09 | The length of a period: a `sessionExercise` or
+   (after the `effortKind` bullet, `:~203-215`). — done.
+7. [x] One row in the version-history table: `| 1 (amended) | 2026-10-09 | The length of a period: a `sessionExercise` or
    `catalogExercise` MAY carry `roundDurationSecs` … additive for the same reason as the 2026-09-25 amendment; pinned by
    `fixtures/valid/session_snapshot_round_length.json`, `fixtures/valid/routines_down_round_length.json` and four
    `invalid/session_snapshot_round_length_*` fixtures |` — `PROTOCOL.md` version history (`:~580-598`, matching that table's
-   prose style and length).
+   prose style and length). — done; appended after the 2026-10-08 row, naming the walker groups/tests that exist.
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh lint`,
 `.github/copilot/scripts/macos/gateway.sh test test/sync_protocol_fixtures_test.dart test/watch_wire_limits_test.dart test/rest_is_count_up_contract_test.dart test/docs_indexing_contract_test.dart`,
@@ -487,9 +490,14 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
 
 | Phase | Status |
 |---|---|
-| 1 | Not started |
+| 1 | Complete |
 | 2 | Not started |
 | 3 | Not started |
+
+Phase 1 items (all done — `watch/sync_protocol/` only): 1.1 `roundDurationSecs` on `$defs.sessionExercise`; 1.2 the same on
+`$defs.catalogExercise`; 1.3 `valid/session_snapshot_round_length.json` (2400 + omitted) + row; 1.4
+`valid/routines_down_round_length.json` + row; 1.5 four `invalid/session_snapshot_round_length_*` files + rows; 1.6 the
+normative bullet in PROTOCOL.md; 1.7 the version-history row. Red→green in the evidence file.
 
 ## Assumption Log
 
@@ -499,4 +507,9 @@ pins the whole property list of `sessionExercise`: `test/watch_wire_limits_test.
 - (conductor) The length joins the ladder identity (D-1410) instead of leaving `_ladderOf` alone. Options: rely on the wrist applying every snapshot it receives (true today — no revision gate) versus stating a new revision. Chosen because `_countRevision`'s contract is "the identity of the ladder as the wrist can see it", and the wrist renders the length; the cost is one extra revision on a length-only edit.
 - (conductor) The capability→kind resolution is extracted to `WatchEffortKind.resolved` (D-1412) rather than copied into `WatchCatalogExercise.toSlot`. Options: a private copy in the model, or the shared static. Chosen for the "kind agreement" invariant (`effortKindParity` is the existing pin, `watch_start_paths_contract.json`).
 - (conductor) New fixture files rather than mutations of `valid/session_snapshot.json` / `valid/routines_down.json` (D-1414). Options: extend the existing fixtures (they have contract twins whose expectations would move) or add files. Added files: every existing row's `expected`/`expectedCode` stays pinned, and the register accepts additions.
+- (dba) The register's valid round fixture carries 2400 s and an omitted slot; S-1412's boundary values (1 and 86400) got no
+  fixture in this phase. Options: a boundary fixture file (outside the phase's Predicted Files) or none. None: item 1.3 fixes the
+  fixture's contents, and the boundary is the schema's `minimum: 1` with no maximum, exercised by the same walker.
+- (dba) Valid item 1.3's second slot is `sx-soccer-plain` (same exercise, same shape, field omitted) so the register holds a
+  before/after pair in one file; the plan said only "the same shape without the field".
 - (conductor) `live_session_mirror_state._sameSlots` is left untouched (impact row). Options: add the length to the compared fields, or keep the three identity fields. Kept, because the file's own comment (`:697-701`) says a comparison that disagrees about a field two peers may hold differently answers for ever; the correction is the phone's projection.

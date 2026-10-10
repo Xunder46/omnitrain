@@ -84,6 +84,11 @@
           "items": {
             "$ref": "#/$defs/capability"
           }
+        },
+        "roundDurationSecs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The length of ONE round or period in seconds as the phone knows it. Omitted when unknown, and ignored by a receiver for any effort that is not a round."
         }
       }
     },
@@ -120,6 +125,11 @@
         "effortKind": {
           "$ref": "#/$defs/effortKind",
           "description": "The effort kind the routine that produced this slot declared. Omitted where no routine declared one — a free workout, or a slot the phone pushed — and the receiver resolves the kind from the capabilities instead."
+        },
+        "roundDurationSecs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The length of ONE round or period in seconds as the phone knows it. Omitted when unknown, and ignored by a receiver for any effort that is not a round."
         }
       }
     },

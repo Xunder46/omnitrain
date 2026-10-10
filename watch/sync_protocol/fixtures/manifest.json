@@ -70,6 +70,18 @@
       "type": "observations_up",
       "scenario": "S-330",
       "note": "A rest is a window between two instants: `rest-a1` is the 70 s `rest` that follows the set `entry-a1`, named by `afterEntryId` and carrying no planned length."
+    },
+    {
+      "path": "valid/session_snapshot_round_length.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "note": "A slot MAY carry the phone's period length: `sx-soccer` is a round slot at 2400 s and `sx-soccer-plain` the same slot with the field omitted."
+    },
+    {
+      "path": "valid/routines_down_round_length.json",
+      "type": "routines_down",
+      "scenario": "S-1404",
+      "note": "The routine's round effort keeps the phone's target: `eff-soccer-half` carries `durationMs: 600000` (600 s) while `eff-soccer-extra` has no length target and `eff-plank` is a `timed` effort."
     }
   ],
   "invalid": [
@@ -376,6 +388,38 @@
       "expectedCode": "semantic_violation",
       "expectedReasonContains": "endedAt",
       "note": "A rest of no length cannot travel: endedAt is not after startedAt, so the window rule refuses it."
+    },
+    {
+      "path": "invalid/session_snapshot_round_length_zero.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1",
+      "note": "A round length of 0 is not a length: the schema's minimum is 1."
+    },
+    {
+      "path": "invalid/session_snapshot_round_length_negative.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1",
+      "note": "A negative round length is below the schema's minimum of 1."
+    },
+    {
+      "path": "invalid/session_snapshot_round_length_fractional.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer",
+      "note": "The length is whole seconds: 12.5 is a number, not an integer."
+    },
+    {
+      "path": "invalid/session_snapshot_round_length_string.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer",
+      "note": "The length is a number, never a string: `\"2400\"` is refused as the wrong type."
     }
   ],
   "scenarios": [

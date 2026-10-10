@@ -25,11 +25,68 @@ Command(s):
 - `.github/copilot/scripts/macos/gateway.sh test test/sync_protocol_fixtures_test.dart test/watch_wire_limits_test.dart test/rest_is_count_up_contract_test.dart test/docs_indexing_contract_test.dart`
 - `.github/copilot/scripts/macos/gateway.sh swift-test`
 - `.github/copilot/scripts/macos/gateway.sh lint`
+- `.github/copilot/scripts/macos/gateway.sh test` (full suite)
+
+### Baselines re-measured (Phase 1, overwrite the seed row above)
+
+| Check | Measured | Notes |
+|---|---|---|
+| full `flutter test` | `01:51 +4232 ~1: All tests passed!` | 4232 passed, 1 skipped, **0 failures** — the 18-series single pre-existing failure is no longer present |
+| `lint` (`flutter analyze`) | `196 issues found. (ran in 2.6s)` | exactly the plan's 196 baseline; files touched: none listed |
+| `swift-test` | `Executed 419 tests, with 0 failures (0 unexpected)` | 419, as the brief's baseline |
+| four named suites | `00:00 +123: All tests passed!` | 123 passed, 0 failed |
+
+### Red→green, observed
+
+**Red (Dart walker) — `prove-red HEAD test test/sync_protocol_fixtures_test.dart -- <the 7 fixture files + manifest.json>`:**
+
+```
+gateway: prove-red: RED AT HEAD (exit 1).
+00:00 +25 -1: S-001 fixtures valid/session_snapshot_round_length.json conforms to session_snapshot [E]
+  Expected: empty
+    Actual: ['unexpected_field at $.payload.exercises[0].roundDurationSecs: field "roundDurationSecs" is not defined by the schema']
+00:00 +25 -2: S-001 fixtures valid/routines_down_round_length.json conforms to routines_down [E]
+  Expected: empty
+    Actual: ['unexpected_field at $.payload.fallbackExercises[0].roundDurationSecs: field "roundDurationSecs" is not defined by the schema']
+00:00 +69 -3: invalid/session_snapshot_round_length_zero.json is rejected as constraint_violation [E]
+  Expected: contains 'constraint_violation'   Actual: ['unexpected_field']
+00:00 +69 -4: invalid/session_snapshot_round_length_negative.json is rejected as constraint_violation [E]
+  Expected: contains 'constraint_violation'   Actual: ['unexpected_field']
+00:00 +69 -5: invalid/session_snapshot_round_length_fractional.json is rejected as invalid_type [E]
+  Expected: contains 'invalid_type'           Actual: ['unexpected_field']
+00:00 +69 -6: invalid/session_snapshot_round_length_string.json is rejected as invalid_type [E]
+  Expected: contains 'invalid_type'           Actual: ['unexpected_field']
+00:00 +95 -6: Some tests failed.
+```
+
+**Red (Swift walker) — `prove-red HEAD swift-test --filter SyncProtocolFixturesTests -- <manifest + the two valid fixtures + the zero fixture>`:**
+
+```
+gateway: prove-red: RED AT HEAD (exit 1).
+error: SyncProtocolFixturesTests.swift:45: XCTAssertTrue failed - valid/session_snapshot_round_length.json ...
+error: SyncProtocolFixturesTests.swift:45: XCTAssertTrue failed - valid/routines_down_round_length.json ...
+error: SyncProtocolFixturesTests.swift:61: XCTAssertTrue failed - invalid/session_snapshot_round_length_zero.json ...
+Executed 6 tests, with 5 failures (1 unexpected)
+```
+
+(The other three invalid files were not carried in that run — `Fixtures.swift:101` reports the missing file — so five of the six
+cases fail on the undeclared field and one on the absent file; the Dart run carried all seven.)
+
+**Green (both stacks, after the two schema properties):**
+
+- Dart: `00:00 +123: All tests passed!` for the four named suites, with the new register rows inside `S-001 fixtures`.
+- Swift: `Executed 419 tests, with 0 failures (0 unexpected)`.
+- The actual rejection codes/reason text match the plan's precedents: `0` and `-5` → `constraint_violation` / `expected at least 1`;
+  `12.5` and `"2400"` → `invalid_type` / `expected integer`. No row had to be bent.
+
+**Diff footprint** (`.github/copilot/scripts/macos/gateway.sh git-diff --stat`): PROTOCOL.md +6, manifest.json +44,
+envelope.schema.json +10 — 3 tracked files, 60 insertions, 0 deletions; six new untracked fixture files. Nothing outside the
+Predicted Files.
 
 | Scenario | Red before (paste) | Green after (paste) |
 |---|---|---|
 | S-1400 slot field travels/validates (valid fixture + 4 rejects) | the valid fixture is refused — `roundDurationSecs` is not a declared property of `sessionExercise` | both walkers accept the two valid fixtures and reject `0`, `-5`, `12.5`, `"2400"` with the manifest's codes |
-| S-1412 the ends of the range (`1`, `86400` in both schema objects) | both values refused (undeclared property) | both accepted; no maximum |
+| S-1412 the ends of the range (`1`, `86400` in both schema objects) | the register carries no boundary fixture; the omitted-property refusal is the same as S-1400's | the schema states `type: integer`, `minimum: 1`, no maximum; the register's values are 2400 and omitted. No boundary fixture was created — item 1.3 fixes the fixture's contents and the Predicted Files name no other file (Assumption Log) |
 
 Facts to confirm here (they are the plan's assumptions, not findings):
 
