@@ -25,6 +25,8 @@ and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
 | The OS-level workout registration | `WatchPlatformWorkout`, over the watch app target's `HealthKitWorkoutStore` |
 | What keeps the workout in step with the session | `WatchWorkoutCoordinator`, asking `WatchWorkoutLifecycle`'s rule over `WatchPlatformWorkout` |
 | What the device's sensors read | `WatchSensorRecorder`, over a `WatchSensorSource` the app target implements |
+| Raw location fixes turned into the cumulative metres the sensor seam expects | `WatchDistanceTracker` (`accept(_:)`, `totalMeters`), pure, in the watchOS package |
+| Any raw fix source, seen as the sensor seam's location stream | `WatchTrackedLocation`, over a `WatchRawFixSource` |
 | Writing the readings one at a time | `WatchSensorWrites`, inside `WatchSensorRecorder` |
 | Starting and stopping both together | `WatchSessionSensors` |
 | Starting and stopping the sensors with the session | `WatchSensorCoordinator` |
@@ -63,6 +65,41 @@ step total (`…testS3115ATimedEntryCarriesTheStepTotalTheRecorderFedIt`).
 appended to the watch's own store like everything else, and the live readout is
 derived from the newest stored row. A value held in memory would be the one thing
 on the wrist that a kill loses.
+
+**The wrist computes its own distance, and an effort's distance is its own
+window.** `WatchDistanceTracker` turns raw location fixes into a monotonic
+total of metres: a fix is accepted or ignored, never corrected — the accuracy
+gate, the speed gate, the time-order gate and the jitter floor are each a
+reason to add nothing, and the first accepted fix is only the origin.
+Verified by watchOS `WatchDistanceTrackerTests`
+(`testS3200AcceptedFixesAccumulateTheGreatCircleTotal`,
+`testS3201AnInaccurateFixIsNeverAnOriginAndNeverAdds`,
+`testS3202AJumpIsIgnoredAndLeavesTheReferenceWhereItWas`,
+`testS3203AStillWristsDriftNeverAccumulates`,
+`testS3204ASlowCreepClearsTheFloorAndMovesTheReference`,
+`testS3205AFixNotAfterTheLastAcceptedOneIsIgnored`,
+`testS3220TheFloorScalesWithTheFixesOwnAccuracy`).
+`WatchTrackedLocation` adapts any raw fix source to the sensor seam's location
+stream — a fresh total per subscription, finishing and cancelling with the raw
+stream, the permission answer passed through. Verified by watchOS
+`WatchDistanceTrackerTests`
+(`testS3206TheAdapterMapsTheSourcesFixesIntoOneMonotonicTotal`,
+`testS3206TheMappedStreamFinishesWhenTheRawOneDoes`,
+`testS3206CancellingTheMappedStreamStopsConsumingTheRawOne`,
+`testS3207TheRecorderCarriesTheTrackedTotalAndSettlesIt`,
+`testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`).
+Nothing on the wrist feeds a fix yet: the app target's feed still reports
+location unavailable
+(`WatchSensorSourceSourceTests.testS3109TheFeedIsTheRealSourceAndTheStoreReadsBothTypes`),
+so no behaviour a user sees has changed — the feed is plan 19f's. And a logged
+timed effort's `distanceMeters` is the metres covered between its Start and its
+Log — the difference of the session's stored `gps` samples at those two
+instants, never the session total, never the metres before Start, and never
+the settled `distance` sample. Verified by watchOS `WatchEffortDistanceTests`
+(`testS3208AnEffortCarriesItsOwnWindowsMetres`,
+`testS3209MetresBeforeStartAreNotTheEfforts`,
+`testS3216ASettledDistanceSampleIsNotTheEffortsDistance`,
+`testS3212ARelaunchedStateLogsTheSameWindow`).
 
 **Sensor rows are dropped with the session, not with a receipt.** Observations
 are gated on the phone's receipt because the phone is their destination. A
@@ -111,6 +148,23 @@ that merely sounds like distance work does not wake the radio. Verified by
 - **A denied permission or absent hardware never blocks logging.** The
 subscription is skipped and nothing else changes; sensor fields are simply
 absent. Verified by `S-006` in both sensor suites.
+- **An effort's distance is its own window.** A timed effort carries the metres
+covered between its Start and its Log, read from the session's stored `gps`
+samples at those two instants — never the session's newest total, never metres
+from before Start, and never the settled `distance` sample. Verified by
+watchOS `WatchEffortDistanceTests`
+(`testS3208AnEffortCarriesItsOwnWindowsMetres`,
+`testS3209MetresBeforeStartAreNotTheEfforts`,
+`testS3216ASettledDistanceSampleIsNotTheEffortsDistance`,
+`testS3212ARelaunchedStateLogsTheSameWindow`).
+- **A measured distance never travels without its source.** When a timed
+effort's window covered metres, its payload carries `distanceMeters` and
+`distanceSource: "gps"` together; a window that moved nothing, and a hold
+logged while the sensors measure, carry neither. Verified by watchOS
+`WatchEffortDistanceTests`
+(`testS3210TheSourceTravelsAndOnlyBesideADistance`,
+`testS3211AWindowThatMovedNothingCarriesNoDistance`,
+`testS3219AHoldLoggedWhileMeasuringCarriesNoDistance`).
 - **Both clients read one vocabulary.** The sample kinds, the modality → workout
 type table and the capability profile the GPS decision depends on live in
 `watch/contract/watch_sensor_contract.json`, and both suites assert against it, so

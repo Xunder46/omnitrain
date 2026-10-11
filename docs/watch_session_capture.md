@@ -22,8 +22,7 @@ what ending a session on either device does, is
 [The Watch Surface](state_management/watch_surface.md). "The wrist half"
 covers what the watchOS package (`watch/watchos/Sources/WatchSessionEngine/`)
 sends for the import; its sensors and the summaries computed from them are in
-[The Watch Surface](state_management/watch_surface.md) ("Watch Sensors
-and the Platform Workout").
+[Watch Sensors and the Platform Workout](state_management/watch_sensors.md).
 
 ---
 
@@ -82,8 +81,8 @@ receipt names them, and their ids derive from the session (PROTOCOL.md,
 **Where the measurements travel.** Each timed, round and hold entry carries its
 own heart rate, and a timed entry its steps; the session's heart rate and each
 set block's travel in the `session_end`. Why they are computed on the wrist, and
-when, is [The Watch Surface](state_management/watch_surface.md)'s
-("Watch Sensors and the Platform Workout").
+when, is in [Watch Sensors and the Platform
+Workout](state_management/watch_sensors.md).
 
 **Why the rows a user added to an imported effort are never touched.** An
 imported session is ordinary history, so the user can add a set to an imported
