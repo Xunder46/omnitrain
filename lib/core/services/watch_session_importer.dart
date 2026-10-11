@@ -959,8 +959,10 @@ class _Pass {
           effortId: effortId,
           entryIndex: index,
           distanceMeters: entry.distanceMeters ?? 0.0,
-          // A distance the wrist dialled without naming its source was
-          // entered by hand: watch sessions never run GPS (D-335).
+          // A distance that arrives without a source was dialled by hand: an
+          // older or hand-entering wrist names none. A wrist that measured it
+          // names 'gps' (plan 2026-10-10-19e, D-2206), and 'gps' and
+          // 'estimated' are stored as sent.
           distanceSource: (entry.distanceMeters ?? 0.0) > 0
               ? entry.distanceSource ?? EffortObservation.sourceEntered
               : null,
