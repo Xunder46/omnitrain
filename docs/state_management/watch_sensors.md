@@ -27,6 +27,8 @@ and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
 | What the device's sensors read | `WatchSensorRecorder`, over a `WatchSensorSource` the app target implements |
 | Raw location fixes turned into the cumulative metres the sensor seam expects | `WatchDistanceTracker` (`accept(_:)`, `totalMeters`), pure, in the watchOS package |
 | Any raw fix source, seen as the sensor seam's location stream | `WatchTrackedLocation`, over a `WatchRawFixSource` |
+| The wrist's raw position readings, behind that seam | `CoreLocationRawSource` (`ios/OmniTrain Watch App/CoreLocationRawSource.swift`), a `CLLocationManager` over `WatchRawFixSource` |
+| Whether the registered workout is outdoor | `WatchPlatformWorkout.start`, asking the store's `begin(_:outdoors:)` over `WatchGpsPolicy` |
 | Writing the readings one at a time | `WatchSensorWrites`, inside `WatchSensorRecorder` |
 | Starting and stopping both together | `WatchSessionSensors` |
 | Starting and stopping the sensors with the session | `WatchSensorCoordinator` |
@@ -50,8 +52,9 @@ beat
 `…testS3101EndStopsAndClearsTheRecordingSessionId`,
 `…testS3102AReplacedSessionStopsOneAndStartsTheOther`,
 `…testS3108TheLiveLabelShowsTheNewestBeat`); the feed reduces the builder's
-statistics to beats per minute and cumulative steps, reports location
-unavailable (no location subscription) and never prompts
+statistics to beats per minute and cumulative steps, and delegates its two
+location members to the `WatchTrackedLocation` it is given — it never prompts
+for location itself
 (`WatchSensorSourceSourceTests.testS3109TheFeedIsTheRealSourceAndTheStoreReadsBothTypes`,
 `…testS3114TheFeedNeverPromptsAndAnswersUnavailableWithoutHealthData`); the
 summaries reach the phone through the existing capture path: the session-end
@@ -88,10 +91,33 @@ stream, the permission answer passed through. Verified by watchOS
 `testS3206CancellingTheMappedStreamStopsConsumingTheRawOne`,
 `testS3207TheRecorderCarriesTheTrackedTotalAndSettlesIt`,
 `testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`).
-Nothing on the wrist feeds a fix yet: the app target's feed still reports
-location unavailable
-(`WatchSensorSourceSourceTests.testS3109TheFeedIsTheRealSourceAndTheStoreReadsBothTypes`),
-so no behaviour a user sees has changed — the feed is plan 19f's. And a logged
+The wrist now feeds fixes: the host builds the store over a
+`WatchTrackedLocation` whose source is `CoreLocationRawSource`, a
+`CLLocationManager` behind the package's `WatchRawFixSource` seam
+(`WatchSensorSourceSourceTests.testS3313TheHostBuildsTheSourceAndTheAdapterOnce`,
+`…testS3310TheRawSourceAsksWhenInUseAndNeverAlways`), and the feed hands its
+two location members straight to that adapter
+(`…testS3311TheFeedDelegatesItsLocationToTheAdapter`). The first time a cardio
+or sports session starts, the wrist asks for Location while in use — after the
+Health question, with the sentence the watch target's
+`INFOPLIST_KEY_NSLocationWhenInUseUsageDescription` carries
+(`…testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways`) — and
+the HealthKit workout of such a session is registered as outdoor
+(`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
+`WatchSensorSourceSourceTests.testS3312TheStoreTakesTheAdapterAndRegistersOutdoors`).
+A cached fix older than the adapter's `maxFixAgeSeconds` (10 s,
+`WatchTrackedLocation.init`) at a subscription's start is dropped before the
+tracker sees it
+(`WatchDistanceTrackerTests.testS3303ACachedFixNeverBecomesTheOrigin`,
+`…testS3304TheGateBoundaryIsInclusive`, `…testS3306TheClockIsReadOncePerCall`).
+Refused or unavailable location leaves logging, rest, the menu and sync working
+and sends no distance
+(`WatchDistanceTrackerTests.testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`,
+`WatchSensorSourceSourceTests.testS3315LocationOffAnswersUnavailableBeforeAnyStatusIsRead`);
+lifts, holds and free training never ask and never use location
+(`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`). No
+route or map is stored. All of this is verified in code and builds only:
+nothing here is proven on a wrist. And a logged
 timed effort's `distanceMeters` is the metres covered between its Start and its
 Log — a chain over the session's stored `gps` samples inside that window,
 starting from the baseline total at Start, never the session total, never the

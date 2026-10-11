@@ -174,10 +174,12 @@ zero distance is absence, not a value. Verified by `test/distance_source_test.da
   `distanceSource: "gps"`), `entered` (a person typed or dialled it)
   or `estimated` (the watch platform estimated it). Only `estimated` is marked
   where a distance is displayed. The model that produces a wrist `gps` value is
-  [Watch Sensors](state_management/watch_sensors.md); the raw-fix feed that
-  gives it fixes to consume is plan 19f's, and no wrist code feeds a fix yet —
-  the app target's feed still reports location unavailable
-  (`WatchSensorSourceSourceTests.testS3109TheFeedIsTheRealSourceAndTheStoreReadsBothTypes`).
+  [Watch Sensors](state_management/watch_sensors.md); the feed that gives it
+  fixes to consume is built: a CoreLocation source on the wrist feeds raw fixes
+  through the tracker when a cardio or sports session is allowed to use
+  Location
+  (`WatchSensorSourceSourceTests.testS3311TheFeedDelegatesItsLocationToTheAdapter`,
+`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`).
 - **Paired row** — the distance row an entry owns, as `DistancePairing`
   computes it. An entry with no distance has no paired row and reads as
   absence, never as zero.

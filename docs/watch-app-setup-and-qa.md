@@ -161,6 +161,16 @@ that keeps the app alive (plan 19c):
   (team `S3976AA7K8`) in the Apple developer portal so provisioning signs the
   entitlement. A device build fails to sign until then; the simulator build is
   unaffected.
+- **Location (plan 19f) is a build setting, not a capability.** The watch
+  target asks the user through
+  `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription` = "OmniTrain uses your
+  location during runs and sports to measure distance and pace." in its
+  Debug/Release/Profile configurations of
+  `ios/Runner.xcodeproj/project.pbxproj`, next to the three
+  `NSHealthShareUsageDescription` lines. WhenInUse only: no Always key exists,
+  and no location entitlement is needed
+  (`WatchSensorSourceSourceTests.testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways`,
+  `…testS3310TheRawSourceAsksWhenInUseAndNeverAlways`).
 
 ### 3.5 Link the engine
 
@@ -594,6 +604,29 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     Decline the prompt once instead: logging, rest, the menu and sync keep
     working and no number appears
     (`WatchSensorCoordinatorTests.testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected`).
+24. **The wrist measures distance and pace — (owner).** Nothing in this step
+    has run on a wrist; it is verified in code and builds only. Install on a
+    real watch and start a run (a cardio session) outdoors: the Health question
+    comes first, then the Location question — Allow While Using. The order is
+    the host's: the workout is refreshed before the sensors
+    (`WatchSensorSourceSourceTests.testS3110TheHostWiresTheSensorsAndRefreshesTheWorkoutFirst`),
+    and the question's text is the watch target's
+    `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription`
+    (`…testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways`).
+    Run or walk a few hundred metres: the exercise screen's grey line shows
+    distance and pace (the line is `WatchLoggingView.sensorLine`). Start and
+    Log an effort, sync, and check the phone: the effort's distance arrives
+    measured, `distanceSource: "gps"`
+    (`WatchEffortDistanceTests.testS3210TheSourceTravelsAndOnlyBesideADistance`),
+    and the import stores that source
+    (`test/distance_source_import_test.dart`, S-876, S-877). Compare with a
+    known distance and note the error — the tracker's gates are tuning values,
+    so the number is yours to judge. Start a lift: no Location question
+    (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`).
+    Refuse Location once (Settings → Privacy, or a reinstall) and check that
+    logging still works: a denied or unavailable answer skips the location
+    subscription and nothing else changes
+    (`WatchDistanceTrackerTests.testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`).
 
 ### The wrist's own logging (PR 2b)
 
