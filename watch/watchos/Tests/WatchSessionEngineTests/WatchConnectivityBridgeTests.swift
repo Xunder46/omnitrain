@@ -301,10 +301,16 @@ final class WatchConnectivityBridgeTests: XCTestCase {
     func testS3820TheRoutinesRequestCarriesTheExerciseListVersionOnlyWhenThereIsOne() async throws {
         // The frame is built with the version only when the wrist holds a list,
         // so a wrist that holds none sends exactly the frame it always did —
-        // which is why the contract's S-102/S-103 rows stay true (D-3820).
+        // which is why the contract's S-102/S-103 rows stay true (D-3820). The
+        // Dart twin now builds the same frame (plan 23e2), so both ends read
+        // this one contract entry instead of restating its fields.
+        let expected = try bridgeObject(try bridgeContract()["transportRequests"])
+        let routinesExercises = try bridgeObject(expected["routinesExercises"])
+        let version = try XCTUnwrap(routinesExercises["exercisesVersion"] as? String)
+
         XCTAssertEqual(
-            WatchTransportRequest.routinesFrame(since: nil, exercisesVersion: "v1") as NSDictionary,
-            ["request": "routines", "exercisesVersion": "v1"] as NSDictionary
+            WatchTransportRequest.routinesFrame(since: nil, exercisesVersion: version) as NSDictionary,
+            routinesExercises as NSDictionary
         )
         XCTAssertNil(
             WatchTransportRequest.routinesFrame(since: nil)["exercisesVersion"],
@@ -313,10 +319,10 @@ final class WatchConnectivityBridgeTests: XCTestCase {
 
         let both = WatchTransportRequest.routinesFrame(
             since: try parseUtcIso("2026-07-13T17:00:00Z"),
-            exercisesVersion: "v1"
+            exercisesVersion: version
         )
         XCTAssertEqual(both["since"] as? String, utcIso(try parseUtcIso("2026-07-13T17:00:00Z")))
-        XCTAssertEqual(both["exercisesVersion"] as? String, "v1")
+        XCTAssertEqual(both["exercisesVersion"] as? String, version)
 
         let harness = WatchBridgeHarness()
         await harness.launch()
