@@ -34,6 +34,8 @@
 //         watch_resume_sync_test.dart)
 //   S-183 the reset the wrist is sent ends its session, and
 //         never the one it is not holding               → `S-183 ...`
+//   S-3855 the wrist's exercise-list version reaches the handler → `S-3855 ...`
+//         (plan 2026-10-11-23e2, D-3834)
 //
 // S-42's "an entry the wire cannot carry is omitted" is now S-59/S-60: a
 // band-assisted set is carried with its sign, and only a row with no reps or a
@@ -53,6 +55,7 @@ import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
+import 'package:omnitrain/core/utils/watch_reference_sync.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
@@ -697,6 +700,57 @@ void main() {
             'empty ladder is not a state to send',
       );
       expect(reportedFailure, isNull);
+    });
+  });
+
+  group('S-3855 the wrist\'s exercise-list version reaches the handler', () {
+    /// The version the phone would name for the list it holds right now.
+    Future<String> phoneListVersion() async {
+      final batches = await WatchReferenceSync.buildExercisesDown(
+        repository: repository,
+        generatedAt: _now,
+      );
+      return _payload(batches.first)['catalogVersion']! as String;
+    }
+
+    test('S-3855 a request naming the current version sends no exercise batch',
+        () async {
+      final version = await phoneListVersion();
+
+      await radio.fromWrist(
+        WatchTransportRequest.routinesFrame(exercisesVersion: version),
+      );
+      await _settle();
+
+      expect(
+        radio.ofType('preferences_down'),
+        hasLength(1),
+        reason: 'S-253 the sync is still answered with the settings',
+      );
+      expect(
+        radio.ofType('routines_down'),
+        hasLength(1),
+        reason: 'S-3850 the routines still travel',
+      );
+      expect(
+        radio.ofType('exercises_down'),
+        isEmpty,
+        reason: 'S-3855 the wiring hands the frame\'s version to the handler, '
+            'so the phone skips the list the wrist already holds',
+      );
+    });
+
+    test('S-3855 a request naming no version sends the whole exercise list',
+        () async {
+      await radio.fromWrist(WatchTransportRequest.routinesFrame());
+      await _settle();
+
+      expect(
+        radio.ofType('exercises_down'),
+        isNotEmpty,
+        reason: 'S-3855 a wrist that says it holds nothing is sent the whole '
+            'list',
+      );
     });
   });
 

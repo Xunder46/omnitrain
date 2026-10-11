@@ -234,7 +234,12 @@ Future<WatchSyncGraph?> createWatchSync({
     final request = WatchTransportRequest.nameOf(frame);
     var answeredReset = false;
     if (request != null) {
-      await requests.handle(request);
+      // The version the wrist holds rides the request frame; a wrist that
+      // named none is sent the whole exercise list (D-3834).
+      await requests.handle(
+        request,
+        exercisesVersion: WatchTransportRequest.exercisesVersionOf(frame),
+      );
     } else {
       answeredReset = (await router.receive(frame)).answeredReset;
     }
