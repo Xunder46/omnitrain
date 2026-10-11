@@ -111,7 +111,16 @@ neither list names it, so a routine the wrist holds is always loggable
 (`testS3817RoutineCoverageAndTheActiveListAreUnionedOnce`,
 `testS003FallbackListUnionsRecentsAndRoutineExercisesInContractOrder`).
 `addableExercises` is that same list, sorted A to Z for the Add Exercise menu
-(`testS3611TheAddListSortsCaseInsensitivelyByName`).
+(`testS3611TheAddListSortsCaseInsensitivelyByName`); a list of more than
+`WatchMenuCopy.addLetterGridThreshold` (20) also carries the letter grid it
+jumps by, one entry per distinct first key in the list's own order, with digits,
+symbols and empty names sharing a `#` that opens the grid (a symbol above `z`,
+such as `~`, sorts last, so the `#` entry then sits at the end:
+`testS3908ASymbolThatSortsAfterZGetsItsHashEntryAtTheEnd`) and an accented
+initial in the plain-lowercase place its name sorted to
+(`testS3900TheLettersFollowTheListsOwnOrder`,
+`testS3902TheGridNeedsMoreThanTheThreshold`,
+`testS3905EveryLetterEntryCoversAContiguousRun`).
 
 ## Routing and the request frame
 

@@ -766,6 +766,23 @@ hardware yet.
     current version: no batch travels`, `S-3854 a sync with the sent version
     sends no batch, and a custom exercise stales it`) and
     `WatchMenuTests.testS3611TheAddListSortsCaseInsensitivelyByName`.
+14. **Jump to a letter in a long exercise list — (owner).** Sync so the wrist
+    holds the full list, then open **Add Exercise**: above the rows sits a grid
+    of the letters the list actually has, four per row — not the whole alphabet
+    — and a name the list put under a digit or a symbol sits under `#`, which is
+    first, while an accented initial like **Élan** has its own letter at the
+    end. Tap a letter: the list moves so that letter's first exercise is at the
+    top, nothing is added and the screen does not close; a letter jump is a
+    scroll, not a pick. Tap an exercise as before: it is still added at the end
+    of the session's list and the screen returns to the menu. With a short list
+    — a fresh install with 20 exercises or fewer at **Sync** — there is no grid
+    at all. The letters and their order are pinned off-device by
+    `WatchMenuTests.testS3900TheLettersFollowTheListsOwnOrder`,
+    `…testS3901DigitsAndSymbolsShareOneHashEntryFirst`,
+    `…testS3902TheGridNeedsMoreThanTheThreshold`,
+    `…testS3904AnAccentedInitialIsItsOwnLetterAndSortsLast` and
+    `…testS3905EveryLetterEntryCoversAContiguousRun`; the grid itself is drawn
+    by the watch app target, which `swift test` does not compile.
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

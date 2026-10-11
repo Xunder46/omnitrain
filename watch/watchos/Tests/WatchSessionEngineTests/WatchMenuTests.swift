@@ -17,6 +17,13 @@
 //  the menu's own Add Exercise list — its order, the append it makes at the end
 //  of the ladder, the frame that announcement emits, and the lock it ignores.
 //
+//  S-3900 to S-3907 of
+//  `docs/plans/2026-10-11-23e3-watch-add-exercise-letters-plan/2026-10-11-23e3-watch-add-exercise-letters-plan.md`:
+//  the letters a long Add Exercise list carries, the threshold below which it
+//  carries none, and the label of one letter button. S-3908, added with the
+//  23e3 order-retention fix, pins that the entries follow the list's order even
+//  when the `#` key sorts last.
+//
 //  Fixture A is the register's three-slot ladder: two live efforts on `s1`, none
 //  on `s2`, one on `s3`, and a fourth `s1` effort the phone deleted.
 //
@@ -72,6 +79,25 @@ private func menuEntry(
         )
     )
 }
+
+/// The key the list's own order implies for a name: its FIRST character,
+/// whitespace and all, uppercased when that character is a letter, otherwise
+/// `"#"`, and `"#"` for a name with no character at all (D-3850). Written out
+/// here so the S-3905 property checks the rule rather than restating the
+/// production code.
+private func letterKey(of name: String) -> String {
+    guard let first = name.first else { return "#" }
+    return first.isLetter ? String(first).uppercased() : "#"
+}
+
+/// The 25-name list S-3900 walks: two names on A and on B, then one per letter
+/// through W, in the order the list's own lowercase sort gives.
+private let letterCatalogNames = [
+    "apple", "Avocado", "banana", "Blueberry", "cherry", "date", "elderberry",
+    "fig", "grape", "honeydew", "iceberg lettuce", "jackfruit", "kiwi", "lemon",
+    "mango", "nectarine", "olive", "papaya", "quince", "raspberry", "strawberry",
+    "tangerine", "ugli fruit", "vanilla bean", "watermelon",
+]
 
 /// A wrist with one engine, its start paths, the phone's preferences, the
 /// rating state and the menu over them — the shape of `WatchStartHarness` and
@@ -207,6 +233,32 @@ final class WatchMenuHarness {
                         ["exerciseId": "ex-cherry", "name": "cherry", "capabilities": ["reps"]],
                         ["exerciseId": "ex-apple-pie", "name": "Apple Pie", "capabilities": ["reps"]],
                     ]
+                )
+            )
+        )
+        await paths.restore()
+        return self
+    }
+
+    /// The phone's catalog with one exercise per name, in the order the phone
+    /// sent them: the long lists the letter grid is about (S-3900…S-3907). Ids
+    /// are `ex-l<position>` so a scenario can name an exercise by where the
+    /// phone put it, whatever its name sorts to.
+    @discardableResult
+    func applyLetterCatalog(_ names: [String]) async -> WatchMenuHarness {
+        _ = await store.append(
+            .routineCatalog(
+                WatchRoutineCatalogRecord(
+                    recordId: "cat-menu-letters",
+                    recordedAt: instant("2026-07-13T06:00:00Z"),
+                    generatedAt: instant("2026-07-13T06:00:00Z"),
+                    fallbackExercises: names.enumerated().map { index, name in
+                        [
+                            "exerciseId": "ex-l\(index)",
+                            "name": name,
+                            "capabilities": ["reps"],
+                        ]
+                    }
                 )
             )
         )
@@ -830,5 +882,239 @@ final class WatchMenuTests: XCTestCase {
                 XCTAssertFalse(source.contains(token), "S-3617 \(file) must not name \(token)")
             }
         }
+    }
+
+    // MARK: - S-3900…S-3907 the Add Exercise letter grid (23e3)
+
+    /// The letters a long list carries: one entry per first letter the list
+    /// has, in the list's own order, each naming the exercise its run starts
+    /// with. A second name on the same letter adds no second entry.
+    func testS3900TheLettersFollowTheListsOwnOrder() async {
+        let harness = await WatchMenuHarness().launch()
+        await harness.applyLetterCatalog(letterCatalogNames)
+
+        let offered = harness.menu.addableExercises
+        let letters = harness.menu.addExerciseLetters
+
+        XCTAssertEqual(
+            letters.map(\.letter),
+            [
+                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+                "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W",
+            ],
+            "S-3900 one entry per first letter, in list order"
+        )
+        XCTAssertEqual(letters.count, 23, "S-3900 the two second names on A and B add no entry")
+        XCTAssertEqual(
+            letters.first?.firstExerciseId,
+            offered.first { $0.name == "apple" }?.exerciseId,
+            "S-3900 the A entry starts at the list's first exercise"
+        )
+        XCTAssertEqual(
+            letters.first { $0.letter == "B" }?.firstExerciseId,
+            offered.first { $0.name == "banana" }?.exerciseId,
+            "S-3900 each entry starts at its own first exercise"
+        )
+        XCTAssertEqual(offered.first?.name, "apple", "S-3900 plain lowercase text puts apple before Avocado")
+    }
+
+    /// Digits and symbols open one shared `#` entry, and it sorts first because
+    /// the list sorts by plain lowercase text.
+    func testS3901DigitsAndSymbolsShareOneHashEntryFirst() async {
+        let harness = await WatchMenuHarness().launch()
+        await harness.applyLetterCatalog(
+            ["1 min sprint", "5 minute plank", "(warm up)"] + (1...20).map { "b\($0)" }
+        )
+
+        let offered = harness.menu.addableExercises
+        let letters = harness.menu.addExerciseLetters
+
+        XCTAssertEqual(
+            letters.map(\.letter),
+            ["#", "B"],
+            "S-3901 the three non-letter names share one entry, ahead of every letter"
+        )
+        XCTAssertEqual(
+            letters.first?.firstExerciseId,
+            offered.first { $0.name == "(warm up)" }?.exerciseId,
+            "S-3901 the # entry starts at the first of its names in list order"
+        )
+        XCTAssertEqual(offered.first?.name, "(warm up)", "S-3901 a symbol sorts before a digit before a letter")
+    }
+
+    /// The threshold is the owner's number, and it is a floor on the list, not
+    /// an exclusive bound: exactly 20 shows nothing.
+    func testS3902TheGridNeedsMoreThanTheThreshold() async {
+        XCTAssertEqual(WatchMenuCopy.addLetterGridThreshold, 20, "S-3902 the owner's threshold")
+
+        let short = await WatchMenuHarness().launch()
+        await short.applyLetterCatalog((1...20).map { "exercise \($0)" })
+        XCTAssertEqual(
+            short.menu.addableExercises.count,
+            WatchMenuCopy.addLetterGridThreshold,
+            "S-3902 the short list holds exactly the threshold"
+        )
+        XCTAssertEqual(short.menu.addExerciseLetters, [], "S-3902 at the threshold there is no grid")
+
+        let long = await WatchMenuHarness().launch()
+        await long.applyLetterCatalog((1...21).map { "exercise \($0)" })
+        XCTAssertFalse(long.menu.addExerciseLetters.isEmpty, "S-3902 one past the threshold there is a grid")
+    }
+
+    /// Case is not a letter of its own: "apple" and "Avocado" are one `A`.
+    func testS3903CaseIsOneLetterPerFirstCharacter() async {
+        let harness = await WatchMenuHarness().launch()
+        await harness.applyLetterCatalog(
+            ["apple", "Avocado", "banana"] + (1...20).map { "berry \($0)" }
+        )
+
+        let offered = harness.menu.addableExercises
+        let a = harness.menu.addExerciseLetters.filter { $0.letter == "A" }
+
+        XCTAssertEqual(a.count, 1, "S-3903 apple and Avocado are one A entry")
+        XCTAssertEqual(
+            a.first?.firstExerciseId,
+            offered.first { $0.name == "apple" }?.exerciseId,
+            "S-3903 the A entry starts at the exercise the list shows first"
+        )
+    }
+
+    /// An accented initial has its own letter and sits where the list puts it:
+    /// plain lowercase text puts "Élan" after "zebra", so `É` is the last entry.
+    func testS3904AnAccentedInitialIsItsOwnLetterAndSortsLast() async {
+        let harness = await WatchMenuHarness().launch()
+        await harness.applyLetterCatalog(["zebra", "Élan"] + (1...20).map { "berry \($0)" })
+
+        let offered = harness.menu.addableExercises
+        let letters = harness.menu.addExerciseLetters
+
+        XCTAssertEqual(letters.last?.letter, "É", "S-3904 the accent keeps its own letter, at the end")
+        XCTAssertEqual(
+            letters.last?.firstExerciseId,
+            offered.last?.exerciseId,
+            "S-3904 Élan is the list's own last exercise"
+        )
+        XCTAssertEqual(offered.last?.name, "Élan", "S-3904 the list puts the accent after z")
+        XCTAssertEqual(
+            letters.first { $0.letter == "Z" }?.firstExerciseId,
+            offered.first { $0.name == "zebra" }?.exerciseId,
+            "S-3904 zebra is its own Z entry"
+        )
+    }
+
+    /// The letters partition the list with no gap and no overlap: entry *i*
+    /// covers exactly the exercises from its own first exercise up to the next
+    /// entry's, and every entry names an exercise the list holds.
+    func testS3905EveryLetterEntryCoversAContiguousRun() async throws {
+        let harness = await WatchMenuHarness().launch()
+        var names: [String] = ["  apple"]
+        for index in 0..<120 {
+            switch index % 8 {
+            case 0: names.append("apple \(index)")
+            case 1: names.append("Banana \(index)")
+            case 2: names.append("\(index) reps")
+            case 3: names.append("(hold) \(index)")
+            case 4: names.append("cherry \(index)")
+            case 5: names.append("Élan \(index)")
+            case 6: names.append("dip \(index)")
+            default: names.append("  zebra \(index)")
+            }
+        }
+        await harness.applyLetterCatalog(names)
+
+        let offered = harness.menu.addableExercises
+        let letters = harness.menu.addExerciseLetters
+        XCTAssertFalse(letters.isEmpty, "S-3905 a 120-name list carries letters")
+
+        var positionOf: [String: Int] = [:]
+        for (position, exercise) in offered.enumerated() {
+            positionOf[exercise.exerciseId] = position
+        }
+
+        for (entryIndex, entry) in letters.enumerated() {
+            let start = try XCTUnwrap(
+                positionOf[entry.firstExerciseId],
+                "S-3905 \(entry.letter) names an exercise the list holds"
+            )
+            let end = entryIndex + 1 < letters.count
+                ? try XCTUnwrap(positionOf[letters[entryIndex + 1].firstExerciseId])
+                : offered.count
+            XCTAssertLessThan(start, end, "S-3905 the entries are in list order")
+            for position in start..<end {
+                XCTAssertEqual(
+                    letterKey(of: offered[position].name),
+                    entry.letter,
+                    "S-3905 every exercise in an entry's run wears its letter"
+                )
+            }
+        }
+
+        XCTAssertEqual(letters.first?.firstExerciseId, offered.first?.exerciseId, "S-3905 the first entry opens the list")
+        XCTAssertEqual(
+            letters.last?.firstExerciseId,
+            offered.first { letterKey(of: $0.name) == letters.last?.letter }?.exerciseId,
+            "S-3905 the last entry opens its own run"
+        )
+    }
+
+    /// The one string a letter button says to VoiceOver (D-3852).
+    func testS3906TheJumpLabelNamesTheLetter() {
+        XCTAssertEqual(WatchMenuCopy.addLetterJumpLabel("A"), "Jump to A")
+        XCTAssertEqual(WatchMenuCopy.addLetterJumpLabel("#"), "Jump to #")
+    }
+
+    /// A name with no character at all — or only whitespace, leading or not — is
+    /// `#`, not a crash and not a letter: a leading space sorts before every
+    /// letter, so it belongs in the `#` run and adds no `A` entry of its own.
+    func testS3907AnEmptyNameIsHashedAndDoesNotCrash() async {
+        let harness = await WatchMenuHarness().launch()
+        await harness.applyLetterCatalog(["" , "   ", " apple"] + (1...20).map { "berry \($0)" })
+
+        let offered = harness.menu.addableExercises
+        let letters = harness.menu.addExerciseLetters
+
+        XCTAssertEqual(letters.map(\.letter), ["#", "B"], "S-3907 an empty name, a spaces-only name and a leading-space name are hashed")
+        XCTAssertFalse(
+            letters.contains { $0.letter == "A" },
+            "S-3907 a leading-space name adds no A entry: it sits in the # run"
+        )
+        XCTAssertEqual(
+            letters.first?.firstExerciseId,
+            offered.first?.exerciseId,
+            "S-3907 the empty name is the list's first exercise"
+        )
+    }
+
+    /// The entries follow the LIST's order, not the alphabetical order of their
+    /// keys: `~` is above `z` in the plain-lowercase sort, so a "~stretch" name
+    /// sits last and its `#` entry comes last too, unlike S-3901's `#` run that
+    /// opens a list of digits and symbols.
+    func testS3908ASymbolThatSortsAfterZGetsItsHashEntryAtTheEnd() async {
+        let harness = await WatchMenuHarness().launch()
+        await harness.applyLetterCatalog(letterCatalogNames + ["~stretch"])
+
+        let offered = harness.menu.addableExercises
+        let letters = harness.menu.addExerciseLetters
+
+        XCTAssertGreaterThan(
+            offered.count,
+            WatchMenuCopy.addLetterGridThreshold,
+            "S-3908 the list is long enough to carry the grid"
+        )
+        XCTAssertEqual(
+            letters.map(\.letter),
+            [
+                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+                "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "#",
+            ],
+            "S-3908 one entry per key, in the list's own order, the # run last"
+        )
+        XCTAssertEqual(offered.last?.name, "~stretch", "S-3908 the list sorts a tilde name after z")
+        XCTAssertEqual(letters.last?.letter, "#", "S-3908 the last entry is the # run")
+        XCTAssertEqual(
+            letters.last?.firstExerciseId,
+            offered.last?.exerciseId,
+            "S-3908 the # entry opens its run at the tilde name"
+        )
     }
 }

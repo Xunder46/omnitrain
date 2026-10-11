@@ -46,6 +46,67 @@ public struct WatchMenuRow: Equatable {
     }
 }
 
+/// One letter of the Add Exercise list's jump grid, and the exercise a tap on
+/// it brings to the top (D-3850).
+///
+/// The pair is the whole entry: the key's own letter, and the id of the first
+/// exercise whose name keys to it in the list's order. The grid reads the
+/// letter, the tap names the id, and neither is derived again on the wrist.
+public struct WatchAddExerciseLetter: Equatable {
+    /// The key: a name's first character uppercased when it is a letter,
+    /// otherwise `"#"`.
+    public let letter: String
+
+    /// The `exerciseId` of the list's first exercise with this key.
+    public let firstExerciseId: String
+
+    public init(letter: String, firstExerciseId: String) {
+        self.letter = letter
+        self.firstExerciseId = firstExerciseId
+    }
+}
+
+/// The key a name sorts under in the Add Exercise grid: its first character
+/// uppercased when that character is a letter, otherwise `"#"` (D-3850).
+///
+/// The key is read from the FIRST character as it is, whitespace included: a
+/// name that starts with whitespace keys to `"#"`, like a name with nothing to
+/// read at all. The list sorts that name into the `#` run — a leading space
+/// sorts before every letter — so reading past the whitespace would point an
+/// entry at a region the name does not sit in and break the grid's contiguity.
+/// The uppercasing is `String.uppercased()`, the same text the list's own
+/// lowercase sort uses, and deliberately not a locale collation: the grid must
+/// agree with the order the user reads.
+func addExerciseLetterKey(of name: String) -> String {
+    guard let first = name.first else { return "#" }
+    return first.isLetter ? String(first).uppercased() : "#"
+}
+
+/// The list's letters in the order it shows them: one entry per distinct key,
+/// keyed at the first exercise that carries it (D-3850).
+///
+/// `exercises` is `addableExercises`, so the entries come out in the list's own
+/// A-to-Z order rather than alphabetical by key: a `#` run opens the grid — a
+/// name that is empty, starts with whitespace, a digit or a symbol sits there,
+/// because the list puts it before every letter — and an accented letter sits
+/// wherever the plain-lowercase sort put it.
+public func deriveAddExerciseLetters(
+    _ exercises: [WatchCatalogExercise]
+) -> [WatchAddExerciseLetter] {
+    var seen = Set<String>()
+    var letters: [WatchAddExerciseLetter] = []
+
+    for exercise in exercises {
+        let key = addExerciseLetterKey(of: exercise.name)
+        guard seen.insert(key).inserted else { continue }
+        letters.append(
+            WatchAddExerciseLetter(letter: key, firstExerciseId: exercise.exerciseId)
+        )
+    }
+
+    return letters
+}
+
 /// The menu's fixed copy, and the confirmation's (D-3401).
 ///
 /// It lives here rather than on the view, which compiles only into a watch
@@ -66,6 +127,17 @@ public enum WatchMenuCopy {
 
     /// Said in place of rows when the phone has sent no exercise down yet.
     public static let addExerciseEmpty = "No exercises yet. Sync with your phone."
+
+    /// How many exercises the Add Exercise list may hold and still fit a few
+    /// scrolls: at or below this count the letter grid would cost more than it
+    /// saves, so it is not shown (D-3851).
+    public static let addLetterGridThreshold: Int = 20
+
+    /// What one letter button of the Add Exercise grid says to VoiceOver
+    /// (D-3852).
+    public static func addLetterJumpLabel(_ letter: String) -> String {
+        "Jump to \(letter)"
+    }
 
     public static let confirmTitle = "Finish Workout?"
     public static let confirmBody = "This action will save and close the workout session."
@@ -193,6 +265,17 @@ public final class WatchMenuState {
     /// Everything the user could add, A to Z, from the list the phone sent down
     /// (23c, D-3605).
     public var addableExercises: [WatchCatalogExercise] { paths.addableExercises }
+
+    /// The letters the Add Exercise list jumps by, in the list's own order, or
+    /// `[]` when the list is short enough to scroll by hand (D-3850, D-3851).
+    ///
+    /// A pure function of `addableExercises`, read on every access: a list that
+    /// changes size across the threshold gains or loses the grid with it.
+    public var addExerciseLetters: [WatchAddExerciseLetter] {
+        let offered = addableExercises
+        guard offered.count > WatchMenuCopy.addLetterGridThreshold else { return [] }
+        return deriveAddExerciseLetters(offered)
+    }
 
     /// Adds `exercise` at the end of the ladder, through the start paths.
     ///
