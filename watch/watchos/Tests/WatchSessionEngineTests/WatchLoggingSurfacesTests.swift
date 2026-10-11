@@ -633,7 +633,7 @@ final class WatchLoggingSurfacesTests: XCTestCase {
     func testEveryValidObservationsEventIsReproducedByTheSurfaceShape() async throws {
         // The surface's own output must sit in the same shape as the fixture
         // the phone's validator accepts: same field names, same value types.
-        let fixture = try Fixtures.json("fixtures/valid/observations_up_distance_and_load.json")
+        let fixture = try Fixtures.json("fixtures/valid/observations_up_distance_source.json")
         let events = (fixture["payload"] as? [String: Any])?["events"] as? [[String: Any]] ?? []
         XCTAssertFalse(events.isEmpty)
 
@@ -643,9 +643,10 @@ final class WatchLoggingSurfacesTests: XCTestCase {
             modality: "cardio_endurance",
             exercises: [slot("sx-ride", capabilities: ["time", "distance"])]
         )
-        // The fixture's event carries a distance, and a timed surface has no
-        // distance row left to dial: a measured fix is the only way to that
-        // key set now (D-1305).
+        // The fixture's first timed event is a measured `gps` distance, and a
+        // timed surface has no distance row left to dial: a fix arriving inside
+        // the effort's own window is the only way to that key set now
+        // (D-1305, D-2205, D-2206).
         let source = FakeSensorSource()
         let sensors = WatchSessionSensors(
             platform: WatchPlatformWorkout(store: FakePlatformStore()),
@@ -656,8 +657,6 @@ final class WatchLoggingSurfacesTests: XCTestCase {
             )
         )
         await sensors.start(try XCTUnwrap(engine.session))
-        source.fix(2400)
-        await eventually { sensors.recorder.readings.distanceMeters == 2400 }
 
         let surface = WatchLoggingState(
             engine: engine,
@@ -665,17 +664,21 @@ final class WatchLoggingSurfacesTests: XCTestCase {
             sensors: sensors.recorder
         )
         await surface.startWork()
-        harness.clock.advance(1200)
+        harness.clock.advance(600)
+        source.fix(2400)
+        await eventually { sensors.recorder.readings.distanceMeters == 2400 }
+        harness.clock.advance(600)
         try await surface.log()
 
         let logged = try loggedEvent(harness)
+        XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
         let fixtureTimed = try XCTUnwrap(
             events.first(where: { $0["kind"] as? String == "timed" })
         )
         XCTAssertEqual(
             Set(logged.event.keys),
             Set(fixtureTimed.keys),
-            "the surface emits the fixture's field set, no more and no less"
+            "the surface emits the fixture's timed event's field set, no more and no less"
         )
     }
 }

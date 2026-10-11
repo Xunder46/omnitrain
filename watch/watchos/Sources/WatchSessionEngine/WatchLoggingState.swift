@@ -755,16 +755,45 @@ public final class WatchLoggingState {
 
     /// The window timed work or a hold was logged over: the work clock's own
     /// start to the log instant (D-1304). A distance is saved only when the
-    /// wrist's sensors were keeping it and read something (S-1300, S-006).
+    /// wrist's sensors were keeping it and the effort's own window covered
+    /// something (D-2205); the number always travels with the source it came
+    /// from, and never alone (D-2206).
     private func windowPayload(loggedAt: Date, coversDistance: Bool) -> [String: Any] {
+        let startedAt = workTimer?.startedAt ?? loggedAt
         var payload: [String: Any] = [
-            "startedAt": utcIso(workTimer?.startedAt ?? loggedAt),
+            "startedAt": utcIso(startedAt),
             "endedAt": utcIso(loggedAt),
         ]
-        if coversDistance, isMeasuringDistance, let covered = readings.distanceMeters, covered > 0 {
-            payload["distanceMeters"] = covered
+        if coversDistance, isMeasuringDistance {
+            let covered = max(0, cumulativeMeters(at: loggedAt) - cumulativeMeters(at: startedAt))
+            if covered > 0 {
+                payload["distanceMeters"] = covered
+                payload["distanceSource"] = "gps"
+            }
         }
         return payload
+    }
+
+    /// The metres the wrist had covered by `instant`: the value of the newest
+    /// stored `gps` sample at or before it, or 0 when there is none (D-2205).
+    ///
+    /// Read back from the session's stored samples rather than from memory, so
+    /// a relaunch between Start and Log changes nothing. The settled `distance`
+    /// sample is not read: it is the session's total for the live readout, not
+    /// any one effort's window.
+    private func cumulativeMeters(at instant: Date) -> Double {
+        var newest: WatchSensorSampleRecord?
+        for sample in engine.sensorSamples
+            where sample.kind == WatchSensorKind.gps
+            && sample.value.isFinite
+            && sample.recordedAt <= instant
+        {
+            // Two samples on one instant are resolved the way the engine
+            // resolves them: the later stored row wins.
+            if let existing = newest, existing.sequence >= sample.sequence { continue }
+            newest = sample
+        }
+        return newest?.value ?? 0
     }
 
     /// A round's window. The countdown is the round's clock: while one is

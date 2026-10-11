@@ -277,8 +277,6 @@ class WatchSensorRecordingTests: XCTestCase {
         _ = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
         let sensors = sensors(for: engine)
         await sensors.start(try XCTUnwrap(engine.session))
-        source.fix(3000)
-        await eventually { sensors.recorder.readings.distanceMeters == 3000 }
 
         let state = WatchLoggingState(
             engine: engine,
@@ -286,12 +284,17 @@ class WatchSensorRecordingTests: XCTestCase {
             sensors: sensors.recorder
         )
         // Timed work is its own clock: Start opens the window the log closes
-        // 1200 s later, where the old dial left it empty.
+        // 1200 s later, where the old dial left it empty. The effort's distance
+        // is what its own window covered, so the fix arrives inside it (D-2205).
         await state.startWork()
-        clock.advance(1200)
+        clock.advance(600)
+        source.fix(3000)
+        await eventually { sensors.recorder.readings.distanceMeters == 3000 }
+        clock.advance(600)
         let logged = try await state.log()
 
         XCTAssertEqual(logged.payload["distanceMeters"] as? Double, 3000)
+        XCTAssertEqual(logged.payload["distanceSource"] as? String, "gps")
     }
 
     func testS004WithoutAFixTheTimedSurfaceOffersNoDistanceRow() async throws {
@@ -903,8 +906,6 @@ class WatchSensorRecordingTests: XCTestCase {
         _ = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
         let sensors = sensors(for: engine)
         await sensors.start(try XCTUnwrap(engine.session))
-        source.fix(3200)
-        await eventually { sensors.recorder.readings.distanceMeters == 3200 }
 
         let state = WatchLoggingState(engine: engine, clock: clock.call, sensors: sensors.recorder)
 
@@ -915,8 +916,13 @@ class WatchSensorRecordingTests: XCTestCase {
         )
         state.adjust(WatchMetricKey.distance, detents: 15)
 
+        // The effort's distance is what its own window covered, so the fix
+        // arrives after Start (D-2205).
         await state.startWork()
-        clock.advance(1200)
+        clock.advance(600)
+        source.fix(3200)
+        await eventually { sensors.recorder.readings.distanceMeters == 3200 }
+        clock.advance(600)
         let logged = try await state.log()
 
         XCTAssertEqual(
@@ -924,6 +930,7 @@ class WatchSensorRecordingTests: XCTestCase {
             3200,
             "the phone receives the measured total, not a number the user added to it"
         )
+        XCTAssertEqual(logged.payload["distanceSource"] as? String, "gps")
     }
 }
 
