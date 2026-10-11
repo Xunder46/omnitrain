@@ -5,7 +5,9 @@ nor app state: `lib/core/services/`, `lib/core/utils/`, and the cross-cutting
 pieces those classes own, including the shared Stats formatters
 (`lib/features/stats/widgets/native_value_format.dart`). The watch↔phone live
 mirroring surface, the platform transport it rides on and the watch's own runtime
-and sensor layer are in [The Watch Surface](watch_surface.md).
+layer are in [The Watch Surface](watch_surface.md); the watch's sensor layer and
+platform workout are in
+[The Watch Sensors and the Platform Workout](watch_sensors.md).
 
 > Part of [State Management & Services](../state_management.md). Return to the
 > index for the full class list and dependency graph.
@@ -495,8 +497,10 @@ Verified by `test/signals_service_test.dart`.
 ## The Watch Surface
 
 The watch↔phone live mirroring surface, the platform transport it rides on and
-the watch's own runtime and sensor layer are documented in
-[The Watch Surface](watch_surface.md).
+the watch's own runtime layer are documented in
+[The Watch Surface](watch_surface.md); the watch's sensor layer and platform
+workout are documented in
+[The Watch Sensors and the Platform Workout](watch_sensors.md).
 
 ---
 

@@ -6,7 +6,8 @@
 them. It also covers the watch's own state classes and services under
 `lib/watch/` (`WatchSessionEngine`, `WatchLoggingState`, the sensor layer), which
 mirror `lib/state/`'s responsibilities on the wrist and are documented in
-[The Watch Surface](state_management/watch_surface.md). Screens and
+[The Watch Surface](state_management/watch_surface.md) and
+[The Watch Sensors and the Platform Workout](state_management/watch_sensors.md). Screens and
 widgets are documented under
 [navigation_and_screens.md](navigation_and_screens.md) and
 [widget_catalog.md](widget_catalog.md) instead.
@@ -16,7 +17,10 @@ widgets are documented under
 > per-file size ceiling that the tools indexing this folder enforce. Nothing
 > was dropped in the split — every section moved verbatim into one of the
 > pages below, and the previously-missing `PeriodState` and five
-> service/utility classes were added.
+> service/utility classes were added. On 2026-10-10 the watch sensor layer
+> moved from [The Watch Surface](state_management/watch_surface.md) into its
+> own fifth part page,
+> [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md).
 >
 > Links to `state_management.md` from plans and other docs still resolve here.
 
@@ -41,7 +45,8 @@ State classes follow strict rules:
 | [Nutrition State](state_management/nutrition_state.md) | `NutritionState`, `FoodLibraryState`, `NutritionPrimerState` |
 | [Routine, Calendar, Home, Profile & Settings State](state_management/app_state.md) | `RoutineState`, `CalendarState`, `HomeState`, `ProfileState`, `SettingsState`, `PeriodState` |
 | [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch` |
-| [The Watch Surface](state_management/watch_surface.md) | The watch↔phone mirror (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, `WatchNutritionState`, `WatchNutritionLogBridge`, `WatchIncomingRouter`, `WatchSyncRequestHandler`, `WatchReferenceSync`, `WatchTransport` and its channel/factory, the two reconcilers) and the sensor layer (`WatchPlatformWorkout`, `WatchSensorRecorder`, `WatchSessionSensors`, `WatchGpsPolicy`, `WatchActivityTypes`, `WatchSensorSummaries`) |
+| [The Watch Surface](state_management/watch_surface.md) | The watch↔phone mirror (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, `WatchNutritionState`, `WatchNutritionLogBridge`, `WatchIncomingRouter`, `WatchSyncRequestHandler`, `WatchReferenceSync`, `WatchTransport` and its channel/factory, the two reconcilers) |
+| [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) | The watch's sensor layer and platform workout (`WatchPlatformWorkout`, `WatchSensorRecorder`, `WatchSessionSensors`, `WatchGpsPolicy`, `WatchActivityTypes`, `WatchSensorSummaries`) |
 
 ---
 
@@ -72,8 +77,8 @@ State classes follow strict rules:
 | `SessionBlockManager` | [Workout Session State](state_management/workout_state.md) |
 | `SessionCore` | [Workout Session State](state_management/workout_state.md) |
 | `SyncSessionReconciler` | [The Watch Surface](state_management/watch_surface.md) |
-| `WatchActivityTypes` | [The Watch Surface](state_management/watch_surface.md) |
-| `WatchGpsPolicy` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchActivityTypes` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
+| `WatchGpsPolicy` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
 | `WatchLoggingState` | [The Watch Surface](state_management/watch_surface.md) |
 | `WatchNutritionState` | [The Watch Surface](state_management/watch_surface.md) |
 | `WatchNutritionLogBridge` | [The Watch Surface](state_management/watch_surface.md) |
@@ -82,11 +87,11 @@ State classes follow strict rules:
 | `WatchSyncRequestHandler` | [The Watch Surface](state_management/watch_surface.md) |
 | `createWatchSync` | [The Watch Surface](state_management/watch_surface.md) |
 | `createPlatformWatchTransport` | [The Watch Surface](state_management/watch_surface.md) |
-| `WatchPlatformWorkout` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchPlatformWorkout` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
 | `WatchReferenceSync` | [The Watch Surface](state_management/watch_surface.md) |
-| `WatchSensorRecorder` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchSensorRecorder` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
 | `WatchSessionEngine` | [The Watch Surface](state_management/watch_surface.md) |
-| `WatchSessionSensors` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchSessionSensors` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
 | `WatchSyncOrchestrator` | [The Watch Surface](state_management/watch_surface.md) |
 | `SessionSummaryBuilder` | [Workout Session State](state_management/workout_state.md) |
 | `SessionSummaryService` | [Services & Utilities](state_management/services_and_utils.md) |
