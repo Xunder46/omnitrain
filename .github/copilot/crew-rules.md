@@ -8,8 +8,10 @@ markers are not sent.
 
 ## Every agent
 
-Shell: your only shell command is `.github/copilot/scripts/macos/gateway.sh`, spelled exactly like that,
-never piped, chained or prefixed with `cd`. `.github/copilot/scripts/macos/gateway.sh list` shows the
+Shell: your only shell command is `.github/copilot/scripts/macos/gateway.sh`, spelled exactly like that
+(relative, no leading `/` or `./`, never an absolute path: the permission rule matches the relative spelling
+only, and an absolute path is denied), never piped, chained or prefixed with `cd`. If your first call is
+denied, retry ONCE in exactly that spelling before you give up. `.github/copilot/scripts/macos/gateway.sh list` shows the
 checks. Everything else is denied: read and search with your file tools. A denied command is never
 retried, in any spelling, and never worked around: note what you needed under Open questions. Exit 124
 means a check timed out: diagnose, never re-run it unchanged. If a fix fails twice, stop and report.
