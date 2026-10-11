@@ -765,7 +765,7 @@ public final class WatchLoggingState {
             "endedAt": utcIso(loggedAt),
         ]
         if coversDistance, isMeasuringDistance {
-            let covered = max(0, cumulativeMeters(at: loggedAt) - cumulativeMeters(at: startedAt))
+            let covered = windowMeters(from: startedAt, through: loggedAt)
             if covered > 0 {
                 payload["distanceMeters"] = covered
                 payload["distanceSource"] = "gps"
@@ -774,8 +774,38 @@ public final class WatchLoggingState {
         return payload
     }
 
-    /// The metres the wrist had covered by `instant`: the value of the newest
-    /// stored `gps` sample at or before it, or 0 when there is none (D-2205).
+    /// The metres the wrist covered inside `(start, end]`, added up from the
+    /// stored `gps` samples (D-2215).
+    ///
+    /// The chain begins at the baseline `cumulativeMeters(at: start)` — the
+    /// newest sample at or before the window (D-2205, S-3214/S-3217) — and adds
+    /// each sample forward in ascending sequence order: the sample AT the start
+    /// instant is the baseline, the one AT the log instant is inside. A total
+    /// smaller than the one before it means the location subscription restarted
+    /// and the new total is the metres since the restart — the steps rule
+    /// (D-125), which keeps an effort's distance when the counter resets
+    /// mid-window instead of reading the drop as no movement.
+    private func windowMeters(from start: Date, through end: Date) -> Double {
+        var previous = cumulativeMeters(at: start)
+        var total = 0.0
+        for sample in engine.sensorSamples
+            .filter({
+                $0.kind == WatchSensorKind.gps
+                    && $0.value.isFinite
+                    && $0.recordedAt > start
+                    && $0.recordedAt <= end
+            })
+            .sorted(by: { $0.sequence < $1.sequence })
+        {
+            total += sample.value >= previous ? sample.value - previous : sample.value
+            previous = sample.value
+        }
+        return total
+    }
+
+    /// The baseline the distance chain starts from: the value of the newest
+    /// stored `gps` sample at or before `instant`, or 0 when there is none
+    /// (D-2205).
     ///
     /// Read back from the session's stored samples rather than from memory, so
     /// a relaunch between Start and Log changes nothing. The settled `distance`

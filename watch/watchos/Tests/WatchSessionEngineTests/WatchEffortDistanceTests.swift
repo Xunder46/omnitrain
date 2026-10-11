@@ -18,6 +18,7 @@
 //    S-3216 the settled `distance` sample is not the effort's → `testS3216...`
 //    S-3217 the Log boundary is inclusive                   → `testS3217...`
 //    S-3219 a hold logged while measuring carries nothing   → `testS3219...`
+//    S-3221 a restarted total inside the window             → `testS3221...`
 //
 //  Every fix is stamped with the clock reading when it arrives, and two samples
 //  of one kind on one instant are one stored row (D-2211): each fixture advances
@@ -370,6 +371,38 @@ final class WatchEffortDistanceTests: XCTestCase {
             logged.payload["distanceMeters"] as? Double,
             2000,
             "the fix at the log instant is the wrist's total at that instant"
+        )
+        XCTAssertEqual(logged.payload["distanceSource"] as? String, "gps")
+    }
+
+    // MARK: - S-3221 a restarted total inside the window
+
+    func testS3221ARestartedTotalInsideTheWindowIsTheMetresSinceTheRestart() async throws {
+        let engine = await harness.runningEngine()
+        let live = await cardio(engine)
+        let recorder = await measuring(engine, live)
+        let state = surface(engine, recorder)
+
+        source.fix(3000)
+        await eventually { recorder.readings.distanceMeters == 3000 }
+
+        clock.advance(60)
+        await state.startWork()
+        clock.advance(60)
+        // The location subscription restarted: the fresh total starts below
+        // the one the baseline carries.
+        source.fix(111)
+        await eventually { recorder.readings.distanceMeters == 111 }
+        clock.advance(60)
+        source.fix(311)
+        await eventually { recorder.readings.distanceMeters == 311 }
+        clock.advance(60)
+        let logged = try await state.log()
+
+        XCTAssertEqual(
+            logged.payload["distanceMeters"] as? Double,
+            311,
+            "111 m since the restart plus 200 m after it, not 311 − 3000 clamped to 0 (D-2215)"
         )
         XCTAssertEqual(logged.payload["distanceSource"] as? String, "gps")
     }
