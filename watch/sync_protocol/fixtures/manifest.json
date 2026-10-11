@@ -82,6 +82,12 @@
       "type": "routines_down",
       "scenario": "S-1404",
       "note": "The routine's round effort keeps the phone's target: `eff-soccer-half` carries `durationMs: 600000` (600 s) while `eff-soccer-extra` has no length target and `eff-plank` is a `timed` effort."
+    },
+    {
+      "path": "valid/routines_down_catalog_only.json",
+      "type": "routines_down",
+      "scenario": "S-3601",
+      "note": "A phone with exercises and no routine still sends: `routines` is empty and `fallbackExercises` carries every exercise the phone offers the wrist — a set, a hold, and a round with its own period length."
     }
   ],
   "invalid": [
@@ -96,6 +102,14 @@
       "type": "routines_down",
       "expectedCode": "semantic_violation",
       "expectedReasonContains": "fallbackExercises"
+    },
+    {
+      "path": "invalid/routines_down_empty_fallback.json",
+      "type": "routines_down",
+      "scenario": "S-3603",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1 items, found 0",
+      "note": "An empty `routines` is a catalog, but the fallback list stays non-empty: a message offering the wrist no exercise it can log is refused."
     },
     {
       "path": "invalid/foods_down_missing_food_id.json",

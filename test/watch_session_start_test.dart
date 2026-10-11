@@ -1005,6 +1005,28 @@ void main() {
     );
   });
 
+  group('S-3610 a catalog with no routines', () {
+    test(
+      'stores an empty routines list and restores it with its exercise list',
+      () async {
+        watch = await harness.launch();
+        final sent = _readJson(
+          '$_protocolRoot/fixtures/valid/routines_down_catalog_only.json',
+        );
+
+        await harness.syncRoutinesDown(watch, sent);
+
+        watch = await harness.launch();
+
+        expect(watch.paths.routines, isEmpty);
+        expect(
+          watch.paths.fallbackExercises.map((e) => e.exerciseId).toList(),
+          ['ex-barbell-bench-press', 'ex-plank', 'ex-soccer'],
+        );
+      },
+    );
+  });
+
   group('S-007 modality / effort-kind parity with the phone', () {
     test('every capability set resolves the way the phone resolves it', () {
       final cases = _objects(_contract()['effortKindParity']);

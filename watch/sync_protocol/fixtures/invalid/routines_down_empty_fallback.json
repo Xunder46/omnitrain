@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-routines-bad-empty-fallback",
+  "type": "routines_down",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-07-13T17:00:00Z",
+    "routines": [],
+    "fallbackExercises": []
+  }
+}

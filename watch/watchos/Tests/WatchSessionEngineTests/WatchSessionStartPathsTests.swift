@@ -1030,6 +1030,29 @@ final class WatchSessionStartPathsTests: XCTestCase {
         )
     }
 
+    // MARK: - S-3610 a catalog with no routines
+
+    /// A phone with exercises and no routine still sends its exercise list: the
+    /// row is stored whole, and a relaunch reads the same empty ladder and the
+    /// same exercises back.
+    func testS3610ACatalogWithNoRoutinesStoresAndRestoresItsExerciseList() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        let applied = try await harness.receive(
+            try Fixtures.json("fixtures/valid/routines_down_catalog_only.json")
+        )
+        XCTAssertTrue(applied)
+
+        await harness.launch()
+
+        XCTAssertTrue(harness.paths.routines.isEmpty)
+        XCTAssertEqual(
+            harness.paths.fallbackExercises.map(\.exerciseId),
+            ["ex-barbell-bench-press", "ex-plank", "ex-soccer"]
+        )
+    }
+
     // MARK: - S-007 modality / effort-kind parity with the phone
 
     func testS007EveryCapabilitySetResolvesTheWayThePhoneResolvesIt() async throws {
