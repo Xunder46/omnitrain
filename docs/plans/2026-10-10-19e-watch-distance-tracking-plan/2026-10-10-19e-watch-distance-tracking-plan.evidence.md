@@ -139,3 +139,34 @@ no failing mutation: the rule keeps no state outside the stored samples.
 E6's fix (a settled sample that differs from the last fix) is assigned to the prover.
 S-3212 (relaunch) has no failing mutation in the current design: the rule keeps no state outside the
 stored samples, so there is nothing to cache. It is a regression guard, not a mutation-proven one.
+
+## Review round 1 and fix round
+
+Review: `2026-10-10-19e-watch-distance-tracking-plan.review.md` — **APPROVE WITH FIXES**
+(blocker 0 · major 1 · minor 2). Fix round run by the governor (commit
+`fix(watch): review round 1 of plan 19e`).
+
+- **Finding 1 (Major) fixed by D-2215 and S-3221**: a restart of the location feed inside an effort
+  made the effort lose its distance. An effort's metres are now a chain over the stored `gps`
+  samples inside its window (Start, Log], starting from the baseline total at Start; a total below
+  the previous one means the subscription restarted and counts as the metres since the restart
+  (the same rule the steps summary uses). New test
+  `WatchEffortDistanceTests.testS3221ARestartedTotalInsideTheWindowIsTheMetresSinceTheRestart`.
+- **Finding 2 (Minor) fixed**: the stray apostrophe after the Watch Sensors link in
+  `docs/distance_source.md` removed (docs keeper, this fold).
+- **Finding 3 (Minor) fixed**: the Assumption Log filled (A-1…A-5, pointing at Open questions 1–11
+  and the evidence file) (docs keeper, this fold).
+- Governor verification: `swift test` **481 tests, 0 failures**; mutations E1–E8 all RED —
+  `.work/crew/19e-gps/governor-mutations-fix1.md`, verbatim:
+
+| # | Guard | Mutation | Result |
+|---|---|---|---|
+| E1 | S-3208, S-3209 | effort distance = the newest reading (session total) | RED |
+| E2 | S-3209 | no baseline: the end total alone | RED |
+| E3 | S-3210 (+ the two changed old tests, the shape test) | `distanceSource` dropped | RED |
+| E4a | S-3214 | baseline excludes a sample AT the start instant | RED |
+| E4b | S-3217 | window excludes a sample AT the log instant | RED |
+| E5 | S-3215 | baseline = largest qualifying sample | RED |
+| E6 | S-3216 | the settled `distance` kind read inside the window | RED |
+| E7 | S-3219 | a hold covers distance | RED |
+| E8 | S-3221 (new) | a restarted total is read as no movement | RED |

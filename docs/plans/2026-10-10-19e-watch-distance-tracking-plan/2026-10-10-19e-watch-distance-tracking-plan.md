@@ -342,15 +342,40 @@ listed as a finding. **Write scope:** `docs/plans/**`
 | 1B | 1–8 | done |
 | 3P | 1–6 | done |
 | 3D | 1–4 | done |
-| 4 | 1 | not started |
+| 4 | 1 | done (review round 1) |
+| fix | round 1 | done (D-2215, S-3221) |
 
 ## Assumption Log
 
-(empty — filled during the build)
+Filled after review round 1 (finding 3); the substance lives in Open questions
+1–11 and the evidence file.
+
+- **A-1** `storedSensorSamples` is private; the builder reads the public
+  `engine.sensorSamples` instead (Open question 1; D-2209; evidence Phase 1B).
+- **A-2** A third existing test changes on purpose (D-2210), beyond D-2207's
+  "no other existing test is edited" (Open question 2; evidence Phase 1B).
+- **A-3** The prover's mutation spec touched production files
+  (`WatchLoggingState.swift` for S-3219); the governor applied them, never the
+  prover, and restored them byte-identical (Open question 10; evidence Prover
+  verdicts).
+- **A-4** The prover's shell calls were denied; a closed fix run corrected its
+  one non-compiling edit (evidence Prover verdicts).
+- **A-5** The restart rule D-2215 was added after review round 1, not seeded
+  (Feedback F-1; evidence Review round 1 and fix round).
 
 ## Feedback
 
-(empty — filled during the build)
+- **F-1** (governor, after review round 1): review finding 1 (Major) — a
+  restart of the location feed inside an effort made the effort lose its
+  distance — fixed by **D-2215** and scenario **S-3221**: an effort's metres
+  are a chain over the stored `gps` samples inside its window (Start, Log],
+  starting from the baseline total at Start; a total below the previous one
+  means the subscription restarted and counts as the metres since the restart
+  (the same rule the steps summary uses). New test
+  `WatchEffortDistanceTests.testS3221ARestartedTotalInsideTheWindowIsTheMetresSinceTheRestart`;
+  `swift test` 481 tests / 0 failures; mutations E1–E8 all RED
+  (`.work/crew/19e-gps/governor-mutations-fix1.md`). Findings 2 and 3 (minor)
+  are docs items, fixed in this fold.
 
 ## Open questions
 

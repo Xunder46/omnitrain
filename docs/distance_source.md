@@ -174,7 +174,7 @@ zero distance is absence, not a value. Verified by `test/distance_source_test.da
   `distanceSource: "gps"`), `entered` (a person typed or dialled it)
   or `estimated` (the watch platform estimated it). Only `estimated` is marked
   where a distance is displayed. The model that produces a wrist `gps` value is
-  [Watch Sensors](state_management/watch_sensors.md)'; the raw-fix feed that
+  [Watch Sensors](state_management/watch_sensors.md); the raw-fix feed that
   gives it fixes to consume is plan 19f's, and no wrist code feeds a fix yet —
   the app target's feed still reports location unavailable
   (`WatchSensorSourceSourceTests.testS3109TheFeedIsTheRealSourceAndTheStoreReadsBothTypes`).

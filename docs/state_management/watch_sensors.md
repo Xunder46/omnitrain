@@ -93,13 +93,19 @@ location unavailable
 (`WatchSensorSourceSourceTests.testS3109TheFeedIsTheRealSourceAndTheStoreReadsBothTypes`),
 so no behaviour a user sees has changed — the feed is plan 19f's. And a logged
 timed effort's `distanceMeters` is the metres covered between its Start and its
-Log — the difference of the session's stored `gps` samples at those two
-instants, never the session total, never the metres before Start, and never
-the settled `distance` sample. Verified by watchOS `WatchEffortDistanceTests`
+Log — a chain over the session's stored `gps` samples inside that window,
+starting from the baseline total at Start, never the session total, never the
+metres before Start, and never the settled `distance` sample. A total below the
+previous one means the location subscription restarted, and the metres since
+the restart count — the same rule the steps summary uses. Verified by watchOS
+`WatchEffortDistanceTests`
 (`testS3208AnEffortCarriesItsOwnWindowsMetres`,
 `testS3209MetresBeforeStartAreNotTheEfforts`,
 `testS3216ASettledDistanceSampleIsNotTheEffortsDistance`,
-`testS3212ARelaunchedStateLogsTheSameWindow`).
+`testS3212ARelaunchedStateLogsTheSameWindow`,
+`testS3221ARestartedTotalInsideTheWindowIsTheMetresSinceTheRestart`) and by
+`WatchSensorSummaryTests.testAStepCounterThatRestartedAddsItsNewCount` for the
+steps rule the restart case mirrors.
 
 **Sensor rows are dropped with the session, not with a receipt.** Observations
 are gated on the phone's receipt because the phone is their destination. A
@@ -149,14 +155,17 @@ that merely sounds like distance work does not wake the radio. Verified by
 subscription is skipped and nothing else changes; sensor fields are simply
 absent. Verified by `S-006` in both sensor suites.
 - **An effort's distance is its own window.** A timed effort carries the metres
-covered between its Start and its Log, read from the session's stored `gps`
-samples at those two instants — never the session's newest total, never metres
-from before Start, and never the settled `distance` sample. Verified by
-watchOS `WatchEffortDistanceTests`
+covered between its Start and its Log — a chain over the session's stored `gps`
+samples inside that window, starting from the baseline total at Start; a total
+below the previous one is a restarted subscription and counts as the metres
+since the restart — never the session's newest total, never metres from before
+Start, and never the settled `distance` sample. Verified by watchOS
+`WatchEffortDistanceTests`
 (`testS3208AnEffortCarriesItsOwnWindowsMetres`,
 `testS3209MetresBeforeStartAreNotTheEfforts`,
 `testS3216ASettledDistanceSampleIsNotTheEffortsDistance`,
-`testS3212ARelaunchedStateLogsTheSameWindow`).
+`testS3212ARelaunchedStateLogsTheSameWindow`,
+`testS3221ARestartedTotalInsideTheWindowIsTheMetresSinceTheRestart`).
 - **A measured distance never travels without its source.** When a timed
 effort's window covered metres, its payload carries `distanceMeters` and
 `distanceSource: "gps"` together; a window that moved nothing, and a hold
