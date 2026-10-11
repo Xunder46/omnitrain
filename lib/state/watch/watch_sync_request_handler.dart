@@ -11,8 +11,8 @@
 /// explicit that a request "is a transport concern and carries no message of its
 /// own".
 ///
-/// The routines are built here, on demand, and nowhere else: nothing on the
-/// phone answers a request the wrist has not made (D-7).
+/// The routines and the exercise list are built here, on demand, and nowhere
+/// else: nothing on the phone answers a request the wrist has not made (D-7).
 ///
 /// The same request is how the phone's settings reach the wrist: the phone
 /// never pushes, so every sync is answered with `preferences_down` first —
@@ -53,7 +53,8 @@ class WatchSyncRequestHandler {
   ///
   /// False is not a failure: a phone holding no session has nothing to send
   /// and says nothing — the wrist's own copy is what it keeps. A request for
-  /// routines is always answered, because the preferences travel with it.
+  /// routines is always answered: the preferences and the phone's exercise list
+  /// travel with it.
   Future<bool> handle(String request) {
     switch (request) {
       case WatchTransportRequest.routines:
@@ -66,7 +67,7 @@ class WatchSyncRequestHandler {
   }
 
   /// The answer to the wrist's "sync routines": the preferences, always and
-  /// first, then the routines when the phone holds any.
+  /// first, then the routines and the exercise list when the phone holds any.
   ///
   /// The settings are `SettingsState`'s own — the one owner of them (D-115) —
   /// so nothing here reads or parses a stored preference.

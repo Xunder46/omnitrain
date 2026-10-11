@@ -494,22 +494,31 @@ void main() {
       final payload = _asObject(message['payload']);
       expect(_objects(payload['routines']).single['name'], 'Push A');
       expect(
-        _objects(payload['fallbackExercises']).single['exerciseId'],
-        'exercise-goblet-squat',
+        [
+          for (final exercise in _objects(payload['fallbackExercises']))
+            exercise['exerciseId'],
+        ],
+        contains('exercise-goblet-squat'),
+        reason: 'the whole catalog travels, so the routine\'s exercise is one '
+            'of them rather than the only one',
       );
     });
 
-    test('S-003 a phone with no routines answers with its preferences only',
-        () async {
+    test(
+        'S-003 a phone with no routines answers with its preferences and its '
+        'exercise list', () async {
       await watchTransport.requestRoutines();
       await _settle();
 
       expect(
         [for (final frame in link.phone.sent) frame['type']],
-        ['preferences_down'],
-        reason: 'S-253 no routines_down without routines, but the setting '
-            'always travels',
+        ['preferences_down', 'routines_down'],
+        reason: 'S-253 the setting always travels, and the wrist still needs '
+            'an exercise list even when the phone holds no routine',
       );
+      final payload = _asObject(link.phone.sent.last['payload']);
+      expect(payload['routines'], isEmpty);
+      expect(payload['fallbackExercises'], isNotEmpty);
       expect(reportedFailure, isNull);
     });
 
@@ -562,11 +571,12 @@ void main() {
 
       expect(
         [for (final frame in link.phone.sent) frame['type']],
-        ['preferences_down'],
-        reason: 'S-253 a phone with no routines still sends its preferences',
+        ['preferences_down', 'routines_down'],
+        reason: 'S-253 the setting always travels first, and the exercise '
+            'list follows it even with no routines to send',
       );
       expect(
-        _asObject(link.phone.sent.single['payload']),
+        _asObject(link.phone.sent.first['payload']),
         {'generatedAt': utcIso(_now), 'effortRatingPrompt': false, 'restPingSeconds': 0},
         reason: 'S-253 the setting as SettingsState holds it, stamped with '
             'the phone clock at send',

@@ -82,7 +82,8 @@ class _ExerciseResolver {
 }
 
 abstract final class WatchReferenceSync {
-  /// The phone's routines, as the `routines_down` message the wrist reads.
+  /// The phone's routines and its whole exercise list, as the `routines_down`
+  /// message the wrist reads.
   ///
   /// Assembled from storage when the wrist asks for them, not on a schedule of
   /// the phone's own: the watch is the one that knows when its user wants the
@@ -95,10 +96,11 @@ abstract final class WatchReferenceSync {
   /// only thing the payload's identity rests on, which is why the message id is
   /// derived from it.
   ///
-  /// Returns null when there is nothing the wrist could start: no routine, or
-  /// none whose exercises the phone still holds. An empty `routines` array is
-  /// not an option — the schema requires at least one — and a message the watch
-  /// must reject is worse than no message at all.
+  /// Returns null when the phone holds no exercise the wrist could log: an
+  /// exercise with no capabilities cannot be rendered, and a message the watch
+  /// must reject is worse than no message at all. An empty `routines` array is
+  /// fine — the message carries the phone's whole exercise list, so a phone
+  /// with exercises and no routine still has something to send (D-3601).
   static Future<Map<String, Object?>?> buildRoutinesDown({
     required WorkoutRepository repository,
     required DateTime generatedAt,
@@ -129,7 +131,16 @@ abstract final class WatchReferenceSync {
       });
     }
 
-    if (routines.isEmpty) return null;
+    // The routines are not the only thing the wrist can log: the fallback list
+    // is the phone's whole catalog, so an exercise outside every routine still
+    // travels (D-3601, D-3603). The resolver skips the ones with no
+    // capabilities, and a routine's exercises are already in `referenced`.
+    for (final exercise in await repository.getExercises()) {
+      final resolved = await resolver.resolve(exercise.id);
+      if (resolved != null) referenced[resolved.id] = resolved;
+    }
+
+    if (referenced.isEmpty) return null;
 
     return phoneEnvelope(
       type: 'routines_down',
@@ -143,28 +154,39 @@ abstract final class WatchReferenceSync {
     );
   }
 
-  /// Every exercise the routines reference, in routine order.
+  /// Every exercise the phone offers the wrist, in the phone's name order.
   ///
-  /// The fallback list is what lets the wrist run a routine with the phone
-  /// unreachable, so a routine this list does not cover is a routine the watch
-  /// must not hold (PROTOCOL.md, "Message families").
+  /// The fallback list is what lets the wrist start a session with the phone
+  /// unreachable, so it carries the whole catalog rather than only what the
+  /// routines reference (D-3601, D-3603) — a routine's exercises are a subset
+  /// of it, never a separate list. The order is the phone's own, sorted by name
+  /// case-insensitively with ties by id, so the same catalog is the same
+  /// message whichever order the routines were met in.
   ///
   /// The exercise's own period length travels with it (D-1411) whenever it holds
   /// one: a catalog entry declares no effort kind, so the wrist decides at pick
   /// time whether the length applies (D-1404).
   static List<Map<String, Object?>> _fallbackJson(
     Map<String, _SyncedExercise> referenced,
-  ) => [
-    for (final exercise in referenced.values)
-      {
-        'exerciseId': exercise.id,
-        'name': exercise.name,
-        'capabilities': exercise.capabilities,
-        if (exercise.defaultRoundDurationSecs != null &&
-            exercise.defaultRoundDurationSecs! >= 1)
-          'roundDurationSecs': exercise.defaultRoundDurationSecs!,
-      },
-  ];
+  ) {
+    final ordered = [...referenced.values]
+      ..sort((left, right) {
+        final byName = compareFoodNames(left.name, right.name);
+        return byName != 0 ? byName : left.id.compareTo(right.id);
+      });
+
+    return [
+      for (final exercise in ordered)
+        {
+          'exerciseId': exercise.id,
+          'name': exercise.name,
+          'capabilities': exercise.capabilities,
+          if (exercise.defaultRoundDurationSecs != null &&
+              exercise.defaultRoundDurationSecs! >= 1)
+            'roundDurationSecs': exercise.defaultRoundDurationSecs!,
+        },
+    ];
+  }
 
   /// The routine's segments, with the efforts the wrist can actually log.
   ///
@@ -313,8 +335,9 @@ abstract final class WatchReferenceSync {
   /// while a rest of its own is open ([restPingSeconds], 0 for Off).
   ///
   /// Its own message rather than a field on `routines_down`, because
-  /// [buildRoutinesDown] answers null for a phone with no routines, and a
-  /// setting riding on it would then never reach the wrist (D-113).
+  /// [buildRoutinesDown] answers null for a phone with no exercise the wrist
+  /// could log, and a setting riding on it would then never reach the wrist
+  /// (D-113).
   ///
   /// The wrist keeps the copy with the latest [generatedAt], and on a tie the
   /// one it received later. The message id follows the content for that

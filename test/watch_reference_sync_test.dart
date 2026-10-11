@@ -6,6 +6,8 @@
 //   S-003 the phone builds routines on request  → `S-003 ...`
 //   S-004 the wrist reflects the declared kind  → `S-004 ...`
 //   S-007 the fallback list covers every exercise → `S-007 ...`
+//   S-3604 the phone sends its whole exercise list  → `S-3604 ...` (plan
+//         2026-10-11-23c, D-3601/D-3603/D-3604; S-3605..S-3607 in the same group)
 //   S-253 the preferences the wrist honours        → `S-253 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-113; the request/answer half is in `test/watch_transport_test.dart`)
@@ -236,7 +238,12 @@ void main() {
         _objects(payload['fallbackExercises']).map(
           (exercise) => exercise['exerciseId'],
         ),
-        ['exercise-goblet-squat', 'exercise-easy-run', 'exercise-plank-hold'],
+        containsAll([
+          'exercise-goblet-squat',
+          'exercise-easy-run',
+          'exercise-plank-hold',
+        ]),
+        reason: 'S-003 the routine exercises are a subset of the whole list',
       );
     });
 
@@ -255,7 +262,14 @@ void main() {
         'Cardio',
         'Yoga',
       ]);
-      expect(synced.fallbackExercises, hasLength(3));
+      expect(
+        synced.fallbackExercises.map((exercise) => exercise.exerciseId),
+        containsAll([
+          'exercise-goblet-squat',
+          'exercise-easy-run',
+          'exercise-plank-hold',
+        ]),
+      );
 
       // The yoga routine's slots are what the wrist will log against, and they
       // carry the routine's declared kind as well as the capabilities.
@@ -265,14 +279,158 @@ void main() {
       expect(yoga.slots.single['effortKind'], 'timed');
     });
 
-    test('S-003 an empty phone answers nothing rather than an empty list',
+    test('S-003 a phone with no routines still answers with its exercise list',
         () async {
+      final message = (await WatchReferenceSync.buildRoutinesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      ))!;
+
+      expect(_rejections(message), isEmpty);
+      final payload = _asObject(message['payload']);
+      expect(
+        payload['routines'],
+        isEmpty,
+        reason: 'S-003 an empty routines list is a valid list now, not a '
+            'reason to stay silent (D-3601)',
+      );
+      expect(
+        _objects(payload['fallbackExercises']),
+        isNotEmpty,
+        reason: 'S-003 the exercise list is what a routineless phone sends',
+      );
+    });
+  });
+
+  // Plan 2026-10-11-23c, Phase C2 (D-3601, D-3603, D-3604): the phone sends its
+  // whole exercise list, so a wrist can add an exercise no routine mentions —
+  // and it sends one even when it holds no routine at all.
+  group('S-3604 the phone sends its whole exercise list', () {
+    /// A phone holding only [exercises] — no seed catalog, no templates.
+    Future<void> holdOnly(
+      List<(String id, String name, List<String> capabilities)> exercises,
+    ) async {
+      repository.clear();
+      for (final (id, name, capabilities) in exercises) {
+        await repository.createExercise(
+          Exercise(
+            id: id,
+            name: name,
+            createdAtMs: _now.millisecondsSinceEpoch,
+            updatedAtMs: _now.millisecondsSinceEpoch,
+          ),
+        );
+        await repository.setExerciseCapabilities(id, capabilities);
+      }
+    }
+
+    test('S-3604 no routines, three exercises: the two capable ones, sorted',
+        () async {
+      await holdOnly([
+        ('exercise-zebra', 'Zebra Press', ['reps', 'sets']),
+        ('exercise-custom', 'Custom Move', const []),
+        ('exercise-apple', 'apple squat', ['reps', 'sets', 'load']),
+      ]);
+
+      final message = (await WatchReferenceSync.buildRoutinesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      ))!;
+
+      expect(
+        _rejections(message),
+        isEmpty,
+        reason: 'S-3604 a catalog-only message is one the wrist accepts',
+      );
+      final payload = _asObject(message['payload']);
+      expect(payload['routines'], isEmpty);
+      expect(
+        _objects(payload['fallbackExercises']).map(
+          (exercise) => exercise['exerciseId'],
+        ),
+        ['exercise-apple', 'exercise-zebra'],
+        reason: 'S-3604 the two capable exercises, case-insensitively by name',
+      );
+    });
+
+    test(
+        'S-3605 one routine plus extras: both, no duplicates, name order',
+        () async {
+      await _addTemplate(
+        repository,
+        id: 'routine-mix',
+        name: 'Mix',
+        segmentIds: ['seg-mix'],
+      );
+      await _addEffort(
+        repository,
+        id: 'eff-mix',
+        segmentId: 'seg-mix',
+        orderIndex: 0,
+        effortKind: 'set',
+        exerciseId: 'exercise-goblet-squat',
+      );
+
+      final message = (await WatchReferenceSync.buildRoutinesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      ))!;
+      final entries = _objects(
+        _asObject(message['payload'])['fallbackExercises'],
+      );
+      final ids = [
+        for (final entry in entries) entry['exerciseId']! as String,
+      ];
+
+      expect(ids, contains('exercise-goblet-squat'));
+      expect(
+        ids,
+        contains('exercise-easy-run'),
+        reason: 'S-3605 an exercise no routine mentions still travels',
+      );
+      expect(
+        ids.toSet(),
+        hasLength(ids.length),
+        reason: 'S-3605 the routine exercise is not listed twice',
+      );
+      final names = [
+        for (final entry in entries) (entry['name']! as String).toLowerCase(),
+      ];
+      expect(
+        names,
+        orderedEquals([...names]..sort()),
+        reason: 'S-3605 the list is in the phone\'s name order',
+      );
+    });
+
+    test('S-3606 a phone with no exercises answers nothing', () async {
+      repository.clear();
+
       final message = await WatchReferenceSync.buildRoutinesDown(
         repository: repository,
         generatedAt: _generatedAt,
       );
 
-      expect(message, isNull);
+      expect(
+        message,
+        isNull,
+        reason: 'S-3606 nothing the wrist could log is nothing to send',
+      );
+    });
+
+    test('S-3607 the seeded catalog fits well under the frame budget',
+        () async {
+      final message = (await WatchReferenceSync.buildRoutinesDown(
+        repository: repository,
+        generatedAt: _generatedAt,
+      ))!;
+
+      final bytes = utf8.encode(jsonEncode(message)).length;
+      // ignore: avoid_print
+      print('S-3607 routines_down for the seeded catalog: $bytes bytes');
+
+      expect(_rejections(message), isEmpty);
+      expect(bytes, lessThan(200000));
     });
   });
 
@@ -393,11 +551,19 @@ void main() {
         ))!['payload'],
       );
 
+      final fallbackIds = _objects(payload['fallbackExercises'])
+          .map((exercise) => exercise['exerciseId'])
+          .toList();
+
       expect(
-        _objects(payload['fallbackExercises']).map(
-          (exercise) => exercise['exerciseId'],
-        ),
-        ['exercise-goblet-squat'],
+        fallbackIds,
+        contains('exercise-goblet-squat'),
+        reason: 'S-007 the routine exercise is in the catalog list',
+      );
+      expect(
+        fallbackIds.toSet(),
+        hasLength(fallbackIds.length),
+        reason: 'S-007 an exercise used twice is listed once',
       );
     });
 
@@ -421,12 +587,25 @@ void main() {
         exerciseId: 'exercise-goblet-squat',
       );
 
-      final message = await WatchReferenceSync.buildRoutinesDown(
+      final message = (await WatchReferenceSync.buildRoutinesDown(
         repository: repository,
         generatedAt: _generatedAt,
-      );
+      ))!;
 
-      expect(message, isNull);
+      final payload = _asObject(message['payload']);
+      expect(
+        payload['routines'],
+        isEmpty,
+        reason: 'S-007 a routine whose only effort cannot be rendered is '
+            'dropped whole',
+      );
+      expect(
+        _objects(payload['fallbackExercises']).map(
+          (exercise) => exercise['exerciseId'],
+        ),
+        isNot(contains('exercise-goblet-squat')),
+        reason: 'S-007 an exercise with no capabilities is not sent',
+      );
     });
 
     test('S-007 the fallback list ends up in the wrist start paths', () async {
