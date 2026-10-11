@@ -682,6 +682,7 @@ public enum StoredWatchRecord {
     public static let foodCatalogType = "food_catalog"
     public static let preferencesType = "preferences"
     public static let ratingPromptType = "rating_prompt"
+    public static let exerciseBatchType = "exercise_batch"
 
     case session(WatchSessionRecord)
     case observation(WatchObservationRecord)
@@ -692,6 +693,7 @@ public enum StoredWatchRecord {
     case foodCatalog(WatchFoodCatalogRecord)
     case preferences(WatchPreferencesRecord)
     case ratingPrompt(WatchRatingPromptRecord)
+    case exerciseBatch(WatchExerciseBatchRecord)
 
     public var recordType: String {
         switch self {
@@ -704,6 +706,7 @@ public enum StoredWatchRecord {
         case .foodCatalog: return Self.foodCatalogType
         case .preferences: return Self.preferencesType
         case .ratingPrompt: return Self.ratingPromptType
+        case .exerciseBatch: return Self.exerciseBatchType
         }
     }
 
@@ -718,6 +721,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.recordId
         case .preferences(let row): return row.recordId
         case .ratingPrompt(let row): return row.recordId
+        case .exerciseBatch(let row): return row.recordId
         }
     }
 
@@ -732,6 +736,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.sessionId
         case .preferences(let row): return row.sessionId
         case .ratingPrompt(let row): return row.sessionId
+        case .exerciseBatch(let row): return row.sessionId
         }
     }
 
@@ -746,6 +751,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.recordedAt
         case .preferences(let row): return row.recordedAt
         case .ratingPrompt(let row): return row.recordedAt
+        case .exerciseBatch(let row): return row.recordedAt
         }
     }
 
@@ -760,6 +766,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.sequence
         case .preferences(let row): return row.sequence
         case .ratingPrompt(let row): return row.sequence
+        case .exerciseBatch(let row): return row.sequence
         }
     }
 
@@ -774,6 +781,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return .foodCatalog(row.withSequence(sequence))
         case .preferences(let row): return .preferences(row.withSequence(sequence))
         case .ratingPrompt(let row): return .ratingPrompt(row.withSequence(sequence))
+        case .exerciseBatch(let row): return .exerciseBatch(row.withSequence(sequence))
         }
     }
 
@@ -788,6 +796,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.toJson()
         case .preferences(let row): return row.toJson()
         case .ratingPrompt(let row): return row.toJson()
+        case .exerciseBatch(let row): return row.toJson()
         }
     }
 
@@ -805,6 +814,7 @@ public enum StoredWatchRecord {
         case foodCatalogType: return .foodCatalog(try WatchFoodCatalogRecord.fromJson(json))
         case preferencesType: return .preferences(try WatchPreferencesRecord.fromJson(json))
         case ratingPromptType: return .ratingPrompt(try WatchRatingPromptRecord.fromJson(json))
+        case exerciseBatchType: return .exerciseBatch(try WatchExerciseBatchRecord.fromJson(json))
         default: throw WatchRecordError.unknownRecordType(type)
         }
     }

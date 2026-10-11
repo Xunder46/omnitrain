@@ -968,6 +968,10 @@ final class ContendedWatchSessionStore: WatchSessionStore {
     func pruneSensorSamples(_ sessionIds: [String]) async -> [String] {
         await inner.pruneSensorSamples(sessionIds)
     }
+
+    func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        await inner.pruneExerciseBatches(keepingVersion: keepingVersion)
+    }
 }
 
 /// One append at a time, counting the ones that had to wait.

@@ -7,10 +7,12 @@
 //
 //  Append-only by construction (PROTOCOL.md, authority rule 1): a store offers
 //  no update, no delete and no remove. `append` is the only way anything enters,
-//  and there are exactly two ways anything leaves it — both of them prunes, both
-//  gated on the session being over: `pruneConfirmed` drops observations the
-//  phone has acknowledged, and `pruneSensorSamples` drops the raw sensor log of a
-//  session the phone has recorded in full.
+//  and there are exactly three ways anything leaves it — all of them prunes,
+//  each gated on nothing left to lose: `pruneConfirmed` drops observations the
+//  phone has acknowledged, `pruneSensorSamples` drops the raw sensor log of a
+//  session the phone has recorded in full, and `pruneExerciseBatches` drops the
+//  stored exercise batches of every list version but the one that just became
+//  active.
 //
 //  `WatchSessionEngineTests` (S-004) fails the build if a mutating method is
 //  declared anywhere in this module or if the engine reaches for a store method
@@ -47,6 +49,11 @@ public struct WatchStoreContents {
     /// session's prompt is answered by its rating, never by another row.
     public let ratingPrompts: [WatchRatingPromptRecord]
 
+    /// The exercise-list batches the phone sent down, oldest first, across
+    /// every version. A version is complete once its batches are all here and
+    /// all but the active version's are then pruned (D-3813, D-3814).
+    public let exerciseBatches: [WatchExerciseBatchRecord]
+
     public init(
         sessions: [WatchSessionRecord] = [],
         observations: [WatchObservationRecord] = [],
@@ -56,7 +63,8 @@ public struct WatchStoreContents {
         routineCatalogs: [WatchRoutineCatalogRecord] = [],
         foodCatalogs: [WatchFoodCatalogRecord] = [],
         preferences: [WatchPreferencesRecord] = [],
-        ratingPrompts: [WatchRatingPromptRecord] = []
+        ratingPrompts: [WatchRatingPromptRecord] = [],
+        exerciseBatches: [WatchExerciseBatchRecord] = []
     ) {
         self.sessions = sessions
         self.observations = observations
@@ -67,6 +75,7 @@ public struct WatchStoreContents {
         self.foodCatalogs = foodCatalogs
         self.preferences = preferences
         self.ratingPrompts = ratingPrompts
+        self.exerciseBatches = exerciseBatches
     }
 
     public var isEmpty: Bool {
@@ -74,6 +83,7 @@ public struct WatchStoreContents {
             && confirmations.isEmpty && sensorSamples.isEmpty
             && routineCatalogs.isEmpty && foodCatalogs.isEmpty
             && preferences.isEmpty && ratingPrompts.isEmpty
+            && exerciseBatches.isEmpty
     }
 }
 
@@ -98,6 +108,16 @@ public protocol WatchSessionStore {
     /// keeps every reading it has taken, which is what makes the live readout
     /// kill-safe.
     func pruneSensorSamples(_ sessionIds: [String]) async -> [String]
+
+    /// Drops every exercise-batch row whose version is not `keepingVersion`,
+    /// returning the record ids that were dropped.
+    ///
+    /// The gate is the list, not the phone's receipt: the caller names a version
+    /// only once every batch of it is stored, i.e. once a complete list is
+    /// active, and the batches of every other version are then the ones nothing
+    /// reads any more. No other record kind is touched — a routine catalog row
+    /// stays where it is.
+    func pruneExerciseBatches(keepingVersion: String) async -> [String]
 }
 
 /// Folds confirmations into observations as their `confirmedAt` receipt.
@@ -158,6 +178,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         var foodCatalogs: [WatchFoodCatalogRecord] = []
         var preferences: [WatchPreferencesRecord] = []
         var ratingPrompts: [WatchRatingPromptRecord] = []
+        var exerciseBatches: [WatchExerciseBatchRecord] = []
 
         for row in rows {
             switch row {
@@ -170,6 +191,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             case .foodCatalog(let value): foodCatalogs.append(value)
             case .preferences(let value): preferences.append(value)
             case .ratingPrompt(let value): ratingPrompts.append(value)
+            case .exerciseBatch(let value): exerciseBatches.append(value)
             }
         }
 
@@ -182,7 +204,8 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             routineCatalogs: routineCatalogs,
             foodCatalogs: foodCatalogs,
             preferences: preferences,
-            ratingPrompts: ratingPrompts
+            ratingPrompts: ratingPrompts,
+            exerciseBatches: exerciseBatches
         )
     }
 
@@ -211,6 +234,22 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         rows.removeAll { row in
             if case .sensorSample(let value) = row {
                 return sessions.contains(value.sessionId)
+            }
+            return false
+        }
+        return dropped
+    }
+
+    public func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        let dropped = rows.compactMap { row -> String? in
+            if case .exerciseBatch(let value) = row,
+               value.catalogVersion != keepingVersion { return value.recordId }
+            return nil
+        }
+        let keep = Set(dropped)
+        rows.removeAll { row in
+            if case .exerciseBatch(let value) = row {
+                return keep.contains(value.recordId)
             }
             return false
         }

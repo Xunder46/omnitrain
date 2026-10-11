@@ -211,6 +211,10 @@ final class SuspendingStore: WatchSessionStore {
         await inner.pruneSensorSamples(sessionIds)
     }
 
+    func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        await inner.pruneExerciseBatches(keepingVersion: keepingVersion)
+    }
+
     /// Consumes the arm and marks the store suspended, if it was armed.
     private func beginAppend() -> Bool {
         lock.lock()
