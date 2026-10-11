@@ -11,6 +11,9 @@
 //   S-253 the preferences the wrist honours        → `S-253 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-113; the request/answer half is in `test/watch_transport_test.dart`)
+//   S-3720/S-3721 the accent the phone sends       → `S-3720 ...` / `S-3721 ...`
+//         (plan 2026-10-11-23d, D-3702; the table those accents come from is
+//         S-3722, in `test/watch_accent_contract_test.dart`)
 //
 // The message is judged the way the watch judges it: written into the shared
 // schema validator, then read back through the wrist's own types. A payload
@@ -20,6 +23,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/core/utils/watch_reference_sync.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -58,6 +62,19 @@ SyncProtocolValidator _validator() {
 /// What the schema says about a message — empty means the wrist would accept it.
 List<SyncProtocolRejection> _rejections(Map<String, Object?> message) =>
     _validator().validateEnvelope(message);
+
+/// The accent `watch/contract/watch_accent_contract.json` names for [theme]:
+/// the six accents both stacks agree on (plan 2026-10-11-23d, D-3705).
+String _tableAccent(AppTheme theme) => _objects(
+  _asObject(
+    jsonDecode(
+      File(
+        '${Directory.current.path}/watch/contract/'
+        'watch_accent_contract.json',
+      ).readAsStringSync(),
+    ),
+  )['themes'],
+).firstWhere((row) => row['theme'] == theme.name)['hex']! as String;
 
 /// One planned effort, with the values a real routine carries.
 Future<void> _addEffort(
@@ -776,6 +793,88 @@ void main() {
         rebuilt['messageId'],
         on['messageId'],
         reason: 'S-253 a rebuild of the same setting is the same message',
+      );
+    });
+  });
+
+  // Plan 2026-10-11-23d (D-3702, D-3705): the preferences carry the accent of
+  // the theme the phone is wearing, so the wrist can wear the same one instead
+  // of its default. S-3722 (the table those accents come from) and S-3723 (the
+  // handler sends the current theme) are in `test/watch_accent_contract_test.dart`.
+  group('S-3720 the accent the phone sends', () {
+    test('S-3720 every theme travels as the accent the shared table names', () {
+      for (final theme in AppTheme.values) {
+        final message = WatchReferenceSync.buildPreferencesDown(
+          effortRatingPrompt: false,
+          restPingSeconds: 90,
+          generatedAt: _generatedAt,
+          accentColorHex: WatchReferenceSync.accentHexOf(
+            OmniTheme.colorsForTheme(theme).primary,
+          ),
+        );
+
+        expect(
+          _rejections(message),
+          isEmpty,
+          reason:
+              'S-3720 the wrist must be able to accept the accent of '
+              '${theme.name}',
+        );
+        expect(
+          _asObject(message['payload'])['accentColorHex'],
+          _tableAccent(theme),
+          reason: 'S-3720 ${theme.name} travels as the accent the wrist wears',
+        );
+      }
+    });
+
+    test('S-3720 a phone with no accent sends none rather than claiming one',
+        () {
+      final message = WatchReferenceSync.buildPreferencesDown(
+        effortRatingPrompt: false,
+        restPingSeconds: 90,
+        generatedAt: _generatedAt,
+      );
+
+      expect(
+        _rejections(message),
+        isEmpty,
+        reason: 'S-3720 the field is optional, so the wrist accepts its absence',
+      );
+      expect(
+        _asObject(message['payload']).containsKey('accentColorHex'),
+        isFalse,
+        reason:
+            'S-3720 an omitted accent reads at the wrist as no accent — the '
+            'default look — while a sent one is a claim about the phone',
+      );
+    });
+
+    test('S-3721 two accents stamped in one millisecond are two messages, and '
+        'a rebuild is one', () {
+      Map<String, Object?> built(AppTheme theme) =>
+          WatchReferenceSync.buildPreferencesDown(
+            effortRatingPrompt: false,
+            restPingSeconds: 90,
+            generatedAt: _generatedAt,
+            accentColorHex: WatchReferenceSync.accentHexOf(
+              OmniTheme.colorsForTheme(theme).primary,
+            ),
+          );
+
+      final neon = built(AppTheme.abyssalNeon);
+
+      expect(
+        neon['messageId'],
+        isNot(built(AppTheme.crimsonDojo)['messageId']),
+        reason:
+            'S-3721 a tie on generatedAt goes to the later-received copy, so a '
+            'theme change must not be dropped as a redelivery',
+      );
+      expect(
+        built(AppTheme.abyssalNeon)['messageId'],
+        neon['messageId'],
+        reason: 'S-3721 a rebuild of the same accent is the same message',
       );
     });
   });

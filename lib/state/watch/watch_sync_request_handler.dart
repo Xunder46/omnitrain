@@ -21,6 +21,7 @@
 /// S-253).
 library;
 
+import '../../core/constants/omni_theme.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/utils/watch_reference_sync.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -67,15 +68,21 @@ class WatchSyncRequestHandler {
   }
 
   /// The answer to the wrist's "sync routines": the preferences, always and
-  /// first, then the routines and the exercise list when the phone holds any.
+  /// first — the settings the wrist honours and the accent of the theme the
+  /// phone is wearing — then the routines and the exercise list when the phone
+  /// holds any.
   ///
   /// The settings are `SettingsState`'s own — the one owner of them (D-115) —
-  /// so nothing here reads or parses a stored preference.
+  /// so nothing here reads or parses a stored preference; the accent is read
+  /// the same way, from the theme that state holds rather than from a copy.
   Future<bool> _sendRoutines() async {
     await _transport.send(
       WatchReferenceSync.buildPreferencesDown(
         effortRatingPrompt: _settings.showFeelingSurvey,
         restPingSeconds: _settings.restPingInterval,
+        accentColorHex: WatchReferenceSync.accentHexOf(
+          OmniTheme.colorsForTheme(_settings.appTheme).primary,
+        ),
         generatedAt: _clock(),
       ),
     );

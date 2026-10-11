@@ -323,6 +323,8 @@ void main() {
           'generatedAt': utcIso(_now),
           'effortRatingPrompt': settings.showFeelingSurvey,
           _contract()['preferencesField']! as String: 45,
+          // The default theme's accent (abyssalNeon), carried since plan 23d.
+          'accentColorHex': '#2DE2E6',
         },
         reason:
             'S-248 the setting the phone holds when the wrist asks is the '

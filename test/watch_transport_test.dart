@@ -577,7 +577,13 @@ void main() {
       );
       expect(
         _asObject(link.phone.sent.first['payload']),
-        {'generatedAt': utcIso(_now), 'effortRatingPrompt': false, 'restPingSeconds': 0},
+        {
+          'generatedAt': utcIso(_now),
+          'effortRatingPrompt': false,
+          'restPingSeconds': 0,
+          // The default theme's accent (abyssalNeon), carried since plan 23d.
+          'accentColorHex': '#2DE2E6',
+        },
         reason: 'S-253 the setting as SettingsState holds it, stamped with '
             'the phone clock at send',
       );
@@ -603,7 +609,12 @@ void main() {
       );
       expect(
         _asObject(link.phone.sent.first['payload']),
-        {'generatedAt': utcIso(phoneNow), 'effortRatingPrompt': true, 'restPingSeconds': 0},
+        {
+          'generatedAt': utcIso(phoneNow),
+          'effortRatingPrompt': true,
+          'restPingSeconds': 0,
+          'accentColorHex': '#2DE2E6',
+        },
         reason: 'S-253 the setting turned on reaches the wrist at its next '
             'sync',
       );

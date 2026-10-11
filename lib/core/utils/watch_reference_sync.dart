@@ -22,6 +22,8 @@
 
 library;
 
+import 'dart:ui' show Color;
+
 import '../constants/block_types.dart';
 import '../constants/metric_ids.dart';
 import '../sync_protocol/phone_envelope.dart';
@@ -331,8 +333,10 @@ abstract final class WatchReferenceSync {
 
   /// The phone's settings the wrist honours, as the `preferences_down` message
   /// it reads — today, whether a session ended on the wrist asks for the
-  /// session effort rating ([effortRatingPrompt]) and how often the wrist pings
-  /// while a rest of its own is open ([restPingSeconds], 0 for Off).
+  /// session effort rating ([effortRatingPrompt]), how often the wrist pings
+  /// while a rest of its own is open ([restPingSeconds], 0 for Off), and the
+  /// accent of the theme the phone is wearing ([accentColorHex], `#RRGGBB` from
+  /// [accentHexOf]).
   ///
   /// Its own message rather than a field on `routines_down`, because
   /// [buildRoutinesDown] answers null for a phone with no exercise the wrist
@@ -343,23 +347,48 @@ abstract final class WatchReferenceSync {
   /// one it received later. The message id follows the content for that
   /// reason: a rebuild of the same setting is the same message, while a
   /// different setting stamped in the same millisecond is a different one
-  /// that must not be dropped as a redelivery.
+  /// that must not be dropped as a redelivery — a changed accent included.
+  ///
+  /// [accentColorHex] is optional: null leaves the field out, and the wrist
+  /// reads an absent accent as no accent (its default look) rather than as the
+  /// last accent it saw.
   static Map<String, Object?> buildPreferencesDown({
     required bool effortRatingPrompt,
     required int restPingSeconds,
     required DateTime generatedAt,
+    String? accentColorHex,
   }) => phoneEnvelope(
     type: 'preferences_down',
     messageId:
         'msg-preferences-${generatedAt.toUtc().millisecondsSinceEpoch}-'
-        '${effortRatingPrompt ? 'on' : 'off'}-$restPingSeconds',
+        '${effortRatingPrompt ? 'on' : 'off'}-$restPingSeconds'
+        '${accentColorHex == null ? '' : '-${accentColorHex.replaceFirst('#', '')}'}',
     sentAt: generatedAt,
     payload: {
       'generatedAt': utcIso(generatedAt),
       'effortRatingPrompt': effortRatingPrompt,
       'restPingSeconds': restPingSeconds,
+      'accentColorHex': ?accentColorHex,
     },
   );
+
+  /// [color] as the wire spells a theme accent: `#RRGGBB`, upper-case, no alpha.
+  ///
+  /// The channels are read the way the theme reads them (its own 8-bit
+  /// conversion), so what travels is the color the phone paints. The alpha is
+  /// dropped rather than carried: the wire's pattern is six hex digits, and a
+  /// blended or translucent primary would otherwise arrive as `#AARRGGBB` the
+  /// wrist cannot parse.
+  static String accentHexOf(Color color) {
+    String channel(double component) => (component * 255.0)
+        .round()
+        .clamp(0, 255)
+        .toRadixString(16)
+        .padLeft(2, '0');
+
+    final hex = '${channel(color.r)}${channel(color.g)}${channel(color.b)}';
+    return '#${hex.toUpperCase()}';
+  }
 
   /// The phone's foods, as the `foods_down` message the wrist reads.
   ///
