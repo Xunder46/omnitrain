@@ -9,10 +9,11 @@
 //  D-2104, D-2105, D-2106, D-2113).
 //
 //  Plan: `docs/plans/2026-10-10-19f-watch-gps-feed-plan/2026-10-10-19f-watch-gps-feed-plan.md`,
-//  scenarios S-3310 to S-3316 (decisions D-2303 to D-2307): the CoreLocation
+//  scenarios S-3310 to S-3318 (decisions D-2303 to D-2307): the CoreLocation
 //  raw source, the feed's delegation to the location adapter, the store's
-//  outdoor-aware `begin`, the host's one construction, and the permission
-//  sentence in the project file.
+//  outdoor-aware `begin`, the host's one construction, the permission sentence in
+//  the project file, the question that is never latched, and the revoked
+//  permission that ends the feed.
 //
 //  The app target has no test target and `HKLiveWorkoutBuilder` does not exist on
 //  macOS where `swift test` runs, so the feed, the store and the host cannot be
@@ -105,6 +106,23 @@ final class WatchSensorSourceSourceTests: XCTestCase {
             if started && depth == 0 { break }
         }
         return started ? body.joined(separator: "\n") : nil
+    }
+
+    /// The brace-balanced body of the one function whose body contains `needle`,
+    /// found by walking back from `needle` to the nearest `func` line, or nil when
+    /// either the needle or that line is not there.
+    private func functionBody(containing needle: String, in source: String) -> String? {
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let hit = lines.firstIndex(where: { $0.contains(needle) }),
+              let start = lines[..<hit].lastIndex(where: { $0.contains("func ") }),
+              let keyword = lines[start].range(of: "func "),
+              let paren = lines[start][keyword.upperBound...].firstIndex(of: "(")
+        else { return nil }
+
+        return functionBody(
+            named: String(lines[start][keyword.upperBound..<paren]),
+            in: source
+        )
     }
 
     /// The number of times `needle` occurs in `source`.
@@ -651,6 +669,101 @@ final class WatchSensorSourceSourceTests: XCTestCase {
                     + "precedes it, not after it closed (D-2303)"
             )
         }
+    }
+
+    // MARK: - S-3317: the ask is never latched
+
+    func testS3317TheAskIsNeverLatched() throws {
+        let raw = try rawSourceSource()
+
+        XCTAssertFalse(
+            raw.contains("hasRequestedAuthorization"),
+            "the ask is never latched: CoreLocation drops a request only while a "
+                + "prompt is already up (and re-prompts after a temporary grant "
+                + "lapses), so a latch would park the second session's caller — and "
+                + "the serial sensors behind it — for the life of the process (D-2303)"
+        )
+
+        let body = try XCTUnwrap(
+            functionBody(containing: "requestWhenInUseAuthorization()", in: raw),
+            "the ask has to be dispatched to the main queue (D-2303)"
+        )
+
+        let recheck = try XCTUnwrap(
+            body.range(of: "authorizationStatus"),
+            "the asker re-reads the status after registering its waiter: the "
+                + "answer can settle in that window, and the delegate then fires "
+                + "with no waiter registered, which would park the caller forever (D-2303)"
+        )
+        let removeOwn = try XCTUnwrap(
+            body.range(of: "permissionWaiters.removeValue(forKey:"),
+            "the re-check removes this waiter only, so the delegate cannot also "
+                + "resume a continuation that has already been answered (D-2303)"
+        )
+        let ask = try XCTUnwrap(
+            body.range(of: "requestWhenInUseAuthorization()"),
+            "the ask is dispatched to the main queue (D-2303)"
+        )
+
+        let recheckOffset = body.distance(from: body.startIndex, to: recheck.lowerBound)
+        let removeOffset = body.distance(from: body.startIndex, to: removeOwn.lowerBound)
+        let askOffset = body.distance(from: body.startIndex, to: ask.lowerBound)
+        XCTAssertLessThan(
+            recheckOffset,
+            askOffset,
+            "the status is re-read before the prompt is dispatched, not after it "
+                + "(offsets \(recheckOffset) < \(askOffset), D-2303)"
+        )
+        XCTAssertLessThan(
+            removeOffset,
+            askOffset,
+            "this waiter is removed before the prompt is dispatched, so an "
+                + "already-settled status never reaches the ask (offsets "
+                + "\(removeOffset) < \(askOffset), D-2303)"
+        )
+
+        XCTAssertTrue(
+            body.contains("= permissionWaiters.removeValue(forKey"),
+            "the re-check keeps what its own removal returned: the removal is "
+                + "what decides who resumes the waiter (D-2303)"
+        )
+        XCTAssertTrue(
+            body.contains("?.resume(returning:"),
+            "the re-check resumes the continuation it removed — the one the "
+                + "removal handed back — and no other (D-2303)"
+        )
+        XCTAssertFalse(
+            body.contains("continuation.resume(returning:"),
+            "the re-check never resumes the captured continuation "
+                + "unconditionally: the delegate, on the manager's main queue, may "
+                + "have removed and resumed this waiter between its registration "
+                + "and this re-check, and a second resume traps "
+                + "CheckedContinuation (D-2303)"
+        )
+    }
+
+    // MARK: - S-3318: a revoked permission ends the feed
+
+    func testS3318ARevokedPermissionEndsTheFeed() throws {
+        let raw = try rawSourceSource()
+        let body = try XCTUnwrap(
+            functionBody(named: "locationManagerDidChangeAuthorization", in: raw),
+            "the source has to answer the authorization delegate (D-2303)"
+        )
+
+        for status in [".denied", ".restricted"] {
+            XCTAssertTrue(
+                body.contains(status),
+                "a revoked permission arrives as \(status) and is handled there: "
+                    + "the feed ends instead of going silent (D-2303)"
+            )
+        }
+        XCTAssertTrue(
+            body.contains(".finish()"),
+            "a revoked permission finishes every live raw-fix continuation: their "
+                + "`onTermination` stops the radio, so the distance does not freeze "
+                + "with the radio still running (D-2303)"
+        )
     }
 
     /// The character offsets of every occurrence of `needle` in `source`.

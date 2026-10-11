@@ -21,8 +21,10 @@
 //     is created there with it (D-2303).
 //  2. **The radio lives exactly as long as a subscriber.** The first
 //     subscription starts the updates and the last termination stops them, both
-//     on the main queue; a transient `didFailWithError` ends nothing. A radio
-//     left on after the session's last consumer is battery spent for nothing.
+//     on the main queue; a transient `didFailWithError` ends nothing, while a
+//     revoked permission ends every subscription and so stops the radio too. A
+//     radio left on after the session's last consumer is battery spent for
+//     nothing.
 //  3. **WhenInUse, never Always.** The workout keeps the app running while a
 //     session is on screen, so background updates are neither needed nor
 //     enabled: only `requestWhenInUseAuthorization()` is called here (D-2303).
@@ -55,14 +57,11 @@ nonisolated final class CoreLocationRawSource: NSObject, CLLocationManagerDelega
     private var fixContinuations: [UUID: AsyncStream<WatchRawFix>.Continuation] = [:]
 
     /// The callers parked inside `permission()` while the authorization question
-    /// is open, keyed by waiter. Resumed together in
-    /// `locationManagerDidChangeAuthorization(_:)`, once the status settles.
+    /// is open, keyed by waiter. Each is resumed once: by
+    /// `locationManagerDidChangeAuthorization(_:)` once the status settles, or by
+    /// its own re-read in `requestAuthorization()` when the answer arrived before
+    /// the delegate could see it.
     private var permissionWaiters: [UUID: CheckedContinuation<WatchSensorPermission, Never>] = [:]
-
-    /// Whether the one question this process is allowed has already been asked.
-    /// CoreLocation shows the prompt at most once per install, so a second
-    /// request would be silently dropped and its caller would wait forever.
-    private var hasRequestedAuthorization = false
 
     override init() {
         manager = CLLocationManager()
@@ -93,7 +92,7 @@ nonisolated final class CoreLocationRawSource: NSObject, CLLocationManagerDelega
         case .denied, .restricted:
             return .denied
         case .notDetermined:
-            return await requestAuthorizationOnce()
+            return await requestAuthorization()
         @unknown default:
             return .denied
         }
@@ -178,7 +177,7 @@ nonisolated final class CoreLocationRawSource: NSObject, CLLocationManagerDelega
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 
     /// Wakes every caller parked in `permission()` once, and only once, the
-    /// status has settled.
+    /// status has settled, and ends the feed when the permission is gone.
     ///
     /// This callback fires as soon as the delegate is set — with `.notDetermined`
     /// — and again when the user answers. A wake-up that still reads
@@ -191,29 +190,53 @@ nonisolated final class CoreLocationRawSource: NSObject, CLLocationManagerDelega
         lock.lock()
         let waiters = Array(permissionWaiters.values)
         permissionWaiters.removeAll()
+        // A permission the user revoked in Settings ends the live feed instead of
+        // leaving it silent: with `.denied` or `.restricted` no further fix can
+        // arrive, so the distance would freeze while the radio ran on for no one.
+        // Finishing each raw-fix continuation runs its `onTermination`, which
+        // stops the radio exactly as a normal end does.
+        let endedFixes = status == .denied || status == .restricted
+            ? Array(fixContinuations.values)
+            : []
         lock.unlock()
 
         let answer = Self.permission(for: status)
         for waiter in waiters { waiter.resume(returning: answer) }
+        for continuation in endedFixes { continuation.finish() }
     }
 
     // MARK: - The authorization question
 
-    /// Asks once and waits for the answer the delegate delivers.
+    /// Asks and waits for the answer the delegate delivers.
     ///
-    /// Concurrent callers share the one question: the first waiter dispatches
-    /// `requestWhenInUseAuthorization()` to the main queue and every waiter
-    /// parks until `locationManagerDidChangeAuthorization(_:)` resumes them.
-    private func requestAuthorizationOnce() async -> WatchSensorPermission {
+    /// Every caller that finds the status undetermined asks: CoreLocation
+    /// coalesces the calls while a prompt is already up, and asks again after a
+    /// temporary grant ("Allow Once") lapses and the status falls back to
+    /// `.notDetermined`. Nothing here remembers that a question was asked — a
+    /// latch would leave the second session's caller, and the serial sensors
+    /// behind it, parked for the life of the process.
+    private func requestAuthorization() async -> WatchSensorPermission {
         await withCheckedContinuation { continuation in
             let id = UUID()
             lock.lock()
             permissionWaiters[id] = continuation
-            let shouldAsk = !hasRequestedAuthorization
-            hasRequestedAuthorization = true
             lock.unlock()
 
-            guard shouldAsk else { return }
+            // The status can settle between `permission()`'s read and the
+            // registration above: the user may answer in that instant, and the
+            // delegate then fires with no waiter registered. Whoever removes the
+            // waiter resumes it: this re-check resumes only the waiter its own
+            // `removeValue` returned, so the delegate (which removes and resumes
+            // under the same lock) cannot resume it too — it is resumed once. An
+            // already-answered status also means no prompt is dispatched at all.
+            let status = manager.authorizationStatus
+            guard status == .notDetermined else {
+                lock.lock()
+                let own = permissionWaiters.removeValue(forKey: id)
+                lock.unlock()
+                own?.resume(returning: Self.permission(for: status))
+                return
+            }
 
             // The prompt is user-visible, so it goes to the main queue where the
             // manager was built (D-2303).

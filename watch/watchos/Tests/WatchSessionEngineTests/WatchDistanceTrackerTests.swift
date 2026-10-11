@@ -20,6 +20,7 @@
 //    S-3303 a cached fix never becomes the origin          → `testS3303...`
 //    S-3304 the gate boundary is inclusive                 → `testS3304...`
 //    S-3306 the clock is read once per fixes() call        → `testS3306...`
+//    S-3307 a late-arriving fix stamped after the start     → `testS3307...`
 //
 //  The arithmetic is inline and asserted with an accuracy of ±0.01 m: at 52° N
 //  0.0010° of latitude is 111.194927 m, 0.0020° is 222.389853 m, 0.00002° is
@@ -578,5 +579,39 @@ final class WatchDistanceTrackerTests: XCTestCase {
             "the fix fresh for the first call is stale 3600 s later"
         )
         XCTAssertEqual(secondValue.distanceMeters, 111.195, accuracy: 0.01)
+    }
+
+    // MARK: - S-3307 a late-arriving fix stamped after the start is kept
+
+    func testS3307ALateArrivingFixStampedAfterTheStartIsKept() async throws {
+        let raw = ScriptedRawFixSource()
+        let clock = TestClock(t0)
+        let adapter = WatchTrackedLocation(source: raw, clock: clock.call)
+
+        var first = adapter.fixes().makeAsyncIterator()
+        await eventually { raw.subscriptions == 1 }
+
+        // The gate's clock was read when the task started (subscriptions == 1
+        // means `rawFixes()` was already entered, so `oldest` is fixed at
+        // t0 - 10). Advancing the clock now separates the two variants:
+        //   per-call gate (oldest = t0 - 10): the origin stamped t0 + 5 and the
+        //     fix stamped t0 + 30 are both fresh; the origin yields nothing and
+        //     the t0 + 30 fix measures 0.0010° = 111.195 m — asserted below.
+        //   per-fix gate (clock read inside the loop, oldest = t0 + 40 for
+        //     every fix): both fixes are stale, nothing is ever yielded, and
+        //     `next()` after the close returns nil — red against the unwrap.
+        clock.advance(50)
+        raw.fix(fix(52.0000, 5.0, accuracy: 5, at: 5))
+        raw.fix(fix(52.0010, 5.0, accuracy: 5, at: 30))
+        raw.close()
+
+        let firstMapped = await first.next()
+        let firstValue = try XCTUnwrap(
+            firstMapped,
+            "a fix stamped after the call's start is fresh even when it arrives late"
+        )
+        XCTAssertEqual(firstValue.distanceMeters, 111.195, accuracy: 0.01)
+        let extra = await first.next()
+        XCTAssertNil(extra, "the origin yields nothing of its own")
     }
 }
