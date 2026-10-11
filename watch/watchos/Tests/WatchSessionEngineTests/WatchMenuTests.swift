@@ -12,6 +12,11 @@
 //  `docs/plans/2026-10-09-20b-watch-menu-session-only-plan/2026-10-09-20b-watch-menu-session-only-plan.md`:
 //  the menu is the session and nothing else, and it reaches for no catalog.
 //
+//  S-3611 to S-3618 of
+//  `docs/plans/2026-10-11-23c-watch-add-exercise-plan/2026-10-11-23c-watch-add-exercise-plan.md`:
+//  the menu's own Add Exercise list — its order, the append it makes at the end
+//  of the ladder, the frame that announcement emits, and the lock it ignores.
+//
 //  Fixture A is the register's three-slot ladder: two live efforts on `s1`, none
 //  on `s2`, one on `s3`, and a fourth `s1` effort the phone deleted.
 //
@@ -162,8 +167,9 @@ final class WatchMenuHarness {
         return self
     }
 
-    /// The phone's fallback list, of which the menu must show nothing. Squat is
-    /// on the ladder; Pull-up and Dip are not.
+    /// The phone's fallback list. Squat is on the ladder; Pull-up and Dip are
+    /// not — the menu's own rows show only the ladder (S-1200), while the Add
+    /// Exercise list offers all three (S-3611).
     @discardableResult
     func applyFallbackCatalog() async -> WatchMenuHarness {
         _ = await store.append(
@@ -176,6 +182,30 @@ final class WatchMenuHarness {
                         ["exerciseId": "ex-s1", "name": "Squat", "capabilities": ["reps"]],
                         ["exerciseId": "ex-pullup", "name": "Pull-up", "capabilities": ["reps"]],
                         ["exerciseId": "ex-dip", "name": "Dip", "capabilities": ["reps"]],
+                    ]
+                )
+            )
+        )
+        await paths.restore()
+        return self
+    }
+
+    /// The phone's catalog with the four names S-3611 sorts: "apple", "Banana",
+    /// "cherry" and "Apple Pie". Separate from `applyFallbackCatalog` so no
+    /// existing scenario's list changes.
+    @discardableResult
+    func applySortCatalog() async -> WatchMenuHarness {
+        _ = await store.append(
+            .routineCatalog(
+                WatchRoutineCatalogRecord(
+                    recordId: "cat-menu-sort",
+                    recordedAt: instant("2026-07-13T06:00:00Z"),
+                    generatedAt: instant("2026-07-13T06:00:00Z"),
+                    fallbackExercises: [
+                        ["exerciseId": "ex-apple", "name": "apple", "capabilities": ["reps"]],
+                        ["exerciseId": "ex-banana", "name": "Banana", "capabilities": ["reps"]],
+                        ["exerciseId": "ex-cherry", "name": "cherry", "capabilities": ["reps"]],
+                        ["exerciseId": "ex-apple-pie", "name": "Apple Pie", "capabilities": ["reps"]],
                     ]
                 )
             )
@@ -514,6 +544,188 @@ final class WatchMenuTests: XCTestCase {
         XCTAssertEqual(row.countLabel, "4 logged", "S-1201 the row says how many, not which set")
     }
 
+    // MARK: - S-3611…S-3618 the menu's Add Exercise list (23c)
+
+    /// The order the user reads. Lowercase text, so "apple" and "Apple Pie" sit
+    /// together before "Banana", and the id breaks a tie the case hid.
+    func testS3611TheAddListSortsCaseInsensitivelyByName() async {
+        let harness = await WatchMenuHarness().launch()
+        await harness.applySortCatalog()
+
+        XCTAssertEqual(
+            harness.menu.addableExercises.map(\.name),
+            ["apple", "Apple Pie", "Banana", "cherry"],
+            "S-3611 the list is A to Z and ignores case"
+        )
+        XCTAssertEqual(
+            harness.paths.addableExercises.map(\.exerciseId),
+            harness.menu.addableExercises.map(\.exerciseId),
+            "S-3611 the menu offers exactly the paths' list"
+        )
+    }
+
+    /// The append: last on the ladder, the position untouched, no count on the
+    /// new row because nothing is logged on it yet.
+    func testS3612AddExerciseAppendsAtTheEndAndKeepsThePosition() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        await harness.applyFallbackCatalog()
+        let dip = try XCTUnwrap(harness.menu.addableExercises.first { $0.exerciseId == "ex-dip" })
+
+        let added = await harness.menu.addExercise(dip)
+
+        XCTAssertTrue(added, "S-3612 an active session takes the add")
+        XCTAssertEqual(harness.engine.session?.exercises.count, 4, "S-3612 the ladder grows by exactly one")
+        XCTAssertEqual(
+            harness.engine.session?.exercises.last?["exerciseId"] as? String,
+            "ex-dip",
+            "S-3612 the new slot is the last one"
+        )
+        XCTAssertEqual(
+            harness.engine.session?.currentExerciseIndex,
+            1,
+            "S-3612 the user stays on the exercise they were logging"
+        )
+        let rows = harness.menu.rows
+        XCTAssertEqual(rows.count, 4, "S-3612 the menu shows the ladder it now holds")
+        XCTAssertEqual(rows.last?.name, "Dip", "S-3612 the new slot is the last row")
+        XCTAssertNil(rows.last?.countLabel, "S-3612 and it says no count yet")
+    }
+
+    /// A superset is two slots of the same exercise, so the second add must not
+    /// wear the first's id.
+    func testS3613TheSameExerciseTwiceGetsTwoSlots() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        await harness.applyFallbackCatalog()
+        let dip = try XCTUnwrap(harness.menu.addableExercises.first { $0.exerciseId == "ex-dip" })
+
+        _ = await harness.menu.addExercise(dip)
+        _ = await harness.menu.addExercise(dip)
+
+        let ids = (harness.engine.session?.exercises ?? [])
+            .compactMap { $0["sessionExerciseId"] as? String }
+        XCTAssertEqual(ids.count, 5, "S-3613 two adds make two slots beside the fixture's three")
+        XCTAssertEqual(Set(ids).count, 5, "S-3613 no slot id repeats")
+        XCTAssertEqual(
+            ids.filter { $0.hasPrefix("sx-ex-dip") }.count,
+            2,
+            "S-3613 both new slots hold the exercise the user picked twice"
+        )
+    }
+
+    /// The announcement is what carries a wrist-added slot to the phone, so the
+    /// add must go through the engine's own insert rather than patching the
+    /// ladder. Read over the start harness, whose engine records every frame.
+    func testS3614TheAddAnnouncesTheLadderChangeToThePhone() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = await harness.store.append(
+            .routineCatalog(
+                WatchRoutineCatalogRecord(
+                    recordId: "cat-menu-emit",
+                    recordedAt: instant("2026-07-13T06:00:00Z"),
+                    generatedAt: instant("2026-07-13T06:00:00Z"),
+                    fallbackExercises: [
+                        ["exerciseId": "ex-dip", "name": "Dip", "capabilities": ["reps"]],
+                    ]
+                )
+            )
+        )
+        await harness.paths.restore()
+        let started = await harness.paths.startFreeWorkout()
+        let dip = try XCTUnwrap(harness.paths.addableExercises.first)
+        let before = harness.emitted("session_snapshot").count
+
+        let live = await harness.paths.addExerciseToEnd(dip)
+
+        XCTAssertEqual(
+            harness.emitted("session_snapshot").count,
+            before + 1,
+            "S-3614 the add announces itself exactly once"
+        )
+        let snapshot = try XCTUnwrap(harness.emitted("session_snapshot").last)
+        let payload = try XCTUnwrap(snapshot["payload"] as? [String: Any])
+        XCTAssertEqual(
+            (payload["exercises"] as? [[String: Any]])?.last?["sessionExerciseId"] as? String,
+            "sx-ex-dip",
+            "S-3614 the announced snapshot carries the new slot"
+        )
+        XCTAssertEqual(
+            payload["revision"] as? Int,
+            started.revision + 1,
+            "S-3614 and its revision has moved one past the start's"
+        )
+        XCTAssertEqual(live.revision, started.revision + 1, "S-3614 the live session is the announced shape")
+    }
+
+    /// Adding moves nothing the running effort is logging, so the lock that
+    /// protects the rows does not protect this action (D-3607).
+    func testS3615AddExerciseWorksWhileAWorkClockRuns() async throws {
+        let harness = await WatchMenuHarness().launch()
+        _ = await harness.engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [
+                menuSlot("sx-run", "Run", capabilities: ["time", "distance"]),
+                menuSlot("sx-row", "Row"),
+            ]
+        )
+        await harness.applyFallbackCatalog()
+        let surface = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+
+        await surface.startWork()
+        XCTAssertTrue(harness.menu.isLocked, "S-3615 a running work clock locks the menu's rows")
+
+        let dip = try XCTUnwrap(harness.menu.addableExercises.first { $0.exerciseId == "ex-dip" })
+        let added = await harness.menu.addExercise(dip)
+
+        XCTAssertTrue(added, "S-3615 Add Exercise is not blocked by the lock")
+        XCTAssertEqual(harness.engine.session?.exercises.count, 3, "S-3615 the ladder grows")
+        XCTAssertEqual(
+            harness.engine.session?.currentExerciseIndex,
+            0,
+            "S-3615 and the running effort's exercise does not change"
+        )
+
+        let refused = await harness.menu.jump(to: "sx-row")
+        XCTAssertFalse(refused, "S-3615 the jump is still refused while the clock runs")
+        XCTAssertEqual(
+            harness.engine.session?.currentExerciseIndex,
+            0,
+            "S-3615 the refused jump leaves the session on the running effort"
+        )
+    }
+
+    /// The new copy, in one place the suite can read (D-3608).
+    func testS3616TheAddCopyIsTheOwnersWords() {
+        XCTAssertEqual(WatchMenuCopy.addExerciseLabel, "Add Exercise")
+        XCTAssertEqual(WatchMenuCopy.addExerciseTitle, "Add Exercise")
+        XCTAssertEqual(WatchMenuCopy.addExerciseEmpty, "No exercises yet. Sync with your phone.")
+    }
+
+    /// With no session to grow — or one already closed — the menu's add changes
+    /// nothing and says so.
+    func testS3618AddExerciseWithNoSessionChangesNothing() async throws {
+        let bare = await WatchMenuHarness().launch()
+        await bare.applyFallbackCatalog()
+        let dip = try XCTUnwrap(bare.menu.addableExercises.first { $0.exerciseId == "ex-dip" })
+
+        let added = await bare.menu.addExercise(dip)
+
+        XCTAssertFalse(added, "S-3618 with no session there is nowhere to add")
+        XCTAssertNil(bare.engine.session, "S-3618 and no session is invented for it")
+
+        let ended = await WatchMenuHarness().launch()
+        await ended.fixtureA()
+        await ended.applyFallbackCatalog()
+        await ended.menu.finish()
+
+        let late = await ended.menu.addExercise(dip)
+
+        XCTAssertFalse(late, "S-3618 a finished session refuses the add")
+        XCTAssertEqual(ended.engine.session?.exercises.count, 3, "S-3618 and its ladder is untouched")
+    }
+
     // MARK: - S-1107 / S-1113 Finish
 
     func testS1107FinishEndsAndOwesTheRating() async {
@@ -604,21 +816,18 @@ final class WatchMenuTests: XCTestCase {
         }
     }
 
-    // MARK: - S-1202 the menu reaches nothing but the session
+    // MARK: - S-3617 the add list is its own surface
 
-    func testS1202TheMenuSourceNamesNoExercisePicker() throws {
+    /// The owner reversed S-1202's owner rule on 2026-10-11: the menu now adds
+    /// from the phone's whole list (23c). What stays forbidden is the free
+    /// workout's picker: the Add list is its own surface, not that picker.
+    func testS3617TheMenuAddsFromItsOwnListNotTheStartPicker() throws {
         for file in ["WatchMenu.swift", "WatchMenuView.swift"] {
             let url = Fixtures.sourcesRoot.appendingPathComponent(file)
             let source = try String(contentsOf: url, encoding: .utf8)
 
-            for token in [
-                "WatchExercisePickerView",
-                "addExercise",
-                "pickerRows",
-                "fallbackExercises",
-                "Add exercise",
-            ] {
-                XCTAssertFalse(source.contains(token), "S-1202 \(file) must not name \(token)")
+            for token in ["WatchExercisePickerView", "pickerRows"] {
+                XCTAssertFalse(source.contains(token), "S-3617 \(file) must not name \(token)")
             }
         }
     }

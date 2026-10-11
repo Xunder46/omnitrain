@@ -399,6 +399,37 @@ public final class WatchSessionStartPaths {
         )
     }
 
+    /// Everything the wrist could add to the live session, A to Z: the menu's
+    /// Add Exercise list (23c, S-3611).
+    ///
+    /// Sorted here rather than at the source, so the phone's payload order never
+    /// leaks into the list the user reads. The comparison is plain lowercase
+    /// text, not a locale collation: the same order on every device, with the
+    /// exercise id breaking a tie between two names that differ only in case.
+    public var addableExercises: [WatchCatalogExercise] {
+        fallbackExercises.sorted { lhs, rhs in
+            let left = lhs.name.lowercased()
+            let right = rhs.name.lowercased()
+            if left != right { return left < right }
+            return lhs.exerciseId < rhs.exerciseId
+        }
+    }
+
+    /// Adds `exercise` at the END of the live session's ladder and leaves the
+    /// user on the exercise they were logging — the menu's Add Exercise action
+    /// (D-3605, S-3612).
+    ///
+    /// The engine's own announcement is what carries the new slot to the phone,
+    /// exactly as a pick's does; the two ends agree with nothing else added.
+    @discardableResult
+    public func addExerciseToEnd(_ exercise: WatchCatalogExercise) async -> WatchSessionRecord {
+        await engine.insertExercise(
+            exercise.toSlot(sessionExerciseId: availableSlotId(for: exercise)),
+            atIndex: nil,
+            moveTo: false
+        )
+    }
+
     /// Picking a row: a slot the session already holds moves the user to it, and
     /// an exercise it does not appends one. Nil when the slot is gone by the
     /// time the tap lands, which changes nothing.

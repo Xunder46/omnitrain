@@ -190,8 +190,11 @@ Written, by Phases 1–4 of the shell-bridge plan:
   exercise picker). The logging surface logs the current exercise's own effort —
   a set, a timed hold, a round or a drill, chosen from the exercise's
   capabilities — and hosts the session menu: the ladder's exercises with their
-  logged counts to jump to, then End Session (which asks first). Exercises are
-  added on the phone. An
+  logged counts to jump to, then Add Exercise (which opens an A to Z list of
+  every exercise the phone has sent; a pick is appended to the end of the
+  session; back returns), then End Session below a divider (which asks first).
+  The exercise list reaches the wrist only at Sync: the phone sends its whole
+  list with the routines, and a user with no routine now gets the list too. An
   ended session can no longer be logged into
   (`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
   Logged rows leave through `WatchEmitForwarder` over the connectivity bridge —
@@ -723,6 +726,16 @@ hardware yet.
     wrist: the session's exercises are one group, and **End Session** sits below
     a divider with extra space above it, so it does not read as one more
     exercise row.
+11. **Add an exercise from the watch — (owner).** Sync, open the list, tap
+    **Add Exercise**, pick one: it is the last row, it has no count, the
+    exercise being logged did not change, and the phone's open session shows
+    the new exercise; tap the same one again: a second slot. The list is the
+    phone's whole exercise list, so it only reaches the wrist at **Sync**
+    (`WatchMenuTests.testS3611TheAddListSortsCaseInsensitivelyByName`,
+    `…testS3612AddExerciseAppendsAtTheEndAndKeepsThePosition`,
+    `…testS3613TheSameExerciseTwiceGetsTwoSlots`,
+    `…testS3614TheAddAnnouncesTheLadderChangeToThePhone`), and a phone holding
+    no routine sends it too (D-3601).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

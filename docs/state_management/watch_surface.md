@@ -275,13 +275,14 @@ per serving comes from `calculateCalories` rather than being derived a second
 time. It sits beside `foods_i_eat_order.dart` because it is a pure function over
 the phone's models, with no state and no storage.
 
-`buildRoutinesDown` returns **null** rather than an empty message when the phone
-holds nothing the wrist could start. `routines_down` requires at least one
-routine and at least one fallback exercise, so a phone that sent an empty list
-would be sending a message the wrist must reject; a null is the honest answer to
-"nothing to sync". It also skips an exercise with no capabilities, because
-`sessionExercise` requires a non-empty `capabilities` array — a slot without one
-would fail validation before any renderer saw it.
+`buildRoutinesDown` returns **null** only when the phone holds no exercise the
+wrist could log: an exercise with no capabilities cannot be rendered, and
+`sessionExercise` requires a non-empty `capabilities` array, so a message
+carrying one would fail validation before any renderer saw it. An empty
+`routines` array is fine (D-3601): `fallbackExercises` is the phone's whole
+catalog — every exercise with at least one capability, sorted by name — so a
+phone with exercises and no routine still has something to send, and the wrist
+can add an exercise no routine mentions.
 
 Two mappings in that builder are not mechanical, and both are the phone's
 decision rather than the wire's:
@@ -296,8 +297,8 @@ decision rather than the wire's:
   milliseconds; RPE and the `extra-weight` metric have no wire key.
 
 `preferences_down` is its own message rather than a field on `routines_down`
-because `buildRoutinesDown` answers null for a phone with no routines, and a
-setting riding on it would then never reach the wrist. Its message id follows
+because `buildRoutinesDown` answers null for a phone with no exercise the wrist
+could log, and a setting riding on it would then never reach the wrist. Its message id follows
 its content as well as its `generatedAt`: the wrist keeps the newest copy and a
 tie goes to the later-received one, so two different settings stamped in the
 same millisecond must not share a delivery key.
@@ -434,16 +435,24 @@ the fallback list minus what the ladder already shows behind them. Verified by
 Once a session is open, the second surface is the package's logging view for the
 current exercise — its own effort kind (a set, a timed hold, a round or a drill)
 — and one list button opening the session menu: the ladder's exercises with
-their logged counts to jump to, then End Session, which asks "Finish Workout?"
-first (Cancel / Finish, the phone's own words;
-`WatchMenuTests.testS3401TheMenuCopyIsTheOwnersWords`). A
+their logged counts to jump to, then Add Exercise (an A to Z list of the phone's
+whole exercise list; a pick is appended to the end of the ladder, the session
+does not move, the ladder change reaches the phone like any wrist-added
+exercise), then End Session, which asks "Finish Workout?" first (Cancel /
+Finish, the phone's own words;
+`WatchMenuTests.testS3401TheMenuCopyIsTheOwnersWords`,
+`…testS3611TheAddListSortsCaseInsensitivelyByName`,
+`…testS3612AddExerciseAppendsAtTheEndAndKeepsThePosition`,
+`…testS3613TheSameExerciseTwiceGetsTwoSlots`,
+`…testS3614TheAddAnnouncesTheLadderChangeToThePhone`). A
 set keeps its value rows and one Log button; a timed, drill or round effort shows
 one clock readout and one Start/Log button
 (`WatchTimedWorkTests.testS1312ARelaunchKeepsTheButtonOnLog`), a period counting
 down from the phone's number, or the wrist's preset with none
 (`WatchLoggingTimersTests.testS1401TheWristCountsDownFromTheSlotsOwnLength` and
-`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`), and the menu inert while
-an effort runs (`WatchMenuTests.testS1307TheMenuDoesNotJumpWhileAWorkClockRuns`).
+`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`), and the jump alone refused
+while an effort runs (`WatchMenuTests.testS1307TheMenuDoesNotJumpWhileAWorkClockRuns`,
+`…testS3615AddExerciseWorksWhileAWorkClockRuns`).
 Before Start, a period (sports) shows a length row with minus and plus, opening
 at the phone's number or 3:00 with none; the length cannot change once the period
 runs, and the chosen length carries to the next period of the same exercise
@@ -512,7 +521,7 @@ the stored first value shows again until the next Sync re-states it (D-50,
 
 Answers the frames that are requests rather than protocol messages: `routines`
 is answered with `preferences_down` first and always, then with `routines_down`
-when the phone holds any, both built through `WatchReferenceSync`; `snapshot`
+when the phone holds any exercise, both built through `WatchReferenceSync`; `snapshot`
 re-asserts the phone's session. It is separate from `WatchIncomingRouter`
 because the two answer different kinds of frame, and merging them would make a
 transport detail a protocol one.
@@ -521,7 +530,8 @@ transport detail a protocol one.
 schedule and no launch-time push, which is why the preferences ride every
 `routines` request: a setting changed on the phone reaches the wrist at the
 wrist's next sync. The value is `SettingsState`'s own toggle, never a re-read of
-the stored preference. A phone holding no routines sends no `routines_down`,
+the stored preference. A phone holding no exercise the wrist could log sends no
+`routines_down`,
 and one holding no session answers a `snapshot` request with nothing: the wrist
 keeps the copy it has, and an empty answer would be a state it never asked for.
 

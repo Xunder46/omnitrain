@@ -263,7 +263,9 @@ struct ContentView: View {
 
     /// D-24's second surface: logging, with the session menu one tap away behind
     /// its list button — the ladder's exercises with their logged counts to jump
-    /// to, then Finish (D-25, D-1100, D-1200). Exercises are added on the phone.
+    /// to, then Add Exercise — the phone's whole list, A to Z, whose pick is
+    /// appended at the end (D-3607, D-3608) — then Finish (D-25, D-1100,
+    /// D-1200).
     ///
     /// The branch only shows this while the session is active and holds an
     /// exercise. A Free workout starts with none, so the start surface and its

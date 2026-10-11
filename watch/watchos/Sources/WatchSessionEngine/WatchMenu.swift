@@ -8,8 +8,10 @@
 //  open is already in the list the user sees.
 //
 //  The menu writes no session structure of its own: a jump is the engine's
-//  `selectExercise(slotId:)` through the start paths, and Finish is the rating
-//  state's `end()`. It mints no ids and appends no observation.
+//  `selectExercise(slotId:)` through the start paths, Finish is the rating
+//  state's `end()`, and Add Exercise is the start paths' `addExerciseToEnd`,
+//  which appends at the end of the ladder and nowhere else. It mints no ids of
+//  its own and appends no observation.
 //
 
 import Foundation
@@ -53,6 +55,17 @@ public struct WatchMenuRow: Equatable {
 public enum WatchMenuCopy {
     /// The menu's one action row: it ends the session, so it says so.
     public static let finishLabel = "End Session"
+
+    /// The menu's other action row: it opens the wrist's own exercise list
+    /// (D-3608).
+    public static let addExerciseLabel = "Add Exercise"
+
+    /// What the Add Exercise list is called, on the pushed surface and in its
+    /// title bar.
+    public static let addExerciseTitle = "Add Exercise"
+
+    /// Said in place of rows when the phone has sent no exercise down yet.
+    public static let addExerciseEmpty = "No exercises yet. Sync with your phone."
 
     public static let confirmTitle = "Finish Workout?"
     public static let confirmBody = "This action will save and close the workout session."
@@ -173,5 +186,26 @@ public final class WatchMenuState {
     /// rating prompt and `finishSession()` stay one implementation.
     public func finish() async {
         await rating.end()
+    }
+
+    // MARK: - Add Exercise
+
+    /// Everything the user could add, A to Z, from the list the phone sent down
+    /// (23c, D-3605).
+    public var addableExercises: [WatchCatalogExercise] { paths.addableExercises }
+
+    /// Adds `exercise` at the end of the ladder, through the start paths.
+    ///
+    /// Deliberately not behind `isLocked`: adding moves nothing the running
+    /// effort is logging, unlike a jump (D-3607). False — and no change — when
+    /// there is no session or it is no longer active, so a stale menu cannot
+    /// grow a closed session.
+    @discardableResult
+    public func addExercise(_ exercise: WatchCatalogExercise) async -> Bool {
+        guard let session = engine.session, session.status == WatchSessionStatus.active else {
+            return false
+        }
+        await paths.addExerciseToEnd(exercise)
+        return true
     }
 }
