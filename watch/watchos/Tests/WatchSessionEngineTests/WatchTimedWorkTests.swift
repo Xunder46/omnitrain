@@ -255,9 +255,16 @@ final class WatchTimedWorkTests: XCTestCase {
             milestones += haptics.poll(now: startedAt.addingTimeInterval(Double(second)))
         }
         XCTAssertTrue(milestones.isEmpty, "a logged period starts nothing")
-        XCTAssertTrue(
-            engine.timerRows(WatchTimerKind.rest).isEmpty,
-            "timed work starts no rest of its own (D-1306)"
+        let rests = engine.timerRows(WatchTimerKind.rest)
+        XCTAssertEqual(rests.count, 1, "a logged period starts one rest (D-3501)")
+        XCTAssertEqual(
+            rests.first?.state,
+            WatchTimerState.running,
+            "and that rest is running, not a countdown"
+        )
+        XCTAssertNil(
+            rests.first?.plannedDurationMs,
+            "the rest is a count-up with no length (D-160)"
         )
         XCTAssertEqual(
             stopped.startedAt,
@@ -750,5 +757,181 @@ final class WatchTimedWorkTests: XCTestCase {
 
     func testS3409TheRestSurfaceNamesItself() {
         XCTAssertEqual(WatchRestSurfaceCopy.restCaption, "Rest")
+    }
+
+    // MARK: - S-3502 to S-3505, plan 23b: every effort starts a rest
+
+    func testS3502ATimedEntryStartAndLogLeavesTheRestRunning() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(754) // 10:12:34
+        try await surface.log()
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.state,
+            WatchTimerState.stopped,
+            "Log still ends the timed window's own clock (S-1300)"
+        )
+        XCTAssertTrue(
+            surface.isResting,
+            "a logged timed entry starts the rest screen, as a set does (D-3501)"
+        )
+        XCTAssertEqual(surface.restElapsedSeconds(), 0, "the rest starts at 0:00")
+
+        let rests = engine.timerRows(WatchTimerKind.rest)
+        XCTAssertEqual(rests.count, 1, "one rest, the one this log started")
+        XCTAssertEqual(rests.first?.state, WatchTimerState.running)
+        XCTAssertEqual(rests.first?.startedAt, harness.clock.now)
+        XCTAssertNil(rests.first?.plannedDurationMs, "a rest has no length (D-160)")
+    }
+
+    func testS3503AHoldStartsARestAfterItsLog() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "isometric_stretching",
+            exercises: [slot("sx-plank", capabilities: ["hold", "time"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(60)
+        try await surface.log()
+
+        XCTAssertEqual(surface.effortKind, WatchEffortKind.drill)
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.hold)?.state,
+            WatchTimerState.stopped,
+            "the hold's own clock is the one Log stops"
+        )
+        XCTAssertTrue(surface.isResting, "a logged hold starts the rest screen (D-3501)")
+
+        let rests = engine.timerRows(WatchTimerKind.rest)
+        XCTAssertEqual(rests.count, 1, "exactly one rest row")
+        XCTAssertEqual(rests.first?.state, WatchTimerState.running)
+        XCTAssertNil(rests.first?.plannedDurationMs)
+    }
+
+    @MainActor
+    func testS3503BAPeriodStartsARestAfterItsLog() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [slot("sx-bjj", capabilities: ["time", "rounds"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        let startedAt = harness.clock.now
+        await surface.startWork()
+        harness.clock.advance(90)
+        try await surface.log()
+
+        let stopped = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(stopped.state, WatchTimerState.stopped, "Log stops the period's clock")
+        XCTAssertEqual(
+            stopped.startedAt,
+            startedAt,
+            "no new round countdown replaces it (D-1306)"
+        )
+        XCTAssertTrue(surface.isResting, "a logged period starts the rest screen (D-3501)")
+
+        let rests = engine.timerRows(WatchTimerKind.rest)
+        XCTAssertEqual(rests.count, 1, "exactly one rest row")
+        XCTAssertEqual(rests.first?.state, WatchTimerState.running)
+        XCTAssertNil(
+            rests.first?.plannedDurationMs,
+            "the rest is a count-up: the period's countdown is not moved onto it"
+        )
+
+        // The user's own Start ends the rest and opens period 2 where it left
+        // off — no countdown of the app's own (D-1306).
+        harness.clock.advance(30)
+        let nextStart = harness.clock.now
+        await surface.startWork()
+        let nextRound = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(nextRound.startedAt, nextStart)
+        XCTAssertFalse(surface.isResting, "Start leaves the rest")
+    }
+
+    func testS3504StartOfTheNextTimedEffortEndsTheRestItWalksInto() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(300) // 10:05:00
+        let first = try await surface.log()
+        let restStartedAt = harness.clock.now
+
+        harness.clock.advance(45) // 10:05:45
+        let startInstant = harness.clock.now
+        await surface.startWork()
+
+        let rest = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
+        XCTAssertEqual(rest.state, WatchTimerState.stopped)
+        XCTAssertEqual(rest.stoppedAt, startInstant, "the rest ends at the Start instant (D-1311)")
+
+        let rests = emittedEvents(harness).filter { $0["kind"] as? String == "rest" }
+        XCTAssertEqual(rests.count, 1, "one rest observation, the one this Start ended")
+        XCTAssertEqual(rests.first?["startedAt"] as? String, utcIso(restStartedAt))
+        XCTAssertEqual(rests.first?["endedAt"] as? String, utcIso(startInstant))
+        XCTAssertEqual(
+            rests.first?["afterEntryId"] as? String,
+            first.entryId,
+            "the rest hangs on the entry it followed (D-221)"
+        )
+        XCTAssertFalse(surface.isResting)
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.startedAt,
+            startInstant,
+            "the next timed window runs from Start"
+        )
+    }
+
+    func testS3505EndingTheRestAfterATimedEntryReportsThatEntry() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(240) // 10:04:00
+        let timed = try await surface.log()
+        let restStartedAt = harness.clock.now
+
+        harness.clock.advance(75)
+        let endedAt = harness.clock.now
+        await surface.endRest()
+
+        XCTAssertFalse(surface.isResting, "Next ends the rest, so the shell returns to logging")
+        let rests = emittedEvents(harness).filter { $0["kind"] as? String == "rest" }
+        XCTAssertEqual(rests.count, 1)
+        XCTAssertEqual(rests.first?["startedAt"] as? String, utcIso(restStartedAt))
+        XCTAssertEqual(rests.first?["endedAt"] as? String, utcIso(endedAt))
+        XCTAssertEqual(
+            rests.first?["afterEntryId"] as? String,
+            timed.entryId,
+            "the rest hangs on the timed entry it followed (D-221)"
+        )
     }
 }

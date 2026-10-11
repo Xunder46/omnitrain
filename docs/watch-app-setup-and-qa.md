@@ -706,6 +706,23 @@ hardware yet.
    (`…testS3406ARunningPeriodHasNoLengthRowAndKeepsTheDialledLength`). Tap
    **Log**: the next period of the same exercise opens at 1:00, while a different
    exercise's period opens at its own number.
+9. **Every effort ends on the rest screen — (owner).** Log a **Plank** hold, a
+   cardio interval and a sports period on the wrist: each one leaves the rest
+   screen counting up with **Next** as its one control
+   (`WatchTimedWorkTests.testS3502ATimedEntryStartAndLogLeavesTheRestRunning`;
+   the hold and the period,
+   `…testS3503AHoldStartsARestAfterItsLog` and
+   `…testS3503BAPeriodStartsARestAfterItsLog`). Tap **Next**: the wrist is back
+   to logging the same exercise, and the phone's session for this wrist session
+   shows the rest time that just ended
+   (`…testS3505EndingTheRestAfterATimedEntryReportsThatEntry`). Start the next
+   interval instead of tapping Next: the rest ends at the Start instant and only
+   then does the new window open
+   (`…testS3504StartOfTheNextTimedEffortEndsTheRestItWalksInto`).
+10. **End Session sits apart from the exercises — (owner).** Open the list on the
+    wrist: the session's exercises are one group, and **End Session** sits below
+    a divider with extra space above it, so it does not read as one more
+    exercise row.
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

@@ -8,7 +8,8 @@ OmniTrain uses **wall-clock-persisted rest records** to track recovery time betw
 
 ## The rule: rest is a count-up
 
-Rest is a count-up from the moment a set is logged to the moment the next set starts. There is no
+Rest is a count-up from the moment an effort (a set, a timed entry, a hold or a period) is logged to
+the moment the next one starts. There is no
 preset rest length, no rest countdown and no end-of-rest alarm on any device
 ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up";
 `docs/plans/2026-10-08-18b-watch-rest-count-up-plan`, D-160). A routine's stored `restSeconds` is a
@@ -102,7 +103,7 @@ Populated during `loadSessionData()` and `loadHistoricalSession()` alongside obs
 | Method | Signature | Purpose |
 |--------|-----------|---------|
 | `getEntryRests` | `(String effortId) → List<EntryRest>` | Returns unmodifiable list of rest records for an effort |
-| `recordRestStart` | `(String effortId, int entryIndex) → Future<void>` | Creates rest record with current epoch time as `restStartMs`; called after a set is logged |
+| `recordRestStart` | `(String effortId, int entryIndex) → Future<void>` | Creates rest record with current epoch time as `restStartMs`; called after an entry is logged |
 | `recordRestEnd` | `(String effortId, int entryIndex) → Future<void>` | Updates `restEndMs` on the open rest record; called when the athlete starts the next set/round |
 | `pauseRest` | `(String effortId, int entryIndex) → Future<void>` | PR 4: Sets `restIsPaused = true` and stamps `restPausedAtMs = now`. No-op when the rest is already paused or closed. |
 | `resumeRest` | `(String effortId, int entryIndex) → Future<void>` | PR 4: Accumulates the paused interval (`now - restPausedAtMs`) into `restPausedDurationMs` and clears `restIsPaused`. No-op when the rest is already running or closed. |

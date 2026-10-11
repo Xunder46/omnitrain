@@ -449,10 +449,16 @@ at the phone's number or 3:00 with none; the length cannot change once the perio
 runs, and the chosen length carries to the next period of the same exercise
 (`WatchTimedWorkTests.testS3405TurningTheLengthChangesWhatStartCountsDownFrom`,
 `…testS3406ARunningPeriodHasNoLengthRowAndKeepsTheDialledLength`).
-A logged set starts a rest with no length, which the rest screen counts up, and
-whose end reaches the phone
+A logged effort of any kind — a set, a timed entry, a hold or a period — starts
+the rest with no length, which the rest screen counts up, and whose end reaches
+the phone
 (`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`;
-`test/watch_session_engine_test.dart`, S-320); the rest screen is captioned
+`WatchTimedWorkTests.testS3502ATimedEntryStartAndLogLeavesTheRestRunning`,
+`…testS3503AHoldStartsARestAfterItsLog`,
+`…testS3503BAPeriodStartsARestAfterItsLog`;
+`test/watch_session_engine_test.dart`, S-320). The Wear client's Dart twin still
+starts a rest after a set alone (documented divergence, plan 23b D-3502); the
+rest screen is captioned
 "Rest" (`WatchTimedWorkTests.testS3409TheRestSurfaceNamesItself`).
 
 Both wrist clients tap at each multiple of the interval the phone sent in

@@ -68,7 +68,10 @@ public struct WatchMenuView: View {
                         rowButton(row)
                     }
 
+                    Divider()
+
                     finishRow
+                        .padding(.top, 10)
                 }
                 .padding(Self.surfaceInset)
             }

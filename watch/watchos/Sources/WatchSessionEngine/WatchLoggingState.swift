@@ -935,11 +935,12 @@ public final class WatchLoggingState {
         return summary
     }
 
-    /// The timer the effort kind runs next: a rest after a set is a count-up
-    /// with no length (D-160), and nothing else — timed work leaves the screen on
-    /// Start, because the next effort is the user's own (D-1306).
+    /// The timer the effort kind runs next: every effort — a set, a timed
+    /// entry, a hold or a period — starts a count-up rest with no length
+    /// (D-160, D-3501), and the screen returns to logging only through the
+    /// user's own Next, because the next effort is the user's own Start
+    /// (D-1306: nothing here opens a next effort's clock).
     private func startFollowOnTimer() async {
-        guard effortKind == WatchEffortKind.set else { return }
         _ = try? await engine.startTimer(WatchTimerKind.rest)
     }
 

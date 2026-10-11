@@ -609,8 +609,8 @@ class WatchSensorRecordingTests: XCTestCase {
 
         _ = await engine.confirmObservations(
             [
-                "e-run", "e-r1", "e-r2", "e-r3", "e-set1", "e-set2", "e-set3",
-                "rec-15-rest", "rec-17-rest", "rec-19-rest",
+                "e-run", "rec-6-rest", "e-r1", "e-r2", "e-r3", "rec-21-rest", "e-set1", "e-set2", "e-set3",
+                "rec-23-rest", "rec-25-rest", "rec-27-rest",
             ]
         )
         let afterEntries = await engine.pruneSettledSensorSamples()
