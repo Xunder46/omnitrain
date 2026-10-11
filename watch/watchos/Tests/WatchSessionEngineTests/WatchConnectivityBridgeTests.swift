@@ -194,7 +194,7 @@ private final class WireLog: WatchSyncTransport {
     private(set) var requested: [Date?] = []
     private(set) var snapshotRequests = 0
 
-    func requestRoutines(since: Date?) async { requested.append(since) }
+    func requestRoutines(since: Date?, exercisesVersion: String?) async { requested.append(since) }
 
     func requestSnapshot() async { snapshotRequests += 1 }
 
@@ -294,6 +294,50 @@ final class WatchConnectivityBridgeTests: XCTestCase {
             utcIso(syncedAt)
         )
         XCTAssertEqual(harness.session.sent.count, 2)
+    }
+
+    // MARK: - S-3820 a sync names the exercise-list version the wrist holds
+
+    func testS3820TheRoutinesRequestCarriesTheExerciseListVersionOnlyWhenThereIsOne() async throws {
+        // The frame is built with the version only when the wrist holds a list,
+        // so a wrist that holds none sends exactly the frame it always did —
+        // which is why the contract's S-102/S-103 rows stay true (D-3820).
+        XCTAssertEqual(
+            WatchTransportRequest.routinesFrame(since: nil, exercisesVersion: "v1") as NSDictionary,
+            ["request": "routines", "exercisesVersion": "v1"] as NSDictionary
+        )
+        XCTAssertNil(
+            WatchTransportRequest.routinesFrame(since: nil)["exercisesVersion"],
+            "no list, no key — the key is omitted, never nulled"
+        )
+
+        let both = WatchTransportRequest.routinesFrame(
+            since: try parseUtcIso("2026-07-13T17:00:00Z"),
+            exercisesVersion: "v1"
+        )
+        XCTAssertEqual(both["since"] as? String, utcIso(try parseUtcIso("2026-07-13T17:00:00Z")))
+        XCTAssertEqual(both["exercisesVersion"] as? String, "v1")
+
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+        await harness.orchestrator.sync()
+        XCTAssertNil(
+            harness.session.sent.first?["exercisesVersion"],
+            "the wrist holds no list yet"
+        )
+
+        _ = await harness.paths.applyExercisesDown(
+            try Fixtures.json("fixtures/valid/exercises_down_single_batch.json")
+        )
+        harness.session.clearSent()
+        await harness.orchestrator.sync()
+
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1-3-9f8e7d6c")
+        XCTAssertEqual(
+            harness.session.sent.first?["exercisesVersion"] as? String,
+            "v1-3-9f8e7d6c",
+            "S-3819 the sync that follows a completed list names it"
+        )
     }
 
     // MARK: - S-104 a sync with no session asks for a snapshot
@@ -1183,7 +1227,7 @@ final class GatedTransport: WatchSyncTransport {
         self.isPhoneReachable = isPhoneReachable
     }
 
-    func requestRoutines(since: Date?) async { requested.append(since) }
+    func requestRoutines(since: Date?, exercisesVersion: String?) async { requested.append(since) }
 
     func requestSnapshot() async { snapshotRequests += 1 }
 
@@ -1237,7 +1281,7 @@ final class GatedRequestTransport: WatchSyncTransport {
         self.isPhoneReachable = isPhoneReachable
     }
 
-    func requestRoutines(since: Date?) async {
+    func requestRoutines(since: Date?, exercisesVersion: String?) async {
         let shouldGate = lock.withLock { () -> Bool in
             let gate = !gateUsed
             gateUsed = true

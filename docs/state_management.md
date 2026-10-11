@@ -6,8 +6,9 @@
 them. It also covers the watch's own state classes and services under
 `lib/watch/` (`WatchSessionEngine`, `WatchLoggingState`, the sensor layer), which
 mirror `lib/state/`'s responsibilities on the wrist and are documented in
-[The Watch Surface](state_management/watch_surface.md) and
-[The Watch Sensors and the Platform Workout](state_management/watch_sensors.md). Screens and
+[The Watch Surface](state_management/watch_surface.md),
+[The Watch Sensors and the Platform Workout](state_management/watch_sensors.md)
+and [The Watch's Reference Data](state_management/watch_reference_data.md). Screens and
 widgets are documented under
 [navigation_and_screens.md](navigation_and_screens.md) and
 [widget_catalog.md](widget_catalog.md) instead.
@@ -47,6 +48,7 @@ State classes follow strict rules:
 | [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch` |
 | [The Watch Surface](state_management/watch_surface.md) | The watch↔phone mirror (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, `WatchNutritionState`, `WatchNutritionLogBridge`, `WatchIncomingRouter`, `WatchSyncRequestHandler`, `WatchReferenceSync`, `WatchTransport` and its channel/factory, the two reconcilers) |
 | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) | The watch's sensor layer and platform workout (`WatchPlatformWorkout`, `WatchSensorRecorder`, `WatchSessionSensors`, `WatchGpsPolicy`, `WatchActivityTypes`, `WatchSensorSummaries`) |
+| [The Watch's Reference Data](state_management/watch_reference_data.md) | What the phone pushes down and what the wrist does with it: `routines_down`, the batched `exercises_down` exercise list and its completeness/activation rule, the list `WatchSessionStartPaths` offers offline, the version echoed back in the sync request, and the batch prune |
 
 ---
 
@@ -78,6 +80,8 @@ State classes follow strict rules:
 | `SessionCore` | [Workout Session State](state_management/workout_state.md) |
 | `SyncSessionReconciler` | [The Watch Surface](state_management/watch_surface.md) |
 | `WatchActivityTypes` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
+| `WatchCatalogExercise` | [The Watch's Reference Data](state_management/watch_reference_data.md) |
+| `WatchExerciseBatchRecord` | [The Watch's Reference Data](state_management/watch_reference_data.md) |
 | `WatchGpsPolicy` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
 | `WatchLoggingState` | [The Watch Surface](state_management/watch_surface.md) |
 | `WatchNutritionState` | [The Watch Surface](state_management/watch_surface.md) |
@@ -91,6 +95,7 @@ State classes follow strict rules:
 | `WatchReferenceSync` | [The Watch Surface](state_management/watch_surface.md) |
 | `WatchSensorRecorder` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
 | `WatchSessionEngine` | [The Watch Surface](state_management/watch_surface.md) |
+| `WatchSessionStartPaths` | [The Watch's Reference Data](state_management/watch_reference_data.md) |
 | `WatchSessionSensors` | [The Watch Sensors and the Platform Workout](state_management/watch_sensors.md) |
 | `WatchSyncOrchestrator` | [The Watch Surface](state_management/watch_surface.md) |
 | `SessionSummaryBuilder` | [Workout Session State](state_management/workout_state.md) |

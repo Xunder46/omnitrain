@@ -29,9 +29,11 @@ public protocol WatchSyncTransport: AnyObject {
     var isPhoneReachable: Bool { get }
 
     /// Asks the phone for `routines_down`, optionally for everything newer than
-    /// `since`. The reply arrives through `WatchSyncOrchestrator.receive` — this
-    /// call carries no payload of its own.
-    func requestRoutines(since: Date?) async
+    /// `since`, and tells it which exercise-list version the wrist already
+    /// holds (`exercisesVersion`, nil when it holds none) so the phone can send
+    /// only what changed. The reply arrives through
+    /// `WatchSyncOrchestrator.receive` — this call carries no payload of its own.
+    func requestRoutines(since: Date?, exercisesVersion: String?) async
 
     /// Asks the phone for a `session_snapshot`. The reply arrives through
     /// `WatchSyncOrchestrator.receive`, exactly as a `routines_down` reply does.
@@ -91,7 +93,10 @@ public final class WatchSyncOrchestrator {
     /// protocol asks of both devices on connect.
     public func sync(reconnect: Bool = false) async {
         paths.phoneReachable = transport.isPhoneReachable
-        await transport.requestRoutines(since: reconnect ? paths.syncedAt : nil)
+        await transport.requestRoutines(
+            since: reconnect ? paths.syncedAt : nil,
+            exercisesVersion: paths.exercisesVersion
+        )
 
         for message in engine.pendingObservations() {
             await transport.send(message)
@@ -157,6 +162,8 @@ public final class WatchSyncOrchestrator {
         switch envelope["type"] as? String {
         case "routines_down":
             return await paths.applyRoutinesDown(envelope).applied
+        case "exercises_down":
+            return await paths.applyExercisesDown(envelope).stored
         case "foods_down":
             guard let nutrition else { return false }
             return await nutrition.applyFoodsDown(envelope).applied

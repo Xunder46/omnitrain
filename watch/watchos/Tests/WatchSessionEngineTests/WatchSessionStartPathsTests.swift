@@ -28,6 +28,10 @@ final class RecordingTransport: WatchSyncTransport {
     var isPhoneReachable: Bool
     private(set) var requested: [Date?] = []
 
+    /// The exercise-list version each routines request carried, parallel to
+    /// `requested` (S-3819).
+    private(set) var requestedVersions: [String?] = []
+
     /// What the watch handed over: observations, timers, and snapshots.
     private(set) var sent: [[String: Any]] = []
 
@@ -38,8 +42,9 @@ final class RecordingTransport: WatchSyncTransport {
         self.isPhoneReachable = isPhoneReachable
     }
 
-    func requestRoutines(since: Date?) async {
+    func requestRoutines(since: Date?, exercisesVersion: String?) async {
         requested.append(since)
+        requestedVersions.append(exercisesVersion)
     }
 
     func requestSnapshot() async {
@@ -229,6 +234,24 @@ private func twoRoutineMessage(_ effort: WatchRoutineEffort) throws -> [String: 
     return message
 }
 
+/// The contract's `routines_down` plus one exercise the phone's fallback list
+/// offers and no routine names, so the fallback list is that exercise's only
+/// source and the union has to carry it (S-3817). The message stays conformant:
+/// the validator asks that the list cover the routines, not the reverse.
+private func routinesDownOfferingAPhoneOnlyExercise() throws -> [String: Any] {
+    var message = try object(try object(try startContract()["fallback"])["routinesDown"])
+    var payload = try object(message["payload"])
+    var fallback = try objects(payload["fallbackExercises"])
+    fallback.append([
+        "exerciseId": "ex-only-fallback",
+        "name": "Only Fallback",
+        "capabilities": ["sets", "reps", "load"],
+    ])
+    payload["fallbackExercises"] = fallback
+    message["payload"] = payload
+    return message
+}
+
 /// The effort kind the logging surface resolves for `capabilities`, asked of a
 /// watch of its own so a slot can be probed without moving the session under
 /// test off the exercise the user is on.
@@ -247,6 +270,70 @@ private func effortKind(
         ]]
     )
     return WatchLoggingState(engine: engine, clock: clock).effortKind
+}
+
+/// One `exercises_down` batch, with the ids it carries given explicitly so the
+/// order a batch landed in is what a test asserts.
+private func exercisesDown(
+    version: String,
+    generatedAt: String,
+    index: Int,
+    count: Int,
+    total: Int,
+    ids: [String]
+) -> [String: Any] {
+    [
+        "protocolVersion": 1,
+        "messageId": "msg-exercises-\(version)-\(index)",
+        "type": "exercises_down",
+        "origin": "phone",
+        "sentAt": generatedAt,
+        "payload": [
+            "generatedAt": generatedAt,
+            "catalogVersion": version,
+            "batchIndex": index,
+            "batchCount": count,
+            "totalCount": total,
+            "exercises": ids.map { id in
+                [
+                    "exerciseId": id,
+                    "name": id.hasPrefix("ex-") ? String(id.dropFirst(3)) : id,
+                    "capabilities": ["sets", "reps", "load"],
+                ] as [String: Any]
+            },
+        ],
+    ]
+}
+
+/// The batch row an `exercisesDown` message stores, written straight into a
+/// store so a test can model a kill between an append and its prune (D-3816).
+private func batchRow(
+    version: String,
+    generatedAt: String,
+    index: Int,
+    count: Int,
+    total: Int,
+    ids: [String]
+) throws -> WatchExerciseBatchRecord {
+    let envelope = exercisesDown(
+        version: version,
+        generatedAt: generatedAt,
+        index: index,
+        count: count,
+        total: total,
+        ids: ids
+    )
+    let payload = try object(envelope["payload"])
+    return WatchExerciseBatchRecord(
+        recordId: "exb-\(version)-\(index)",
+        recordedAt: try parseUtcIso(generatedAt),
+        catalogVersion: version,
+        generatedAt: try parseUtcIso(generatedAt),
+        batchIndex: index,
+        batchCount: count,
+        totalCount: total,
+        exercises: try objects(payload["exercises"])
+    )
 }
 
 final class WatchSessionStartPathsTests: XCTestCase {
@@ -1268,5 +1355,778 @@ final class WatchSessionStartPathsTests: XCTestCase {
         )
         XCTAssertTrue(tie, "D-113 on a tie, the later-received copy applies")
         XCTAssertEqual(harness.preferences.current?.effortRatingPrompt, false, "D-113")
+    }
+
+    // MARK: - The exercise list, batch by batch (D-3815)
+
+    func testS3810TwoBatchesCompleteTheListInBatchOrder() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        let before = harness.paths.fallbackExercises.map(\.exerciseId)
+
+        let half = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 1,
+                count: 2,
+                total: 3,
+                ids: ["ex-c", "ex-d"]
+            )
+        )
+
+        XCTAssertTrue(half, "D-3815 a batch that completes nothing is still stored")
+        XCTAssertNil(harness.paths.exercisesVersion, "D-3815 half a list is not the wrist's list")
+        XCTAssertEqual(
+            harness.paths.fallbackExercises.map(\.exerciseId),
+            before,
+            "D-3815 and the list it already had is untouched"
+        )
+
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 2,
+                total: 3,
+                ids: ["ex-a"]
+            )
+        )
+
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1")
+        XCTAssertEqual(
+            harness.paths.fallbackExercises.map(\.exerciseId),
+            ["ex-a", "ex-c", "ex-d"],
+            "D-3815 the list is batch 0's exercises then batch 1's"
+        )
+    }
+
+    /// Two batches of one version delivered while the first is still parked
+    /// inside its `append`: on the watch every frame rides in its own `Task`, so
+    /// the two writes interleave at the awaits (S-3836). Neither task may be
+    /// left holding a view taken before the other's row landed.
+    func testS3836InterleavedBatchesStillActivateTheList() async throws {
+        let store = SuspendingStore()
+        let harness = WatchStartHarness(store: store)
+        await harness.launch()
+
+        store.arm()
+        let first = Task {
+            await harness.paths.applyExercisesDown(
+                exercisesDown(
+                    version: "v1",
+                    generatedAt: "2026-10-11T10:00:00Z",
+                    index: 0,
+                    count: 2,
+                    total: 2,
+                    ids: ["ex-a"]
+                )
+            )
+        }
+
+        // Batch 0 is parked inside its append; batch 1 now runs to completion and
+        // appends the second row before batch 0 wakes up.
+        var spins = 0
+        while !store.suspended && spins < 400 {
+            spins += 1
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertTrue(store.suspended, "S-3836 batch 0 is parked inside its append")
+
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 1,
+                count: 2,
+                total: 2,
+                ids: ["ex-b"]
+            )
+        )
+
+        store.resume()
+        let result = await first.value
+
+        XCTAssertTrue(result.activated, "S-3836 the task that appends last activates the list")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1")
+        XCTAssertEqual(
+            harness.paths.fallbackExercises.map(\.exerciseId),
+            ["ex-a", "ex-b"],
+            "S-3836 the list holds both batches' ids in index order"
+        )
+    }
+
+    func testS3811AHalfSyncedNewerListLeavesTheOlderOneActive() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 0,
+                count: 2,
+                total: 2,
+                ids: ["ex-a"]
+            )
+        )
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 1,
+                count: 2,
+                total: 2,
+                ids: ["ex-b"]
+            )
+        )
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1")
+
+        let result = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 2,
+                total: 2,
+                ids: ["ex-new-a"]
+            )
+        )
+
+        XCTAssertTrue(result.stored, "D-3815 the half list is kept for the next sync")
+        XCTAssertFalse(result.activated, "D-3815 but it is not the list the wrist holds")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1")
+        XCTAssertEqual(harness.paths.fallbackExercises.map(\.exerciseId), ["ex-a", "ex-b"])
+    }
+
+    func testS3812ACompletedNewerListReplacesTheOlderOneAndItsRows() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-a"]
+            )
+        )
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 2,
+                total: 2,
+                ids: ["ex-new-a"]
+            )
+        )
+        let result = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 1,
+                count: 2,
+                total: 2,
+                ids: ["ex-new-b"]
+            )
+        )
+
+        XCTAssertTrue(result.activated, "D-3815 the last batch of a version activates it")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v2")
+        XCTAssertEqual(harness.paths.fallbackExercises.map(\.exerciseId), ["ex-new-a", "ex-new-b"])
+        let rows = await harness.store.readAll().exerciseBatches
+        XCTAssertEqual(
+            rows.map(\.catalogVersion),
+            ["v2", "v2"],
+            "D-3815 the superseded version's batches are dropped once a version is active"
+        )
+    }
+
+    func testS3813ARelaunchRestoresTheNewestCompleteVersionAndIgnoresAHalfOne() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 0,
+                count: 2,
+                total: 2,
+                ids: ["ex-a"]
+            )
+        )
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 1,
+                count: 2,
+                total: 2,
+                ids: ["ex-b"]
+            )
+        )
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 2,
+                total: 2,
+                ids: ["ex-new-a"]
+            )
+        )
+
+        await harness.launch()
+
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1", "D-3816 only a complete version restores")
+        XCTAssertEqual(harness.paths.fallbackExercises.map(\.exerciseId), ["ex-a", "ex-b"])
+    }
+
+    func testS3813BRelaunchRestoresTheVersionThatCompletedLast() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-a"]
+            )
+        )
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 2,
+                total: 2,
+                ids: ["ex-new-a"]
+            )
+        )
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 1,
+                count: 2,
+                total: 2,
+                ids: ["ex-new-b"]
+            )
+        )
+
+        await harness.launch()
+
+        XCTAssertEqual(harness.paths.exercisesVersion, "v2", "D-3816")
+        XCTAssertEqual(harness.paths.fallbackExercises.map(\.exerciseId), ["ex-new-a", "ex-new-b"])
+    }
+
+    func testS3813CRelaunchWithTwoCompleteVersionsRestoresTheNewestByGeneratedAt() async throws {
+        let store = InMemoryWatchSessionStore()
+        // Both versions complete, neither pruned: a kill between the last
+        // append of v2 and its prune leaves exactly this (D-3816).
+        _ = await store.append(
+            .exerciseBatch(
+                try batchRow(
+                    version: "v1",
+                    generatedAt: "2026-10-11T09:00:00Z",
+                    index: 0,
+                    count: 1,
+                    total: 1,
+                    ids: ["ex-a"]
+                )
+            )
+        )
+        _ = await store.append(
+            .exerciseBatch(
+                try batchRow(
+                    version: "v2",
+                    generatedAt: "2026-10-11T10:00:00Z",
+                    index: 0,
+                    count: 1,
+                    total: 1,
+                    ids: ["ex-new-a"]
+                )
+            )
+        )
+        let harness = WatchStartHarness(store: store)
+
+        await harness.launch()
+
+        XCTAssertEqual(harness.paths.exercisesVersion, "v2", "D-3816 the greatest generatedAt wins")
+        XCTAssertEqual(harness.paths.fallbackExercises.map(\.exerciseId), ["ex-new-a"])
+    }
+
+    func testS3814TheSameBatchTwiceStoresOneRowAndActivatesOnce() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        let envelope = exercisesDown(
+            version: "v1",
+            generatedAt: "2026-10-11T10:00:00Z",
+            index: 0,
+            count: 1,
+            total: 1,
+            ids: ["ex-a"]
+        )
+
+        let first = await harness.paths.applyExercisesDown(envelope)
+        let again = await harness.paths.applyExercisesDown(envelope)
+
+        XCTAssertTrue(first.activated)
+        XCTAssertTrue(again.stored, "D-3813 the repeat is understood and kept")
+        XCTAssertFalse(again.activated, "D-3815 the version was already the wrist's list")
+        let rows = await harness.store.readAll().exerciseBatches
+        XCTAssertEqual(rows.map(\.recordId), ["exb-v1-0"], "D-3813 the same id is the same row")
+    }
+
+    func testS3815ABatchDisagreeingWithStoredRowsOfItsVersionIsRefusedWhole() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 0,
+                count: 2,
+                total: 2,
+                ids: ["ex-a"]
+            )
+        )
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 1,
+                count: 2,
+                total: 2,
+                ids: ["ex-b"]
+            )
+        )
+        let before = await harness.store.readAll().exerciseBatches.map(\.recordId)
+
+        let result = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 2,
+                count: 3,
+                total: 3,
+                ids: ["ex-c"]
+            )
+        )
+
+        XCTAssertFalse(result.stored, "D-3815 rule 3 refuses the whole batch")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1")
+        let after = await harness.store.readAll().exerciseBatches.map(\.recordId)
+        XCTAssertEqual(after, before, "D-3815 nothing of it is stored")
+    }
+
+    func testS3816ACompleteListOlderThanTheActiveOneIsDropped() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-a"]
+            )
+        )
+
+        let result = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v0",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-old"]
+            )
+        )
+
+        XCTAssertFalse(result.stored, "D-3815 rule 2 an older view is not a newer truth")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1")
+        XCTAssertEqual(harness.paths.fallbackExercises.map(\.exerciseId), ["ex-a"])
+        let rows = await harness.store.readAll().exerciseBatches
+        XCTAssertEqual(rows.map(\.catalogVersion), ["v1"], "D-3815 nothing of the older list is stored")
+    }
+
+    func testS3817RoutineCoverageAndTheActiveListAreUnionedOnce() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try routinesDownOfferingAPhoneOnlyExercise())
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 1,
+                total: 2,
+                ids: ["ex-plank", "ex-soccer"]
+            )
+        )
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1")
+
+        let offered = harness.paths.fallbackExercises.map(\.exerciseId)
+
+        XCTAssertEqual(
+            offered,
+            ["ex-plank", "ex-soccer", "ex-barbell-bench-press", "ex-pull-up", "ex-only-fallback"],
+            "D-3817 the active list first, then the routine catalog's own fallback"
+        )
+        XCTAssertEqual(
+            Set(offered).count,
+            offered.count,
+            "D-3817 an exercise in both sources appears once"
+        )
+        XCTAssertTrue(
+            offered.contains("ex-barbell-bench-press"),
+            "D-3817 a routine's exercise is still offered when the active list does not name it"
+        )
+        XCTAssertFalse(
+            harness.paths.routines
+                .flatMap(\.referencedExercises)
+                .map(\.exerciseId)
+                .contains("ex-only-fallback"),
+            "D-3817 the phone-only exercise is named by no routine, so only the fallback list carries it"
+        )
+        XCTAssertEqual(
+            offered.filter { $0 == "ex-only-fallback" }.count,
+            1,
+            "D-3817 the fallback list is unioned in: the phone's own exercise reaches the wrist, once"
+        )
+        XCTAssertEqual(
+            Set(harness.paths.addableExercises.map(\.exerciseId)),
+            Set(offered),
+            "D-3817 the Add Exercise list is the same union"
+        )
+    }
+
+    func testS3818TheOrchestratorRoutesBatchesToThePaths() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        let stored = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 2,
+                total: 2,
+                ids: ["ex-a"]
+            )
+        )
+        XCTAssertTrue(stored, "a stored batch is what receive reports")
+
+        let refused = try await harness.receive(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T11:00:00Z",
+                index: 2,
+                count: 2,
+                total: 2,
+                ids: ["ex-b"]
+            )
+        )
+        XCTAssertFalse(refused, "an index outside its batch count is refused")
+        let rows = await harness.store.readAll().exerciseBatches
+        XCTAssertEqual(rows.map(\.catalogVersion), ["v1"], "and nothing of it is stored")
+    }
+
+    func testS3819SyncNamesTheExerciseListVersionTheWristHolds() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        await harness.orchestrator.sync()
+        XCTAssertEqual(
+            harness.transport.requestedVersions,
+            [nil],
+            "with no list, the frame carries no version"
+        )
+
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-a"]
+            )
+        )
+        await harness.orchestrator.sync()
+
+        XCTAssertEqual(harness.transport.requestedVersions, [nil, "v1"])
+    }
+
+    func testS3830ASingleBatchListCompletesImmediately() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        let result = await harness.paths.applyExercisesDown(
+            try Fixtures.json("fixtures/valid/exercises_down_single_batch.json")
+        )
+
+        XCTAssertTrue(result.stored)
+        XCTAssertTrue(result.activated, "D-3815 one batch of one is the whole list")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1-3-9f8e7d6c")
+        XCTAssertEqual(
+            harness.paths.fallbackExercises.map(\.exerciseId),
+            ["ex-barbell-bench-press", "ex-plank", "ex-soccer"]
+        )
+    }
+
+    func testS3831AVersionWhoseCountsDoNotAddUpNeverActivatesAndNeverPrunes() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T09:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-a"]
+            )
+        )
+
+        // Both indexes of v2 are here, but the two batches hold three exercises
+        // while v2 claims four: the version never completes (D-3815 rule 5).
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 2,
+                total: 4,
+                ids: ["ex-new-a", "ex-new-b"]
+            )
+        )
+        let wedge = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 1,
+                count: 2,
+                total: 4,
+                ids: ["ex-new-c"]
+            )
+        )
+
+        XCTAssertTrue(wedge.stored)
+        XCTAssertFalse(wedge.activated, "D-3815 rule 5 the counts do not sum to totalCount")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1", "the wrist keeps the list it had")
+
+        let rows = await harness.store.readAll().exerciseBatches
+        XCTAssertEqual(
+            Set(rows.map(\.catalogVersion)),
+            ["v1", "v2"],
+            "D-3815 nothing is pruned while no version is active but v1"
+        )
+
+        // The phone fixes the list by deriving a new version, not by re-sending
+        // the same one: rule 3 refuses a corrected copy under the same version.
+        let corrected = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T11:00:00Z",
+                index: 1,
+                count: 2,
+                total: 3,
+                ids: ["ex-new-c"]
+            )
+        )
+        XCTAssertFalse(corrected.stored, "D-3815 rule 3 the same version may not change its counts")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1")
+    }
+
+    func testS3832ARelaunchWithNoCompleteVersionHasNoListAndNoError() async throws {
+        let store = InMemoryWatchSessionStore()
+        _ = await store.append(
+            .exerciseBatch(
+                try batchRow(
+                    version: "v2",
+                    generatedAt: "2026-10-11T10:00:00Z",
+                    index: 0,
+                    count: 2,
+                    total: 2,
+                    ids: ["ex-new-a"]
+                )
+            )
+        )
+        let harness = WatchStartHarness(store: store)
+
+        await harness.launch()
+
+        XCTAssertNil(harness.paths.exercisesVersion, "D-3816 no complete version, no list")
+        XCTAssertTrue(
+            harness.paths.fallbackExercises.isEmpty,
+            "D-3816 and no catalog either: this store never saw a routines_down"
+        )
+    }
+
+    func testS3833ABatchAtTheActiveListsOwnInstantIsNotDropped() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-a"]
+            )
+        )
+
+        let result = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-new-a"]
+            )
+        )
+
+        XCTAssertTrue(result.stored, "D-3815 rule 2 drops only a strictly earlier batch")
+        XCTAssertTrue(result.activated, "D-3815 and a complete version that is not active activates")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v2")
+        XCTAssertEqual(harness.paths.fallbackExercises.map(\.exerciseId), ["ex-new-a"])
+    }
+
+    func testS3837AGapInTheBatchIndexesNeverActivates() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        // Both batches are valid on the wire: each carries one exercise, agrees
+        // with the version's counts, and fits under totalCount times 100. Index
+        // 1 never arrives, but the two exercises that did add up to totalCount,
+        // so the sum alone would call the version whole (D-3815 rule 5).
+        let first = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v3",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 3,
+                total: 2,
+                ids: ["ex-a"]
+            )
+        )
+        let last = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v3",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 2,
+                count: 3,
+                total: 2,
+                ids: ["ex-c"]
+            )
+        )
+
+        XCTAssertTrue(first.stored, "D-3815 a batch that completes nothing is still stored")
+        XCTAssertFalse(first.activated)
+        XCTAssertTrue(last.stored)
+        XCTAssertFalse(last.activated, "D-3815 rule 5 a missing index is a missing batch")
+        XCTAssertNil(
+            harness.paths.exercisesVersion,
+            "D-3815 a gapped version is not the wrist's list, whatever its counts say"
+        )
+
+        let rows = await harness.store.readAll().exerciseBatches
+        XCTAssertEqual(
+            rows.map(\.recordId).sorted(),
+            ["exb-v3-0", "exb-v3-2"],
+            "D-3815 both batches are kept for the next sync"
+        )
+    }
+
+    /// Two versions in flight at once, and the one that completes last is the
+    /// *older* of the two. `v3` (generated 10:05) parks inside its `append`
+    /// while `v2` (10:10, a newer complete list) arrives, activates and prunes.
+    /// `v3` has no rows stored yet, so the prune takes none of them, and the
+    /// parked task's own append is what completes `v3` when it wakes. Both tasks
+    /// passed rule 2 while the old list was active — and `v3`'s task passes the
+    /// "not already active" check too, because `v2` is active by then. The
+    /// activation guard must therefore re-check the drop rule it passed before
+    /// the awaits (S-3838): the wrist keeps `v2`, and the older list is stored,
+    /// never activated.
+    func testS3838AnOlderListCompletingLastNeverReplacesANewerActiveOne() async throws {
+        let store = SuspendingStore()
+        let harness = WatchStartHarness(store: store)
+        await harness.launch()
+
+        _ = try await harness.receive(
+            exercisesDown(
+                version: "v1",
+                generatedAt: "2026-10-11T10:00:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-a"]
+            )
+        )
+        XCTAssertEqual(harness.paths.exercisesVersion, "v1")
+
+        store.arm()
+        let parked = Task {
+            await harness.paths.applyExercisesDown(
+                exercisesDown(
+                    version: "v3",
+                    generatedAt: "2026-10-11T10:05:00Z",
+                    index: 0,
+                    count: 1,
+                    total: 1,
+                    ids: ["ex-c"]
+                )
+            )
+        }
+
+        var spins = 0
+        while !store.suspended && spins < 400 {
+            spins += 1
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertTrue(store.suspended, "S-3838 v3's batch is parked inside its append")
+
+        // The newer list arrives while v3 is parked. It activates, and its prune
+        // drops v1's rows: v3 has no rows stored yet, so nothing of v3 goes with
+        // them and the parked task still reassembles v3 whole when it wakes.
+        let newer = await harness.paths.applyExercisesDown(
+            exercisesDown(
+                version: "v2",
+                generatedAt: "2026-10-11T10:10:00Z",
+                index: 0,
+                count: 1,
+                total: 1,
+                ids: ["ex-b"]
+            )
+        )
+        XCTAssertTrue(newer.activated, "S-3838 the newer list activates while v3 is parked")
+        XCTAssertEqual(harness.paths.exercisesVersion, "v2")
+
+        store.resume()
+        let resumed = await parked.value
+
+        XCTAssertEqual(
+            harness.paths.exercisesVersion,
+            "v2",
+            "S-3838 a list generated earlier never replaces one that activated after it"
+        )
+        XCTAssertEqual(
+            harness.paths.fallbackExercises.map(\.exerciseId),
+            ["ex-b"],
+            "S-3838 the wrist keeps the newer list's ids"
+        )
+        XCTAssertTrue(resumed.stored, "S-3838 the batch is still stored for the next sync")
+        XCTAssertFalse(resumed.activated, "S-3838 it does not become the wrist's list")
     }
 }
