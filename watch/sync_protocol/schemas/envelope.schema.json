@@ -22,6 +22,7 @@
     "type": {
       "enum": [
         "routines_down",
+        "exercises_down",
         "foods_down",
         "preferences_down",
         "exercise_push",

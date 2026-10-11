@@ -93,6 +93,24 @@
       "type": "routines_down",
       "scenario": "S-3601",
       "note": "A phone with exercises and no routine still sends: `routines` is empty and `fallbackExercises` carries every exercise the phone offers the wrist — a set, a hold, and a round with its own period length."
+    },
+    {
+      "path": "valid/routines_down_empty.json",
+      "type": "routines_down",
+      "scenario": "S-3803",
+      "note": "An empty catalog is valid: the phone has no routines and nothing extra to offer, so `routines` and `fallbackExercises` are both empty. The fallback list is not required to hold anything."
+    },
+    {
+      "path": "valid/exercises_down.json",
+      "type": "exercises_down",
+      "scenario": "S-3801",
+      "note": "The first batch of a two-batch list: `catalogVersion` `v1-4-a1b2c3d4`, `batchIndex` 0 of `batchCount` 2, `totalCount` 4, carrying two exercises — a set and a round with its own period length."
+    },
+    {
+      "path": "valid/exercises_down_single_batch.json",
+      "type": "exercises_down",
+      "scenario": "S-3802",
+      "note": "A list that fits in one batch: `batchCount` 1, `batchIndex` 0, `totalCount` 3, three exercises."
     }
   ],
   "invalid": [
@@ -109,12 +127,52 @@
       "expectedReasonContains": "fallbackExercises"
     },
     {
-      "path": "invalid/routines_down_empty_fallback.json",
-      "type": "routines_down",
-      "scenario": "S-3603",
+      "path": "invalid/exercises_down_batch_index_out_of_range.json",
+      "type": "exercises_down",
+      "scenario": "S-3804",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "batchIndex",
+      "note": "A batch is one of `batchCount` slices, so its 0-based `batchIndex` is always below `batchCount`: index 2 of 2 names a slice the list does not have."
+    },
+    {
+      "path": "invalid/exercises_down_total_below_batch.json",
+      "type": "exercises_down",
+      "scenario": "S-3805",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "totalCount",
+      "note": "`totalCount` is the whole list's size, so it cannot be smaller than the exercises one batch already carries: 1 total against two exercises is impossible."
+    },
+    {
+      "path": "invalid/exercises_down_total_above_capacity.json",
+      "type": "exercises_down",
+      "scenario": "S-3805",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "totalCount",
+      "note": "The batches must be able to carry the whole list: one batch of at most 100 cannot hold 101 exercises."
+    },
+    {
+      "path": "invalid/exercises_down_duplicate_exercise.json",
+      "type": "exercises_down",
+      "scenario": "S-3806",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "exerciseId",
+      "note": "An exercise appears once in the list, so the same `exerciseId` twice in one batch is a defect."
+    },
+    {
+      "path": "invalid/exercises_down_empty_batch.json",
+      "type": "exercises_down",
+      "scenario": "S-3807",
       "expectedCode": "constraint_violation",
       "expectedReasonContains": "expected at least 1 items, found 0",
-      "note": "An empty `routines` is a catalog, but the fallback list stays non-empty: a message offering the wrist no exercise it can log is refused."
+      "note": "Every batch carries at least one exercise: a list that needs no batches carries no `exercises_down` at all."
+    },
+    {
+      "path": "invalid/exercises_down_missing_version.json",
+      "type": "exercises_down",
+      "scenario": "S-3807",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "catalogVersion",
+      "note": "A batch names the version of the whole list it belongs to; without `catalogVersion` the wrist cannot tell which list it is assembling."
     },
     {
       "path": "invalid/foods_down_missing_food_id.json",

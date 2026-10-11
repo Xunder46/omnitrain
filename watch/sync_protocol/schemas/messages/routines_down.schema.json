@@ -25,8 +25,8 @@
             },
             "fallbackExercises": {
               "type": "array",
-              "minItems": 1,
-              "description": "Every exercise the phone offers the wrist, always including every exercise a routine references.",
+              "minItems": 0,
+              "description": "Every exercise the phone offers the wrist, always including every routine's own; may be empty when the phone holds nothing to offer, and the whole list may arrive separately as `exercises_down`.",
               "items": { "$ref": "envelope.schema.json#/$defs/catalogExercise" }
             }
           }
