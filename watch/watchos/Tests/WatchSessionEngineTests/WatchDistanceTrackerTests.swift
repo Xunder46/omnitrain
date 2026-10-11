@@ -554,6 +554,20 @@ final class WatchDistanceTrackerTests: XCTestCase {
         clock.advance(3600)
         var second = adapter.fixes().makeAsyncIterator()
         await eventually { raw.subscriptions == 2 }
+        // First a fix stamped t0 + 100 s — fresh for the first call, stale for
+        // this one. It is what tells the two clocks apart, and here is the
+        // arithmetic both ways:
+        //   per-call clock (this call's start = t0 + 3600): the gate's oldest
+        //     instant is t0 + 3590, so the t0 + 100 fix is dropped and the
+        //     t0 + 3610 fix (52.0100) becomes the origin; the t0 + 3640 fix
+        //     (52.0110) then measures 0.0010° = 111.195 m — the value asserted
+        //     below.
+        //   clock read once at init (start = t0): the t0 + 100 fix (52.0050) is
+        //     kept and becomes the origin; the t0 + 3610 fix (52.0100) then
+        //     measures 0.0050° = 555.975 m over 3510 s = 0.16 m/s, under the
+        //     jump gate, so it is accepted and the first yield would read
+        //     555.975 — red against the 111.195 below.
+        raw.fix(fix(52.0050, 5.0, accuracy: 5, at: 100))
         raw.fix(fix(52.0100, 5.0, accuracy: 5, at: 3610))
         raw.fix(fix(52.0110, 5.0, accuracy: 5, at: 3640))
         raw.close()

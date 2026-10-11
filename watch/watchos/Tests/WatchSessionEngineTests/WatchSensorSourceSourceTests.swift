@@ -421,6 +421,26 @@ final class WatchSensorSourceSourceTests: XCTestCase {
             "the manager is created in `init`: a manager created lazily from a "
                 + "background task never calls back at all (D-2303)"
         )
+        XCTAssertTrue(
+            initBody.contains("kCLLocationAccuracyBest"),
+            "the accuracy is fixed once, inside the init the host's main actor "
+                + "runs — not per subscription, where a file-wide probe would "
+                + "still find it (D-2303)"
+        )
+        XCTAssertTrue(
+            initBody.contains(".fitness"),
+            "the activity type is fixed once, inside the init the host's main "
+                + "actor runs — not per subscription, where a file-wide probe "
+                + "would still find it (D-2303)"
+        )
+        XCTAssertEqual(
+            occurrences(of: "requestWhenInUseAuthorization()", in: raw),
+            1,
+            "the question is asked in exactly one place: CoreLocation shows the "
+                + "prompt at most once per install, so a second call site — in "
+                + "the permission path or anywhere else — would be silently "
+                + "dropped and its caller would wait forever (D-2303)"
+        )
 
         XCTAssertFalse(
             raw.contains("requestAlwaysAuthorization"),
@@ -488,9 +508,17 @@ final class WatchSensorSourceSourceTests: XCTestCase {
             "the store takes the adapter from the host, so the permission question "
                 + "and the fixes never pass through it (D-2304)"
         )
+        // Scoped to the outdoor-aware begin's own body: the file-wide probe
+        // would also find the sentence if it drifted into another function,
+        // e.g. a helper only the legacy `begin(_:)` reached.
+        let outdoorBeginBody = try XCTUnwrap(
+            functionBody(named: "begin", in: store),
+            "the store answers the seam's outdoor-aware begin (D-2304)"
+        )
         XCTAssertTrue(
-            store.contains("locationType = outdoors ? .outdoor : .unknown"),
-            "a modality that measures distance registers as `.outdoor`; every "
+            outdoorBeginBody.contains("locationType = outdoors ? .outdoor : .unknown"),
+            "the outdoor answer is applied inside the outdoor-aware begin itself: "
+                + "a modality that measures distance registers as `.outdoor`, every "
                 + "other one keeps the platform default (D-2304)"
         )
         XCTAssertTrue(
