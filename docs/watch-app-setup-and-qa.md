@@ -736,6 +736,22 @@ hardware yet.
     `…testS3613TheSameExerciseTwiceGetsTwoSlots`,
     `…testS3614TheAddAnnouncesTheLadderChangeToThePhone`), and a phone holding
     no routine sends it too (D-3601).
+12. **The wrist wears the phone's theme accent — (owner).** On the phone
+    (Settings) pick each of the six themes in turn and **Sync** from the wrist.
+    On the wrist's prominent buttons — **Start** / **Log** on the logging
+    surface, **Next** on the rest surface, the current row of the menu, a
+    routine row on Start — the fill is that theme's accent and the label reads:
+    the accent's own contrast decides whether the label is dark or light, and
+    every theme today takes dark labels
+    (`WatchAccentTests.testS3710EveryRowOfTheSharedTableParsesWithTheTablesLabel`
+    holds every row of `watch/contract/watch_accent_contract.json` to the label
+    it names). The accent arrives with the Sync, like every other phone setting,
+    and picking a new theme shows at the next one. Before any Sync — a fresh
+    install — the buttons keep the default look, and a copy that carries no
+    accent, or one too dark to read on, is worn as no accent rather than as the
+    last one seen
+    (`WatchAccentTests.testS3712ANearBlackAccentIsRefusedRatherThanWorn`).
+    Nothing else changes color; the wrist's black stays black.
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

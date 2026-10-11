@@ -104,7 +104,7 @@ public struct WatchRestView: View {
         } label: {
             Text("Next").frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .watchProminent()
     }
 }
 

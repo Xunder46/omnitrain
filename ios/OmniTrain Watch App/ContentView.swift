@@ -247,6 +247,10 @@ struct ContentView: View {
                 )
             }
         }
+        // D-3704: the accent rides the preferences the root already observes, so
+        // a Sync that changes the theme re-runs this body and the environment
+        // value with it. Read here, at render, like `restPingSeconds`.
+        .environment(\.watchAccent, WatchAccent.usable(hex: host.preferences.accentColorHex))
         .task {
             await host.restore()
         }

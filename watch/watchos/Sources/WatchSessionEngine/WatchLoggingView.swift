@@ -219,7 +219,7 @@ public struct WatchLoggingView: View {
         } label: {
             Text(model.primaryTitle).frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .watchProminent()
         .disabled(!model.state.canLog)
     }
 }

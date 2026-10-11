@@ -104,7 +104,7 @@ public struct WatchMenuView: View {
         }
 
         if row.isCurrent {
-            button.buttonStyle(.borderedProminent).disabled(state.isLocked)
+            button.watchProminent().disabled(state.isLocked)
         } else {
             button.buttonStyle(.bordered).disabled(state.isLocked)
         }

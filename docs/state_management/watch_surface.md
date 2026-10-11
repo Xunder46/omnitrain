@@ -475,6 +475,26 @@ Both wrist clients tap at each multiple of the interval the phone sent in
 sound on the wrist (`WatchRestPingTests.testS241AnIntervalTapsAtItsMultiples
 AndNowhereElse`; Dart twin, `test/watch_rest_ping_test.dart`, S-241).
 
+The same copy carries the phone's theme accent (`accentColorHex`, `#RRGGBB`), and
+the wrist keeps it for the look it renders: an accent is worn only when it clears
+the contrast floor both clients share — `minContrastAgainstBlack`, 3.0 — and it
+takes the label color its own contrast picks out, dark labels when black reads
+better on it than white
+(`WatchAccentTests.testS3710EveryRowOfTheSharedTableParsesWithTheTablesLabel`,
+`…testS3711AStringThatIsNotSixHexDigitsParsesToNothing`,
+`…testS3712ANearBlackAccentIsRefusedRatherThanWorn`; the six accents both clients
+agree on are `watch/contract/watch_accent_contract.json`). A copy that carries no
+accent, and one generated before the wrist knew the field, read as no accent — the
+wrist keeps its default look rather than the last accent it saw
+(`WatchRestPingTests.testS3713TheWristStoresTheAccentAndReadsTheNewestCopyWithIt`,
+`…testS3714ABadAccentIsRefusedAndThePreviousOneStays`; Dart twin,
+`test/watch_session_start_test.dart`, S-3701).
+The app's root hands the usable accent to every surface through an environment value
+(`watchAccent`, `WatchAccentStyle.swift`, set in `ContentView`), and every prominent button
+asks for it with `watchProminent()`: the accent as fill with its label color, or exactly the
+default prominent look when there is none. The phone sends the accent of its current theme
+at every Sync (`WatchReferenceSync.accentHexOf`; `test/watch_accent_contract_test.dart`, S-3720..S-3723).
+
 Logged rows leave the wrist as they are logged: the engine's emissions go to
 `WatchEmitForwarder` over the connectivity bridge, in emission order, and a
 refused frame is reported once and dropped without disturbing the frames behind
@@ -530,7 +550,10 @@ transport detail a protocol one.
 schedule and no launch-time push, which is why the preferences ride every
 `routines` request: a setting changed on the phone reaches the wrist at the
 wrist's next sync. The value is `SettingsState`'s own toggle, never a re-read of
-the stored preference. A phone holding no exercise the wrist could log sends no
+the stored preference, and the accent travels the same way: the handler reads
+the theme that state holds (`appTheme`) and sends that theme's primary as
+`accentColorHex`, so a theme changed on the phone needs no watch update to be
+worn. A phone holding no exercise the wrist could log sends no
 `routines_down`,
 and one holding no session answers a `snapshot` request with nothing: the wrist
 keeps the copy it has, and an empty answer would be a state it never asked for.

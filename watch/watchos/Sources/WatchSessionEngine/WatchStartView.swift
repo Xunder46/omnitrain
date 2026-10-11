@@ -126,7 +126,7 @@ public struct WatchStartView: View {
                         Button(routine.name) {
                             Task { await start(routine) }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .watchProminent()
                     }
                 }
 
@@ -220,7 +220,7 @@ public struct WatchExercisePickerView: View {
                             Button(row.name) {
                                 Task { await select(row) }
                             }
-                            .buttonStyle(.borderedProminent)
+                            .watchProminent()
                         } else {
                             Button(row.name) {
                                 Task { await select(row) }

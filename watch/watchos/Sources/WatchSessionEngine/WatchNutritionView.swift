@@ -131,11 +131,11 @@ public struct WatchNutritionView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        // `.borderedProminent` and `.bordered` are distinct concrete types, so a
+        // `.watchProminent()` and `.bordered` are distinct concrete types, so a
         // ternary between them has no common type to infer. The branches have to
         // be separate views.
         if isSelected {
-            button.buttonStyle(.borderedProminent)
+            button.watchProminent()
         } else {
             button.buttonStyle(.bordered)
         }
@@ -190,7 +190,7 @@ public struct WatchNutritionView: View {
         } label: {
             Text("Log").frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .watchProminent()
     }
 }
 
