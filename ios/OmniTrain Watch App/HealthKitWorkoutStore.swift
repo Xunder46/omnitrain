@@ -60,24 +60,37 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// half-settled answer.
     private var authorization: Task<Bool, Never>?
 
+    /// The location adapter the feed delegates to (D-2304): the app builds it
+    /// over the CoreLocation source and this store only hands it along, so the
+    /// permission question and the fixes never pass through here.
+    private let location: WatchTrackedLocation
+
     /// The live readings of the workout this store opens (D-2103). Built on
     /// first use, over a closure that asks this store for its authorization
     /// outcome: the feed holds no reference back to the store, and the store is
     /// the only thing holding the feed.
-    private lazy var sensorFeed = HealthKitSensorFeed { [weak self] in
+    private lazy var sensorFeed = HealthKitSensorFeed(authorization: { [weak self] in
         guard let self else { return false }
         return await self.resolveAuthorization()
-    }
+    }, location: location)
 
     /// The sensor seam the package sees. Permission comes from the store's own
     /// resolution, so the feed reports it without asking anyone (D-2104, D-2105).
     var sensorSource: WatchSensorSource { sensorFeed }
 
-    init() {}
+    /// The location adapter arrives from the host, which builds it on the main
+    /// actor over a `CLLocationManager` that must be created there (D-2303,
+    /// D-2305).
+    init(location: WatchTrackedLocation) {
+        self.location = location
+    }
 
     // MARK: - WatchPlatformWorkoutStore
 
-    func begin(_ activityType: String) async {
+    /// Registers the session's workout, and tells HealthKit whether it is an
+    /// outdoor one: a modality that measures distance registers as `.outdoor`,
+    /// every other one as before (D-2304).
+    func begin(_ activityType: String, outdoors: Bool) async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         guard await resolveAuthorization() else { return }
 
@@ -87,7 +100,7 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
 
         let configuration = HKWorkoutConfiguration()
         configuration.activityType = Self.activityType(for: activityType)
-        configuration.locationType = .unknown
+        configuration.locationType = outdoors ? .outdoor : .unknown
 
         do {
             let opened = try HKWorkoutSession(healthStore: healthStore, configuration: configuration)
@@ -117,6 +130,13 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             session = nil
             builder = nil
         }
+    }
+
+    /// The indoor answer, for a caller that does not know the modality: it
+    /// registers exactly as it did before, through HealthKit's own default
+    /// (D-2304).
+    func begin(_ activityType: String) async {
+        await begin(activityType, outdoors: false)
     }
 
     func end() async {

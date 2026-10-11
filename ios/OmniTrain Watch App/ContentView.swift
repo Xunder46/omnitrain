@@ -83,8 +83,12 @@ final class WatchAppHost: ObservableObject {
         )
         // The health store is built once and shared (D-2106): it owns the
         // workout builder and the sensor feed, so the workout coordinator and
-        // the sensors read one authorization outcome, not two.
-        let healthStore = HealthKitWorkoutStore()
+        // the sensors read one authorization outcome, not two. Its location
+        // adapter is built here, on the main actor, over a `CLLocationManager`
+        // that only calls back on the thread that created it (D-2303, D-2305).
+        let healthStore = HealthKitWorkoutStore(
+            location: WatchTrackedLocation(source: CoreLocationRawSource())
+        )
         let recorder = WatchSensorRecorder(engine: engine, source: healthStore.sensorSource)
         let logging = WatchLoggingState(engine: engine, sensors: recorder)
         let rating = WatchEffortRatingState(

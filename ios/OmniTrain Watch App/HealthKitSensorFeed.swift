@@ -25,10 +25,11 @@
 //     copied out of it before anything is yielded. The class is `nonisolated`
 //     on purpose: the target's default isolation is the main actor, and
 //     HealthKit calls the delegate off it.
-//  3. **No location.** GPS, distance and route stay out of this scope (D-2100):
-//     `locationPermission()` answers `.unavailable` and `location()` finishes
-//     at once, so the package makes no location subscription. No location
-//     framework is imported here either.
+//  3. **Location is delegated, never built here.** The feed is given a
+//     `WatchTrackedLocation` — the adapter over the app's CoreLocation source —
+//     and hands its two location members straight through, so the permission
+//     question and the fixes stay the adapter's (D-2304). This file imports no
+//     location framework: a feed that owns no radio cannot leak one.
 //
 
 #if os(watchOS)
@@ -50,6 +51,10 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
     /// here never opens a second prompt (D-2104).
     private let authorization: () async -> Bool
 
+    /// The app's tracked location adapter: the feed reports its permission and
+    /// carries its fixes, and decides neither itself (D-2304).
+    private let trackedLocation: WatchTrackedLocation
+
     /// The listeners someone is holding right now, keyed by subscription. The
     /// delegate callbacks arrive on arbitrary queues, so every read and every
     /// write of these goes through the lock.
@@ -57,8 +62,9 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
     private var heartRateContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
     private var stepContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
 
-    init(authorization: @escaping () async -> Bool) {
+    init(authorization: @escaping () async -> Bool, location: WatchTrackedLocation) {
         self.authorization = authorization
+        self.trackedLocation = location
         super.init()
     }
 
@@ -77,10 +83,11 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
         return await authorization() ? .granted : .denied
     }
 
-    /// Nothing to measure and nothing to ask for: location is out of this scope
-    /// (D-2100), so the package's `isRequired` guard finds no distance work here.
+    /// The adapter's answer, unchanged: whether location is granted, refused or
+    /// unavailable is the CoreLocation source's to know, and the feed never asks
+    /// for it itself (D-2304).
     func locationPermission() async -> WatchSensorPermission {
-        .unavailable
+        await trackedLocation.permission()
     }
 
     /// Beats per minute, as the builder's statistics report them.
@@ -97,11 +104,10 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
         }
     }
 
-    /// Nothing is measured here: the stream is over before anyone reads it.
+    /// The adapter's own fixes, unchanged: the wrist's metres are computed in the
+    /// package, over the stream the CoreLocation source feeds (D-2304).
     func location() -> AsyncStream<WatchLocationFix> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        trackedLocation.fixes()
     }
 
     /// The builder's cumulative step count since it began; each value supersedes

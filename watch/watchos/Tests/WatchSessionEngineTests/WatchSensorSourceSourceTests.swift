@@ -8,12 +8,18 @@
 //  scenarios S-3109, S-3110, S-3114, S-3116 and S-3117 (decisions D-2103,
 //  D-2104, D-2105, D-2106, D-2113).
 //
+//  Plan: `docs/plans/2026-10-10-19f-watch-gps-feed-plan/2026-10-10-19f-watch-gps-feed-plan.md`,
+//  scenarios S-3310 to S-3316 (decisions D-2303 to D-2307): the CoreLocation
+//  raw source, the feed's delegation to the location adapter, the store's
+//  outdoor-aware `begin`, the host's one construction, and the permission
+//  sentence in the project file.
+//
 //  The app target has no test target and `HKLiveWorkoutBuilder` does not exist on
-//  macOS where `swift test` runs, so the feed and the host cannot be executed
-//  here. What can be held off-device is what drift would break: the feed's shape
-//  and its one-authorization rule, the store's read set, the host's build order,
-//  and that the workout is refreshed before the sensors. The on-device behaviour
-//  is the owner's check.
+//  macOS where `swift test` runs, so the feed, the store and the host cannot be
+//  executed here. What can be held off-device is what drift would break: the
+//  feed's shape and its one-authorization rule, the store's read set, the raw
+//  source's shape and its negatives, the host's build order, and that the workout
+//  is refreshed before the sensors. The on-device behaviour is the owner's check.
 //
 //  Every guard reads a file's text with its comment lines removed, so a sentence
 //  of prose can neither satisfy a guard nor trip one.
@@ -39,15 +45,25 @@ final class WatchSensorSourceSourceTests: XCTestCase {
 
     private func storeSource() throws -> String { try source("HealthKitWorkoutStore.swift") }
 
+    private func rawSourceSource() throws -> String { try source("CoreLocationRawSource.swift") }
+
     private func viewSource() throws -> String { try source("ContentView.swift") }
+
+    /// The Xcode project file, read as text: the location permission sentence
+    /// lives in the watch target's three build configurations (D-2306).
+    private func projectFileSource() throws -> String {
+        let url = Fixtures.repositoryRoot
+            .appendingPathComponent("ios/Runner.xcodeproj/project.pbxproj")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
 
     // MARK: - Matching helpers
 
     /// Blanks every line whose trimmed text starts with `//`, keeping the line
     /// boundaries so line indexes stay true. A trailing `//` comment on a code
     /// line is blanked too, so prose there can neither satisfy a guard nor trip
-    /// one; none of the three guarded files keeps a `//` inside a string
-    /// literal (checked 2026-10-10).
+    /// one; none of the guarded files keeps a `//` inside a string literal
+    /// (checked 2026-10-10).
     private func strippingCommentLines(_ source: String) -> String {
         source.split(separator: "\n", omittingEmptySubsequences: false)
             .map { line -> String in
@@ -70,6 +86,39 @@ final class WatchSensorSourceSourceTests: XCTestCase {
     private func functionBody(named name: String, in source: String) -> String? {
         let lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         guard let start = lines.firstIndex(where: { $0.contains("func \(name)(") }) else {
+            return nil
+        }
+
+        var depth = 0
+        var started = false
+        var body: [String] = []
+        for line in lines[start...] {
+            for character in line {
+                if character == "{" {
+                    depth += 1
+                    started = true
+                } else if character == "}" {
+                    depth -= 1
+                }
+            }
+            if started { body.append(line) }
+            if started && depth == 0 { break }
+        }
+        return started ? body.joined(separator: "\n") : nil
+    }
+
+    /// The number of times `needle` occurs in `source`.
+    private func occurrences(of needle: String, in source: String) -> Int {
+        source.components(separatedBy: needle).count - 1
+    }
+
+    /// The brace-balanced body of the first line containing `needle`, from its
+    /// opening brace to its closing one, or nil when that line is not there. For
+    /// declarations `functionBody(named:)` cannot reach: `override init()` is not
+    /// a `func`.
+    private func braceBody(ofLineContaining needle: String, in source: String) -> String? {
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let start = lines.firstIndex(where: { $0.contains(needle) }) else {
             return nil
         }
 
@@ -151,20 +200,27 @@ final class WatchSensorSourceSourceTests: XCTestCase {
         )
         XCTAssertFalse(
             feed.contains("import CoreLocation"),
-            "GPS, distance and route stay out of this scope (D-2100)"
+            "the feed is handed a location adapter instead of owning a radio: a "
+                + "feed that imports no location framework cannot leak one (D-2304)"
         )
 
         let locationBody = try XCTUnwrap(
             functionBody(named: "locationPermission", in: feed),
-            "the feed has to answer the location probe (D-2104)"
+            "the feed has to answer the location probe (D-2304)"
         )
         XCTAssertTrue(
+            locationBody.contains("trackedLocation.permission()"),
+            "the probe is the adapter's answer, unchanged: the feed delegates "
+                + "location to the CoreLocation source and decides nothing itself (D-2304, D-2307)"
+        )
+        XCTAssertFalse(
             locationBody.contains(".unavailable"),
-            "the location probe answers `.unavailable`: nothing here measures a route (D-2100)"
+            "the feed reports no permission of its own any more: whether location "
+                + "is granted, refused or unavailable is the adapter's to say (D-2304, D-2307)"
         )
         XCTAssertFalse(
             locationBody.contains(".granted"),
-            "the location probe never claims a permission it does not use (D-2100)"
+            "the location probe never claims a permission it does not ask for (D-2304)"
         )
 
         let store = try storeSource()
@@ -209,6 +265,19 @@ final class WatchSensorSourceSourceTests: XCTestCase {
             view.contains("source: healthStore.sensorSource"),
             "the recorder reads the shared store, one authorization outcome: a "
                 + "second store would mean a second prompt (D-2106)"
+        )
+        XCTAssertTrue(
+            view.contains("HealthKitWorkoutStore("),
+            "the host builds the one shared store (D-2305, D-2307)"
+        )
+        let construction = try XCTUnwrap(
+            arguments(of: "HealthKitWorkoutStore", in: view),
+            "the store's construction has to be in the host (D-2305, D-2307)"
+        )
+        XCTAssertTrue(
+            construction.contains("WatchTrackedLocation(source: CoreLocationRawSource())"),
+            "the store's location adapter is built here, on the main actor, over "
+                + "the real source: the manager only calls back on the thread that created it (D-2303, D-2305)"
         )
 
         let sink = try XCTUnwrap(
@@ -306,5 +375,264 @@ final class WatchSensorSourceSourceTests: XCTestCase {
             "without them the builder collects nothing and the feed never fires "
                 + "while every suite stays green (D-2105)"
         )
+    }
+
+    // MARK: - S-3310: the raw source is the only radio, and it asks only WhenInUse
+
+    func testS3310TheRawSourceAsksWhenInUseAndNeverAlways() throws {
+        let raw = try rawSourceSource()
+
+        XCTAssertTrue(
+            raw.contains("import CoreLocation"),
+            "the raw source is the one file that imports CoreLocation (D-2303)"
+        )
+        XCTAssertTrue(
+            raw.contains("nonisolated final class CoreLocationRawSource"),
+            "the target's default isolation is the main actor and CoreLocation "
+                + "calls its delegates off it, so the class says `nonisolated` (D-2303)"
+        )
+        XCTAssertTrue(
+            raw.contains("WatchRawFixSource"),
+            "the class is the package seam's real conformance, not a lookalike (D-2303)"
+        )
+        XCTAssertTrue(
+            raw.contains("CLLocationManagerDelegate"),
+            "the fixes and the authorization answer arrive through the manager's delegates (D-2303)"
+        )
+        XCTAssertTrue(
+            raw.contains("requestWhenInUseAuthorization()"),
+            "the wrist asks the one question it needs answered (D-2303)"
+        )
+        XCTAssertTrue(
+            raw.contains("kCLLocationAccuracyBest"),
+            "the source asks for the best accuracy the wrist can give (D-2303)"
+        )
+        XCTAssertTrue(
+            raw.contains(".fitness"),
+            "the manager is configured for the workout's own movement (D-2303)"
+        )
+
+        let initBody = try XCTUnwrap(
+            braceBody(ofLineContaining: "override init()", in: raw),
+            "the manager is created where the host builds the source (D-2303)"
+        )
+        XCTAssertTrue(
+            initBody.contains("CLLocationManager()"),
+            "the manager is created in `init`: a manager created lazily from a "
+                + "background task never calls back at all (D-2303)"
+        )
+
+        XCTAssertFalse(
+            raw.contains("requestAlwaysAuthorization"),
+            "the workout keeps the app running while a session is on screen, so "
+                + "Always is never asked for (D-2303)"
+        )
+        XCTAssertFalse(
+            raw.contains("allowsBackgroundLocationUpdates"),
+            "background updates are neither needed nor enabled (D-2303)"
+        )
+        XCTAssertFalse(
+            raw.contains("import HealthKit"),
+            "the raw source knows CoreLocation and nothing of the health store (D-2303)"
+        )
+    }
+
+    // MARK: - S-3311: the feed hands its location members to the adapter
+
+    func testS3311TheFeedDelegatesItsLocationToTheAdapter() throws {
+        let feed = try feedSource()
+
+        let permissionBody = try XCTUnwrap(
+            functionBody(named: "locationPermission", in: feed),
+            "the feed has to answer the location probe (D-2304)"
+        )
+        XCTAssertTrue(
+            permissionBody.contains("trackedLocation.permission()"),
+            "the probe is the adapter's answer, unchanged: whether location is "
+                + "granted, refused or unavailable is the CoreLocation source's to know (D-2304)"
+        )
+        XCTAssertFalse(
+            permissionBody.contains(".unavailable"),
+            "the feed answers no permission of its own: `.unavailable` belongs to "
+                + "the source that knows whether location services are on (D-2303, D-2304)"
+        )
+
+        let fixesBody = try XCTUnwrap(
+            functionBody(named: "location", in: feed),
+            "the feed has to carry the wrist's fixes (D-2304)"
+        )
+        XCTAssertTrue(
+            fixesBody.contains("trackedLocation.fixes()"),
+            "the wrist's metres are computed in the package, over the stream the "
+                + "adapter feeds (D-2304)"
+        )
+
+        XCTAssertFalse(
+            feed.contains("import CoreLocation"),
+            "a feed that owns no radio cannot leak one (D-2304)"
+        )
+        XCTAssertFalse(
+            feed.contains("requestAuthorization"),
+            "the feed reports the store's one authorization outcome and never "
+                + "opens a second prompt (D-2304)"
+        )
+    }
+
+    // MARK: - S-3312: the store takes the adapter and registers outdoors
+
+    func testS3312TheStoreTakesTheAdapterAndRegistersOutdoors() throws {
+        let store = try storeSource()
+
+        XCTAssertTrue(
+            store.contains("init(location: WatchTrackedLocation)"),
+            "the store takes the adapter from the host, so the permission question "
+                + "and the fixes never pass through it (D-2304)"
+        )
+        XCTAssertTrue(
+            store.contains("locationType = outdoors ? .outdoor : .unknown"),
+            "a modality that measures distance registers as `.outdoor`; every "
+                + "other one keeps the platform default (D-2304)"
+        )
+        XCTAssertTrue(
+            store.contains("func begin(_ activityType: String, outdoors: Bool)"),
+            "the store answers the seam's outdoor-aware begin (D-2304)"
+        )
+    }
+
+    // MARK: - S-3313: the host builds the source and the adapter exactly once
+
+    func testS3313TheHostBuildsTheSourceAndTheAdapterOnce() throws {
+        let view = try viewSource()
+
+        XCTAssertEqual(
+            occurrences(of: "CoreLocationRawSource()", in: view),
+            1,
+            "one raw source for the app: a second `CLLocationManager` is a second "
+                + "delegate set and a second radio (D-2305)"
+        )
+        XCTAssertEqual(
+            occurrences(of: "WatchTrackedLocation(source:", in: view),
+            1,
+            "one adapter over that source, and it is the one the store hands to its "
+                + "feed (D-2305)"
+        )
+    }
+
+    // MARK: - S-3314: the permission sentence is on all three watch configurations
+
+    func testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways() throws {
+        let project = try projectFileSource()
+        let lines = project.split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+
+        let sentence = "INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "
+            + "\"OmniTrain uses your location during runs and sports to measure "
+            + "distance and pace.\""
+        let sentenceLines = lines.filter { $0.contains(sentence) }
+        XCTAssertEqual(
+            sentenceLines.count,
+            3,
+            "the watch target's Debug, Release and Profile configurations each "
+                + "carry the owner-approved sentence (D-2306)"
+        )
+
+        let alwaysLines = lines.filter { $0.contains("NSLocationAlways") }
+        XCTAssertTrue(
+            alwaysLines.isEmpty,
+            "Always is never asked for, so no Always key may exist (D-2303, D-2306): "
+                + alwaysLines.joined(separator: " | ")
+        )
+    }
+
+    // MARK: - S-3315: location off answers unavailable before any status is read
+
+    func testS3315LocationOffAnswersUnavailableBeforeAnyStatusIsRead() throws {
+        let raw = try rawSourceSource()
+        let body = try XCTUnwrap(
+            functionBody(named: "permission", in: raw),
+            "the source has to answer the permission question (D-2303)"
+        )
+
+        let services = try XCTUnwrap(
+            body.range(of: "CLLocationManager.locationServicesEnabled()"),
+            "the source asks the platform whether location services are on at all (D-2303)"
+        )
+        let unavailable = try XCTUnwrap(
+            body.range(of: ".unavailable"),
+            "with location services off there is nothing to measure, so the answer "
+                + "is `.unavailable` (D-2303)"
+        )
+        let status = try XCTUnwrap(
+            body.range(of: "authorizationStatus"),
+            "the source reads the manager's status (D-2303)"
+        )
+
+        let unavailableOffset = body.distance(from: body.startIndex, to: unavailable.lowerBound)
+        let statusOffset = body.distance(from: body.startIndex, to: status.lowerBound)
+        XCTAssertGreaterThan(
+            unavailableOffset,
+            body.distance(from: body.startIndex, to: services.lowerBound),
+            "the off-answer sits after the probe that decides it (D-2303)"
+        )
+        XCTAssertLessThan(
+            unavailableOffset,
+            statusOffset,
+            "the `.unavailable` branch is taken before the status is ever read: a "
+                + "prompt that can never be delivered would park the caller forever "
+                + "(offsets \(unavailableOffset) < \(statusOffset), D-2303)"
+        )
+    }
+
+    // MARK: - S-3316: the radio lives exactly as long as a subscriber
+
+    func testS3316TheRadioFollowsTheSubscribersOnTheMainQueue() throws {
+        let raw = try rawSourceSource()
+        let body = try XCTUnwrap(
+            functionBody(named: "rawFixes", in: raw),
+            "the source has to hand out the manager's fixes (D-2303)"
+        )
+
+        let asyncOffsets = offsets(of: "DispatchQueue.main.async", in: body)
+        XCTAssertGreaterThanOrEqual(
+            asyncOffsets.count,
+            2,
+            "starting and stopping the radio each go to the main queue, where the "
+                + "manager was built and calls back (D-2303)"
+        )
+
+        for call in ["startUpdatingLocation()", "stopUpdatingLocation()"] {
+            XCTAssertTrue(
+                body.contains(call),
+                "the radio is switched with \(call) (D-2303)"
+            )
+            let callOffset = try XCTUnwrap(
+                offsets(of: call, in: body).first,
+                "the radio is switched with \(call) (D-2303)"
+            )
+            let wrapper = try XCTUnwrap(
+                asyncOffsets.last(where: { $0 < callOffset }),
+                "\(call) is dispatched to the main queue rather than called from "
+                    + "wherever the subscriber happens to be (D-2303)"
+            )
+            let wrapperIndex = body.index(body.startIndex, offsetBy: wrapper)
+            let callIndex = body.index(body.startIndex, offsetBy: callOffset)
+            let between = body[wrapperIndex..<callIndex]
+            XCTAssertFalse(
+                between.contains("}"),
+                "\(call) sits inside the `DispatchQueue.main.async` block that "
+                    + "precedes it, not after it closed (D-2303)"
+            )
+        }
+    }
+
+    /// The character offsets of every occurrence of `needle` in `source`.
+    private func offsets(of needle: String, in source: String) -> [Int] {
+        var found: [Int] = []
+        var searchStart = source.startIndex
+        while let range = source.range(of: needle, range: searchStart..<source.endIndex) {
+            found.append(source.distance(from: source.startIndex, to: range.lowerBound))
+            searchStart = range.upperBound
+        }
+        return found
     }
 }
