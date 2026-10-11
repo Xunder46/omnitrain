@@ -528,7 +528,7 @@ class WatchLoggingState {
       case WatchMetricKey.roundDuration:
         return 'Round length';
       case WatchMetricKey.extraWeight:
-        return 'Extra load';
+        return 'Load';
       default:
         return metricKey;
     }

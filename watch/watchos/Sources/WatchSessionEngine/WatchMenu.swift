@@ -44,6 +44,22 @@ public struct WatchMenuRow: Equatable {
     }
 }
 
+/// The menu's fixed copy, and the confirmation's (D-3401).
+///
+/// It lives here rather than on the view, which compiles only into a watch
+/// target: this is the half the suite can read. The confirmation's words are
+/// the phone's own sibling dialog (`workout_session_finish.dart`), so the two
+/// ends ask the same question in the same words.
+public enum WatchMenuCopy {
+    /// The menu's one action row: it ends the session, so it says so.
+    public static let finishLabel = "End Session"
+
+    public static let confirmTitle = "Finish Workout?"
+    public static let confirmBody = "This action will save and close the workout session."
+    public static let confirmCancel = "Cancel"
+    public static let confirmFinish = "Finish"
+}
+
 /// The id a slot answers to: its own `sessionExerciseId`, or the exercise's when
 /// the slot carries none. What a menu row is keyed by and what a jump names.
 private func menuSlotId(of slot: [String: Any], _ exercise: WatchCatalogExercise) -> String {

@@ -24,6 +24,14 @@ public enum WatchLoggingDefaults {
     public static let roundDurationSeconds = 180
 }
 
+/// What the rest screen's own chrome says (D-3401).
+///
+/// The caption lives here rather than on `WatchRestView`, which compiles only
+/// into a watch target: this is the half the suite can read.
+public enum WatchRestSurfaceCopy {
+    public static let restCaption = "Rest"
+}
+
 /// The effort kinds a value screen can be, in the protocol's vocabulary. A hold
 /// is a `drill` to the data layer and a `hold` on the wire.
 public enum WatchEffortKind {
@@ -172,16 +180,26 @@ public final class WatchLoggingState {
     /// default (D-1303).
     private let presetRoundMs: Int
 
+    /// The period lengths the user has dialled on this wrist, by
+    /// `sessionExerciseId`, in whole seconds.
+    ///
+    /// A period's length is the user's while it has not started, and the row
+    /// that sets it is gone once it has — so the dialled length cannot live in
+    /// `dialled`, which a Log clears. Kept per slot, so a length carries to the
+    /// next period of the same slot and never to another (D-3404).
+    private var roundLengthOverrideSecs: [String: Int] = [:]
+
     /// The metrics each effort kind calls for, in the order the wrist reads
     /// them. Mirrors `EffortDefaults`' primary and secondary metrics.
     ///
     /// Timed work has no row at all: its length is its own clock, not a number
-    /// the user dials, so the clock replaces the rows (D-1305). A drill keeps
-    /// only its extra load, which is assistance rather than load.
+    /// the user dials, so the clock replaces the rows (D-1305). A period's one
+    /// row is its length, and `fields` drops it once the period runs (D-3404). A
+    /// drill keeps only its extra load, which is assistance rather than load.
     private static let metricKeysByKind: [String: [String]] = [
         WatchEffortKind.set: [WatchMetricKey.reps, WatchMetricKey.weight],
         WatchEffortKind.timed: [],
-        WatchEffortKind.round: [],
+        WatchEffortKind.round: [WatchMetricKey.roundDuration],
         WatchEffortKind.drill: [WatchMetricKey.extraWeight],
     ]
 
@@ -211,11 +229,16 @@ public final class WatchLoggingState {
     }
 
     /// How long the current period is prescribed to run, in milliseconds: the
-    /// phone's number when the slot carries one, this wrist's preset otherwise
-    /// (D-1314, D-1402). A wrist slot's number is never smaller than a second —
-    /// `toSlot` floors it there — so anything under that is a value the wrist
-    /// did not write and does not read.
+    /// length the user dialled for this slot, else the phone's number when the
+    /// slot carries one, this wrist's preset otherwise (D-1314, D-1402, D-3404).
+    /// A wrist slot's number is never smaller than a second — `toSlot` floors it
+    /// there — so anything under that is a value the wrist did not write and
+    /// does not read.
     private var plannedRoundMs: Int {
+        if let slotId = slot?["sessionExerciseId"] as? String,
+           let dialled = roundLengthOverrideSecs[slotId] {
+            return dialled * 1000
+        }
         if let seconds = WatchCatalogExercise.roundSeconds(
             slot?[WatchCatalogExercise.roundDurationKey]
         ) {
@@ -436,6 +459,10 @@ public final class WatchLoggingState {
     /// reads them. Empty when there is no exercise to log against.
     public var fields: [WatchMetricField] {
         guard canLog else { return [] }
+        // A period's length row exists only before its countdown runs: once
+        // Start is tapped the length is what the clock is already counting, so
+        // there is nothing left to change and no row to change it with (D-3404).
+        if effortKind == WatchEffortKind.round, isWorkRunning { return [] }
         return metricKeys.map(field(for:))
     }
 
@@ -516,9 +543,13 @@ public final class WatchLoggingState {
         case WatchMetricKey.rounds:
             return Double(nextRoundNumber)
         case WatchMetricKey.roundDuration:
-            guard let planned = engine.timerFor(WatchTimerKind.round)?.plannedDurationMs else {
-                return target(for: metricKey)
-            }
+            // A period's length is the planned one: there is no "last logged"
+            // number to read (a round's event carries a window, not a length)
+            // and the target is zero, which would print 0:00.
+            guard let countdown = engine.timerFor(WatchTimerKind.round),
+                  countdown.state != WatchTimerState.stopped,
+                  let planned = countdown.plannedDurationMs
+            else { return Double(plannedRoundMs) / 1000 }
             return Double(planned) / 1000
         case WatchMetricKey.duration, WatchMetricKey.distance:
             // Measured work starts empty: the next run or ride is timed from
@@ -589,7 +620,7 @@ public final class WatchLoggingState {
         case WatchMetricKey.distance: return "Distance"
         case WatchMetricKey.rounds: return roundsLabel
         case WatchMetricKey.roundDuration: return "Round length"
-        case WatchMetricKey.extraWeight: return "Extra load"
+        case WatchMetricKey.extraWeight: return "Load"
         default: return metricKey
         }
     }
@@ -649,12 +680,19 @@ public final class WatchLoggingState {
               !field.isMeasured
         else { return }
 
-        dialled[metricKey] = WatchMetricStepping.adjust(
+        let adjusted = WatchMetricStepping.adjust(
             field.value,
             metricKey: metricKey,
             detents: detents,
             units: units
         )
+        dialled[metricKey] = adjusted
+        // D-3404: a period's length outlives the Log that clears `dialled`, so
+        // the next period of this slot starts where this one was set.
+        if metricKey == WatchMetricKey.roundDuration,
+           let slotId = slot?["sessionExerciseId"] as? String {
+            roundLengthOverrideSecs[slotId] = max(1, Int(adjusted.rounded()))
+        }
     }
 
     // MARK: - Logging

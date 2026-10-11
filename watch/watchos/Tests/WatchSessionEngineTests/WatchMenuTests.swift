@@ -575,6 +575,22 @@ final class WatchMenuTests: XCTestCase {
         )
     }
 
+    // MARK: - S-3401 the menu's fixed copy
+
+    /// The menu's own words, and the confirmation's, which the phone's sibling
+    /// dialog already carries (`workout_session_finish.dart`): one source, both
+    /// ends. The view's constant is the watchOS-only one the Xcode build reads.
+    func testS3401TheMenuCopyIsTheOwnersWords() {
+        XCTAssertEqual(WatchMenuCopy.finishLabel, "End Session")
+        XCTAssertEqual(WatchMenuCopy.confirmTitle, "Finish Workout?")
+        XCTAssertEqual(
+            WatchMenuCopy.confirmBody,
+            "This action will save and close the workout session."
+        )
+        XCTAssertEqual(WatchMenuCopy.confirmCancel, "Cancel")
+        XCTAssertEqual(WatchMenuCopy.confirmFinish, "Finish")
+    }
+
     // MARK: - S-1108 the source guard
 
     func testS1108TheMenuSourceNamesNoRestEditOrDelete() throws {
