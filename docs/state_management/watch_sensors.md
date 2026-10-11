@@ -105,6 +105,15 @@ Health question, with the sentence the watch target's
 the HealthKit workout of such a session is registered as outdoor
 (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
 `WatchSensorSourceSourceTests.testS3312TheStoreTakesTheAdapterAndRegistersOutdoors`).
+The ask is never latched — every parked waiter dispatches its own
+`requestWhenInUseAuthorization()`, so an expired "Allow Once" is asked again,
+and an answered status ends the pending ask without a prompt
+(`WatchSensorSourceSourceTests.testS3317TheAskIsNeverLatched`) — and a
+permission revoked mid-session ends the feed
+(`…testS3318ARevokedPermissionEndsTheFeed`). Known limitation (D-2316): a
+session that ends while the Location question is still on screen keeps its
+sensors until the user answers — the stop waits behind the parked start on the
+sensors' serial tail.
 A cached fix older than the adapter's `maxFixAgeSeconds` (10 s,
 `WatchTrackedLocation.init`) at a subscription's start is dropped before the
 tracker sees it
@@ -113,7 +122,8 @@ tracker sees it
 Refused or unavailable location leaves logging, rest, the menu and sync working
 and sends no distance
 (`WatchDistanceTrackerTests.testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`,
-`WatchSensorSourceSourceTests.testS3315LocationOffAnswersUnavailableBeforeAnyStatusIsRead`);
+`WatchSensorSourceSourceTests.testS3315LocationOffAnswersUnavailableBeforeAnyStatusIsRead`,
+`WatchSensorRecordingTests.testS006HardwareThatIsNotThereIsNotAFailure`);
 lifts, holds and free training never ask and never use location
 (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`). No
 route or map is stored. All of this is verified in code and builds only:

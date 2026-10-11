@@ -306,8 +306,9 @@ docs keeper — the four doc files above.
 | 2A | 1–5 | done |
 | gov | D-2306, xcodebuild, full suite | done |
 | 2B | 1–8 | done |
-| 3 | prover 1–6 ∥ docs 1–6 | pending |
-| 4 | 1 | pending |
+| 3 | prover 1–6 ∥ docs 1–6 | done |
+| 4 | 1 | done (round 1: APPROVE WITH FIXES) |
+| fix 1 | review findings 1, 4, 5, 6 fixed (governor mutations P1–P3, the F5 re-run, G1–G4 all RED); finding 2 a known limitation (D-2316) | done |
 
 ## Assumption Log
 
@@ -319,8 +320,11 @@ docs keeper — the four doc files above.
   D-2302's default clock drops every fix the 19e fixtures stamp (Open
   questions 2).
 - D-2312, the build-found rename of the feed's stored property (F-1).
-- The prover's S-3306 repair (F5's MISS, assigned to the prover): to be
-  recorded here after it runs.
+- The prover's S-3306 repair (F5's MISS, assigned to the prover): done —
+  `testS3306TheClockIsReadOncePerCall` now feeds the second call, before the
+  3610 s fix, a fix stamped t0 + 100 s, so the init-clock mutant's first yield
+  reads 555.975 m against the asserted 111.195 m; the governor's F5 re-run is
+  RED (governor-mutations-fix1.md). Verdict RED.
 
 ## Feedback
 
@@ -329,6 +333,14 @@ docs keeper — the four doc files above.
   `location()` method (`invalid redeclaration of 'location()'`); the init
   label is unchanged — and the CoreLocation import is `@preconcurrency` (four
   Sendable warnings). Recorded as D-2312 and D-2313.
+- **F-2** (governor, after review round 1): D-2314 the Location ask is never
+  latched and an answered status ends a pending ask; D-2315 a revoked
+  permission ends the feed; D-2316 known limitation (review finding 2): a
+  session that ends while the Location question is on screen keeps its sensors
+  until the user answers (the stop waits behind the parked start on the
+  sensors' serial tail); proper fix = a cancellable permission wait plus a
+  coordinator that cancels an in-flight start, a follow-up that reworks the
+  19d coordinator and its S-3111 guard; scenarios S-3307, S-3317, S-3318.
 
 ## Open questions
 

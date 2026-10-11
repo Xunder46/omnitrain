@@ -69,13 +69,26 @@ From `.work/crew/19f/report-2B.md` (crew-builder-watch):
 
 ## Prover verdicts
 
-pending
+From `.work/crew/19f/report-prover.md` and `.work/crew/19f/report-prover-fix1.md`:
 
-## Governor read-backs
+- **Run 1 (phase 3).** Repaired `testS3306TheClockIsReadOncePerCall` (F5's MISS): the second call now
+  feeds, before the 3610 s fix, a fix stamped t0 + 100 s, so under the init-clock mutant the first yield
+  reads 555.975 m against the asserted 111.195 m (arithmetic in the test). `swift-test --filter
+  WatchDistanceTrackerTests` → 16 tests, 0 failures. Found and closed three source-guard blind spots in
+  `WatchSensorSourceSourceTests.swift` (+30/−2): S-3310's manager configuration asserted inside
+  `initBody` (moving it out of `override init()` would have stayed green file-wide), S-3310's
+  `requestWhenInUseAuthorization()` bounded to one occurrence, S-3312's `locationType` sentence asserted
+  inside `functionBody(named: "begin")`. Full suite at the time: 493 tests, 0 failures. The four guards
+  needing production mutations (the S-3306 fix, the two S-3310 scoping pins, the S-3312 scoping) were
+  left to the governor's apply-and-restore rounds.
+- **Run 2 (fix1, review finding 4).** Added `testS3307ALateArrivingFixStampedAfterTheStartIsKept` to
+  `WatchDistanceTrackerTests.swift`: the clock advances 50 s mid-stream, and a fix stamped after the
+  call's start but arriving late is kept by the per-call gate and dropped by the per-fix mutant
+  (`next()` returns nil, `XCTUnwrap` fails). `--filter WatchDistanceTrackerTests` → 17 tests, 0
+  failures; full suite 496 tests, 0 failures.
 
-From `.work/crew/19f/governor-mutations-F.md` (harness `.work/2026-10-10-19f/mutate8.py`; each mutation
-restored byte-identical; suite before: 493 tests, 0 failures; the app-target guards read the app files as
-text):
+The governor's mutation tables, verbatim (harness `.work/2026-10-10-19f/mutate8.py`; each restored
+byte-identical; suite before: 493 tests, 0 failures; the app-target guards read the app files as text):
 
 | # | Guard | Mutation | Result |
 |---|---|---|---|
@@ -92,6 +105,47 @@ text):
 | F11 | S-3314 | the permission sentence changed in the project file (three lines) | RED |
 | F12 | S-3315 | the Location-services check removed | RED |
 | F13 | S-3316 | the radio never stopped | RED |
+
+Second table (harnesses `.work/2026-10-10-19f/mutate9.py` and `mutate10.py`; each restored
+byte-identical; suite 496 tests, 0 failures; `xcodebuild` BUILD SUCCEEDED, zero warnings in the changed
+app files):
+
+| # | Guard | Mutation | Result |
+|---|---|---|---|
+| F5 (re-run) | testS3306 | the stale gate's clock read once at init | RED (after the prover repair: the t0+100 fix reaches the second call) |
+| P1 | testS3310 | the manager configuration moved out of `override init()` | RED |
+| P2 | testS3310 | a second `requestWhenInUseAuthorization()` call site | RED |
+| P3 | testS3312 | the `locationType` sentence moved out of `begin(_:outdoors:)` | RED |
+| G1 | testS3317 | the ask latched again (Allow Once hang) | RED |
+| G2 | testS3318 | a revoked permission no longer ends the feed | RED |
+| G3 | testS3317 | the waiter re-check resumes unconditionally (double resume) | RED |
+| G4 | testS3307 (new) | the stale gate reads the clock per fix instead of per call | RED (S-3307 only; S-3306 is not meant to catch it, which review finding 4 pointed out) |
+
+Reconciliation as written there: 13 (F1–F13) + 4 (P1–P3 and the F5 re-run) + 4 (G1–G4) = **21 mutation
+runs**, plus the earlier F5 MISS.
+
+## Review round 1 and fix round
+
+From `.work/crew/19f/governor-mutations-fix1.md` (verbatim facts, finding rulings):
+
+Review round 1 (APPROVE WITH FIXES, 1 blocker, 3 major, 4 minor): finding 1 Blocker (a latched
+permission ask, Allow Once) FIXED, G1; finding 5 (waiter race) FIXED, and the fix itself introduced a
+double resume that the governor found by reading and had fixed, G3; finding 6 (revocation mid-session)
+FIXED, G2; finding 4 (per-fix clock) FIXED, S-3307, G4; finding 3 (verdicts not recorded) and 8 (a
+citation) recorded in the docs; finding 2 (Major) NOT changed: a session that ends while the Location
+question is on screen keeps its sensors until the user answers, because the stop waits behind the parked
+start on the sensors' serial tail. Governor ruling: a wait on a pending modal, not a deadlock; the
+proper fix (a cancellable permission wait and a coordinator that cancels an in-flight start) reworks the
+19d coordinator's serial tail and its tests; recorded as a known limitation and an open follow-up.
+Finding 7 (`scripts/pre_release_check.sh:274` says "OmniTrain has no location feature") is the owner's
+file: reported, not edited.
+
+## Governor read-backs
+
+- `swift-test`: 481 (baseline, D-2311) → 493 (after 2B) → 495 (after the review fixes: +testS3317,
+  +testS3318) → 496 (after the prover's fix1: +testS3307), 0 failures throughout.
+- `flutter analyze` and the Dart suite: re-run by the governor at the end — final: see the next
+  read-back.
 
 Other governor facts: `xcodebuild` watch scheme: first build FAILED (`invalid redeclaration of
 'location()'`: the feed's new stored property `location` collided with the `location()` method; fixed by
