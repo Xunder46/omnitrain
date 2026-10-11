@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -91,17 +91,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		46AC7A173061FCBF00924AC9 /* OmniTrain Watch App */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = "OmniTrain Watch App";
-			sourceTree = "<group>";
-		};
+		46AC7A173061FCBF00924AC9 /* OmniTrain Watch App */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = "OmniTrain Watch App"; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -312,7 +302,7 @@
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
-				4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "watchos" */,
+				4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "../watch/watchos" */,
 			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Library */;
 			projectDirPath = "";
@@ -379,9 +369,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -654,9 +648,9 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;
+				INFOPLIST_FILE = "OmniTrainWatchApp-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain reads your heart rate and steps during a workout and saves the workouts you finish to Health.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
@@ -706,9 +700,9 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;
+				INFOPLIST_FILE = "OmniTrainWatchApp-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain reads your heart rate and steps during a workout and saves the workouts you finish to Health.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
@@ -755,9 +749,9 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;
+				INFOPLIST_FILE = "OmniTrainWatchApp-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain reads your heart rate and steps during a workout and saves the workouts you finish to Health.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
@@ -988,7 +982,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "watchos" */ = {
+		4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "../watch/watchos" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../watch/watchos;
 		};
@@ -997,7 +991,7 @@
 /* Begin XCSwiftPackageProductDependency section */
 		4680609A30622A4300CB4DCB /* WatchSessionEngine */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "watchos" */;
+			package = 4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "../watch/watchos" */;
 			productName = WatchSessionEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
