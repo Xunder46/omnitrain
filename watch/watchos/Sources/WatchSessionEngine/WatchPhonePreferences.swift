@@ -9,9 +9,9 @@
 //  Reference data, like the routines and the food list: the wrist learns it when
 //  it syncs, keeps every copy it accepts, and reads the newest. Sync is the
 //  wrist's to start, so a setting changed on the phone arrives at the wrist's
-//  next sync and not before. Today the message carries two settings: whether a
-//  session the wrist ends asks for the session effort rating, and how often a
-//  rest pings.
+//  next sync and not before. Today the message carries three settings: whether a
+//  session the wrist ends asks for the session effort rating, how often a rest
+//  pings, and the theme accent the wrist wears.
 //
 
 import Foundation
@@ -38,12 +38,18 @@ public struct WatchPreferencesRecord {
     /// setting for this, carried on every copy (D-242).
     public let restPingSeconds: Int
 
+    /// The phone's theme accent as `#RRGGBB`, or nil when the phone had none to
+    /// send (D-3709). Read through `WatchAccent.usable(hex:)`: a wrist wears an
+    /// accent only when this parses and clears the contrast floor.
+    public let accentColorHex: String?
+
     public init(
         recordId: String,
         recordedAt: Date,
         generatedAt: Date,
         effortRatingPrompt: Bool,
         restPingSeconds: Int = 0,
+        accentColorHex: String? = nil,
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -53,6 +59,7 @@ public struct WatchPreferencesRecord {
         self.generatedAt = generatedAt
         self.effortRatingPrompt = effortRatingPrompt
         self.restPingSeconds = restPingSeconds
+        self.accentColorHex = accentColorHex
     }
 
     public func withSequence(_ sequence: Int) -> WatchPreferencesRecord {
@@ -62,12 +69,13 @@ public struct WatchPreferencesRecord {
             generatedAt: generatedAt,
             effortRatingPrompt: effortRatingPrompt,
             restPingSeconds: restPingSeconds,
+            accentColorHex: accentColorHex,
             sequence: sequence
         )
     }
 
     public func toJson() -> [String: Any] {
-        [
+        var json: [String: Any] = [
             "recordType": StoredWatchRecord.preferencesType,
             "recordId": recordId,
             "sessionId": sessionId,
@@ -77,6 +85,12 @@ public struct WatchPreferencesRecord {
             "effortRatingPrompt": effortRatingPrompt,
             "restPingSeconds": restPingSeconds,
         ]
+        // A copy the phone sent no accent on writes no key, so a wrist that
+        // reads it back keeps its default look instead of an earlier accent.
+        if let accentColorHex {
+            json["accentColorHex"] = accentColorHex
+        }
+        return json
     }
 
     public static func fromJson(_ json: [String: Any]) throws -> WatchPreferencesRecord {
@@ -88,6 +102,9 @@ public struct WatchPreferencesRecord {
             // A row written before the wrist knew this setting carries no key,
             // and reads as Off (D-242).
             restPingSeconds: (json["restPingSeconds"] as? NSNumber)?.intValue ?? 0,
+            // A row written before the wrist knew the accent carries no key,
+            // and a key that is not a string reads as no accent (D-3709).
+            accentColorHex: json["accentColorHex"] as? String,
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }
@@ -131,6 +148,14 @@ public final class WatchPhonePreferences {
         current?.restPingSeconds ?? 0
     }
 
+    /// The phone's theme accent, `#RRGGBB`, as the copy that applies carries it
+    /// — nil when that copy carries none, and so nil for a wrist that has never
+    /// heard from the phone. Render it through `WatchAccent.usable(hex:)` rather
+    /// than trusting it (D-3704).
+    public var accentColorHex: String? {
+        current?.accentColorHex
+    }
+
     /// Reads every accepted copy back out of storage. Call on launch.
     public func restore() async {
         copies = await store.readAll().preferences
@@ -161,6 +186,13 @@ public final class WatchPhonePreferences {
             return WatchCatalogSyncResult(applied: false, rejections: [])
         }
 
+        // The accent is optional, so it is read rather than demanded. A copy
+        // without the key — and a key that is not a string, which the payload's
+        // closed shape and pattern made the validator refuse first — reads as no
+        // accent: the wrist stores the absence and keeps its default look
+        // instead of the accent the previous copy carried (D-3704).
+        let accentColorHex = payload["accentColorHex"] as? String
+
         let recordId = "prefs-\(messageId)"
         let stored = await store.append(
             .preferences(
@@ -169,7 +201,8 @@ public final class WatchPhonePreferences {
                     recordedAt: clock(),
                     generatedAt: generatedAt,
                     effortRatingPrompt: asks,
-                    restPingSeconds: restPingSeconds
+                    restPingSeconds: restPingSeconds,
+                    accentColorHex: accentColorHex
                 )
             )
         )

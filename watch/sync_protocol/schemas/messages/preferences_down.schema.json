@@ -25,6 +25,11 @@
               "type": "integer",
               "minimum": 0,
               "description": "0 = Off; the wrist's rest-ping interval in seconds, from the phone's Rest Ping setting."
+            },
+            "accentColorHex": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "The phone's theme accent as #RRGGBB — the theme's primary color — which the wrist wears. Optional: a phone with no accent to send omits it, and the wrist then keeps its default look rather than the last accent it saw."
             }
           }
         }

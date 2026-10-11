@@ -1027,6 +1027,75 @@ void main() {
     );
   });
 
+  // Phase D1 of plan `2026-10-11-23d-watch-accent-color-plan`: the accent the
+  // phone sends with its preferences. The watchOS suite applies these same two
+  // fixtures (`WatchRestPingTests`, S-3713 and S-3714, and
+  // `WatchAccentTests`, S-3710 – S-3712); read here, they pin what the Dart
+  // stack accepts and refuses, and the schema key and shape both ends spell, so
+  // a drift on either side fails the other.
+  group('S-3701 the accent travels in preferences_down', () {
+    test('a copy carrying an accent conforms and keeps it', () {
+      final message = _readJson(
+        '$_protocolRoot/fixtures/valid/preferences_down_accent.json',
+      );
+
+      expect(_validator().validateEnvelope(message), isEmpty);
+      expect(message['type'], 'preferences_down');
+
+      final payload = _asObject(message['payload']);
+      expect(payload['accentColorHex'], '#2DE2E6');
+    });
+
+    test('the schema declares the accent optional, as #RRGGBB', () {
+      final schema = _readJson(
+        '$_protocolRoot/schemas/messages/preferences_down.schema.json',
+      );
+      final payload = _asObject(
+        _asObject(_objects(schema['allOf']).last['properties'])['payload'],
+      );
+      final accent = _asObject(
+        _asObject(payload['properties'])['accentColorHex'],
+      );
+
+      expect(accent['type'], 'string');
+      expect(accent['pattern'], r'^#[0-9A-Fa-f]{6}$');
+      expect(
+        _strings(payload['required']),
+        isNot(contains('accentColorHex')),
+        reason:
+            'a phone with no accent to send omits it, so a wrist right after '
+            'a sync keeps its default look',
+      );
+    });
+
+    test('a hex that is not #RRGGBB is refused as the pattern violation', () {
+      final message = _readJson(
+        '$_protocolRoot/fixtures/invalid/preferences_down_accent_bad.json',
+      );
+
+      final rejections = _validator().validateEnvelope(message);
+
+      expect(rejections, isNotEmpty);
+      expect(rejections.first.code, 'constraint_violation');
+      expect(
+        rejections.first.message,
+        contains('does not match the required pattern'),
+      );
+    });
+
+    test('a copy with no accent still conforms, and declares none', () {
+      final message = _readJson(
+        '$_protocolRoot/fixtures/valid/preferences_down.json',
+      );
+
+      expect(_validator().validateEnvelope(message), isEmpty);
+      expect(
+        _asObject(message['payload']).containsKey('accentColorHex'),
+        isFalse,
+      );
+    });
+  });
+
   group('S-007 modality / effort-kind parity with the phone', () {
     test('every capability set resolves the way the phone resolves it', () {
       final cases = _objects(_contract()['effortKindParity']);

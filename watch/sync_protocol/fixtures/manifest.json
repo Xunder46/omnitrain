@@ -18,6 +18,11 @@
       "scenario": "S-246"
     },
     {
+      "path": "valid/preferences_down_accent.json",
+      "type": "preferences_down",
+      "scenario": "S-3701"
+    },
+    {
       "path": "valid/observations_up_session_capture.json",
       "type": "observations_up",
       "scenario": "S-201"
@@ -278,6 +283,13 @@
       "scenario": "S-246",
       "expectedCode": "missing_required_field",
       "expectedReasonContains": "restPingSeconds"
+    },
+    {
+      "path": "invalid/preferences_down_accent_bad.json",
+      "type": "preferences_down",
+      "scenario": "S-3702",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "does not match the required pattern"
     },
     {
       "path": "invalid/session_snapshot_set_without_slot.json",
