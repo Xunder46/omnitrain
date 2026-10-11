@@ -255,6 +255,7 @@ extension SessionCoreIOMethods on SessionCore {
         }
       }
 
+      _watchRefreshRevision++;
       _notify();
     } catch (e) {
       _setError('Failed to refresh efforts: $e');

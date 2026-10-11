@@ -69,6 +69,7 @@ class WorkoutState extends ChangeNotifier {
   bool get hasSession => _sessionCore.hasSession;
   bool get hasActiveSession => _sessionCore.hasActiveSession;
   bool get isRollingSession => _sessionCore.isRollingSession;
+  int get watchRefreshRevision => _sessionCore.watchRefreshRevision;
   List<Exercise> get allExercises => _exerciseLibrary.allExercises;
   List<MuscleGroup> get muscleGroups => _exerciseLibrary.muscleGroups;
   List<Discipline> get disciplines => _exerciseLibrary.disciplines;

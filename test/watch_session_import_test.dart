@@ -231,17 +231,34 @@ Future<bool> _rowsExist(
         (r) => r.id == WatchSessionImporter.roundInstanceIdFor(_capId, entryId),
       );
     case 'rest':
+      // A rest lands beside the entry it follows, in that entry's own effort
+      // (D-167): the effort kind comes from the followed entry's kind, and the
+      // index is its position among the entries of the same effort.
+      final after = _eventOf(caseName, event['afterEntryId']! as String);
+      final effortKind = WatchSessionImporter.effortKindFor(
+        after['kind']! as String,
+      );
       final effortId = WatchSessionImporter.effortIdFor(
         _capId,
-        event['sessionExerciseId']! as String,
-        event['exerciseId']! as String,
-        'set',
+        after['sessionExerciseId']! as String,
+        after['exerciseId']! as String,
+        effortKind,
       );
-      final setEntries = [
+      final sameEffort = [
         for (final e in captureEvents(caseName))
-          if (e['kind'] == 'set') e['entryId'],
+          if (const {
+                WatchInboxEntry.kindSet,
+                WatchInboxEntry.kindTimed,
+                WatchInboxEntry.kindRound,
+                WatchInboxEntry.kindHold,
+              }.contains(e['kind']) &&
+              e['sessionExerciseId'] == after['sessionExerciseId'] &&
+              e['exerciseId'] == after['exerciseId'] &&
+              WatchSessionImporter.effortKindFor(e['kind']! as String) ==
+                  effortKind)
+            e['entryId'],
       ];
-      final index = setEntries.indexOf(event['afterEntryId']! as String) + 1;
+      final index = sameEffort.indexOf(after['entryId']) + 1;
       return (await repository.getEntryRests(effortId)).any(
         (row) =>
             row.id == 'rest-$effortId-$index' &&

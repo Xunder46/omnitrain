@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/workout_constants.dart';
@@ -123,6 +124,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // Prevents the rest timer from restarting when navigating back/forward
   // through already-logged sets.
   final Set<String> _loggedSetKeys = {};
+
+  // D-3505/D-3506: the watch-driven revision of the exercise list this screen
+  // has applied. When the state's revision moves while the session is still
+  // the mounted one and active, the list is re-read without disturbing what
+  // the user is doing.
+  int _seenWatchRevision = 0;
 
   // D-8 throttle for the in-session PR toast. Tracks the session's running best
   // e1RM per exercise (keyed by exerciseId). The toast fires only when:
@@ -317,6 +324,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           ),
         );
       });
+      return;
+    }
+
+    // D-3506: a watch-driven write moved the revision while the mounted
+    // session is still running — re-read the list, without leaving the screen.
+    if (session != null &&
+        session.id == expectedSessionId &&
+        session.endedAtMs == null &&
+        widget.workoutState.watchRefreshRevision != _seenWatchRevision) {
+      _seenWatchRevision = widget.workoutState.watchRefreshRevision;
+      _resyncExercisesFromState();
     }
   }
 
@@ -471,6 +489,71 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     return ordered;
   }
 
+  /// The display order of the session's exercises: a rolling session shows
+  /// only the block's own efforts, in block order; every other session keeps
+  /// detail navigation in the exact same sequence as the list view. Shared by
+  /// [_loadExercises] and [_resyncExercisesFromState] so both agree (D-3506).
+  List<Map<String, dynamic>> _orderedExercises(
+    List<Map<String, dynamic>> raw,
+  ) {
+    if (!widget.workoutState.isRollingSession) {
+      return _buildNonRollingDisplayOrderedExercises(raw);
+    }
+
+    final exercises = raw.where((e) => e['blockId'] != null).toList();
+    final blocks = widget.workoutState.getSessionBlocks();
+    final reordered = <Map<String, dynamic>>[];
+    for (final block in blocks) {
+      reordered.addAll(exercises.where((e) => e['blockId'] == block.id));
+    }
+    return reordered;
+  }
+
+  /// D-3506: re-reads the exercise list a watch-driven write changed and shows
+  /// it without disturbing what the user is doing. It replaces [_exercises]
+  /// (in the same display order [_loadExercises] uses). It does not fill
+  /// [_loggedSetKeys]: a set the watch logged arrives with its rest, and a set
+  /// counts as logged exactly when a rest covers it, so the screen already
+  /// shows it as LOGGED and offers no Log button there (S-3515).
+  ///
+  /// It does not call `loadSessionData`, `_restoreTimerStateFromPersisted` or
+  /// [_loadExercises], and it changes neither [_currentSet] nor the detail
+  /// index, the timers or [_isLoading].
+  void _resyncExercisesFromState() {
+    if (_exercises.isEmpty) return;
+
+    final ordered = _orderedExercises(
+      widget.workoutState.getExercisesWithEntries(),
+    );
+
+    void apply() {
+      if (!mounted) return;
+      final focusedId = _currentExerciseIndex < _exercises.length
+          ? _exercises[_currentExerciseIndex]['id'] as String?
+          : null;
+      setState(() {
+        _exercises = ordered;
+
+        // A rolling session's list is re-ordered by block, so the index the
+        // user is on follows the effort they had open rather than its slot.
+        if (focusedId != null) {
+          final moved = _exercises.indexWhere((e) => e['id'] == focusedId);
+          if (moved != -1) _currentExerciseIndex = moved;
+        }
+      });
+    }
+
+    // A notification can reach the listener from inside the frame's build
+    // phase (the merge runs there); `setState` then is an error, so the resync
+    // waits for the frame it belongs to.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+      return;
+    }
+    apply();
+  }
+
   Future<void> _loadExercises() async {
     setState(() => _isLoading = true);
     try {
@@ -492,19 +575,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       _mountedSessionId ??= widget.workoutState.currentSession?.id;
       final exercises = widget.workoutState.getExercisesWithEntries();
       setState(() {
-        _exercises = exercises;
-        if (widget.workoutState.isRollingSession) {
-          _exercises = _exercises.where((e) => e['blockId'] != null).toList();
-          final blocks = widget.workoutState.getSessionBlocks();
-          final reordered = <Map<String, dynamic>>[];
-          for (final block in blocks) {
-            reordered.addAll(_exercises.where((e) => e['blockId'] == block.id));
-          }
-          _exercises = reordered;
-        } else {
-          // Keep detail navigation in the exact same sequence as the list view.
-          _exercises = _buildNonRollingDisplayOrderedExercises(_exercises);
-        }
+        _exercises = _orderedExercises(exercises);
 
         // Pre-populate timer state from persisted entries for all timer-based exercises
         _restoreTimerStateFromPersisted(_exercises);
@@ -524,6 +595,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
             }
           }
         }
+
+        // D-3506: this load just read the state, so the revision it carries is
+        // the one the screen has applied.
+        _seenWatchRevision = widget.workoutState.watchRefreshRevision;
 
         // Restore focus to the exercise and set number if requested
         final initialId = widget.initialFocusId;

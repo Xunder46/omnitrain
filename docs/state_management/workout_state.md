@@ -79,6 +79,7 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 | `_currentModalityConfig` | `ModalityConfig?` | Active modality config |
 | `_isLoading` | `bool` | Loading state |
 | `_error` | `String?` | Last error message |
+| `_watchRefreshRevision` | `int` | Counter bumped by the watch-driven writes the open session screen reads (`refreshEfforts`, `appendSessionSlots`) and by nothing the phone itself writes, so a screen that reacts to it cannot loop on its own reload (D-3505) |
 
 #### Session Lifecycle Methods
 
@@ -95,6 +96,7 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 | `updateSessionEndTime(durationSecs)` | Edit-mode only — sets `endedAtMs = max(startedAtMs, startedAtMs + durationSecs × 1000)` (D-153); no-op if `durationSecs ≤ 0` (`S-155 writer table — every phone-owned writer leaves an ordered window`, `updateSessionEndTime with a zero or negative duration writes nothing` in `test/session_window_never_inverted_test.dart`) |
 | `updateSessionFeeling(sessionId, rating)` | Persists the 1-5 session effort rating (1 Very easy … 5 Max effort) to `TrainingSession.sessionFeeling` for any session id; updates `_currentSession` in-place when it is that session |
 | `isRollingSession` | Getter — returns `true` when the active session has `isRolling == true`; returns `false` when no session is loaded |
+| `watchRefreshRevision` | Getter — the count of watch-driven writes (D-3505); re-exported by `WorkoutState.watchRefreshRevision`. `WorkoutSessionScreen` remembers the revision it last read and, when the mounted session is still running and the revision has moved, re-reads the list through `_resyncExercisesFromState()` without leaving the screen — it neither reloads the session nor resets the open entry, timers or loading state. Verified by `test/watch_live_refresh_screen_test.dart` (`S-3510` to `S-3514`) |
 
 #### Exercise Management
 

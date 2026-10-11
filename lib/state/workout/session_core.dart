@@ -85,6 +85,12 @@ class SessionCore {
 
   bool _isLoading = false;
 
+  /// Bumped where a watch-driven write changes the data the open session
+  /// screen reads (D-3505): the end of [refreshEfforts] and of
+  /// [appendSessionSlots]. The phone's own writes never move it, so a screen
+  /// that reacts to it cannot loop on its own reload.
+  int _watchRefreshRevision = 0;
+
   SessionCore(
     this._repository, {
     required void Function() notify,
@@ -132,6 +138,10 @@ class SessionCore {
       _efforts.values.any((list) => list.isNotEmpty);
   bool get isRollingSession => _currentSession?.isRolling ?? false;
   String? get currentSessionModality => _currentSession?.modality;
+
+  /// The revision of the watch-driven writes the open session screen last
+  /// read (D-3505). See [_watchRefreshRevision].
+  int get watchRefreshRevision => _watchRefreshRevision;
 
   Map<String, List<EffortObservation>> get observationsMap => _observations;
 

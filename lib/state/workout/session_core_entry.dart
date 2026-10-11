@@ -91,8 +91,21 @@ extension SessionCoreEntryMethods on SessionCore {
       for (final effort in efforts) {
         await _repository.createEffort(effort);
         _efforts.putIfAbsent(effort.segmentId, () => []).add(effort);
+
+        // A slot the wrist added names an exercise this state has never read:
+        // without the cache entry the session screens render the slot's title
+        // as the summary builder's fallback until the session is reopened
+        // (the same fill `loadSessionData` and `refreshEfforts` do).
+        if (effort.exerciseId != null &&
+            !_exerciseCache.containsKey(effort.exerciseId)) {
+          final exercise = await _repository.getExerciseById(
+            effort.exerciseId!,
+          );
+          if (exercise != null) _exerciseCache[effort.exerciseId!] = exercise;
+        }
       }
 
+      _watchRefreshRevision++;
       _notify();
     } catch (e) {
       _setError('Failed to append session slots: $e');
