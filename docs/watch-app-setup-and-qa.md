@@ -752,6 +752,20 @@ hardware yet.
     last one seen
     (`WatchAccentTests.testS3712ANearBlackAccentIsRefusedRatherThanWorn`).
     Nothing else changes color; the wrist's black stays black.
+13. **The exercise list arrives in batches, and only when it changed —
+    (owner).** On a real pair, tap **Sync** and open **Add Exercise**: the full
+    list is there, custom exercises included, A to Z. Tap **Sync** again with
+    nothing changed on the phone: the list is unchanged — the phone sends the
+    preferences and the routines and no exercise list the second time, which
+    you can only see in the phone's logs. Add a custom exercise on the phone,
+    tap **Sync**: it appears in **Add Exercise** in its A-to-Z place. Turning
+    the phone's Bluetooth off mid-way is not part of this step. The behaviour
+    behind it is pinned off-device by `test/watch_reference_sync_test.dart`
+    (`S-3843 250 exercises arrive as three batches in name order`),
+    `test/watch_sync_request_handler_test.dart` (`S-3850 the wrist names the
+    current version: no batch travels`, `S-3854 a sync with the sent version
+    sends no batch, and a custom exercise stales it`) and
+    `WatchMenuTests.testS3611TheAddListSortsCaseInsensitivelyByName`.
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

@@ -122,9 +122,10 @@ The sync orchestrator routes `exercises_down` to the start paths and reports
 `WatchSyncTransport.requestRoutines(since:exercisesVersion:)` carries the
 version of the list the wrist already holds, so the phone can send only what
 changed. The key is added to the frame **only when there is a version**: a wrist
-that holds no list sends exactly the frame it always did, which is why the
-shared contract's `transportRequests` rows (and the S-102/S-103 pins in
-`WatchConnectivityBridgeTests`) are unchanged
+that holds no list sends exactly the frame it always did, so the contract's
+`routinesSince` and `snapshot` rows (and the S-102/S-103 pins in
+`WatchConnectivityBridgeTests`) are unchanged and the versioned frame has its
+own `routinesExercises` row
 (`WatchConnectivityBridgeTests.testS3820TheRoutinesRequestCarriesTheExerciseListVersionOnlyWhenThereIsOne`,
 `WatchSessionStartPathsTests.testS3819SyncNamesTheExerciseListVersionTheWristHolds`).
 The frame's contract is `watch/contract/watch_start_paths_contract.json`, read
@@ -148,22 +149,50 @@ the prune above is the only way batch rows leave.
 
 ## Where the two ends stand
 
-The phone still sends the whole list in `routines_down.fallbackExercises`, so the
-wrist keeps reading it exactly as before and nothing changes on screen; the
-batched message is a second way for the same data to arrive, and the wrist uses
-the active list when it has one and the `routines_down` fallback when it does
-not (`testS3817RoutineCoverageAndTheActiveListAreUnionedOnce` pins the union, and
+The phone answers a `routines` request with `preferences_down` first, then
+`routines_down` — whose `fallbackExercises` is the exercises its routines use
+and nothing more (`test/watch_reference_sync_test.dart`, group `S-3840..S-3843,
+S-3845, S-3846 the phone sends the list in batches`, test `S-3841 the fallback
+list is the exercises the routines use`; a phone with no routine still answers,
+with both lists empty, `S-3840 no templates: a message with both lists empty`)
+— and then the whole catalog as `exercises_down` batches
+(`S-3843 250 exercises arrive as three batches in name order`). When the
+request names the version of the list the phone would send, the batches are
+omitted and only the preferences and the routines travel
+(`test/watch_sync_request_handler_test.dart`, group `S-3850…S-3853 the phone
+sends only the list the wrist lacks`, test `S-3850 the wrist names the current
+version: no batch travels`; a stale version sends the list again, `S-3852 a
+version the phone no longer holds sends the whole list`; adding a custom
+exercise stales the version, group `S-3854 the version round-trips, and a
+change to the list stales it`, test `S-3854 a sync with the sent version sends
+no batch, and a custom exercise stales it`). The phone sends the batches one at
+a time in index order and stops at the first one the radio does not carry, so a
+wrist that missed a batch keeps the list it had and the next Sync sends the
+whole list again (`S-3853 a batch the radio refuses stops the rest, and the
+answer still holds`). The request frame carries `exercisesVersion` only when
+the wrist holds a list
+(`test/watch_transport_test.dart`, `S-3856 a wrist that holds a list names its
+version the way the contract does`, `S-3856 a request with no version holds no
+version key`; the wiring hands it to the handler,
+`test/watch_session_projection_test.dart`, group `S-3855 the wrist's
+exercise-list version reaches the handler`; the Swift twin is
+`WatchConnectivityBridgeTests.testS3820TheRoutinesRequestCarriesTheExerciseListVersionOnlyWhenThereIsOne`
+and `WatchSessionStartPathsTests.testS3819SyncNamesTheExerciseListVersionTheWristHolds`).
+The wrist uses the active list when it has one and the `routines_down` fallback
+when it does not
+(`testS3817RoutineCoverageAndTheActiveListAreUnionedOnce` pins the union, and
 `testS3810TwoBatchesCompleteTheListInBatchOrder` pins that the fallback list is
-untouched until a version completes). The Dart watch client (`lib/watch/`) is
-untouched by this change.
+untouched until a version completes). The Dart watch client (`lib/watch/`)
+never reports a version (D-3805), so it is sent the full list on every Sync — a
+documented divergence from the Swift wrist.
 
-### Not yet changed (23e2)
+### The phone's sender since 23e2
 
-The phone still sends the whole exercise list in `routines_down.fallbackExercises`
-— the sender is untouched in this PR, so `routines_down` carrying the whole list
-is still true here. Plan 23e2 moves the phone to sending the list as
-`exercises_down` batches and stops relying on the full fallback list; until then
-the batched message is only a second way for the same data to arrive.
+The phone sends the exercise list as `exercises_down` batches of at most 100,
+skips them when the request names the same version the list derives to, and
+stops at the first batch the radio did not carry; `routines_down` from then on
+carries only the routines' exercises. The tests named in the section above pin
+each rule.
 
 ## What this page does not cover
 

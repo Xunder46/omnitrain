@@ -275,14 +275,18 @@ per serving comes from `calculateCalories` rather than being derived a second
 time. It sits beside `foods_i_eat_order.dart` because it is a pure function over
 the phone's models, with no state and no storage.
 
-`buildRoutinesDown` returns **null** only when the phone holds no exercise the
-wrist could log: an exercise with no capabilities cannot be rendered, and
-`sessionExercise` requires a non-empty `capabilities` array, so a message
-carrying one would fail validation before any renderer saw it. An empty
-`routines` array is fine (D-3601): `fallbackExercises` is the phone's whole
-catalog — every exercise with at least one capability, sorted by name — so a
-phone with exercises and no routine still has something to send, and the wrist
-can add an exercise no routine mentions.
+`buildRoutinesDown` always answers a message, even for a phone holding no
+routine and no exercise the wrist could log: the answer is then `routines: []`
+with `fallbackExercises: []` (`test/watch_reference_sync_test.dart`, group
+`S-3840..S-3843, S-3845, S-3846 the phone sends the list in batches`, test
+`S-3840 no templates: a message with both lists empty`), so a wrist whose user
+deleted the last routine is told the list is empty rather than left with the
+old one. An exercise with no capabilities cannot be rendered — `sessionExercise`
+requires a non-empty `capabilities` array — so it is left out rather than sent.
+`fallbackExercises` is the exercises the routines use, and nothing more
+(`S-3841 the fallback list is the exercises the routines use`): the whole
+catalog travels as `exercises_down` batches instead (23e2), which is where the
+wrist gets the exercises no routine mentions.
 
 Two mappings in that builder are not mechanical, and both are the phone's
 decision rather than the wire's:
@@ -297,14 +301,16 @@ decision rather than the wire's:
   milliseconds; RPE and the `extra-weight` metric have no wire key.
 
 `preferences_down` is its own message rather than a field on `routines_down`
-because `buildRoutinesDown` answers null for a phone with no exercise the wrist
-could log, and a setting riding on it would then never reach the wrist. Its message id follows
+because the two answer different questions: the preferences travel on every
+`routines` request, while `routines_down` carries the routines and the
+exercises they use. Its message id follows
 its content as well as its `generatedAt`: the wrist keeps the newest copy and a
 tie goes to the later-received one, so two different settings stamped in the
 same millisecond must not share a delivery key.
 
-Verified by `test/watch_reference_sync_test.dart` (S-003, S-004, S-007, S-253)
-and `test/watch_nutrition_quick_log_test.dart` (S-003, for the foods half).
+Verified by `test/watch_reference_sync_test.dart` (S-003, S-004, S-007, S-253,
+S-3840..S-3846) and `test/watch_nutrition_quick_log_test.dart` (S-003, for the
+foods half).
 
 ### The watch transport
 
@@ -540,9 +546,12 @@ the stored first value shows again until the next Sync re-states it (D-50,
 **File**: `lib/state/watch/watch_sync_request_handler.dart`
 
 Answers the frames that are requests rather than protocol messages: `routines`
-is answered with `preferences_down` first and always, then with `routines_down`
-when the phone holds any exercise, both built through `WatchReferenceSync`; `snapshot`
-re-asserts the phone's session. It is separate from `WatchIncomingRouter`
+is answered with `preferences_down` first and always, then with `routines_down`,
+then with the exercise list as `exercises_down` batches — unless the request
+names the version of the list the phone would send, in which case the batches
+are omitted and only the preferences and the routines travel. All of it is built
+through `WatchReferenceSync`; `snapshot` re-asserts the phone's session. It is
+separate from `WatchIncomingRouter`
 because the two answer different kinds of frame, and merging them would make a
 transport detail a protocol one.
 
@@ -553,12 +562,12 @@ wrist's next sync. The value is `SettingsState`'s own toggle, never a re-read of
 the stored preference, and the accent travels the same way: the handler reads
 the theme that state holds (`appTheme`) and sends that theme's primary as
 `accentColorHex`, so a theme changed on the phone needs no watch update to be
-worn. A phone holding no exercise the wrist could log sends no
-`routines_down`,
+worn. A phone holding no routine sends a `routines_down` with both lists empty,
 and one holding no session answers a `snapshot` request with nothing: the wrist
 keeps the copy it has, and an empty answer would be a state it never asked for.
 
-Verified by `test/watch_transport_test.dart` (the `S-003` and `S-253` groups).
+Verified by `test/watch_transport_test.dart` (the `S-003` and `S-253` groups)
+and `test/watch_sync_request_handler_test.dart` (S-3850..S-3854).
 
 ### `createWatchSync` — the phone's watch graph
 
