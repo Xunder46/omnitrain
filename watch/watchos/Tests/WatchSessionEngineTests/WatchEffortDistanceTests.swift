@@ -329,12 +329,25 @@ final class WatchEffortDistanceTests: XCTestCase {
 
         clock.advance(100)
         await state.startWork()
+
+        // A stored `distance` sample inside the second effort's window, appended
+        // directly rather than through the recorder: the rule under test is "the
+        // settled `distance` kind is never read", and routing the sample through
+        // the recorder would conflate it with whatever the recorder itself
+        // writes. Without the `distance` kind the window is 3000 − 3000 = 0; a
+        // rule that also read it would see 5000 − 3000 = 2000.
+        await engine.appendSensorSample(
+            kind: WatchSensorKind.distance,
+            value: 5000,
+            recordedAt: clock.call().addingTimeInterval(50)
+        )
+
         clock.advance(100)
         let second = try await state.log()
 
         XCTAssertNil(
             second.payload["distanceMeters"],
-            "the newest sample of the session is a `distance` of 3000, and it is not read"
+            "the newest samples are `distance` rows (3000 settled, 5000 in-window), and neither is read"
         )
         XCTAssertNil(second.payload["distanceSource"])
     }

@@ -16,16 +16,20 @@
 //    S-3205 a fix not after the last accepted one          → `testS3205...`
 //    S-3206 the adapter maps a fresh tracker per call      → `testS3206...`
 //    S-3207 the recorder end to end, denial included       → `testS3207...`
+//    S-3220 the floor scales with the fix's own accuracy   → `testS3220...`
 //
 //  The arithmetic is inline and asserted with an accuracy of ±0.01 m: at 52° N
 //  0.0010° of latitude is 111.194927 m, 0.0020° is 222.389853 m, 0.00002° is
-//  2.223899 m, and a 0.045° jump one second later is 5003.772 m/s (asserted as
-//  a rejection, never as that number).
+//  2.223899 m, 0.00005° is 5.559746 m, 0.0003° is 33.358478 m, and a 0.045°
+//  jump one second later is 5003.772 m/s (asserted as a rejection, never as
+//  that number).
 //
 
 import XCTest
 
 @testable import WatchSessionEngine
+
+private final class FinishedFlag: @unchecked Sendable { var done = false }
 
 /// The raw fixes, as the platform would hand them over: the permission it
 /// answers with, a stream the test feeds, and a count of subscriptions so "a
@@ -207,6 +211,27 @@ final class WatchDistanceTrackerTests: XCTestCase {
         XCTAssertEqual(nextCrept.distanceMeters, 4.448, accuracy: 0.01)
     }
 
+    // MARK: - S-3220 the floor scales with the fix's own accuracy
+
+    func testS3220TheFloorScalesWithTheFixesOwnAccuracy() throws {
+        var tracker = WatchDistanceTracker()
+        XCTAssertNil(tracker.accept(fix(52.0000, 5.0, accuracy: 5, at: 0)))
+
+        // 0.00005° is 5.560 m: over a fixed 2 m floor, under the
+        // max(2, 0.5 × 20) = 10 m floor an accuracy-20 fix sets.
+        XCTAssertNil(
+            tracker.accept(fix(52.00005, 5.0, accuracy: 20, at: 30)),
+            "5.560 m is under the max(2, 0.5 × 20) = 10 m floor"
+        )
+        XCTAssertEqual(tracker.totalMeters, 0, accuracy: 0.01)
+
+        // The reference did not move, so this is measured from the origin:
+        // 0.0003° is 33.358 m, over the max(2, 0.5 × 5) = 2.5 m floor.
+        let accepted = try XCTUnwrap(tracker.accept(fix(52.0003, 5.0, accuracy: 5, at: 60)))
+        XCTAssertEqual(accepted.distanceMeters, 33.358, accuracy: 0.01)
+        XCTAssertEqual(tracker.totalMeters, 33.358, accuracy: 0.01)
+    }
+
     // MARK: - S-3205 a fix that is not after the last accepted one
 
     func testS3205AFixNotAfterTheLastAcceptedOneIsIgnored() throws {
@@ -259,10 +284,13 @@ final class WatchDistanceTrackerTests: XCTestCase {
         XCTAssertEqual(secondValue.distanceMeters, 222.390, accuracy: 0.01)
 
         // A second subscription is a fresh tracker, not the first one's total.
+        // The same coordinates are fed again, stamped after the first feed so
+        // that a tracker shared across calls would accept them and show its
+        // carried total, instead of rejecting them outright on time order.
         var second = adapter.fixes().makeAsyncIterator()
         await eventually { raw.subscriptions == 2 }
-        raw.fix(fix(52.0000, 5.0, accuracy: 5, at: 0))
-        raw.fix(fix(52.0010, 5.0, accuracy: 5, at: 30))
+        raw.fix(fix(52.0000, 5.0, accuracy: 5, at: 90))
+        raw.fix(fix(52.0010, 5.0, accuracy: 5, at: 120))
 
         let restartedMapped = await second.next()
         let restarted = try XCTUnwrap(restartedMapped)
@@ -274,13 +302,29 @@ final class WatchDistanceTrackerTests: XCTestCase {
         let raw = ScriptedRawFixSource()
         let adapter = WatchTrackedLocation(source: raw)
 
-        var iterator = adapter.fixes().makeAsyncIterator()
+        // The finish is observed through a deadline (`eventually`) rather than
+        // awaited directly: a mapped stream that never finishes would hang the
+        // direct await forever, and a hang proves nothing.
+        let finished = FinishedFlag()
+        let ended = Task {
+            var last: WatchLocationFix?
+            for await mapped in adapter.fixes() { last = mapped }
+            finished.done = true
+            return last
+        }
         await eventually { raw.subscriptions == 1 }
         raw.fix(fix(52.0000, 5.0, accuracy: 5, at: 0))
         raw.close()
 
-        let ended = await iterator.next()
-        XCTAssertNil(ended, "the origin yields nothing, and closed input finishes the map")
+        await eventually({ finished.done }, "a closed raw stream finishes the map")
+
+        if finished.done {
+            let finalValue = await ended.value
+            XCTAssertNil(
+                finalValue,
+                "the origin yields nothing, and closed input finishes the map"
+            )
+        }
     }
 
     func testS3206CancellingTheMappedStreamStopsConsumingTheRawOne() async {
