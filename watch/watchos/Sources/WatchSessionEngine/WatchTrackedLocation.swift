@@ -9,6 +9,9 @@
 //  Plan: `docs/plans/2026-10-10-19e-watch-distance-tracking-plan/2026-10-10-19e-watch-distance-tracking-plan.md`,
 //  scenarios S-3206, S-3207 (D-2203).
 //
+//  `docs/plans/2026-10-10-19f-watch-gps-feed-plan/2026-10-10-19f-watch-gps-feed-plan.md`
+//  adds the freshness gate: D-2302, scenarios S-3303, S-3304 and S-3306.
+//
 //  The adapter is deliberately thin: it owns a permission passthrough and a
 //  mapping, nothing else. `WatchSensorRecorder` already knows what to do with a
 //  `WatchLocationFix` stream — store each value and settle the last one on stop
@@ -31,9 +34,17 @@ public protocol WatchRawFixSource {
 /// A raw fix source, seen as the sensor layer's location stream.
 public final class WatchTrackedLocation {
     private let source: WatchRawFixSource
+    private let clock: () -> Date
+    private let maxFixAgeSeconds: TimeInterval
 
-    public init(source: WatchRawFixSource) {
+    public init(
+        source: WatchRawFixSource,
+        clock: @escaping () -> Date = Date.init,
+        maxFixAgeSeconds: TimeInterval = 10
+    ) {
         self.source = source
+        self.clock = clock
+        self.maxFixAgeSeconds = maxFixAgeSeconds
     }
 
     /// The platform's answer, unchanged: the watch's decision to listen is made
@@ -49,11 +60,19 @@ public final class WatchTrackedLocation {
     /// finishes when the raw one does, and cancelling it stops consuming the
     /// raw one. Anything the source does not answer — the refused radio, the
     /// fix the tracker ignored — simply never appears.
+    ///
+    /// A fix older than the call's own start — one `clock()` read, taken once
+    /// per call — by more than `maxFixAgeSeconds` is dropped before the tracker
+    /// sees it: the platform hands over a cached position first, and a position
+    /// from before the session must never become the origin. Exactly at the
+    /// limit is kept.
     public func fixes() -> AsyncStream<WatchLocationFix> {
         AsyncStream { continuation in
             let task = Task {
+                let oldest = clock().addingTimeInterval(-maxFixAgeSeconds)
                 var tracker = WatchDistanceTracker()
                 for await raw in source.rawFixes() {
+                    guard raw.timestamp >= oldest else { continue }
                     if let fix = tracker.accept(raw) {
                         continuation.yield(fix)
                     }

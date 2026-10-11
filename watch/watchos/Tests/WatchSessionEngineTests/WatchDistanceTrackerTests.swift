@@ -17,6 +17,9 @@
 //    S-3206 the adapter maps a fresh tracker per call      → `testS3206...`
 //    S-3207 the recorder end to end, denial included       → `testS3207...`
 //    S-3220 the floor scales with the fix's own accuracy   → `testS3220...`
+//    S-3303 a cached fix never becomes the origin          → `testS3303...`
+//    S-3304 the gate boundary is inclusive                 → `testS3304...`
+//    S-3306 the clock is read once per fixes() call        → `testS3306...`
 //
 //  The arithmetic is inline and asserted with an accuracy of ±0.01 m: at 52° N
 //  0.0010° of latitude is 111.194927 m, 0.0020° is 222.389853 m, 0.00002° is
@@ -71,13 +74,17 @@ final class ScriptedRawFixSource: WatchRawFixSource {
 /// The recorder's sensor source: location is a `WatchTrackedLocation`'s stream,
 /// and its permission answer is the raw source's. Heart rate and steps say
 /// `unavailable`, so the only subscription a test can see is the location one.
+///
+/// The clock is the test's own, because this file's fixes are stamped months
+/// before the wall clock: with `WatchTrackedLocation`'s default clock every one
+/// of them would be older than the freshness limit and dropped.
 final class TrackedLocationSensorSource: WatchSensorSource {
     let raw: ScriptedRawFixSource
     let tracked: WatchTrackedLocation
 
-    init(raw: ScriptedRawFixSource) {
+    init(raw: ScriptedRawFixSource, clock: @escaping () -> Date) {
         self.raw = raw
-        self.tracked = WatchTrackedLocation(source: raw)
+        self.tracked = WatchTrackedLocation(source: raw, clock: clock)
     }
 
     func heartRatePermission() async -> WatchSensorPermission { .unavailable }
@@ -266,7 +273,8 @@ final class WatchDistanceTrackerTests: XCTestCase {
 
     func testS3206TheAdapterMapsTheSourcesFixesIntoOneMonotonicTotal() async throws {
         let raw = ScriptedRawFixSource()
-        let adapter = WatchTrackedLocation(source: raw)
+        let base = t0
+        let adapter = WatchTrackedLocation(source: raw, clock: { base })
 
         // Subscribe first, and wait for the source to be listening: a fix is
         // handed to whoever is subscribed, the way a real stream behaves.
@@ -300,7 +308,8 @@ final class WatchDistanceTrackerTests: XCTestCase {
 
     func testS3206TheMappedStreamFinishesWhenTheRawOneDoes() async {
         let raw = ScriptedRawFixSource()
-        let adapter = WatchTrackedLocation(source: raw)
+        let base = t0
+        let adapter = WatchTrackedLocation(source: raw, clock: { base })
 
         // The finish is observed through a deadline (`eventually`) rather than
         // awaited directly: a mapped stream that never finishes would hang the
@@ -343,7 +352,8 @@ final class WatchDistanceTrackerTests: XCTestCase {
     func testS3207TheRecorderCarriesTheTrackedTotalAndSettlesIt() async throws {
         let harness = Harness()
         let raw = ScriptedRawFixSource()
-        let source = TrackedLocationSensorSource(raw: raw)
+        let base = t0
+        let source = TrackedLocationSensorSource(raw: raw, clock: { base })
         let engine = await harness.runningEngine()
         let live = await engine.createSession(
             modality: "cardio_endurance",
@@ -396,7 +406,8 @@ final class WatchDistanceTrackerTests: XCTestCase {
     func testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn() async throws {
         let harness = Harness()
         let raw = ScriptedRawFixSource(grant: .denied)
-        let source = TrackedLocationSensorSource(raw: raw)
+        let base = t0
+        let source = TrackedLocationSensorSource(raw: raw, clock: { base })
         let engine = await harness.runningEngine()
         let live = await engine.createSession(
             modality: "cardio_endurance",
@@ -437,5 +448,121 @@ final class WatchDistanceTrackerTests: XCTestCase {
             "nothing was measured, so the observation carries no distance"
         )
         XCTAssertEqual(engine.observations.count, 1, "denial is not failure")
+    }
+
+    // MARK: - S-3303 a cached fix never becomes the origin
+
+    func testS3303ACachedFixNeverBecomesTheOrigin() async throws {
+        let raw = ScriptedRawFixSource()
+        let base = t0
+        let adapter = WatchTrackedLocation(source: raw, clock: { base })
+
+        var mapped = adapter.fixes().makeAsyncIterator()
+        await eventually { raw.subscriptions == 1 }
+        // The platform's cached position, a minute before the call started: 0.0050°
+        // from the first live fix, i.e. 555.975 m over 60 s (9.27 m/s, under the
+        // jump gate) — it would be the origin without the freshness gate.
+        raw.fix(fix(52.0050, 5.0, accuracy: 5, at: -60))
+        raw.fix(fix(52.0000, 5.0, accuracy: 5, at: 0))
+        raw.fix(fix(52.0010, 5.0, accuracy: 5, at: 30))
+        raw.fix(fix(52.0020, 5.0, accuracy: 5, at: 60))
+        raw.close()
+
+        let cachedMapped = await mapped.next()
+        let first = try XCTUnwrap(
+            cachedMapped,
+            "the cached fix is dropped, so the live origin yields nothing"
+        )
+        XCTAssertEqual(first.distanceMeters, 111.195, accuracy: 0.01)
+        let secondMapped = await mapped.next()
+        let second = try XCTUnwrap(secondMapped)
+        XCTAssertEqual(second.distanceMeters, 222.390, accuracy: 0.01)
+        let extra = await mapped.next()
+        XCTAssertNil(extra, "and the dropped fix never appears as a value of its own")
+    }
+
+    // MARK: - S-3304 the gate boundary is inclusive
+
+    func testS3304TheGateBoundaryIsInclusive() async throws {
+        // A fix exactly at the limit is kept: it becomes the origin, so the next
+        // fix measures from it.
+        do {
+            let raw = ScriptedRawFixSource()
+            let base = t0
+            let adapter = WatchTrackedLocation(source: raw, clock: { base })
+
+            var mapped = adapter.fixes().makeAsyncIterator()
+            await eventually { raw.subscriptions == 1 }
+            raw.fix(fix(52.0000, 5.0, accuracy: 5, at: -10))
+            raw.fix(fix(52.0010, 5.0, accuracy: 5, at: 0))
+            raw.close()
+
+            let keptMapped = await mapped.next()
+            let kept = try XCTUnwrap(
+                keptMapped,
+                "a fix exactly at the limit is kept and becomes the origin"
+            )
+            XCTAssertEqual(kept.distanceMeters, 111.195, accuracy: 0.01)
+        }
+
+        // A fix older than the limit by any amount is dropped.
+        do {
+            let raw = ScriptedRawFixSource()
+            let base = t0
+            let adapter = WatchTrackedLocation(source: raw, clock: { base })
+
+            var mapped = adapter.fixes().makeAsyncIterator()
+            await eventually { raw.subscriptions == 1 }
+            raw.fix(fix(52.0050, 5.0, accuracy: 5, at: -10.001))
+            raw.fix(fix(52.0000, 5.0, accuracy: 5, at: 0))
+            raw.fix(fix(52.0010, 5.0, accuracy: 5, at: 30))
+            raw.close()
+
+            let firstMapped = await mapped.next()
+            let first = try XCTUnwrap(
+                firstMapped,
+                "the dropped fix is not the origin, so the live fix at t0 is"
+            )
+            XCTAssertEqual(first.distanceMeters, 111.195, accuracy: 0.01)
+        }
+    }
+
+    // MARK: - S-3306 the clock is read once per fixes() call
+
+    func testS3306TheClockIsReadOncePerCall() async throws {
+        let raw = ScriptedRawFixSource()
+        let clock = TestClock(t0)
+        let adapter = WatchTrackedLocation(source: raw, clock: clock.call)
+
+        var first = adapter.fixes().makeAsyncIterator()
+        await eventually { raw.subscriptions == 1 }
+        raw.fix(fix(52.0000, 5.0, accuracy: 5, at: 0))
+        raw.fix(fix(52.0010, 5.0, accuracy: 5, at: 30))
+
+        let firstMapped = await first.next()
+        let firstValue = try XCTUnwrap(
+            firstMapped,
+            "t0 + 100 s is fresh for the call that started at t0"
+        )
+        XCTAssertEqual(firstValue.distanceMeters, 111.195, accuracy: 0.01)
+
+        raw.fix(fix(52.0050, 5.0, accuracy: 5, at: 100))
+        raw.close()
+
+        // An hour later the same fix is long stale: the second call reads the
+        // clock again, so its gate is its own start, not the first call's.
+        clock.advance(3600)
+        var second = adapter.fixes().makeAsyncIterator()
+        await eventually { raw.subscriptions == 2 }
+        raw.fix(fix(52.0100, 5.0, accuracy: 5, at: 3610))
+        raw.fix(fix(52.0110, 5.0, accuracy: 5, at: 3640))
+        raw.close()
+
+        let secondMapped = await second.next()
+        let secondValue = try XCTUnwrap(
+            secondMapped,
+            "the fix fresh for the first call is stale 3600 s later"
+        )
+        XCTAssertEqual(secondValue.distanceMeters, 111.195, accuracy: 0.01)
     }
 }
