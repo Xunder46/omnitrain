@@ -103,6 +103,7 @@ public struct WatchLoggingView: View {
             Text(model.state.exerciseName ?? "No exercise")
                 .font(.caption2)
                 .lineLimit(1)
+                .truncationMode(.tail)
             if let round = roundLine {
                 Text(round)
                     .font(.caption2)
@@ -122,6 +123,9 @@ public struct WatchLoggingView: View {
                     .lineLimit(1)
             }
         }
+        // A couple of points of headroom, so the exercise name does not sit hard
+        // against the system clock and the menu button above it.
+        .padding(.top, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -160,6 +164,7 @@ public struct WatchLoggingView: View {
                 Text(field.label)
                     .font(.caption2)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(field.displayValue)
                     .font(.title3)
                     .fontWeight(.bold)

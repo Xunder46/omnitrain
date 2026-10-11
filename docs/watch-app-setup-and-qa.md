@@ -190,7 +190,8 @@ Written, by Phases 1–4 of the shell-bridge plan:
   exercise picker). The logging surface logs the current exercise's own effort —
   a set, a timed hold, a round or a drill, chosen from the exercise's
   capabilities — and hosts the session menu: the ladder's exercises with their
-  logged counts to jump to, then Finish. Exercises are added on the phone. An
+  logged counts to jump to, then End Session (which asks first). Exercises are
+  added on the phone. An
   ended session can no longer be logged into
   (`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
   Logged rows leave through `WatchEmitForwarder` over the connectivity bridge —
@@ -413,8 +414,8 @@ finish is answered to it at its next sync, when the wrist itself asks
 `S-5 the phone's own finish is reported, and the wrist is answered at its next
 sync`).
 **(f) Finishing on the watch.** Answering the wrist's own Finish — the menu's
-**Finish**, reached from the list button — closes the session on the phone as
-well, with one history entry and the rating the wrist gave. A Finish the phone
+**End Session**, reached from the list button — closes the session on the phone
+as well, with one history entry and the rating the wrist gave. A Finish the phone
 was not there to hear — the session ended while the pair was apart — is
 re-announced by the wrist at its next catch-up, behind whatever the wrist still
 owes, and the phone's copy and its session screen end then, with the wrist's
@@ -548,8 +549,9 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     phone's Summary offers Add rating. A wrist that has never synced does not
     ask either. A session with nothing logged is never asked about.
 17. **The question survives a kill** **(owner)**. Finish the session on the wrist
-    (the menu's **Finish**, from the list button) and force-quit the watch app
-    while the question shows. Relaunch: the question comes back before anything
+    (the menu's **End Session**, from the list button) and force-quit the watch
+    app while the question shows. Relaunch: the question comes back before
+    anything
     else, and one answer records one rating. The engine restores it from the
     store that outlives the process
     (`WatchEffortRatingTests.testS215AKillDuringThePromptAsksAgainAndRecordsOneAnswer`);
@@ -644,9 +646,10 @@ hardware yet.
    this wrist session shows the set. The phone must show it before any Sync —
    only an untouched wrist proves the set is handed over as it is logged.
    Nothing is sent on a timer.
-3. **Finish and answer once.** Turn Settings → Effort Rating on, on the phone, and
-   sync from the wrist. On the wrist tap the list button, then **Finish**; the
-   question appears alone — no skip, back or swipe. Answer 4. The phone's
+3. **End Session and answer once.** Turn Settings → Effort Rating on, on the
+   phone, and sync from the wrist. On the wrist tap the list button, then
+   **End Session**, then **Finish** in the prompt; the question appears alone —
+   no skip, back or swipe. Answer 4. The phone's
    calendar holds one entry for the session and its Summary shows 4 / 5.
 4. **A workout logged with the phone out of reach catches up by itself — (owner).**
    Start another wrist workout and log a set with the phone in Airplane Mode.
@@ -681,9 +684,28 @@ hardware yet.
    soccer half
    (`WatchLoggingTimersTests.testS1401TheWristCountsDownFromTheSlotsOwnLength`),
    while one whose slot carries no number keeps the wrist's preset at 3:00
-   (`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`). **Finish** still ends the
-   session
+   (`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`). **End Session** still ends
+   the session
    (`…testS1311FinishLeavesTheWorkClockRunningAndTakesTheReadout`).
+7. **End Session asks first — (owner).** On the menu tap **End Session**: the
+   prompt reads **Finish Workout?** with the phone's own words — "This action
+   will save and close the workout session." — and **Cancel** / **Finish**
+   (`WatchMenuTests.testS3401TheMenuCopyIsTheOwnersWords`). Tap **Cancel**: the
+   menu is still there and the session is still running. Tap **End Session**,
+   then **Finish** in the prompt: the session ends and the effort-rating question
+   follows as in step 3. Also on this pass: a rest screen names itself, with a
+   **Rest** caption above the clock
+   (`WatchTimedWorkTests.testS3409TheRestSurfaceNamesItself`).
+8. **A sports period's length is dialled before Start — (owner).** Pick a sports
+   (round) exercise: logging shows a length row of minus, a value and plus. Its
+   start value is the phone's number for that slot, or 3:00 with none; turn the
+   row down to 1:00 with the minus or the crown
+   (`WatchTimedWorkTests.testS3405TurningTheLengthChangesWhatStartCountsDownFrom`).
+   Tap **Start**: the countdown begins at 1:00 and the length row is gone, so the
+   length cannot be changed while the period runs
+   (`…testS3406ARunningPeriodHasNoLengthRowAndKeepsTheDialledLength`). Tap
+   **Log**: the next period of the same exercise opens at 1:00, while a different
+   exercise's period opens at its own number.
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and
