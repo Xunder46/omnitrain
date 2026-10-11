@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 70;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -91,7 +91,17 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		46AC7A173061FCBF00924AC9 /* OmniTrain Watch App */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = "OmniTrain Watch App"; sourceTree = "<group>"; };
+		46AC7A173061FCBF00924AC9 /* OmniTrain Watch App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = "OmniTrain Watch App";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -302,7 +312,7 @@
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
-				4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "../watch/watchos" */,
+				4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "watchos" */,
 			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Library */;
 			projectDirPath = "";
@@ -369,13 +379,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -985,7 +991,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "../watch/watchos" */ = {
+		4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "watchos" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../watch/watchos;
 		};
@@ -994,7 +1000,7 @@
 /* Begin XCSwiftPackageProductDependency section */
 		4680609A30622A4300CB4DCB /* WatchSessionEngine */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "../watch/watchos" */;
+			package = 4680608D306229B800CB4DCB /* XCLocalSwiftPackageReference "watchos" */;
 			productName = WatchSessionEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
