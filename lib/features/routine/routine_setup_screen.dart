@@ -1043,7 +1043,6 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
         );
         Navigator.of(context).pop();
       case UnsavedChangesAction.keepEditing:
-      case null:
         // Stay on the screen.
         break;
     }
