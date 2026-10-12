@@ -1,0 +1,13 @@
+// The watch app ships inside the iPhone app, and App Store Connect rejects an
+// upload whose watch app carries a different version or build number than the
+// iPhone app around it. So the watch takes both from the same place the iPhone
+// app does: `version:` in pubspec.yaml, through Flutter's generated xcconfig.
+//
+// Used only as the base configuration of the "OmniTrain Watch App" target. The
+// target itself must NOT set MARKETING_VERSION or CURRENT_PROJECT_VERSION: a
+// target setting beats this file. The defaults apply only if Flutter's
+// Generated.xcconfig has not been produced yet (before the first `flutter pub get`).
+#include? "Generated.xcconfig"
+
+MARKETING_VERSION = $(FLUTTER_BUILD_NAME:default=1.0)
+CURRENT_PROJECT_VERSION = $(FLUTTER_BUILD_NUMBER:default=1)
