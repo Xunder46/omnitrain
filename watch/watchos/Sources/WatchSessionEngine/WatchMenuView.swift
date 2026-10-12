@@ -78,9 +78,9 @@ public struct WatchMenuView: View {
                     // the state on every body run.
                     .id(addedCount)
 
-                    addExerciseRow
-
                     Divider()
+
+                    addExerciseRow
 
                     finishRow
                         .padding(.top, 10)
@@ -139,15 +139,15 @@ public struct WatchMenuView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// The Add Exercise row: it opens the wrist's own list, and it sits above
-    /// the divider that End Session keeps. Never disabled — adding moves nothing
+    /// The Add Exercise row: it opens the wrist's own list, and it sits below
+    /// the divider, right above End Session. Never disabled — adding moves nothing
     /// the running effort logs (D-3607).
     private var addExerciseRow: some View {
         NavigationLink {
             WatchAddExerciseList(state: state) { addedCount += 1 }
         } label: {
             Text(WatchMenuCopy.addExerciseLabel)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
         .buttonStyle(.bordered)
     }
