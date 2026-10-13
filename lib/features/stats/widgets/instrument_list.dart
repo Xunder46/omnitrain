@@ -60,6 +60,25 @@ class _InstrumentListState extends State<InstrumentList> {
     );
   }
 
+  /// What the line and the change mean, spelled out once under the first
+  /// section (D-4006) rather than left to be inferred from an unlabelled chart
+  /// and an unlabelled chip. The number is the window's own length in calendar
+  /// days, so a period window and a recency window read the same way; a
+  /// one-day window reads "the day before it".
+  Text _caption(BuildContext context) {
+    final days = widget.window.dayCount;
+    final previous = days == 1
+        ? 'the day before it'
+        : 'the $days days before it';
+    return Text(
+      'Line: each training day in the window · Change: vs $previous',
+      key: const Key('instrument_caption'),
+      style: Theme.of(
+        context,
+      ).textTheme.labelSmall?.copyWith(color: widget.themeColors.textMuted),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final children = <Widget>[];
@@ -84,6 +103,8 @@ class _InstrumentListState extends State<InstrumentList> {
         ),
       );
       children.add(const SizedBox(height: 8));
+
+      if (i == 0) children.add(_caption(context));
 
       for (final row in rows) {
         children.add(

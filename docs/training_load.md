@@ -139,7 +139,9 @@ boundary. It serves the strip only; the baseline does not use it.
 `MixWeek` carries a week's start, its segments, its measure and whether it is
 the current week. `MixLayerData` carries the measure the figures are in, the
 window's segments and its baseline's segments, the two counts the surface
-reports, and the strip.
+reports, the strip, and the last completed session's day (`lastSessionDay`,
+which the empty-strip line names; guarded by
+`test/mix_layer_service_test.dart`, `S-4009`).
 
 Verified by `test/training_load_test.dart` (`OmniDateUtils.startOfWeek (D-910,
 D-935)` — every weekday under both settings, an unrecognised setting, and the

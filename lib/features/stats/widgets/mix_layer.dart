@@ -101,6 +101,24 @@ class MixLayerSection extends StatelessWidget {
     return max;
   }
 
+  /// Whether the payload carries weeks, none of them holds any work, and the
+  /// span holds no session either (D-4004, S-4021).
+  ///
+  /// An empty [MixLayerData.weeks] is *not* an empty strip: that payload has
+  /// no strip at all (the period payload D-1204 returns), and neither the
+  /// strip nor the empty line is a claim it can support.
+  ///
+  /// Nor is a span a session sits inside: a completed session can carry zero
+  /// measure (unrated under the load measure, zero-duration under the time
+  /// one), and the line would then say "no training in the last 8 weeks" while
+  /// naming a session *within* those 8 weeks. When a session lies inside the
+  /// span the strip draws, and the empty line stays out.
+  bool get _stripIsEmpty =>
+      layer.weeks.isNotEmpty &&
+      layer.weeks.every((week) => week.measure <= 0) &&
+      (layer.lastSessionDay == null ||
+          layer.lastSessionDay!.isBefore(layer.weeks.first.weekStart));
+
   String _weekLabel(MixWeek week) {
     final figure = week.measure.round();
     final base =
@@ -170,9 +188,15 @@ class MixLayerSection extends StatelessWidget {
             ),
           ],
           const SizedBox(height: _blockGap),
-          _measureText(theme),
-          const SizedBox(height: _tightGap),
-          _buildStrip(maxWeekMeasure),
+          if (_stripIsEmpty)
+            _buildEmptyStrip(theme)
+          else if (layer.weeks.isNotEmpty) ...[
+            _measureText(theme),
+            const SizedBox(height: _tightGap),
+            _buildStrip(maxWeekMeasure),
+            const SizedBox(height: _tightGap),
+            _buildCaption(theme),
+          ],
         ],
       ),
     );
@@ -184,6 +208,60 @@ class MixLayerSection extends StatelessWidget {
     overflow: TextOverflow.ellipsis,
     style: theme.textTheme.labelSmall?.copyWith(color: themeColors.textMuted),
   );
+
+  /// The strip's caption: the oldest week's own start day on the left, `this
+  /// week` on the right, so the eight columns carry a time axis (D-4003).
+  ///
+  /// Both ends are flexible: at the largest text scale the two labels are wider
+  /// than the card together, and a flexible label ellipsises instead of
+  /// overflowing the strip's Row.
+  Widget _buildCaption(ThemeData theme) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Flexible(
+        fit: FlexFit.loose,
+        child: Text(
+          OmniDateUtils.formatShort(layer.weeks.first.weekStart),
+          key: const Key('mix_strip_start_label'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: themeColors.textMuted,
+          ),
+        ),
+      ),
+      Flexible(
+        child: Text(
+          'this week',
+          key: const Key('mix_strip_current_label'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: themeColors.textMuted,
+          ),
+        ),
+      ),
+    ],
+  );
+
+  /// The empty strip's one line: eight weeks with no work at all are not a
+  /// strip, and the line says so in words (D-4004).
+  ///
+  /// The last session's day is the payload's own ([MixLayerData.lastSessionDay]),
+  /// never re-derived here and never read from a clock.
+  Widget _buildEmptyStrip(ThemeData theme) {
+    final lastSessionDay = layer.lastSessionDay;
+    return Text(
+      lastSessionDay == null
+          ? 'No training in the last $kMixStripWeeks weeks.'
+          : 'No training in the last $kMixStripWeeks weeks. '
+                'Last session: ${OmniDateUtils.formatShort(lastSessionDay)}.',
+      key: const Key('mix_strip_empty'),
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: themeColors.textMuted,
+      ),
+    );
+  }
 
   /// The bar: one segment per modality, in the model's order, at the model's
   /// proportions.

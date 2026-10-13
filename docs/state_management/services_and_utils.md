@@ -319,8 +319,9 @@ S-1009, S-1010) and `test/instrument_change_format_test.dart`.
 
 `computeMixLayer({required StatsWindow window, required DateTime now, required
 String startOfWeek})` returns the Mix layer's whole payload — the measure, the
-window's bar, the baseline's segments, the two counts and the weekly strip — or
-`null` when the window holds no time at all. It is the only history walk behind
+window's bar, the baseline's segments, the two counts, the weekly strip and the
+last completed session's day (`lastSessionDay`, the day the empty-strip line
+names) — or `null` when the window holds no time at all. It is the only history walk behind
 those figures: the window, the baseline and the strip are all served from the
 one cached snapshot, so the surface pays for no extra repository read.
 

@@ -25,12 +25,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/modality_colors.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/models/exercise_metric.dart';
+import 'package:omnitrain/core/models/stats_progress.dart';
 import 'package:omnitrain/core/models/training_load.dart';
+import 'package:omnitrain/core/services/stats_progress_service.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/features/stats/widgets/instrument_list.dart';
+import 'package:omnitrain/features/stats/widgets/mix_layer.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
@@ -125,6 +128,14 @@ List<String> _allTexts() {
 String? _labelOf(WidgetTester tester, Key key) =>
     tester.widget<Semantics>(find.byKey(key)).properties.label;
 
+/// The data of the `Text` keyed [key] (S-4005, S-4006).
+String _textOf(WidgetTester tester, Key key) =>
+    tester.widget<Text>(find.byKey(key)).data!;
+
+/// The style colour the `Text` keyed [key] carries (S-4020).
+Color? _textColorOf(WidgetTester tester, Key key) =>
+    tester.widget<Text>(find.byKey(key)).style?.color;
+
 /// The accessibility labels of every `Semantics` on the screen.
 List<String> _semanticsLabels() {
   final labels = <String>[];
@@ -215,6 +226,37 @@ int _weekIndexOf(DateTime sessionStart, String startOfWeek) {
     (weekStart) =>
         weekStart.millisecondsSinceEpoch == target.millisecondsSinceEpoch,
   );
+}
+
+/// The oldest strip week's start day for [startOfWeek], derived from the same
+/// week-start helper the service uses rather than hard-coded (S-4005).
+DateTime _oldestWeekStart(String startOfWeek) {
+  final currentWeekStart = OmniDateUtils.startOfWeek(
+    DateTime.now(),
+    startOfWeek: startOfWeek,
+  );
+  return DateTime(
+    currentWeekStart.year,
+    currentWeekStart.month,
+    currentWeekStart.day - (kMixStripWeeks - 1) * 7,
+  );
+}
+
+/// Every strip key in the tree (`mix_week*`), so an all-empty strip is
+/// asserted as a whole rather than one key at a time (S-4006).
+List<String> _stripKeys() {
+  final keys = <String>[];
+  for (final element
+      in find
+          .byWidgetPredicate(
+            (widget) =>
+                widget.key is ValueKey<String> &&
+                (widget.key! as ValueKey<String>).value.startsWith('mix_week'),
+          )
+          .evaluate()) {
+    keys.add((element.widget.key! as ValueKey<String>).value);
+  }
+  return keys;
 }
 
 // ─── fixtures ───────────────────────────────────────────────────────────────
@@ -672,6 +714,62 @@ Future<void> _seedDensest(WorkoutRepository repo) async {
   await _seedLifting(repo, sessionId: 's-dense-unrated', daysAgo: 5, minutes: 5);
 }
 
+/// S-4006's fixture: the screenshot's shape — two completed sessions two months
+/// back and nothing inside the strip's eight weeks, so every column is empty
+/// while the window (the recency fallback over those two days) still holds
+/// time and the bar renders.
+Future<void> _seedStriplessHistory(WorkoutRepository repo) async {
+  await _seedLifting(repo, sessionId: 's-old-a', daysAgo: 60);
+  await _seedLifting(repo, sessionId: 's-old-b', daysAgo: 55);
+}
+
+/// S-4015's fixture: `_seedStriplessHistory` plus an unfinished session today.
+///
+/// The period cannot qualify the window — it holds no completed session — and
+/// the unfinished one is excluded from every payload (D-911), so it must name
+/// neither the empty line nor `lastSessionDay`.
+Future<void> _seedStriplessHistoryWithUnfinished(
+  WorkoutRepository repo,
+) async {
+  await _seedPeriod(repo, name: 'Test Block', daysAgo: 10);
+  await _seedStriplessHistory(repo);
+  await _seedUnfinished(repo, sessionId: 's-today-unfinished', daysAgo: 0);
+}
+
+/// One session with no end: the shape `_seedSession` cannot write, and the
+/// shape every payload excludes (D-911).
+Future<void> _seedUnfinished(
+  WorkoutRepository repo, {
+  required String sessionId,
+  required int daysAgo,
+  int hour = 8,
+}) async {
+  final start = _at(daysAgo, hour);
+  await repo.createSession(
+    TrainingSession(
+      id: sessionId,
+      ownerUserId: 'user-1',
+      startedAtMs: start,
+      endedAtMs: null,
+      createdAtMs: start,
+      updatedAtMs: start,
+    ),
+  );
+}
+
+/// S-4014's fixture: one completed session in each of the eight strip weeks, so
+/// the caption's two ends are both a real week whatever the week starts on.
+Future<void> _seedEveryStripWeek(WorkoutRepository repo) async {
+  for (var i = 0; i < kMixStripWeeks; i++) {
+    await _seedLifting(
+      repo,
+      sessionId: 's-week-$i',
+      daysAgo: (kMixStripWeeks - 1 - i) * 7,
+      hour: 0,
+    );
+  }
+}
+
 void main() {
   for (final factory in harnessFactories) {
     final harness = factory();
@@ -1124,6 +1222,379 @@ void main() {
         });
       });
 
+      // ─── S-4005, S-4014 ──────────────────────────────────────────────────
+      //
+      // The strip's caption (D-4003): eight columns with no time axis cannot be
+      // read, so the oldest week's start day and `this week` bracket them.
+
+      group('S-4005 the strip carries a caption naming its span', () {
+        setUp(() => _seedStrip(repo));
+
+        testWidgets('the oldest week’s start day sits on the left and `this '
+            'week` on the right, both muted and below the columns',
+            (tester) async {
+          await tester.runAsync(
+            () => settingsState.setStartOfWeek('sunday'),
+          );
+          await pumpStats(tester);
+
+          final muted = OmniTheme.colorsForTheme(
+            settingsState.appTheme,
+          ).textMuted;
+          expect(
+            _textOf(tester, const Key('mix_strip_start_label')),
+            OmniDateUtils.formatShort(
+              _oldestWeekStart(settingsState.startOfWeek),
+            ),
+          );
+          expect(
+            _textOf(tester, const Key('mix_strip_current_label')),
+            'this week',
+          );
+          expect(
+            _textColorOf(tester, const Key('mix_strip_start_label')),
+            muted,
+          );
+          expect(
+            _textColorOf(tester, const Key('mix_strip_current_label')),
+            muted,
+          );
+
+          // The caption is under the columns, not over them: the strip's own
+          // measure label stays between the legend and the first column.
+          final columnsBottom = tester
+              .getBottomLeft(find.byKey(const Key('mix_week_7')))
+              .dy;
+          expect(
+            tester.getTopLeft(find.byKey(const Key('mix_strip_start_label'))).dy,
+            greaterThan(columnsBottom),
+          );
+          expect(
+            tester
+                .getTopLeft(find.byKey(const Key('mix_strip_current_label')))
+                .dy,
+            greaterThan(columnsBottom),
+          );
+
+          expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
+          expect(find.text('this week'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-4014 the caption’s two ends bracket the eight columns', () {
+        setUp(() => _seedEveryStripWeek(repo));
+
+        testWidgets('Monday and Sunday name two different oldest weeks, and '
+            '`this week` under both', (tester) async {
+          await tester.runAsync(
+            () => settingsState.setStartOfWeek('sunday'),
+          );
+          await pumpStats(tester);
+
+          final sundayStart = _textOf(
+            tester,
+            const Key('mix_strip_start_label'),
+          );
+          expect(
+            sundayStart,
+            OmniDateUtils.formatShort(_oldestWeekStart('sunday')),
+          );
+          final sundayColumnsBottom = tester
+              .getBottomLeft(find.byKey(const Key('mix_week_7')))
+              .dy;
+          expect(
+            tester.getTopLeft(find.byKey(const Key('mix_strip_start_label'))).dy,
+            greaterThan(sundayColumnsBottom),
+          );
+          expect(
+            _textOf(tester, const Key('mix_strip_current_label')),
+            'this week',
+          );
+
+          // A fresh element of the same type at the same position would reuse
+          // the State and never run `initState`, so the tree is emptied first.
+          await tester.pumpWidget(const SizedBox());
+          await tester.pumpAndSettle();
+          await tester.runAsync(
+            () => settingsState.setStartOfWeek('monday'),
+          );
+          await pumpStats(tester);
+
+          final mondayStart = _textOf(
+            tester,
+            const Key('mix_strip_start_label'),
+          );
+          expect(
+            mondayStart,
+            OmniDateUtils.formatShort(_oldestWeekStart('monday')),
+          );
+          expect(sundayStart, isNot(mondayStart));
+          final mondayColumnsBottom = tester
+              .getBottomLeft(find.byKey(const Key('mix_week_7')))
+              .dy;
+          expect(
+            tester.getTopLeft(find.byKey(const Key('mix_strip_start_label'))).dy,
+            greaterThan(mondayColumnsBottom),
+          );
+          expect(
+            _textOf(tester, const Key('mix_strip_current_label')),
+            'this week',
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-4006, S-4007, S-4008, S-4015 ──────────────────────────────────
+      //
+      // An all-empty strip (D-4004): eight columns of zero are not a strip, and
+      // drawing one claims eight weeks of data the payload does not have. One
+      // line says what is true, and the bar, legend and notes above it stay.
+
+      group('S-4006 eight empty weeks render one line, not a strip', () {
+        setUp(() => _seedStriplessHistory(repo));
+
+        testWidgets('no columns, no caption, one measure label, and the line '
+            'names the last session', (tester) async {
+          await pumpStats(tester);
+
+          // The bar's own measure label is the only one the layer shows.
+          expect(find.text('by time'), findsOneWidget);
+          expect(_stripKeys(), isEmpty);
+          expect(find.byKey(const Key('mix_strip_start_label')), findsNothing);
+          expect(find.byKey(const Key('mix_strip_current_label')), findsNothing);
+
+          expect(
+            _textOf(tester, const Key('mix_strip_empty')),
+            'No training in the last $kMixStripWeeks weeks. '
+            'Last session: ${OmniDateUtils.formatShort(_day(55))}.',
+          );
+          expect(
+            _textColorOf(tester, const Key('mix_strip_empty')),
+            OmniTheme.colorsForTheme(settingsState.appTheme).textMuted,
+          );
+
+          // The window holds the two months-old sessions, so everything above
+          // the strip renders as it does for any other window.
+          expect(find.byKey(const Key('mix_bar_segment_0')), findsOneWidget);
+          expect(_legendSections(), ['Resistance']);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-4007 only the current week has training', () {
+        setUp(
+          () => _seedLifting(repo, sessionId: 's-current', daysAgo: 0, hour: 0),
+        );
+
+        testWidgets('the strip renders and no empty line does', (tester) async {
+          await pumpStats(tester);
+
+          expect(find.text('by time'), findsNWidgets(2));
+          expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
+          expect(
+            _stackIndices(_weekIndexOf(_day(0), settingsState.startOfWeek)),
+            [0],
+          );
+          expect(
+            _textOf(tester, const Key('mix_strip_current_label')),
+            'this week',
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-4008 only the oldest of the eight weeks has training', () {
+        setUp(
+          () => _seedLifting(repo, sessionId: 's-oldest', daysAgo: 49, hour: 0),
+        );
+
+        testWidgets('the strip renders with that one column and no line',
+            (tester) async {
+          await pumpStats(tester);
+
+          expect(
+            _weekIndexOf(_day(49), settingsState.startOfWeek),
+            0,
+            reason: 'the fixture must land in the oldest column',
+          );
+          expect(find.text('by time'), findsNWidgets(2));
+          expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
+          expect(_stackIndices(0), [0]);
+          expect(
+            _textOf(tester, const Key('mix_strip_start_label')),
+            OmniDateUtils.formatShort(_oldestWeekStart(settingsState.startOfWeek)),
+          );
+          for (var i = 1; i < kMixStripWeeks; i++) {
+            expect(_stackIndices(i), isEmpty, reason: 'column $i');
+          }
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-4015 the empty line names the last completed session', () {
+        setUp(() => _seedStriplessHistoryWithUnfinished(repo));
+
+        testWidgets('it names day 55 — not the oldest session, not the window’s '
+            'end and not today’s unfinished one', (tester) async {
+          await pumpStats(tester);
+
+          final line = _textOf(tester, const Key('mix_strip_empty'));
+          expect(
+            line,
+            'No training in the last $kMixStripWeeks weeks. '
+            'Last session: ${OmniDateUtils.formatShort(_day(55))}.',
+          );
+          expect(line, isNot(contains(OmniDateUtils.formatShort(_day(60)))));
+          expect(line, isNot(contains(OmniDateUtils.formatShort(_day(0)))));
+
+          // Everything D-4004 leaves alone still renders.
+          expect(find.byKey(const Key('mix_bar_segment_0')), findsOneWidget);
+          expect(_legendSections(), ['Resistance']);
+          expect(find.text('by time'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
+
+        test('the service’s own payload carries that day and not today',
+            () async {
+          final sessions = await repo.getAllSessions();
+          final window = StatsProgressService.resolveWindow(
+            periods: await repo.getPeriods(),
+            completedSessions: [
+              for (final session in sessions)
+                if (session.endedAtMs != null) session,
+            ],
+          );
+          expect(window.isPeriodScoped, isFalse);
+
+          final layer = await StatsProgressService(repo).computeMixLayer(
+            window: window,
+            now: DateTime.now(),
+            startOfWeek: settingsState.startOfWeek,
+          );
+          expect(layer, isNotNull);
+          expect(layer!.lastSessionDay, localMidnightDay(_day(55)));
+          expect(layer.weeks, hasLength(kMixStripWeeks));
+          expect(
+            layer.weeks.every((week) => week.measure <= 0),
+            isTrue,
+            reason: 'the fixture must leave all eight weeks empty',
+          );
+        });
+      });
+
+      group('S-4016 a payload with no weeks builds no strip', () {
+        testWidgets('the widget the period payload feeds renders nothing it '
+            'cannot claim', (tester) async {
+          await tester.binding.setSurfaceSize(_kTallViewport);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final themeColors = OmniTheme.colorsForTheme(
+            settingsState.appTheme,
+          );
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: MixLayerSection(
+                  layer: const MixLayerData(
+                    measure: MixMeasure.time,
+                    segments: [],
+                    baselineSegments: [],
+                    unratedSessionCount: 0,
+                    ratedBaselineWeeks: 0,
+                    weeks: [],
+                  ),
+                  window: StatsWindow(
+                    fromMs: DateTime(2026, 4, 1),
+                    toMs: DateTime(2026, 4, 30),
+                    label: 'Test window',
+                    isPeriodScoped: false,
+                  ),
+                  themeColors: themeColors,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.byKey(const Key('mix_layer')), findsOneWidget);
+          expect(_stripKeys(), isEmpty);
+          expect(find.byKey(const Key('mix_strip_start_label')), findsNothing);
+          expect(find.byKey(const Key('mix_strip_current_label')), findsNothing);
+          expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-4021 ──────────────────────────────────────────────────────────
+
+      group('S-4021 a zero-measure session inside the span keeps the strip', () {
+        testWidgets('the strip draws and the empty line does not', (
+          tester,
+        ) async {
+          await tester.binding.setSurfaceSize(_kTallViewport);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final themeColors = OmniTheme.colorsForTheme(settingsState.appTheme);
+
+          // A completed session inside the span whose measure is zero — an
+          // unrated session under the load measure, or a zero-duration one
+          // under the time measure. The line that says "No training in the
+          // last 8 weeks" would contradict its own last-session date, so the
+          // strip draws instead.
+          final currentWeekStart = DateTime(2026, 4, 20);
+          final weeks = <MixWeek>[
+            for (var i = 0; i < kMixStripWeeks; i++)
+              MixWeek(
+                weekStart: DateTime(
+                  currentWeekStart.year,
+                  currentWeekStart.month,
+                  currentWeekStart.day - (kMixStripWeeks - 1 - i) * 7,
+                ),
+                segments: const [],
+                measure: 0,
+                inProgress: i == kMixStripWeeks - 1,
+              ),
+          ];
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: MixLayerSection(
+                  layer: MixLayerData(
+                    measure: MixMeasure.time,
+                    segments: const [],
+                    baselineSegments: const [],
+                    unratedSessionCount: 0,
+                    ratedBaselineWeeks: 0,
+                    weeks: weeks,
+                    lastSessionDay: currentWeekStart,
+                  ),
+                  window: StatsWindow(
+                    fromMs: DateTime(2026, 4, 1),
+                    toMs: DateTime(2026, 4, 30),
+                    label: 'Test window',
+                    isPeriodScoped: false,
+                  ),
+                  themeColors: themeColors,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
+          expect(
+            find.byKey(const Key('mix_strip_start_label')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const Key('mix_strip_current_label')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
       // ─── S-1610 ──────────────────────────────────────────────────────────
 
       group('S-1610 a window with no measurable time renders no layer', () {
@@ -1355,6 +1826,27 @@ void main() {
             }
           });
         }
+      });
+
+      // ─── the caption at large text ───────────────────────────────────────
+
+      group('Guard — the caption fits 390x844 dp and 2.0 text scale', () {
+        setUp(() => _seedStrip(repo));
+
+        testWidgets('the two caption ends ellipsise instead of overflowing the '
+            'card', (tester) async {
+          await pumpStats(tester, size: const Size(390, 844), textScale: 2.0);
+
+          expect(tester.takeException(), isNull);
+          expect(
+            find.byKey(const Key('mix_strip_start_label')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const Key('mix_strip_current_label')),
+            findsOneWidget,
+          );
+        });
       });
 
       // ─── S-1616 ──────────────────────────────────────────────────────────

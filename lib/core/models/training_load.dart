@@ -92,6 +92,11 @@ class WeeklyLoad {
 /// the window's bar, [baselineSegments] the user's usual split, and [weeks] the
 /// strip. [unratedSessionCount] and [ratedBaselineWeeks] are the two counts the
 /// surface reports.
+///
+/// [lastSessionDay] is the local-midnight day of the latest completed session
+/// in **all** history — not only the window and not only the strip — so the
+/// empty strip's line can name the last time the user trained (D-4005). Null
+/// when no completed session exists.
 class MixLayerData {
   final MixMeasure measure;
   final List<MixSegment> segments;
@@ -99,6 +104,7 @@ class MixLayerData {
   final int unratedSessionCount;
   final int ratedBaselineWeeks;
   final List<MixWeek> weeks;
+  final DateTime? lastSessionDay;
 
   const MixLayerData({
     required this.measure,
@@ -107,6 +113,7 @@ class MixLayerData {
     required this.unratedSessionCount,
     required this.ratedBaselineWeeks,
     required this.weeks,
+    this.lastSessionDay,
   });
 }
 

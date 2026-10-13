@@ -298,6 +298,13 @@ class _StatsScreenState extends State<StatsScreen> {
                                 onDismiss: _dismissSignal,
                               ),
                               const SizedBox(height: 24),
+                            ] else if (_mixLayer != null &&
+                                !signalsGateMet(_mixLayer)) ...[
+                              SignalsLockedSection(
+                                ratedWeeks: _mixLayer!.ratedBaselineWeeks,
+                                themeColors: themeColors,
+                              ),
+                              const SizedBox(height: 24),
                             ],
                             const OmniCardHeader(title: 'ALL TIME'),
                             _buildAggregateCard(context, themeColors),
