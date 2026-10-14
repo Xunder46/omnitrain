@@ -44,11 +44,15 @@ what the team will do, in plain language, before spending any run.
 2. **Understand.** Read only what the request touches (`docs/README.md`, the feature doc, the last plan for
    the area). For anything non-trivial send **scouts** (read-only, parallel, one question set per area,
    one pointer sheet each) instead of reading everything yourself; spot-check two quoted items per sheet
-   against the file.
+   against the file. Keep each scout's question set narrow; for a "why does X not appear" bug write the
+   repro test yourself first (a broad trace brief looped 191 requests with no report).
 3. **Seed.** Write the seed into the plan file yourself (Goal and acceptance, Decision Ledger citing
    `file:symbol`, core scenarios with exact fixtures and why they fail without the change, phase outline
    with owner agent, write scope and parallel/serial marks, code pointers). Copy to `.work/<slug>/seed.md`.
-   `mkdir -p` the plan folder first. Re-derive every fixture number with a throwaway script.
+   `mkdir -p` the plan folder first. Re-derive every fixture number with a throwaway script. When the seed
+   changes a shared fixture or contract file, grep for every reader and list them (an unlisted reader cost a
+   fix round in 23a-c); for a handler that concurrent messages can reach, name how they are dispatched and
+   seed an interleaving test.
 4. **Plan.** Brief `crew-architect` (`brief-plan.md`; paths exact; "this plan is seeded"; scout sheets
    named). Validate: seed intact (diff against `seed.md`), numbers re-derived, "the framework does X"
    claims checked in code, no phase over 8 items, each guard has a stated way to be proven, scope guard
@@ -74,8 +78,9 @@ what the team will do, in plain language, before spending any run.
 7. **Prove.** `crew-prover` on the unit's guards with the base commit. For every `NOT PROVEN: needs
    mutation`, apply that mutation yourself, watch the test fail, restore the exact original (keep a copy in
    the scratchpad and `cmp` it), re-run green. A guard stays unproven until one of these is observed.
-8. **Review and docs.** In parallel (disjoint outputs): `crew-reviewer` (review file) and `crew-docs-keeper`
-   (audit mode, audit file under `.work/crew/`). Then fix rounds as closed briefs: the defect, the change,
+8. **Review and docs.** `crew-docs-keeper` first when the unit writes docs, then `crew-reviewer` (a reviewer run
+   beside an unfinished docs phase reported the missing docs as a Blocker); in parallel only when the unit has
+   no docs phase, or the reviewer's brief says the docs are in flight. Then fix rounds as closed briefs: the defect, the change,
    the one check that proves it, "touch nothing else". At most 3 fix rounds, then stop and report.
    Re-run the scope guard after the review.
 9. **Report to the owner** in terms of what the app now does; blockers and risks plainly; what they must

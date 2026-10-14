@@ -23,7 +23,7 @@
 # Written for the bash 3.2 that ships with macOS; needs git, perl and pgrep.
 set -euo pipefail
 
-CONFIG_KEYS="WAIT_MINUTES TAIL_LINES POLL_SECONDS COPILOT_BIN COPILOT_WRAPPER MAX_RUN_MINUTES STALL_MINUTES REPEAT_STOP NO_WRITE_STOP LONG_RUN_MINUTES COPILOT_NO_CUSTOM_INSTRUCTIONS COPILOT_REASONING_EFFORT HUNG_CHILD_MINUTES MAX_PARALLEL_WRITERS"
+CONFIG_KEYS="WAIT_MINUTES TAIL_LINES POLL_SECONDS COPILOT_BIN COPILOT_WRAPPER MAX_RUN_MINUTES STALL_MINUTES REPEAT_STOP NO_WRITE_STOP LONG_RUN_MINUTES COPILOT_NO_CUSTOM_INSTRUCTIONS COPILOT_REASONING_EFFORT HUNG_CHILD_MINUTES MAX_PARALLEL_WRITERS DENIED_STOP CHECKER_REPEAT_STOP CHECKER_READ_STOP"
 
 ORIG_PWD="$PWD"
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
@@ -48,6 +48,7 @@ load_config() {
   : "${COPILOT_WRAPPER=}" "${MAX_RUN_MINUTES:=90}" "${STALL_MINUTES:=20}" "${REPEAT_STOP:=40}"
   : "${NO_WRITE_STOP:=15}" "${LONG_RUN_MINUTES:=25}" "${HUNG_CHILD_MINUTES:=10}"
   : "${COPILOT_NO_CUSTOM_INSTRUCTIONS:=1}" "${COPILOT_REASONING_EFFORT=}" "${MAX_PARALLEL_WRITERS:=2}"
+  : "${DENIED_STOP:=12}" "${CHECKER_REPEAT_STOP:=25}" "${CHECKER_READ_STOP:=25}"
   case "$COPILOT_REASONING_EFFORT" in ""|none|minimal|low|medium|high|xhigh|max) ;;
     *) echo "COPILOT_REASONING_EFFORT must be empty or one of none|minimal|low|medium|high|xhigh|max" >&2; exit 2 ;;
   esac
@@ -63,6 +64,9 @@ PERMISSIONS_DIR="$REPO_ROOT/.github/copilot/permissions"
 is_writer() { case "$1" in crew-builder-data|crew-builder-app|crew-builder-watch|crew-prover|crew-docs-keeper) return 0 ;; *) return 1 ;; esac; }
 # Implementers are held to the no-write check (a builder that reads for 15 minutes and writes nothing).
 is_implementer() { case "$1" in crew-builder-data|crew-builder-app|crew-builder-watch) return 0 ;; *) return 1 ;; esac; }
+# Checkers read and judge; they never re-run a test to drive a fix, so a repeated command or a file read
+# over and over is a loop (CHECKER_REPEAT_STOP / CHECKER_READ_STOP), well before the builders' REPEAT_STOP.
+is_checker() { case "$1" in crew-scout|crew-architect|crew-reviewer) return 0 ;; *) return 1 ;; esac; }
 
 model_for() {
   local var="CREW_MODEL_$(printf '%s' "$1" | tr '-' '_')"
@@ -373,10 +377,11 @@ start_run() {
 # --- Health ---------------------------------------------------------------------------------------
 
 # Loop signals from the agent log (see run-agent.sh for the log format). Prints four lines:
-# action <count> <key>, denied <count>, text <count> <line>, read <count> <path>.
+# action <count> <key>, denied <count>, text <count> <line>, read <count> <path>, and command <count> <key>
+# (the top repeat that is not an edit or create).
 log_stats() {
   local log="$1"
-  if [[ ! -f $log ]]; then printf 'action 0 -\ndenied 0\ntext 0 -\nread 0 -\n'; return; fi
+  if [[ ! -f $log ]]; then printf 'action 0 -\ndenied 0\ntext 0 -\nread 0 -\ncommand 0 -\n'; return; fi
   LC_ALL=C awk '
     function sq(s) { gsub(/[[:space:]]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
     function flush() { if (key != "") { act[key]++; key = "" } }
@@ -396,9 +401,10 @@ log_stats() {
     END {
       flush()
       ba = "-"; ma = 0; for (k in act) if (act[k] > ma) { ma = act[k]; ba = k }
+      bc = "-"; mc = 0; for (k in act) if (k !~ /^(edit|create)/ && act[k] > mc) { mc = act[k]; bc = k }
       bt = "-"; mt = 0; for (k in text) if (text[k] > mt) { mt = text[k]; bt = k }
       br = "-"; mr = 0; for (k in reads) if (reads[k] > mr) { mr = reads[k]; br = k }
-      printf "action %d %s\ndenied %d\ntext %d %s\nread %d %s\n", ma, substr(ba, 1, 100), denied + 0, mt, substr(bt, 1, 80), mr, substr(br, 1, 100)
+      printf "action %d %s\ndenied %d\ntext %d %s\nread %d %s\ncommand %d %s\n", ma, substr(ba, 1, 100), denied + 0, mt, substr(bt, 1, 80), mr, substr(br, 1, 100), mc, substr(bc, 1, 100)
     }' "$log"
 }
 filler_limit() { local n=$((REPEAT_STOP * 5)); [[ $n -ge 200 ]] || n=200; echo "$n"; }
@@ -435,12 +441,25 @@ check_health() {
   [[ -f $dir/exit ]] && return 0
   worker_alive "$dir" || return 0
 
-  local stats repeat_count denied text_count log_idle diff_idle id
+  local stats repeat_count denied text_count command_count read_count log_idle diff_idle id agent
   id="$(basename "$dir")"
+  agent="$(cat "$dir/agent" 2>/dev/null)"
   stats="$(log_stats "$dir/output.log")"
   repeat_count="$(echo "$stats" | awk '$1 == "action" { print $2 }')"
   denied="$(echo "$stats" | awk '$1 == "denied" { print $2 }')"
   text_count="$(echo "$stats" | awk '$1 == "text" { print $2 }')"
+  command_count="$(echo "$stats" | awk '$1 == "command" { print $2 }')"
+  read_count="$(echo "$stats" | awk '$1 == "read" { print $2 }')"
+  # Measured on 363 runs (2026-10-13): healthy runs peak at 10 denied calls; checkers at 20 repeats of
+  # one command and 13 reads of one file; the loops reached 43 denied, 40-50 repeats, 73 reads.
+  if [[ $DENIED_STOP -gt 0 && $denied -ge $DENIED_STOP ]]; then stop_run "$id" denied > /dev/null; return 0; fi
+  if is_checker "$agent"; then
+    if [[ $CHECKER_REPEAT_STOP -gt 0 && $command_count -ge $CHECKER_REPEAT_STOP ]]; then stop_run "$id" loop > /dev/null; return 0; fi
+    # Not the architect: it re-reads the plan it is writing after each edit (41 reads on a healthy run).
+    if [[ $agent != crew-architect && $CHECKER_READ_STOP -gt 0 && $read_count -ge $CHECKER_READ_STOP ]]; then
+      stop_run "$id" loop > /dev/null; return 0
+    fi
+  fi
   if [[ $REPEAT_STOP -gt 0 ]]; then
     if [[ $repeat_count -ge $REPEAT_STOP ]]; then stop_run "$id" loop > /dev/null; return 0; fi
     if [[ $denied -ge $REPEAT_STOP ]]; then stop_run "$id" denied > /dev/null; return 0; fi
@@ -474,9 +493,13 @@ print_health() {
   echo "  LOG_LINES: $lines · LOG_IDLE_MIN: $log_idle"
   echo "  SCOPE: $(tr '\n' ' ' < "$dir/scope" 2>/dev/null) · SCOPE_IDLE_MIN: $(minutes_since "$(cat "$dir/diff_changed_epoch" 2>/dev/null || now)")"
   echo "  TOP_REPEAT: ${repeat%% *}× \"${repeat#* }\" (auto-stop at ${REPEAT_STOP:-0}; 0 = off)"
-  echo "  DENIED: $(echo "$stats" | sed -n 's/^denied //p') · TOP_TEXT_REPEAT: ${text%% *}× (auto-stop at $(filler_limit))"
+  echo "  DENIED: $(echo "$stats" | sed -n 's/^denied //p') (auto-stop at ${DENIED_STOP:-0}) · TOP_TEXT_REPEAT: ${text%% *}× (auto-stop at $(filler_limit))"
   local topread; topread="$(echo "$stats" | sed -n 's/^read //p')"
   echo "  TOP_READ: ${topread%% *}× \"${topread#* }\" (one file, any line range)"
+  if is_checker "$agent"; then
+    local topcmd; topcmd="$(echo "$stats" | sed -n 's/^command //p')"
+    echo "  CHECKER_LIMITS: top command ${topcmd%% *}× (stop at $CHECKER_REPEAT_STOP) · top read ${topread%% *}× (stop at $([[ $agent == crew-architect ]] && echo off || echo "$CHECKER_READ_STOP"))"
+  fi
   if is_implementer "$agent" && no_write_yet "$dir" && [[ ! -f $dir/exit ]]; then
     echo "  FIRST_WRITE: none yet after $(minutes_since "$(cat "$dir/started_epoch")") min (auto-stop at ${NO_WRITE_STOP:-0}; 0 = off)"
   fi

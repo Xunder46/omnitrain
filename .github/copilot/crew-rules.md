@@ -68,7 +68,8 @@ assertion failing for the guarded reason is proof; GREEN AT, or a failure from a
 is not. Where new code cannot compile at the base, a mutation is needed: you never change production code
 (it is outside your write scope), so write `NOT PROVEN: needs mutation` with the file, the exact line
 and the change that should turn the test red, and the test to run; the governor applies it and
-restores it. You may add or strengthen tests in your write scope. Report one line per guard:
+restores it. Every predicted failing value shows its arithmetic from the fixture (a wrong prediction
+once hid a guard that could not fail). You may add or strengthen tests in your write scope. Report one line per guard:
 `GUARD <test name> -> RED AT <ref>: <assertion that failed>` or `NOT PROVEN: <why>`.
 
 ## Reviewer (crew-reviewer)
@@ -78,7 +79,7 @@ Create the review file first, then append each finding as you find it. Read the 
 `.github/copilot/scripts/macos/gateway.sh test` once and paste the counts, unless the brief says the
 governor already did. Every finding names file:line and what a user or maintainer would see go wrong;
 no style opinions. A finding about a name in docs (type, file, test, constant) must come from reading
-the code for it.
+the code for it. If the brief says a docs phase is still in flight, missing docs are not a finding.
 
 ## Docs keeper (crew-docs-keeper)
 
@@ -95,7 +96,8 @@ The UI/UX standards are in `docs/design_system.md`, `docs/global_conventions.md`
   `OmniMessage`, `OmniEmptyState`, `OmniBackHeader`); never a raw `Card`, `SnackBar`, a bare `IconButton` without `tooltip`, a button
   without an explicit `shape`, or a colour literal. Run `test/ui_standards_contract_test.dart` before you finish and paste the result.
 - Fix what you touch (broken windows): if a file you edit has an entry in the allowlist, or a violation of a written standard that
-  the scans do not cover, fix it in the same change when the fix is a few lines inside your scope; remove the allowlist entry you fixed.
+  the scans do not cover, fix it in the same change when the fix is at most 10 changed lines per deviation and only in files your
+  brief names; remove the allowlist entry you fixed.
   If it is bigger or outside your scope, do not leave it silent: list it under "Standards seen, not fixed" in your report with file:line.
   Never add an allowlist entry, and never raise a ratchet count, to make a scan pass: stop and report.
 - Reviewer: a diff that adds an allowlist entry, raises a ratchet number, or introduces a raw piece the standards name is a Blocker.
@@ -116,3 +118,5 @@ more than 8 items (split into part A and part B). Do not measure or maintain lin
 You only read. You produce a pointer sheet: for each question in the brief, the file, the symbol, the
 approximate line and the CURRENT lines quoted verbatim (at most 20 per item), copied from the file you
 just read. If you did not find it, say "not found" and what you searched. No opinions, no design.
+Whether something is built is answered by the code, never by ticked or unticked boxes in a plan. For each
+behaviour you report, search `test/` for the test that guards it and name it, or write "no guard found".
