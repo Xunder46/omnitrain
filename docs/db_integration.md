@@ -577,7 +577,10 @@ Recommended SQL ordering for retrieval parity:
 > (only `sqflite_common_ffi` remains, under `dev_dependencies`, for the
 > validation test), and the SQL files are no longer bundled as Flutter
 > assets. The app persists exclusively through `HiveWorkoutRepository` on
-> every platform.
+> every platform. `pubspec.yaml` also sets `hooks: user_defines: sqlite3:
+> source: system`, so the dev-only `sqlite3` package uses the operating
+> system's SQLite and no `sqlite3.framework` is bundled into iOS builds (an
+> unsigned copy of it once made a device install fail).
 
 What remains is the **schema documentation**, and it is still authoritative
 for the data model:
