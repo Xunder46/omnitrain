@@ -105,8 +105,9 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 | `addExerciseToSession(exercise, {chosenMetric})` | Hydrates the cached exercise via `_repository.getExerciseById(exercise.id)` so the session cache carries the canonical capabilities (matching how the exercise browser presents them), then creates the effort with the correct `effortKind`. The caller's `Exercise` is used as a fallback only if the repository doesn't know the id. |
 | `removeExerciseFromSession(effortId)` | Deletes effort + observations + rounds |
 | `getExercisesRankedForModality(modality, {...})` | Returns exercises sorted by relevance |
-| `createCustomExercise(name, {modality, ...})` | Creates new exercise in repository with persisted modality key |
-| `updateCustomExercise(exercise, {...})` | Updates existing exercise metadata + capability/muscle-group associations via repository interface |
+| `createCustomExercise(name, {modality, ...})` | Creates new exercise in repository with persisted modality key; the muscle choices reach it as `List<ExerciseMuscleLink>` (muscle-group id + role) and are stored through `setExerciseMuscleLinks`. Verified by `test/muscle_editor_state_test.dart` (group `S-2 state API` · `createCustomExercise stores the links normalised`) |
+| `updateCustomExercise(exercise, {...})` | Updates existing exercise metadata + capability/muscle-link associations via repository interface; the muscle links replace the stored set. Verified by `test/muscle_editor_state_test.dart` (group `S-2 state API` · `updateCustomExercise replaces the links`) |
+| `getExerciseMuscleLinks(exerciseId)` | Returns the exercise's stored muscle links (id + role); a repository failure surfaces through the error channel and returns an empty list. Verified by `test/muscle_editor_state_test.dart` (group `S-2 state API` · `createCustomExercise stores the links normalised`) |
 
 #### Observation Management
 
@@ -262,8 +263,9 @@ Handles the exercise catalog, exercise notes, and coach-mark hint flags (Cluster
 | `loadMuscleGroups()` / `loadDisciplines()` | Loads filter options |
 | `searchExercises(query)` | Filters exercises by name |
 | `getExercisesRankedForModality(modality, {...})` | Returns exercises sorted by relevance score |
-| `createCustomExercise(name, {...})` | Creates exercise in repository and caches it |
-| `updateCustomExercise(exercise, {...})` | Updates exercise and refreshes cache |
+| `createCustomExercise(name, {...})` | Creates exercise in repository and caches it; takes `List<ExerciseMuscleLink> muscleLinks` (id + role) |
+| `updateCustomExercise(exercise, {...})` | Updates exercise and refreshes cache; takes `List<ExerciseMuscleLink> muscleLinks` (id + role) and replaces the stored set |
+| `getExerciseMuscleLinks(exerciseId)` | Returns the exercise's stored muscle links (id + role). Verified by `test/muscle_editor_state_test.dart` (group `S-2 state API` · `createCustomExercise stores the links normalised`) |
 | `loadExerciseNote(exerciseId)` | Loads note with in-flight guard |
 | `saveExerciseNote(exerciseId, note, {sessionId})` | Saves note with debounce queue |
 | `getExerciseNote(exerciseId)` | Returns cached note or null |

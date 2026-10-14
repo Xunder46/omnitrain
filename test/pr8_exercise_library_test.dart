@@ -17,6 +17,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/navigation/omni_navigator.dart';
 import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -26,6 +27,7 @@ import 'package:omnitrain/features/exercise/exercise_library_screen.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/common/omni_empty_state.dart';
+import 'package:omnitrain/widgets/exercise/muscle_picker.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -704,6 +706,118 @@ void main() {
       final customs = await bundle.service.searchExercises(customOnly: true);
       expect(customs.map((e) => e.id), isNot(contains(bundled.id)));
       expect(customs.where((e) => e.name.contains('(copy)')), isNotEmpty);
+    });
+
+    testWidgets('S-9: Edit opens the full editor and saves through it', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final custom = Exercise(
+        id: 'ex-s9',
+        ownerUserId: 'user-1',
+        name: 'Old Move',
+        modality: 'resistance_lifting',
+        capabilities: const ['reps'],
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+      await repo.createExercise(custom);
+      await repo.setExerciseCapabilities(custom.id, ['reps']);
+      await repo.setExerciseMuscleLinks(custom.id, [
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-chest',
+          role: MuscleRole.primary,
+        ),
+        const ExerciseMuscleLink(
+          muscleGroupId: 'muscle-triceps',
+          role: MuscleRole.secondary,
+        ),
+      ]);
+
+      // The detail screen is pushed from a host button so that the pops
+      // it makes (its own, after save) are observable.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: Builder(
+                builder: (context) => ElevatedButton(
+                  key: const Key('open_library_detail_button'),
+                  onPressed: () => OmniNavigator.push<void>(
+                    context,
+                    (_) => ExerciseLibraryDetailScreen(
+                      exercise: custom,
+                      libraryState: bundle.state,
+                      workoutState: bundle.workout,
+                    ),
+                  ),
+                  child: const Text('Open detail'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open_library_detail_button')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('exercise_library_edit_button')));
+      await tester.pumpAndSettle();
+
+      // The full editor, in edit mode, prefilled from the stored row.
+      expect(find.text('Edit Exercise'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(
+              find.widgetWithText(TextField, 'Exercise name'),
+            )
+            .controller!
+            .text,
+        'Old Move',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(MusclePicker.mainSummaryKey)).data,
+        'Main: Chest',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(MusclePicker.assistsSummaryKey)).data,
+        'Assists: Triceps',
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Exercise name'),
+        'Renamed Move',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save exercise'));
+      await tester.pumpAndSettle();
+
+      // The editor popped with the saved row, then the detail screen
+      // reloaded the list and popped itself.
+      expect(
+        find.byKey(const Key('open_library_detail_button')),
+        findsOneWidget,
+      );
+      expect(find.text('Edit Exercise'), findsNothing);
+      final names = bundle.state.exercises.map((e) => e.name);
+      expect(names, contains('Renamed Move'));
+      expect(names, isNot(contains('Old Move')));
+      expect(
+        await repo.getExerciseMuscleLinks('ex-s9'),
+        [
+          const ExerciseMuscleLink(
+            muscleGroupId: 'muscle-chest',
+            role: MuscleRole.primary,
+          ),
+          const ExerciseMuscleLink(
+            muscleGroupId: 'muscle-triceps',
+            role: MuscleRole.secondary,
+          ),
+        ],
+      );
     });
   });
 

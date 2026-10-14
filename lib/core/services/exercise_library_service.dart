@@ -287,7 +287,7 @@ class ExerciseLibraryService {
     String? description,
     String? disciplineId,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     if (!exercise.isCustomExercise) {
       throw BuiltInExerciseImmutableError(exercise.id);
@@ -301,7 +301,7 @@ class ExerciseLibraryService {
     );
     await _repository.updateExercise(updated);
     await _repository.setExerciseCapabilities(updated.id, capabilities);
-    await _repository.setExerciseMuscleGroups(updated.id, muscleGroupIds);
+    await _repository.setExerciseMuscleLinks(updated.id, muscleLinks);
     return updated.copyWith(capabilities: capabilities);
   }
 }

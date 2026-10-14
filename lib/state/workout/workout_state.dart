@@ -360,6 +360,8 @@ class WorkoutState extends ChangeNotifier {
   );
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) =>
       _exerciseLibrary.getExerciseMuscleGroups(exerciseId);
+  Future<List<ExerciseMuscleLink>?> getExerciseMuscleLinks(String exerciseId) =>
+      _exerciseLibrary.getExerciseMuscleLinks(exerciseId);
 
   Future<Exercise?> createCustomExercise({
     required String name,
@@ -367,7 +369,7 @@ class WorkoutState extends ChangeNotifier {
     String? description,
     String? disciplineId,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     final exercise = await _exerciseLibrary.createCustomExercise(
       name: name,
@@ -375,7 +377,7 @@ class WorkoutState extends ChangeNotifier {
       description: description,
       disciplineId: disciplineId,
       capabilities: capabilities,
-      muscleGroupIds: muscleGroupIds,
+      muscleLinks: muscleLinks,
     );
     if (exercise != null) _sessionCore.cacheExercise(exercise);
     return exercise;
@@ -384,12 +386,12 @@ class WorkoutState extends ChangeNotifier {
   Future<Exercise?> updateCustomExercise({
     required Exercise exercise,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     final updated = await _exerciseLibrary.updateCustomExercise(
       exercise: exercise,
       capabilities: capabilities,
-      muscleGroupIds: muscleGroupIds,
+      muscleLinks: muscleLinks,
     );
     if (updated != null) _sessionCore.cacheExercise(updated);
     return updated;

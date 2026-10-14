@@ -3531,7 +3531,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Capabilities'), findsOneWidget);
+      expect(find.text('CAPABILITIES'), findsOneWidget);
     });
 
     testWidgets('shows Save exercise button', (WidgetTester tester) async {

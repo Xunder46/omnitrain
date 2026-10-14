@@ -160,7 +160,7 @@ class ExerciseLibrary {
     String? description,
     String? disciplineId,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     _clearError();
 
@@ -186,7 +186,7 @@ class ExerciseLibrary {
 
       await _repository.createExercise(exercise);
       await _repository.setExerciseCapabilities(exerciseId, capabilities);
-      await _repository.setExerciseMuscleGroups(exerciseId, muscleGroupIds);
+      await _repository.setExerciseMuscleLinks(exerciseId, muscleLinks);
 
       final exerciseWithCaps = exercise.copyWith(capabilities: capabilities);
       _allExercises = [
@@ -205,7 +205,7 @@ class ExerciseLibrary {
   Future<Exercise?> updateCustomExercise({
     required Exercise exercise,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     _clearError();
 
@@ -225,7 +225,7 @@ class ExerciseLibrary {
 
       await _repository.updateExercise(updated);
       await _repository.setExerciseCapabilities(updated.id, capabilities);
-      await _repository.setExerciseMuscleGroups(updated.id, muscleGroupIds);
+      await _repository.setExerciseMuscleLinks(updated.id, muscleLinks);
 
       // Mark the entry as user-touched so the next catalog refresh
       // doesn't overwrite the user's edit (or capability / muscle-group
@@ -321,6 +321,20 @@ class ExerciseLibrary {
     } catch (e) {
       _setError('Failed to load exercise muscle groups: $e');
       return [];
+    }
+  }
+
+  /// The exercise's stored muscle links, or `null` when the read failed (the
+  /// failure is on the error channel). A failed read is never "no muscles":
+  /// callers must not treat `null` as an empty list.
+  Future<List<ExerciseMuscleLink>?> getExerciseMuscleLinks(
+    String exerciseId,
+  ) async {
+    try {
+      return await _repository.getExerciseMuscleLinks(exerciseId);
+    } catch (e) {
+      _setError('Failed to load exercise muscle links: $e');
+      return null;
     }
   }
 

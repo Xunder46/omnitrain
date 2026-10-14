@@ -121,7 +121,7 @@ class ExerciseLibraryState extends ChangeNotifier {
     String? description,
     String? disciplineId,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     _clearError();
     try {
@@ -131,7 +131,7 @@ class ExerciseLibraryState extends ChangeNotifier {
         description: description,
         disciplineId: disciplineId,
         capabilities: capabilities,
-        muscleGroupIds: muscleGroupIds,
+        muscleLinks: muscleLinks,
       );
       await _reload();
       return updated;

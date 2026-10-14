@@ -95,6 +95,7 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `MetricCrownWidget` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `MetricStepCalc` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `ModalityPickerDialog` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
+| `MusclePicker` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `NoiseOverlayPainter` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `NumericFieldWithDoneBar` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `NutritionPrimerSheet` | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) |
@@ -141,6 +142,7 @@ lib/widgets/
 ├── chart/                # Chart primitives shared by stats and profile
 ├── common/               # Cross-feature odds and ends (InteractiveLogo, OmniEmptyState)
 ├── dialogs/              # Shared confirmation dialogs (ConfirmationDialog)
+├── exercise/             # Exercise editor widgets (MusclePicker)
 ├── feedback/             # Shared transient messages (OmniMessage)
 ├── icons/                # Custom icon widgets
 ├── inputs/               # Reusable input field wrappers (select-all, done bar)

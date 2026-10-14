@@ -1,10 +1,15 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/utils/exercise_helpers.dart';
+import '../../core/utils/muscle_selection.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
+import '../../widgets/exercise/muscle_picker.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/layout/omni_card_header.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/feedback/omni_message.dart';
 
 class ExerciseEditorScreen extends StatefulWidget {
@@ -36,12 +41,25 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
   String? _selectedModality;
   String? _selectedDisciplineId;
   final Set<String> _selectedCapabilities = {};
-  final Set<String> _selectedMuscleGroupIds = {};
+  MuscleSelection _muscleSelection = MuscleSelection();
   final Set<String> _legacyCapabilityIds = {};
 
   String? _modalityError;
   String? _nameError;
   String? _capabilityError;
+  String? _muscleError;
+
+  final GlobalKey _modalityKey = GlobalKey();
+  final GlobalKey _nameKey = GlobalKey();
+  final GlobalKey _capabilitiesKey = GlobalKey();
+  final GlobalKey _musclesKey = GlobalKey();
+
+  String _initialName = '';
+  String _initialDescription = '';
+  String? _initialModality;
+  String? _initialDisciplineId;
+  Set<String> _initialCapabilities = const {};
+  MuscleSelection _initialMuscleSelection = MuscleSelection();
 
   @override
   void initState() {
@@ -96,11 +114,30 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     );
 
     if (widget.initialExercise != null) {
-      final muscles = await widget.workoutState.getExerciseMuscleGroups(
+      final links = await widget.workoutState.getExerciseMuscleLinks(
         widget.initialExercise!.id,
       );
-      _selectedMuscleGroupIds.addAll(muscles.map((m) => m.id));
+      if (links == null) {
+        // A failed read must not open the form on an empty picker: a save
+        // would then wipe the stored links.
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          OmniMessage.error(
+            context,
+            'Could not load this exercise. Try again.',
+          );
+          Navigator.of(context).pop();
+        });
+        return;
+      }
+      _muscleSelection = MuscleSelection.fromLinks(links);
     }
+
+    _captureInitialState();
 
     if (mounted) {
       setState(() {
@@ -108,6 +145,26 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       });
     }
   }
+
+  /// The state the form opened with, for the unsaved guard (D-8).
+  void _captureInitialState() {
+    _initialName = _nameController.text;
+    _initialDescription = _descriptionController.text;
+    _initialModality = _selectedModality;
+    _initialDisciplineId = _selectedDisciplineId;
+    _initialCapabilities = {..._selectedCapabilities};
+    _initialMuscleSelection = _muscleSelection;
+  }
+
+  /// True when any field differs from the state the form opened with.
+  bool get _isDirty =>
+      !_isLoading &&
+      (_nameController.text != _initialName ||
+          _descriptionController.text != _initialDescription ||
+          _selectedModality != _initialModality ||
+          _selectedDisciplineId != _initialDisciplineId ||
+          !setEquals(_selectedCapabilities, _initialCapabilities) ||
+          _muscleSelection != _initialMuscleSelection);
 
   bool get _isEditMode => widget.initialExercise != null;
 
@@ -141,10 +198,11 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       _selectedDisciplineId = null;
       if (ModalityConfig.forModality(modality)?.showMuscleGroupsInForm !=
           true) {
-        _selectedMuscleGroupIds.clear();
+        _muscleSelection = MuscleSelection();
       }
       _modalityError = null;
       _capabilityError = null;
+      _muscleError = null;
     });
   }
 
@@ -177,6 +235,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     String? modalityError;
     String? nameError;
     String? capabilityError;
+    String? muscleError;
 
     if (_selectedModality == null) {
       modalityError = 'Select a modality.';
@@ -189,13 +248,26 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         _selectedModality,
       );
     }
+    if (_showMuscleGroups && _muscleSelection.hasOnlyAssists) {
+      muscleError = 'Pick at least one main muscle.';
+    }
 
-    if (modalityError != null || nameError != null || capabilityError != null) {
+    if (modalityError != null ||
+        nameError != null ||
+        capabilityError != null ||
+        muscleError != null) {
       setState(() {
         _modalityError = modalityError;
         _nameError = nameError;
         _capabilityError = capabilityError;
+        _muscleError = muscleError;
       });
+      _scrollToFirstError(
+        modalityError: modalityError,
+        nameError: nameError,
+        capabilityError: capabilityError,
+        muscleError: muscleError,
+      );
       return;
     }
 
@@ -217,7 +289,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
           updatedAtMs: DateTime.now().millisecondsSinceEpoch,
         ),
         capabilities: _selectedCapabilities.toList()..sort(),
-        muscleGroupIds: _selectedMuscleGroupIds.toList()..sort(),
+        muscleLinks: _muscleSelection.toLinks(),
       );
     } else {
       saved = await widget.workoutState.createCustomExercise(
@@ -226,7 +298,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         description: description.isEmpty ? null : description,
         disciplineId: _selectedDisciplineId,
         capabilities: _selectedCapabilities.toList()..sort(),
-        muscleGroupIds: _selectedMuscleGroupIds.toList()..sort(),
+        muscleLinks: _muscleSelection.toLinks(),
       );
     }
 
@@ -246,6 +318,73 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     Navigator.of(context).pop(saved);
   }
 
+  /// Brings the first field in error into view, in the order the form reads
+  /// its sections: modality, name, capabilities, muscles (D-7).
+  void _scrollToFirstError({
+    required String? modalityError,
+    required String? nameError,
+    required String? capabilityError,
+    required String? muscleError,
+  }) {
+    GlobalKey? targetKey;
+    if (modalityError != null) {
+      targetKey = _modalityKey;
+    } else if (nameError != null) {
+      targetKey = _nameKey;
+    } else if (capabilityError != null) {
+      targetKey = _capabilitiesKey;
+    } else if (muscleError != null) {
+      targetKey = _musclesKey;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final targetContext = targetKey?.currentContext;
+      if (targetContext == null) return;
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 200),
+        alignment: 0.1,
+      );
+    });
+  }
+
+  /// Single exit path for header back, system back and the dialog's own
+  /// Discard: an untouched form pops straight away, a form with edits asks
+  /// first. Save runs the normal save path, which pops only when the exercise
+  /// was written.
+  ///
+  /// A save already in flight owns the exit: the dialog's Discard would pop
+  /// while the write still completes, so both the header back and the system
+  /// back leave the form alone until the save resolves.
+  Future<void> _attemptExit() async {
+    if (_isSaving) return;
+
+    if (!_isDirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final action = await ConfirmationDialog.showUnsavedChanges(
+      context: context,
+      title: 'Unsaved changes',
+      body: 'You have unsaved edits. Save them or discard to return.',
+      keepEditingKey: const Key('exercise_editor_unsaved_keep'),
+      discardKey: const Key('exercise_editor_unsaved_discard'),
+      saveKey: const Key('exercise_editor_unsaved_save'),
+    );
+    if (!mounted) return;
+
+    switch (action) {
+      case UnsavedChangesAction.discard:
+        Navigator.of(context).pop();
+      case UnsavedChangesAction.save:
+        await _validateAndSave();
+      case UnsavedChangesAction.keepEditing:
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -257,6 +396,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
 
     final appBar = OmniBackHeader(
       title: _isEditMode ? 'Edit Exercise' : 'New Exercise',
+      onBack: () => _attemptExit(),
     );
 
     if (_isLoading) {
@@ -269,7 +409,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       );
     }
 
-    return Scaffold(
+    final editor = Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
       extendBodyBehindAppBar: true,
@@ -280,21 +420,41 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Modality', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _modalityOptions.map((modality) {
-                  final selected = _selectedModality == modality;
-                  return ChoiceChip(
-                    label: Text(ModalityConfig.modalityDisplayName(modality)),
-                    selected: selected,
-                    onSelected: _isModalityReadOnly
-                        ? null
-                        : (_) => _onModalityChanged(modality),
-                  );
-                }).toList(),
+              Column(
+                key: _modalityKey,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const OmniCardHeader(title: 'MODALITY'),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Two chips per row at half the row width less the 8 dp
+                      // the `Wrap` leaves between them (D-6).
+                      final chipWidth = (constraints.maxWidth - 8) / 2;
+                      return Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final modality in _modalityOptions)
+                            SizedBox(
+                              width: chipWidth,
+                              child: ChoiceChip(
+                                label: Text(
+                                  ModalityConfig.modalityDisplayName(modality),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                ),
+                                selected: _selectedModality == modality,
+                                onSelected: _isModalityReadOnly
+                                    ? null
+                                    : (_) => _onModalityChanged(modality),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ),
               if (_modalityError != null) ...[
                 const SizedBox(height: 6),
@@ -305,6 +465,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
               ],
               const SizedBox(height: 16),
               TextField(
+                key: _nameKey,
                 textCapitalization: TextCapitalization.words,
                 controller: _nameController,
                 decoration: InputDecoration(
@@ -313,13 +474,9 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                   errorText: _nameError,
                 ),
                 textInputAction: TextInputAction.next,
-                onChanged: (_) {
-                  if (_nameError != null) {
-                    setState(() {
-                      _nameError = null;
-                    });
-                  }
-                },
+                onChanged: (_) => setState(() {
+                  _nameError = null;
+                }),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -330,10 +487,15 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                   border: OutlineInputBorder(),
                 ),
                 maxLines: 3,
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String?>(
                 initialValue: _selectedDisciplineId,
+                // Long discipline names are laid out for every item, selected
+                // or not; without a bounded width the row overflows on narrow
+                // phones (320 dp) and at larger text scales.
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Discipline',
                   border: OutlineInputBorder(),
@@ -346,7 +508,11 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                   ...filteredDisciplines.map(
                     (discipline) => DropdownMenuItem<String?>(
                       value: discipline.id,
-                      child: Text(discipline.name),
+                      child: Text(
+                        discipline.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 ],
@@ -359,30 +525,35 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                       },
               ),
               const SizedBox(height: 20),
-              Text('Capabilities', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _allowedCapabilities.map((capabilityId) {
-                  final isSelected = _selectedCapabilities.contains(
-                    capabilityId,
-                  );
-                  return FilterChip(
-                    label: Text(_capabilityLabel(capabilityId)),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        if (selected) {
-                          _selectedCapabilities.add(capabilityId);
-                        } else {
-                          _selectedCapabilities.remove(capabilityId);
-                        }
-                        _capabilityError = null;
-                      });
-                    },
-                  );
-                }).toList(),
+              Column(
+                key: _capabilitiesKey,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const OmniCardHeader(title: 'CAPABILITIES'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _allowedCapabilities.map((capabilityId) {
+                      final isSelected = _selectedCapabilities.contains(
+                        capabilityId,
+                      );
+                      return FilterChip(
+                        label: Text(_capabilityLabel(capabilityId)),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedCapabilities.add(capabilityId);
+                            } else {
+                              _selectedCapabilities.remove(capabilityId);
+                            }
+                            _capabilityError = null;
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
               ),
               if (visibleLegacyCaps.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -423,29 +594,27 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
               ],
               if (_showMuscleGroups) ...[
                 const SizedBox(height: 20),
-                Text('Muscle groups', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _muscleGroups.map((muscle) {
-                    final isSelected = _selectedMuscleGroupIds.contains(
-                      muscle.id,
-                    );
-                    return FilterChip(
-                      label: Text(muscle.name),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            _selectedMuscleGroupIds.add(muscle.id);
-                          } else {
-                            _selectedMuscleGroupIds.remove(muscle.id);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
+                Column(
+                  key: _musclesKey,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const OmniCardHeader(title: 'MUSCLES'),
+                    MusclePicker(
+                      groups: _muscleGroups,
+                      selection: _muscleSelection,
+                      onTap: (id) => setState(() {
+                        _muscleSelection = _muscleSelection.cycle(id);
+                        _muscleError = null;
+                      }),
+                    ),
+                    if (_muscleError != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _muscleError!,
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ],
@@ -456,6 +625,15 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
         label: 'Save exercise',
         onPressed: _isSaving ? null : _validateAndSave,
       ),
+    );
+
+    return PopScope(
+      canPop: !_isDirty && !_isSaving,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _attemptExit();
+      },
+      child: editor,
     );
   }
 }

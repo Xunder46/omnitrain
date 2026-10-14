@@ -189,6 +189,25 @@ Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`). The rule
 session-summary caller applies are in [Session Summary](../session_summary.md) ("Effort Rating
 Capture"); the wrist's own ask is in [Watch Session Capture](../watch_session_capture.md).
 
+### `MusclePicker`
+
+**File**: `lib/widgets/exercise/muscle_picker.dart`
+
+The exercise editor's muscle section: the fixed taxonomy rows of chips (each region row starting
+with a `Whole <region>` chip) plus the `Main: …` / `Assists: …` summary lines.
+
+**Presentation only** — it holds no state, reads no repository and never persists. Inputs:
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `groups` | `List<MuscleGroup>` | Names by id; an id missing here gets no chip, the summary still names it from `MuscleTaxonomy` |
+| `selection` | `MuscleSelection` | The roles the host owns and renders |
+| `onTap` | `ValueChanged<String>` | Called with the tapped chip's group id; the host cycles the selection |
+
+Row order and layout are defined in the widget from `MuscleTaxonomy`. Chip keys
+`muscle_chip_<id>`, summary keys `muscle_summary_main` / `muscle_summary_assists`, hint key
+`muscle_picker_hint`. Verified by `test/muscle_picker_test.dart` (groups `S-3` and `S-12`).
+
 ---
 
 ---

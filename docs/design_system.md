@@ -187,6 +187,7 @@ Every section / card header in the app routes through `OmniCardHeader`. The widg
 | **Day session list (calendar)** | `COMPLETED`, `PLANNED`, `IN PROGRESS` group labels. Verified by `test/ui_standards_widget_test.dart` (group `Mock S-2605b DaySessionListScreen headers`). |
 | **Profile** | One title-only header per measurement definition; the `+` add button lives in the card body. Verified by `test/header_standardization_test.dart` (`S-011`). |
 | **Stats** | `TRAINING MIX` (carrying the window chip in actions); `SIGNALS`; `ALL TIME`; the Instruments list's four title-case headers, `Resistance`, `Cardio`, `Isometric`, `Sports`, the first of them carrying the window chip in actions; and the Fuel row's `Fuel`. Verified by `test/mix_layer_screen_test.dart` (`S-1601`, `S-1612`), `test/signals_layer_screen_test.dart` (`S-1701`), `test/instrument_list_screen_test.dart` (`S-1001`, `S-1011`, `S-1015`) and `test/fuel_row_screen_test.dart`. |
+| **Exercise editor** | `MODALITY`, `CAPABILITIES`, `MUSCLES` (the last only when the modality shows muscles). Verified by `test/muscle_editor_screen_test.dart` (group `S-6 modality grid and headers` · `the section headers are OmniCardHeader, the old title gone`). |
 
 ### Intentional exceptions (D-10 — sheet / title chrome, not card headers)
 
@@ -553,8 +554,9 @@ Verified by `test/screen_widget_test.dart` (group `CreatePeriodScreen unsaved
 changes guard (S-2901)`) and `test/nutrition_test.dart` (groups
 `NutritionTargetScreen — unsaved changes guard (S-2902)`, `AddFoodScreen — New
 Food form unsaved guard (S-2902)`, `AddFoodScreen — legacy edit shim unsaved
-guard (S-2902)`). The every-screen generalisation is *unguarded* — no scan
-covers it.
+guard (S-2902)`), and by `test/muscle_editor_screen_test.dart` (group
+`S-8 unsaved guard`) for the exercise editor. The every-screen generalisation
+is *unguarded* — no scan covers it.
 
 ### Deleting
 
