@@ -35,6 +35,8 @@ Agents come in two editions: `.claude/agents/<name>.md` for Claude Code subagent
 
 `grep -rln "import .*hive_workout_repository" lib/state lib/features lib/widgets lib/core` returns nothing
 
+`flutter test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` passes (new UI breaks and stale doc names/values fail here; about 5 s)
+
 ### Rules for every agent
 
 - **The plan file is the contract.** Read `docs/plans/<feature>-plan/<feature>-plan.md` before writing anything;
@@ -53,6 +55,10 @@ Agents come in two editions: `.claude/agents/<name>.md` for Claude Code subagent
 - **Verification is observed output.** Paste real pass/fail counts; "compiles" is not "passes"; a
   bug-fix test must be shown to fail without the fix.
 - **If a fix fails twice, stop and report.** Never run the same failing command a third time.
+- **Fix what you touch.** If a file you edit has a listed deviation (`test/helpers/ui_standards_allowlist.dart`) or breaks a
+  written UI standard, fix it in the same change when it is at most 10 changed lines per deviation and only in files your brief
+  names; otherwise list it under "Standards seen, not fixed" in your report. Never add an allowlist entry or raise a ratchet to
+  make a check pass: stop and report.
 - Do not edit `.claude/`, `.github/agents/`, `.github/copilot/` or this file.
 
 ### Where things live

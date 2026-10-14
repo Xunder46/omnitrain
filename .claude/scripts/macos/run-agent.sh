@@ -17,7 +17,7 @@
 # Written for the bash 3.2 that ships with macOS; needs git, perl and pgrep, nothing from Homebrew.
 set -euo pipefail
 
-CONFIG_KEYS="WAIT_MINUTES TAIL_LINES POLL_SECONDS COPILOT_BIN COPILOT_WRAPPER MAX_RUN_MINUTES STALL_MINUTES REPEAT_STOP NO_WRITE_STOP LONG_RUN_MINUTES COPILOT_NO_CUSTOM_INSTRUCTIONS COPILOT_REASONING_EFFORT HUNG_CHILD_MINUTES PLANNER_MODEL DEVELOPER_MODEL REVIEWER_MODEL"
+CONFIG_KEYS="WAIT_MINUTES TAIL_LINES POLL_SECONDS COPILOT_BIN COPILOT_WRAPPER MAX_RUN_MINUTES STALL_MINUTES REPEAT_STOP NO_WRITE_STOP LONG_RUN_MINUTES COPILOT_NO_CUSTOM_INSTRUCTIONS COPILOT_REASONING_EFFORT HUNG_CHILD_MINUTES PLANNER_MODEL DEVELOPER_MODEL REVIEWER_MODEL DENIED_STOP CHECKER_REPEAT_STOP CHECKER_READ_STOP"
 
 ORIG_PWD="$PWD"
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
@@ -50,6 +50,9 @@ load_config() {
   : "${MAX_RUN_MINUTES:=120}"     # hard cap per run; 0 = off
   : "${STALL_MINUTES:=30}"        # stop when log AND diff are both idle this long; 0 = off
   : "${REPEAT_STOP:=40}"          # stop when one agent action repeats this often; 0 = off
+  : "${DENIED_STOP:=12}"          # stop after this many denied tool calls, any agent; 0 = off
+  : "${CHECKER_REPEAT_STOP:=25}"  # planners/reviewer: stop when one non-edit command repeats this often; 0 = off
+  : "${CHECKER_READ_STOP:=25}"    # reviewer: stop after this many reads of one file; 0 = off
   : "${NO_WRITE_STOP:=20}"        # stop an implementer that has changed no file after this long; 0 = off
   : "${LONG_RUN_MINUTES:=30}"     # warn when an implementer run passes this long (one concern per run); 0 = off
   : "${COPILOT_NO_CUSTOM_INSTRUCTIONS:=1}"  # 1 = agents do not auto-load AGENTS.md / CLAUDE.md (see worker)
@@ -95,6 +98,9 @@ load_permissions() {
 
 # Implementers write code; planners and the reviewer legitimately change few or no files.
 is_implementer() { case "$1" in conductor|conductor-v2|code-reviewer) return 1 ;; *) return 0 ;; esac; }
+# Checkers never re-run a test to drive a fix, so a repeated command is a loop well before REPEAT_STOP
+# (implementers re-run one test 15-23 times legitimately). Measured on 363 runs, 2026-10-13.
+is_checker() { ! is_implementer "$1"; }
 
 # The standing rules for one agent: the sections of .github/copilot/agent-rules.md headed
 # "## Every agent" or naming the agent in parentheses. Appended to every prompt, so briefs never carry
@@ -201,7 +207,12 @@ ${hangs}"
   # server, so neither its tools nor its instructions reach the agent. Exact usage goes to a file,
   # which also covers runs that end without printing their token line.
   args+=(--disable-builtin-mcps --usage-output-file "$dir/usage.json")
-  if [[ -n $model ]]; then args+=(--model "$model"); fi
+  # The shell profile pins COPILOT_MODEL / COPILOT_PROVIDER_MODEL_ID / COPILOT_PROVIDER_WIRE_MODEL to one model:
+  # override all three, or a per-role model (pipeline.env) never reaches the provider (crew-run.sh does the same).
+  if [[ -n $model ]]; then
+    args+=(--model "$model")
+    export COPILOT_MODEL="$model" COPILOT_PROVIDER_MODEL_ID="$model" COPILOT_PROVIDER_WIRE_MODEL="$model"
+  fi
   if [[ -n $COPILOT_REASONING_EFFORT ]]; then args+=(--reasoning-effort "$COPILOT_REASONING_EFFORT"); fi
   export OPENCODE_SESSION="copilot-$(basename "$dir")"   # one stable session per run
   export OPENCODE_PROXY_LOG="$dir/proxy.log"              # kept with the run (with-opencode.sh)
@@ -271,7 +282,7 @@ start_run() {
 #                          filler line ("Let me read the model file.") thousands of times, no tool calls.
 log_stats() {
   local log="$1"
-  if [[ ! -f $log ]]; then printf 'action 0 -\ndenied 0\ntext 0 -\nread 0 -\n'; return; fi
+  if [[ ! -f $log ]]; then printf 'action 0 -\ndenied 0\ntext 0 -\nread 0 -\ncommand 0 -\n'; return; fi
   LC_ALL=C awk '
     function sq(s) { gsub(/[[:space:]]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
     function flush() { if (key != "") { act[key]++; key = "" } }
@@ -291,9 +302,10 @@ log_stats() {
     END {
       flush()
       ba = "-"; ma = 0; for (k in act) if (act[k] > ma) { ma = act[k]; ba = k }
+      bc = "-"; mc = 0; for (k in act) if (k !~ /^(edit|create)/ && act[k] > mc) { mc = act[k]; bc = k }
       bt = "-"; mt = 0; for (k in text) if (text[k] > mt) { mt = text[k]; bt = k }
       br = "-"; mr = 0; for (k in reads) if (reads[k] > mr) { mr = reads[k]; br = k }
-      printf "action %d %s\ndenied %d\ntext %d %s\nread %d %s\n", ma, substr(ba, 1, 100), denied + 0, mt, substr(bt, 1, 80), mr, substr(br, 1, 100)
+      printf "action %d %s\ndenied %d\ntext %d %s\nread %d %s\ncommand %d %s\n", ma, substr(ba, 1, 100), denied + 0, mt, substr(bt, 1, 80), mr, substr(br, 1, 100), mc, substr(bc, 1, 100)
     }' "$log"
 }
 # Prose repeats this often count as degeneration (well above any real report's repeated lines).
@@ -335,11 +347,24 @@ check_health() {
   [[ -f $dir/exit ]] && return 0
   worker_alive "$dir" || return 0
 
-  local stats repeat_count denied text_count log_idle diff_idle
+  local stats repeat_count denied text_count command_count read_count log_idle diff_idle agent
+  agent="$(cat "$dir/agent" 2>/dev/null)"
   stats="$(log_stats "$dir/output.log")"
   repeat_count="$(echo "$stats" | awk '$1 == "action" { print $2 }')"
   denied="$(echo "$stats" | awk '$1 == "denied" { print $2 }')"
   text_count="$(echo "$stats" | awk '$1 == "text" { print $2 }')"
+  command_count="$(echo "$stats" | awk '$1 == "command" { print $2 }')"
+  read_count="$(echo "$stats" | awk '$1 == "read" { print $2 }')"
+  # Healthy runs: at most 10 denied calls, reviewers at most 20 repeats of one command and 18 reads of one
+  # file. Loops seen: 43 denied, 40-50 identical git-diffs. Planners are exempt from the read stop: one
+  # re-read its own plan 41 times while editing it, a healthy run.
+  if [[ $DENIED_STOP -gt 0 && $denied -ge $DENIED_STOP ]]; then stop_run "$(basename "$dir")" denied > /dev/null; return 0; fi
+  if is_checker "$agent"; then
+    if [[ $CHECKER_REPEAT_STOP -gt 0 && $command_count -ge $CHECKER_REPEAT_STOP ]]; then stop_run "$(basename "$dir")" loop > /dev/null; return 0; fi
+    if [[ $agent == code-reviewer && $CHECKER_READ_STOP -gt 0 && $read_count -ge $CHECKER_READ_STOP ]]; then
+      stop_run "$(basename "$dir")" loop > /dev/null; return 0
+    fi
+  fi
   if [[ $REPEAT_STOP -gt 0 ]]; then
     if [[ $repeat_count -ge $REPEAT_STOP ]]; then stop_run "$(basename "$dir")" loop > /dev/null; return 0; fi
     if [[ $denied -ge $REPEAT_STOP ]]; then stop_run "$(basename "$dir")" denied > /dev/null; return 0; fi
@@ -373,7 +398,7 @@ print_health() {
   echo "  LOG_LINES: $lines · LOG_IDLE_MIN: $log_idle"
   echo "  DIFF_FILES: $files · DIFF_IDLE_MIN: $(minutes_since "$(cat "$dir/diff_changed_epoch" 2>/dev/null || now)")"
   echo "  TOP_REPEAT: ${repeat%% *}× \"${repeat#* }\" (auto-stop at ${REPEAT_STOP:-0}; 0 = off)"
-  echo "  DENIED: $(echo "$stats" | sed -n 's/^denied //p') · TOP_TEXT_REPEAT: ${text%% *}× (auto-stop at $(filler_limit))"
+  echo "  DENIED: $(echo "$stats" | sed -n 's/^denied //p') (auto-stop at ${DENIED_STOP:-0}) · TOP_TEXT_REPEAT: ${text%% *}× (auto-stop at $(filler_limit))"
   local topread; topread="$(echo "$stats" | sed -n 's/^read //p')"
   echo "  TOP_READ: ${topread%% *}× \"${topread#* }\" (one file, any line range)"
   if is_implementer "$(cat "$dir/agent" 2>/dev/null)" && no_write_yet "$dir" && [[ ! -f $dir/exit ]]; then
