@@ -61,6 +61,11 @@ what the team will do, in plain language, before spending any run.
    other's output, and at most one of them runs the full suite (the other runs touched files only).
    Builders in parallel report to `.work/crew/<slug>/report-<role>.md`; `crew-docs-keeper` folds them into
    the plan's evidence afterwards.
+   **Before any build or review run in an uncommitted tree:** (a) create every directory the plan names (builders cannot);
+   (b) run `git ls-files --others --exclude-standard -- lib test | xargs -r git add -N --` so the new files show in `git diff` (intent-to-add only, no commit):
+   a reviewer who cannot see a file loops on `git-diff --stat`; (c) never ask an agent for a computation the gateway cannot run (contrast ratios, scripts):
+   measure it yourself with a throwaway test and put the numbers in the brief; (d) a prover and a builder may share `test/**` with `--allow-overlap` because
+   `prove-red` works in a temporary checkout, but never two builders.
 6. **Verify (you, every time).** After each run, in this order: `git status`/`git diff --stat` inside the
    run's scope vs Predicted Files; `flutter analyze` count vs baseline; touched tests; full `flutter test`
    with the real pass/fail line (900 s timeout via `with-timeout.sh`); `swift test` if Swift changed

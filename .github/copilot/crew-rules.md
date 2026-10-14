@@ -87,6 +87,22 @@ the test file this run) or is removed. Follow docs/documentation_standard.md. Ke
 under 52 KB; split before that and keep the old path as an index. When auditing, list each claim you
 could not tie to code or a test.
 
+## UI standards (crew-builder-app, crew-reviewer, crew-docs-keeper)
+
+The UI/UX standards are in `docs/design_system.md`, `docs/global_conventions.md` and the widget catalog, and they are enforced by
+`test/ui_standards_contract_test.dart` (source scans) with its exceptions in `test/helpers/ui_standards_allowlist.dart`.
+- Builders: use the shared piece for the job (`OmniSurface`, `OmniCardHeader`, `OmniBottomCTA`, `ConfirmationDialog`,
+  `OmniMessage`, `OmniEmptyState`, `OmniBackHeader`); never a raw `Card`, `SnackBar`, a bare `IconButton` without `tooltip`, a button
+  without an explicit `shape`, or a colour literal. Run `test/ui_standards_contract_test.dart` before you finish and paste the result.
+- Fix what you touch (broken windows): if a file you edit has an entry in the allowlist, or a violation of a written standard that
+  the scans do not cover, fix it in the same change when the fix is a few lines inside your scope; remove the allowlist entry you fixed.
+  If it is bigger or outside your scope, do not leave it silent: list it under "Standards seen, not fixed" in your report with file:line.
+  Never add an allowlist entry, and never raise a ratchet count, to make a scan pass: stop and report.
+- Reviewer: a diff that adds an allowlist entry, raises a ratchet number, or introduces a raw piece the standards name is a Blocker.
+  Check each changed screen against the rules of the doc it touches; a copy change to a message, empty state or label is a product change:
+  list it for the owner.
+- Docs keeper: a rule you add to the standards names its enforcing test or says `unguarded`.
+
 ## Architect (crew-architect)
 
 A seeded plan (the brief says so) holds the governor's Decision Ledger, core scenarios and phase outline:
