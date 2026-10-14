@@ -5,9 +5,11 @@ import 'package:omnitrain/core/constants/catalog_version.dart';
 import 'package:omnitrain/core/models/demo_routine_spec.dart';
 import 'package:omnitrain/core/services/catalog_refresh_service.dart';
 import 'package:omnitrain/core/services/catalog_source.dart';
+import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/models/muscle_taxonomy.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/mock/food_catalog_seed.dart';
@@ -53,7 +55,7 @@ class _FakeCatalogSource implements CatalogSource {
   List<MuscleGroup> get muscleGroups => SeedData.sampleMuscleGroups;
 
   @override
-  final Map<String, List<String>> exerciseMuscleGroups;
+  final Map<String, List<ExerciseMuscleLink>> exerciseMuscleGroups;
 
   @override
   final List<Food> foodCatalog;
@@ -67,7 +69,7 @@ CatalogSource _bundledSource() {
     version: bundledCatalogVersion,
     exercises: SeedData.sampleExercises,
     exerciseCapabilities: SeedData.exerciseCapabilityRelationships,
-    exerciseMuscleGroups: SeedData.exerciseMuscleGroupRelationships,
+    exerciseMuscleGroups: SeedData.exerciseMuscleLinks,
     foodCatalog: FoodCatalogSeed.sampleCatalogFoods,
   );
 }
@@ -131,6 +133,182 @@ void main() {
         final didRefresh = await service.refresh();
 
         expect(didRefresh, isFalse);
+      },
+    );
+
+    // ─────────────────────────────────────────────────────────────────────
+    // S-012: a device already on 11 is left entirely alone
+    // ─────────────────────────────────────────────────────────────────────
+    test(
+      'S-012: refresh is a no-op at the bundled version even when the stored '
+      'links differ from the bundle',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        await repo.setCatalogVersion(bundledCatalogVersion);
+        await repo.setExerciseMuscleGroups('exercise-bench-press', [
+          'muscle-back',
+        ]);
+
+        final service = CatalogRefreshService(repo, _bundledSource());
+        final didRefresh = await service.refresh();
+
+        expect(didRefresh, isFalse);
+        expect(await repo.getCatalogVersion(), equals(bundledCatalogVersion));
+        expect(
+          await repo.getExerciseMuscleLinks('exercise-bench-press'),
+          equals(const [
+            ExerciseMuscleLink(
+              muscleGroupId: 'muscle-back',
+              role: MuscleRole.primary,
+            ),
+          ]),
+          reason: 'a device at the bundled version must not be rewritten',
+        );
+      },
+    );
+
+    // ─────────────────────────────────────────────────────────────────────
+    // S-MH-1: the hierarchy, roles and rename reach a version-10 install
+    // ─────────────────────────────────────────────────────────────────────
+    test(
+      'S-MH-1: refresh from v10 lands the taxonomy parents, the Traps rename '
+      'and role-aware links, and leaves custom / copy / touched rows alone',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+
+        // Stage the pre-hierarchy device: every pre-existing group loses its
+        // parent and `muscle-traps` carries the old name. The Mock repository
+        // has no API to remove the 7 new groups, so the "7 new groups are
+        // added" half of A6 cannot be shown on Mock (noted in the report).
+        const oldIds = {
+          'muscle-arms',
+          'muscle-biceps',
+          'muscle-triceps',
+          'muscle-forearms',
+          'muscle-legs',
+          'muscle-quads',
+          'muscle-hamstrings',
+          'muscle-glutes',
+          'muscle-calves',
+          'muscle-adductors',
+          'muscle-back',
+          'muscle-traps',
+          'muscle-shoulders',
+          'muscle-core',
+          'muscle-chest',
+          'muscle-neck',
+        };
+        for (final group in SeedData.sampleMuscleGroups) {
+          if (!oldIds.contains(group.id)) continue;
+          await repo.upsertMuscleGroup(
+            MuscleGroup(
+              id: group.id,
+              name: group.id == 'muscle-traps' ? 'Trapezius' : group.name,
+              parentId: null,
+              createdAtMs: group.createdAtMs,
+            ),
+          );
+        }
+
+        // The old install stored flat, all-primary links on bench press.
+        await repo.setExerciseMuscleGroups('exercise-bench-press', [
+          'muscle-chest',
+          'muscle-triceps',
+          'muscle-shoulders',
+        ]);
+
+        // A custom exercise, a user copy and a touched catalog exercise must
+        // all keep their links exactly through the refresh.
+        final custom = Exercise(
+          id: 'exercise-custom-legs',
+          ownerUserId: 'user-1',
+          name: 'My Legs Day',
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        );
+        await repo.createExercise(custom);
+        await repo.setExerciseMuscleGroups(custom.id, ['muscle-legs']);
+
+        final copySource = (await repo.getExerciseById(
+          'exercise-barbell-squat',
+        ))!;
+        final copy = await ExerciseLibraryService(repo).copyAsCustom(
+          copySource,
+        );
+
+        const touchedId = 'exercise-deadlift';
+        await repo.setExerciseMuscleGroups(touchedId, ['muscle-back']);
+        await repo.markSeedEntryTouched(SeedEntryType.exercise, touchedId);
+
+        await repo.setCatalogVersion(10);
+
+        final service = CatalogRefreshService(repo, _bundledSource());
+        final didRefresh = await service.refresh();
+        expect(didRefresh, isTrue);
+
+        // Hierarchy: every taxonomy entry is on the device with its parent.
+        final groups = {
+          for (final g in await repo.getMuscleGroups()) g.id: g,
+        };
+        expect(groups, hasLength(23));
+        for (final entry in MuscleTaxonomy.entries) {
+          expect(
+            groups[entry.id],
+            isNotNull,
+            reason: 'group ${entry.id} is missing after the refresh',
+          );
+          expect(
+            groups[entry.id]!.parentId,
+            equals(entry.parentId),
+            reason: 'group ${entry.id} has the wrong parent',
+          );
+        }
+        expect(groups['muscle-traps']!.name, equals('Traps'));
+
+        // Roles: the bundled bench-press links replace the flat legacy set.
+        expect(
+          await repo.getExerciseMuscleLinks('exercise-bench-press'),
+          equals(SeedData.exerciseMuscleLinks['exercise-bench-press']),
+        );
+        expect(await repo.getCatalogVersion(), equals(bundledCatalogVersion));
+
+        // Custom, copy and touched rows keep their links exactly.
+        expect(
+          await repo.getExerciseMuscleLinks(custom.id),
+          equals(const [
+            ExerciseMuscleLink(
+              muscleGroupId: 'muscle-legs',
+              role: MuscleRole.primary,
+            ),
+          ]),
+        );
+        expect(
+          await repo.getExerciseMuscleLinks(copy.id),
+          equals(SeedData.exerciseMuscleLinks['exercise-barbell-squat']),
+          reason: 'a user copy is not a bundled row and must be left alone',
+        );
+        expect(
+          await repo.getExerciseMuscleLinks(touchedId),
+          equals(const [
+            ExerciseMuscleLink(
+              muscleGroupId: 'muscle-back',
+              role: MuscleRole.primary,
+            ),
+          ]),
+          reason: 'a touched catalog row stays the user\'s',
+        );
+
+        // A second refresh changes nothing.
+        final benchAfterFirst = await repo.getExerciseMuscleLinks(
+          'exercise-bench-press',
+        );
+        expect(await service.refresh(), isFalse);
+        expect(
+          await repo.getExerciseMuscleLinks('exercise-bench-press'),
+          equals(benchAfterFirst),
+        );
       },
     );
 
@@ -878,7 +1056,7 @@ void main() {
         version: bundledCatalogVersion + 1,
         exercises: SeedData.sampleExercises,
         exerciseCapabilities: SeedData.exerciseCapabilityRelationships,
-        exerciseMuscleGroups: SeedData.exerciseMuscleGroupRelationships,
+        exerciseMuscleGroups: SeedData.exerciseMuscleLinks,
         foodCatalog: [
           for (final f in FoodCatalogSeed.sampleCatalogFoods)
             if (f.id == beerId) visibleBeer else f,

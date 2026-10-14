@@ -28,8 +28,9 @@ abstract class CatalogSource {
   /// at a group the device does not yet have.
   List<MuscleGroup> get muscleGroups;
 
-  /// Bundled exercise / muscle-group relationships: `exerciseId → muscleGroupIds`.
-  Map<String, List<String>> get exerciseMuscleGroups;
+  /// Bundled exercise / muscle-group relationships:
+  /// `exerciseId → ordered muscle links`, each carrying the group id and role.
+  Map<String, List<ExerciseMuscleLink>> get exerciseMuscleGroups;
 
   /// Bundled food catalog rows (each row carries `isCatalog = true`).
   List<Food> get foodCatalog;

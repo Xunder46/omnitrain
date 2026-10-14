@@ -118,7 +118,9 @@ class CatalogRefreshService {
 
     for (final bundled in _source.muscleGroups) {
       final current = existing[bundled.id];
-      if (current == null || current.name != bundled.name) {
+      if (current == null ||
+          current.name != bundled.name ||
+          current.parentId != bundled.parentId) {
         await _repository.upsertMuscleGroup(bundled);
       }
     }
@@ -134,11 +136,10 @@ class CatalogRefreshService {
         continue;
       }
 
-      final existing = await _repository.getExerciseMuscleGroups(exerciseId);
-      final existingIds = existing.map((m) => m.id).toList();
-      final bundled = List<String>.from(entry.value);
-      if (!_listEqualsIgnoreOrder(existingIds, bundled)) {
-        await _repository.setExerciseMuscleGroups(exerciseId, bundled);
+      final existing = await _repository.getExerciseMuscleLinks(exerciseId);
+      final bundled = List<ExerciseMuscleLink>.from(entry.value);
+      if (!_linksEqualIgnoreOrder(existing, bundled)) {
+        await _repository.setExerciseMuscleLinks(exerciseId, bundled);
       }
     }
   }
@@ -402,6 +403,17 @@ class CatalogRefreshService {
     final bSorted = List<String>.from(b)..sort();
     for (var i = 0; i < aSorted.length; i++) {
       if (aSorted[i] != bSorted[i]) return false;
+    }
+    return true;
+  }
+
+  bool _linksEqualIgnoreOrder(
+    List<ExerciseMuscleLink> a,
+    List<ExerciseMuscleLink> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (final link in b) {
+      if (!a.contains(link)) return false;
     }
     return true;
   }

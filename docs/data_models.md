@@ -190,9 +190,83 @@ Models with no behaviour beyond their fields: Discipline, SportCategory.
 
 ### MuscleGroup
 
-> **Corrected 2026-07-26 (docs audit).** `bodyRegion` was listed but does not
-> exist on the model or as a column on `app_muscle_group`. `createdAtMs` was
-> missing.
+`MuscleGroup` (`lib/data/models/models.dart`) carries `id`, `name`,
+`parentId` and `createdAtMs`. `parentId` is the id of the parent region for a
+muscle, and `null` for a region and for a standalone entry.
+
+The hierarchy has exactly two levels and one code source, `MuscleTaxonomy`
+(`lib/data/models/muscle_taxonomy.dart`); `SeedData.sampleMuscleGroups` is
+built from it and never hand-edited. Verified by `test/muscle_taxonomy_test.dart`
+(`S-1 taxonomy integrity` · `23 entries: 5 regions, 16 muscles, 2 standalone`,
+`no entry hangs off a muscle: the hierarchy has two levels`,
+`sampleMuscleGroups mirrors the taxonomy, Traps included`).
+
+| Region (id) | Muscles (ids) |
+|---|---|
+| Arms (`muscle-arms`) | Biceps (`muscle-biceps`), Triceps (`muscle-triceps`), Forearms (`muscle-forearms`) |
+| Legs (`muscle-legs`) | Quadriceps (`muscle-quads`), Hamstrings (`muscle-hamstrings`), Glutes (`muscle-glutes`), Calves (`muscle-calves`), Adductors (`muscle-adductors`) |
+| Back (`muscle-back`) | Lats (`muscle-lats`), Traps (`muscle-traps`), Lower back (`muscle-lower-back`) |
+| Shoulders (`muscle-shoulders`) | Front delts (`muscle-front-delts`), Side delts (`muscle-side-delts`), Rear delts (`muscle-rear-delts`) |
+| Core (`muscle-core`) | Abs (`muscle-abs`), Obliques (`muscle-obliques`) |
+
+Chest (`muscle-chest`) and Neck (`muscle-neck`) are standalone: no parent and
+no children (`test/muscle_taxonomy_test.dart` · `Chest and Neck are standalone:
+no parent, no children`).
+
+An exercise's muscle load is stored as `ExerciseMuscleLink`s — a muscle-group
+id plus a `MuscleRole` (`primary` / `secondary`, persisted as the enum name) —
+not as bare ids:
+
+- Hive: box `exercise_muscle_groups` holds a list of `ExerciseMuscleLink`
+  maps. A legacy value that is a plain list of id strings is still read, and
+  every id in it is read as `primary`; the reader normalises nothing.
+  Verified by `test/muscle_links_storage_test.dart` (`Hive — muscle links
+  storage` · `S-4 reads the legacy shape straight out of the box as primary
+  links`, `S-10 roles survive closing and reopening the store`).
+- Mock: an in-memory map of exercise id to `ExerciseMuscleLink` list.
+- SQL: `app_exercise_muscle_group.is_primary` (1 = primary, 0 = secondary);
+  see [DB Integration](db_integration.md).
+
+The legacy id-based pair `getExerciseMuscleGroups` / `setExerciseMuscleGroups`
+still exists for callers that predate roles; every id written through it
+becomes a primary link. Verified by `test/muscle_links_storage_test.dart`
+(`S-4 the legacy wrapper writes every id as primary`).
+
+Interpretation rules — how a muscle filter reads the links
+(`MuscleTaxonomy.matches`):
+
+- Only `primary` links match a filter.
+- Selecting a region matches a primary link to the region itself or to any of
+  its muscles; selecting a muscle or a standalone entry matches that exact id
+  only, so a region-only link never matches a muscle.
+- An exercise that matches any selected id is returned once, however many
+  selections it satisfies.
+
+Verified by `test/muscle_taxonomy_test.dart` (`a region matches its muscles; a
+muscle matches its own id only`, `only primary links match, so a secondary
+muscle never does`) and `test/muscle_filter_test.dart` (`Mock — muscle filter`
+/ `Hive — muscle filter` · `S-5 Legs returns the squat and Tennis Match, each
+once`, `S-5 two selections of the same lift return it once`, `S-5 a
+secondary-only link excludes the exercise`).
+
+Storage rules, enforced by `MuscleTaxonomy.normalize` on every write through
+`setExerciseMuscleLinks`: no region link sits next to one of its own muscles;
+no id appears in both roles; a non-empty list always carries at least one
+primary; the stored order is deterministic (primary first, then secondary,
+each role in taxonomy order, unknown ids last). Verified by
+`test/muscle_taxonomy_test.dart` (`normalize drops the region that sits next
+to its own muscle`, `normalize throws when one id carries both roles`,
+`normalize throws for a secondary without a primary`, `normalize sorts primary
+first, then the secondary links`) and `test/muscle_links_storage_test.dart`
+(`S-4 set stores the normalised order (primary first)`, `S-13 the legacy
+wrapper drops a region next to its muscle`).
+
+The per-exercise tagging itself is seed data, not documentation:
+`SeedData.exerciseMuscleLinks` (`lib/mock/seed_data.dart`) is its single
+source, guarded by `test/catalog_referential_integrity_test.dart`
+(`Bundled catalog — referential integrity` · `S-3: every entry carries at
+least one primary link`, `S-3: no entry links a region next to one of its own
+muscles`, `S-3: the approved rows, each role compared as a set`).
 
 Models with no behaviour beyond their fields: Equipment, Tag, ExerciseAlias.
 

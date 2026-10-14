@@ -522,7 +522,7 @@ so storage, unit, and widget agree.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `bundledCatalogVersion` | `3` | Content version of the bundled catalog (exercises, capability / muscle-group / equipment links, food catalog, demo routines) |
+| `bundledCatalogVersion` | `11` | Content version of the bundled catalog (exercises, capability / muscle-group / equipment links, food catalog, demo routines) |
 
 At app start the device compares its stored version against
 `bundledCatalogVersion`; when the bundled version is newer,
@@ -541,7 +541,7 @@ strings persist across app upgrades; keep them stable.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `currentDataVersion` | `15` | Version a device reaches once the last consolidated migration step has run |
+| `currentDataVersion` | `16` | Version a device reaches once the last consolidated migration step has run |
 
 Replaces the former ~13 independent one-time `bool`-gated steps with a single
 ordered sequence tracked by the device's `data_version` integer. Steps are

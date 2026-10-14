@@ -131,7 +131,25 @@ abstract class WorkoutRepository {
   /// reference a group the device has never heard of.
   Future<void> upsertMuscleGroup(MuscleGroup group);
 
+  /// The muscle links of [exerciseId] in stored order, each carrying the
+  /// muscle group id and the role it plays.
+  Future<List<ExerciseMuscleLink>> getExerciseMuscleLinks(String exerciseId);
+
+  /// Stores [links] in normalised form: de-duplicated, primary before
+  /// secondary, and without a region link that sits next to one of its own
+  /// muscles. Throws an [ArgumentError] for a link set that is invalid.
+  Future<void> setExerciseMuscleLinks(
+    String exerciseId,
+    List<ExerciseMuscleLink> links,
+  );
+
+  /// Legacy muscle-group view of [getExerciseMuscleLinks]: the groups of every
+  /// stored link, in stored order, skipping groups that are not on the device.
+  /// It exists for callers that predate roles and is removed by plan 34.
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId);
+
+  /// Legacy setter: every id becomes a primary link. Prefer
+  /// [setExerciseMuscleLinks]; this pair is removed by plan 34.
   Future<void> setExerciseMuscleGroups(
     String exerciseId,
     List<String> muscleGroupIds,

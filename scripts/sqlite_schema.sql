@@ -840,13 +840,14 @@ CREATE INDEX IF NOT EXISTS IX_timed_instance_effort ON app_timed_instance(effort
 CREATE TABLE app_muscle_group (
   id TEXT NOT NULL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
+  parent_id TEXT REFERENCES app_muscle_group(id),      -- Region of a muscle; NULL for a region and for a standalone entry
   created_at_ms INTEGER NOT NULL
 );
 
 CREATE TABLE app_exercise_muscle_group (
   exercise_id TEXT NOT NULL,
   muscle_group_id TEXT NOT NULL,
-  is_primary INTEGER NOT NULL DEFAULT 0,
+  is_primary INTEGER NOT NULL DEFAULT 0,               -- 1 = primary link, 0 = secondary link
   PRIMARY KEY (exercise_id, muscle_group_id),
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
   FOREIGN KEY(muscle_group_id) REFERENCES app_muscle_group(id)

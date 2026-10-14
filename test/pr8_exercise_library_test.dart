@@ -142,7 +142,21 @@ void main() {
         final repo = await _freshRepo();
         final bundle = _buildState(repo);
         final bundled = (await repo.getExercises()).first;
-        await repo.setExerciseMuscleGroups(bundled.id, ['muscle-chest']);
+        // Source carries roles, not just ids: the copy must carry both.
+        await repo.setExerciseMuscleLinks(bundled.id, const [
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-chest',
+            role: MuscleRole.primary,
+          ),
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-triceps',
+            role: MuscleRole.secondary,
+          ),
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-front-delts',
+            role: MuscleRole.secondary,
+          ),
+        ]);
         // Re-read because setExerciseMuscleGroups does not mutate the
         // returned copy in the seeded bundle.
         final bundledWithMuscles = (await repo.getExerciseById(bundled.id))!;
@@ -161,6 +175,29 @@ void main() {
           reason: 'Copy must be marked so the user can distinguish it',
         );
         expect(copy.disciplineId, equals(bundled.disciplineId));
+
+        // S-7: the copy's muscle links match the source's, roles included.
+        expect(
+          await repo.getExerciseMuscleLinks(copy.id),
+          equals(await repo.getExerciseMuscleLinks(bundled.id)),
+        );
+        expect(
+          await repo.getExerciseMuscleLinks(copy.id),
+          equals(const [
+            ExerciseMuscleLink(
+              muscleGroupId: 'muscle-chest',
+              role: MuscleRole.primary,
+            ),
+            ExerciseMuscleLink(
+              muscleGroupId: 'muscle-triceps',
+              role: MuscleRole.secondary,
+            ),
+            ExerciseMuscleLink(
+              muscleGroupId: 'muscle-front-delts',
+              role: MuscleRole.secondary,
+            ),
+          ]),
+        );
 
         // Original unchanged.
         final original = await repo.getExerciseById(bundled.id);

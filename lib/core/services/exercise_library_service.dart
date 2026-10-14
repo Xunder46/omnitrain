@@ -249,13 +249,12 @@ class ExerciseLibraryService {
       imageAssetPath: source.imageAssetPath,
     );
     await _repository.createExercise(copy);
-    // Carry capability + muscle-group links forward so the copy is
-    // immediately selectable in the same contexts as the source.
+    // Carry capability + muscle links (ids and roles) forward so the copy
+    // is immediately selectable in the same contexts as the source.
     await _repository.setExerciseCapabilities(copy.id, source.capabilities);
-    final sourceMuscles = await _repository.getExerciseMuscleGroups(source.id);
-    await _repository.setExerciseMuscleGroups(
+    await _repository.setExerciseMuscleLinks(
       copy.id,
-      sourceMuscles.map((m) => m.id).toList(),
+      await _repository.getExerciseMuscleLinks(source.id),
     );
     return copy.copyWith(capabilities: source.capabilities);
   }
