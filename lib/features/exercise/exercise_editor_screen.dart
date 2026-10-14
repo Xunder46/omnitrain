@@ -425,35 +425,41 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const OmniCardHeader(title: 'MODALITY'),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      // Two chips per row at half the row width less the 8 dp
-                      // the `Wrap` leaves between them (D-6).
-                      final chipWidth = (constraints.maxWidth - 8) / 2;
-                      return Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                  // Two tiles per row, each half the padded row less the 8 dp
+                  // gap (D-6). A `_ModalityTile` is a plain `Material` +
+                  // `InkWell`, so `Expanded` really hands it half the row
+                  // (a Material `ChoiceChip` wraps itself in a centring
+                  // tap-target layout that loosens that width), and it sets no
+                  // `maxLines`, so a long label wraps instead of being clipped
+                  // (a chip's label area clips at its own height).
+                  for (var i = 0; i < _modalityRows.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 8),
+                    // `IntrinsicHeight` + `stretch` keep the two tiles of a
+                    // row level when one label wraps and the other does not.
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          for (final modality in _modalityOptions)
-                            SizedBox(
-                              width: chipWidth,
-                              child: ChoiceChip(
-                                label: Text(
-                                  ModalityConfig.modalityDisplayName(modality),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
+                          for (final modality in _modalityRows[i]) ...[
+                            if (modality != _modalityRows[i].first)
+                              const SizedBox(width: 8),
+                            Expanded(
+                              child: _ModalityTile(
+                                key: Key('modality_tile_$modality'),
+                                label: ModalityConfig.modalityDisplayName(
+                                  modality,
                                 ),
                                 selected: _selectedModality == modality,
-                                onSelected: _isModalityReadOnly
+                                onTap: _isModalityReadOnly
                                     ? null
-                                    : (_) => _onModalityChanged(modality),
+                                    : () => _onModalityChanged(modality),
                               ),
                             ),
+                          ],
                         ],
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               if (_modalityError != null) ...[
@@ -644,6 +650,97 @@ const List<String> _modalityOptions = [
   'sports',
   'isometric_stretching',
 ];
+
+/// The modality grid: two `_modalityOptions` per row, in that order (D-6).
+final List<List<String>> _modalityRows = [
+  for (var i = 0; i < _modalityOptions.length; i += 2)
+    _modalityOptions.sublist(i, i + 2),
+];
+
+/// One modality choice, filling whatever cell its `Expanded` gives it.
+///
+/// A plain `Material` + `InkWell` rather than a `ChoiceChip`: a chip is an
+/// intrinsically-sized widget inside a centring tap-target layout, so a tight
+/// half-row width comes out loose (a short label's cell is left half empty)
+/// and its `maxLines` clips a long label. This tile has a `minHeight`, never a
+/// fixed height, and lets its label wrap.
+class _ModalityTile extends StatelessWidget {
+  const _ModalityTile({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+
+  /// Null in edit mode for a stored modality: the tile reads as disabled.
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: BorderSide(
+        color: selected
+            ? theme.colorScheme.primary
+            : theme.colorScheme.outlineVariant,
+      ),
+    );
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      label: label,
+      excludeSemantics: true,
+      child: Material(
+        color: selected
+            ? theme.colorScheme.secondaryContainer
+            : theme.colorScheme.surface,
+        shape: shape,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: shape,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (selected) ...[
+                      Icon(
+                        Icons.check,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Flexible(
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        style: onTap == null
+                            ? TextStyle(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              )
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 String _capabilityLabel(String capabilityId) {
   switch (capabilityId) {

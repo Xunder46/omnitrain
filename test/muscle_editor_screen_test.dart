@@ -276,10 +276,15 @@ void main() {
       );
       expect(
         tester
-            .widget<ChoiceChip>(
-              find.widgetWithText(ChoiceChip, 'Resistance / Lifting'),
+            .widget<InkWell>(
+              find.descendant(
+                of: find.byKey(
+                  const Key('modality_tile_resistance_lifting'),
+                ),
+                matching: find.byType(InkWell),
+              ),
             )
-            .onSelected,
+            .onTap,
         isNull,
         reason: 'the stored modality is read-only in edit mode',
       );
@@ -362,38 +367,74 @@ void main() {
       'Sports',
       'Isometric / Stretching',
     ];
+    const tileKeys = [
+      Key('modality_tile_cardio_endurance'),
+      Key('modality_tile_resistance_lifting'),
+      Key('modality_tile_sports'),
+      Key('modality_tile_isometric_stretching'),
+    ];
 
-    testWidgets('the four chips fill two equal-width rows at 390 and 320', (
+    testWidgets('every tile fills half its row at 402, 390 and 320', (
       tester,
     ) async {
-      for (final size in const [Size(390, 844), Size(320, 568)]) {
+      // Geometry, not line breaks: the test font's glyphs are about twice as
+      // wide as the shipped font's, so where a label wraps is the app's
+      // business and cannot be judged here. What a tile owes the layout is
+      // measurable under any font: half the padded row less the 8 dp gap, the
+      // two tiles of a row sharing a height, rows stacked in order.
+      final measured = <String>[];
+
+      for (final width in const [402.0, 390.0, 320.0]) {
+        final size = Size(width, 844);
         final repo = await _freshRepo();
         final workoutState = WorkoutState(repo);
         await _pumpEditor(tester, workoutState: workoutState, size: size);
 
-        expect(find.byType(ChoiceChip), findsNWidgets(4), reason: '$size');
+        expect(find.byKey(tileKeys.first), findsOneWidget, reason: '$size');
 
-        final chips = [
-          for (final label in labels) find.widgetWithText(ChoiceChip, label),
-        ];
-        final widths = [for (final chip in chips) tester.getSize(chip).width];
-        expect(widths.toSet(), hasLength(1), reason: 'equal widths at $size');
-        // Two Expanded halves of the row less the 8 dp gap: the formula, not
+        final tiles = [for (final key in tileKeys) find.byKey(key)];
+        // The tile itself, not a cell around it.
+        final sizes = [for (final tile in tiles) tester.getSize(tile)];
+        measured.add(
+          '$size: ${[
+            for (var i = 0; i < tiles.length; i++)
+              '${labels[i]} '
+                  '${sizes[i].width.toStringAsFixed(1)}x'
+                  '${sizes[i].height.toStringAsFixed(1)}',
+          ].join(', ')}',
+        );
+        // Two halves of the padded row less the 8 dp gap: the formula, not
         // just equality.
+        final halfRow = (width - 32 - 8) / 2;
+        for (var i = 0; i < tiles.length; i++) {
+          expect(
+            sizes[i].width,
+            closeTo(halfRow, 0.5),
+            reason: '${labels[i]} fills half the row at $size — $measured',
+          );
+        }
+
+        // One height per row, so a label that wraps does not leave its
+        // neighbour short. The two rows need not agree with each other.
         expect(
-          widths.first,
-          closeTo((size.width - 32 - 8) / 2, 0.5),
-          reason: 'half-row chip width at $size',
+          sizes[0].height,
+          closeTo(sizes[1].height, 0.5),
+          reason: 'row 1 shares a height at $size — $measured',
+        );
+        expect(
+          sizes[2].height,
+          closeTo(sizes[3].height, 0.5),
+          reason: 'row 2 shares a height at $size — $measured',
         );
 
-        final tops = [for (final chip in chips) tester.getTopLeft(chip).dy];
+        final tops = [for (final tile in tiles) tester.getTopLeft(tile).dy];
         expect(tops[0], tops[1], reason: 'row 1 at $size');
         expect(tops[2], tops[3], reason: 'row 2 at $size');
         expect(tops[2], greaterThan(tops[0]), reason: 'two rows at $size');
 
         // Cell order, not just geometry: the row reads left to right in
         // `_modalityOptions` order.
-        final lefts = [for (final chip in chips) tester.getTopLeft(chip).dx];
+        final lefts = [for (final tile in tiles) tester.getTopLeft(tile).dx];
         expect(
           lefts[0],
           lessThan(lefts[1]),
@@ -404,6 +445,47 @@ void main() {
           lessThan(lefts[3]),
           reason: 'Sports left of Isometric / Stretching at $size',
         );
+
+        expect(tester.takeException(), isNull, reason: '$size');
+      }
+    });
+
+    testWidgets('every modality label fits inside its tile at scale 1.0', (
+      tester,
+    ) async {
+      // The tiles set no `maxLines` and no fixed height, so a label that runs
+      // out of width wraps onto another line and the tile grows with it.
+      // Under the test font it wraps more often than in the app; the check is
+      // that its text box never grows past its tile and that laying the row
+      // out raises nothing.
+      final measured = <String>[];
+
+      for (final width in const [402.0, 390.0, 320.0]) {
+        final size = Size(width, 844);
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        await _pumpEditor(tester, workoutState: workoutState, size: size);
+
+        for (var i = 0; i < labels.length; i++) {
+          final tile = find.byKey(tileKeys[i]);
+          final text = find.descendant(
+            of: tile,
+            matching: find.text(labels[i]),
+          );
+          expect(text, findsOneWidget, reason: '${labels[i]} at $size');
+
+          final tileSize = tester.getSize(tile);
+          final textSize = tester.getSize(text);
+          measured.add(
+            '$size ${labels[i]}: text ${textSize.height.toStringAsFixed(1)} '
+            'in tile ${tileSize.height.toStringAsFixed(1)}',
+          );
+          expect(
+            textSize.height,
+            lessThanOrEqualTo(tileSize.height),
+            reason: '${labels[i]} fits its tile at $size — $measured',
+          );
+        }
 
         expect(tester.takeException(), isNull, reason: '$size');
       }

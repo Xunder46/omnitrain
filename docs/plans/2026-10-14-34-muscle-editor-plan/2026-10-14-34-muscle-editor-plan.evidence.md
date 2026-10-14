@@ -55,3 +55,7 @@ Checks run (gateway):
 - Guard proof: the lead applied the prover's 36 mutations by line with a script (apply, run the guarding test, restore, `cmp`): all RED (selection model ×9, picker ×4, editor ×14 incl. each dirty term, scroll to error, back wiring, grid width, three headers, state persistence ×4, library Edit ×3); one picker line (`onSelected: covered ? null : …`) is redundant defence, reported as such. Fix-round guards: exit-while-saving, nullable muscle read (state and screen), and the `canPop` saving term were each proven red by mutation.
 - Review: 0 blocker, 0 major, 6 minor, all fixed (2 in docs, 4 in code/tests); plus the `canPop` term guard added after the lead found it unproven.
 - Not verified by test: editing a legacy custom exercise with no modality (works by reading the code); `_onEdit` when the editor returns null (covered incidentally).
+
+## Look on a device (lead, iPhone 17 Pro simulator, real font)
+
+The first on-device look found what the tests had missed: truncated modality labels and an unequal "Sports" chip (the S-6 test measured the layout cell, and the test font is far wider than the real one). Two fix rounds followed; the second replaced the four `ChoiceChip`s with `_ModalityTile` (no max lines, no fixed height, equal height per row) and the section now shows four equal tiles with full two-line labels. The muscle picker was exercised by tapping: Quadriceps main (check), Calves "· assists" (outlined), "Whole legs" dimmed, summary "Main: Quadriceps / Assists: Calves". Final: full suite +4642 ~1 passed, analyze 182.

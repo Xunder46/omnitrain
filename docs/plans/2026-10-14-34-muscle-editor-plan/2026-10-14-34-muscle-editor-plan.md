@@ -262,6 +262,45 @@ After E: prover brief for mutations only; the lead applies them; reviewer.
 - F4 (chip height) — fixed on the test side: `test/muscle_picker_test.dart` · S-3 · 'every rendered chip is at least 40 dp tall' asserts every rendered `FilterChip` is ≥40 dp; the assertion passes, so no production change was made.
 - F5, F6 (docs citations) — this round's `crew-docs-keeper` work, not this brief.
 - F7 (the `!_isSaving` term of the editor's `canPop` had no guard) — guarded on the test side, production untouched: `test/muscle_editor_screen_test.dart` · S-8 · 'a save in flight on an unchanged form is not interrupted by the system back' opens edit mode on a custom `resistance_lifting` exercise with capabilities `['reps']` and stored `[chest primary]` links, changes nothing (`_isDirty` is false), starts a save on a `Completer`-gated `updateExercise`, drives `tester.binding.handlePopRoute()` and asserts the editor is still shown and the route has not popped, then releases and asserts the pop carries the saved exercise. Led by the prover mutation 28 (`canPop: true`) leaving the `!_isDirty`-only variant (`canPop: !_isDirty`) unguarded: with the mutation this test must go red (title gone, `host.hasPopped` true), and dropping the `!_isSaving` term is the mutation the lead applies.
+- F8 (device report: a modality chip narrower than its half-row cell, and "Resistance / Lifting" and
+"Isometric / Stretching" cut off with an ellipsis) — fixed: the editor's modality section is now two
+`Row`s (`_modalityRows`, two `_modalityOptions` per row) whose children are
+`Expanded(child: SizedBox(height: 56, child: ChoiceChip(...)))` with an 8 dp `SizedBox(width: 8)`
+between the cells and between the rows; the `LayoutBuilder` + sized-`SizedBox` `Wrap` that let a short
+label shrink its chip is gone, and every label is `maxLines: 2, softWrap: true,
+overflow: TextOverflow.ellipsis, textAlign: TextAlign.center`. Guards
+`test/muscle_editor_screen_test.dart` · S-6 · 'every chip fills half its row at 402, 390 and 320'
+(measures the `ChoiceChip` itself, not the cell around it: all four widths
+`(width - 32 - 8) / 2` within 0.5, equal heights, rows 1|2 by `getTopLeft().dy`, left-to-right order)
+and S-6 · 'no modality label is cut off on a phone-width row' (`RenderParagraph.didExceedMaxLines` false
+for all four labels at 402/390/320). The label-fit test renders at `TextScaler.linear(0.5)`, not 1.0:
+the test font's glyphs are about twice the shipped width (`Cardio / Endurance` measures 253.8 dp on one
+line), so at 1.0 "Isometric / Stretching" needs 310.2 dp against the 106 dp label box of a 320 dp row and
+no half-row chip can hold it — the same trap `test/screen_overflow_contract_test.dart` documents. S-15
+(320 dp, text scale 1.3) stayed green.
+- F8 is superseded by F9: its `ChoiceChip`s and `SizedBox(height: 56)` cells no longer exist.
+- F9 (device report, second round: "Resistance / Lifting" and "Isometric / Stretching" still clipped
+after their first line and "Sports" a narrow chip centred in its half-cell) — fixed: the four
+`ChoiceChip`s are replaced by a private `_ModalityTile` in `lib/features/exercise/exercise_editor_screen.dart`
+— a `Material` + `InkWell` (shape `RoundedRectangleBorder(radius 12)`, `customBorder` the same) whose
+child is a `ConstrainedBox(minHeight: 56)` around `Padding`/`Center`/`Row`, with `Flexible(Text)` in the
+centre; no `maxLines`, no fixed height, so no font can clip it. Each tile carries
+`key: Key('modality_tile_<modality>')` and is wrapped in
+`Semantics(button: true, selected:, inMutuallyExclusiveGroup: true, label:, excludeSemantics: true)`;
+in read-only edit mode `onTap` is null and the text uses `onSurfaceVariant`. Each row is
+`IntrinsicHeight(Row(crossAxisAlignment: CrossAxisAlignment.stretch, [Expanded, 8 dp, Expanded]))`, so
+the two tiles of a row share a height even when one label wraps; 8 dp between rows. `_modalityKey`,
+the error text, `_onModalityChanged` and `find.text(...)` taps are unchanged. Why the chips could not be
+made to do this: a Material `ChoiceChip` centres its intrinsically-sized self inside a tap-target
+layout, which loosens a tight `Expanded` width ("Sports" stayed narrow and centred), and its label area
+clips at the chip's own height (the second line of a wrapped label was cut off). Guards
+`test/muscle_editor_screen_test.dart` · S-6 · 'every tile fills half its row at 402, 390 and 320' (the
+four `modality_tile_*` keys: width `(width - 32 - 8) / 2` within 0.5 at 402/390/320, equal heights
+within a row, rows 1|2 by `getTopLeft().dy`, left-to-right order) and S-6 · 'every modality label fits
+inside its tile at scale 1.0' (each label's `Text` box height ≤ its tile's height, `takeException()`
+null); the `TextScaler.linear(0.5)` workaround and the `didExceedMaxLines` assertions are gone with the
+`maxLines` they measured, since the layout no longer cuts labels at all. S-15 (320 dp, scale 1.3) stayed
+green.
 
 ## Open questions
 
