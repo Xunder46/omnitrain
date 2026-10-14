@@ -18,6 +18,7 @@ import 'package:omnitrain/features/stats/widgets/stats_primer_sheet.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/stats/stats_primer_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 
 import 'helpers/fake_preferences_service.dart';
 
@@ -155,6 +156,9 @@ void main() {
           find.text('Complete your first session to see stats here.'),
           findsOneWidget,
         );
+        // S-2802: the empty state is the shared composition, not a
+        // screen-local look.
+        expect(find.byType(OmniEmptyState), findsOneWidget);
 
         // The three new lines, in order.
         const line1 = 'Your training mix, by kind of work.';
@@ -257,6 +261,8 @@ void main() {
         find.text('Complete your first session to see stats here.'),
         findsOneWidget,
       );
+      // S-2802: the shared empty-state composition, exactly once.
+      expect(find.byType(OmniEmptyState), findsOneWidget);
       expect(find.text('Your training mix, by kind of work.'), findsOneWidget);
       expect(
         find.text('Your records, and how each exercise changes over time.'),

@@ -16,6 +16,7 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 import '../session/workout_session_screen.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/feedback/omni_message.dart';
+import '../../widgets/common/omni_empty_state.dart';
 
 /// Screen displaying list of saved workout routines
 /// Allows user to view, start, edit, or delete routines
@@ -77,8 +78,6 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
         child: ListenableBuilder(
           listenable: widget.routineState,
           builder: (context, child) {
-            final theme = Theme.of(context);
-
             if (widget.routineState.isLoading) {
               return Center(child: CircularProgressIndicator());
             }
@@ -86,47 +85,10 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
             final routines = widget.routineState.routines;
 
             if (routines.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: OmniTheme.colors.textDominant.withOpacity(0.3),
-                          width: 2,
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.folder_open,
-                        size: 60,
-                        color: OmniTheme.colors.textDominant.withOpacity(0.6),
-                      ),
-                    ),
-                    SizedBox(height: 32),
-                    Text(
-                      'No Routines Yet',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: OmniTheme.colors.textDominant,
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 32.0),
-                      child: Text(
-                        'Create your first routine to get started',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: OmniTheme.colors.textDominant.withOpacity(0.7),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              return const OmniEmptyState(
+                icon: Icons.folder_open,
+                title: 'No Routines Yet',
+                hint: 'Create your first routine to get started',
               );
             }
 

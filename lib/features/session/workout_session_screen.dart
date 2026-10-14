@@ -18,6 +18,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../data/models/models.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import '../../widgets/session/pr_toast.dart';

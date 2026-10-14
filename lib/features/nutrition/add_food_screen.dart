@@ -12,6 +12,7 @@ import '../../state/nutrition_state.dart';
 import 'edit_food_screen.dart';
 import 'widgets/food_form.dart';
 import 'widgets/food_thumbnail.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/feedback/omni_message.dart';
@@ -392,13 +393,10 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
             : all.where((f) => f.name.toLowerCase().contains(lower)).toList();
 
         if (all.isEmpty) {
-          return Center(
-            child: Text(
-              'No catalog foods available',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: OmniTheme.colors.textMuted,
-              ),
-            ),
+          return const OmniEmptyState(
+            icon: Icons.menu_book_outlined,
+            title: 'No catalog foods available',
+            hint: 'Nothing is in the catalog right now.',
           );
         }
 
@@ -431,13 +429,10 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
             ),
             if (catalog.isEmpty)
               Expanded(
-                child: Center(
-                  child: Text(
-                    'No matches for "${_query.trim()}"',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textMuted,
-                    ),
-                  ),
+                child: OmniEmptyState(
+                  icon: Icons.search_off,
+                  title: 'No matches for "${_query.trim()}"',
+                  hint: 'Try a different search.',
                 ),
               )
             else
@@ -659,30 +654,10 @@ class _MyFoodsTab extends StatelessWidget {
                 // Clear the host's bottom CTA (New Food).
                 OmniTheme.formBottomCTAClearance,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.restaurant_menu,
-                    size: 64,
-                    color: OmniTheme.colors.textMuted,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No custom foods yet',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: OmniTheme.colors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Create your own foods to use in your nutrition tracking',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textMuted,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+              child: const OmniEmptyState(
+                icon: Icons.restaurant_menu,
+                title: 'No custom foods yet',
+                hint: 'Create your own foods to use in your nutrition tracking',
               ),
             ),
           );

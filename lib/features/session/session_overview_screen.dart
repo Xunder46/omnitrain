@@ -13,6 +13,7 @@ import '../../data/models/models.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import 'workout_session_screen.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/feedback/omni_message.dart';
@@ -175,33 +176,10 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
               const SizedBox(height: 32),
               Expanded(
                 child: exercises.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.fitness_center,
-                              size: 64,
-                              color: theme.colorScheme.onSurface.withAlpha(
-                                (0.3 * 255).round(),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No exercises yet',
-                              style: theme.textTheme.headlineSmall,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Add your first exercise to get started',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withAlpha(
-                                  (0.6 * 255).round(),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                    ? const OmniEmptyState(
+                        icon: Icons.fitness_center,
+                        title: 'No exercises yet',
+                        hint: 'Add your first exercise to get started',
                       )
                     : ListView.builder(
                         itemCount: exercises.length,

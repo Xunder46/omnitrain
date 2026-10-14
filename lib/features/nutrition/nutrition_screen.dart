@@ -6,6 +6,7 @@ import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../core/navigation/navigation.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
 import 'add_food_screen.dart';
@@ -314,17 +315,10 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
         // regardless of category count. The presence of 0, 9, or any number of
         // default/custom categories has no effect on this condition.
         if (foods.isEmpty) {
-          return SizedBox(
-            height: 48,
-            child: Center(
-              child: Text(
-                'Your Foods I Eat list is empty. Tap the pencil to add foods.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: OmniTheme.colors.textMuted,
-                ),
-              ),
-            ),
+          return const OmniEmptyState(
+            icon: Icons.restaurant_menu_outlined,
+            title: 'Your Foods I Eat list is empty.',
+            hint: 'Tap the pencil to add foods.',
           );
         }
 

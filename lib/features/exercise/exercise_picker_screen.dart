@@ -8,6 +8,7 @@ import '../../features/exercise/exercise_detail_view_screen.dart';
 import '../../features/exercise/exercise_editor_screen.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/navigation/navigation.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 
 /// Full-screen page for selecting an exercise with search and filters.
@@ -425,47 +426,10 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _filteredExercises.isEmpty
-                    ? LayoutBuilder(
-                        builder: (context, constraints) {
-                          return SingleChildScrollView(
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                minHeight: constraints.maxHeight,
-                              ),
-                              child: Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.search_off,
-                                      size: 64,
-                                      color: theme.colorScheme.onSurface
-                                          .withValues(alpha: 0.3),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'No exercises found',
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                            color: theme.colorScheme.onSurface
-                                                .withValues(alpha: 0.6),
-                                          ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Try adjusting your filters',
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: theme.colorScheme.onSurface
-                                                .withValues(alpha: 0.5),
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+                    ? const OmniEmptyState(
+                        icon: Icons.search_off,
+                        title: 'No exercises found',
+                        hint: 'Try adjusting your filters',
                       )
                     : _buildExerciseList(theme),
               ),

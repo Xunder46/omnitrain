@@ -9,6 +9,7 @@ import 'create_period_screen.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../core/navigation/navigation.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/common/omni_empty_state.dart';
 
 class PeriodListScreen extends StatefulWidget {
   final PeriodState periodState;
@@ -44,18 +45,10 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
 
             final periods = widget.periodState.periods;
             if (periods.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'No training periods yet.',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: OmniTheme.colors.textSecondary.withOpacity(0.6),
-                      ),
-                    ),
-                  ],
-                ),
+              return const OmniEmptyState(
+                icon: Icons.date_range_outlined,
+                title: 'No training periods yet.',
+                hint: 'Add one with the button below.',
               );
             }
 

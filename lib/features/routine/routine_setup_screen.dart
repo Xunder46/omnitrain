@@ -20,6 +20,7 @@ import 'my_routines_screen.dart' show showDeleteRoutineDialog;
 import '../../widgets/dialogs/confirmation_dialog.dart'
     show ConfirmationDialog, UnsavedChangesAction;
 import '../../widgets/feedback/omni_message.dart';
+import '../../widgets/common/omni_empty_state.dart';
 
 /// Screen for creating or editing a workout routine (template)
 class RoutineSetupScreen extends StatefulWidget {
@@ -464,13 +465,12 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             ),
             const SizedBox(height: 12),
             if (efforts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'No exercises in this block yet.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: OmniEmptyState(
+                  compact: true,
+                  icon: Icons.fitness_center_outlined,
+                  title: 'No exercises in this block yet.',
                 ),
               )
             else

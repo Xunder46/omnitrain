@@ -21,6 +21,7 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/feedback/omni_message.dart';
+import '../../widgets/common/omni_empty_state.dart';
 
 /// Shows all sessions (planned + completed TrainingSessions) for a single day.
 ///
@@ -112,7 +113,19 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
               children: [
                 Expanded(
                   child: isEmpty
-                      ? _EmptyState(isPast: _isPast)
+                      // A past day has no bottom button, so it gets no hint
+                      // pointing at one (D-28.2).
+                      ? OmniEmptyState(
+                          icon: _isPast
+                              ? Icons.event_busy
+                              : Icons.event_available,
+                          title: _isPast
+                              ? 'No sessions on this day.'
+                              : 'No sessions planned yet.',
+                          hint: _isPast
+                              ? null
+                              : 'Add one with the button below.',
+                        )
                       : ListView(
                           // Bottom padding clears the host's shared
                           // bottom CTA when `_isTodayOrFuture` is
@@ -394,43 +407,6 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
 }
 
 // ─── Sub-widgets ──────────────────────────────────────────────────────────────
-
-class _EmptyState extends StatelessWidget {
-  final bool isPast;
-  const _EmptyState({required this.isPast});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        isPast ? 'No sessions on this day.' : 'No sessions planned yet.',
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-          color: OmniTheme.colors.textSecondary.withOpacity(0.6),
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  const _SectionHeader({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 4),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: OmniTheme.colors.textSecondary,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-}
 
 class _SessionRow extends StatelessWidget {
   final CalendarEntry entry;

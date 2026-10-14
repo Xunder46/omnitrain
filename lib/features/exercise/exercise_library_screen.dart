@@ -19,6 +19,7 @@ import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
 import 'exercise_library_detail_screen.dart';
@@ -178,7 +179,11 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                     child: state.isLoading && exercises.isEmpty
                         ? const Center(child: CircularProgressIndicator())
                         : exercises.isEmpty
-                        ? const _EmptyState()
+                        ? const OmniEmptyState(
+                            icon: Icons.fitness_center_outlined,
+                            title: 'No exercises found',
+                            hint: 'Adjust your search or clear filters.',
+                          )
                         : ListView.builder(
                             itemCount: exercises.length,
                             itemBuilder: (context, index) =>
@@ -302,51 +307,6 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
         _exerciseMuscleGroupsCache[exercise.id] = muscles;
       });
     }
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.fitness_center_outlined,
-                    size: 64,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No exercises found',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Adjust your search or clear filters.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 }
 

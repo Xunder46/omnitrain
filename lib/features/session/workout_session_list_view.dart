@@ -243,13 +243,12 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             ),
             const SizedBox(height: 8),
             if (blockExercises.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'No exercises in this block yet.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: OmniTheme.colors.textSecondary,
-                  ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: OmniEmptyState(
+                  compact: true,
+                  icon: Icons.fitness_center_outlined,
+                  title: 'No exercises in this block yet.',
                 ),
               )
             else

@@ -29,6 +29,7 @@ import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
 import 'package:omnitrain/features/nutrition/widgets/food_thumbnail.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
@@ -1166,6 +1167,40 @@ void main() {
         findsNothing,
         reason:
             'The old "No foods in library" message should be completely removed',
+      );
+    });
+
+    testWidgets('empty Foods I Eat list renders the shared OmniEmptyState '
+        '(S-2802)', (tester) async {
+      final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
+      final nutritionState = NutritionState(repo);
+      final foodLibraryState = FoodLibraryState(repo);
+      await foodLibraryState.loadFoodGroups();
+      await foodLibraryState.loadFoods();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NutritionScreen(
+            nutritionState: nutritionState,
+            foodLibraryState: foodLibraryState,
+            nutritionPrimerState: primer,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Your Foods I Eat list is empty.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Tap the pencil to add foods.'),
+        findsOneWidget,
       );
     });
   });
@@ -3050,6 +3085,105 @@ void main() {
         names,
         isNotEmpty,
         reason: 'expected at least one visible food title to contain "chick"',
+      );
+    });
+  });
+
+  // S-2802 (plan 28 / D-28.2): the three AddFoodScreen tabs route their
+  // "nothing here" case through the shared `OmniEmptyState` — the Library
+  // tab with no catalog, the Library tab with no search match, and the My
+  // Foods tab with no custom foods.
+  group('AddFoodScreen — empty states (S-2802)', () {
+    Future<void> pumpAddFoodScreen(
+      WidgetTester tester,
+      FoodLibraryState foodLib,
+      NutritionState nutrition,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AddFoodScreen(
+            foodLibraryState: foodLib,
+            nutritionState: nutrition,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Library tab with no catalog foods renders the shared '
+        'OmniEmptyState', (tester) async {
+      final repo = await _freshRepo();
+      for (final food in await repo.getCatalogFoods(includeArchived: true)) {
+        await repo.deleteCatalogFood(food.id);
+      }
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+
+      await pumpAddFoodScreen(tester, foodLib, nutrition);
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No catalog foods available'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Nothing is in the catalog right now.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Library tab with no search match renders the shared '
+        'OmniEmptyState', (tester) async {
+      final repo = await _freshRepo();
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+      await foodLib.loadCatalogFoods();
+
+      await pumpAddFoodScreen(tester, foodLib, nutrition);
+
+      await tester.enterText(
+        find.byKey(const Key('catalog_search_field')),
+        'zzzznotafood',
+      );
+      await tester.pump();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No matches for "zzzznotafood"'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Try a different search.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('My Foods tab with no custom foods renders the shared '
+        'OmniEmptyState', (tester) async {
+      final repo = await _freshRepo();
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+      await foodLib.loadFoods();
+
+      await pumpAddFoodScreen(tester, foodLib, nutrition);
+
+      await tester.tap(find.text('My Foods'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No custom foods yet'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Create your own foods to use in your nutrition tracking',
+        ),
+        findsOneWidget,
       );
     });
   });

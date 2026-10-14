@@ -53,6 +53,7 @@ import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/core/constants/home_tiles.dart';
 import 'package:omnitrain/core/constants/modality_colors.dart';
 import 'package:omnitrain/widgets/cards/energy_tile.dart';
@@ -377,6 +378,29 @@ void main() {
       expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('Periodization'), findsOneWidget);
       expect(find.text('No training periods yet.'), findsOneWidget);
+    });
+
+    testWidgets('empty list renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final periodState = PeriodState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(home: PeriodListScreen(periodState: periodState)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No training periods yet.'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Add one with the button below.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows period when data exists', (WidgetTester tester) async {
@@ -728,6 +752,39 @@ void main() {
       expect(find.text('No Routines Yet'), findsOneWidget);
     });
 
+    testWidgets('empty list renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MyRoutinesScreen(
+            routineState: RoutineState(repo),
+            routineSessionService: RoutineSessionService(repo),
+            sessionSummaryService: SessionSummaryService(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No Routines Yet'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Create your first routine to get started',
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('shows unified "+ New Routine" bottom CTA', (
       WidgetTester tester,
     ) async {
@@ -867,6 +924,33 @@ void main() {
       expect(find.text('Create Routine'), findsOneWidget);
       // Back arrow
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    });
+
+    testWidgets('empty block renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      await tester.pumpWidget(
+        MaterialApp(home: RoutineSetupScreen(routineState: routineState)),
+      );
+      await tester.pumpAndSettle();
+
+      // A new routine has one empty "Main Block" — and no hint, because the
+      // block's own add button sits in the card header.
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No exercises in this block yet.'),
+        findsOneWidget,
+      );
+      final emptyState = tester.widget<OmniEmptyState>(
+        find.byType(OmniEmptyState),
+      );
+      expect(emptyState.hint, isNull);
+      expect(emptyState.compact, isTrue);
     });
 
     testWidgets('shows loading state then settles', (
@@ -2029,6 +2113,43 @@ void main() {
       expect(find.text('No exercises yet'), findsNothing);
       // Exercise name should be visible
       expect(find.text(exercises.first.name), findsOneWidget);
+    });
+
+    testWidgets('empty session renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionOverviewScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No exercises yet'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Add your first exercise to get started',
+        ),
+        findsOneWidget,
+      );
     });
   });
 
@@ -3858,6 +3979,53 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No sessions planned yet.'), findsOneWidget);
+    });
+
+    testWidgets('empty day renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final routineState = RoutineState(repo);
+      final workoutState = WorkoutState(repo);
+
+      Widget screen(DateTime date) => MaterialApp(
+        home: DaySessionListScreen(
+          date: date,
+          calendarState: calendarState,
+          routineState: routineState,
+          workoutState: workoutState,
+          routineSessionService: RoutineSessionService(repo),
+          sessionSummaryService: SessionSummaryService(repo),
+          settingsState: SettingsState(repo, fakePreferencesService()),
+          timerAlertService: FakeTimerAlertService(),
+        ),
+      );
+
+      // A past day is read-only — no bottom button, so no hint naming one.
+      await tester.pumpWidget(screen(DateTime(2020, 1, 15)));
+      await tester.pumpAndSettle();
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No sessions on this day.'),
+        findsOneWidget,
+      );
+      expect(find.text('Add one with the button below.'), findsNothing);
+
+      // A future day has the "+ New Planned Session" CTA to point at.
+      await tester.pumpWidget(screen(DateTime(2099, 12, 31)));
+      await tester.pumpAndSettle();
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No sessions planned yet.'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Add one with the button below.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows formatted date in AppBar title', (
@@ -7058,6 +7226,33 @@ void main() {
       expect(find.text('No exercises found'), findsOneWidget);
     });
 
+    testWidgets('empty results render the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
+      );
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField).first, 'zzzznotanexercise');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No exercises found'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Try adjusting your filters'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('does not overflow when keyboard is open with empty results', (
       WidgetTester tester,
     ) async {
@@ -8034,6 +8229,36 @@ void main() {
 
       // Block name (h:mm a) should exist and the empty-state body should show.
       expect(find.text('No exercises in this block yet.'), findsOneWidget);
+    });
+
+    testWidgets('empty block renders the shared compact OmniEmptyState '
+        '(S-2802)', (WidgetTester tester) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.addSessionBlock();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: SettingsState(repo, fakePreferencesService()),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      final emptyState = tester.widget<OmniEmptyState>(
+        find.byType(OmniEmptyState),
+      );
+      expect(emptyState.title, 'No exercises in this block yet.');
+      expect(emptyState.hint, isNull);
+      expect(emptyState.compact, isTrue);
     });
 
     testWidgets('rolling session shows block header overflow menu', (

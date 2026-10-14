@@ -14,6 +14,7 @@ import '../../core/navigation/omni_navigator.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
@@ -430,81 +431,66 @@ class _StatsScreenState extends State<StatsScreen> {
   // ── Shared helpers ────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(BuildContext context, OmniThemeColors themeColors) {
-    final theme = Theme.of(context);
-
     return OmniSurface(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 16),
-          Icon(
-            Icons.bar_chart_outlined,
-            size: 48,
-            color: themeColors.textMuted.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No sessions yet',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: OmniTheme.colors.textDominant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Complete your first session to see stats here.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: themeColors.textMuted,
-            ),
-          ),
-          if (widget.showPrimerHelp) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Your training mix, by kind of work.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Your records, and how each exercise changes over time.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'How your eating lines up with your training, once you log '
-              'food.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                key: const Key('stats_primer_empty_cta'),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
+      child: OmniEmptyState(
+        compact: true,
+        icon: Icons.bar_chart_outlined,
+        title: 'No sessions yet',
+        hint: 'Complete your first session to see stats here.',
+        action: widget.showPrimerHelp
+            ? _buildPrimerNotes(context, themeColors)
+            : null,
+      ),
+    );
+  }
+
+  /// The extra lines the first-use card adds: what the page will show, and the
+  /// `How Stats works` button that reopens the [StatsPrimerSheet] without
+  /// marking it seen (D-2019).
+  Widget _buildPrimerNotes(BuildContext context, OmniThemeColors themeColors) {
+    final theme = Theme.of(context);
+    final lineStyle = theme.textTheme.bodySmall?.copyWith(
+      color: themeColors.textMuted,
+    );
+
+    return Column(
+      children: [
+        Text(
+          'Your training mix, by kind of work.',
+          textAlign: TextAlign.center,
+          style: lineStyle,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Your records, and how each exercise changes over time.',
+          textAlign: TextAlign.center,
+          style: lineStyle,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'How your eating lines up with your training, once you log food.',
+          textAlign: TextAlign.center,
+          style: lineStyle,
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('stats_primer_empty_cta'),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
                   ),
                 ),
-                onPressed: _reopenPrimer,
-                child: const Text('How Stats works'),
               ),
             ),
-          ],
-          const SizedBox(height: 16),
-        ],
-      ),
+            onPressed: _reopenPrimer,
+            child: const Text('How Stats works'),
+          ),
+        ),
+      ],
     );
   }
 

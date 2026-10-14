@@ -25,6 +25,7 @@ import 'package:omnitrain/features/exercise/exercise_library_detail_screen.dart'
 import 'package:omnitrain/features/exercise/exercise_library_screen.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -442,6 +443,40 @@ void main() {
       expect(bundle.state.exercises.every((e) => e.isCustomExercise), isTrue);
       // Sanity: the toggle target key still present.
       expect(state, isNotNull);
+    });
+
+    testWidgets('empty library renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+      // Bundled seed exercises are not custom, so custom-only empties the
+      // list the same way an unmatched search does.
+      await bundle.state.setCustomOnly(true);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryScreen(
+            exerciseLibraryState: bundle.state,
+            workoutState: bundle.workout,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No exercises found'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Adjust your search or clear filters.',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('does NOT expose any Add-to-Workout action on rows', (
