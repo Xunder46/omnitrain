@@ -77,6 +77,7 @@ what the team will do, in plain language, before spending any run.
    with the real pass/fail line (900 s timeout via `with-timeout.sh`); `swift test` if Swift changed
    (`watch/watchos`); the invariant grep; read the key diff. A hang, or a run you killed, is a failure.
    After any stopped run, grep for residue (mutations, scratch files).
+   **UI units: look at the screen.** Before reporting a unit that changes a screen, run the app on the iOS simulator (`xcrun simctl boot`, `flutter run -d <udid>`, the simulator `control` tool) and look at every changed screen at a real phone width; widget tests use a much wider test font and measured the wrong thing in unit 34. Screenshots lag one step behind a tap: take a second screenshot before judging.
 7. **Prove.** `crew-prover` on the unit's guards with the base commit. For every `NOT PROVEN: needs
    mutation`, apply that mutation yourself, watch the test fail, restore the exact original (keep a copy in
    the scratchpad and `cmp` it), re-run green. A guard stays unproven until one of these is observed.
