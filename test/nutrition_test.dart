@@ -10,10 +10,12 @@
 // (sodium frozen onto the ConsumedFood snapshot at log time).
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' show CheckedState;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -22,6 +24,7 @@ import 'package:omnitrain/features/nutrition/nutrition_screen.dart';
 import 'package:omnitrain/features/nutrition/add_food_screen.dart';
 import 'package:omnitrain/features/nutrition/nutrition_target_screen.dart';
 import 'package:omnitrain/features/nutrition/widgets/calorie_ring_card.dart';
+import 'package:omnitrain/features/nutrition/widgets/food_form.dart';
 import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
 import 'package:omnitrain/features/nutrition/widgets/food_thumbnail.dart';
 import 'package:omnitrain/state/food_library_state.dart';
@@ -31,6 +34,7 @@ import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
 
 import 'helpers/test_content_column.dart';
+import 'helpers/test_image_storage.dart';
 import 'helpers/test_nutrition_primer_state.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {

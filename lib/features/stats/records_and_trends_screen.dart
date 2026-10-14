@@ -153,6 +153,7 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
           suffixIcon: _query.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear),
+                  tooltip: 'Clear search',
                   onPressed: () {
                     _searchController.clear();
                     setState(() => _query = '');

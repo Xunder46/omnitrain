@@ -552,7 +552,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(24),
                   ),
-                  border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.06),
+                  ),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -600,6 +604,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                             subtitle: Text(exercise.effortKind),
                             trailing: IconButton(
                               icon: const Icon(Icons.close),
+                              tooltip: 'Remove exercise',
                               onPressed: () {
                                 setSheetState(() {
                                   exercises.removeAt(index);
@@ -1099,7 +1104,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ),
           if (prs.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Divider(color: Colors.white.withOpacity(0.06), height: 1),
+            Divider(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+              height: 1,
+            ),
             const SizedBox(height: 10),
             for (final pr in prs)
               Padding(

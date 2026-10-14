@@ -14,6 +14,7 @@ import '../../state/workout/workout_state.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import 'my_routines_screen.dart' show showDeleteRoutineDialog;
 import '../../widgets/dialogs/confirmation_dialog.dart'
@@ -351,12 +352,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   ) {
     final efforts = widget.routineState.getEffortsForSegment(segment.id);
 
-    return Card(
-      color: theme.colorScheme.surface.withOpacity(0.7),
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: OmniSurface(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,6 +387,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                 IconButton(
                   icon: const Icon(Icons.arrow_upward, size: 18),
                   color: theme.colorScheme.primary,
+                  tooltip: 'Move block up',
                   onPressed: index > 0
                       ? () => widget.routineState.reorderSegments(
                           index,
@@ -399,6 +398,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                 IconButton(
                   icon: const Icon(Icons.arrow_downward, size: 18),
                   color: theme.colorScheme.primary,
+                  tooltip: 'Move block down',
                   onPressed:
                       index < widget.routineState.currentSegments.length - 1
                       ? () => widget.routineState.reorderSegments(
@@ -1110,100 +1110,104 @@ class ExerciseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      color: theme.colorScheme.surface.withOpacity(0.7),
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              ReorderableDragStartListener(
-                index: index,
-                child: Icon(
-                  Icons.drag_indicator,
-                  color: theme.colorScheme.onSurface.withOpacity(0.55),
-                  size: 20,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OmniSurface(
+        padding: const EdgeInsets.all(12),
+        // `OmniSurface` is a plain coloured `Container`, so an `InkWell` under
+        // it would paint its splash on the scaffold's Material *beneath* the
+        // opaque fill — an invisible ripple. This transparency Material gives
+        // the ink a surface to paint on, inside the card.
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
+            child: Row(
+              children: [
+                ReorderableDragStartListener(
+                  index: index,
+                  child: Icon(
+                    Icons.drag_indicator,
+                    color: theme.colorScheme.onSurface.withOpacity(0.55),
+                    size: 20,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      exercise?.name ?? 'Unknown Exercise',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exercise?.name ?? 'Unknown Exercise',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: theme.colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _getTrackingLabel(effort.effortKind),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color:
-                            theme.textTheme.bodyMedium?.color ??
-                            theme.colorScheme.onSurface.withOpacity(0.7),
-                      ),
-                    ),
-                    if (restLabel != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        restLabel!,
+                        _getTrackingLabel(effort.effortKind),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary.withOpacity(0.8),
+                          color:
+                              theme.textTheme.bodyMedium?.color ??
+                              theme.colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                      ),
+                      if (restLabel != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          restLabel!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.primary.withOpacity(0.8),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        '$setCount set${setCount == 1 ? '' : 's'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Text(
-                      '$setCount set${setCount == 1 ? '' : 's'}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+                PopupMenuButton(
+                  color: theme.colorScheme.surface,
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      onTap: onChangeTracking,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.tune,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('Change Tracking'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      onTap: onDelete,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete,
+                            size: 18,
+                            color: theme.colorScheme.error,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('Remove'),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
-              PopupMenuButton(
-                color: theme.colorScheme.surface,
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    onTap: onChangeTracking,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.tune,
-                          size: 18,
-                          color: theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text('Change Tracking'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    onTap: onDelete,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.delete,
-                          size: 18,
-                          color: theme.colorScheme.error,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text('Remove'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

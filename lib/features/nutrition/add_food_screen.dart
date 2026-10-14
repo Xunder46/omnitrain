@@ -139,6 +139,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   /// Tracks the new category ID so it appears at the end of the list.
   Future<void> _createGroup() async {
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     try {
       final newId = await widget.foodLibraryState.createFoodGroup(
         'New Category',
@@ -950,6 +951,7 @@ class _UserFoodRowState extends State<_UserFoodRow> {
     // a child of the navigation stack and a delete can rebuild the
     // tree).
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     final isBundled = widget.foodLibraryState.isBundledCatalogFood(
       widget.food.id,
     );
@@ -966,6 +968,15 @@ class _UserFoodRowState extends State<_UserFoodRow> {
           ),
           actions: [
             TextButton(
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('OK'),
             ),
@@ -1233,6 +1244,7 @@ class _CatalogRowState extends State<_CatalogRow> {
     if (_busy) return;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     try {
       await widget.foodLibraryState.addCatalogFoodToLibrary(widget.food.id);
       // No pop. The cache update + notifyListeners flips the row.
@@ -1249,6 +1261,9 @@ class _CatalogRowState extends State<_CatalogRow> {
   /// currently in today's consumed log, unlog it first so the
   /// day-log stays consistent with the library. The screen stays
   /// open; the row rebuilds in its Add state.
+  ///
+  /// D-29.3: the removal is asked for first — it takes the food out of
+  /// the library (and today's log), which the row's one tap cannot undo.
   Future<void> _onRemove(BuildContext context) async {
     if (_busy) return;
     final libraryId = widget.foodLibraryState.libraryIdFor(widget.food.id);
@@ -1258,7 +1273,8 @@ class _CatalogRowState extends State<_CatalogRow> {
       // silently — the ListenableBuilder will re-render shortly.
       return;
     }
-    setState(() => _busy = true);
+    // Captured before the confirmation await so the error path below uses
+    // no `BuildContext` across an async gap.
     final messenger = ScaffoldMessenger.of(context);
     try {
       if (widget.nutritionState.isFoodLoggedToday(libraryId)) {
@@ -1454,8 +1470,8 @@ class _GroupsTabState extends State<_GroupsTab> {
     );
   }
 
-  /// Confirm a non-empty group delete, then reassign + archive.
-  /// Empty groups archive silently.
+  /// Confirm a group delete, then reassign any foods + archive. An
+  /// empty group asks too, without a destination dropdown.
   Future<void> _confirmAndDeleteGroup(
     BuildContext context,
     FoodGroup group,
@@ -1485,6 +1501,7 @@ class _GroupsTabState extends State<_GroupsTab> {
       return;
     }
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     // The dialog returns the sentinel for cancel; null means
     // "Ungrouped"; a non-null id means "move to that group".
     final picked = await showDialog<String?>(
@@ -1730,6 +1747,15 @@ class _DeleteGroupDialogState extends State<_DeleteGroupDialog> {
       ),
       actions: [
         TextButton(
+          style: ButtonStyle(
+            shape: WidgetStateProperty.all(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  OmniTheme.buttonUtilityRadius,
+                ),
+              ),
+            ),
+          ),
           onPressed: () => Navigator.of(context).pop(_cancelledSentinel),
           child: const Text('Cancel'),
         ),

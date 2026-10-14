@@ -153,17 +153,13 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     final blockExercises = _sortExercisesForBlock(
       _exercises.where((e) => e['blockId'] == block.id).toList(),
     );
-    final tileColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
     final segmentId = widget.workoutState.segments.isNotEmpty
         ? widget.workoutState.segments.first.id
         : null;
 
-    return Card(
-      color: tileColors.surface.withOpacity(0.7),
-      elevation: 2,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: OmniSurface(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,7 +227,11 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                       value: 'delete',
                       child: Row(
                         children: [
-                          const Icon(Icons.delete, size: 18, color: Colors.red),
+                          Icon(
+                            Icons.delete,
+                            size: 18,
+                            color: theme.colorScheme.error,
+                          ),
                           const SizedBox(width: 8),
                           const Text('Delete'),
                         ],
@@ -985,6 +985,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         children: [
           IconButton(
             icon: Icon(Icons.arrow_back, color: OmniTheme.colors.textDominant),
+            tooltip: 'Back',
             onPressed: () {
               // Detail view → back to list view
               // List view   → exit (with unsaved-changes check in edit mode)

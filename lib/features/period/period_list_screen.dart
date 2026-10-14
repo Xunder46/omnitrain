@@ -233,7 +233,8 @@ class _PeriodRow extends StatelessWidget {
         ),
         trailing: IconButton(
           icon: const Icon(Icons.delete_outline, size: 18),
-          color: Colors.redAccent,
+          color: theme.colorScheme.error,
+          tooltip: 'Delete period',
           onPressed: onDelete,
         ),
       ),

@@ -419,7 +419,7 @@ void main() {
 
           // The PR list Records & Trends renders, in the same order.
           final trendPrs = _textsUnder(find.byType(RecentPRList));
-          expect(trendPrs, contains('Recent PRs'));
+          expect(trendPrs, contains('RECENT PRS'));
           expect(trendPrs, contains('Back Squat'));
           expect(trendPrs, contains('Bench Press'));
           expect(
@@ -482,7 +482,7 @@ void main() {
           );
 
           final prTexts = _textsUnder(find.byType(RecentPRList));
-          expect(prTexts, contains('Recent PRs'));
+          expect(prTexts, contains('RECENT PRS'));
           expect(prTexts, contains('Bench Press'));
           expect(prTexts, contains(expected));
           expect(

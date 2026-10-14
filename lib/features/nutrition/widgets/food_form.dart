@@ -493,6 +493,7 @@ class _FoodFormState extends State<FoodForm> {
     setState(() => _saving = true);
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     try {
       final fiberRaw = _fiber.text.trim();
       final sodiumRaw = _sodium.text.trim();

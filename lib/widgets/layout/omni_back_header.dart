@@ -46,6 +46,7 @@ class OmniBackHeader extends StatelessWidget implements PreferredSizeWidget {
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
         color: OmniTheme.colors.textDominant,
+        tooltip: 'Back',
         onPressed: onBack ?? () => Navigator.of(context).pop(),
       ),
       title: subtitle == null

@@ -266,6 +266,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                               subtitle: Text(subtitle),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete_outline),
+                                tooltip: 'Remove exercise',
                                 onPressed: () async {
                                   final effortId = exercise['id'] as String;
                                   final confirmed = await ConfirmationDialog.showTwoChoice(

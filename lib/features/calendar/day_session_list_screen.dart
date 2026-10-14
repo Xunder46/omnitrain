@@ -18,6 +18,7 @@ import '../session/workout_session_screen.dart';
 import '../session/session_summary_screen.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
+import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 
 /// Shows all sessions (planned + completed TrainingSessions) for a single day.
@@ -127,7 +128,10 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                           ),
                           children: [
                             if (completed.isNotEmpty) ...[
-                              const _SectionHeader(title: 'Completed'),
+                              const OmniCardHeader(
+                                title: 'COMPLETED',
+                                padding: EdgeInsets.only(bottom: 8, top: 4),
+                              ),
                               ...completed.map(
                                 (e) => Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
@@ -144,7 +148,10 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                                 const SizedBox(height: 12),
                             ],
                             if (planned.isNotEmpty) ...[
-                              const _SectionHeader(title: 'Planned'),
+                              const OmniCardHeader(
+                                title: 'PLANNED',
+                                padding: EdgeInsets.only(bottom: 8, top: 4),
+                              ),
                               ...planned.map((e) {
                                 final isEditable = _isTodayOrFuture;
                                 return Padding(
@@ -170,7 +177,10 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                             ],
                             if (inProgress.isNotEmpty) ...[
                               const SizedBox(height: 12),
-                              const _SectionHeader(title: 'In Progress'),
+                              const OmniCardHeader(
+                                title: 'IN PROGRESS',
+                                padding: EdgeInsets.only(bottom: 8, top: 4),
+                              ),
                               ...inProgress.map(
                                 (e) => Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
@@ -514,12 +524,14 @@ class _SessionRow extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.edit_outlined, size: 18),
                           color: OmniTheme.colors.textSecondary,
+                          tooltip: 'Edit session',
                           onPressed: onEdit,
                         ),
                       if (onDelete != null)
                         IconButton(
                           icon: const Icon(Icons.delete_outline, size: 18),
-                          color: Colors.redAccent,
+                          color: Theme.of(context).colorScheme.error,
+                          tooltip: 'Delete session',
                           onPressed: onDelete,
                         ),
                     ],
@@ -713,6 +725,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
+                  tooltip: 'Close',
                   onPressed: () => Navigator.pop(context),
                   color: themeColors.textMuted,
                 ),
@@ -735,7 +748,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 Expanded(
                   child: (_mode == 'free')
                       ? FilledButton(
-                          style: _selectedModeButtonStyle(theme),
+                          style: _selectedModeButtonStyle(
+                            theme,
+                          ).copyWith(shape: _modeButtonShape),
                           onPressed: () => setState(() => _mode = 'free'),
                           child: const Text(
                             'Free Training',
@@ -744,7 +759,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                           ),
                         )
                       : OutlinedButton(
-                          style: _unselectedModeButtonStyle(theme),
+                          style: _unselectedModeButtonStyle(
+                            theme,
+                          ).copyWith(shape: _modeButtonShape),
                           onPressed: () => setState(() => _mode = 'free'),
                           child: const Text(
                             'Free Training',
@@ -757,7 +774,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 Expanded(
                   child: (_mode == 'routine')
                       ? FilledButton(
-                          style: _selectedModeButtonStyle(theme),
+                          style: _selectedModeButtonStyle(
+                            theme,
+                          ).copyWith(shape: _modeButtonShape),
                           onPressed: () => setState(() => _mode = 'routine'),
                           child: const Text(
                             'Routine',
@@ -766,7 +785,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                           ),
                         )
                       : OutlinedButton(
-                          style: _unselectedModeButtonStyle(theme),
+                          style: _unselectedModeButtonStyle(
+                            theme,
+                          ).copyWith(shape: _modeButtonShape),
                           onPressed: () => setState(() => _mode = 'routine'),
                           child: const Text(
                             'Routine',
@@ -855,6 +876,13 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
     );
   }
 
+  static final WidgetStateProperty<OutlinedBorder?> _modeButtonShape =
+      WidgetStateProperty.all(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+        ),
+      );
+
   ButtonStyle _selectedModeButtonStyle(ThemeData theme) {
     return ButtonStyle(
       minimumSize: WidgetStateProperty.all(const Size.fromHeight(52)),
@@ -871,11 +899,6 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
           width: 1.2,
         ),
       ),
-      shape: WidgetStateProperty.all(
-        RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
-        ),
-      ),
     );
   }
 
@@ -890,11 +913,6 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
         BorderSide(
           color: theme.colorScheme.outline.withValues(alpha: 0.55),
           width: 1.2,
-        ),
-      ),
-      shape: WidgetStateProperty.all(
-        RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
         ),
       ),
     );

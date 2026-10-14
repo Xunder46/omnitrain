@@ -111,6 +111,7 @@ class _ExerciseLibraryDetailScreenState
     // edit action does not require a full editor round-trip.
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     if (!context.mounted) return;
     final newName = await showDialog<String>(
       context: context,
@@ -128,10 +129,11 @@ class _ExerciseLibraryDetailScreenState
   }
 
   Future<void> _onRemove(BuildContext context) async {
-    // Capture navigator + messenger before the await so we can use
-    // them safely after `planRemoval` resolves.
+    // Capture navigator, messenger and theme before the await so we
+    // can use them safely after `planRemoval` resolves.
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     final plan = await libraryState.service.planRemoval(exercise.id);
     if (!context.mounted) return;
     final confirmed = await showDialog<bool>(

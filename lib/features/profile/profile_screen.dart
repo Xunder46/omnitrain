@@ -92,15 +92,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   theme,
                   definitions: ProfileMeasurements.additional,
                 ),
-                if (widget.profileState.error != null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    widget.profileState.error!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ],
               ],
             );
           },

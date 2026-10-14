@@ -805,7 +805,7 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A2E),
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: widget.primaryColor.withOpacity(0.35),
@@ -819,7 +819,7 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
                       widget.label,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w500,
                         height: 1.4,
                       ),
@@ -831,7 +831,9 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
                       child: FilledButton(
                         style: FilledButton.styleFrom(
                           backgroundColor: widget.primaryColor,
-                          foregroundColor: Colors.black87,
+                          foregroundColor: Theme.of(
+                            context,
+                          ).colorScheme.onPrimary,
                           padding: EdgeInsets.zero,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(6),

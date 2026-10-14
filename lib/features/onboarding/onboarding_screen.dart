@@ -324,7 +324,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 style: ButtonStyle(
                   backgroundColor: WidgetStateProperty.all(themeColors.primary),
                   foregroundColor: WidgetStateProperty.all(
-                    const Color(0xFF060B14),
+                    Theme.of(context).colorScheme.onPrimary,
                   ),
                   shape: WidgetStateProperty.all(
                     RoundedRectangleBorder(

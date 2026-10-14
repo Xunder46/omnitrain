@@ -53,6 +53,9 @@ import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
+import 'package:omnitrain/core/constants/home_tiles.dart';
+import 'package:omnitrain/core/constants/modality_colors.dart';
+import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/widgets/pickers/metric_chooser_dialog.dart';
 import 'package:omnitrain/widgets/pickers/modality_picker_dialog.dart';
@@ -71,6 +74,16 @@ Future<MockWorkoutRepository> _freshRepo() async {
   await repo.initialize();
   return repo;
 }
+
+/// The six training-tile labels, in `HomeTiles.all` order.
+const List<String> _homeTileLabels = <String>[
+  'Cardio',
+  'Resistance',
+  'Sports',
+  'Isometric',
+  'Free',
+  'Routines',
+];
 
 /// The vertically-scrolling list on a screen.
 ///
@@ -1008,6 +1021,78 @@ void main() {
       expect(find.byKey(const Key('routine-add-set')), findsOneWidget);
       expect(find.byKey(const Key('routine-remove-set')), findsOneWidget);
       expect(find.text('Set 1 of 1'), findsOneWidget);
+    });
+
+    testWidgets('exercise row ink well paints on a Material inside the card', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await routineState.createNewRoutine('Ink Layer');
+      await routineState.addExerciseToRoutine(exercises.first, 'set');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final cardFinder = find.byType(ExerciseCard).first;
+      final surfaceFinder = find.descendant(
+        of: cardFinder,
+        matching: find.byType(OmniSurface),
+      );
+      // The row's own ink well is the outer one — the popup menu button
+      // nests a second one below it.
+      final inkFinder = find
+          .descendant(of: cardFinder, matching: find.byType(InkWell))
+          .first;
+      expect(surfaceFinder, findsOneWidget);
+      expect(inkFinder, findsOneWidget);
+
+      // The splash paints on the nearest Material *ancestor* of the ink well.
+      // With none inside the card it would paint on the scaffold's Material,
+      // underneath the surface's opaque fill.
+      Element? material;
+      tester.element(inkFinder).visitAncestorElements((ancestor) {
+        if (ancestor.widget is Material) {
+          material = ancestor;
+          return false;
+        }
+        return true;
+      });
+      expect(
+        material,
+        isNotNull,
+        reason: 'the row ink well needs a Material of its own',
+      );
+
+      final surfaceElement = tester.element(surfaceFinder);
+      var materialIsInsideSurface = false;
+      material!.visitAncestorElements((ancestor) {
+        if (identical(ancestor, surfaceElement)) {
+          materialIsInsideSurface = true;
+          return false;
+        }
+        return true;
+      });
+      expect(
+        materialIsInsideSurface,
+        isTrue,
+        reason: 'the Material the splash paints on must be inside the card',
+      );
     });
 
     testWidgets('tracking selection shows ModalityPickerDialog', (
@@ -2020,6 +2105,77 @@ void main() {
       // Should have multiple EnergyTile cards in a grid
       expect(find.byType(CustomScrollView), findsWidgets);
     });
+
+    testWidgets(
+      'Routines tile accent is sourced from the active theme, modality tiles are not',
+      (WidgetTester tester) async {
+        addTearDown(() => OmniTheme.activeTheme = AppTheme.abyssalNeon);
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final screen = await buildHomeScreen(repo);
+
+        Color accentOf(String title) => tester
+            .widget<EnergyTile>(
+              find.byWidgetPredicate(
+                (widget) => widget is EnergyTile && widget.title == title,
+              ),
+            )
+            .accentColor;
+
+        // The Routines tile declares no accent of its own, so nothing in the
+        // config can carry a colour a theme cannot change.
+        expect(
+          HomeTiles.all
+              .firstWhere((tile) => tile.key == 'my_routines')
+              .accentColor,
+          isNull,
+        );
+
+        final accents = <AppTheme, Map<String, Color>>{};
+        for (final theme in <AppTheme>[
+          AppTheme.abyssalNeon,
+          AppTheme.voidPulse,
+        ]) {
+          OmniTheme.activeTheme = theme;
+          await tester.pumpWidget(MaterialApp(home: screen));
+          await tester.pumpAndSettle();
+          accents[theme] = <String, Color>{
+            for (final label in _homeTileLabels) label: accentOf(label),
+          };
+        }
+
+        // The tile's accent is the active theme's neutral secondary role.
+        // Every theme defines that role as the same white today, so the value
+        // is equal across themes — what this pins is the source: a theme that
+        // changes the role moves the tile with it.
+        for (final theme in accents.keys) {
+          expect(
+            accents[theme]!['Routines'],
+            OmniTheme.colorsForTheme(theme).textSecondary,
+            reason: "Routines takes $theme's neutral secondary role",
+          );
+        }
+
+        // The five modality tiles keep their fixed modality identity, in
+        // every theme.
+        const modalityAccents = <String, Color>{
+          'Cardio': ModalityColors.cardioEndurance,
+          'Resistance': ModalityColors.resistanceLifting,
+          'Sports': ModalityColors.sports,
+          'Isometric': ModalityColors.isometricStretching,
+          'Free': ModalityColors.freeTraining,
+        };
+        for (final entry in modalityAccents.entries) {
+          for (final theme in accents.keys) {
+            expect(
+              accents[theme]![entry.key],
+              entry.value,
+              reason: '${entry.key} keeps its modality accent in $theme',
+            );
+          }
+        }
+      },
+    );
 
     testWidgets('free training flow shows rolling toggle and inline guidance', (
       WidgetTester tester,

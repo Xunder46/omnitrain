@@ -22,6 +22,7 @@ import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import '../../widgets/session/pr_toast.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
+import '../../widgets/layout/omni_surface.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/navigation/navigation.dart';

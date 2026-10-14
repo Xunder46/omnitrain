@@ -230,6 +230,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.clear),
+                          tooltip: 'Clear search',
                           onPressed: () {
                             _searchController.clear();
                             _searchExercises();
