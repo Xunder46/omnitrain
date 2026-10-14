@@ -46,8 +46,8 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 
 | Section | Content |
 |---------|---------|
-| Header | Session title, formatted start date and time, modality badge |
-| Session info card | Duration and Rest Time, then the EFFORT row (rolling sessions: EFFORT row only — see [Effort Rating Capture](#effort-rating-capture)) |
+| Header | Session title only (the app bar shows no date or modality badge) |
+| Session info card | Duration and Rest Time, then the EFFORT row (rolling sessions: EFFORT row only — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
 | Group Cards | One card per group that has data in this session |
 | Session Note | Inline TextField with debounce save |
 | Calendar | Month grid and Open Calendar navigation button |

@@ -25,6 +25,15 @@ Verified by `test/records_and_trends_screen_test.dart` (`S-913` for the totals a
 the PR list, `S-914` for the shared best) and
 `test/exercise_metric_service_test.dart`.
 
+A load that throws is not an empty state: each screen shows its failure line
+(`Could not load your records.` on the index, `Could not load this exercise.`
+on the detail page) with a full-width `Try again` button that re-runs the
+screen's load, through the shared `LoadFailureView`. Verified by
+`test/stats_load_failure_test.dart` (group `S-2704: a failed load is not an
+empty state`: `Records & Trends: the failure text and Try again replace the
+empty state`, `Exercise Progress: the failure text and Try again replace the
+empty state`).
+
 ---
 
 ## Navigation Entry Point
@@ -123,12 +132,19 @@ yields no value contributes no point, so a series can hold fewer points than the
 exercise has training days. Sessions that were never completed contribute nothing,
 so a cancelled session is absent from both the series and the list.
 
-An id with no history reaches an empty state instead of throwing. The entry list
+An id with no history reaches the shared empty state (`OmniEmptyState`, title
+`No history for this exercise`, hint `Log this exercise in a session to see
+its history.`) instead of throwing. The entry list
 cannot offer such an id, so that state guards against a stale id rather than being
 a route a user walks.
 
-Verified by `test/records_and_trends_screen_test.dart` (`S-910` for both empty
-states, `S-915` for the series, the best and the list order).
+Verified by `test/records_and_trends_screen_test.dart` (group `Records & Trends
+/ Exercise Progress — ${harness.name}`: `S-910 an empty history shows the
+Records & Trends empty state` for the index's empty state, `S-910 an id with
+no history shows the guard empty state instead of throwing` for the detail
+page's, `S-915` for the series, the best and the list order). Both S-910 tests
+assert the composition with `find.byType(OmniEmptyState)`, so the shared piece
+itself is pinned, not just the copy.
 
 ---
 

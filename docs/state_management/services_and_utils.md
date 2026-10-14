@@ -133,7 +133,7 @@ Groups flat observation lists by effort kind into structured per-set maps. Used 
 
 **Key behaviors**:
 - `_restoreTimerStateFromPersisted`: populates `_inProgressKeys` for any persisted `active`/`paused` state on session restore.
-- `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows SnackBar `"Another set is still in progress. Pause or finish it before starting a new timer."` and returns early.
+- `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows a message through the shared `OmniMessage` (info look, no error icon), copy verbatim: `"Another set is still in progress. Pause or finish it before starting a new timer."` — and returns early. Verified by `test/session_message_test.dart` ("S-2702: the in-progress lock message keeps its copy on the shared look"); the same copy is asserted on the lock-clearing paths in `test/round_auto_expiry_test.dart`, group `Round Auto-Expiry Active-Round Lock Fix` · "S-BUG-001: auto-expired round clears active-round lock so next round can start" and "S-BUG-001b: round lock cleared by drain when user navigates before tick fires".
 - `_resetTimerState`: removes key from `_inProgressKeys` (called after manual set log/finish flows).
 - `_handleEffortTimerExpired` (round flow): removes the current round key from `_inProgressKeys` before calling `completeRound`, so the next round is immediately startable after auto-expiry.
 

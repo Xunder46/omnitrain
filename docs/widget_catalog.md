@@ -18,9 +18,9 @@ Reusable UI components live in `lib/widgets/` and are organized by purpose. All 
 - Local UI state only (e.g., `_isPressed`, animation controllers)
 - Design tokens from `OmniTheme` (never hardcoded colors/sizes)
 
-Note on resume dialog:
-- The cold-start `Unfinished Session` dialog is implemented as a private, screen-local widget in `HomeScreen` (`_ResumeSessionDialog`).
-- It is intentionally not promoted into `lib/widgets/` because it is feature-specific and not reused across screens.
+Note on cold-start resume:
+- There is no resume dialog. A dangling in-progress session is restored silently on `HomeScreen` (post-frame callback calls `checkForInProgressSession()` and `loadHistoricalSession()`); no prompt is shown.
+- Verified by `test/interaction_flow_test.dart`, group `HomeScreen active-session affordance`, test `cold-start loaded session shows active tile without launch modal and tap resumes`.
 
 Note on the Stats screen's Instruments widgets:
 - The Stats screen's Instruments list is built from four feature-local widgets: `InstrumentList` in `lib/features/stats/widgets/instrument_list.dart` (the sections, the row cap and the expand control), `InstrumentRowTile` and `InstrumentChangeChip` in `lib/features/stats/widgets/instrument_row.dart` (one exercise's figure and its movement against the previous window), `InstrumentSparkline` in `lib/features/stats/widgets/instrument_sparkline.dart` (that exercise's trend line), and `StatsWindowChip` in `lib/features/stats/widgets/window_chip.dart` (the header chip naming the resolved window, carried by the first section header).
@@ -35,7 +35,7 @@ Note on the Stats screen's Signals layer:
 - It is feature-scoped rather than `lib/widgets/` material, but it is presentation-only and theme-reactive in the same sense as the catalogued widgets. Its only host is the Stats screen (`lib/features/stats/stats_screen.dart`), where it is the second block in the body, directly under the Mix layer. Its behaviour is owned by [Stats Screen](stats_screen.md) and verified by `test/signals_layer_screen_test.dart`.
 
 Note on the nutrition trend card:
-- `NutritionTrendCard` in `lib/features/nutrition/widgets/nutrition_trend_card.dart` is the nutrition trend's body — the Calories / Macros toggle, both charts, the empty chart, the single-point fallbacks and the legend.
+- `NutritionTrendCard` in `lib/features/nutrition/widgets/nutrition_trend_card.dart` is the nutrition trend's body — the Calories / Macros toggle, both charts, the shared empty state that replaces the charts when no day is logged, the single-point fallbacks and the legend.
 - It is feature-scoped rather than `lib/widgets/` material, but it is presentation-only and theme-reactive in the same sense as the catalogued widgets. Its only host is the full-history nutrition trend screen (`lib/features/nutrition/nutrition_trend_screen.dart`), reached from the Stats screen's Fuel row. Its behaviour is owned by [Nutrition](nutrition.md) and verified by `test/nutrition_trend_screen_test.dart`.
 
 Note on the Stats screen's Fuel row:
@@ -56,7 +56,7 @@ Note on home-screen nutrition summary card:
 
 | Page | Covers |
 |------|--------|
-| [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) | Foundational layout wrappers, card/section chrome, bottom CTA, input field wrappers |
+| [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) | Foundational layout wrappers, card/section chrome, bottom CTA, input field wrappers, the shared message and empty-state widgets |
 | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) | Home tiles, the home gauge card, and the calorie-ring / water / macro-donut cards |
 | [Session, Picker & Presentation Widgets](widget_catalog/session_widgets.md) | In-session metric editors, metric popups, PR toast, the effort rating sheet, picker dialogs, presentation models |
 | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) | Primer sheet, food rows, thumbnails, the shared food form, group management |
@@ -85,6 +85,7 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `FoodThumbnail` | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) |
 | `HomeLogoButton` | [Routine, Profile & Brand](widget_catalog/feature_primitives.md) |
 | `InlineMetricEditor` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
+| `LoadFailureView` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `LogFoodRow` | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) |
 | `MacroDonutChart` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |
 | `MacroFocusContent` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |
@@ -101,7 +102,9 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `OmniBackHeader` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniBottomCTA` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniCardHeader` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
+| `OmniEmptyState` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniGradientBackground` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
+| `OmniMessage` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `OmniSurface` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
 | `PRToast` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `SelectAllOnFocus` | [Layout & Input Primitives](widget_catalog/layout_and_inputs.md) |
@@ -122,6 +125,10 @@ so the gap is visible rather than silent.
 | `InteractiveLogo` | `lib/widgets/common/interactive_logo.dart` | Undocumented. |
 | `ScrollableTrendChart` | `lib/widgets/chart/scrollable_trend_chart.dart` | Behavior is documented in [Profile & Measurements](profile_and_measurements.md), but it has no catalog entry. |
 | `FoodThumbnailImage` | `lib/features/nutrition/widgets/food_thumbnail_io.dart` | Platform-conditional implementation behind `FoodThumbnail`. |
+| `ConfirmationDialog` (+ `UnsavedChangesAction`) | `lib/widgets/dialogs/confirmation_dialog.dart` | Shared two-/three-choice confirmation and unsaved-changes dialog factory (`showTwoChoice`, `showUnsavedChanges`, `twoChoice`, `threeChoice`). Both shapes share one look and one action-style helper; see [Design system — Destructive vs Routine Confirmation Dialogs](design_system.md#destructive-vs-routine-confirmation-dialogs). |
+| `OverheadPressIcon` | `lib/widgets/icons/overhead_press_icon.dart` | Tile artwork builder for the resistance home tile. |
+| `chart_primitives.dart` helpers (`kChartBottomAxisReservedSize`, `buildLegendItem`, `buildSinglePointCard`) | `lib/widgets/chart/chart_primitives.dart` | Shared chart chrome: reserved bottom-axis height, legend swatch+label row, single-history-point card. |
+| `buildEdgeAwareDateLabel` (+ `kEdgeLabelHorizontalShift`) | `lib/widgets/chart/edge_aware_date_label.dart` | Bottom-axis date label that insets first/last labels so they clear the y-axis and card border. |
 
 ---
 
@@ -132,7 +139,9 @@ lib/widgets/
 ├── buttons/              # (empty — reserved for future button components)
 ├── cards/                # Tile and card components for the home screen
 ├── chart/                # Chart primitives shared by stats and profile
-├── common/               # Cross-feature odds and ends (InteractiveLogo)
+├── common/               # Cross-feature odds and ends (InteractiveLogo, OmniEmptyState)
+├── dialogs/              # Shared confirmation dialogs (ConfirmationDialog)
+├── feedback/             # Shared transient messages (OmniMessage)
 ├── icons/                # Custom icon widgets
 ├── inputs/               # Reusable input field wrappers (select-all, done bar)
 ├── layout/               # Foundational layout primitives

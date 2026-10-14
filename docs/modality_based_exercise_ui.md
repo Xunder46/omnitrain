@@ -103,9 +103,7 @@ class InlineMetricEditor extends StatefulWidget {
 ```
 
 **Visual Design**:
-- 72pt display value (massive for glanceability)
-- Unit label in small caps below (12pt, 50% opacity)
-- Drag-responsive (value updates during drag, not just on release)
+- Value changes by tapping the number and using the popup/dialog; the editor is tap-only (no drag path exists in `lib/widgets/session/inline_metric_editor.dart`)
 
 ### 2. Timer State Management
 
@@ -214,7 +212,7 @@ Detail view uses two distinct control rows instead of a single toolbar.
   - **round**: "5 rounds"
   - **drill**: "3 holds"
 - Tap exercise to enter detail view
-- FAB button to add new exercise
+- Inline add-exercise-and-block bar at the end of the list (centred in the empty state); there is no FAB
 - Non-rolling list view does not render modality group headers.
 
 **Detail View**:
@@ -285,11 +283,15 @@ All metric changes persist immediately via `updateEntryValue()`.
 ### Error State
 **Condition**: Repository error during load
 **UI**: 
-- Red error icon (64px)
+- Error icon in the theme's error colour
 - "Error Loading Session" title
-- Error message text
+- The plain line `Could not load your workout. Try again.` — never the exception text
 - "Retry" button
 **Recovery**: Retry button calls `_loadExercises()` again
+
+Verified by `test/session_screen_build_phase_notify_test.dart`
+("D-27.2 a failed session load says so in plain words and hides the
+exception").
 
 ### Set Skip vs Delete
 - **Skip Set**: Advance without logging via forward navigation (set dot remains hollow)

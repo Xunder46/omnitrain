@@ -48,7 +48,8 @@ Trends`).
 
 ## First-Use Empty State
 
-With no completed session the body is the empty-state card. Its title
+With no completed session the body is the shared empty state — an
+`OmniEmptyState` (compact) in an `OmniSurface`. Its title
 `No sessions yet` and body `Complete your first session to see stats here.` are
 kept verbatim; when `showPrimerHelp` is true the card adds three short lines
 about what will appear and a `How Stats works` button that opens the
@@ -58,7 +59,9 @@ will appear` › `the empty state keeps its title and body and adds the
 explanation and the button`; `the empty-state button opens the sheet without
 marking it seen`), and the taller card is asserted to fit a small viewport by
 `S-2714: the taller first-use card fits a small viewport` › `the card lays out
-at 320x568 without an overflow`.
+at 320x568 without an overflow`. Both tests also assert the composition with
+`find.byType(OmniEmptyState)`, so the shared piece itself is pinned, not just
+the copy.
 
 ---
 
@@ -99,7 +102,7 @@ Stats screen holds no StatsPrimerState`).
 
 ## What the Screen Displays
 
-With no completed session in the repository the body is the empty-state card
+With no completed session in the repository the body is the shared empty state
 alone — no Mix layer, no Signals layer, no ALL TIME card, no Instruments list
 and no Fuel row, whatever the food log holds. Otherwise it is five blocks in a
 fixed order: the [Mix layer](#mix-layer) when the window holds measurable time,
@@ -562,6 +565,13 @@ evaluates nothing`).
 
 `StatsProgressService` is a pure-Dart service — it depends on the
 `WorkoutRepository` interface only, not on any concrete implementation.
+
+When that one load read throws, the body is `LoadFailureView` — the failure
+line `Could not load your stats.` and a full-width `Try again` button that
+re-runs `_loadData()` — instead of the empty state, so a failed load never
+reads as "no data". Verified by `test/stats_load_failure_test.dart` (group
+`S-2704: a failed load is not an empty state`: `Stats: the failure text and
+Try again replace the empty state`).
 
 ---
 

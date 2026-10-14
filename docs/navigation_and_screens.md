@@ -126,7 +126,7 @@ described here.
 ```
 HomeScreen
   ├── modality tiles / Free Training  → WorkoutSessionScreen → SessionSummaryScreen
-  │                                       ├── SessionOverviewScreen  (edit session)
+  │                                       ├── SessionOverviewScreen  (edit session; not reachable from the app — see Screen Inventory)
   │                                       └── CalendarScreen
   ├── My Routines tile                → MyRoutinesScreen → RoutineSetupScreen
   │                                       └── ExercisePickerScreen
@@ -144,9 +144,10 @@ HomeScreen
         └── SettingsScreen
 ```
 
-`ExercisePickerScreen` is pushed from `SessionOverviewScreen`, `WorkoutSessionScreen`,
+`ExercisePickerScreen` is pushed from `WorkoutSessionScreen`,
 `RoutineSetupScreen`, and the save-as-routine sheet on `SessionSummaryScreen`; it returns the
-selected `Exercise` on pop. `ModalityPickerDialog` and `MetricChooserDialog` are the null-modality
+selected `Exercise` on pop. (`SessionOverviewScreen` also pushes it, but that screen is not
+reachable from the app.) `ModalityPickerDialog` and `MetricChooserDialog` are the null-modality
 resolution path — see [Modality Tracking](modality_tracking.md).
 
 The maintenance sheet is rendered by `_buildMaintenanceGrid` in
@@ -156,10 +157,10 @@ confirmed unused. Nutrition is **not** a maintenance-sheet destination — it is
 reached from the `NutritionSummaryCard` below the tile grid.
 
 Nutrition is entered from the `NutritionSummaryCard` on the home screen, which
-lands on `NutritionScreen` (daily summary); the small edit icon on the
-`CalorieRingCard` at the top of that screen pushes `NutritionTargetScreen`. The
-legacy bottom "Edit Targets" button is gone. The legacy placeholder no longer
-exists.
+lands on `NutritionScreen` (daily summary); the labelled target button in the
+`TODAY` card header at the top of that screen pushes `NutritionTargetScreen`. The
+legacy bottom "Edit Targets" button is gone. The legacy placeholder still exists
+as unreachable dead code (see Non-Production Screens below).
 
 Day rollover:
 - `HomeScreen` calls `NutritionState.rolloverToDate(todayMs)` from
@@ -180,7 +181,7 @@ Day rollover:
 | `EditFoodScreen` | `lib/features/nutrition/edit_food_screen.dart` | Edit a single catalog food. Edits propagate to personal library rows through the durable `catalogId` linkage; past `ConsumedFood` snapshots are unaffected. |
 | `NutritionTargetScreen` | `lib/features/nutrition/nutrition_target_screen.dart` | Set today's calorie target. Persists through `NutritionState` with forward-propagation to future dates that still hold the old value. |
 | `NutritionTrendScreen` | `lib/features/nutrition/nutrition_trend_screen.dart` | Full-history nutrition trend under a back header. Loads through `StatsProgressService` (`computeNutritionTrend(days: null)`, `computeNutritionAdherence()`) from the repository. Reached from the Stats screen's Fuel row (`test/fuel_row_screen_test.dart`, `S-1109`). |
-| `SessionOverviewScreen` | `lib/features/session/session_overview_screen.dart` | Exercise list for current session, add/remove exercises |
+| `SessionOverviewScreen` | `lib/features/session/session_overview_screen.dart` | Exercise list for current session, add/remove exercises. **Not reachable from the app**: no code in `lib/` pushes or builds it; it is exercised only by tests (`test/session_screen_build_phase_notify_test.dart`, `test/interaction_flow_test.dart`, `test/screen_widget_test.dart`, `test/header_standardization_test.dart`). |
 | `WorkoutSessionScreen` | `lib/features/session/workout_session_screen.dart` | Core workout tracking (list view + detail view), split across part files: main coordinator, timer mixin, list-view builders, detail-view builders. Also hosts the session discard action and the rest overlay. |
 | `SessionSummaryScreen` | `lib/features/session/session_summary_screen.dart` | Post-workout summary, PRs, save-as-routine, distance entry. Also reused for **historical** sessions reached from the calendar (tap a past day with one entry → `SessionSummaryScreen`). Accepts an optional `openedFromCalendar: true` + `originatingCalendarState` to differentiate the two flows: when set, the embedded calendar card renders the **historical session's month** (not today), the "Open Calendar" button **pops back** instead of pushing a fresh `CalendarScreen`, and "Discard" deletes the historical record and returns to the originating calendar / day list. When omitted (post-workout flow), the calendar card renders the current month, "Open Calendar" pushes a fresh calendar, and "Discard" returns to the home hub via `popUntil(isFirst)`. |
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
@@ -197,6 +198,7 @@ Day rollover:
 | `ExerciseProgressScreen` | `lib/features/stats/exercise_progress_screen.dart` | One exercise's all-time best, its per-training-day series, and its recent training days newest first. Reached from a `RecordsAndTrendsScreen` entry or from a row of the Stats screen's Instruments list; named exactly `Exercise Progress`. See [Records & Trends](records_and_trends.md). |
 | `OnboardingScreen` | `lib/features/onboarding/onboarding_screen.dart` | First-launch 3-page swipeable intro. Page 1: app pitch. Page 2: modality tiles with accent colors and one-liners. Page 3: calendar features + Get Started button. Completion sets `onboarding_complete` preference key via `repository.setPreferenceBool` and calls `pushReplacement` to `HomeScreen`. |
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
+| `StartupPreparingScreen` | `lib/features/startup/startup_preparing_screen.dart` | Neutral preparation surface mounted while the startup sequence runs (see App Entry Point above). |
 | `StartupFailureScreen` | `lib/features/startup/startup_failure_screen.dart` | End-user startup-failure surface. Shows when `_runStartup` throws inside `StartupRoot`. Plain-language headline ("Something went wrong while starting OmniTrain."), a short secondary line inviting a retry, and a full-width `FilledButton` labeled "Retry" that calls back into `StartupRoot` to re-run the entire startup sequence. No developer terminology is rendered — no "console", "log", "error", or raw exception text. The Retry button is disabled (with `onPressed: null`) while a retry attempt is in flight, to prevent concurrent startups. The screen uses the canonical Abyssal Neon theme tokens via the default failure theme passed in by `StartupRoot`; the user's saved theme is unavailable at this point in the lifecycle because `SettingsState` has not yet been constructed. |
 
 ### Calendar & Period Screens
@@ -284,14 +286,16 @@ Resuming an active session is driven by matching, not by navigation history: a m
 resumes when the active session's modality matches it, and the My Routines tile resumes when the
 active session has `intent == 'routine'`.
 
-Cold-start resume reads in-progress sessions from storage on the home screen's first frame. Two
-invariants govern it:
+Cold-start resume reads in-progress sessions from storage on the home screen's first frame and
+restores the most recent dangling session silently — no prompt or dialog is shown; the matching
+tile is already active when the screen settles.
 
-- **Dismissing the resume prompt is not a delete.** System back-dismiss must preserve the stored
-  session; only an explicit confirmed discard deletes it.
+- **There is no resume prompt.** A dangling session is restored silently on Home; only an explicit
+  confirmed discard deletes it.
 - **Only the most recent dangling session is surfaced**; older ones are cleaned up by state.
 
-Verified by `test/interaction_flow_test.dart`.
+Verified by `test/interaction_flow_test.dart`, group `HomeScreen active-session affordance`, test
+`cold-start loaded session shows active tile without launch modal and tap resumes`.
 
 ---
 

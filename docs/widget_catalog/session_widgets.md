@@ -111,7 +111,10 @@ Future<int?> showDurationEntryDialog(
 - Returns confirmed duration in whole seconds (`h*3600 + m*60 + s`), or `null` if dismissed.
 - Three `TextField` instances for hours, minutes, seconds. Pre-filled from `initialSecs`.
 - Single "Ok" `FilledButton`. No Cancel button. Barrier tap dismisses without applying.
-- `TextEditingController`s are deferred-disposed (300 ms after dialog close) to avoid use-after-dispose errors.
+- `TextEditingController`s are deferred-disposed shortly after the
+  dialog closes (inline delay in
+  `lib/widgets/session/duration_entry_dialog.dart`) to avoid
+  use-after-dispose errors.
 
 **Usage**: Wire to `onTap` on `InlineMetricEditor` when `metricType == 'duration'`.
 
@@ -147,6 +150,11 @@ See [Session Summary](../session_summary.md#distance) for what the section lists
 Static factory for the in-session "new PR" celebration `SnackBar`. Two axis variants share one
 visual treatment: a weight-axis toast for loaded-exercise e1RM records and a reps-axis toast for
 bodyweight max-reps records.
+
+**It is the one exception to the shared `OmniMessage` look**: the celebration toast keeps its own
+`SnackBar` construction by design, and the message-look scan lets the `PRToast.` argument through.
+Verified by `test/ui_standards_contract_test.dart` (group `S-2702 one message look`: `the scan
+flags a raw bar and lets the PRToast argument through`).
 
 **The toast never asks the user to dismiss it.** There is no `action:` field, it auto-dismisses,
 and it floats rather than displacing the bottom controls — the user can keep logging through it.
@@ -205,9 +213,10 @@ exercises by relevance.
 - Inline "New Exercise" creation → pushes `ExerciseEditorScreen` with picker/session modality prefilled via `contextModality`
 - Returns the selected `Exercise` on pop
 
-Pushed from `SessionOverviewScreen`, `WorkoutSessionScreen`,
+Pushed from `WorkoutSessionScreen`,
 `RoutineSetupScreen`, and the save-as-routine sheet on
-`SessionSummaryScreen`.
+`SessionSummaryScreen`. (`SessionOverviewScreen` also pushes it, but that screen
+is not reachable from the app — no code in `lib/` builds it.)
 
 ### `MetricChooserDialog`
 
@@ -236,11 +245,10 @@ Modal dialog for selecting a modality for an exercise being added.
 - Routine building when the routine's Focus Modality is set — the new exercise silently inherits the focus modality's `effortKind`
 
 **Key features**:
-- Shows all five modalities plus a "General" option
+- Shows the four modalities (Cardio, Resistance, Sports, Isometric); there is no "General" option
 - Returns `(true, String? modality)` record when the user picks an option:
   - Specific modality: `(true, 'cardio_endurance')` etc.
-  - "General": `(true, null)`
-- Returns `null` when the user cancels (so callers can distinguish cancel from "General")
+- Returns `null` when the user cancels (so callers can distinguish cancel from a pick)
 - Callers use `showDialog<(bool, String?)>` and check for `null` before destructuring
 
 ---

@@ -227,7 +227,7 @@ HomeScreen
 
 ### MyRoutinesScreen (`lib/features/routine/my_routines_screen.dart`)
 
-- **Empty state**: Circle icon + "No Routines Yet" + "Create your first routine" message
+- **Empty state**: the shared `OmniEmptyState` (title `No Routines Yet`, hint `Create your first routine to get started`). Verified by `test/screen_widget_test.dart` (group `MyRoutinesScreen`: `empty list renders the shared OmniEmptyState (S-2802)`).
 - **List state**: `ListView.builder` with `Card` widgets per routine
   - Each card shows: exercise icon, routine name, creation date (relative: "today", "3 days ago")
   - Built-in demo routines carry a subtle "Demo" badge (via `DemoRoutineBadge`) sourced from `OmniTheme` typography + `colorScheme.primary` tokens. The badge is purely informational; demo rows are still editable, startable, and deletable like user rows.
