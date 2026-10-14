@@ -137,8 +137,13 @@ The Session Summary's DISTANCE card. Renders one `DistanceRowModel` per entry th
 distance; the screen builds the models, so the card reads no state and holds no distance rule.
 Presentation-only: it renders the name, value text and unit label it is given, and the estimate
 marker is a suffix of the unit label rather than a flag of its own. An entry with no distance is
-rendered as `absentValue`, never as a zero. Rows are tap-to-edit — the callback is the caller's.
-Hides itself when its row list is empty.
+rendered as `absentValue`, never as a zero. Rows are tap-to-edit — the callback is the caller's —
+and the card says so: a hint above the rows reads `Tap a row to enter or correct it.` and each row
+ends with a pencil. Hides itself when its row list is empty, so the hint cannot appear without rows.
+Verified by `test/session_summary_distance_test.dart` (`S-3213 the card says how to edit a row,
+above the rows`, `S-3213 a session with no distance rows shows neither the card nor the hint`,
+`S-3214 every row ends with a pencil, and the row still opens the editor`, and the narrow-width
+fit guard `S-3215`).
 
 See [Session Summary](../session_summary.md#distance) for what the section lists and
 [Distance Source & Pairing](../distance_source.md) for what a stored distance means.
@@ -276,4 +281,4 @@ Used by `WorkoutSessionScreen` and `RoutineSetupScreen` for ephemeral UI state.
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-09-20. This page is one part of the [Widget Catalog](../widget_catalog.md); see that index for the full component list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+> **Doc freshness** — Last reconciled against source: 2026-10-13. This page is one part of the [Widget Catalog](../widget_catalog.md); see that index for the full component list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.

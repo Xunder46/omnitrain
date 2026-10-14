@@ -132,35 +132,60 @@ measure into a share of the bar, and the tallest week that sets one scale for
 all eight strip columns. Verified by `test/mix_layer_screen_test.dart`
 (`S-1601`, `S-1602`, `S-1609`).
 
-**The bar.** One horizontal bar split by modality, largest share first, with a
-legend reading each modality's rounded share. The shares are the window's own
-measure by modality — its measured time in the time measure, its load in the
-load measure. Verified by the same file (`S-1602`, `S-1609`).
+**The explainer.** One sentence under the card's title says what the bars are:
+`Your training split by how hard each session felt.` under the load measure,
+`Your training split by time spent.` under the time measure — the only place
+the measure is named in words, and the old `by load` / `by time` labels are
+gone. Verified by the same file (`S-3201 one sentence says what the split is`,
+`S-3201 the twin: the time measure reads in its own words`).
+
+**The bar.** One horizontal bar split by modality, largest share first. The
+shares are the window's own measure by modality — its measured time in the time
+measure, its load in the load measure. Verified by the same file (`S-1602`,
+`S-1609`).
+
+**The legend.** Under the bar, one coloured dot and the modality's rounded
+share for each modality that has a share. A 0% modality is left out of the
+legend, while the bar still draws its sliver and still names it in its
+semantics. Verified by the same file (`S-3203 the legend drops the 0% entries
+and gives each one a dot`).
 
 **The measure.** The layer reports either the window's training load or its
-time, and labels which one it is reporting. Load is shown only when the rated
+time. Load is shown only when the rated
 baseline behind the window is at least `kTrainingLoadMinRatedWeeks` weeks and
 the window's unrated share of time is at most `kTrainingLoadMaxUnratedShare`;
 otherwise the layer reports time. Verified by the same file (`S-1603`,
 `S-1605`, `S-1611`).
 
 **The usual bar.** When the measure is load, a second bar shows the usual mix
-the rated baseline establishes, labelled `usual`. Verified by the same file
-(`S-1606`, `S-1611`).
+the rated baseline establishes: the first bar is labelled `In this window` and
+the second `Your usual`, and neither label renders when there is no usual bar.
+Verified by the same file (`S-3202 the two bars are labelled`, `S-3202 the
+twin: no usual bar, no bar labels`, `S-1606`, `S-1611`).
 
-**The note and the unrated line.** A note states the baseline the measure rests
-on, and an unrated line states how much of the window carried no rating. Both
-are absent when they have nothing to report. Verified by the same file
-(`S-1605`, `S-1606`, `S-1607`).
+**The note and the unrated line.** Under the time measure, while fewer than
+`kTrainingLoadMinRatedWeeks` weeks are rated, a note says that time is showing
+for now and counts the rated weeks so far; under the load measure no note
+renders. An unrated line says what the missing ratings do to the figures: under
+the load measure the unrated sessions are not counted, under the time measure
+they are counted but carry no rating yet. Both lines are absent when they have
+nothing to report. Verified by the same file (`S-3204 the baseline note says
+what happens and when`, `S-3204 the twin: no rated week at all`, `S-3204 the
+load measure explains nothing`, `S-3205 the unrated line says which measure
+leaves sessions out`, `S-3205 the load measure says the session is not
+counted`, `S-3205 the twin: every session rated`).
 
-**The strip.** Eight weeks of modality-stacked columns, oldest first, with the
-current week marked. A week with no work draws its column with no stack segment
-in it. A caption under the columns reads the oldest week's date on the left and
-`this week` on the right, and each end shrinks to fit large text instead of
-overflowing the card. When none of the eight weeks has any training, the strip
-is replaced by one line: `No training in the last 8 weeks.` with
-`Last session: <date>.` when the payload knows the last completed session's
-day. Verified by the same file (`S-1608`, `S-1609`, `S-4005`, `S-4006`,
+**The strip.** Titled `Week by week · last 8 weeks`: eight weeks of
+modality-stacked columns, oldest first, with the current week marked. A week
+with no work draws a 2 dp stub at the bottom of its column instead of a stack
+segment, so all eight columns stay visible. A caption under the columns reads
+`7 weeks ago` on the left and `This week so far` on the right, and each end
+shrinks to fit large text instead of overflowing the card. When none of the
+eight weeks has any training, the strip is replaced by one line:
+`No training in the last 8 weeks.` with `Last session: <date>.` when the
+payload knows the last completed session's day. Verified by the same file
+(`S-3206 the strip is titled, captioned and shows eight columns`, `S-3206 the
+twin: an all-empty strip keeps its one line`, `S-1608`, `S-4005`, `S-4006`,
 `S-4015`, `S-4014`, and `Guard — the caption fits 390x844 dp and 2.0 text
 scale`).
 
@@ -168,13 +193,15 @@ scale`).
 list, and carries its own `StatsWindowChip` naming it — the second of the
 screen's two chips. Verified by the same file (`S-1612`, `S-1613`).
 
-**Copy.** The layer renders figures and modality names only: no chart
-primitive, no legacy section title, and no estimating or coaching copy.
+**Copy.** The layer's words are the explainer, the bar labels, the notes and
+the strip's title and caption: no chart primitive, no legacy section title, and
+no estimating or coaching copy.
 Verified by the same file (`S-1614`).
 
 **Fit.** The layer fits the narrowest viewport at the largest
 non-accessibility text scale and the tallest at the default, with nothing it
-draws wider than the card that holds it. Verified by the same file (`S-1615`).
+draws wider than the card that holds it. Verified by the same file (`S-1615`,
+`S-3208 the whole card fits every viewport and text scale`).
 
 **Freshness.** The layer is refreshed by the screen's one load pass, so it is
 never stale relative to the other blocks. Verified by the same file (`S-1616`).
@@ -601,7 +628,7 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/features/stats/widgets/stats_primer_sheet.dart` | `StatsPrimerSheet` — the one-shot explanation sheet: three labelled blocks and a `Got it` CTA; presentation only, the host owns the seen flag |
 | `lib/state/stats/stats_primer_state.dart` | `StatsPrimerState` — the `primer_seen_stats` seen flag over the repository preference API, hydrated before `runApp` |
 | `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, shared with Records & Trends |
-| `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the modality bar, the measure and its label, the usual bar, the note, the unrated line, the week strip, the strip's caption and the empty-strip line |
+| `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the explainer sentence, the modality bar and its legend, the usual bar and its two labels, the note, the unrated line, the week strip, the strip's title and caption and the empty-strip line |
 | `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards and the quiet line; `SignalsLockedSection` — the locked line a gate-unmet screen shows in the layer's slot |
 | `lib/core/models/signals.dart` | The Signals value types (`SignalKind`, `SignalCard`, `SignalsData`), the selection, the gate and the dismissal maths; declares `kSignalMaxCards` and `kSignalDismissalDays` |
 | `lib/core/services/signals_service.dart` | `SignalsService` — loads the dismissal store, evaluates the registered signals for one load and writes a dismissal back |
@@ -616,7 +643,7 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/core/models/exercise_metric.dart` | `ExerciseSection` and the native-value types a row's figure is built from: `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
 | `lib/core/models/instrument_list.dart` | Value types behind the Instruments list: `InstrumentRow`, `InstrumentSectionData` |
 | `lib/core/models/fuel_summary.dart` | `FuelSummary` — the Fuel row's value type: the window's logged-day averages, the previous range's, the training / rest split and the targets |
-| `lib/core/models/training_load.dart` | `MixLayerData` — the Mix layer's value type: the modality shares, the measure and its label, the usual mix, the baseline note, the unrated line, the strip's weeks and the last completed session's day (`lastSessionDay`); declares `kMixStripWeeks`, `kTrainingLoadMinRatedWeeks` and `kTrainingLoadMaxUnratedShare` |
+| `lib/core/models/training_load.dart` | `MixLayerData` — the Mix layer's value type: the modality shares, the measure, the usual mix, the baseline note, the unrated line, the strip's weeks and the last completed session's day (`lastSessionDay`); declares `kMixStripWeeks`, `kTrainingLoadMinRatedWeeks` and `kTrainingLoadMaxUnratedShare` |
 | `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service: `computeTotals()`, `computeProgressData()` (and the `resolveWindow()` it calls), `computeFuelSummary()`, `computeMixLayer()` and `computeInstrumentSections({required StatsWindow window})` |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
@@ -640,4 +667,4 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-10-01. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-10-13. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

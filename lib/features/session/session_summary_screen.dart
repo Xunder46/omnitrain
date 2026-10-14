@@ -777,7 +777,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// [OmniBackHeader]; the date and modality chip live in
   /// [_buildSessionInfoHeader] above this card. The card body is
   /// content-only. The EFFORT row is always shown (even if toggle is off),
-  /// with an "Add rating" or "Change" button to modify the rating. The value
+  /// with an "Add rating" or "Change rating" button to modify the rating. Its
+  /// own caption explains what the value means. The value
   /// text uses the pills' shared value color; the rating's intensity is a
   /// non-text marker in its ramp step, because low ramp steps are below the
   /// text contrast floor (D-15 in the Stats PR 1 plan).
@@ -825,6 +826,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 child: _StatPill(
                   label: 'Effort',
                   value: feeling != null ? '$feeling / 5' : '—',
+                  caption: 'How hard the session felt',
+                  captionKey: const Key('omni_session_effort_caption'),
                   leading: feeling != null
                       ? Container(
                           key: const Key('omni_session_effort_marker'),
@@ -853,7 +856,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   ),
                 ),
-                child: Text(feeling != null ? 'Change' : 'Add rating'),
+                child: Text(feeling != null ? 'Change rating' : 'Add rating'),
               ),
             ],
           ),
@@ -1390,7 +1393,21 @@ class _StatPill extends StatelessWidget {
   /// row's intensity marker).
   final Widget? leading;
 
-  const _StatPill({required this.label, required this.value, this.leading});
+  /// Optional muted line under the value, inside the pill's own column (the
+  /// EFFORT row's "How hard the session felt").
+  final String? caption;
+
+  /// The key carried by the caption [Text], so a reader can point at just
+  /// that line.
+  final Key? captionKey;
+
+  const _StatPill({
+    required this.label,
+    required this.value,
+    this.leading,
+    this.caption,
+    this.captionKey,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1419,6 +1436,16 @@ class _StatPill extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [leading!, const SizedBox(width: 8), valueText],
           ),
+        if (caption != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            caption!,
+            key: captionKey,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+            ),
+          ),
+        ],
       ],
     );
   }

@@ -27,6 +27,7 @@ The **session effort rating** is how hard the whole session was: 1 is the easies
 - **A change reaches the calendar.** On a calendar-opened summary a saved rating refreshes the originating `CalendarState` — the same path Discard uses — so the day list shows the new tint on return.
 - **The rating is never drawn as ramp-colored text.** The lower ramp steps sit below the text-contrast floor, so the EFFORT value uses the stat pills' shared value color and the intensity is carried by a non-text marker in the rating's ramp step (D-15 in `docs/plans/2026-09-24-01-stats-pr1-effort-rating-plan.md`).
 - **Rolling sessions can still be rated.** They have no session clock, so their info card drops Duration and Rest Time but keeps the EFFORT row.
+- **The EFFORT row explains itself.** Under the value a muted caption reads `How hard the session felt`, and the row's button reads `Change rating` once a rating exists and `Add rating` before one. Verified by `test/session_summary_effort_row_test.dart` (group `S-3211 the EFFORT pill carries its own caption`: `S-3211 a rated session shows the caption under the value`, `S-3211 an unrated session shows it too`, `S-3211 a rolling session shows it too`; group `S-3212 the button names what it does`: `S-3212 an unrated session reads Add rating, then Change rating after the sheet rates it`, `S-3212 a rated session reads Change rating, and tapping it opens the sheet on the stored rating`).
 - **A watch session in history is rated like any other.** An imported watch session is an ordinary `TrainingSession`, so its summary shows the rating the wrist recorded, or offers to add one, through the same control. Verified by `test/watch_session_summary_integration_test.dart` (`S-285`, `S-286`).
 - **The phone's rating is final.** A rating written here is never replaced by one the wrist sends later: the import applies a wrist rating only while the session has none (D-138 of `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). Verified by `test/watch_session_import_test.dart` (`S-264`).
 - **Both devices ask the same question.** The sheet's question, scale and end labels are the ones `watch/contract/watch_effort_rating_contract.json` gives the wrist. Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`).
@@ -131,7 +132,16 @@ the answer goes through `WorkoutState.setEntryDistance` or
 - **The section is hidden when it has no rows**, as the group cards are.
 - **A row carries a name, a distance and a unit, and nothing else.** No pace,
   total, change indicator or duration is added anywhere on the Summary: the
-  values belong to Stats.
+  values belong to Stats. The pencil that ends each row marks it editable; it
+  is decoration, not data.
+- **The card says how to edit a row.** A hint above the rows reads
+  `Tap a row to enter or correct it.`, and each row ends with a pencil; a row
+  with no distance keeps its em dash. Verified by
+  `test/session_summary_distance_test.dart` (`S-3213 the card says how to edit
+  a row, above the rows`, `S-3213 a session with no distance rows shows neither
+  the card nor the hint`, `S-3214 every row ends with a pencil, and the row
+  still opens the editor`, `S-3215 the card fits 280 dp with a 60-character
+  name`).
 - **Confirming the pre-filled value keeps the stored metres**, which is what
   confirms an estimate; any other value is stored as entered, and zero removes
   the distance. The field's label never carries the estimate marker, because
@@ -332,4 +342,4 @@ Last Updated: April 13, 2026
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-10-13. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

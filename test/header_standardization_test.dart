@@ -1343,9 +1343,9 @@ void main() {
           reason: 'EFFORT value must show the rating for rolling sessions',
         );
         expect(
-          find.text('Change'),
+          find.text('Change rating'),
           findsOneWidget,
-          reason: 'Change button must be visible when a rating exists',
+          reason: 'Change rating button must be visible when a rating exists',
         );
 
         // The combined info card is still rendered (3 OmniSurface: info + note + calendar)

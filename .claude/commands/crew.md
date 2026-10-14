@@ -69,7 +69,9 @@ what the team will do, in plain language, before spending any run.
    (b) run `git ls-files --others --exclude-standard -- lib test | xargs -r git add -N --` so the new files show in `git diff` (intent-to-add only, no commit):
    a reviewer who cannot see a file loops on `git-diff --stat`; (c) never ask an agent for a computation the gateway cannot run (contrast ratios, scripts):
    measure it yourself with a throwaway test and put the numbers in the brief; (d) a prover and a builder may share `test/**` with `--allow-overlap` because
-   `prove-red` works in a temporary checkout, but never two builders.
+   `prove-red` works in a temporary checkout, but never two builders; (e) never run the full `flutter test` while a prover run is live: its temporary
+   checkout under `.work/gateway` makes `test/pre_release_gate_ios_artifact_test.dart` fail on a vanished file (plan 32), so run the suite before or after it;
+   (f) the same tree may be shared with another session (the watch app): scope every `git diff`/`git status` check to the plan's paths.
 6. **Verify (you, every time).** After each run, in this order: `git status`/`git diff --stat` inside the
    run's scope vs Predicted Files; `flutter analyze` count vs baseline; touched tests; full `flutter test`
    with the real pass/fail line (900 s timeout via `with-timeout.sh`); `swift test` if Swift changed

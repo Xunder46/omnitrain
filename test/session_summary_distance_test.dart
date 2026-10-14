@@ -286,7 +286,10 @@ Future<WorkoutState> _pumpSummary(
 /// The DISTANCE card, or null when the section is hidden.
 Finder get _distanceCard => find.byKey(const Key('omni_session_distance_card'));
 
-/// The full text of the Distance section, in render order.
+/// The full text of the Distance section's rows, in render order.
+///
+/// The card's tap hint (D-3209) is not a row: it carries its own key and its
+/// own assertion (S-3213), so it is dropped here rather than in every list.
 List<String> _sectionTexts(WidgetTester tester) => tester
     .widgetList<Text>(
       find.descendant(
@@ -294,6 +297,7 @@ List<String> _sectionTexts(WidgetTester tester) => tester
         matching: find.byType(Text),
       ),
     )
+    .where((text) => text.key != const Key('session_distance_hint'))
     .map((text) => text.data ?? '')
     .toList();
 
@@ -940,5 +944,145 @@ void main() {
       (t) => t.metricId == MetricIds.extraWeight,
     );
     expect(extraWeight.valueReal, 4.0);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Plan 32, phase B — S-3213 … S-3215: the card looks editable
+  // ══════════════════════════════════════════════════════════════════════════
+
+  testWidgets('S-3213 the card says how to edit a row, above the rows', (
+    tester,
+  ) async {
+    final repo = await _freshRepo();
+    await _seedCardio(repo);
+    final settings = await _settings(repo);
+    await _pumpSummary(tester, repo, sessionId: 's-cardio', settings: settings);
+
+    final hint = find.byKey(const Key('session_distance_hint'));
+    expect(hint, findsOneWidget);
+    expect(
+      find.descendant(of: _distanceCard, matching: hint),
+      findsOneWidget,
+      reason: 'D-3209: the hint belongs to the DISTANCE card',
+    );
+    expect(
+      tester.widget<Text>(hint).data,
+      'Tap a row to enter or correct it.',
+    );
+    expect(
+      tester.getRect(hint).bottom,
+      lessThan(tester.getRect(find.text('Treadmill Run · 1')).top),
+      reason: 'D-3209: the hint sits above the first row',
+    );
+  });
+
+  testWidgets('S-3213 a session with no distance rows shows neither the card '
+      'nor the hint', (tester) async {
+    final repo = await _freshRepo();
+    await _seedSession(
+      repo,
+      sessionId: 's-lift',
+      daysAgo: 2,
+      modality: Modality.resistanceLifting,
+      exercises: [
+        ('Bench Press', 'set', [(0, null, null), (0, null, null)]),
+      ],
+    );
+    final settings = await _settings(repo);
+    await _pumpSummary(tester, repo, sessionId: 's-lift', settings: settings);
+
+    expect(_distanceCard, findsNothing);
+    expect(find.byKey(const Key('session_distance_hint')), findsNothing);
+  });
+
+  testWidgets('S-3214 every row ends with a pencil, and the row still opens '
+      'the editor', (tester) async {
+    final repo = await _freshRepo();
+    await _seedCardio(repo);
+    final settings = await _settings(repo);
+    await _pumpSummary(tester, repo, sessionId: 's-cardio', settings: settings);
+
+    const names = ['Treadmill Run · 1', 'Treadmill Run · 2', 'Easy Run'];
+    for (var i = 0; i < names.length; i++) {
+      final icon = find.byKey(Key('session_distance_edit_icon_$i'));
+      expect(icon, findsOneWidget, reason: 'D-3210: row $i has a pencil');
+      final widget = tester.widget<Icon>(icon);
+      expect(widget.icon, Icons.edit_outlined);
+      expect(widget.size, 16);
+      expect(
+        tester.getRect(icon).left,
+        greaterThanOrEqualTo(tester.getRect(find.text(names[i])).right),
+        reason: 'D-3210: row $i ends with the pencil',
+      );
+    }
+    expect(
+      find.byKey(const Key('session_distance_edit_icon_3')),
+      findsNothing,
+      reason: 'there are only three rows',
+    );
+
+    // The row whose value is an em dash has one too, and the row — not the
+    // icon — still opens the editor and still saves.
+    await _tapRow(tester, names[1]);
+    expect(find.text('Edit Distance'), findsOneWidget);
+    await _enterInDialog(tester, '2.2');
+
+    expect(_sectionTexts(tester), [
+      'Treadmill Run · 1',
+      '4.87',
+      'KM EST.',
+      'Treadmill Run · 2',
+      '2.20',
+      'KM',
+      'Easy Run',
+      '5.00',
+      'KM',
+    ]);
+    final stored = (await repo.getEffortObservations(
+      'e-s-cardio-0',
+    )).firstWhere((row) => row.id == 'obs-e-s-cardio-0-1-distance');
+    expect(stored.valueReal, 2200.0);
+  });
+
+  testWidgets('S-3215 the card fits 280 dp with a 60-character name', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(280, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final longName = 'A' * 60;
+    var taps = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SessionDistanceCard(
+            rows: [
+              DistanceRowModel(
+                name: longName,
+                value: '1.00',
+                unitLabel: 'km',
+                onTap: () => taps++,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final name = find.text(longName);
+    expect(tester.widget<Text>(name).overflow, TextOverflow.ellipsis);
+    final icon = find.byKey(const Key('session_distance_edit_icon_0'));
+    expect(icon, findsOneWidget, reason: 'the pencil stays visible');
+    expect(find.text('KM'), findsOneWidget, reason: 'the unit stays visible');
+    final iconRect = tester.getRect(icon);
+    expect(iconRect.left, greaterThanOrEqualTo(tester.getRect(name).right));
+    expect(iconRect.right, lessThanOrEqualTo(280));
+
+    // The pencil is a marking of a row that is itself still the control.
+    await tester.tap(name);
+    await tester.pump();
+    expect(taps, 1);
   });
 }

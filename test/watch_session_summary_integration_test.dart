@@ -377,7 +377,7 @@ void main() {
         findsOneWidget,
         reason: 'S-285 the rating survives reopening',
       );
-      expect(find.text('Change'), findsOneWidget, reason: 'S-285');
+      expect(find.text('Change rating'), findsOneWidget, reason: 'S-285');
       expect(_markerColor(tester), _ramp.step4, reason: 'S-285');
     });
   });
@@ -412,9 +412,9 @@ void main() {
         reason: 'S-286 its intensity marker is the rating’s ramp step',
       );
       expect(
-        find.text('Change'),
+        find.text('Change rating'),
         findsOneWidget,
-        reason: 'S-286 a rated session offers PR 1’s Change control',
+        reason: 'S-286 a rated session offers PR 1’s Change rating control',
       );
       expect(
         find.text('How hard was this session?'),

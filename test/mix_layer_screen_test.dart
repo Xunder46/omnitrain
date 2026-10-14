@@ -158,6 +158,13 @@ List<String> _chipTexts() => _textsUnder(
 Color? _segmentColor(WidgetTester tester, Key key) =>
     tester.widget<Container>(find.byKey(key)).color;
 
+/// The fill colour of the decoration on the box keyed [key] — the legend's
+/// rounded dots (S-3203).
+Color? _decorationColor(WidgetTester tester, Key key) {
+  final decoration = tester.widget<Container>(find.byKey(key)).decoration;
+  return decoration is BoxDecoration ? decoration.color : null;
+}
+
 /// The border of the strip column [i]'s own container.
 Border? _columnBorder(WidgetTester tester, int i) {
   final container = tester.widget<Container>(find.byKey(Key('mix_week_$i')));
@@ -883,27 +890,40 @@ void main() {
 
       // ─── S-1603 ──────────────────────────────────────────────────────────
 
-      group('S-1603 one measure label on both blocks, and the chip', () {
+      group('S-1603 the measure is stated once per block, and the chip', () {
         setUp(() => _seedLoadReady(repo));
 
-        testWidgets('the load measure labels the bar and the strip twice, and '
-            'never names the other measure', (tester) async {
+        testWidgets('the explainer states the load measure above the bar and '
+            'the strip title above the columns, and neither old word survives',
+            (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('by load'), findsNWidgets(2));
-          expect(find.text('by time'), findsNothing);
+          expect(
+            _textOf(tester, const Key('mix_explainer')),
+            'Your training split by how hard each session felt.',
+          );
+          expect(
+            _textOf(tester, const Key('mix_strip_title')),
+            'Week by week · last $kMixStripWeeks weeks',
+          );
+          final layerTexts = _textsUnder(find.byKey(const Key('mix_layer')));
+          for (final gone in const ['by load', 'by time', 'usual']) {
+            expect(layerTexts, isNot(contains(gone)), reason: gone);
+          }
 
           final barTop = tester.getTopLeft(find.byKey(const Key('mix_bar'))).dy;
           final stripTop = tester
               .getTopLeft(find.byKey(const Key('mix_week_0')))
               .dy;
-          final labels = [
-            for (final element in find.text('by load').evaluate())
-              tester.getTopLeft(find.byWidget(element.widget)).dy,
-          ];
-          expect(labels.first, lessThan(barTop));
-          expect(labels.last, lessThan(stripTop));
-          expect(labels.last, greaterThan(barTop));
+          final explainerTop = tester
+              .getTopLeft(find.byKey(const Key('mix_explainer')))
+              .dy;
+          final titleTop = tester
+              .getTopLeft(find.byKey(const Key('mix_strip_title')))
+              .dy;
+          expect(explainerTop, lessThan(barTop));
+          expect(titleTop, lessThan(stripTop));
+          expect(titleTop, greaterThan(barTop));
 
           expect(_chipTexts(), ['· Test Block', '· Test Block']);
           expect(tester.takeException(), isNull);
@@ -913,11 +933,16 @@ void main() {
       group('S-1603 the twin: an unrated, baseline-less window', () {
         setUp(() => _seedTimeWindow(repo));
 
-        testWidgets('reads by time twice and never by load', (tester) async {
+        testWidgets('states the time measure and never the load one',
+            (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('by time'), findsNWidgets(2));
+          expect(
+            _textOf(tester, const Key('mix_explainer')),
+            'Your training split by time spent.',
+          );
           expect(find.text('by load'), findsNothing);
+          expect(find.text('by time'), findsNothing);
         });
       });
 
@@ -947,35 +972,42 @@ void main() {
             'absent', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('by time'), findsNWidgets(2));
-          expect(find.text('Load baseline: 3 of 4 weeks rated'), findsOneWidget);
+          expect(
+            _textOf(tester, const Key('mix_baseline_note')),
+            'Showing time for now. Effort appears once '
+            '$kTrainingLoadMinRatedWeeks weeks are rated '
+            '(3 of $kTrainingLoadMinRatedWeeks so far).',
+          );
           expect(find.byKey(const Key('mix_usual_bar')), findsNothing);
           expect(find.text('usual'), findsNothing);
+          expect(find.text('Your usual'), findsNothing);
           expect(
             _semanticsLabels().where(
               (label) => label.startsWith('Usual split:'),
             ),
             isEmpty,
           );
-          expect(find.text('1 unrated session'), findsOneWidget);
+          expect(
+            _textOf(tester, const Key('mix_unrated_note')),
+            '1 session has no effort rating yet',
+          );
           expect(tester.takeException(), isNull);
         });
 
-        testWidgets('the measure label, the baseline note and the unrated '
-            'line each cap to one line and ellipsize', (tester) async {
+        testWidgets('the baseline note and the unrated line each cap to two '
+            'lines and ellipsize', (tester) async {
           await pumpStats(tester);
 
-          for (final label in const [
-            'by time',
-            'Load baseline: 3 of 4 weeks rated',
-            '1 unrated session',
+          for (final key in const [
+            Key('mix_baseline_note'),
+            Key('mix_unrated_note'),
           ]) {
-            final text = tester.widget<Text>(find.text(label).first);
-            expect(text.maxLines, 1, reason: 'D-933: $label caps to one line');
+            final text = tester.widget<Text>(find.byKey(key));
+            expect(text.maxLines, 2, reason: 'D-3204: $key caps to two lines');
             expect(
               text.overflow,
               TextOverflow.ellipsis,
-              reason: 'D-933: $label ellipsizes',
+              reason: 'D-3204: $key ellipsizes',
             );
           }
           expect(tester.takeException(), isNull);
@@ -991,9 +1023,12 @@ void main() {
             'width, labelled and read out', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('by load'), findsNWidgets(2));
+          expect(
+            _textOf(tester, const Key('mix_explainer')),
+            'Your training split by how hard each session felt.',
+          );
           expect(find.byKey(const Key('mix_usual_bar')), findsOneWidget);
-          expect(find.text('usual'), findsOneWidget);
+          expect(_textOf(tester, const Key('mix_usual_label')), 'Your usual');
           expect(
             _labelOf(tester, const Key('mix_usual_bar')),
             'Usual split: Resistance 100%',
@@ -1010,10 +1045,7 @@ void main() {
           expect(usual.top, greaterThan(bar.bottom));
           expect(usual.top - bar.bottom, lessThan(40));
 
-          expect(
-            _allTexts().where((text) => text.startsWith('Load baseline:')),
-            isEmpty,
-          );
+          expect(find.byKey(const Key('mix_baseline_note')), findsNothing);
           expect(tester.takeException(), isNull);
         });
       });
@@ -1026,6 +1058,7 @@ void main() {
 
           expect(find.byKey(const Key('mix_usual_bar')), findsNothing);
           expect(find.text('usual'), findsNothing);
+          expect(find.text('Your usual'), findsNothing);
         });
       });
 
@@ -1037,8 +1070,11 @@ void main() {
         testWidgets('one unrated session reads in the singular', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('1 unrated session'), findsOneWidget);
-          expect(find.text('1 unrated sessions'), findsNothing);
+          expect(
+            _textOf(tester, const Key('mix_unrated_note')),
+            '1 session has no effort rating yet',
+          );
+          expect(find.textContaining('unrated'), findsNothing);
         });
       });
 
@@ -1052,8 +1088,14 @@ void main() {
         testWidgets('read in the plural', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('3 unrated sessions'), findsOneWidget);
-          expect(find.text('3 unrated session'), findsNothing);
+          expect(
+            _textOf(tester, const Key('mix_unrated_note')),
+            '3 sessions have no effort rating yet',
+          );
+          expect(
+            _allTexts().where((text) => text.contains('1 session')),
+            isEmpty,
+          );
         });
       });
 
@@ -1063,9 +1105,9 @@ void main() {
         testWidgets('reads nowhere', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('0 unrated sessions'), findsNothing);
+          expect(find.byKey(const Key('mix_unrated_note')), findsNothing);
           expect(
-            _allTexts().where((text) => text.contains('unrated')),
+            _allTexts().where((text) => text.contains('effort rating')),
             isEmpty,
           );
         });
@@ -1184,13 +1226,17 @@ void main() {
 
       // ─── S-1609 ──────────────────────────────────────────────────────────
 
-      group('S-1609 the strip reads the same measure as the bar', () {
+      group('S-1609 / S-3207 the strip’s figures are the measure the explainer '
+          'states', () {
         setUp(() => _seedStrip(repo));
 
-        testWidgets('the time measure names minutes per week', (tester) async {
+        testWidgets('the time explainer names minutes per week', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('by time'), findsNWidgets(2));
+          expect(
+            _textOf(tester, const Key('mix_explainer')),
+            'Your training split by time spent.',
+          );
           for (var i = 0; i < kMixStripWeeks - 1; i++) {
             final label = _labelOf(tester, Key('mix_week_${i}_semantics'));
             expect(label, matches(RegExp(r'^\w{3} \d{2}: \d+ min$')));
@@ -1203,13 +1249,17 @@ void main() {
         });
       });
 
-      group('S-1609 the strip reads the same measure as the bar, rated', () {
+      group('S-1609 / S-3207 the strip’s figures are the measure the explainer '
+          'states, rated', () {
         setUp(() => _seedRatedStrip(repo));
 
-        testWidgets('the load measure names load per week', (tester) async {
+        testWidgets('the load explainer names load per week', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('by load'), findsNWidgets(2));
+          expect(
+            _textOf(tester, const Key('mix_explainer')),
+            'Your training split by how hard each session felt.',
+          );
           for (var i = 0; i < kMixStripWeeks - 1; i++) {
             final label = _labelOf(tester, Key('mix_week_${i}_semantics'));
             expect(label, matches(RegExp(r'^\w{3} \d{2}: \d+ load$')));
@@ -1224,14 +1274,16 @@ void main() {
 
       // ─── S-4005, S-4014 ──────────────────────────────────────────────────
       //
-      // The strip's caption (D-4003): eight columns with no time axis cannot be
-      // read, so the oldest week's start day and `this week` bracket them.
+      // The strip's caption (D-3205): eight columns with no time axis cannot be
+      // read, so the caption brackets them — `7 weeks ago` on the left, `This
+      // week so far` on the right — while the columns keep the dates their own
+      // semantics carry.
 
       group('S-4005 the strip carries a caption naming its span', () {
         setUp(() => _seedStrip(repo));
 
-        testWidgets('the oldest week’s start day sits on the left and `this '
-            'week` on the right, both muted and below the columns',
+        testWidgets('`7 weeks ago` sits on the left and `This week so far` on '
+            'the right, both muted and with the oldest column under them',
             (tester) async {
           await tester.runAsync(
             () => settingsState.setStartOfWeek('sunday'),
@@ -1243,13 +1295,11 @@ void main() {
           ).textMuted;
           expect(
             _textOf(tester, const Key('mix_strip_start_label')),
-            OmniDateUtils.formatShort(
-              _oldestWeekStart(settingsState.startOfWeek),
-            ),
+            '${kMixStripWeeks - 1} weeks ago',
           );
           expect(
             _textOf(tester, const Key('mix_strip_current_label')),
-            'this week',
+            'This week so far',
           );
           expect(
             _textColorOf(tester, const Key('mix_strip_start_label')),
@@ -1260,8 +1310,18 @@ void main() {
             muted,
           );
 
+          // `7 weeks ago` is the oldest column's own week start day (A-3): the
+          // column's semantics still name that date, so the caption and the
+          // date cannot drift apart.
+          expect(
+            _labelOf(tester, const Key('mix_week_0_semantics')),
+            startsWith(
+              '${OmniDateUtils.formatShort(_oldestWeekStart(settingsState.startOfWeek))}: ',
+            ),
+          );
+
           // The caption is under the columns, not over them: the strip's own
-          // measure label stays between the legend and the first column.
+          // title stays between the legend and the first column.
           final columnsBottom = tester
               .getBottomLeft(find.byKey(const Key('mix_week_7')))
               .dy;
@@ -1275,9 +1335,13 @@ void main() {
                 .dy,
             greaterThan(columnsBottom),
           );
+          expect(
+            tester.getTopLeft(find.byKey(const Key('mix_strip_title'))).dy,
+            lessThan(tester.getTopLeft(find.byKey(const Key('mix_week_0'))).dy),
+          );
 
           expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
-          expect(find.text('this week'), findsOneWidget);
+          expect(find.text('This week so far'), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
       });
@@ -1285,8 +1349,8 @@ void main() {
       group('S-4014 the caption’s two ends bracket the eight columns', () {
         setUp(() => _seedEveryStripWeek(repo));
 
-        testWidgets('Monday and Sunday name two different oldest weeks, and '
-            '`this week` under both', (tester) async {
+        testWidgets('the same two ends under Monday and Sunday, over an oldest '
+            'column whose own date moves with the setting', (tester) async {
           await tester.runAsync(
             () => settingsState.setStartOfWeek('sunday'),
           );
@@ -1296,9 +1360,13 @@ void main() {
             tester,
             const Key('mix_strip_start_label'),
           );
+          expect(sundayStart, '${kMixStripWeeks - 1} weeks ago');
+          final sundayOldestDate = OmniDateUtils.formatShort(
+            _oldestWeekStart('sunday'),
+          );
           expect(
-            sundayStart,
-            OmniDateUtils.formatShort(_oldestWeekStart('sunday')),
+            _labelOf(tester, const Key('mix_week_0_semantics')),
+            startsWith('$sundayOldestDate: '),
           );
           final sundayColumnsBottom = tester
               .getBottomLeft(find.byKey(const Key('mix_week_7')))
@@ -1309,7 +1377,7 @@ void main() {
           );
           expect(
             _textOf(tester, const Key('mix_strip_current_label')),
-            'this week',
+            'This week so far',
           );
 
           // A fresh element of the same type at the same position would reuse
@@ -1325,11 +1393,20 @@ void main() {
             tester,
             const Key('mix_strip_start_label'),
           );
-          expect(
-            mondayStart,
-            OmniDateUtils.formatShort(_oldestWeekStart('monday')),
+          expect(mondayStart, '${kMixStripWeeks - 1} weeks ago');
+          expect(sundayStart, mondayStart);
+          final mondayOldestDate = OmniDateUtils.formatShort(
+            _oldestWeekStart('monday'),
           );
-          expect(sundayStart, isNot(mondayStart));
+          expect(
+            mondayOldestDate,
+            isNot(sundayOldestDate),
+            reason: 'Monday and Sunday really start the strip on two days',
+          );
+          expect(
+            _labelOf(tester, const Key('mix_week_0_semantics')),
+            startsWith('$mondayOldestDate: '),
+          );
           final mondayColumnsBottom = tester
               .getBottomLeft(find.byKey(const Key('mix_week_7')))
               .dy;
@@ -1339,7 +1416,7 @@ void main() {
           );
           expect(
             _textOf(tester, const Key('mix_strip_current_label')),
-            'this week',
+            'This week so far',
           );
           expect(tester.takeException(), isNull);
         });
@@ -1354,12 +1431,13 @@ void main() {
       group('S-4006 eight empty weeks render one line, not a strip', () {
         setUp(() => _seedStriplessHistory(repo));
 
-        testWidgets('no columns, no caption, one measure label, and the line '
-            'names the last session', (tester) async {
+        testWidgets('no columns, no title, no caption, and the line names the '
+            'last session', (tester) async {
           await pumpStats(tester);
 
-          // The bar's own measure label is the only one the layer shows.
-          expect(find.text('by time'), findsOneWidget);
+          // The explainer above the bar is the layer's one measure sentence.
+          expect(find.byKey(const Key('mix_explainer')), findsOneWidget);
+          expect(find.byKey(const Key('mix_strip_title')), findsNothing);
           expect(_stripKeys(), isEmpty);
           expect(find.byKey(const Key('mix_strip_start_label')), findsNothing);
           expect(find.byKey(const Key('mix_strip_current_label')), findsNothing);
@@ -1390,7 +1468,8 @@ void main() {
         testWidgets('the strip renders and no empty line does', (tester) async {
           await pumpStats(tester);
 
-          expect(find.text('by time'), findsNWidgets(2));
+          expect(find.byKey(const Key('mix_strip_title')), findsOneWidget);
+          expect(find.byKey(const Key('mix_explainer')), findsOneWidget);
           expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
           expect(
             _stackIndices(_weekIndexOf(_day(0), settingsState.startOfWeek)),
@@ -1398,7 +1477,7 @@ void main() {
           );
           expect(
             _textOf(tester, const Key('mix_strip_current_label')),
-            'this week',
+            'This week so far',
           );
           expect(tester.takeException(), isNull);
         });
@@ -1418,12 +1497,12 @@ void main() {
             0,
             reason: 'the fixture must land in the oldest column',
           );
-          expect(find.text('by time'), findsNWidgets(2));
+          expect(find.byKey(const Key('mix_strip_title')), findsOneWidget);
           expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
           expect(_stackIndices(0), [0]);
           expect(
             _textOf(tester, const Key('mix_strip_start_label')),
-            OmniDateUtils.formatShort(_oldestWeekStart(settingsState.startOfWeek)),
+            '${kMixStripWeeks - 1} weeks ago',
           );
           for (var i = 1; i < kMixStripWeeks; i++) {
             expect(_stackIndices(i), isEmpty, reason: 'column $i');
@@ -1451,7 +1530,8 @@ void main() {
           // Everything D-4004 leaves alone still renders.
           expect(find.byKey(const Key('mix_bar_segment_0')), findsOneWidget);
           expect(_legendSections(), ['Resistance']);
-          expect(find.text('by time'), findsOneWidget);
+          expect(find.byKey(const Key('mix_explainer')), findsOneWidget);
+          expect(find.byKey(const Key('mix_strip_title')), findsNothing);
           expect(tester.takeException(), isNull);
         });
 
@@ -1519,6 +1599,7 @@ void main() {
 
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(_stripKeys(), isEmpty);
+          expect(find.byKey(const Key('mix_strip_title')), findsNothing);
           expect(find.byKey(const Key('mix_strip_start_label')), findsNothing);
           expect(find.byKey(const Key('mix_strip_current_label')), findsNothing);
           expect(find.byKey(const Key('mix_strip_empty')), findsNothing);
@@ -1651,7 +1732,7 @@ void main() {
           );
 
           expect(find.byKey(const Key('mix_usual_bar')), findsOneWidget);
-          expect(find.text('usual'), findsOneWidget);
+          expect(_textOf(tester, const Key('mix_usual_label')), 'Your usual');
           expect(find.byKey(const Key('mix_usual_segment_0')), findsOneWidget);
           expect(find.byKey(const Key('mix_usual_segment_1')), findsNothing);
 
@@ -1804,7 +1885,10 @@ void main() {
             expect(find.byKey(const Key('mix_layer')), findsOneWidget);
             expect(find.byKey(const Key('mix_bar_segment_0')), findsOneWidget);
             expect(find.byKey(const Key('mix_usual_bar')), findsOneWidget);
-            expect(find.text('usual'), findsOneWidget);
+            expect(
+              _textOf(tester, const Key('mix_usual_label')),
+              'Your usual',
+            );
             expect(find.byKey(const Key('mix_usual_label')), findsOneWidget);
             expect(find.byKey(const Key('mix_week_current')), findsOneWidget);
 
@@ -1871,7 +1955,7 @@ void main() {
           expect(find.byKey(const Key('mix_layer')), findsOneWidget);
           expect(find.byKey(const Key('mix_bar_segment_0')), findsOneWidget);
           expect(find.byKey(const Key('mix_usual_bar')), findsOneWidget);
-          expect(find.text('usual'), findsOneWidget);
+          expect(_textOf(tester, const Key('mix_usual_label')), 'Your usual');
           expect(_textsUnder(find.byKey(const Key('mix_legend'))), [
             'Resistance 100%',
           ]);
@@ -1916,12 +2000,12 @@ void main() {
             'header, and the usual label is not one of them', (tester) async {
           await pumpStats(tester);
 
-          // `usual` belongs to the layer's own vocabulary, so it is not a
+          // `Your usual` belongs to the layer's own vocabulary, so it is not a
           // modality name and the legacy guard cannot count it. Breaks it: a
           // legend of bare names, which is what `test/stats_legacy_removal_`
           // `test.dart` asserts against (S-1604).
-          expect(find.text('usual'), findsOneWidget);
-          expect(_kSectionLabels.contains('usual'), isFalse);
+          expect(find.text('Your usual'), findsOneWidget);
+          expect(_kSectionLabels.contains('Your usual'), isFalse);
 
           for (final label in _kSectionLabels) {
             expect(
@@ -2041,6 +2125,613 @@ void main() {
           }
           expect(tester.takeException(), isNull);
         });
+      });
+
+      // ─── Phase A: the card says what it means (S-3201…S-3208) ────────────
+      //
+      // Plan 32, phase A (D-3201…D-3206): the copy fixes the owner asked for.
+      // Every figure asserted below is still one the payload carries.
+
+      /// Pumps the layer alone, from a payload the test builds — the shapes a
+      /// seeded window cannot always be steered into (S-3203, S-3205, S-3208).
+      ///
+      /// The Stats screen draws the layer inside a `ListView` padded 20/20, so
+      /// the same padding and the same unbounded height here keep the width and
+      /// the fit assertions honest: a card that grows taller than the viewport
+      /// scrolls on the screen and must not be reported as an overflow.
+      Future<void> pumpLayer(
+        WidgetTester tester,
+        MixLayerData layer, {
+        Size size = _kTallViewport,
+        double textScale = 1.0,
+      }) async {
+        await tester.binding.setSurfaceSize(size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          MediaQuery(
+            data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+            child: MaterialApp(
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: MixLayerSection(
+                    layer: layer,
+                    window: StatsWindow(
+                      fromMs: DateTime(2026, 4, 1),
+                      toMs: DateTime(2026, 4, 30),
+                      label: 'Test window',
+                      isPeriodScoped: false,
+                    ),
+                    themeColors: OmniTheme.colorsForTheme(
+                      settingsState.appTheme,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      /// The style the `Text` keyed [key] carries.
+      TextStyle? styleOf(WidgetTester tester, Key key) =>
+          tester.widget<Text>(find.byKey(key)).style;
+
+      // ─── S-3201 ──────────────────────────────────────────────────────────
+
+      group('S-3201 one sentence says what the split is', () {
+        setUp(() => _seedLoadReady(repo));
+
+        testWidgets('the load measure reads in words, once, and the old measure '
+            'labels are gone', (tester) async {
+          await pumpStats(tester);
+
+          expect(find.byKey(const Key('mix_explainer')), findsOneWidget);
+          expect(
+            _textOf(tester, const Key('mix_explainer')),
+            'Your training split by how hard each session felt.',
+          );
+          expect(
+            styleOf(tester, const Key('mix_explainer'))?.color,
+            OmniTheme.colorsForTheme(settingsState.appTheme).textSecondary,
+          );
+
+          final layerTexts = _textsUnder(find.byKey(const Key('mix_layer')));
+          for (final gone in const ['by load', 'by time', 'usual']) {
+            expect(layerTexts, isNot(contains(gone)), reason: gone);
+          }
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-3201 the twin: the time measure reads in its own words', () {
+        setUp(() => _seedTimeWindow(repo));
+
+        testWidgets('exactly one explainer, naming time', (tester) async {
+          await pumpStats(tester);
+
+          expect(find.byKey(const Key('mix_explainer')), findsOneWidget);
+          expect(
+            _textOf(tester, const Key('mix_explainer')),
+            'Your training split by time spent.',
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-3202 ──────────────────────────────────────────────────────────
+
+      group('S-3202 the two bars are labelled', () {
+        setUp(() => _seedLoadReady(repo));
+
+        testWidgets('In this window sits above the bar and Your usual below it',
+            (tester) async {
+          await pumpStats(tester);
+
+          expect(
+            _textOf(tester, const Key('mix_window_bar_label')),
+            'In this window',
+          );
+          expect(_textOf(tester, const Key('mix_usual_label')), 'Your usual');
+          expect(
+            styleOf(tester, const Key('mix_window_bar_label'))?.color,
+            OmniTheme.colorsForTheme(settingsState.appTheme).textMuted,
+          );
+
+          final bar = tester.getRect(find.byKey(const Key('mix_bar')));
+          expect(
+            tester
+                .getTopLeft(find.byKey(const Key('mix_window_bar_label')))
+                .dy,
+            lessThan(bar.top),
+          );
+          expect(
+            tester.getTopLeft(find.byKey(const Key('mix_usual_label'))).dy,
+            greaterThan(bar.bottom),
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-3202 the twin: no usual bar, no bar labels', () {
+        setUp(() => _seedTimeWindow(repo));
+
+        testWidgets('neither label renders', (tester) async {
+          await pumpStats(tester);
+
+          expect(find.byKey(const Key('mix_window_bar_label')), findsNothing);
+          expect(find.byKey(const Key('mix_usual_label')), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-3203 ──────────────────────────────────────────────────────────
+
+      group('S-3203 the legend drops the 0% entries and gives each one a dot',
+          () {
+        testWidgets('three entries and three dots while the bar still draws '
+            'four segments and names Sports 0%', (tester) async {
+          await pumpLayer(
+            tester,
+            const MixLayerData(
+              measure: MixMeasure.load,
+              segments: [
+                MixSegment(
+                  section: ExerciseSection.resistance,
+                  measure: 98.4,
+                  percent: 98,
+                ),
+                MixSegment(
+                  section: ExerciseSection.isometric,
+                  measure: 1.0,
+                  percent: 1,
+                ),
+                MixSegment(
+                  section: ExerciseSection.cardio,
+                  measure: 0.6,
+                  percent: 1,
+                ),
+                MixSegment(
+                  section: ExerciseSection.sports,
+                  measure: 0.0,
+                  percent: 0,
+                ),
+              ],
+              baselineSegments: [],
+              unratedSessionCount: 0,
+              ratedBaselineWeeks: kTrainingLoadMinRatedWeeks,
+              weeks: [],
+            ),
+          );
+
+          expect(_textsUnder(find.byKey(const Key('mix_legend'))), [
+            'Resistance 98%',
+            'Isometric 1%',
+            'Cardio 1%',
+          ]);
+          for (var i = 0; i < 3; i++) {
+            expect(find.byKey(Key('mix_legend_dot_$i')), findsOneWidget);
+          }
+          expect(find.byKey(const Key('mix_legend_dot_3')), findsNothing);
+          expect(
+            tester.getSize(find.byKey(const Key('mix_legend_dot_0'))),
+            const Size(10, 10),
+          );
+          expect(
+            _decorationColor(tester, const Key('mix_legend_dot_0')),
+            ModalityColors.resistanceLifting,
+          );
+          expect(
+            _decorationColor(tester, const Key('mix_legend_dot_1')),
+            ModalityColors.isometricStretching,
+          );
+          expect(
+            _decorationColor(tester, const Key('mix_legend_dot_2')),
+            ModalityColors.cardioEndurance,
+          );
+
+          final textTheme = Theme.of(
+            tester.element(find.byKey(const Key('mix_legend'))),
+          ).textTheme;
+          final legendStyle = tester
+              .widget<Text>(find.text('Resistance 98%'))
+              .style;
+          expect(
+            legendStyle?.color,
+            OmniTheme.colorsForTheme(settingsState.appTheme).textSecondary,
+          );
+          expect(legendStyle?.fontSize, textTheme.bodyMedium?.fontSize);
+
+          // The bar is untouched by the legend's copy: four segments, and its
+          // semantics still names the modality the legend dropped.
+          for (var i = 0; i < 4; i++) {
+            expect(find.byKey(Key('mix_bar_segment_$i')), findsOneWidget);
+          }
+          expect(
+            _labelOf(tester, const Key('mix_bar')),
+            contains('Sports 0%'),
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-3204 ──────────────────────────────────────────────────────────
+
+      group('S-3204 the baseline note says what happens and when', () {
+        setUp(() => _seedThreeRatedWeeks(repo));
+
+        testWidgets('three of four rated weeks are named with the threshold',
+            (tester) async {
+          await pumpStats(tester);
+
+          expect(
+            _textOf(tester, const Key('mix_baseline_note')),
+            'Showing time for now. Effort appears once '
+            '$kTrainingLoadMinRatedWeeks weeks are rated '
+            '(3 of $kTrainingLoadMinRatedWeeks so far).',
+          );
+          expect(find.textContaining('Load baseline:'), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-3204 the twin: no rated week at all', () {
+        setUp(() => _seedTimeWindow(repo));
+
+        testWidgets('reads nought of four', (tester) async {
+          await pumpStats(tester);
+
+          expect(
+            _textOf(tester, const Key('mix_baseline_note')),
+            'Showing time for now. Effort appears once '
+            '$kTrainingLoadMinRatedWeeks weeks are rated '
+            '(0 of $kTrainingLoadMinRatedWeeks so far).',
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-3204 the load measure explains nothing', () {
+        setUp(() => _seedLoadReady(repo));
+
+        testWidgets('no baseline note renders at all', (tester) async {
+          await pumpStats(tester);
+
+          expect(find.byKey(const Key('mix_baseline_note')), findsNothing);
+          expect(find.textContaining('Showing time for now'), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-3205 ──────────────────────────────────────────────────────────
+
+      group('S-3205 the unrated line says which measure leaves sessions out',
+          () {
+        setUp(() => _seedTimeWindow(repo));
+
+        testWidgets('the time measure leaves one session unrated', (
+          tester,
+        ) async {
+          await pumpStats(tester);
+
+          expect(
+            _textOf(tester, const Key('mix_unrated_note')),
+            '1 session has no effort rating yet',
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-3205 the twin: three unrated sessions under the time measure',
+          () {
+        setUp(() async {
+          await _seedLifting(repo, sessionId: 's-u2', daysAgo: 2);
+          await _seedLifting(repo, sessionId: 's-u3', daysAgo: 3);
+          await _seedLifting(repo, sessionId: 's-u4', daysAgo: 4);
+        });
+
+        testWidgets('the line is plural', (tester) async {
+          await pumpStats(tester);
+
+          expect(
+            _textOf(tester, const Key('mix_unrated_note')),
+            '3 sessions have no effort rating yet',
+          );
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-3205 the load measure says the session is not counted', () {
+        testWidgets('one session, and then three', (tester) async {
+          const ratingless = <int, String>{
+            1: '1 session isn\'t counted – no effort rating yet',
+            3: '3 sessions aren\'t counted – no effort rating yet',
+          };
+
+          for (final entry in ratingless.entries) {
+            await pumpLayer(
+              tester,
+              MixLayerData(
+                measure: MixMeasure.load,
+                segments: const [
+                  MixSegment(
+                    section: ExerciseSection.resistance,
+                    measure: 100,
+                    percent: 100,
+                  ),
+                ],
+                baselineSegments: const [],
+                unratedSessionCount: entry.key,
+                ratedBaselineWeeks: kTrainingLoadMinRatedWeeks,
+                weeks: const [],
+              ),
+            );
+
+            expect(
+              _textOf(tester, const Key('mix_unrated_note')),
+              entry.value,
+              reason: '${entry.key} unrated sessions',
+            );
+          }
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-3205 the twin: every session rated', () {
+        setUp(() => _seedLoadReady(repo));
+
+        testWidgets('no unrated line renders', (tester) async {
+          await pumpStats(tester);
+
+          expect(find.byKey(const Key('mix_unrated_note')), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-3206 ──────────────────────────────────────────────────────────
+
+      group('S-3206 the strip is titled, captioned and shows eight columns',
+          () {
+        setUp(() => _seedStrip(repo));
+
+        testWidgets('title, two ends, five 2 dp stubs on the empty columns and '
+            'none on the three with work, columns still 64 dp', (tester) async {
+          await pumpStats(tester);
+
+          expect(
+            _textOf(tester, const Key('mix_strip_title')),
+            'Week by week · last $kMixStripWeeks weeks',
+          );
+          expect(
+            _textOf(tester, const Key('mix_strip_start_label')),
+            '${kMixStripWeeks - 1} weeks ago',
+          );
+          expect(
+            _textOf(tester, const Key('mix_strip_current_label')),
+            'This week so far',
+          );
+          expect(
+            styleOf(tester, const Key('mix_strip_title'))?.color,
+            OmniTheme.colorsForTheme(settingsState.appTheme).textMuted,
+          );
+
+          // The fixture puts work in three of the eight weeks: today's, the
+          // week a week back and the week a month back.
+          final withWork = <int>{
+            7,
+            _weekIndexOf(_day(7), settingsState.startOfWeek),
+            _weekIndexOf(_day(30), settingsState.startOfWeek),
+          };
+          expect(withWork, hasLength(3), reason: 'three distinct weeks');
+
+          final stubs = <int>[];
+          for (var i = 0; i < kMixStripWeeks; i++) {
+            final stub = find.byKey(Key('mix_week_${i}_empty'));
+            if (withWork.contains(i)) {
+              expect(stub, findsNothing, reason: 'column $i holds work');
+            } else {
+              expect(stub, findsOneWidget, reason: 'column $i is empty');
+              expect(
+                tester.getSize(stub).height,
+                2,
+                reason: 'column $i stub is 2 dp',
+              );
+              stubs.add(i);
+            }
+            expect(
+              tester.getSize(find.byKey(Key('mix_week_$i'))).height,
+              64,
+              reason: 'column $i keeps the strip height',
+            );
+            // The stub is not a stack segment.
+            expect(
+              _stackIndices(i),
+              withWork.contains(i) ? isNotEmpty : isEmpty,
+              reason: 'column $i',
+            );
+          }
+          expect(stubs, hasLength(5));
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-3206 the twin: an all-empty strip keeps its one line', () {
+        setUp(() => _seedStriplessHistory(repo));
+
+        testWidgets('no title, caption or stub anywhere', (tester) async {
+          await pumpStats(tester);
+
+          expect(find.byKey(const Key('mix_strip_empty')), findsOneWidget);
+          expect(find.byKey(const Key('mix_strip_title')), findsNothing);
+          expect(find.byKey(const Key('mix_strip_start_label')), findsNothing);
+          expect(find.byKey(const Key('mix_strip_current_label')), findsNothing);
+          expect(_stripKeys(), isEmpty);
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-3208 ──────────────────────────────────────────────────────────
+
+      group('S-3208 the whole card fits every viewport and text scale', () {
+        // The densest writing the card can carry: a zero-share modality, both
+        // notes, the usual bar and eight columns, four of them empty.
+        MixLayerData densest() {
+          final currentWeekStart = DateTime(2026, 4, 20);
+          return MixLayerData(
+            measure: MixMeasure.time,
+            segments: const [
+              MixSegment(
+                section: ExerciseSection.resistance,
+                measure: 98.4,
+                percent: 98,
+              ),
+              MixSegment(
+                section: ExerciseSection.isometric,
+                measure: 1.0,
+                percent: 1,
+              ),
+              MixSegment(
+                section: ExerciseSection.cardio,
+                measure: 0.6,
+                percent: 1,
+              ),
+              MixSegment(
+                section: ExerciseSection.sports,
+                measure: 0.0,
+                percent: 0,
+              ),
+            ],
+            baselineSegments: const [
+              MixSegment(
+                section: ExerciseSection.resistance,
+                measure: 60,
+                percent: 60,
+              ),
+              MixSegment(
+                section: ExerciseSection.cardio,
+                measure: 40,
+                percent: 40,
+              ),
+            ],
+            unratedSessionCount: 3,
+            ratedBaselineWeeks: kTrainingLoadMinRatedWeeks - 1,
+            weeks: [
+              for (var i = 0; i < kMixStripWeeks; i++)
+                MixWeek(
+                  weekStart: DateTime(
+                    currentWeekStart.year,
+                    currentWeekStart.month,
+                    currentWeekStart.day -
+                        (kMixStripWeeks - 1 - i) * 7,
+                  ),
+                  segments: i.isEven
+                      ? const [
+                          MixSegment(
+                            section: ExerciseSection.resistance,
+                            measure: 60,
+                            percent: 100,
+                          ),
+                        ]
+                      : const [],
+                  measure: i.isEven ? 60 : 0,
+                  inProgress: i == kMixStripWeeks - 1,
+                ),
+            ],
+          );
+        }
+
+        const cases = <String, (Size, double)>{
+          '390x844 at 1.0x text': (Size(390, 844), 1.0),
+          '320x568 at 1.3x text': (Size(320, 568), 1.3),
+          '320x568 at 2.0x text': (Size(320, 568), 2.0),
+        };
+
+        for (final entry in cases.entries) {
+          testWidgets('the densest card fits ${entry.key}', (tester) async {
+            final (size, scale) = entry.value;
+            final overflows = <String>[];
+            final previous = FlutterError.onError;
+            FlutterError.onError = (details) {
+              final text = details.exceptionAsString();
+              if (text.contains('overflowed')) {
+                overflows.add(text.split('\n').first);
+              } else {
+                previous?.call(details);
+              }
+            };
+
+            try {
+              await pumpLayer(
+                tester,
+                densest(),
+                size: size,
+                textScale: scale,
+              );
+            } finally {
+              FlutterError.onError = previous;
+            }
+
+            expect(
+              overflows.toSet(),
+              isEmpty,
+              reason: 'the card overflows at ${entry.key}: '
+                  '${overflows.toSet().join(" | ")}',
+            );
+            expect(tester.takeException(), isNull);
+
+            // Every block the copy changed is really on screen.
+            for (final key in const [
+              Key('mix_explainer'),
+              Key('mix_window_bar_label'),
+              Key('mix_usual_label'),
+              Key('mix_baseline_note'),
+              Key('mix_unrated_note'),
+              Key('mix_strip_title'),
+              Key('mix_strip_start_label'),
+              Key('mix_strip_current_label'),
+            ]) {
+              expect(
+                find.byKey(key),
+                findsOneWidget,
+                reason: '$key at ${entry.key}',
+              );
+            }
+
+            // Nothing the card draws is wider than the card itself — and no
+            // line of it runs past the card's right edge either (a `Wrap`
+            // child wider than the card overflows without a Flex to report).
+            final cardRect = tester.getRect(find.byKey(const Key('mix_layer')));
+            for (final key in const [
+              Key('mix_bar'),
+              Key('mix_usual_bar'),
+              Key('mix_legend'),
+              Key('mix_strip_title'),
+              Key('mix_week_current'),
+            ]) {
+              expect(
+                tester.getSize(find.byKey(key)).width,
+                lessThanOrEqualTo(cardRect.width),
+                reason: '$key is wider than the card at ${entry.key}',
+              );
+            }
+            final boxes = tester.renderObjectList<RenderBox>(find.byType(Text));
+            expect(boxes, isNotEmpty);
+            for (final box in boxes) {
+              final rect = box.localToGlobal(Offset.zero) & box.size;
+              expect(
+                rect.left,
+                greaterThanOrEqualTo(cardRect.left - 0.01),
+                reason: 'a line starts left of the card at ${entry.key}',
+              );
+              expect(
+                rect.right,
+                lessThanOrEqualTo(cardRect.right + 0.01),
+                reason: 'a line runs past the card at ${entry.key}',
+              );
+            }
+          });
+        }
       });
     });
   }
