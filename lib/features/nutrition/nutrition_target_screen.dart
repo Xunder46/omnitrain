@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../state/nutrition_state.dart';
 import '../../data/models/models.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/inputs/select_all_on_focus.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 
@@ -38,6 +39,9 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
   late TextEditingController _caloriesController;
   bool _isLoading = true;
 
+  /// The calories text the field held on entry; a difference means dirty.
+  String _initialCalories = '';
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +63,7 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
         } else {
           _caloriesController.text = '';
         }
+        _initialCalories = _caloriesController.text;
         _isLoading = false;
       });
     }
@@ -93,6 +98,40 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
     }
   }
 
+  /// True when the calories field differs from the value it held on entry.
+  bool get _isDirty => _caloriesController.text != _initialCalories;
+
+  /// Single exit path for header back, system back and the dialog's own
+  /// Discard: leaving without edits pops straight away, leaving with edits
+  /// asks first. Save runs the normal save path, which pops only when the
+  /// target was written.
+  Future<void> _attemptExit() async {
+    if (!_isDirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final action = await ConfirmationDialog.showUnsavedChanges(
+      context: context,
+      title: 'Unsaved changes',
+      body:
+          'You have unsaved edits. Save them or discard to return to the previous screen.',
+      keepEditingKey: const Key('nutrition-target-unsaved-keep'),
+      discardKey: const Key('nutrition-target-unsaved-discard'),
+      saveKey: const Key('nutrition-target-unsaved-save'),
+    );
+    if (!mounted) return;
+
+    switch (action) {
+      case UnsavedChangesAction.discard:
+        Navigator.of(context).pop();
+      case UnsavedChangesAction.save:
+        await _save();
+      case UnsavedChangesAction.keepEditing:
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -102,7 +141,7 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
       );
     }
 
-    return Scaffold(
+    final content = Scaffold(
       appBar: AppBar(title: const Text('Daily Calorie Target')),
       // The Save button is the screen's primary bottom action. It
       // uses the shared `OmniBottomCTA` so it inherits the
@@ -168,6 +207,7 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
                       ),
                     ),
                     keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() {}),
                     validator: (value) {
                       if (value == null || value.isEmpty) return null;
                       final parsed = double.tryParse(value);
@@ -197,6 +237,15 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
           ),
         ),
       ),
+    );
+
+    return PopScope(
+      canPop: !_isDirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _attemptExit();
+      },
+      child: content,
     );
   }
 }

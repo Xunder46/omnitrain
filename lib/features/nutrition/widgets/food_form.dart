@@ -125,6 +125,16 @@ class FoodForm extends StatefulWidget {
   /// service directly.
   final Future<bool> Function(FoodDraft draft)? onImageSave;
 
+  /// Notified whenever the form-local photo changes: `true` after a pick
+  /// persisted a new path, `false` after the × overlay cleared it.
+  ///
+  /// In create mode ([initial] is null) the photo never leaves the form
+  /// ([onImageSave] is not wired), so a host that guards unsaved work has
+  /// no other way to see it; `_NewFoodFormScreen` marks its guard dirty
+  /// from here. The legacy edit shim leaves this unwired — its photos
+  /// persist immediately.
+  final ValueChanged<bool>? onImageChanged;
+
   const FoodForm({
     super.key,
     required this.initial,
@@ -136,6 +146,7 @@ class FoodForm extends StatefulWidget {
     this.controller,
     this.autoSaveOnBlur = false,
     this.onImageSave,
+    this.onImageChanged,
   });
 
   @override
@@ -400,6 +411,10 @@ class _FoodFormState extends State<FoodForm> {
         .persistPickedImage(picked);
     if (!mounted) return;
     setState(() => _imagePath = persistedPath);
+    // The host's unsaved-work guard reads the pick through this
+    // callback: in create mode the photo is form-local, so nothing else
+    // can see it.
+    widget.onImageChanged?.call(true);
 
     // Save on upload — edit mode only. The create flow uses the
     // existing Save button; partial-saving a half-typed new food
@@ -468,6 +483,7 @@ class _FoodFormState extends State<FoodForm> {
   @visibleForTesting
   Future<void> clearImage() async {
     setState(() => _imagePath = null);
+    widget.onImageChanged?.call(false);
     final onImageSave = widget.onImageSave;
     if (onImageSave == null || widget.initial == null) return;
     final partialDraft = _partialDraftFromInitial(null);

@@ -600,6 +600,280 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // CreatePeriodScreen — unsaved-changes guard (S-2901)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('CreatePeriodScreen unsaved changes guard (S-2901)', () {
+    final Finder nameField = find.byType(TextField).first;
+
+    Finder dialog() => find.byType(AlertDialog);
+
+    Finder inDialog(String text) =>
+        find.descendant(of: dialog(), matching: find.text(text));
+
+    Future<({MockWorkoutRepository repo, PeriodState periodState})> pumpScreen(
+      WidgetTester tester, {
+      TrainingPeriod? existing,
+      bool pushed = false,
+    }) async {
+      final repo = await _freshRepo();
+      final periodState = PeriodState(repo);
+      final screen = CreatePeriodScreen(
+        periodState: periodState,
+        existingPeriod: existing,
+      );
+      await tester.pumpWidget(
+        pushed
+            // Pushed behind a route: system back then has somewhere to pop
+            // to, which is what the guard decides about.
+            ? MaterialApp(
+                home: Builder(
+                  builder: (context) => Scaffold(
+                    body: TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => screen),
+                      ),
+                      child: const Text('open period form'),
+                    ),
+                  ),
+                ),
+              )
+            : MaterialApp(home: screen),
+      );
+      if (pushed) {
+        await tester.tap(find.text('open period form'));
+      }
+      await tester.pumpAndSettle();
+      return (repo: repo, periodState: periodState);
+    }
+
+    TrainingPeriod storedPeriod() => TrainingPeriod(
+      id: 'p-guard',
+      ownerUserId: 'u-1',
+      name: 'Base Period',
+      startDateMs: DateTime(2025, 1, 1).millisecondsSinceEpoch,
+      endDateMs: DateTime(2025, 3, 31, 23, 59, 59, 999).millisecondsSinceEpoch,
+      createdAtMs: 100,
+      updatedAtMs: 100,
+    );
+
+    Future<void> keepEditing(WidgetTester tester) async {
+      await tester.tap(
+        find.descendant(of: dialog(), matching: find.text('Keep editing')),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// Taps the header's back control. `tester.pageBack()` needs the 'Back'
+    /// tooltip, which older OmniBackHeader revisions did not set; the icon is
+    /// stable across them.
+    Future<void> tapHeaderBack(WidgetTester tester) async {
+      final back = find.widgetWithIcon(IconButton, Icons.arrow_back);
+      expect(back, findsOneWidget);
+      await tester.tap(back);
+      await tester.pumpAndSettle();
+    }
+
+    /// Taps a date field and confirms the picker's pre-selected date.
+    Future<void> pickDate(WidgetTester tester, String label) async {
+      await tester.tap(
+        find
+            .ancestor(
+              of: find.text(label),
+              matching: find.byType(GestureDetector),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsNothing);
+    }
+
+    testWidgets('typed name + system back shows the Unsaved changes dialog', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await tester.enterText(nameField, 'Spring Bulk');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsOneWidget);
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+      expect(inDialog('Discard'), findsOneWidget);
+      expect(inDialog('Save'), findsOneWidget);
+
+      // Keep editing stays on the screen with the typed value intact.
+      await keepEditing(tester);
+      expect(dialog(), findsNothing);
+      expect(find.byType(CreatePeriodScreen), findsOneWidget);
+      expect(find.text('Spring Bulk'), findsOneWidget);
+    });
+
+    testWidgets('header back on a dirty form shows the same dialog', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await tester.enterText(nameField, 'Spring Bulk');
+      await tester.pumpAndSettle();
+
+      await tapHeaderBack(tester);
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('a typed note alone marks the form dirty', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Notes (optional)'),
+        'Deload week',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('a picked date alone marks the form dirty', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await pickDate(tester, 'Start Date');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('untouched form: back pops with no dialog', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester, pushed: true);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+    });
+
+    testWidgets('Discard pops and persists nothing', (
+      WidgetTester tester,
+    ) async {
+      final deps = await pumpScreen(tester);
+      await tester.enterText(nameField, 'Spring Bulk');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(inDialog('Discard'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+      expect(await deps.repo.getPeriods(), isEmpty);
+    });
+
+    testWidgets('Save with a valid form saves the period and pops', (
+      WidgetTester tester,
+    ) async {
+      final deps = await pumpScreen(tester);
+      await tester.enterText(nameField, 'Spring Bulk');
+      await tester.pumpAndSettle();
+      await pickDate(tester, 'Start Date');
+      await pickDate(tester, 'End Date');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(inDialog('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+      final periods = await deps.repo.getPeriods();
+      expect(periods.length, 1);
+      expect(periods.single.name, 'Spring Bulk');
+    });
+
+    testWidgets('Save with an invalid form stays and shows the inline error', (
+      WidgetTester tester,
+    ) async {
+      final deps = await pumpScreen(tester);
+      await tester.enterText(nameField, 'Spring Bulk');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(inDialog('Save'));
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.byType(CreatePeriodScreen), findsOneWidget);
+      expect(
+        find.text('Both start and end dates are required.'),
+        findsOneWidget,
+      );
+      expect(await deps.repo.getPeriods(), isEmpty);
+    });
+
+    testWidgets('edit mode: an untouched stored period pops with no dialog', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester, existing: storedPeriod());
+
+      await tapHeaderBack(tester);
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+    });
+
+    testWidgets('edit mode: a changed name prompts, Save updates and pops', (
+      WidgetTester tester,
+    ) async {
+      final existing = storedPeriod();
+      final deps = await pumpScreen(tester, existing: existing);
+      await tester.enterText(nameField, 'Renamed Period');
+      await tester.pumpAndSettle();
+
+      await tapHeaderBack(tester);
+      await tester.pumpAndSettle();
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+
+      await tester.tap(inDialog('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+      final stored = await deps.repo.getPeriodById(existing.id);
+      expect(stored?.name, 'Renamed Period');
+    });
+
+    testWidgets('edit mode: Discard leaves the stored period unchanged', (
+      WidgetTester tester,
+    ) async {
+      final existing = storedPeriod();
+      final deps = await pumpScreen(tester, existing: existing);
+      await tester.enterText(nameField, 'Renamed Period');
+      await tester.pumpAndSettle();
+
+      await tapHeaderBack(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(inDialog('Discard'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+      expect(await deps.repo.getPeriodById(existing.id), isNull);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // CalendarScreen
   // ══════════════════════════════════════════════════════════════════════════
 

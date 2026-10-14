@@ -223,6 +223,134 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   }
 }
 
+/// Unsaved-work probe for the two screens that host a [FoodForm].
+///
+/// `FoodForm` owns its controllers and its dropdown selections privately,
+/// so a host cannot ask it whether the user changed anything. What a host
+/// *can* read is what the form renders: every field is a keyed
+/// [FormField] whose state carries the live value
+/// ([FormFieldState.value] — a text field's controller text, a dropdown's
+/// selection). The probe remembers the first value it sees per field key
+/// and reports a later difference as unsaved work. A text field it has
+/// seen also gets a controller listener, so typing still counts after the
+/// field has scrolled out of the build window and its element is gone.
+class _FoodFormProbe {
+  _FoodFormProbe(this._formKey);
+
+  /// Key on the host's [FoodForm]; it is the root of the field walk.
+  final GlobalKey _formKey;
+
+  /// First value seen per rendered field key (the untouched baseline).
+  final Map<Key, Object?> _firstSeen = <Key, Object?>{};
+
+  /// Text controllers already hooked; holding them keeps a typing signal
+  /// alive after the field's element has been disposed.
+  final Set<TextEditingController> _hooked = <TextEditingController>{};
+  bool _typed = false;
+
+  /// Latest photo state reported through [FoodForm.onImageChanged]; null
+  /// until the photo changes at all. A create-mode form starts with no
+  /// photo, so `true` is unsaved work and clearing back to no photo is
+  /// clean again.
+  bool? _imageHasPhoto;
+
+  /// Record a change to the form-local photo, reported by
+  /// [FoodForm.onImageChanged]. The photo tile is neither a rendered
+  /// [FormField] nor an [EditableText], so a pick or a clear is invisible
+  /// to [_renderedFields] and would otherwise be dropped on the way out.
+  void markImageChanged(bool hasPhoto) => _imageHasPhoto = hasPhoto;
+
+  /// True when the form carries work the user has not saved.
+  bool get isDirty {
+    if (_typed) return true;
+    if (_imageHasPhoto ?? false) return true;
+    for (final field in _renderedFields()) {
+      if (_firstSeen.containsKey(field.key) &&
+          field.value != _firstSeen[field.key]) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Record the values the form currently renders as the untouched
+  /// baseline. Called once the form has laid out, and again after every
+  /// scroll, so a field that scrolls into the build window is baselined
+  /// before the user can type into it.
+  void record() {
+    for (final field in _renderedFields()) {
+      _firstSeen.putIfAbsent(field.key, () => field.value);
+      final controller = field.controller;
+      if (controller != null && _hooked.add(controller)) {
+        controller.addListener(_onTyped);
+      }
+    }
+  }
+
+  void _onTyped() => _typed = true;
+
+  /// Release the controller hooks. [ChangeNotifier.removeListener] is safe
+  /// on a controller [FoodForm] has already disposed.
+  void dispose() {
+    for (final controller in _hooked) {
+      controller.removeListener(_onTyped);
+    }
+    _hooked.clear();
+  }
+
+  /// Every keyed [FormField] the form currently renders.
+  List<_RenderedField> _renderedFields() {
+    final root = _formKey.currentContext;
+    if (root == null) return const <_RenderedField>[];
+    final fields = <_RenderedField>[];
+
+    void visit(Element element) {
+      final widget = element.widget;
+      if (widget is FormField) {
+        final state = element is StatefulElement ? element.state : null;
+        if (widget.key != null && state is FormFieldState<Object?>) {
+          fields.add(
+            _RenderedField(widget.key!, state.value, _controllerOf(element)),
+          );
+        }
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    root.visitChildElements(visit);
+    return fields;
+  }
+
+  /// The text controller a rendered text field edits, or null when the
+  /// field is not a text field.
+  TextEditingController? _controllerOf(Element field) {
+    TextEditingController? controller;
+
+    void visit(Element element) {
+      final widget = element.widget;
+      if (widget is EditableText) {
+        controller = widget.controller;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    field.visitChildElements(visit);
+    return controller;
+  }
+}
+
+/// A [FormField] the form renders, reduced to what the probe compares: the
+/// value the user sees and the controller behind it.
+class _RenderedField {
+  const _RenderedField(this.key, this.value, this.controller);
+
+  final Key key;
+  final Object? value;
+  final TextEditingController? controller;
+}
+
 /// Edit screen shim for **legacy library-only customs** (D-2
 /// compatibility shim).
 ///
@@ -257,10 +385,57 @@ class _LegacyLibraryEditScreen extends StatefulWidget {
 class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
   final FoodFormController _formController = FoodFormController();
 
+  /// Key on the hosted [FoodForm]; the unsaved-work probe reads the form's
+  /// rendered fields through it (see [_FoodFormProbe]).
+  final GlobalKey _formKey = GlobalKey();
+  late final _FoodFormProbe _probe = _FoodFormProbe(_formKey);
+
+  @override
+  void initState() {
+    super.initState();
+    // The form's fields exist once it has laid out; that first frame is the
+    // baseline the guard compares against.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _probe.record();
+    });
+  }
+
   @override
   void dispose() {
+    _probe.dispose();
     _formController.detach();
     super.dispose();
+  }
+
+  /// Single exit path for the header back button and system back: leaving a
+  /// form the user has not touched pops straight away, leaving one with
+  /// edits asks first. Save runs the form's normal save path, which pops
+  /// only when the food was written.
+  Future<void> _attemptExit() async {
+    if (!_probe.isDirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final action = await ConfirmationDialog.showUnsavedChanges(
+      context: context,
+      title: 'Unsaved changes',
+      body: 'You have unsaved edits. Save them or discard to return to the '
+          'food library.',
+      keepEditingKey: const Key('legacy-food-unsaved-keep'),
+      discardKey: const Key('legacy-food-unsaved-discard'),
+      saveKey: const Key('legacy-food-unsaved-save'),
+    );
+    if (!mounted) return;
+
+    switch (action) {
+      case UnsavedChangesAction.discard:
+        Navigator.of(context).pop();
+      case UnsavedChangesAction.save:
+        _formController.submit();
+      case UnsavedChangesAction.keepEditing:
+        break;
+    }
   }
 
   /// Write [draft] through the state layer. Legacy rows are
@@ -290,46 +465,68 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Edit Food')),
-      body: FoodForm(
-        initial: widget.food,
-        foodLibraryState: widget.foodLibraryState,
-        saveLabel: 'Save',
-        showNotesField: true,
-        controller: _formController,
-        onSave: (draft) async {
-          final messenger = ScaffoldMessenger.of(context);
-          try {
-            await _persist(draft);
-            return true;
-          } catch (e) {
-            messenger.showSnackBar(
-              SnackBar(content: Text('Could not save ${widget.food.name}: $e')),
-            );
+    return PopScope(
+      // Always intercept: whether leaving is safe is decided fresh in
+      // [_attemptExit], because the host does not rebuild as the user types
+      // into the form (so a `canPop` computed at build time would go stale
+      // and let the edits through).
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _attemptExit();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Edit Food')),
+        body: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollEndNotification) _probe.record();
             return false;
-          }
-        },
-        // "Save on upload / save on clear": picking or clearing a
-        // photo persists immediately, the same as the catalog
-        // editor (`EditFoodScreen`). Without this the photo
-        // change lived only in the form until the user pressed
-        // Save — and a user who tapped × and then backed out
-        // (the natural gesture, since the catalog editor needs no
-        // Save) found the photo still there.
-        onImageSave: (draft) async {
-          try {
-            await _persist(draft);
-            return true;
-          } catch (_) {
-            return false;
-          }
-        },
-      ),
-      bottomNavigationBar: OmniBottomCTA(
-        label: 'Save',
-        buttonKey: const Key('food_form_save'),
-        onPressed: _formController.submit,
+          },
+          child: FoodForm(
+            key: _formKey,
+            initial: widget.food,
+            foodLibraryState: widget.foodLibraryState,
+            saveLabel: 'Save',
+            showNotesField: true,
+            controller: _formController,
+            onSave: (draft) async {
+              final messenger = ScaffoldMessenger.of(context);
+              final theme = Theme.of(context);
+              try {
+                await _persist(draft);
+                return true;
+              } catch (e) {
+                debugPrint('Edit food: $e');
+                OmniMessage.errorOn(
+                  messenger,
+                  theme,
+                  'Could not save ${widget.food.name}. Try again.',
+                );
+                return false;
+              }
+            },
+            // "Save on upload / save on clear": picking or clearing a
+            // photo persists immediately, the same as the catalog
+            // editor (`EditFoodScreen`). Without this the photo
+            // change lived only in the form until the user pressed
+            // Save — and a user who tapped × and then backed out
+            // (the natural gesture, since the catalog editor needs no
+            // Save) found the photo still there.
+            onImageSave: (draft) async {
+              try {
+                await _persist(draft);
+                return true;
+              } catch (_) {
+                return false;
+              }
+            },
+          ),
+        ),
+        bottomNavigationBar: OmniBottomCTA(
+          label: 'Save',
+          buttonKey: const Key('food_form_save'),
+          onPressed: _formController.submit,
+        ),
       ),
     );
   }
@@ -719,61 +916,131 @@ class _NewFoodFormScreen extends StatefulWidget {
 class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
   final FoodFormController _formController = FoodFormController();
 
+  /// Key on the hosted [FoodForm]; the unsaved-work probe reads the form's
+  /// rendered fields through it (see [_FoodFormProbe]).
+  final GlobalKey _formKey = GlobalKey();
+  late final _FoodFormProbe _probe = _FoodFormProbe(_formKey);
+
+  @override
+  void initState() {
+    super.initState();
+    // The form's fields exist once it has laid out; that first frame is the
+    // baseline the guard compares against.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _probe.record();
+    });
+  }
+
   @override
   void dispose() {
+    _probe.dispose();
     _formController.detach();
     super.dispose();
   }
 
+  /// Single exit path for the header back button and system back: leaving a
+  /// form the user has not touched pops straight away, leaving one with
+  /// edits asks first. Save runs the form's normal save path, which pops
+  /// only when the food was written.
+  Future<void> _attemptExit() async {
+    if (!_probe.isDirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final action = await ConfirmationDialog.showUnsavedChanges(
+      context: context,
+      title: 'Unsaved changes',
+      body: 'You have unsaved edits. Save them or discard to return to the '
+          'food library.',
+      keepEditingKey: const Key('new-food-unsaved-keep'),
+      discardKey: const Key('new-food-unsaved-discard'),
+      saveKey: const Key('new-food-unsaved-save'),
+    );
+    if (!mounted) return;
+
+    switch (action) {
+      case UnsavedChangesAction.discard:
+        Navigator.of(context).pop();
+      case UnsavedChangesAction.save:
+        _formController.submit();
+      case UnsavedChangesAction.keepEditing:
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('New Food')),
-      body: FoodForm(
-        initial: null,
-        foodLibraryState: widget.foodLibraryState,
-        saveLabel: 'Create',
-        controller: _formController,
-        onSave: (draft) async {
-          final messenger = ScaffoldMessenger.of(context);
-          String? catalogId;
-          try {
-            catalogId = await widget.foodLibraryState.createCatalogFood(draft);
-          } catch (_) {
-            messenger.showSnackBar(
-              const SnackBar(content: Text('Could not create food')),
-            );
+    return PopScope(
+      // Always intercept: whether leaving is safe is decided fresh in
+      // [_attemptExit], because the host does not rebuild as the user types
+      // into the form (so a `canPop` computed at build time would go stale
+      // and let the edits through).
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _attemptExit();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('New Food')),
+        body: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollEndNotification) _probe.record();
             return false;
-          }
-          try {
-            await widget.foodLibraryState.addCatalogFoodToLibrary(catalogId);
-          } catch (e) {
-            // Catalog row is preserved; the user can re-add to
-            // library from the My Foods tab. Surface the error so
-            // the user is not silently left without a library copy.
-            messenger.showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Food saved, but adding to your library failed: $e',
-                ),
-              ),
-            );
-            // Pop so the user can see My Foods and the new catalog
-            // row. The catalog write succeeded; only the library
-            // copy failed.
-            return true;
-          }
-          if (context.mounted) Navigator.of(context).pop();
-          return true;
-        },
-      ),
-      // The shared primary bottom CTA. The `food_form_save` key
-      // is preserved on the rendered FilledButton for backward
-      // compatibility with the existing test contract.
-      bottomNavigationBar: OmniBottomCTA(
-        label: 'Create',
-        buttonKey: const Key('food_form_save'),
-        onPressed: _formController.submit,
+          },
+          child: FoodForm(
+            key: _formKey,
+            initial: null,
+            foodLibraryState: widget.foodLibraryState,
+            saveLabel: 'Create',
+            controller: _formController,
+            // Create mode never persists the photo until Save, so the
+            // probe learns about a pick (or a clear) from the form.
+            onImageChanged: _probe.markImageChanged,
+            onSave: (draft) async {
+              final messenger = ScaffoldMessenger.of(context);
+              final theme = Theme.of(context);
+              String? catalogId;
+              try {
+                catalogId = await widget.foodLibraryState.createCatalogFood(
+                  draft,
+                );
+              } catch (_) {
+                OmniMessage.errorOn(messenger, theme, 'Could not create food');
+                return false;
+              }
+              try {
+                await widget.foodLibraryState.addCatalogFoodToLibrary(
+                  catalogId,
+                );
+              } catch (e) {
+                // Catalog row is preserved; the user can re-add to
+                // library from the My Foods tab. Surface the error so
+                // the user is not silently left without a library copy.
+                debugPrint('Add catalog food to library: $e');
+                OmniMessage.errorOn(
+                  messenger,
+                  theme,
+                  'Food saved, but adding to your library failed. Try again.',
+                );
+                // Pop so the user can see My Foods and the new catalog
+                // row. The catalog write succeeded; only the library
+                // copy failed.
+                return true;
+              }
+              if (context.mounted) Navigator.of(context).pop();
+              return true;
+            },
+          ),
+        ),
+        // The shared primary bottom CTA. The `food_form_save` key
+        // is preserved on the rendered FilledButton for backward
+        // compatibility with the existing test contract.
+        bottomNavigationBar: OmniBottomCTA(
+          label: 'Create',
+          buttonKey: const Key('food_form_save'),
+          onPressed: _formController.submit,
+        ),
       ),
     );
   }
@@ -1255,6 +1522,18 @@ class _CatalogRowState extends State<_CatalogRow> {
     // no `BuildContext` across an async gap.
     final messenger = ScaffoldMessenger.of(context);
     final theme = Theme.of(context);
+    final confirmed = await ConfirmationDialog.showTwoChoice(
+      context: context,
+      title: 'Remove ${widget.food.name} from your library?',
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Remove',
+      dismissKey: const Key('food-remove-cancel'),
+      confirmKey: const Key('food-remove-confirm'),
+      isDestructive: true,
+    );
+    if (!confirmed) return;
+    if (!mounted) return;
+    setState(() => _busy = true);
     try {
       if (widget.nutritionState.isFoodLoggedToday(libraryId)) {
         await widget.nutritionState.unlogFoodToday(libraryId);
@@ -1289,7 +1568,8 @@ class _CatalogRowState extends State<_CatalogRow> {
 /// category opens a confirmation dialog with a destination dropdown
 /// (Uncategorized + every other active category, Uncategorized default); on
 /// confirm the category's foods are reassigned and the category is
-/// archived. Deleting an empty category is silent (no confirmation).
+/// archived. Deleting an empty category also asks first, without a
+/// destination dropdown (there is nothing to reassign).
 ///
 /// A "+ New Category" button at the bottom of the list creates a new
 /// category with a default name and focuses the new row's `TextField`.
@@ -1460,11 +1740,24 @@ class _GroupsTabState extends State<_GroupsTab> {
     List<FoodGroup> allGroups,
   ) async {
     if (foodCount == 0) {
-      // Silent no-confirm delete; foodCount is already 0 so the
-      // reassignment is a no-op too. The bundled-food guard can
-      // still fire here (a category can have zero *library* foods
-      // but still be referenced by bundled catalog foods), so we
-      // run the typed catch the same way as the non-empty path.
+      // D-29.4: an empty category is still a destructive, one-tap-away
+      // action, so it asks before archiving. There is no destination
+      // dropdown — `foodCount` is already 0, so the reassignment is a
+      // no-op. The bundled-food guard can still fire here (a category
+      // can have zero *library* foods but still be referenced by
+      // bundled catalog foods), so we run the typed catch the same way
+      // as the non-empty path.
+      final confirmed = await ConfirmationDialog.showTwoChoice(
+        context: context,
+        title: 'Delete category ${group.name}?',
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Delete',
+        dismissKey: const Key('category-delete-cancel'),
+        confirmKey: const Key('category-delete-confirm'),
+        isDestructive: true,
+      );
+      if (!confirmed) return;
+      if (!context.mounted) return;
       try {
         await widget.foodLibraryState.deleteFoodGroupReassigningFoods(
           group.id,
@@ -1482,8 +1775,11 @@ class _GroupsTabState extends State<_GroupsTab> {
     final messenger = ScaffoldMessenger.of(context);
     final theme = Theme.of(context);
     // The dialog returns the sentinel for cancel; null means
-    // "Ungrouped"; a non-null id means "move to that group".
-    final picked = await showDialog<String?>(
+    // "Ungrouped"; a non-null id means "move to that group". The
+    // route's value type is `Object?` so the sentinel (a plain
+    // `Object`) can be popped without a type error; the cast below
+    // narrows the confirmed value back to `String?`.
+    final picked = await showDialog<Object?>(
       context: context,
       builder: (ctx) => _DeleteGroupDialog(
         groupName: group.name,
@@ -1495,8 +1791,9 @@ class _GroupsTabState extends State<_GroupsTab> {
       ),
     );
     if (identical(picked, _cancelledSentinel)) return; // user cancelled
-    // `picked` is null for "Ungrouped" (legitimate), or a group id.
-    final destination = picked;
+    // The sentinel was handled above, so the remaining value is
+    // either null (Uncategorized) or a destination group id.
+    final destination = picked as String?;
     try {
       await widget.foodLibraryState.deleteFoodGroupReassigningFoods(
         group.id,
@@ -1656,10 +1953,10 @@ class _UngroupedRow extends StatelessWidget {
 
 /// Confirmation dialog for deleting a non-empty category.
 ///
-/// The destination dropdown defaults to "Uncategorized" (null). Returns
-/// the picked destination category id, or `null` for Uncategorized. The
-/// `null` return value from the dialog itself means the user
-/// cancelled.
+/// The destination dropdown defaults to "Uncategorized" (null). The
+/// route's value type is `Object?`: it returns [_cancelledSentinel]
+/// when the user cancels, the picked destination category id, or
+/// `null` for Uncategorized.
 class _DeleteGroupDialog extends StatefulWidget {
   final String groupName;
   final int foodCount;

@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/modality_color_utils.dart';
 import '../../state/period/period_state.dart';
 import '../../core/constants/modality.dart';
 import '../../data/models/models.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
 
@@ -37,6 +39,15 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
   String? _dateError;
   String? _overlapError;
 
+  // Baseline values captured on entry. Any difference marks the form dirty,
+  // which routes both back surfaces through the unsaved-changes dialog.
+  String _initialName = '';
+  String _initialNotes = '';
+  DateTime? _initialStartDate;
+  DateTime? _initialEndDate;
+  String? _initialColor;
+  Set<String> _initialFocusModalities = const {};
+
   static const _allModalities = [
     Modality.cardioEndurance,
     Modality.resistanceLifting,
@@ -69,6 +80,12 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
       _notesCtrl.text = existing.notes ?? '';
       _selectedColor = existing.colorHex;
     }
+    _initialName = _nameCtrl.text;
+    _initialNotes = _notesCtrl.text;
+    _initialStartDate = _startDate;
+    _initialEndDate = _endDate;
+    _initialColor = _selectedColor;
+    _initialFocusModalities = {..._focusModalities};
   }
 
   @override
@@ -78,13 +95,23 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
     super.dispose();
   }
 
+  /// True when any field differs from the value it had on entry.
+  bool get _isDirty =>
+      _nameCtrl.text != _initialName ||
+      _notesCtrl.text != _initialNotes ||
+      _startDate != _initialStartDate ||
+      _endDate != _initialEndDate ||
+      _selectedColor != _initialColor ||
+      !setEquals(_focusModalities, _initialFocusModalities);
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final content = Scaffold(
       extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: OmniBackHeader(
         title: widget.existingPeriod == null ? 'Create Period' : 'Edit Period',
+        onBack: () => _attemptExit(),
       ),
       bottomNavigationBar: OmniBottomCTA(
         label: 'Save',
@@ -107,11 +134,7 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                   errorText: _nameError,
                   counterText: '',
                 ),
-                onChanged: (_) {
-                  if (_nameError != null) {
-                    setState(() => _nameError = null);
-                  }
-                },
+                onChanged: (_) => setState(() => _nameError = null),
               ),
               const SizedBox(height: 16),
 
@@ -253,12 +276,53 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                   alignLabelWithHint: true,
                 ),
                 maxLines: 3,
+                onChanged: (_) => setState(() {}),
               ),
             ],
           ),
         ),
       ),
     );
+
+    return PopScope(
+      canPop: !_isDirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _attemptExit();
+      },
+      child: content,
+    );
+  }
+
+  /// Single exit path for header back, system back and the dialog's own
+  /// Discard: leaving a form with no edits pops straight away, leaving a
+  /// form with edits asks first. Save runs the normal save path, which pops
+  /// only when the period was written.
+  Future<void> _attemptExit() async {
+    if (!_isDirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final action = await ConfirmationDialog.showUnsavedChanges(
+      context: context,
+      title: 'Unsaved changes',
+      body:
+          'You have unsaved edits. Save them or discard to return to the periods list.',
+      keepEditingKey: const Key('period-edit-unsaved-keep'),
+      discardKey: const Key('period-edit-unsaved-discard'),
+      saveKey: const Key('period-edit-unsaved-save'),
+    );
+    if (!mounted) return;
+
+    switch (action) {
+      case UnsavedChangesAction.discard:
+        Navigator.of(context).pop();
+      case UnsavedChangesAction.save:
+        await _submit();
+      case UnsavedChangesAction.keepEditing:
+        break;
+    }
   }
 
   Future<void> _pickDate({required bool isStart}) async {
