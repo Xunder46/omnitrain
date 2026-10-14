@@ -30,6 +30,7 @@ import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
 import 'exercise_detail_view_screen.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 class ExerciseLibraryDetailScreen extends StatefulWidget {
   final Exercise exercise;
@@ -90,16 +91,12 @@ class _ExerciseLibraryDetailScreenState
     try {
       final created = await libraryState.copyAsCustom(exercise);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Copied as "${created.name}"')));
+      OmniMessage.show(context, 'Copied as "${created.name}"');
       Navigator.of(context).pop();
     } on BuiltInExerciseImmutableError {
       // Defensive — UI prevents this path.
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Built-in exercises cannot be copied.')),
-      );
+      OmniMessage.error(context, 'Built-in exercises cannot be copied.');
     }
   }
 
@@ -122,8 +119,10 @@ class _ExerciseLibraryDetailScreenState
       await libraryState.renameCustom(exercise: exercise, newName: newName);
       navigator.pop();
     } on BuiltInExerciseImmutableError {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Built-in exercises cannot be renamed.')),
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Built-in exercises cannot be renamed.',
       );
     }
   }
@@ -145,8 +144,10 @@ class _ExerciseLibraryDetailScreenState
       await libraryState.removeExercise(exercise);
       navigator.pop();
     } on BuiltInExerciseImmutableError {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Built-in exercises cannot be removed.')),
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Built-in exercises cannot be removed.',
       );
     }
   }

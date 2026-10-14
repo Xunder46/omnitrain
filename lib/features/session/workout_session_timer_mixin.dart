@@ -481,12 +481,9 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           final otherKey = _getAnotherInProgressKey(timerKey);
           if (otherKey != null) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "Another set is still in progress. Pause or finish it before starting a new timer.",
-                  ),
-                ),
+              OmniMessage.show(
+                context,
+                "Another set is still in progress. Pause or finish it before starting a new timer.",
               );
             }
             return;
@@ -566,12 +563,9 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
         final otherKey = _getAnotherInProgressKey(timerKey);
         if (otherKey != null) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  "Another set is still in progress. Pause or finish it before starting a new timer.",
-                ),
-              ),
+            OmniMessage.show(
+              context,
+              "Another set is still in progress. Pause or finish it before starting a new timer.",
             );
           }
           return;

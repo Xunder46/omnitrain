@@ -33,6 +33,7 @@ import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
 import '../../core/navigation/navigation.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -415,11 +416,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
 
     Navigator.of(context).popUntil((route) => route.isFirst);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Workout session saved successfully'),
-        duration: Duration(seconds: 2),
-      ),
+    OmniMessage.show(
+      context,
+      'Workout session saved successfully',
+      duration: const Duration(seconds: 2),
     );
   }
 

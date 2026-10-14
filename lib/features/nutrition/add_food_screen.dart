@@ -14,6 +14,7 @@ import 'widgets/food_form.dart';
 import 'widgets/food_thumbnail.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 /// Sentinel used by [_DeleteGroupDialog] to distinguish "user
 /// tapped Cancel" from "user picked Uncategorized (which is a legitimate
@@ -150,9 +151,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
         _focusGroupId = newId;
       });
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Could not create category')),
-      );
+      OmniMessage.errorOn(messenger, theme, 'Could not create category');
     }
   }
 
@@ -1041,9 +1040,11 @@ class _UserFoodRowState extends State<_UserFoodRow> {
         }
         await widget.foodLibraryState.removeFood(widget.food.id);
       }
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not delete ${widget.food.name}')),
+    } catch (_) {
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Could not delete ${widget.food.name}',
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1249,8 +1250,10 @@ class _CatalogRowState extends State<_CatalogRow> {
       await widget.foodLibraryState.addCatalogFoodToLibrary(widget.food.id);
       // No pop. The cache update + notifyListeners flips the row.
     } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not add ${widget.food.name}')),
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Could not add ${widget.food.name}',
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1276,14 +1279,17 @@ class _CatalogRowState extends State<_CatalogRow> {
     // Captured before the confirmation await so the error path below uses
     // no `BuildContext` across an async gap.
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     try {
       if (widget.nutritionState.isFoodLoggedToday(libraryId)) {
         await widget.nutritionState.unlogFoodToday(libraryId);
       }
       await widget.foodLibraryState.removeFood(libraryId);
     } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not remove ${widget.food.name}')),
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Could not remove ${widget.food.name}',
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1491,12 +1497,10 @@ class _GroupsTabState extends State<_GroupsTab> {
         );
       } on FoodGroupHasBundledFoodsError catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(_bundledSnackbar(e));
+        OmniMessage.error(context, _bundledMessage(e));
       } catch (_) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not delete ${group.name}')),
-        );
+        OmniMessage.error(context, 'Could not delete ${group.name}');
       }
       return;
     }
@@ -1528,28 +1532,26 @@ class _GroupsTabState extends State<_GroupsTab> {
       // foods still point at the group. The catalog refresh
       // restores bundled categories on every launch, so rewriting
       // them would silently revert — we surface the block instead.
-      messenger.showSnackBar(_bundledSnackbar(e));
+      OmniMessage.errorOn(messenger, theme, _bundledMessage(e));
     } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not delete ${group.name}')),
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Could not delete ${group.name}',
       );
     }
   }
 
-  /// Snackbar copy for a refused deletion. Surfaces the category
+  /// Message copy for a refused deletion. Surfaces the category
   /// name and the count of bundled catalog foods that would be
   /// stranded, so the user understands why the action was blocked
   /// and can pick a different category to delete first.
-  SnackBar _bundledSnackbar(FoodGroupHasBundledFoodsError e) {
+  String _bundledMessage(FoodGroupHasBundledFoodsError e) {
     final count = e.bundledFoodIds.length;
     final noun = count == 1 ? 'food' : 'foods';
-    return SnackBar(
-      content: Text(
-        'Cannot delete "${e.groupName}" — $count bundled catalog '
+    return 'Cannot delete "${e.groupName}" — $count bundled catalog '
         '$noun still reference it. Move those $noun to another '
-        'category first, or delete the foods you don\'t need.',
-      ),
-    );
+        'category first, or delete the foods you don\'t need.';
   }
 
   /// Sorts groups alphabetically, but keeps the newly created group

@@ -20,6 +20,7 @@ import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 /// Shows all sessions (planned + completed TrainingSessions) for a single day.
 ///
@@ -294,12 +295,11 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                 );
               } catch (e) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Session saved, but failed to link planned session: $e',
-                    ),
-                  ),
+                debugPrint('Link planned session: $e');
+                OmniMessage.error(
+                  context,
+                  'Session saved, but could not link the planned session. '
+                  'Try again.',
                 );
               }
             },
@@ -311,9 +311,8 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error starting session: $e')));
+        debugPrint('Start session: $e');
+        OmniMessage.error(context, 'Could not start the session. Try again.');
       }
     }
   }

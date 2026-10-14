@@ -19,6 +19,7 @@ import '../../widgets/session/duration_entry_dialog.dart';
 import 'my_routines_screen.dart' show showDeleteRoutineDialog;
 import '../../widgets/dialogs/confirmation_dialog.dart'
     show ConfirmationDialog, UnsavedChangesAction;
+import '../../widgets/feedback/omni_message.dart';
 
 /// Screen for creating or editing a workout routine (template)
 class RoutineSetupScreen extends StatefulWidget {
@@ -954,18 +955,14 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
   Future<void> _saveRoutine() async {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a routine name')));
+      OmniMessage.show(context, 'Please enter a routine name');
       return;
     }
 
     await widget.routineState.saveRoutine();
 
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Routine saved successfully')));
+    OmniMessage.show(context, 'Routine saved successfully');
 
     // Reset is internal to saveRoutine(); pop without re-prompting.
     Navigator.pop(context);
@@ -995,9 +992,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     await widget.routineState.deleteRoutine(templateId);
     if (!mounted) return;
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Deleted "$routineName"')));
+    OmniMessage.show(context, 'Deleted "$routineName"');
 
     // Cancel any pending autosave draft for this routine and pop without
     // re-prompting — the routine is gone, so the dirty baseline is moot.
@@ -1031,16 +1026,12 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
         Navigator.of(context).pop();
       case UnsavedChangesAction.save:
         if (_nameController.text.trim().isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please enter a routine name')),
-          );
+          OmniMessage.show(context, 'Please enter a routine name');
           return;
         }
         await widget.routineState.saveRoutine();
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Routine saved successfully')),
-        );
+        OmniMessage.show(context, 'Routine saved successfully');
         Navigator.of(context).pop();
       case UnsavedChangesAction.keepEditing:
         // Stay on the screen.

@@ -30,6 +30,7 @@ import '../../core/models/session_edit_snapshot.dart';
 import 'rest_timer_strip.dart';
 import 'session_summary_screen.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 part 'workout_session_timer_mixin.dart';
 part 'workout_session_list_view.dart';
@@ -112,7 +113,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   bool _showListView =
       true; // Toggle between list view and detail view - default to list
   bool _hasError = false;
-  String _errorMessage = '';
 
   // Scroll controller for the exercise list view. Scrolled to the bottom
   // when returning from exercise detail so the user lands near 'Add Exercise'.
@@ -641,11 +641,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         _scheduleAutoOpenPicker();
       }
     } catch (e) {
+      // D-27.2: the exception text is logged, never rendered — the error
+      // state below says the load failed in plain words.
       debugPrint('Error loading exercises: $e');
       if (mounted) {
         setState(() {
           _hasError = true;
-          _errorMessage = e.toString();
           _isLoading = false;
         });
       }
@@ -1546,9 +1547,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         );
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to add exercise: $e')));
+          debugPrint('Add exercise: $e');
+          OmniMessage.error(context, 'Could not add the exercise. Try again.');
         }
       }
 
@@ -1558,8 +1558,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           await widget.workoutState.assignEffortToBlock(effortId, blockId);
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to assign exercise to block: $e')),
+            debugPrint('Assign exercise to block: $e');
+            OmniMessage.error(
+              context,
+              'Could not assign the exercise to the block. Try again.',
             );
           }
         }
@@ -1581,8 +1583,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           }
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to assign exercise to block: $e')),
+            debugPrint('Assign exercise to block: $e');
+            OmniMessage.error(
+              context,
+              'Could not assign the exercise to the block. Try again.',
             );
           }
         }

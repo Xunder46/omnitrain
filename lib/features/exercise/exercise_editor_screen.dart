@@ -5,6 +5,7 @@ import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 class ExerciseEditorScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -232,10 +233,10 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     if (!mounted) return;
 
     if (saved == null) {
-      final error = widget.workoutState.error ?? 'Failed to save exercise.';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
+      // D-27.2: the state's error text carries the exception
+      // (`Failed to create exercise: …`); log it and show plain copy.
+      debugPrint('Save exercise: ${widget.workoutState.error}');
+      OmniMessage.error(context, 'Could not save the exercise. Try again.');
       setState(() {
         _isSaving = false;
       });

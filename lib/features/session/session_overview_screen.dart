@@ -15,6 +15,7 @@ import '../../core/services/session_summary_service.dart';
 import 'workout_session_screen.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 class SessionOverviewScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -119,9 +120,8 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
         await _initializeSession();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to add exercise: $e')));
+          debugPrint('Add exercise: $e');
+          OmniMessage.error(context, 'Could not add the exercise. Try again.');
         }
       }
     }

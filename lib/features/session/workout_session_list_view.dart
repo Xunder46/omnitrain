@@ -709,7 +709,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: Text(
-                    _errorMessage,
+                    'Could not load your workout. Try again.',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: OmniTheme.colors.textSecondary,

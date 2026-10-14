@@ -21,6 +21,7 @@ import '../nutrition/nutrition_trend_screen.dart';
 import 'records_and_trends_screen.dart';
 import 'widgets/fuel_section.dart';
 import 'widgets/instrument_list.dart';
+import 'widgets/load_failure_view.dart';
 import 'widgets/mix_layer.dart';
 import 'widgets/signals_layer.dart';
 import 'widgets/stats_pill.dart';
@@ -60,6 +61,7 @@ class StatsScreen extends StatefulWidget {
 
 class _StatsScreenState extends State<StatsScreen> {
   bool _isLoading = true;
+  bool _loadFailed = false;
   int _totalSessions = 0;
   int _totalDurationMs = 0;
   int _streakDays = 0;
@@ -90,6 +92,11 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() {
+      _loadFailed = false;
+      _isLoading = true;
+    });
     try {
       // Reuse CalendarState streak logic — do not re-implement the calculation.
       final calendarState = CalendarState(widget.workoutState.repository);
@@ -181,7 +188,10 @@ class _StatsScreenState extends State<StatsScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
     }
   }
 
@@ -278,6 +288,11 @@ class _StatsScreenState extends State<StatsScreen> {
           body: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loadFailed
+                ? LoadFailureView(
+                    message: 'Could not load your stats.',
+                    onRetry: _loadData,
+                  )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     children: _totalSessions == 0

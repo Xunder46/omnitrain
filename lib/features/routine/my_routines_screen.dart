@@ -15,6 +15,7 @@ import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../session/workout_session_screen.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 /// Screen displaying list of saved workout routines
 /// Allows user to view, start, edit, or delete routines
@@ -203,9 +204,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
 
   void _startRoutine(BuildContext context, String templateId) async {
     if (widget.workoutState == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: Workout state not available')),
-      );
+      OmniMessage.error(context, 'Error: Workout state not available');
       return;
     }
 
@@ -260,9 +259,9 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error starting routine: $e')));
+      if (!mounted) return;
+      debugPrint('Start routine: $e');
+      OmniMessage.error(context, 'Could not start the routine. Try again.');
     }
   }
 
