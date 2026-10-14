@@ -117,7 +117,7 @@ void main() {
     expect(find.text('Unsaved changes'), findsOneWidget);
   }
 
-  testWidgets('Unsaved dialog close icon dismisses and keeps editing', (
+  testWidgets('Unsaved dialog Keep editing dismisses and keeps editing', (
     WidgetTester tester,
   ) async {
     final deps = await setupEditSession();
@@ -134,10 +134,9 @@ void main() {
       exerciseName: deps.exercise.name,
     );
 
-    expect(find.text('Keep editing'), findsNothing);
-    expect(find.byTooltip('Keep editing'), findsOneWidget);
+    expect(find.text('Keep editing'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Keep editing'));
+    await tester.tap(find.text('Keep editing'));
     await tester.pumpAndSettle();
 
     expect(find.text('Unsaved changes'), findsNothing);
@@ -171,7 +170,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byType(AlertDialog),
-        matching: find.widgetWithText(OutlinedButton, 'Discard'),
+        matching: find.widgetWithText(FilledButton, 'Discard'),
       ),
     );
     await tester.pumpAndSettle();
@@ -241,7 +240,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(AlertDialog),
-        matching: find.widgetWithText(OutlinedButton, 'Discard'),
+        matching: find.widgetWithText(FilledButton, 'Discard'),
       ),
       findsOneWidget,
     );

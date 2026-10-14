@@ -355,8 +355,8 @@ void main() {
       });
     });
 
-    group('S-006: X button returns keepEditing', () {
-      testWidgets('Close IconButton returns keepEditing', (
+    group('S-006: Keep editing action returns keepEditing', () {
+      testWidgets('Keep editing TextButton returns keepEditing', (
         WidgetTester tester,
       ) async {
         dynamic result;
@@ -387,11 +387,11 @@ void main() {
         await tester.tap(find.text('Open Dialog'));
         await tester.pumpAndSettle();
 
-        // Tap X button (find by icon)
-        await tester.tap(find.byIcon(Icons.close));
+        // Tap the Keep editing action
+        await tester.tap(find.widgetWithText(TextButton, 'Keep editing'));
         await tester.pumpAndSettle();
 
-        expect(result, isNotNull);
+        expect(result, UnsavedChangesAction.keepEditing);
       });
     });
 

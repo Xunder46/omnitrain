@@ -235,12 +235,12 @@ void main() {
         findsOneWidget,
       );
 
-      // Keep editing via the close icon — screen stays mounted.
-      final closeIcon = find.descendant(
+      // Keep editing via its own action — screen stays mounted.
+      final keepEditing = find.descendant(
         of: dialogFinder,
-        matching: find.byIcon(Icons.close),
+        matching: find.text('Keep editing'),
       );
-      await tester.tap(closeIcon);
+      await tester.tap(keepEditing);
       await _pumpAndSettle(tester);
 
       expect(find.byType(AlertDialog), findsNothing);
