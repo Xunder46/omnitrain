@@ -24,6 +24,7 @@ import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/navigation/omni_navigator.dart';
 import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
+import 'package:omnitrain/core/utils/muscle_display.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
@@ -54,7 +55,8 @@ class ExerciseLibraryDetailScreen extends StatefulWidget {
 class _ExerciseLibraryDetailScreenState
     extends State<ExerciseLibraryDetailScreen> {
   List<Discipline> _disciplines = const [];
-  List<MuscleGroup> _muscleGroupsForExercise = const [];
+  List<MuscleGroup> _primaryMuscles = const [];
+  List<MuscleGroup> _secondaryMuscles = const [];
 
   Exercise get exercise => widget.exercise;
   ExerciseLibraryState get libraryState => widget.libraryState;
@@ -73,11 +75,15 @@ class _ExerciseLibraryDetailScreenState
     if (workoutState.disciplines.isEmpty) {
       await workoutState.loadDisciplines();
     }
-    final muscles = await workoutState.getExerciseMuscleGroups(exercise.id);
+    final links =
+        await workoutState.getExerciseMuscleLinks(exercise.id) ??
+        const <ExerciseMuscleLink>[];
+    final groups = workoutState.muscleGroups;
     if (!mounted) return;
     setState(() {
       _disciplines = workoutState.disciplines;
-      _muscleGroupsForExercise = muscles;
+      _primaryMuscles = musclesWithRole(links, groups, MuscleRole.primary);
+      _secondaryMuscles = musclesWithRole(links, groups, MuscleRole.secondary);
     });
   }
 
@@ -169,7 +175,8 @@ class _ExerciseLibraryDetailScreenState
                     key: const Key('exercise_library_detail_metadata'),
                     exercise: exercise,
                     discipline: _resolveDiscipline(exercise.disciplineId),
-                    muscleGroups: _muscleGroupsForExercise,
+                    primaryMuscles: _primaryMuscles,
+                    secondaryMuscles: _secondaryMuscles,
                     contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 24),

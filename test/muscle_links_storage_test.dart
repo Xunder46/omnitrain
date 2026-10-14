@@ -1,9 +1,14 @@
 // Plan 33, Phase A part 2 — muscle links storage, on both implementations.
 //
 // Scenarios S-4 (storage on Mock and Hive, the legacy shape included), S-10
-// (Hive restart round-trip), S-11 (a link whose group row is missing) and S-13
-// (the legacy wrapper drops a region next to its muscle) of
+// (Hive restart round-trip), S-11 (a link whose group row is missing is stored
+// and read back unchanged) and S-13 (set drops a region next to its muscle) of
 // `docs/plans/2026-10-14-33-muscle-hierarchy-data-plan/2026-10-14-33-muscle-hierarchy-data-plan.md`.
+//
+// Plan 35, Phase C2 removed the legacy id-based pair, so the three tests that
+// read it now guard the same storage behaviour through the links API;
+// "a link whose group row is missing is skipped" lives in the display helper
+// and the screen tests (`docs/plans/2026-10-14-35-muscle-display-plan/`).
 //
 // Every implementation of `WorkoutRepository` must give the same observable
 // output, so the shared cases run over `harnessFactories` with plain `test()`
@@ -34,10 +39,6 @@ Exercise _custom(String id) => Exercise(
 /// their roles in stored order.
 List<String> _shape(List<ExerciseMuscleLink> links) => [
   for (final link in links) '${link.muscleGroupId}:${link.role.name}',
-];
-
-List<String> _names(List<MuscleGroup> groups) => [
-  for (final group in groups) group.name,
 ];
 
 void main() {
@@ -118,67 +119,62 @@ void main() {
         ]);
       });
 
-      test('S-4 the legacy wrapper writes every id as primary', () async {
-        await repo.createExercise(_custom('ex-links-legacy'));
+      test('S-4 primary links alone keep the whole list, in taxonomy order',
+          () async {
+        await repo.createExercise(_custom('ex-links-primary-order'));
 
-        await repo.setExerciseMuscleGroups('ex-links-legacy', [
-          'muscle-chest',
-          'muscle-triceps',
+        await repo.setExerciseMuscleLinks('ex-links-primary-order', [
+          _link('muscle-chest'),
+          _link('muscle-triceps'),
         ]);
 
-        final links = await repo.getExerciseMuscleLinks('ex-links-legacy');
-        expect(links.map((link) => link.muscleGroupId).toSet(), {
-          'muscle-chest',
-          'muscle-triceps',
-        });
         expect(
-          links.every((link) => link.role == MuscleRole.primary),
-          isTrue,
-          reason: 'the legacy setter knows no roles: every id is primary',
+          _shape(await repo.getExerciseMuscleLinks('ex-links-primary-order')),
+          ['muscle-triceps:primary', 'muscle-chest:primary'],
+          reason: 'every id stays primary; taxonomy order puts Triceps first',
         );
-        expect(_names(await repo.getExerciseMuscleGroups('ex-links-legacy')), [
-          'Triceps',
-          'Chest',
-        ]);
       });
 
-      test(
-        'S-13 the legacy wrapper drops a region next to its muscle',
-        () async {
-          await repo.createExercise(_custom('ex-links-legacy-region'));
+      test('S-13 set drops a region next to its muscle and keeps the rest',
+          () async {
+        await repo.createExercise(_custom('ex-links-region-arms'));
 
-          await repo.setExerciseMuscleGroups('ex-links-legacy-region', [
-            'muscle-legs',
-            'muscle-quads',
-          ]);
-
-          expect(
-            _shape(await repo.getExerciseMuscleLinks('ex-links-legacy-region')),
-            ['muscle-quads:primary'],
-          );
-          expect(
-            _names(
-              await repo.getExerciseMuscleGroups('ex-links-legacy-region'),
-            ),
-            ['Quadriceps'],
-          );
-        },
-      );
-
-      test('S-11 a link whose group row is missing is skipped', () async {
-        await repo.createExercise(_custom('ex-links-missing-group'));
-
-        await repo.setExerciseMuscleLinks('ex-links-missing-group', [
-          _link('muscle-does-not-exist'),
+        await repo.setExerciseMuscleLinks('ex-links-region-arms', [
+          _link('muscle-arms'),
+          _link('muscle-biceps'),
           _link('muscle-chest'),
         ]);
 
         expect(
-          _names(await repo.getExerciseMuscleGroups('ex-links-missing-group')),
-          ['Chest'],
-          reason: 'the unresolved link is skipped, never returned as null',
+          _shape(await repo.getExerciseMuscleLinks('ex-links-region-arms')),
+          ['muscle-biceps:primary', 'muscle-chest:primary'],
+          reason: 'Arms goes with Biceps; Chest has no muscle next to it',
         );
       });
+
+      test(
+        'S-11 a link to a group with no group row is stored and read back '
+        'unchanged',
+        () async {
+          await repo.createExercise(_custom('ex-links-missing-group'));
+
+          await repo.setExerciseMuscleLinks('ex-links-missing-group', [
+            _link('muscle-does-not-exist'),
+            _link('muscle-chest'),
+          ]);
+
+          expect(
+            _shape(
+              await repo.getExerciseMuscleLinks('ex-links-missing-group'),
+            ),
+            ['muscle-chest:primary', 'muscle-does-not-exist:primary'],
+            reason:
+                'the repository stores links, never resolves groups: the '
+                'unresolved link is kept, and the skip lives in the display '
+                'helper',
+          );
+        },
+      );
     });
 
     if (harness is HiveRepositoryHarness) {

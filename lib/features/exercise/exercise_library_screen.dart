@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/navigation/navigation.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
+import 'package:omnitrain/core/utils/muscle_display.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
@@ -43,7 +44,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
   Timer? _debounce;
 
   List<Discipline> _disciplines = const [];
-  final Map<String, List<MuscleGroup>> _exerciseMuscleGroupsCache = {};
+  final Map<String, List<ExerciseMuscleLink>> _exerciseMuscleLinksCache = {};
 
   @override
   void initState() {
@@ -200,7 +201,11 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
   }
 
   Widget _buildRow(BuildContext context, ThemeData theme, Exercise exercise) {
-    final muscleGroups = _exerciseMuscleGroupsCache[exercise.id] ?? const [];
+    final muscleNames = muscleNamesWithRole(
+      _exerciseMuscleLinksCache[exercise.id] ?? const [],
+      widget.workoutState.muscleGroups,
+      MuscleRole.primary,
+    );
     final discipline = _disciplines.firstWhere(
       (d) => d.id == exercise.disciplineId,
       orElse: () => Discipline(
@@ -259,7 +264,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
             ),
         ],
       ),
-      subtitle: (discipline.name.isEmpty && muscleGroups.isEmpty)
+      subtitle: (discipline.name.isEmpty && muscleNames.isEmpty)
           ? null
           : SizedBox(
               // Force the chip Wrap to use the full subtitle column
@@ -273,7 +278,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                 children: [
                   if (discipline.name.isNotEmpty)
                     _TagChip(label: discipline.name),
-                  ...muscleGroups.map((mg) => _TagChip(label: mg.name)),
+                  ...muscleNames.map((name) => _TagChip(label: name)),
                 ],
               ),
             ),
@@ -298,13 +303,13 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
 
   Future<void> _warmCache(List<Exercise> exercises) async {
     for (final exercise in exercises) {
-      if (_exerciseMuscleGroupsCache.containsKey(exercise.id)) continue;
-      final muscles = await widget.workoutState.getExerciseMuscleGroups(
+      if (_exerciseMuscleLinksCache.containsKey(exercise.id)) continue;
+      final links = await widget.workoutState.getExerciseMuscleLinks(
         exercise.id,
       );
       if (!mounted) return;
       setState(() {
-        _exerciseMuscleGroupsCache[exercise.id] = muscles;
+        _exerciseMuscleLinksCache[exercise.id] = links ?? const [];
       });
     }
   }

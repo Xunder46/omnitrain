@@ -227,11 +227,6 @@ not as bare ids:
 - SQL: `app_exercise_muscle_group.is_primary` (1 = primary, 0 = secondary);
   see [DB Integration](db_integration.md).
 
-The legacy id-based pair `getExerciseMuscleGroups` / `setExerciseMuscleGroups`
-still exists for callers that predate roles; every id written through it
-becomes a primary link. Verified by `test/muscle_links_storage_test.dart`
-(`S-4 the legacy wrapper writes every id as primary`).
-
 Interpretation rules — how a muscle filter reads the links
 (`MuscleTaxonomy.matches`):
 
@@ -249,6 +244,29 @@ muscle never does`) and `test/muscle_filter_test.dart` (`Mock — muscle filter`
 once`, `S-5 two selections of the same lift return it once`, `S-5 a
 secondary-only link excludes the exercise`).
 
+Display rules — how the screens read the links (the helpers in
+`lib/core/utils/muscle_display.dart`):
+
+- The exercise picker's muscle filter is one list built by
+  `muscleFilterEntries`: the standalone entries of `kMuscleStandaloneIds`
+  first, then each region of `kMuscleRegionOrder` followed by its own muscles,
+  the muscles indented one step.
+- The row chips on the picker and the library list show main (primary) muscles
+  only, in link order; a region-only tag shows the region's name, and a link
+  whose group row is missing adds no chip.
+- The detail view lists Primary and Secondary separately; each row is hidden
+  when its list is empty and the whole section is absent when both are.
+
+Verified by `test/muscle_display_test.dart` (`S-1 muscleFilterEntries runs
+standalone, then regions with muscles`, `S-1 musclesWithRole keeps link order
+and skips missing groups`), `test/muscle_filter_picker_test.dart` (`S-3 / S-9:
+rows show main muscles only` · `bench press shows Chest and neither Triceps nor
+Front delts`, `a region-only main link shows the region name (S-8)`, `the
+library list row shows only the main muscle`) and
+`test/exercise_detail_muscle_groups_test.dart` (`ExerciseDetailViewBody —
+Primary / Secondary rows (S-4)` · `primary and secondary chips stay in their
+own row`).
+
 Storage rules, enforced by `MuscleTaxonomy.normalize` on every write through
 `setExerciseMuscleLinks`: no region link sits next to one of its own muscles;
 no id appears in both roles; a non-empty list always carries at least one
@@ -258,8 +276,8 @@ each role in taxonomy order, unknown ids last). Verified by
 to its own muscle`, `normalize throws when one id carries both roles`,
 `normalize throws for a secondary without a primary`, `normalize sorts primary
 first, then the secondary links`) and `test/muscle_links_storage_test.dart`
-(`S-4 set stores the normalised order (primary first)`, `S-13 the legacy
-wrapper drops a region next to its muscle`).
+(`S-4 set stores the normalised order (primary first)`, `S-13 set drops a
+region next to its muscle and keeps the rest`).
 
 The per-exercise tagging itself is seed data, not documentation:
 `SeedData.exerciseMuscleLinks` (`lib/mock/seed_data.dart`) is its single

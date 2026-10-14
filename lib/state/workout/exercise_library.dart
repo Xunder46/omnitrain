@@ -315,18 +315,16 @@ class ExerciseLibrary {
     }
   }
 
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
-    try {
-      return await _repository.getExerciseMuscleGroups(exerciseId);
-    } catch (e) {
-      _setError('Failed to load exercise muscle groups: $e');
-      return [];
-    }
-  }
-
   /// The exercise's stored muscle links, or `null` when the read failed (the
-  /// failure is on the error channel). A failed read is never "no muscles":
-  /// callers must not treat `null` as an empty list.
+  /// failure is on the error channel).
+  ///
+  /// `null` is not "no muscles". Display callers degrade on purpose: a failed
+  /// read leaves the picker and library rows without muscle chips and collapses
+  /// the detail section (`?? const []`, see `test/muscle_filter_picker_test.dart`,
+  /// 'a failing links read leaves rows chip-less, not crashed'). The muscle
+  /// editor must not treat it as empty — it reads `null` as a failure and leaves
+  /// without writing (`test/muscle_editor_screen_test.dart`, 'a failing links
+  /// read shows the failure and leaves').
   Future<List<ExerciseMuscleLink>?> getExerciseMuscleLinks(
     String exerciseId,
   ) async {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/exercise_helpers.dart';
+import '../../core/utils/muscle_display.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
 import '../../features/exercise/exercise_detail_view_screen.dart';
@@ -39,7 +40,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
   List<Exercise> _otherExercises = [];
   List<MuscleGroup> _muscleGroups = [];
   List<Discipline> _disciplines = [];
-  final Map<String, List<MuscleGroup>> _exerciseMuscleGroupsCache = {};
+  final Map<String, List<ExerciseMuscleLink>> _exerciseMuscleLinksCache = {};
 
   String? _selectedDisciplineId;
   String? _selectedMuscleGroupId;
@@ -57,7 +58,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.sessionModality != widget.sessionModality) {
-      _exerciseMuscleGroupsCache.clear();
+      _exerciseMuscleLinksCache.clear();
       setState(() {
         _selectedDisciplineId = null;
         _selectedMuscleGroupId = null;
@@ -116,11 +117,11 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
     );
 
     for (final exercise in results) {
-      if (!_exerciseMuscleGroupsCache.containsKey(exercise.id)) {
-        final muscles = await widget.workoutState.getExerciseMuscleGroups(
+      if (!_exerciseMuscleLinksCache.containsKey(exercise.id)) {
+        final links = await widget.workoutState.getExerciseMuscleLinks(
           exercise.id,
         );
-        _exerciseMuscleGroupsCache[exercise.id] = muscles;
+        _exerciseMuscleLinksCache[exercise.id] = links ?? const [];
       }
     }
 
@@ -177,7 +178,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
 
     if (created == null) return;
 
-    _exerciseMuscleGroupsCache.remove(created.id);
+    _exerciseMuscleLinksCache.remove(created.id);
     _searchController.text = created.name;
     await _searchExercises();
   }
@@ -186,6 +187,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+    final muscleEntries = muscleFilterEntries(_muscleGroups);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -367,18 +369,42 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                             ),
                           ),
                         ),
-                        ..._muscleGroups.map(
-                          (mg) => DropdownMenuItem(
-                            value: mg.id,
-                            child: Text(
-                              mg.name,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: OmniTheme.colors.textSecondary,
+                        ...muscleEntries.map(
+                          (entry) => DropdownMenuItem(
+                            value: entry.group.id,
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                left: 16.0 * entry.depth,
+                              ),
+                              child: Text(
+                                entry.group.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: OmniTheme.colors.textSecondary,
+                                  fontWeight: entry.depth == 0
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                ),
                               ),
                             ),
                           ),
                         ),
+                      ],
+                      selectedItemBuilder: (context) => [
+                        Text(
+                          'All',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: OmniTheme.colors.textSecondary,
+                          ),
+                        ),
+                        for (final entry in muscleEntries)
+                          Text(
+                            entry.group.name,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: OmniTheme.colors.textSecondary,
+                            ),
+                          ),
                       ],
                       onChanged: (value) {
                         setState(() => _selectedMuscleGroupId = value);
@@ -501,7 +527,11 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
     Exercise exercise,
   ) {
     final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
-    final muscleGroups = _exerciseMuscleGroupsCache[exercise.id] ?? [];
+    final muscleNames = muscleNamesWithRole(
+      _exerciseMuscleLinksCache[exercise.id] ?? const [],
+      _muscleGroups,
+      MuscleRole.primary,
+    );
     final discipline = _disciplines.firstWhere(
       (d) => d.id == exercise.disciplineId,
       orElse: () => Discipline(
@@ -604,10 +634,10 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
                   ),
-                ...muscleGroups.map(
-                  (mg) => Chip(
+                ...muscleNames.map(
+                  (name) => Chip(
                     label: Text(
-                      mg.name,
+                      name,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: themeColors.textMuted,
                       ),

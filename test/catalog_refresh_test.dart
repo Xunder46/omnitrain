@@ -146,8 +146,11 @@ void main() {
         final repo = MockWorkoutRepository();
         await repo.initialize();
         await repo.setCatalogVersion(bundledCatalogVersion);
-        await repo.setExerciseMuscleGroups('exercise-bench-press', [
-          'muscle-back',
+        await repo.setExerciseMuscleLinks('exercise-bench-press', const [
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-back',
+            role: MuscleRole.primary,
+          ),
         ]);
 
         final service = CatalogRefreshService(repo, _bundledSource());
@@ -213,10 +216,19 @@ void main() {
         }
 
         // The old install stored flat, all-primary links on bench press.
-        await repo.setExerciseMuscleGroups('exercise-bench-press', [
-          'muscle-chest',
-          'muscle-triceps',
-          'muscle-shoulders',
+        await repo.setExerciseMuscleLinks('exercise-bench-press', const [
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-chest',
+            role: MuscleRole.primary,
+          ),
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-triceps',
+            role: MuscleRole.primary,
+          ),
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-shoulders',
+            role: MuscleRole.primary,
+          ),
         ]);
 
         // A custom exercise, a user copy and a touched catalog exercise must
@@ -229,7 +241,12 @@ void main() {
           updatedAtMs: 1,
         );
         await repo.createExercise(custom);
-        await repo.setExerciseMuscleGroups(custom.id, ['muscle-legs']);
+        await repo.setExerciseMuscleLinks(custom.id, const [
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-legs',
+            role: MuscleRole.primary,
+          ),
+        ]);
 
         final copySource = (await repo.getExerciseById(
           'exercise-barbell-squat',
@@ -239,7 +256,12 @@ void main() {
         );
 
         const touchedId = 'exercise-deadlift';
-        await repo.setExerciseMuscleGroups(touchedId, ['muscle-back']);
+        await repo.setExerciseMuscleLinks(touchedId, const [
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-back',
+            role: MuscleRole.primary,
+          ),
+        ]);
         await repo.markSeedEntryTouched(SeedEntryType.exercise, touchedId);
 
         await repo.setCatalogVersion(10);

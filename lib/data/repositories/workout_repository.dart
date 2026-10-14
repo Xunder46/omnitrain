@@ -143,18 +143,6 @@ abstract class WorkoutRepository {
     List<ExerciseMuscleLink> links,
   );
 
-  /// Legacy muscle-group view of [getExerciseMuscleLinks]: the groups of every
-  /// stored link, in stored order, skipping groups that are not on the device.
-  /// It exists for callers that predate roles and is removed by plan 34.
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId);
-
-  /// Legacy setter: every id becomes a primary link. Prefer
-  /// [setExerciseMuscleLinks]; this pair is removed by plan 34.
-  Future<void> setExerciseMuscleGroups(
-    String exerciseId,
-    List<String> muscleGroupIds,
-  );
-
   // Equipment
   Future<List<Equipment>> getEquipment();
   Future<List<Equipment>> getExerciseEquipment(String exerciseId);

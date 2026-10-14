@@ -204,9 +204,12 @@ with a `Whole <region>` chip) plus the `Main: …` / `Assists: …` summary line
 | `selection` | `MuscleSelection` | The roles the host owns and renders |
 | `onTap` | `ValueChanged<String>` | Called with the tapped chip's group id; the host cycles the selection |
 
-Row order and layout are defined in the widget from `MuscleTaxonomy`. Chip keys
+Row order comes from `lib/core/utils/muscle_display.dart` (`kMuscleStandaloneIds`
+for the standalone row, `kMuscleRegionOrder` for the region rows). Chip keys
 `muscle_chip_<id>`, summary keys `muscle_summary_main` / `muscle_summary_assists`, hint key
-`muscle_picker_hint`. Verified by `test/muscle_picker_test.dart` (groups `S-3` and `S-12`).
+`muscle_picker_hint`. Verified by `test/muscle_picker_test.dart` (`S-3 the six
+row labels run top to bottom in plan order`, `S-12 a group id missing from
+groups is skipped and still named`).
 
 ---
 
@@ -233,7 +236,12 @@ exercises by relevance.
 **Key features**:
 - Real-time search with `TextField`, filtered and ranked through `FuzzySearch.filterAndRank`
 - Exercises ranked by `getExercisesRankedForModality()` (relevance score)
-- Filter by discipline or muscle group
+- Filter by discipline or muscle group; the muscle filter is one list grouped
+  by region (`muscleFilterEntries` in `lib/core/utils/muscle_display.dart`),
+  and each row shows the exercise's main (primary) muscles as chips
+  (verified by `test/muscle_filter_picker_test.dart`, groups
+  `S-2: Muscle filter grouped by region` and `S-3 / S-9: rows show main
+  muscles only`)
 - Inline "New Exercise" creation → pushes `ExerciseEditorScreen` with picker/session modality prefilled via `contextModality`
 - Returns the selected `Exercise` on pop
 

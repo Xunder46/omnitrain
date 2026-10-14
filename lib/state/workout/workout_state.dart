@@ -358,8 +358,6 @@ class WorkoutState extends ChangeNotifier {
     disciplineId: disciplineId,
     muscleGroupIds: muscleGroupIds,
   );
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) =>
-      _exerciseLibrary.getExerciseMuscleGroups(exerciseId);
   Future<List<ExerciseMuscleLink>?> getExerciseMuscleLinks(String exerciseId) =>
       _exerciseLibrary.getExerciseMuscleLinks(exerciseId);
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/utils/muscle_display.dart';
 import '../../core/utils/muscle_selection.dart';
 import '../../data/models/models.dart';
 import '../../data/models/muscle_taxonomy.dart';
@@ -36,17 +37,10 @@ class MusclePicker extends StatelessWidget {
   /// The rows in display order: the label and the region the row is built
   /// from, or `null` for the standalone row (Chest, Neck) that carries no
   /// region chip.
-  static const List<(String, String?)> _rows = [
+  static final List<(String, String?)> _rows = [
     ('Chest and neck', null),
-    ('Back', 'muscle-back'),
-    ('Shoulders', 'muscle-shoulders'),
-    ('Arms', 'muscle-arms'),
-    ('Core', 'muscle-core'),
-    ('Legs', 'muscle-legs'),
+    for (final id in kMuscleRegionOrder) (muscleTaxonomyName(id), id),
   ];
-
-  /// The ids of the region-less row, in display order.
-  static const List<String> _standaloneIds = ['muscle-chest', 'muscle-neck'];
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +81,7 @@ class MusclePicker extends StatelessWidget {
   List<Widget> _rowChips(BuildContext context, String? regionId) {
     if (regionId == null) {
       return [
-        for (final id in _standaloneIds)
+        for (final id in kMuscleStandaloneIds)
           if (_groupName(id) != null) _chip(context, id),
       ];
     }
@@ -108,7 +102,7 @@ class MusclePicker extends StatelessWidget {
 
   Widget _chip(BuildContext context, String id, {String? label}) {
     final theme = Theme.of(context);
-    final name = label ?? _groupName(id) ?? _taxonomyName(id);
+    final name = label ?? _groupName(id) ?? muscleTaxonomyName(id);
     final role = selection.roleOf(id);
     final covered = selection.isCovered(id);
     final assists = role == MuscleRole.secondary;
@@ -149,7 +143,7 @@ class MusclePicker extends StatelessWidget {
     final ids = selection.idsWith(role);
     if (ids.isEmpty) return 'none';
     return [
-      for (final id in ids) _groupName(id) ?? _taxonomyName(id),
+      for (final id in ids) _groupName(id) ?? muscleTaxonomyName(id),
     ].join(', ');
   }
 
@@ -158,12 +152,5 @@ class MusclePicker extends StatelessWidget {
       if (group.id == id) return group.name;
     }
     return null;
-  }
-
-  String _taxonomyName(String id) {
-    for (final entry in MuscleTaxonomy.entries) {
-      if (entry.id == id) return entry.name;
-    }
-    return id;
   }
 }

@@ -159,7 +159,7 @@ void main() {
             role: MuscleRole.secondary,
           ),
         ]);
-        // Re-read because setExerciseMuscleGroups does not mutate the
+        // Re-read because setExerciseMuscleLinks does not mutate the
         // returned copy in the seeded bundle.
         final bundledWithMuscles = (await repo.getExerciseById(bundled.id))!;
 
@@ -935,7 +935,12 @@ void main() {
           updatedAtMs: now,
         );
         await repo.createExercise(custom);
-        await repo.setExerciseMuscleGroups(custom.id, ['muscle-chest']);
+        await repo.setExerciseMuscleLinks(custom.id, const [
+          ExerciseMuscleLink(
+            muscleGroupId: 'muscle-chest',
+            role: MuscleRole.primary,
+          ),
+        ]);
 
         await tester.pumpWidget(
           MaterialApp(

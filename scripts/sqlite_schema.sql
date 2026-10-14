@@ -852,8 +852,9 @@ CREATE TABLE app_exercise_muscle_group (
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
   FOREIGN KEY(muscle_group_id) REFERENCES app_muscle_group(id)
 );
--- SqliteWorkoutRepository.setExerciseMuscleGroups(exerciseId, ids)
--- should replace existing rows for exercise_id and insert the new set.
+-- SqliteWorkoutRepository.setExerciseMuscleLinks(exerciseId, links)
+-- should replace the exercise's existing rows with the given links, one row per link,
+-- with is_primary 1 for a primary link and 0 for a secondary link.
 
 CREATE TABLE app_sync_event (
   event_id TEXT NOT NULL PRIMARY KEY,

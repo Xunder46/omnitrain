@@ -1014,26 +1014,6 @@ class MockWorkoutRepository implements WorkoutRepository {
     _exerciseMuscleLinks[exerciseId] = List<ExerciseMuscleLink>.from(links);
   }
 
-  @override
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
-    final links = _exerciseMuscleLinks[exerciseId] ?? const [];
-    return links
-        .map((link) => _muscleGroups[link.muscleGroupId])
-        .whereType<MuscleGroup>()
-        .toList();
-  }
-
-  @override
-  Future<void> setExerciseMuscleGroups(
-    String exerciseId,
-    List<String> muscleGroupIds,
-  ) async {
-    await setExerciseMuscleLinks(exerciseId, [
-      for (final id in muscleGroupIds)
-        ExerciseMuscleLink(muscleGroupId: id, role: MuscleRole.primary),
-    ]);
-  }
-
   // ===== EQUIPMENT =====
 
   @override

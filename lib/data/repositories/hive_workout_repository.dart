@@ -1738,26 +1738,6 @@ class HiveWorkoutRepository implements WorkoutRepository {
     ]);
   }
 
-  @override
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
-    return _exerciseMuscleLinks(exerciseId)
-        .map((link) => _muscleGroupsBox.get(link.muscleGroupId))
-        .whereType<Map>()
-        .map((raw) => MuscleGroup.fromMap(_asStringMap(raw)))
-        .toList();
-  }
-
-  @override
-  Future<void> setExerciseMuscleGroups(
-    String exerciseId,
-    List<String> muscleGroupIds,
-  ) async {
-    await setExerciseMuscleLinks(exerciseId, [
-      for (final id in muscleGroupIds)
-        ExerciseMuscleLink(muscleGroupId: id, role: MuscleRole.primary),
-    ]);
-  }
-
   // ===== EQUIPMENT =====
 
   @override
