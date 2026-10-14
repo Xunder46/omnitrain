@@ -195,6 +195,10 @@ public struct WatchExercisePickerView: View {
 
     private let onExerciseAdded: (WatchSessionRecord) -> Void
 
+    /// What the picker says when it has nothing to offer at all — the same
+    /// words as before the list was shared with the menu.
+    static let emptyText = "No exercises yet. Search on the phone and send one over."
+
     public init(
         paths: WatchSessionStartPaths,
         revision: Int = 0,
@@ -206,33 +210,36 @@ public struct WatchExercisePickerView: View {
     }
 
     public var body: some View {
-        let rows = paths.pickerRows
+        WatchExerciseLetterList(
+            leading: inSessionRows,
+            sections: deriveExerciseSections(paths.availablePickerExercises),
+            letters: deriveExerciseListLetters(paths.availablePickerExercises),
+            emptyText: Self.emptyText,
+            onPickLeading: { slotId, exercise in
+                Task { await select(.inSession(slotId: slotId, exercise: exercise)) }
+            },
+            onPick: { exercise in
+                Task { await select(.available(exercise)) }
+            },
+            trailing: phoneHint
+        )
+    }
 
-        return ScrollView {
-            VStack(spacing: 4) {
-                if rows.isEmpty {
-                    Text("No exercises yet. Search on the phone and send one over.")
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
-                } else {
-                    ForEach(rows, id: \.id) { row in
-                        if row.isInSession {
-                            Button(row.name) {
-                                Task { await select(row) }
-                            }
-                            .watchProminent()
-                        } else {
-                            Button(row.name) {
-                                Task { await select(row) }
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
+    /// The "search on the phone" hint while the radio can reach it, and nothing
+    /// at all otherwise (D-8). A row of the list rather than a strip below it:
+    /// the hint scrolls with the rows, so it costs no wrist space while the user
+    /// reads them and is still there at the end of the list.
+    private var phoneHint: AnyView? {
+        paths.phoneReachable ? AnyView(WatchSearchOnPhoneHint()) : nil
+    }
 
-                if paths.phoneReachable { WatchSearchOnPhoneHint() }
-            }
-            .padding(4)
+    /// The rows the session itself holds, in the ladder's order: the list's own
+    /// rows, drawn first and prominent, so picking one moves the user to it
+    /// instead of adding a second copy.
+    private var inSessionRows: [(slotId: String, exercise: WatchCatalogExercise)] {
+        paths.pickerRows.compactMap { row in
+            guard case .inSession(let slotId, let exercise) = row else { return nil }
+            return (slotId: slotId, exercise: exercise)
         }
     }
 

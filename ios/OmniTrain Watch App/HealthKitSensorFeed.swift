@@ -31,6 +31,21 @@
 //     question and the fixes stay the adapter's (D-2304). This file imports no
 //     location framework: a feed that owns no radio cannot leak one.
 //
+//  A beat arrives through two paths. A read that knows when its sample ended —
+//  both paths' usual case — goes through one gate (`yieldHeartRateIfNewer`), so
+//  a repeated read is never a second row. When the statistics carry no interval
+//  there is nothing to compare: the pull drops that beat rather than dating it
+//  `Date()`, where the builder's own push, which has just collected the sample,
+//  yields it as it arrives (D-3108, D-3113, D-3118):
+//
+//  * the builder's push — `workoutBuilder(_:didCollectDataOf:)`, which is the
+//    only path while the app runs in the foreground, and
+//  * a pull — while at least one heart-rate listener is live, the feed re-reads
+//    the builder's newest beat every `heartRatePullSeconds` and whenever the app
+//    becomes active. HealthKit's callback can be missed while the app is
+//    suspended with the wrist down, and nothing else re-reads the builder on
+//    wake.
+//
 
 #if os(watchOS)
 
@@ -61,6 +76,24 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
     private let lock = NSLock()
     private var heartRateContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
     private var stepContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
+
+    /// How often the pull re-reads the builder's newest beat. Three seconds is
+    /// short enough for a readout that follows the wrist and long enough that a
+    /// suspended app is not woken for it (D-3113).
+    private let heartRatePullSeconds: TimeInterval = 3
+
+    /// The builder the store handed over in `begin`, or nil between workouts.
+    /// The pull reads this one and holds nothing of its own (D-3113).
+    private var heartRateBuilder: HKLiveWorkoutBuilder?
+
+    /// The end instant of the last beat this feed yielded, from either path. A
+    /// read of a beat that is not strictly newer than this is a repeat, and a
+    /// repeat is never a second row (D-3113).
+    private var lastHeartRateEnd: Date?
+
+    /// The live pull, while at least one heart-rate listener is held. nil when
+    /// none is: nothing here outlives a subscription (D-3113).
+    private var heartRatePull: Task<Void, Never>?
 
     init(authorization: @escaping () async -> Bool, location: WatchTrackedLocation) {
         self.authorization = authorization
@@ -95,7 +128,11 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
         AsyncStream { continuation in
             let id = UUID()
             lock.lock()
+            let isFirstListener = heartRateContinuations.isEmpty
             heartRateContinuations[id] = continuation
+            // The pull belongs to the listeners: the first one starts it, the
+            // last one's termination stops it (D-3113).
+            if isFirstListener { heartRatePull = startPull() }
             lock.unlock()
 
             continuation.onTermination = { [weak self] _ in
@@ -133,6 +170,10 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
     /// finite or is below the wire's minimum of 1 is dropped rather than stored
     /// (`WatchSensorSummaries.lowestHeartRateBpm`). Steps are the builder's sum
     /// since it began, which the package treats as cumulative.
+    ///
+    /// A pushed beat is yielded as it arrives: the builder has just collected it,
+    /// so it is no repeat of an earlier read, and it is handed over without a
+    /// fabricated instant when the statistics carry no interval (D-3118).
     func workoutBuilder(
         _ workoutBuilder: HKLiveWorkoutBuilder,
         didCollectDataOf collectedTypes: Set<HKSampleType>
@@ -141,15 +182,20 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
             guard let type = collected as? HKQuantityType else { continue }
 
             if type == HKQuantityType(.heartRate) {
-                guard let quantity = workoutBuilder
-                    .statistics(for: type)?
-                    .mostRecentQuantity()
+                guard let statistics = workoutBuilder.statistics(for: type),
+                      let quantity = statistics.mostRecentQuantity()
                 else { continue }
 
                 let bpm = quantity.doubleValue(
                     for: HKUnit.count().unitDivided(by: HKUnit.minute())
                 )
-                if bpm.isFinite, bpm >= 1 { yieldHeartRate(bpm) }
+                guard bpm.isFinite, bpm >= 1 else { continue }
+
+                if let end = statistics.mostRecentQuantityDateInterval()?.end {
+                    yieldHeartRateIfNewer(bpm, end: end)
+                } else {
+                    yieldHeartRate(bpm)
+                }
             } else if type == HKQuantityType(.stepCount) {
                 guard let quantity = workoutBuilder
                     .statistics(for: type)?
@@ -165,12 +211,75 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
     /// own store, not from the builder's events.
     func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
 
+    // MARK: - The pull
+
+    /// Stores the builder the pull reads, or clears it — clearing the last
+    /// yielded end with it, so the next workout starts from nothing.
+    ///
+    /// The store hands the builder over in `begin`, once the collection it
+    /// belongs to exists, and drops it in `end`: the feed reads exactly the
+    /// workout the session opened (D-3113).
+    func refreshHeartRate(from builder: HKLiveWorkoutBuilder?) {
+        lock.lock()
+        heartRateBuilder = builder
+        if builder == nil { lastHeartRateEnd = nil }
+        lock.unlock()
+
+        refreshHeartRate()
+    }
+
+    /// Reads the stored builder's newest beat once. What a pull tick and the
+    /// app's return to the foreground both do: the builder's callback is missed
+    /// while the app is suspended with the wrist down, and nothing else re-reads
+    /// it on wake (D-3108, D-3113).
+    ///
+    /// A beat whose statistics carry no interval ends the read here: nothing can
+    /// tell that beat from the one already yielded, and dating it `Date()` would
+    /// make it newer than every read that follows it (D-3118).
+    func refreshHeartRate() {
+        lock.lock()
+        let builder = heartRateBuilder
+        lock.unlock()
+
+        guard let builder,
+              let statistics = builder.statistics(for: HKQuantityType(.heartRate)),
+              let quantity = statistics.mostRecentQuantity()
+        else { return }
+
+        let bpm = quantity.doubleValue(
+            for: HKUnit.count().unitDivided(by: HKUnit.minute())
+        )
+        guard bpm.isFinite, bpm >= 1 else { return }
+        guard let end = statistics.mostRecentQuantityDateInterval()?.end else { return }
+
+        yieldHeartRateIfNewer(bpm, end: end)
+    }
+
+    /// The pull's task: one read every `heartRatePullSeconds`, until the last
+    /// listener's termination cancels it. A `Task` loop rather than a timer, so
+    /// nothing has to be invalidated on a run loop HealthKit's queues do not own
+    /// (D-3113).
+    private func startPull() -> Task<Void, Never> {
+        let interval = UInt64(heartRatePullSeconds * 1_000_000_000)
+        return Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: interval)
+                guard let self else { return }
+                self.refreshHeartRate()
+            }
+        }
+    }
+
     // MARK: - Subscriptions
 
     private func forgetHeartRate(_ id: UUID) {
         lock.lock()
         heartRateContinuations[id] = nil
+        let stopping = heartRateContinuations.isEmpty ? heartRatePull : nil
+        if stopping != nil { heartRatePull = nil }
         lock.unlock()
+
+        stopping?.cancel()
     }
 
     private func forgetSteps(_ id: UUID) {
@@ -187,6 +296,21 @@ nonisolated final class HealthKitSensorFeed: NSObject, WatchSensorSource, HKLive
         lock.unlock()
 
         for listener in listeners { listener.yield(bpm) }
+    }
+
+    /// The gate a heart-rate read goes through when its sample's end instant is
+    /// known: the beat is yielded only when `end` is strictly later than the last
+    /// one yielded, and that instant becomes the new mark. A tick that re-reads a
+    /// beat already stored therefore yields nothing, so the push path and the pull
+    /// path cannot make two rows of one beat (D-3113).
+    private func yieldHeartRateIfNewer(_ bpm: Double, end: Date) {
+        lock.lock()
+        let isNewer = lastHeartRateEnd.map { end > $0 } ?? true
+        if isNewer { lastHeartRateEnd = end }
+        lock.unlock()
+
+        guard isNewer else { return }
+        yieldHeartRate(bpm)
     }
 
     private func yieldSteps(_ count: Double) {

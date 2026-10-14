@@ -117,6 +117,10 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
 
             collection.dataSource = dataSource
             collection.delegate = sensorFeed
+            // The feed reads this builder on its own tick and on activation, so
+            // a beat whose callback was missed while the app was suspended still
+            // becomes a reading (D-3108, D-3113).
+            sensorFeed.refreshHeartRate(from: collection)
 
             session = opened
             builder = collection
@@ -140,6 +144,11 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     }
 
     func end() async {
+        // The feed stops reading the builder this store is about to finish,
+        // whatever else `end` does: a tick over a closed builder is a stranded
+        // reading (D-3113).
+        sensorFeed.refreshHeartRate(from: nil)
+
         guard let openSession = session else { return }
         let openBuilder = builder
         session = nil
@@ -155,6 +164,15 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             // The session is already closed, which is the part that matters: a
             // saved workout is a bonus, a workout left open is a lie.
         }
+    }
+
+    /// Reads the workout's newest beat now, through the feed's one gate, so a
+    /// beat whose callback arrived while the app was suspended becomes a
+    /// reading when the user raises the wrist again (D-3108, D-3113). The
+    /// builder is handed over rather than assumed: the feed reads the workout
+    /// this store currently holds, and nothing at all once `end` cleared it.
+    func refreshHeartRate() {
+        sensorFeed.refreshHeartRate(from: builder)
     }
 
     func inProgressActivityTypes() async -> [String] {

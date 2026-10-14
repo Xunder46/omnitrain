@@ -570,11 +570,32 @@ public final class WatchSessionStartPaths {
     /// The picker's rows for the live session: what the user is on, then what
     /// they could add. Derived on every read rather than cached, so a push that
     /// arrived while the picker was open is already in the list the user sees.
+    ///
+    /// The available rows are `addableExercises` — the same A-to-Z list the
+    /// menu's Add Exercise page shows — so the two surfaces offer one list in one
+    /// order (D-3111).
     public var pickerRows: [WatchExercisePickerRow] {
         derivePickerRows(
             sessionExercises: engine.session?.exercises ?? [],
-            fallback: fallbackExercises
+            fallback: addableExercises
         )
+    }
+
+    /// The exercises the picker offers besides the ladder's own, in
+    /// `addableExercises` order (D-3111).
+    ///
+    /// The identity the picker is built on — its available rows are this list —
+    /// so what the grid gate counts (`deriveExerciseListLetters`) is what the
+    /// user sees, not the size of a list the ladder has already shrunk. An
+    /// exercise the ladder holds is offered once, as its in-session row.
+    public var availablePickerExercises: [WatchCatalogExercise] {
+        let onLadder = Set(
+            (engine.session?.exercises ?? []).compactMap {
+                WatchCatalogExercise(slot: $0)?.exerciseId
+            }
+        )
+
+        return addableExercises.filter { !onLadder.contains($0.exerciseId) }
     }
 
     /// Everything the wrist could add to the live session, A to Z: the menu's

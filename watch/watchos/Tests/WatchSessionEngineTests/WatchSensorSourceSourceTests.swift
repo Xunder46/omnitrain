@@ -15,6 +15,12 @@
 //  the project file, the question that is never latched, and the revoked
 //  permission that ends the feed.
 //
+//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
+//  scenarios S-3110 and S-3112 (decisions D-3108, D-3113): the feed's pull that
+//  re-reads the builder's newest beat while a listener waits and stops with the
+//  last one, and the store and the host refreshing it when the app becomes
+//  active.
+//
 //  The app target has no test target and `HKLiveWorkoutBuilder` does not exist on
 //  macOS where `swift test` runs, so the feed, the store and the host cannot be
 //  executed here. What can be held off-device is what drift would break: the
@@ -763,6 +769,139 @@ final class WatchSensorSourceSourceTests: XCTestCase {
             "a revoked permission finishes every live raw-fix continuation: their "
                 + "`onTermination` stops the radio, so the distance does not freeze "
                 + "with the radio still running (D-2303)"
+        )
+    }
+
+    // MARK: - S-3110: the feed pulls the newest beat while a listener waits
+
+    func testS3110ATheFeedPullsTheNewestBeatWhileAListenerWaits() throws {
+        let feed = try feedSource()
+
+        XCTAssertTrue(
+            feed.contains("heartRatePullSeconds"),
+            "the builder's callback is missed while the app is suspended with the "
+                + "wrist down, so the feed also reads the builder on a tick of its "
+                + "own (D-3108, D-3113)"
+        )
+        XCTAssertTrue(
+            feed.contains("TimeInterval = 3"),
+            "the tick's period is pinned by name and value — "
+                + "`heartRatePullSeconds: TimeInterval = 3` (D-3113)"
+        )
+        XCTAssertTrue(
+            feed.contains("lastHeartRateEnd"),
+            "without the last end instant a tick that re-reads a beat already "
+                + "stored would store it again (D-3113)"
+        )
+        XCTAssertTrue(
+            feed.contains("mostRecentQuantityDateInterval"),
+            "a tick yields only a strictly newer beat, which is what the sample's "
+                + "interval answers (D-3108, D-3113)"
+        )
+        XCTAssertTrue(
+            feed.contains("yieldHeartRateIfNewer"),
+            "one gate serves both paths, so the push callback and a tick's read "
+                + "cannot make two rows of one beat (D-3113)"
+        )
+        XCTAssertTrue(
+            feed.contains("refreshHeartRate(from builder: HKLiveWorkoutBuilder?)"),
+            "the feed holds the builder it reads, handed over through this one "
+                + "entry point and cleared with nil (D-3113)"
+        )
+
+        let listener = try XCTUnwrap(
+            functionBody(named: "heartRate", in: feed),
+            "the heart-rate subscription is where the pull starts (D-3113)"
+        )
+        XCTAssertTrue(
+            listener.contains("onTermination"),
+            "a consumer that stops consuming is how the wrist ends a session's "
+                + "subscription (D-2103)"
+        )
+        XCTAssertTrue(
+            listener.contains("forgetHeartRate("),
+            "the termination drops the continuation through the one path that "
+                + "can also stop the pull (D-3113)"
+        )
+
+        let forgetting = try XCTUnwrap(
+            functionBody(named: "forgetHeartRate", in: feed),
+            "the one path a termination takes (D-3113)"
+        )
+        XCTAssertTrue(
+            forgetting.contains("heartRateContinuations.isEmpty"),
+            "the pull stops with the last listener: a tick that outlived its "
+                + "session would read a builder that is already closed (D-3113)"
+        )
+        XCTAssertTrue(
+            forgetting.contains("cancel()"),
+            "stopping means cancelling the pull's task — no timer outlives the "
+                + "workout it read (D-3113)"
+        )
+
+        let store = try storeSource()
+        let begin = try XCTUnwrap(
+            functionBody(named: "begin", in: store),
+            "the store opens the workout in `begin` (D-2105)"
+        )
+        XCTAssertTrue(
+            begin.contains("sensorFeed.refreshHeartRate(from: collection)"),
+            "the feed can only read the builder it was handed, and only after the "
+                + "collection it belongs to has one (D-3113)"
+        )
+        let end = try XCTUnwrap(
+            functionBody(named: "end", in: store),
+            "the store closes the workout in `end` (D-1502)"
+        )
+        XCTAssertTrue(
+            end.contains("sensorFeed.refreshHeartRate(from: nil)"),
+            "and drops it again, so no tick reads a builder the store has "
+                + "finished (D-3113)"
+        )
+    }
+
+    // MARK: - S-3112: the store and the host refresh the heart rate on activation
+
+    func testS3112ATheStoreAndTheHostRefreshTheHeartRateOnActivation() throws {
+        let store = try storeSource()
+        let refresher = try XCTUnwrap(
+            functionBody(named: "refreshHeartRate", in: store),
+            "the store offers the one refresh activation calls (D-3113)"
+        )
+        XCTAssertTrue(
+            refresher.contains("func refreshHeartRate()"),
+            "the entry point is `refreshHeartRate()`, no argument: the store "
+                + "already holds the builder (D-3113)"
+        )
+        XCTAssertTrue(
+            refresher.contains("sensorFeed.refreshHeartRate(from: builder)"),
+            "the refresh reads the builder this store opened, through the feed's "
+                + "own gate (D-3113)"
+        )
+
+        let view = try viewSource()
+        let hostRefresh = try XCTUnwrap(
+            functionBody(named: "refreshHeartRate", in: view),
+            "the host carries the refresh the surface calls (D-3113)"
+        )
+        XCTAssertTrue(
+            hostRefresh.contains("refreshHeartRate()"),
+            "the host's refresh reaches the store it built (D-3113)"
+        )
+
+        let activation = try XCTUnwrap(
+            braceBody(ofLineContaining: ".onChange(of: scenePhase)", in: view),
+            "the surface already reacts to becoming active (D-2106)"
+        )
+        XCTAssertTrue(
+            activation.contains("catchUpOnActivation()"),
+            "the refresh joins the branch that already ran on becoming active, "
+                + "rather than a second handler (D-3113)"
+        )
+        XCTAssertTrue(
+            activation.contains("refreshHeartRate()"),
+            "activation is the wrist's second read: a suspended app missed the "
+                + "push path's callbacks while the wrist was down (D-3108, D-3113)"
         )
     }
 

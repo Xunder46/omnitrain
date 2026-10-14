@@ -120,7 +120,20 @@ such as `~`, sorts last, so the `#` entry then sits at the end:
 initial in the plain-lowercase place its name sorted to
 (`testS3900TheLettersFollowTheListsOwnOrder`,
 `testS3902TheGridNeedsMoreThanTheThreshold`,
-`testS3905EveryLetterEntryCoversAContiguousRun`).
+`testS3905EveryLetterEntryCoversAContiguousRun`). `deriveExerciseSections` reads
+that same list as the runs the grid jumps by, in the same order, so the
+concatenation of its sections is the list itself
+(`testS3105ASectionsFollowTheListAndTheLettersAgree`).
+
+The startup picker offers the same list: `availablePickerExercises` is
+`addableExercises` in its own order minus the exercises the live ladder already
+holds, so an exercise the user is on is offered once, as its own in-session row
+(`testS3107ATheFreePickerOffersTheAvailableExercisesAToZ`,
+`testS3113AThePickerRowsAndTheAvailableExercisesAgree`). `pickerRows` are those
+rows behind the ladder's own, and the picker's grid is `deriveExerciseListLetters`
+over the rows it offers — the one gate both surfaces read
+(`testS3108ATheLetterGridAppearsOverTwentyRows` for the menu's list,
+`testS3113AThePickerRowsAndTheAvailableExercisesAgree` for the picker's).
 
 ## Routing and the request frame
 

@@ -107,6 +107,96 @@ public func deriveAddExerciseLetters(
     return letters
 }
 
+/// One run of a list the user reads: the key every exercise in it wears and
+/// those exercises, in the list's own order (D-3104, D-3110).
+///
+/// The runs are contiguous rather than one-per-key: a key that appears again
+/// after another key opens a second section, because the concatenation of a
+/// list's sections is that list — nothing dropped, nothing repeated, nothing
+/// reordered. `deriveAddExerciseLetters` may skip a repeat, since a jump needs
+/// one target per key; a list that is read needs every row once.
+public struct WatchExerciseSection: Equatable {
+    /// The key the run sorts under: the same key `WatchAddExerciseLetter`
+    /// carries, read through `addExerciseLetterKey(of:)`.
+    public let letter: String
+
+    public let exercises: [WatchCatalogExercise]
+
+    public init(letter: String, exercises: [WatchCatalogExercise]) {
+        self.letter = letter
+        self.exercises = exercises
+    }
+}
+
+/// The list split into the runs it is read in: one section per key, in the
+/// list's own order, keyed through `addExerciseLetterKey(of:)` (D-3110).
+///
+/// Pure, one pass, no sorting: an A-to-Z input (`addableExercises`) comes back
+/// with the `#` run first and an accented name last, exactly as it was handed
+/// over.
+public func deriveExerciseSections(
+    _ exercises: [WatchCatalogExercise]
+) -> [WatchExerciseSection] {
+    var sections: [WatchExerciseSection] = []
+    var open: [WatchCatalogExercise] = []
+    var openKey: String?
+
+    for exercise in exercises {
+        let key = addExerciseLetterKey(of: exercise.name)
+        if key == openKey {
+            open.append(exercise)
+            continue
+        }
+
+        if let openKey {
+            sections.append(WatchExerciseSection(letter: openKey, exercises: open))
+        }
+        openKey = key
+        open = [exercise]
+    }
+
+    if let openKey {
+        sections.append(WatchExerciseSection(letter: openKey, exercises: open))
+    }
+
+    return sections
+}
+
+/// The letters a list's sections carry as scroll ids: the first run of every
+/// key, once each, in the sections' own order (D-3117).
+///
+/// One `ScrollViewReader` may hold only one view per id, and
+/// `deriveExerciseSections` opens a second section whenever a key reappears — a
+/// digit name sorts before `A` and a `~` name after `Z`, so `#` can open twice.
+/// The grid jumps by letter, so the id sits on the run that letter names and the
+/// later runs carry none: the reader's ids are exactly the grid's letters, and a
+/// tap lands on the first run the grid's entry points at.
+public func scrollTargetLetters(of sections: [WatchExerciseSection]) -> [String] {
+    var seen = Set<String>()
+    var letters: [String] = []
+
+    for section in sections where seen.insert(section.letter).inserted {
+        letters.append(section.letter)
+    }
+
+    return letters
+}
+
+/// The letters a list jumps by: the list's entries, or none at all while it is
+/// short enough to scroll by hand (D-3851, D-3110).
+///
+/// The one home of `WatchMenuCopy.addLetterGridThreshold`. Both surfaces that
+/// show the grid — the menu's Add Exercise list and the picker's — read this,
+/// never the literal, so the two cannot disagree about where the grid begins.
+/// A pure function of the list it is given: the caller decides which list that
+/// is (`WatchMenuState.addableExercises`, `WatchStartPaths.availablePickerExercises`).
+public func deriveExerciseListLetters(
+    _ exercises: [WatchCatalogExercise]
+) -> [WatchAddExerciseLetter] {
+    guard exercises.count > WatchMenuCopy.addLetterGridThreshold else { return [] }
+    return deriveAddExerciseLetters(exercises)
+}
+
 /// The menu's fixed copy, and the confirmation's (D-3401).
 ///
 /// It lives here rather than on the view, which compiles only into a watch
@@ -270,11 +360,17 @@ public final class WatchMenuState {
     /// `[]` when the list is short enough to scroll by hand (D-3850, D-3851).
     ///
     /// A pure function of `addableExercises`, read on every access: a list that
-    /// changes size across the threshold gains or loses the grid with it.
+    /// changes size across the threshold gains or loses the grid with it. The
+    /// threshold itself lives once, in `deriveExerciseListLetters`, which the
+    /// picker reads too (D-3110).
     public var addExerciseLetters: [WatchAddExerciseLetter] {
-        let offered = addableExercises
-        guard offered.count > WatchMenuCopy.addLetterGridThreshold else { return [] }
-        return deriveAddExerciseLetters(offered)
+        deriveExerciseListLetters(addableExercises)
+    }
+
+    /// The Add Exercise list split into the runs it is read in, in the list's
+    /// own order (D-3104, D-3110).
+    public var addExerciseSections: [WatchExerciseSection] {
+        deriveExerciseSections(addableExercises)
     }
 
     /// Adds `exercise` at the end of the ladder, through the start paths.

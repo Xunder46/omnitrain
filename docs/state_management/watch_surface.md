@@ -432,9 +432,28 @@ every frame it routes and hands it to the start surface, which is what re-runs
 the picker's body; the rows themselves are derived on every read. A row is keyed
 by its own slot id rather than by the exercise, because one exercise may
 legitimately hold two slots, and the session's slots come first with
-the fallback list minus what the ladder already shows behind them. Verified by
+`availablePickerExercises` — `addableExercises`, the menu's own A to Z list,
+minus what the ladder already shows — behind them. Verified by
 `WatchConnectivityBridgeTests.testPickerRowsListTheSessionFirstAndNeverTwice` and
-`…testPickerRowsFallBackToTheFallbackListWhileTheSessionIsEmpty`.
+`…testPickerRowsFallBackToTheFallbackListWhileTheSessionIsEmpty`, and the two
+lists are one list in one order by
+`WatchSessionStartPathsTests.testS3113AThePickerRowsAndTheAvailableExercisesAgree`.
+
+**One list serves both entry points.** The picker and the menu's Add Exercise
+list render the same `WatchExerciseLetterList` (`WatchExerciseListView.swift`),
+each supplying only its own rows and its own action (D-3105, D-3112); it is a
+`List` rather than a `LazyVStack`, so a letter jump lands on a measured row
+(D-3106). Verified by
+`WatchMenuTests.testS3106AOneListServesBothEntryPoints`.
+
+Within it the sections are walked by position: only the *first* run of a key
+carries its letter as the scroll id, so a key that opens two runs — a digit name
+sorts before `A`, a `~` name after `Z` — cannot put two views under one identity
+the reader holds (`WatchMenuTests.testS3114ARepeatedLetterRunsCarryOneScrollId`,
+D-3117). The picker also hands the list the "search on the phone" hint as its
+last row, so the hint scrolls with the rows instead of holding a strip of the
+wrist below them; that row and the grid itself are drawn by the watch app
+target, which `swift test` does not compile.
 
 #### The wrist shell's second surface
 
@@ -459,6 +478,14 @@ down from the phone's number, or the wrist's preset with none
 `…testS1402ASlotWithNoNumberKeepsTheWristsPreset`), and the jump alone refused
 while an effort runs (`WatchMenuTests.testS1307TheMenuDoesNotJumpWhileAWorkClockRuns`,
 `…testS3615AddExerciseWorksWhileAWorkClockRuns`).
+
+**The live label follows the sensor.** The grey "bpm" and distance lines of that
+surface are derived on every read from the sensors' newest recorded sample, so
+while the logging screen is up they move with the wrist's own beats and never
+wait for the phone
+(`WatchSensorCoordinatorTests.testS3108TheLiveLabelShowsTheNewestBeat`,
+`WatchSensorRecordingTests.testS3109ATheLabelFollowsEveryBeat`).
+
 Before Start, a period (sports) shows a length row with minus and plus, opening
 at the phone's number or 3:00 with none; the length cannot change once the period
 runs, and the chosen length carries to the next period of the same exercise
@@ -475,6 +502,12 @@ the phone
 starts a rest after a set alone (documented divergence, plan 23b D-3502); the
 rest screen is captioned
 "Rest" (`WatchTimedWorkTests.testS3409TheRestSurfaceNamesItself`).
+The rest screen carries the same list button the logging surface does, and both
+open the one session menu: a jump or an add made from there moves nothing the
+running rest logs (`WatchMenuTests.testS3103ATheRestScreenCarriesTheMenuButton`,
+`…testS3101AJumpDuringARestKeepsTheRestRunning`,
+`…testS3102AAddingAnExerciseDuringARestKeepsTheRestRunning`); the rest ends only
+through Next or the next Log (`…testS3111ALogClosesTheRunningRestAndStartsTheNext`).
 
 Both wrist clients tap at each multiple of the interval the phone sent in
 `preferences_down` (`restPingSeconds`) — one Rest Ping setting, silent, and no

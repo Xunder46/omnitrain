@@ -602,10 +602,16 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     (`WatchWorkoutCoordinatorTests.testS1505DenialIsNotFailure`).
 23. **The wrist measures heart rate and steps — (owner).** Install on a real
     watch and accept the new Health prompt (workout share, heart rate, steps).
-    Run a session and watch the exercise screen's grey "bpm" line move
+    Run a session and watch the exercise screen's grey "bpm" line change at
+    least every ~5 s, also after lowering and raising the wrist; if it freezes,
+    note the last value and after how many seconds
     (`WatchSensorCoordinatorTests.testS3108TheLiveLabelShowsTheNewestBeat` pins
-    the label; the line itself is `WatchLoggingView.sensorLine`). End the
-    session and sync, then check the phone's Stats for an average heart rate.
+    the label; the line itself is `WatchLoggingView.sensorLine`). It moves
+    because the feed re-reads the workout's newest beat on a tick of its own and
+    once more when the wrist comes back up
+    (`WatchSensorSourceSourceTests.testS3110ATheFeedPullsTheNewestBeatWhileAListenerWaits`,
+    `WatchSensorSourceSourceTests.testS3112ATheStoreAndTheHostRefreshTheHeartRateOnActivation`).
+    End the session and sync, then check the phone's Stats for an average heart rate.
     Decline the prompt once instead: logging, rest, the menu and sync keep
     working and no number appears
     (`WatchSensorCoordinatorTests.testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected`).
@@ -723,9 +729,10 @@ hardware yet.
    then does the new window open
    (`…testS3504StartOfTheNextTimedEffortEndsTheRestItWalksInto`).
 10. **End Session sits apart from the exercises — (owner).** Open the list on the
-    wrist: the session's exercises are one group, and **End Session** sits below
-    a divider with extra space above it, so it does not read as one more
-    exercise row.
+    wrist: the session's exercises are one group, and **Add Exercise** and
+    **End Session** sit below a divider, so neither reads as one more exercise
+    row. The extra space sits between the line and **Add Exercise**; **Add
+    Exercise** and **End Session** keep the normal row spacing.
 11. **Add an exercise from the watch — (owner).** Sync, open the list, tap
     **Add Exercise**, pick one: it is the last row, it has no count, the
     exercise being logged did not change, and the phone's open session shows
@@ -773,16 +780,34 @@ hardware yet.
     first, while an accented initial like **Élan** has its own letter at the
     end. Tap a letter: the list moves so that letter's first exercise is at the
     top, nothing is added and the screen does not close; a letter jump is a
-    scroll, not a pick. Tap an exercise as before: it is still added at the end
-    of the session's list and the screen returns to the menu. With a short list
-    — a fresh install with 20 exercises or fewer at **Sync** — there is no grid
-    at all. The letters and their order are pinned off-device by
+    scroll, not a pick. Far letters land too: the list measures every row it
+    holds, so a tap on **T** brings T's own exercise to the top instead of
+    estimating and missing it (D-3106). Tap an exercise as before: it is still
+    added at the end of the session's list and the screen returns to the menu.
+    With a short list — a fresh install with 20 exercises or fewer at **Sync**
+    — there is no grid at all. The Free workout picker is the other entry point
+    and draws the same list in the same order: the grid is its first row, then
+    the exercises the session already holds, then the one section per letter.
+    The one component both render is pinned by
+    `WatchMenuTests.testS3106AOneListServesBothEntryPoints`. The letters and
+    their order are pinned off-device by
     `WatchMenuTests.testS3900TheLettersFollowTheListsOwnOrder`,
     `…testS3901DigitsAndSymbolsShareOneHashEntryFirst`,
     `…testS3902TheGridNeedsMoreThanTheThreshold`,
     `…testS3904AnAccentedInitialIsItsOwnLetterAndSortsLast` and
     `…testS3905EveryLetterEntryCoversAContiguousRun`; the grid itself is drawn
     by the watch app target, which `swift test` does not compile.
+15. **The menu is one tap away during a rest — (owner).** Log a set so the rest
+    screen is up: it carries the same top-right list button the logging screen
+    does, and tapping it opens the same menu over the rest. Tap **Add
+    Exercise**, pick one and go back: the wrist is on the rest screen again with
+    the timer still counting and the new exercise last in the ladder. A jump
+    from that menu returns to the rest screen too, and the rest ends only
+    through **Next** or by logging the next set
+    (`WatchMenuTests.testS3103ATheRestScreenCarriesTheMenuButton`,
+    `…testS3101AJumpDuringARestKeepsTheRestRunning`,
+    `…testS3102AAddingAnExerciseDuringARestKeepsTheRestRunning`,
+    `…testS3111ALogClosesTheRunningRestAndStartsTheNext`).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

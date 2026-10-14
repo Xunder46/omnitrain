@@ -81,9 +81,9 @@ public struct WatchMenuView: View {
                     Divider()
 
                     addExerciseRow
+                        .padding(.top, 10)
 
                     finishRow
-                        .padding(.top, 10)
                 }
                 .padding(Self.surfaceInset)
             }
@@ -187,74 +187,27 @@ private struct WatchAddExerciseList: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    /// Wrist-scale inset, as the menu and the other wrist surfaces use.
-    private static let surfaceInset = 4.0
-
     init(state: WatchMenuState, onAdded: @escaping () -> Void) {
         self.state = state
         self.onAdded = onAdded
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                if state.addableExercises.isEmpty {
-                    Text(WatchMenuCopy.addExerciseEmpty)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(Self.surfaceInset)
-                } else {
-                    // Lazy: the phone's whole exercise list is a few hundred rows.
-                    LazyVStack(spacing: Self.surfaceInset) {
-                        letterGrid(proxy)
-                        ForEach(state.addableExercises, id: \.exerciseId) { exercise in
-                            Button(exercise.name) {
-                                Task {
-                                    await state.addExercise(exercise)
-                                    onAdded()
-                                    dismiss()
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            // What a letter button names to scroll to (D-3852).
-                            .id(exercise.exerciseId)
-                        }
-                    }
-                    .padding(Self.surfaceInset)
+        WatchExerciseLetterList(
+            leading: [],
+            sections: state.addExerciseSections,
+            letters: state.addExerciseLetters,
+            emptyText: WatchMenuCopy.addExerciseEmpty,
+            onPickLeading: { _, _ in },
+            onPick: { exercise in
+                Task {
+                    await state.addExercise(exercise)
+                    onAdded()
+                    dismiss()
                 }
             }
-        }
+        )
         .navigationTitle(WatchMenuCopy.addExerciseTitle)
-    }
-
-    /// The jump grid: one small button per letter the list has, four per row,
-    /// shown only once the list is too long to scroll by hand (D-3851, D-3852).
-    ///
-    /// A tap scrolls that letter's first exercise to the top — without animation,
-    /// so the list answers the tap and settles — and does nothing else: it adds
-    /// nothing and does not leave the screen. Each button says which letter it
-    /// jumps to for VoiceOver.
-    @ViewBuilder
-    private func letterGrid(_ proxy: ScrollViewProxy) -> some View {
-        let letters = state.addExerciseLetters
-        if !letters.isEmpty {
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible()), count: 4),
-                spacing: Self.surfaceInset
-            ) {
-                ForEach(letters, id: \.letter) { letter in
-                    Button(letter.letter) {
-                        proxy.scrollTo(letter.firstExerciseId, anchor: .top)
-                    }
-                    .buttonStyle(.bordered)
-                    .font(.footnote)
-                    .accessibilityLabel(WatchMenuCopy.addLetterJumpLabel(letter.letter))
-                }
-            }
-        }
     }
 }
 

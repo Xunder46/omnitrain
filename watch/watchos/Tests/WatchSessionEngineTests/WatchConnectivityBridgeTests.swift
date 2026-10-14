@@ -16,6 +16,10 @@
 //  the engine are the real ones, so what a frame carries is what the wrist would
 //  really send.
 //
+//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
+//  Phase 2A (decision D-3111): the picker's available rows are `addableExercises`,
+//  in A-to-Z order, instead of the phone's fallback order.
+//
 
 import XCTest
 
@@ -867,11 +871,12 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(rows.filter { $0.exerciseId == "ex-plank" }.count, 1)
         XCTAssertEqual(rows.map(\.id).count, Set(rows.map(\.id)).count, "every row is keyed uniquely")
 
-        // What follows is the fallback list, in its order, minus what the ladder
-        // already shows — including the exercise only the routine edit knows.
+        // What follows is the offered list, A to Z (D-3111), minus what the
+        // ladder already shows — including the exercise only the routine edit
+        // knows.
         XCTAssertEqual(
             rows.dropFirst(2).map(\.exerciseId),
-            harness.paths.fallbackExercises
+            harness.paths.addableExercises
                 .map(\.exerciseId)
                 .filter { !["ex-barbell-bench-press", "ex-plank"].contains($0) }
         )
@@ -905,7 +910,7 @@ final class WatchConnectivityBridgeTests: XCTestCase {
 
         XCTAssertFalse(rows.isEmpty)
         XCTAssertTrue(rows.allSatisfy { !$0.isInSession })
-        XCTAssertEqual(rows.map(\.exerciseId), harness.paths.fallbackExercises.map(\.exerciseId))
+        XCTAssertEqual(rows.map(\.exerciseId), harness.paths.addableExercises.map(\.exerciseId))
         XCTAssertEqual(rows.map(\.exerciseId).count, Set(rows.map(\.exerciseId)).count)
 
         // Picking an offered exercise appends it, exactly as the add path does.

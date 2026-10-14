@@ -17,6 +17,11 @@
 //  storage: every offline claim is checked by rebuilding the watch over the same
 //  store with no transport in sight.
 //
+//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
+//  Phase 2A, scenarios S-3107 and S-3113 (decision D-3111): the picker's
+//  available rows are the A-to-Z list, in the order it offers them, and the
+//  ladder's own exercise is offered once.
+//
 
 import XCTest
 
@@ -333,6 +338,90 @@ private func batchRow(
         batchCount: count,
         totalCount: total,
         exercises: try objects(payload["exercises"])
+    )
+}
+
+/// A closed session the wrist has used, written straight into a store.
+///
+/// The fallback list leads with recents, and the wrist reads its recents out of
+/// the sessions it already keeps (`recentlyUsed`) rather than out of a phone
+/// message: `routines_down` carries no recents at all. The contract's
+/// `fallback.recents` are what the PHONE was looking at, so a wrist fixture that
+/// wants the contract's own `fallback.expected` order has to have used those
+/// exercises — and a closed session does not stand in the way of a free workout.
+private func usedSession(
+    sessionId: String,
+    recordedAt: String,
+    slots: [(exerciseId: String, name: String)]
+) throws -> WatchSessionRecord {
+    WatchSessionRecord(
+        recordId: "rec-\(sessionId)",
+        sessionId: sessionId,
+        recordedAt: try parseUtcIso(recordedAt),
+        startedAt: try parseUtcIso(recordedAt),
+        modality: nil,
+        source: "wrist",
+        status: WatchSessionStatus.completed,
+        currentExerciseIndex: 0,
+        exercises: slots.map { slot in
+            [
+                "sessionExerciseId": "sx-\(slot.exerciseId)",
+                "exerciseId": slot.exerciseId,
+                "name": slot.name,
+                "capabilities": ["sets", "reps", "load"],
+            ] as [String: Any]
+        },
+        sequence: 1
+    )
+}
+
+/// The names of a catalog-only message, one per first letter: 21 rows, one past
+/// `WatchMenuCopy.addLetterGridThreshold`, all in A-to-Z order already.
+private let listedCatalogNames = [
+    "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel",
+    "India", "Juliett", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa",
+    "Quebec", "Romeo", "Sierra", "Tango", "Uniform",
+]
+
+/// A `routines_down` with no routines and nothing but the given names in its
+/// fallback list — the catalog-only shape
+/// `watch/sync_protocol/fixtures/valid/routines_down_catalog_only.json` pins, so
+/// the message is conformant and the wrist's whole list is the catalog's own.
+private func catalogOnlyMessage(names: [String]) throws -> [String: Any] {
+    var message = try object(try object(try startContract()["fallback"])["routinesDown"])
+    var payload = try object(message["payload"])
+    let generatedAt = "2026-07-13T19:00:00Z"
+
+    payload["generatedAt"] = generatedAt
+    payload["routines"] = []
+    payload["fallbackExercises"] = names.enumerated().map { index, name in
+        [
+            "exerciseId": String(format: "ex-l%02d", index + 1),
+            "name": name,
+            "capabilities": ["sets", "reps", "load"],
+        ] as [String: Any]
+    }
+
+    message["messageId"] = "msg-routines-listed-\(names.count)"
+    message["sentAt"] = generatedAt
+    message["payload"] = payload
+    return message
+}
+
+/// The picker's two lists agree: the rows it offers as available are
+/// `availablePickerExercises`, in that order (S-3113).
+private func assertPickerListsAgree(
+    _ paths: WatchSessionStartPaths,
+    _ message: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    XCTAssertEqual(
+        paths.pickerRows.filter { !$0.isInSession }.map(\.exerciseId),
+        paths.availablePickerExercises.map(\.exerciseId),
+        message,
+        file: file,
+        line: line
     )
 }
 
@@ -2128,5 +2217,158 @@ final class WatchSessionStartPathsTests: XCTestCase {
         )
         XCTAssertTrue(resumed.stored, "S-3838 the batch is still stored for the next sync")
         XCTAssertFalse(resumed.activated, "S-3838 it does not become the wrist's list")
+    }
+
+    // MARK: - S-3107/S-3113 the picker's available list
+
+    /// The free picker offers the A-to-Z list the menu's Add Exercise page shows,
+    /// not the phone's fallback order (D-3111), and an exercise the ladder holds
+    /// is offered once: as its own in-session row.
+    func testS3107ATheFreePickerOffersTheAvailableExercisesAToZ() async throws {
+        // The wrist's own recents put Plank and Goblet Squat ahead of the
+        // catalog's fallback list, which is the order the contract pins for the
+        // phone (`fallback.expected`, `watch/contract/watch_start_paths_contract.json`):
+        // [Plank, Goblet Squat, Barbell Bench Press, Pull-Up].
+        let store = InMemoryWatchSessionStore()
+        _ = await store.append(
+            .session(
+                try usedSession(
+                    sessionId: "s-used",
+                    recordedAt: "2026-07-13T16:00:00Z",
+                    slots: [
+                        (exerciseId: "ex-plank", name: "Plank"),
+                        (exerciseId: "ex-goblet-squat", name: "Goblet Squat"),
+                    ]
+                )
+            )
+        )
+        let harness = WatchStartHarness(store: store)
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+
+        XCTAssertEqual(
+            harness.paths.fallbackExercises.map(\.exerciseId),
+            ["ex-plank", "ex-goblet-squat", "ex-barbell-bench-press", "ex-pull-up"],
+            "S-3107 the wrist's fallback list is the contract's own order"
+        )
+
+        let session = await harness.paths.startFreeWorkout()
+        XCTAssertTrue(session.exercises.isEmpty, "S-3107 the free workout starts empty")
+
+        XCTAssertEqual(
+            harness.paths.pickerRows.filter { !$0.isInSession }.map(\.exerciseId),
+            ["ex-barbell-bench-press", "ex-goblet-squat", "ex-plank", "ex-pull-up"],
+            "S-3107 D-3111 the available rows are A to Z, not the phone's order"
+        )
+        XCTAssertEqual(
+            harness.paths.availablePickerExercises.map(\.exerciseId),
+            ["ex-barbell-bench-press", "ex-goblet-squat", "ex-plank", "ex-pull-up"],
+            "S-3107 D-3111 the available list is the same rows"
+        )
+
+        // A pick that lands on the ladder is offered once, as the row that moves
+        // the user to it.
+        let plank = try XCTUnwrap(
+            harness.paths.addableExercises.first { $0.exerciseId == "ex-plank" }
+        )
+        _ = await harness.paths.addExerciseToSession(plank)
+
+        let rows = harness.paths.pickerRows
+        XCTAssertEqual(rows.first?.exerciseId, "ex-plank", "S-3107 the session's own row comes first")
+        XCTAssertTrue(rows.first?.isInSession == true, "S-3107 and it is the in-session row")
+        XCTAssertEqual(rows.filter { $0.exerciseId == "ex-plank" }.count, 1, "S-3107 offered once, never twice")
+        XCTAssertEqual(
+            harness.paths.availablePickerExercises.map(\.exerciseId),
+            ["ex-barbell-bench-press", "ex-goblet-squat", "ex-pull-up"],
+            "S-3107 D-3111 the ladder's own exercise is not available a second time"
+        )
+        assertPickerListsAgree(harness.paths, "S-3107 the two lists agree after the add")
+    }
+
+    /// The picker's two lists agree in every state, and its grid gate counts the
+    /// rows it actually offers (D-3110, D-3111) — 21 available rows carry the
+    /// grid, 20 do not.
+    func testS3113AThePickerRowsAndTheAvailableExercisesAgree() async throws {
+        // (a) the contract's own catalog
+        let contractStore = InMemoryWatchSessionStore()
+        _ = await contractStore.append(
+            .session(
+                try usedSession(
+                    sessionId: "s-used",
+                    recordedAt: "2026-07-13T16:00:00Z",
+                    slots: [
+                        (exerciseId: "ex-plank", name: "Plank"),
+                        (exerciseId: "ex-goblet-squat", name: "Goblet Squat"),
+                    ]
+                )
+            )
+        )
+        let contract = WatchStartHarness(store: contractStore)
+        await contract.launch()
+        _ = try await contract.receive(try firstMessage())
+        _ = await contract.paths.startFreeWorkout()
+
+        assertPickerListsAgree(contract.paths, "S-3113 (a) the rows are the available list")
+        XCTAssertEqual(
+            contract.paths.availablePickerExercises.map(\.exerciseId),
+            ["ex-barbell-bench-press", "ex-goblet-squat", "ex-plank", "ex-pull-up"],
+            "S-3113 (a) A to Z"
+        )
+        XCTAssertTrue(
+            deriveExerciseListLetters(contract.paths.availablePickerExercises).isEmpty,
+            "S-3113 (a) four rows are nowhere near the threshold"
+        )
+
+        // (b) a catalog-only message with one letter per row, no routines
+        let long = WatchStartHarness()
+        await long.launch()
+        _ = try await long.receive(try catalogOnlyMessage(names: listedCatalogNames))
+        _ = await long.paths.startFreeWorkout()
+
+        assertPickerListsAgree(long.paths, "S-3113 (b) the rows are the available list")
+        XCTAssertEqual(
+            long.paths.availablePickerExercises.count,
+            listedCatalogNames.count,
+            "S-3113 (b) every exercise the catalog offers is available"
+        )
+        XCTAssertEqual(long.paths.pickerRows.map(\.exerciseId).count, listedCatalogNames.count)
+        XCTAssertEqual(
+            deriveExerciseListLetters(long.paths.availablePickerExercises).first?.letter,
+            "A",
+            "S-3113 (b) 21 rows carry the grid, and it opens where the list does"
+        )
+        XCTAssertEqual(
+            deriveExerciseListLetters(long.paths.availablePickerExercises).count,
+            listedCatalogNames.count,
+            "S-3113 (b) one entry per row, one letter each"
+        )
+
+        // (c) the same catalog with the first exercise on the ladder: 20 rows are
+        // left, which is the threshold itself
+        let shortened = WatchStartHarness()
+        await shortened.launch()
+        _ = try await shortened.receive(try catalogOnlyMessage(names: listedCatalogNames))
+        _ = await shortened.paths.startFreeWorkout()
+        let first = try XCTUnwrap(shortened.paths.availablePickerExercises.first)
+        _ = await shortened.paths.addExerciseToSession(first)
+
+        assertPickerListsAgree(shortened.paths, "S-3113 (c) the rows are the available list")
+        XCTAssertEqual(
+            shortened.paths.availablePickerExercises.count,
+            listedCatalogNames.count - 1,
+            "S-3113 (c) the ladder's own exercise is no longer available"
+        )
+        XCTAssertFalse(
+            shortened.paths.availablePickerExercises.contains { $0.exerciseId == first.exerciseId },
+            "S-3113 (c) the ladder's exercise is offered once"
+        )
+        XCTAssertTrue(
+            deriveExerciseListLetters(shortened.paths.availablePickerExercises).isEmpty,
+            "S-3113 (c) 20 rows carry no grid"
+        )
+        let rows = shortened.paths.pickerRows
+        XCTAssertEqual(rows.first?.exerciseId, first.exerciseId, "S-3113 (c) its own row comes first")
+        XCTAssertTrue(rows.first?.isInSession == true)
+        XCTAssertEqual(rows.filter { !$0.isInSession }.count, listedCatalogNames.count - 1)
     }
 }

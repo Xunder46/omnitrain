@@ -24,6 +24,27 @@
 //  23e3 order-retention fix, pins that the entries follow the list's order even
 //  when the `#` key sorts last.
 //
+//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
+//  scenarios S-3101 to S-3104 and S-3111 (decisions D-3101, D-3102, D-3103,
+//  D-3109, D-3114): the menu's extra gap above Add Exercise, the list button the
+//  rest screen carries, the one sheet both surfaces open, and the rest a jump or
+//  an add leaves running while a log closes it and starts the next one.
+//
+//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
+//  Phase 2A, scenarios S-3105 and S-3108 (decisions D-3104, D-3110): the list
+//  the user reads split into the runs the grid jumps by, and the one
+//  `addLetterGridThreshold` site both surfaces read.
+//
+//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
+//  Phase 2B, scenario S-3106 (decisions D-3105, D-3106, D-3112): both entry
+//  points render the one shared exercise list, and the lazy stack whose
+//  unmeasured rows made the letter jump miss is gone from all three files.
+//
+//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
+//  fix round 1, scenario S-3114 (decision D-3117): a key that opens two runs of
+//  the list carries one scroll id, on its first run, and the shared list derives
+//  its ids from `scrollTargetLetters(of:)`.
+//
 //  Fixture A is the register's three-slot ladder: two live efforts on `s1`, none
 //  on `s2`, one on `s3`, and a fourth `s1` effort the phone deleted.
 //
@@ -88,6 +109,46 @@ private func menuEntry(
 private func letterKey(of name: String) -> String {
     guard let first = name.first else { return "#" }
     return first.isLetter ? String(first).uppercased() : "#"
+}
+
+// MARK: - Reading source text (the app target has no test target to run in)
+
+/// A repository file, read from `Fixtures.repositoryRoot`, with every comment
+/// line blanked out — the shape `WatchSensorSourceSourceTests.source(_:)` uses,
+/// so a sentence of prose can neither satisfy a guard nor trip one. A trailing
+/// `//` on a code line is blanked with it; the guarded files keep no `//` inside
+/// a string literal.
+private func menuSource(_ path: String) throws -> String {
+    let url = Fixtures.repositoryRoot.appendingPathComponent(path)
+    let text = try String(contentsOf: url, encoding: .utf8)
+    return text.split(separator: "\n", omittingEmptySubsequences: false)
+        .map { line -> String in
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") { return "" }
+            guard let comment = line.range(of: "//") else { return String(line) }
+            return String(line[..<comment.lowerBound])
+        }
+        .joined(separator: "\n")
+}
+
+private func sourceLines(_ source: String) -> [String] {
+    source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+}
+
+/// The index of the line whose trimmed text is exactly `text`: the *use* of a
+/// row builder, not its declaration, which carries a signature after the name.
+private func usageLine(of text: String, in lines: [String]) -> Int? {
+    lines.firstIndex { $0.trimmingCharacters(in: .whitespaces) == text }
+}
+
+/// The line after `index`, trimmed, or `""` at the end of the file.
+private func nextLine(after index: Int, in lines: [String]) -> String {
+    guard lines.indices.contains(index + 1) else { return "" }
+    return lines[index + 1].trimmingCharacters(in: .whitespaces)
+}
+
+/// How many times `needle` occurs in `source`.
+private func occurrences(of needle: String, in source: String) -> Int {
+    source.components(separatedBy: needle).count - 1
 }
 
 /// The 25-name list S-3900 walks: two names on A and on B, then one per letter
@@ -884,6 +945,250 @@ final class WatchMenuTests: XCTestCase {
         }
     }
 
+    // MARK: - S-3106 the one list both entry points render (plan 31 Phase 2B)
+
+    /// One shared component serves both entry points, and the lazy stack whose
+    /// unmeasured rows made the letter jump miss is gone from all three files
+    /// (D-3105, D-3106, D-3112). A source scan: these views are drawn only by
+    /// the watch target, which `swift test` does not compile, and the landing
+    /// itself is the owner's device check. Comment lines are stripped, so the
+    /// files may name `LazyVStack` in prose without failing.
+    func testS3106AOneListServesBothEntryPoints() throws {
+        let sources = "watch/watchos/Sources/WatchSessionEngine"
+
+        for file in ["WatchMenuView.swift", "WatchStartView.swift"] {
+            let source = try menuSource("\(sources)/\(file)")
+            XCTAssertTrue(
+                source.contains("WatchExerciseLetterList"),
+                "S-3106 \(file) renders the shared exercise list"
+            )
+            XCTAssertFalse(
+                source.contains("LazyVStack"),
+                "S-3106 \(file) no longer places a row by estimate"
+            )
+        }
+
+        let shared = try menuSource("\(sources)/WatchExerciseListView.swift")
+        XCTAssertTrue(
+            shared.contains("WatchExerciseLetterList"),
+            "S-3106 the shared component is what both entry points render"
+        )
+        XCTAssertFalse(
+            shared.contains("LazyVStack"),
+            "S-3106 the shared list places no row by estimate"
+        )
+    }
+
+    // MARK: - S-3101…S-3104, S-3111 the rest screen's menu (plan 31 Phase 1)
+
+    /// The extra gap belongs to the horizontal line: it sits between the divider
+    /// and Add Exercise, so Add Exercise and End Session keep the menu's normal
+    /// row spacing (D-3101). A source scan — the menu is drawn only by the watch
+    /// target, which `swift test` does not compile.
+    func testS3104ATheMenuGapSitsAboveAddExercise() throws {
+        let lines = sourceLines(
+            try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchMenuView.swift")
+        )
+
+        let add = try XCTUnwrap(
+            usageLine(of: "addExerciseRow", in: lines),
+            "S-3104 the menu carries the Add Exercise row"
+        )
+        let finish = try XCTUnwrap(
+            usageLine(of: "finishRow", in: lines),
+            "S-3104 the menu carries the End Session row"
+        )
+
+        XCTAssertTrue(
+            nextLine(after: add, in: lines).hasPrefix(".padding(.top"),
+            "S-3104 the extra gap sits between the divider and Add Exercise"
+        )
+        XCTAssertFalse(
+            nextLine(after: finish, in: lines).hasPrefix(".padding(.top"),
+            "S-3104 End Session sits at the normal row spacing"
+        )
+    }
+
+    /// The rest screen carries the same list button the logging surface does, and
+    /// the menu is built once and hosted where a rest ending cannot tear it down
+    /// (D-3102, D-3114). A source scan: the app target has no test target, so the
+    /// button and the one sheet are held here and proven on the wrist by the
+    /// owner's check.
+    func testS3103ATheRestScreenCarriesTheMenuButton() throws {
+        let source = try menuSource("ios/OmniTrain Watch App/ContentView.swift")
+
+        let lines = sourceLines(source)
+        let rest = try XCTUnwrap(
+            lines.firstIndex { $0.contains("host.logging.isResting") },
+            "S-3103 the shell has a rest branch"
+        )
+        let logging = try XCTUnwrap(
+            lines.firstIndex { $0.contains("private var loggingSurface") },
+            "S-3103 the logging surface is where it was"
+        )
+        let branch = lines[rest...logging].joined(separator: "\n")
+
+        XCTAssertTrue(
+            branch.contains("NavigationStack"),
+            "S-3103 the rest branch is a navigation surface of its own"
+        )
+        XCTAssertTrue(
+            branch.contains("Image(systemName: \"list.bullet\")"),
+            "S-3103 the rest screen carries the list button the logging surface has"
+        )
+        XCTAssertEqual(
+            occurrences(of: "WatchMenuState(", in: source),
+            1,
+            "S-3103 one menu construction serves both surfaces"
+        )
+    }
+
+    /// A jump made during a rest moves the session and leaves the rest alone: the
+    /// rest is not the work a jump is refused by, and a jump is neither a log nor
+    /// a Next, so it neither ends the rest nor starts a new one (D-3103).
+    func testS3101AJumpDuringARestKeepsTheRestRunning() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        let surface = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+
+        try await surface.log()
+        let resting = try XCTUnwrap(harness.engine.timerFor(WatchTimerKind.rest))
+        XCTAssertTrue(
+            surface.isResting,
+            "S-3101 the fixture is resting, so the rest case is the one exercised"
+        )
+
+        let moved = await harness.menu.jump(to: "s3")
+
+        XCTAssertTrue(moved, "S-3101 the jump goes through while a rest runs")
+        XCTAssertEqual(
+            harness.engine.session?.currentExerciseIndex,
+            2,
+            "S-3101 and moves the session to Row"
+        )
+        XCTAssertTrue(surface.isResting, "S-3101 the rest is not over: a jump is not a log and not a Next")
+        let after = try XCTUnwrap(harness.engine.timerFor(WatchTimerKind.rest))
+        XCTAssertEqual(after.recordId, resting.recordId, "S-3101 the same rest, not a second one")
+        XCTAssertEqual(after.startedAt, resting.startedAt, "S-3101 still counting up from where it started")
+        XCTAssertNil(after.stoppedAt, "S-3101 with no end put on it")
+
+        harness.clock.advance(20)
+        XCTAssertEqual(
+            surface.restElapsedSeconds(),
+            20,
+            "S-3101 and the clock keeps running through the jump"
+        )
+    }
+
+    /// Adding an exercise moves nothing the running effort is logging, and it
+    /// touches no timer either: the rest keeps counting under the add (D-3103).
+    /// What closes that rest is the next log, and S-3111 pins that.
+    func testS3102AAddingAnExerciseDuringARestKeepsTheRestRunning() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.fixtureA()
+        await harness.applyFallbackCatalog()
+        let surface = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+
+        try await surface.log()
+        let resting = try XCTUnwrap(harness.engine.timerFor(WatchTimerKind.rest))
+        let dip = try XCTUnwrap(harness.menu.addableExercises.first { $0.exerciseId == "ex-dip" })
+
+        let added = await harness.menu.addExercise(dip)
+
+        XCTAssertTrue(added, "S-3102 an active session takes the add while a rest runs")
+        XCTAssertEqual(harness.engine.session?.exercises.count, 4, "S-3102 the ladder grows by exactly one")
+        XCTAssertEqual(
+            harness.engine.session?.exercises.last?["exerciseId"] as? String,
+            "ex-dip",
+            "S-3102 and the new slot is the last one"
+        )
+        XCTAssertEqual(
+            harness.engine.session?.currentExerciseIndex,
+            1,
+            "S-3102 the user stays on the exercise they were logging"
+        )
+        XCTAssertTrue(surface.isResting, "S-3102 the rest is not over: an add moves nothing it logs")
+        XCTAssertEqual(
+            harness.engine.timerFor(WatchTimerKind.rest)?.recordId,
+            resting.recordId,
+            "S-3102 and the running rest is the same record"
+        )
+    }
+
+    /// The second half of the seeded S-3102, in D-3109's executable reading: the
+    /// log closes the rest it was logged into — at the logged instant, so its
+    /// window stops there — and then starts the next rest itself, so the wrist is
+    /// resting again. Nothing here is new behaviour; it is the rest the owner's
+    /// request depends on, pinned.
+    func testS3111ALogClosesTheRunningRestAndStartsTheNext() async throws {
+        let harness = await WatchMenuHarness().launch()
+        _ = await harness.engine.createSession(
+            modality: nil,
+            exercises: [
+                menuSlot("sx-bench", "Bench Press"),
+                menuSlot("sx-plank", "Plank"),
+            ]
+        )
+        let surface = WatchLoggingState(engine: harness.engine, clock: harness.clock.call)
+        let t0 = harness.clock.now
+
+        let first = try await surface.log()
+        harness.clock.advance(30)
+        _ = try await surface.log()
+
+        // Each rest leaves two rows — the start and the stop — because a stop
+        // is a row (the shape `WatchLoggingTimersTests.testS321` reads).
+        let rests = harness.engine.timerRows(WatchTimerKind.rest)
+        XCTAssertEqual(
+            rests.filter { $0.stoppedAt != nil }.count,
+            1,
+            "S-3111 the log closes the rest it was logged into, and closes only that one"
+        )
+        let closed = try XCTUnwrap(rests.first { $0.stoppedAt != nil })
+        XCTAssertEqual(closed.startedAt, t0, "S-3111 that rest starts where the first set was logged")
+        XCTAssertEqual(
+            closed.stoppedAt,
+            t0.addingTimeInterval(30),
+            "S-3111 and it stops at the instant the next set was logged (D-223)"
+        )
+        let following = try XCTUnwrap(
+            harness.engine.timerFor(WatchTimerKind.rest),
+            "S-3111 the wrist is resting again"
+        )
+        XCTAssertNotEqual(
+            following.recordId,
+            closed.recordId,
+            "S-3111 the newest rest is a new row, not the one that was closed"
+        )
+        XCTAssertEqual(following.state, WatchTimerState.running, "S-3111 and it is the one that runs")
+        XCTAssertEqual(
+            following.startedAt,
+            t0.addingTimeInterval(30),
+            "S-3111 started at the logged instant, not a tick later"
+        )
+        XCTAssertTrue(surface.isResting, "S-3111 so the wrist is resting again")
+
+        let travelled = harness.engine.observations.filter { $0.kind == WatchObservationKind.rest }
+        XCTAssertEqual(travelled.count, 1, "S-3111 one rest ended, one event")
+        let rest = try XCTUnwrap(travelled.first)
+        XCTAssertEqual(rest.payload["startedAt"] as? String, utcIso(t0), "S-3111 the window it spanned")
+        XCTAssertEqual(
+            rest.payload["endedAt"] as? String,
+            utcIso(t0.addingTimeInterval(30)),
+            "S-3111 ends at the logged instant"
+        )
+        XCTAssertEqual(
+            rest.payload["afterEntryId"] as? String,
+            first.entryId,
+            "S-3111 hung on the entry the rest followed (the shape WatchLoggingTimersTests.testS321 pins)"
+        )
+        XCTAssertEqual(
+            harness.engine.observations.map(\.kind),
+            ["set", "rest", "set"],
+            "S-3111 the rest travels between the two sets, as the phone's importer reads it"
+        )
+    }
+
     // MARK: - S-3900…S-3907 the Add Exercise letter grid (23e3)
 
     /// The letters a long list carries: one entry per first letter the list
@@ -1115,6 +1420,144 @@ final class WatchMenuTests: XCTestCase {
             letters.last?.firstExerciseId,
             offered.last?.exerciseId,
             "S-3908 the # entry opens its run at the tilde name"
+        )
+    }
+
+    // MARK: - S-3105/S-3108 the sections the list is read in
+
+    /// The list the user reads is the list the grid jumps by: one section per
+    /// key, in the list's own order, and the concatenation of their exercises is
+    /// `addableExercises` exactly — nothing dropped, nothing repeated, nothing
+    /// reordered (D-3104, D-3110).
+    func testS3105ASectionsFollowTheListAndTheLettersAgree() async throws {
+        let harness = await WatchMenuHarness().launch()
+        // 120 mixed names: four per letter A-Z, the three keys that sort before
+        // every letter (a leading space, a symbol and a digit), one accented name
+        // that sorts after `z`, and twelve lowercase names among the uppercase
+        // ones.
+        var names: [String] = [" stray", "-dash hold", "3x3 press", "Élan"]
+        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+            names.append(contentsOf: [
+                "\(letter)pple",
+                "\(letter)nt",
+                "\(letter)corn",
+                "\(letter)lmond",
+            ])
+        }
+        names.append(contentsOf: "ABCDEFGHIJKL".map { "\($0) route" })
+        await harness.applyLetterCatalog(names)
+
+        let offered = harness.menu.addableExercises
+        let letters = harness.menu.addExerciseLetters
+        let sections = deriveExerciseSections(offered)
+
+        XCTAssertEqual(offered.count, 120, "S-3105 the fixture is the 120-name list")
+        XCTAssertEqual(
+            sections.map(\.letter),
+            letters.map(\.letter),
+            "S-3105 one section per key, in the list's own order"
+        )
+        XCTAssertEqual(
+            sections.flatMap(\.exercises).map(\.exerciseId),
+            offered.map(\.exerciseId),
+            "S-3105 the sections are the list itself: in order, nothing dropped or repeated"
+        )
+        XCTAssertEqual(
+            sections.compactMap { $0.exercises.first?.exerciseId },
+            letters.map(\.firstExerciseId),
+            "S-3105 each section opens at the exercise its letter entry names"
+        )
+        XCTAssertEqual(sections.first?.letter, "#", "S-3105 the keys that sort first open the list")
+        XCTAssertEqual(sections.last?.letter, "É", "S-3105 the accent is its own section, last")
+    }
+
+    // MARK: - S-3114 the scroll id a repeated key's runs carry (plan 31 fix round 1)
+
+    /// One key can open two runs — a digit name sorts before `A`, a `~` name
+    /// after `Z`, and both key to `#` — so the run a `ScrollViewReader` keeps
+    /// cannot be the whole list: two sections sharing one id are two views with
+    /// one identity, and the `#` jump could land on either.
+    ///
+    /// `scrollTargetLetters(of:)` is the rule — the first run of every key, once
+    /// each, in the sections' order — and the shared list derives its ids from
+    /// that function and from nothing else (D-3117).
+    func testS3114ARepeatedLetterRunsCarryOneScrollId() async throws {
+        let harness = await WatchMenuHarness().launch()
+        await harness.applyLetterCatalog(letterCatalogNames + ["3x3 press", "~stretch"])
+
+        let offered = harness.menu.addableExercises
+        let sections = deriveExerciseSections(offered)
+        let targets = scrollTargetLetters(of: sections)
+
+        XCTAssertEqual(
+            sections.filter { $0.letter == "#" }.map(\.exercises.count),
+            [1, 1],
+            "S-3114 the fixture opens the # key twice, one exercise each"
+        )
+        XCTAssertEqual(
+            sections.first?.exercises.first?.name,
+            "3x3 press",
+            "S-3114 the digit name opens the first # run"
+        )
+        XCTAssertEqual(
+            sections.last?.exercises.first?.name,
+            "~stretch",
+            "S-3114 the tilde name opens the last # run"
+        )
+        XCTAssertEqual(
+            targets.filter { $0 == "#" }.count,
+            1,
+            "S-3114 the repeated key carries one id, not one per run"
+        )
+        XCTAssertEqual(
+            Set(targets).count,
+            targets.count,
+            "S-3114 no id appears twice in one reader"
+        )
+        XCTAssertEqual(
+            targets,
+            harness.menu.addExerciseLetters.map(\.letter),
+            "S-3114 the ids are exactly the letters the grid jumps by, in order"
+        )
+        XCTAssertEqual(
+            targets,
+            sections.map(\.letter).reduce(into: [String]()) { letters, letter in
+                if !letters.contains(letter) { letters.append(letter) }
+            },
+            "S-3114 every key is kept at its first run"
+        )
+
+        let shared = try menuSource("watch/watchos/Sources/WatchSessionEngine/WatchExerciseListView.swift")
+        XCTAssertTrue(
+            shared.contains("scrollTargetLetters(of:"),
+            "S-3114 the shared list takes its scroll ids from the pinned rule"
+        )
+    }
+
+    /// The grid's threshold is one gate over the rows a surface offers (D-3110):
+    /// 20 carry none, 21 carry them, and what the menu shows is that gate's
+    /// output — never a second reading of the literal.
+    func testS3108ATheLetterGridAppearsOverTwentyRows() async {
+        let twenty = await WatchMenuHarness().launch()
+        await twenty.applyLetterCatalog((1...20).map { "berry \($0)" })
+
+        XCTAssertEqual(twenty.menu.addableExercises.count, 20, "S-3108 the fixture is the threshold's own count")
+        XCTAssertTrue(twenty.menu.addExerciseLetters.isEmpty, "S-3108 20 rows carry no grid")
+        XCTAssertEqual(
+            deriveExerciseListLetters(twenty.menu.addableExercises),
+            [],
+            "S-3108 the shared list function is empty at the threshold itself"
+        )
+
+        let twentyOne = await WatchMenuHarness().launch()
+        await twentyOne.applyLetterCatalog((1...21).map { "berry \($0)" })
+
+        XCTAssertEqual(twentyOne.menu.addableExercises.count, 21, "S-3108 one row past the threshold")
+        XCTAssertEqual(twentyOne.menu.addExerciseLetters.map(\.letter), ["B"], "S-3108 21 rows carry the grid")
+        XCTAssertEqual(
+            twentyOne.menu.addExerciseLetters,
+            deriveExerciseListLetters(twentyOne.menu.addableExercises),
+            "S-3108 the menu's letters are the shared function's, not a second gate"
         )
     }
 }
