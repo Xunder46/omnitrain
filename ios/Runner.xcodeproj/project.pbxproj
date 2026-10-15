@@ -252,6 +252,9 @@
 				46AC7A173061FCBF00924AC9 /* OmniTrain Watch App */,
 			);
 			name = "OmniTrain Watch App";
+			packageProductDependencies = (
+				4680609A30622A4300CB4DCB /* WatchSessionEngine */,
+			);
 			productName = "OmniTrain Watch App";
 			productReference = 46AC7A163061FCBF00924AC9 /* OmniTrain Watch App.app */;
 			productType = "com.apple.product-type.application";

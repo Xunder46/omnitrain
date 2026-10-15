@@ -431,7 +431,8 @@ abstract final class WatchReferenceSync {
   /// session effort rating ([effortRatingPrompt]), how often the wrist pings
   /// while a rest of its own is open ([restPingSeconds], 0 for Off), and the
   /// accent of the theme the phone is wearing ([accentColorHex], `#RRGGBB` from
-  /// [accentHexOf]).
+  /// [accentHexOf]), and the units the phone reads weight and distance in
+  /// ([weightUnit] `kg` or `lbs`, [distanceUnit] `km` or `miles`).
   ///
   /// Its own message rather than a field on `routines_down`: the wrist is
   /// answered with its settings at every sync, including one by a phone that
@@ -446,24 +447,31 @@ abstract final class WatchReferenceSync {
   ///
   /// [accentColorHex] is optional: null leaves the field out, and the wrist
   /// reads an absent accent as no accent (its default look) rather than as the
-  /// last accent it saw.
+  /// last accent it saw. The units are optional the same way: null leaves the
+  /// field out, and the wrist then reads kilograms and kilometres.
   static Map<String, Object?> buildPreferencesDown({
     required bool effortRatingPrompt,
     required int restPingSeconds,
     required DateTime generatedAt,
     String? accentColorHex,
+    String? weightUnit,
+    String? distanceUnit,
   }) => phoneEnvelope(
     type: 'preferences_down',
     messageId:
         'msg-preferences-${generatedAt.toUtc().millisecondsSinceEpoch}-'
         '${effortRatingPrompt ? 'on' : 'off'}-$restPingSeconds'
-        '${accentColorHex == null ? '' : '-${accentColorHex.replaceFirst('#', '')}'}',
+        '${accentColorHex == null ? '' : '-${accentColorHex.replaceFirst('#', '')}'}'
+        '${weightUnit == null ? '' : '-$weightUnit'}'
+        '${distanceUnit == null ? '' : '-$distanceUnit'}',
     sentAt: generatedAt,
     payload: {
       'generatedAt': utcIso(generatedAt),
       'effortRatingPrompt': effortRatingPrompt,
       'restPingSeconds': restPingSeconds,
       'accentColorHex': ?accentColorHex,
+      'weightUnit': ?weightUnit,
+      'distanceUnit': ?distanceUnit,
     },
   );
 

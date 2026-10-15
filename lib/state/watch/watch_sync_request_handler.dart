@@ -94,6 +94,8 @@ class WatchSyncRequestHandler {
         accentColorHex: WatchReferenceSync.accentHexOf(
           OmniTheme.colorsForTheme(_settings.appTheme).primary,
         ),
+        weightUnit: _settings.preferredWeightUnit,
+        distanceUnit: _settings.preferredDistanceUnit,
         generatedAt: _clock(),
       ),
     );

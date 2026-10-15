@@ -281,4 +281,29 @@ void main() {
       });
     },
   );
+
+  group('S-3903 the phone sends its units with the preferences', () {
+    Map<String, Object?> sentPreferences() =>
+        asObject(transport.ofType('preferences_down').single['payload']);
+
+    test('pounds and miles travel as the phone holds them', () async {
+      await settings.setPreferredWeightUnit('lbs');
+      await settings.setPreferredDistanceUnit('miles');
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+
+      final payload = sentPreferences();
+      expect(payload['weightUnit'], 'lbs');
+      expect(payload['distanceUnit'], 'miles');
+    });
+
+    test('the defaults travel too, so the wrist is told rather than left '
+        'to assume', () async {
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+
+      final payload = sentPreferences();
+      expect(payload['weightUnit'], 'kg');
+      expect(payload['distanceUnit'], 'km');
+    });
+  });
 }

@@ -43,6 +43,15 @@ public struct WatchPreferencesRecord {
     /// accent only when this parses and clears the contrast floor.
     public let accentColorHex: String?
 
+    /// The phone's weight unit, `kg` or `lbs`, or nil when the phone sent none.
+    /// Read through `WatchPhonePreferences.units`, which falls back to the
+    /// wrist's defaults.
+    public let weightUnit: String?
+
+    /// The phone's distance unit, `km` or `miles`, or nil when the phone sent
+    /// none.
+    public let distanceUnit: String?
+
     public init(
         recordId: String,
         recordedAt: Date,
@@ -50,6 +59,8 @@ public struct WatchPreferencesRecord {
         effortRatingPrompt: Bool,
         restPingSeconds: Int = 0,
         accentColorHex: String? = nil,
+        weightUnit: String? = nil,
+        distanceUnit: String? = nil,
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -60,6 +71,8 @@ public struct WatchPreferencesRecord {
         self.effortRatingPrompt = effortRatingPrompt
         self.restPingSeconds = restPingSeconds
         self.accentColorHex = accentColorHex
+        self.weightUnit = weightUnit
+        self.distanceUnit = distanceUnit
     }
 
     public func withSequence(_ sequence: Int) -> WatchPreferencesRecord {
@@ -70,6 +83,8 @@ public struct WatchPreferencesRecord {
             effortRatingPrompt: effortRatingPrompt,
             restPingSeconds: restPingSeconds,
             accentColorHex: accentColorHex,
+            weightUnit: weightUnit,
+            distanceUnit: distanceUnit,
             sequence: sequence
         )
     }
@@ -90,6 +105,12 @@ public struct WatchPreferencesRecord {
         if let accentColorHex {
             json["accentColorHex"] = accentColorHex
         }
+        if let weightUnit {
+            json["weightUnit"] = weightUnit
+        }
+        if let distanceUnit {
+            json["distanceUnit"] = distanceUnit
+        }
         return json
     }
 
@@ -105,6 +126,10 @@ public struct WatchPreferencesRecord {
             // A row written before the wrist knew the accent carries no key,
             // and a key that is not a string reads as no accent (D-3709).
             accentColorHex: json["accentColorHex"] as? String,
+            // A row written before the wrist knew the units carries no keys,
+            // and reads as kilograms and kilometres.
+            weightUnit: json["weightUnit"] as? String,
+            distanceUnit: json["distanceUnit"] as? String,
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }
@@ -156,6 +181,16 @@ public final class WatchPhonePreferences {
         current?.accentColorHex
     }
 
+    /// The units the phone reads weight and distance in, as the copy that
+    /// applies carries them. A wrist that has never heard from the phone — or a
+    /// copy that carried no unit — reads kilograms and kilometres.
+    public var units: WatchUnitPreferences {
+        WatchUnitPreferences(
+            weightUnit: current?.weightUnit ?? "kg",
+            distanceUnit: current?.distanceUnit ?? "km"
+        )
+    }
+
     /// Reads every accepted copy back out of storage. Call on launch.
     public func restore() async {
         copies = await store.readAll().preferences
@@ -193,6 +228,13 @@ public final class WatchPhonePreferences {
         // instead of the accent the previous copy carried (D-3704).
         let accentColorHex = payload["accentColorHex"] as? String
 
+        // The units are optional too, and the closed enum the validator holds
+        // them to means a value that reaches here is one of the two spellings.
+        // A copy without them stores the absence: the wrist reads kilograms and
+        // kilometres, not the units the previous copy carried.
+        let weightUnit = payload["weightUnit"] as? String
+        let distanceUnit = payload["distanceUnit"] as? String
+
         let recordId = "prefs-\(messageId)"
         let stored = await store.append(
             .preferences(
@@ -202,7 +244,9 @@ public final class WatchPhonePreferences {
                     generatedAt: generatedAt,
                     effortRatingPrompt: asks,
                     restPingSeconds: restPingSeconds,
-                    accentColorHex: accentColorHex
+                    accentColorHex: accentColorHex,
+                    weightUnit: weightUnit,
+                    distanceUnit: distanceUnit
                 )
             )
         )

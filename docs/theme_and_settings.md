@@ -72,6 +72,14 @@ defines as whether a session ended on the wrist asks for the rating. The phone
 never pushes it: a change reaches the wrist with the answer to the wrist's next
 sync request. Verified by `test/watch_transport_test.dart` (`S-253`).
 
+**The weight and distance units are the wrist's too.** The Units setting
+(`preferredWeightUnit`: kg or lbs; `preferredDistanceUnit`: km or miles) travels
+as `preferences_down`'s `weightUnit` and `distanceUnit`, so the watch's logging
+screens show and step in the units the phone does. Like the effort rating, a
+change reaches the wrist with its next sync; a wrist that has never synced shows
+kg and km. Verified by `test/watch_sync_request_handler_test.dart` (`S-3903`) and
+`WatchUnitsTests.swift`.
+
 ---
 
 ## Settings Screen

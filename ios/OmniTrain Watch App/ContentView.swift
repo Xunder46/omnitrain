@@ -90,7 +90,9 @@ final class WatchAppHost: ObservableObject {
             location: WatchTrackedLocation(source: CoreLocationRawSource())
         )
         let recorder = WatchSensorRecorder(engine: engine, source: healthStore.sensorSource)
-        let logging = WatchLoggingState(engine: engine, sensors: recorder)
+        // The units are read from the phone's preferences at every use, so a
+        // sync that changes them reaches the logging screens without a relaunch.
+        let logging = WatchLoggingState(engine: engine, sensors: recorder, unitsSource: { preferences.units })
         let rating = WatchEffortRatingState(
             engine: engine,
             store: store,

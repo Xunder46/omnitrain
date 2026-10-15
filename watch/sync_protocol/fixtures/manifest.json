@@ -23,6 +23,11 @@
       "scenario": "S-3701"
     },
     {
+      "path": "valid/preferences_down_units.json",
+      "type": "preferences_down",
+      "scenario": "S-3901"
+    },
+    {
       "path": "valid/observations_up_session_capture.json",
       "type": "observations_up",
       "scenario": "S-201"
@@ -348,6 +353,13 @@
       "scenario": "S-3702",
       "expectedCode": "constraint_violation",
       "expectedReasonContains": "does not match the required pattern"
+    },
+    {
+      "path": "invalid/preferences_down_units_bad.json",
+      "type": "preferences_down",
+      "scenario": "S-3902",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "stone"
     },
     {
       "path": "invalid/session_snapshot_set_without_slot.json",

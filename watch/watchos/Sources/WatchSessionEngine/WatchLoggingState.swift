@@ -160,8 +160,11 @@ public struct WatchSensorLabels {
 public final class WatchLoggingState {
     public let engine: WatchSessionEngine
 
-    /// The saved unit preferences the wrist reads in.
-    public let units: WatchUnitPreferences
+    /// The unit preferences the wrist reads in, read at every use: the phone's
+    /// settings arrive at a sync, which can land while the state is alive.
+    public var units: WatchUnitPreferences { unitsSource() }
+
+    private let unitsSource: () -> WatchUnitPreferences
 
     /// The session's live sensors, when the view is wired to them. A view with
     /// none behaves exactly as before: every value is the user's to dial.
@@ -217,12 +220,13 @@ public final class WatchLoggingState {
         idFactory: @escaping () -> String = { UUID().uuidString },
         units: WatchUnitPreferences = WatchUnitPreferences(),
         sensors: WatchSensorRecorder? = nil,
-        roundPresetMs: Int? = nil
+        roundPresetMs: Int? = nil,
+        unitsSource: (() -> WatchUnitPreferences)? = nil
     ) {
         self.engine = engine
         self.clock = clock
         self.newId = idFactory
-        self.units = units
+        self.unitsSource = unitsSource ?? { units }
         self.sensors = sensors
         self.presetRoundMs = roundPresetMs
             ?? WatchLoggingDefaults.roundDurationSeconds * 1000
