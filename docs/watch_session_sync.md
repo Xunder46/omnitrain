@@ -40,7 +40,17 @@ id *is* its effort's row id and a restart resolves the same ids. Verified by
 `S-1 a restart resolves the same session and slot ids`, and `S-1 Mock and Hive
 adopt the same rows`). An empty wrist session is adopted but reads as not yet
 active (D-6), verified by that file's
-`S-3 an empty wrist session is adopted but reads "not yet active"`.
+`S-3 an empty wrist session is adopted but reads "not yet active"`. A wrist
+free session stays free — no routine title, intent or link — while an adopted
+ladder that is a run of one of the phone's own routines links to it and its
+`set` efforts start with the routine's planned rows
+(`test/watch_session_adoption_bridge_test.dart`,
+`S-1 a wrist snapshot becomes the phone's in-progress session` — its slots
+carry no `sx-` prefix, so it stays the free-session guard;
+`test/watch_routine_adoption_test.dart`,
+`S-3640 the snapshot adopts as the routine the wrist started`,
+`S-3641 the adopted effort holds the template's planned sets`,
+`S-3644a no template covers the ladder: a free session as today`).
 
 **D-11 — the answer is composed on demand, and a change to the phone's own
 session is pushed (D-75).** The phone asserts its ladder inside the answer to a
@@ -729,9 +739,28 @@ remains out is listed below.
   planned rows.** A `set` slot's planned rows ride the slot as `plannedSets`
   and the wrist dials each set from them (above). A timed or hold slot carries
   no planned value at all, and a round slot's only one is the round length
-  `roundDurationSecs`; a routine started on the wrist still opens on the phone
-  as a free session without sets (plan 36c takes that). No test pins the
-  wrist-started case.
+  `roundDurationSecs`. A routine started on the wrist opens on the phone as
+  that routine: the wrist's slot ids are the phone's own template effort ids
+  (`sx-<effortId>`), so a ladder whose every slot names an effort of one
+  template the phone holds adopts with the template's name, `intent =
+  'routine'` and `routineTemplateId`, and each of its `set` efforts starts
+  with the template's planned rows read from the phone's current template —
+  while a ladder no template covers adopts as a free session exactly as
+  before (`test/watch_routine_adoption_test.dart`,
+  `S-3640 the snapshot adopts as the routine the wrist started`,
+  `S-3641 the adopted effort holds the template's planned sets`,
+  `S-3644a no template covers the ladder: a free session as today`,
+  `S-3644c a mixed ladder: a free session as today`,
+  `S-3648 a routine deleted before the snapshot: a free session`).
+- **A wrist-started routine's timed, hold and round efforts get no planned
+  rows, and a routine added to an already-open empty wrist session is not
+  planned.** The efforts are linked to the routine but start empty, as a wrist
+  free session's always have (`test/watch_routine_adoption_test.dart`,
+  `S-3641 the adopted effort holds the template's planned sets` asserts the
+  timed effort holds no set rows); a routine picked on the wrist while an empty
+  session is already running fills that session through the wrist's absorb
+  branch, which the phone sees as appended slots, not as an adoption, so those
+  slots carry no planned rows. No test pins the second case.
 
 ## Related
 
