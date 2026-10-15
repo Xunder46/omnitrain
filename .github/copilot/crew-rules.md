@@ -80,13 +80,17 @@ Create the review file first, then append each finding as you find it. Read the 
 governor already did. Every finding names file:line and what a user or maintainer would see go wrong;
 no style opinions. A finding about a name in docs (type, file, test, constant) must come from reading
 the code for it. If the brief says a docs phase is still in flight, missing docs are not a finding.
+Read a file in ranges of at least 100 lines (or whole), at most twice; ten-line slices of one file are
+how two review runs were stopped for a loop (unit 36c). When the brief states a fact, do not re-read
+its sources to check it; write your verdict and first findings into the review file after one pass.
 
 ## Docs keeper (crew-docs-keeper)
 
 Every sentence you write about behaviour names a test that exists (exact group and test name, read from
 the test file this run) or is removed. Follow docs/documentation_standard.md. Keep each file in docs/
 under 52 KB; split before that and keep the old path as an index. When auditing, list each claim you
-could not tie to code or a test.
+could not tie to code or a test. `.work/` is not yours to search or glob (a brief that names a path
+under it is wrong: ask for the facts in the brief instead; a search loop stopped one run in unit 36b).
 
 ## UI standards (crew-builder-app, crew-reviewer, crew-docs-keeper)
 
