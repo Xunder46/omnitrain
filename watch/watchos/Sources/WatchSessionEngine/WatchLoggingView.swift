@@ -104,6 +104,11 @@ public struct WatchLoggingView: View {
                 .font(.caption2)
                 .lineLimit(1)
                 .truncationMode(.tail)
+            if let caption = model.state.setCaption {
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             if let round = roundLine {
                 Text(round)
                     .font(.caption2)

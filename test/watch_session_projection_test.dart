@@ -2428,6 +2428,293 @@ void main() {
     });
   });
 
+  // Plan 2026-10-15-36b, Phase A2 (D-2, I-1): a `set` slot carries the reps and
+  // the load of EVERY set row the exercise holds — in set order, index = set
+  // number, logged rows included — and no other slot carries anything. The rows
+  // stay the phone's: this is a read-only projection, and the wrist writes a
+  // planned row back never.
+  group('S-3621 the phone sends the planned sets', () {
+    /// One snapshot answer of the phone's own session.
+    Future<Map<String, Object?>> answer() async {
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      return _payload(radio.lastOfType('session_snapshot'));
+    }
+
+    /// One slot of [payload], by its id.
+    Map<String, Object?> slotIn(Map<String, Object?> payload, String id) =>
+        _objects(payload['exercises']).firstWhere(
+          (slot) => slot['sessionExerciseId'] == id,
+        );
+
+    /// P: three planned rows of 10/40, 10/40 and 8/42.5 kg on slot `sl-1`, no
+    /// rest written, so none of them is a logged set (36a's fixture F).
+    Future<String> plannedRows() => seed(
+      'sess-1',
+      [
+        (reps: 10, loadKg: 40.0, skipped: false, atMs: _at(1)),
+        (reps: 10, loadKg: 40.0, skipped: false, atMs: _at(2)),
+        (reps: 8, loadKg: 42.5, skipped: false, atMs: _at(3)),
+      ],
+      slotId: 'sl-1',
+      logged: false,
+    );
+
+    test('S-3621 a set slot carries every planned row, in set order', () async {
+      await plannedRows();
+
+      final slot = slotIn(await answer(), 'sl-1');
+
+      expect(
+        slot['plannedSets'],
+        [
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 8, 'loadKg': 42.5},
+        ],
+        reason:
+            'S-3621 the wrist dials set k in from the phone\'s own row k: the '
+            'index is the set number (A1), and a row the phone has not logged '
+            'yet is still a set the user planned (I-1)',
+      );
+    });
+
+    test('S-3630 a set the user adds mid-session joins the planned sets',
+        () async {
+      await plannedRows();
+
+      final before = await graph.adoption.projectSession(
+        const <String, Object?>{},
+      );
+      expect(
+        slotIn(before!, 'sl-1')['plannedSets'],
+        [
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 8, 'loadKg': 42.5},
+        ],
+        reason: 'the fixture: the session holds P\'s three planned rows',
+      );
+
+      // The user adds a fourth set on the phone: its rows go into the same
+      // exercise, at the next index, through the repository the session screen
+      // writes through.
+      for (final row in LoggedEntryRows.setObservations(
+        effortId: 'sl-1',
+        entryIndex: 3,
+        reps: 12,
+        weightKg: 50.0,
+        exerciseHasLoad: true,
+        atMs: _at(4),
+      )) {
+        await repository.createObservation(row);
+      }
+
+      final after = await graph.adoption.projectSession(
+        const <String, Object?>{},
+      );
+
+      expect(
+        slotIn(after!, 'sl-1')['plannedSets'],
+        [
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 8, 'loadKg': 42.5},
+          {'reps': 12, 'loadKg': 50.0},
+        ],
+        reason:
+            'S-3630 the plan is every row the exercise holds, composed on '
+            'demand at each answer (D-11): a set the user adds on the phone '
+            'joins the list at the index it was written to, and the rows before '
+            'it keep their values and their places (D-2, I-1)',
+      );
+    });
+
+    test('S-3621 a logged set is a planned set too', () async {
+      final slot = await plannedRows();
+      // A rest at index + 1 is what makes the set at that index logged (D-1,
+      // I-1): here the first two of the three.
+      await _SessionFixture.restAfter(repository, slot, 1, startMs: _at(4));
+      await _SessionFixture.restAfter(repository, slot, 2, startMs: _at(5));
+
+      final payload = await answer();
+
+      expect(
+        _entryIds(payload),
+        ['entry-sl-1-0', 'entry-sl-1-1'],
+        reason: 'the fixture: two rests logged two of the three sets',
+      );
+      expect(
+        slotIn(payload, 'sl-1')['plannedSets'],
+        [
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 8, 'loadKg': 42.5},
+        ],
+        reason:
+            'S-3621 a logged set keeps its place in the plan: the list is every '
+            'row the exercise holds, so logging a set neither drops it nor '
+            'renumbers the sets after it (A1, I-1)',
+      );
+    });
+
+    test('S-3621 a row with no reps carries only its load', () async {
+      await seed(
+        'sess-1',
+        [(reps: 0, loadKg: 40.0, skipped: false, atMs: _at(1))],
+        slotId: 'sl-1',
+        logged: false,
+      );
+
+      final slot = slotIn(await answer(), 'sl-1');
+
+      expect(
+        slot['plannedSets'],
+        [
+          {'loadKg': 40.0},
+        ],
+        reason:
+            'S-3621 a set row of 0 reps is what the phone stores for a set the '
+            'user has not dialled yet: it still holds its load, and the wire\'s '
+            '`reps` minimum of 1 means the count is omitted (D-1, D-60)',
+      );
+    });
+
+    test('S-3621 a bodyweight row carries only its reps', () async {
+      await seedExercise(
+        repository,
+        id: 'ex-pushup',
+        name: 'Push-up',
+        capabilities: ['sets', 'reps'],
+      );
+      await seed(
+        'sess-1',
+        [(reps: 10, loadKg: 0.0, skipped: false, atMs: _at(1))],
+        slotId: 'sl-1',
+        exerciseId: 'ex-pushup',
+        logged: false,
+      );
+
+      final slot = slotIn(await answer(), 'sl-1');
+
+      expect(
+        slot['plannedSets'],
+        [
+          {'reps': 10},
+        ],
+        reason:
+            'S-3621 a set of 0 kg — the load of an exercise that has none — '
+            'rides without `loadKg`, exactly as an entry does, so the wrist '
+            'shows the reps and no weight (A4, D-60)',
+      );
+    });
+
+    test('S-3621 a load below the wire\'s floor is omitted, never clamped',
+        () async {
+      await seed(
+        'sess-1',
+        [
+          (reps: 8, loadKg: -210.0, skipped: false, atMs: _at(1)),
+          (reps: 8, loadKg: 40.0, skipped: false, atMs: _at(2)),
+        ],
+        slotId: 'sl-1',
+        logged: false,
+      );
+
+      await answer();
+      final envelope = radio.lastOfType('session_snapshot');
+      final payload = _payload(envelope);
+
+      expect(
+        (slotIn(payload, 'sl-1')['plannedSets']! as List).last,
+        {'reps': 8, 'loadKg': 40.0},
+        reason: 'the fixture: the second planned set is a load the wire carries',
+      );
+      expect(
+        slotIn(payload, 'sl-1')['plannedSets'],
+        [
+          {'reps': 8},
+          {'reps': 8, 'loadKg': 40.0},
+        ],
+        reason:
+            'S-3621 −210 kg is below the wire\'s floor for `loadKg`, so the set '
+            'keeps its place and its reps and carries no load — clamping it '
+            'into range would state a load the user never chose, and sending it '
+            'would have the wrist refuse the whole snapshot (D-58, D-60)',
+      );
+      expect(
+        loadProtocolValidator().validateEnvelope(envelope),
+        isEmpty,
+        reason: 'S-3621 the answer a set below the floor rides in conforms',
+      );
+    });
+
+    test('S-3621 a timed slot carries no key, whatever rows it holds', () async {
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-timed', [
+        (
+          slotId: 'sl-timed',
+          exerciseId: 'ex-plank',
+          effortKind: 'timed',
+          write: () async {
+            for (final row in LoggedEntryRows.setObservations(
+              effortId: 'sl-timed',
+              entryIndex: 0,
+              reps: 10,
+              weightKg: 40.0,
+              exerciseHasLoad: true,
+              atMs: _at(1),
+            )) {
+              await repository.createObservation(row);
+            }
+          },
+        ),
+      ]);
+
+      final payload = await answer();
+
+      expect(
+        _slotIds(payload),
+        ['sl-timed'],
+        reason: 'the fixture: the timed slot rides the ladder',
+      );
+      expect(
+        slotIn(payload, 'sl-timed').containsKey('plannedSets'),
+        isFalse,
+        reason:
+            'S-3621 the planned sets are a `set` slot\'s: a timed effort sends '
+            'none even when it holds numbered rows, and the wrist\'s own '
+            'defaults for its kind stand (A4)',
+      );
+    });
+
+    test('S-3621 an effort with no rows carries no key', () async {
+      await _SessionFixture.seedEfforts(repository, phoneState, 'sess-empty', [
+        (
+          slotId: 'sl-empty',
+          exerciseId: 'ex-bench',
+          effortKind: 'set',
+          write: () async {},
+        ),
+      ]);
+
+      final payload = await answer();
+
+      expect(
+        _slotIds(payload),
+        ['sl-empty'],
+        reason: 'the fixture: the set slot rides the ladder',
+      );
+      expect(
+        slotIn(payload, 'sl-empty').containsKey('plannedSets'),
+        isFalse,
+        reason:
+            'S-3621 a set effort with no rows has no plan to send: the key is '
+            'omitted rather than sent empty, and the wrist starts from its own '
+            'defaults (A4)',
+      );
+    });
+  });
+
   // The same answer on both stores: the projection is a read, so what it reads
   // must not depend on which store holds the rows.
   final parity = <String, String>{};

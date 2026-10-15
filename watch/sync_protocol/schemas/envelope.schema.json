@@ -131,6 +131,26 @@
           "type": "integer",
           "minimum": 1,
           "description": "The length of ONE round or period in seconds as the phone knows it. Omitted when unknown, and ignored by a receiver for any effort that is not a round."
+        },
+        "plannedSets": {
+          "type": "array",
+          "description": "The phone's set rows for this slot, in set order (index k is set k+1, the numbering of entry-<slot>-<k>), logged rows included. Sent only for a set effort. Optional: a slot with no set rows, a non-set slot, or an older phone omits it, and the wrist then starts each set from its own defaults.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "reps": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Omitted for a row with fewer than 1 rep (a skipped row)."
+              },
+              "loadKg": {
+                "type": "number",
+                "minimum": -200,
+                "description": "Omitted when the load is 0, as an entry omits it. Kilograms; negative is band assist, floored like an entry's loadKg."
+              }
+            }
+          }
         }
       }
     },

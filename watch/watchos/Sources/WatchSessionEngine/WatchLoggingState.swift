@@ -266,6 +266,18 @@ public final class WatchLoggingState {
     /// The name of the exercise being logged, when there is one.
     public var exerciseName: String? { slot?["name"] as? String }
 
+    /// The header's "Set k of N" line, for an effort the phone planned the sets
+    /// of, or nil for every other effort — a free workout, a timed effort, a
+    /// hold, a period, or a slot the phone sent no rows for (A3).
+    ///
+    /// k is the set about to be logged and N the sets the slot holds: the
+    /// planned rows, or k itself once the user is past them, so an extra set
+    /// reads as its own last number rather than a set that does not exist.
+    public var setCaption: String? {
+        guard let planned = plannedSets else { return nil }
+        return "Set \(setsHeld + 1) of \(max(planned.count, setsHeld + 1))"
+    }
+
     /// The current instant, read through this state's clock, so the view and
     /// the events it logs agree on the time.
     public func now() -> Date { clock() }
@@ -480,6 +492,29 @@ public final class WatchLoggingState {
         }
     }
 
+    /// The set rows the phone planned for the current slot, in set order — nil
+    /// unless the effort is a set and the slot carries rows at all.
+    ///
+    /// The kind gate sits before every read of this: a slot that declares
+    /// another kind keeps the key unread, so a routine's timed or held effort
+    /// never starts from a numbered set's values (I-5).
+    private var plannedSets: [[String: Any]]? {
+        guard effortKind == WatchEffortKind.set,
+              let planned = slot?["plannedSets"] as? [[String: Any]],
+              !planned.isEmpty
+        else { return nil }
+        return planned
+    }
+
+    /// How many of this slot's sets are already logged: the phone's entries and
+    /// the wrist's own unconfirmed ones alike, which is what makes the next set
+    /// the one whose index equals this count (I-4).
+    private var setsHeld: Int {
+        observations
+            .filter { $0.payload["kind"] as? String == WatchObservationKind.set }
+            .count
+    }
+
     private var slot: [String: Any]? { engine.currentExercise }
 
     private var capabilities: [String] {
@@ -563,6 +598,23 @@ public final class WatchLoggingState {
             if effortKind == WatchEffortKind.timed { return 0 }
             return lastLogged(metricKey) ?? target(for: metricKey)
         default:
+            // A set the phone planned the rows of starts from the row that set
+            // number holds, not from what the last set logged: the prescription
+            // is the phone's, and the wrist dials from it (A2). Past the planned
+            // rows, or for a row with no `reps`, the chain below still stands; a
+            // row with no `loadKg` is a planned load of 0 — never the last
+            // logged load.
+            if let planned = plannedSets, setsHeld < planned.count {
+                let row = planned[setsHeld]
+                switch metricKey {
+                case WatchMetricKey.reps:
+                    if let reps = (row["reps"] as? NSNumber)?.doubleValue { return reps }
+                case WatchMetricKey.weight:
+                    return (row["loadKg"] as? NSNumber)?.doubleValue ?? 0
+                default:
+                    break
+                }
+            }
             return lastLogged(metricKey) ?? target(for: metricKey)
         }
     }

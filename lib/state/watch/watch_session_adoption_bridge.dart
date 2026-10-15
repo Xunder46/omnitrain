@@ -16,6 +16,8 @@
 /// carries no stack.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../../core/constants/block_types.dart';
@@ -23,6 +25,7 @@ import '../../core/constants/capability.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/services/watch_session_importer.dart';
 import '../../core/sync_protocol/phone_entries.dart';
+import '../../core/sync_protocol/wire_limits.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
 import '../../data/models/models.dart';
@@ -223,6 +226,20 @@ class WatchSessionAdoptionBridge {
         final slot = _slotFor(effort, target);
         if (slot == null) continue;
         slots.add(slot);
+        // D-2: the plan the wrist dials each set in from is every set row the
+        // exercise holds — the index is the set number, logged rows included —
+        // and it is a read-only projection of the phone's own rows (I-1), so a
+        // slot with none, or a non-`set` slot, carries the key not at all.
+        if (_wireKind(slot) == PhoneEntries.setKind) {
+          final groups = EntryRows.setGroups(
+            await _repository.getEffortObservations(effort.id),
+          );
+          if (groups.isNotEmpty) {
+            slot['plannedSets'] = [
+              for (final group in groups) _plannedSetOf(group),
+            ];
+          }
+        }
         entries.addAll(await _entriesFor(effort, slot, wristRows));
       }
     }
@@ -530,11 +547,34 @@ class WatchSessionAdoptionBridge {
     _projectedRevision += 1;
   }
 
+  /// One set row as the wire's planned set (D-2, I-1).
+  ///
+  /// The set's number is the item's position in `plannedSets`, so the map holds
+  /// only the values the wrist dials in, read exactly as `PhoneEntries._entry`
+  /// reads them: a set the phone has not dialled yet (reps 0) carries no `reps`
+  /// (the wire's minimum is 1), and a load of 0 — an exercise with no load —
+  /// carries no `loadKg`, as an entry's does (D-60). A load below the wire's
+  /// floor is omitted for the same reason an entry omits it: a value the wire
+  /// cannot carry is left out rather than clamped, and a rejected planned set
+  /// would reject the whole snapshot (D-58).
+  static Map<String, Object?> _plannedSetOf(SetRows group) {
+    final set = group.entry;
+    final reps = (set['reps'] as int?) ?? 0;
+    final weightKg = (set['weight'] as double?) ?? 0.0;
+    return <String, Object?>{
+      if (reps >= 1) 'reps': reps,
+      if (weightKg != 0 && weightKg >= WireLimits.minLoadKg)
+        'loadKg': weightKg,
+    };
+  }
+
   /// The identity of a ladder as the wrist can see it: the facts a change to
   /// would make the wrist's copy stale.
   ///
   /// The length of a period is one of them (D-1410): the wrist renders it, so a
-  /// length-only edit is a changed ladder and must state a newer revision.
+  /// length-only edit is a changed ladder and must state a newer revision. The
+  /// planned values are another (D-3): the wrist starts each set from them, so an
+  /// edit to one is a changed ladder too (A5).
   static String _ladderOf(
     String sessionId,
     List<Map<String, Object?>> slots,
@@ -544,7 +584,8 @@ class WatchSessionAdoptionBridge {
       '${slot['sessionExerciseId']}:${slot['exerciseId']}:${slot['name']}:'
           '${(slot['capabilities']! as List).join(',')}:'
           '${slot['effortKind'] ?? ''}:'
-          '${slot['roundDurationSecs'] ?? ''}',
+          '${slot['roundDurationSecs'] ?? ''}'
+          ':${jsonEncode(slot['plannedSets'] ?? const <Object?>[])}',
   ].join('|');
 
   /// The session a wrist frame names, or null when it names none.

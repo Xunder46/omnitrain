@@ -88,6 +88,12 @@
       "note": "A slot MAY carry the phone's period length: `sx-soccer` is a round slot at 2400 s and `sx-soccer-plain` the same slot with the field omitted. `sx-marathon` carries 86400 s — the schema declares `minimum: 1` and no maximum, so this slot is the top of the range the walker accepts (S-1412)."
     },
     {
+      "path": "valid/session_snapshot_planned_sets.json",
+      "type": "session_snapshot",
+      "scenario": "S-3620",
+      "note": "A `set` slot MAY carry the phone's planned sets: `sx-bench` holds three rows in set order — 10 reps at 40 kg twice, then 8 reps at 42.5 kg — and holds no entries, so all three rows are still to come. A slot with no set rows, a non-set slot, or an older phone omits the key."
+    },
+    {
       "path": "valid/routines_down_round_length.json",
       "type": "routines_down",
       "scenario": "S-1404",
@@ -516,6 +522,22 @@
       "expectedCode": "invalid_type",
       "expectedReasonContains": "expected integer",
       "note": "The length is a number, never a string: `\"2400\"` is refused as the wrong type."
+    },
+    {
+      "path": "invalid/session_snapshot_planned_sets_bad.json",
+      "type": "session_snapshot",
+      "scenario": "S-3620",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1",
+      "note": "A planned row of 0 reps is not a row the wrist can dial in: `reps` declares `minimum: 1`, and a row with fewer than 1 rep is a skipped row the phone omits rather than sends."
+    },
+    {
+      "path": "invalid/session_snapshot_planned_sets_unknown_key.json",
+      "type": "session_snapshot",
+      "scenario": "S-3620",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "setNumber",
+      "note": "A planned row is a closed object: its position in the array IS the set number, so a `setNumber` key is a field the schema does not define and the snapshot is refused."
     }
   ],
   "scenarios": [

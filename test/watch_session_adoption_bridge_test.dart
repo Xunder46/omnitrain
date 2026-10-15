@@ -34,6 +34,8 @@
 // output and the wiring is part of what these tests prove. Plain `test()`: no
 // widget is involved.
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/block_types.dart';
 import 'package:omnitrain/core/constants/capability.dart';
@@ -1542,6 +1544,91 @@ void main() {
         second['revision'],
         first['revision'],
         reason: 'S-1411 and the revision does not move for an unchanged ladder',
+      );
+    });
+
+    // Plan 2026-10-15-36b, Phase A2 (D-3, A5, I-1): the planned values ride the
+    // ladder the wrist dials each set in from, so an edit to one of them is a
+    // changed ladder and states a newer revision — the phone's own stated
+    // revision must stay monotonic, exactly as a length-only edit keeps it
+    // (D-1410).
+    test('S-3622 a planned-value edit moves the revision', () async {
+      final at = _adoptedAt.millisecondsSinceEpoch;
+      final repository = await _repository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-planned',
+        efforts: const [('sx-bench', 'ex-bench')],
+        kinds: const [BlockTypes.set],
+      );
+      // Three planned sets of 10 reps at 40 kg: the phone's rows, none of them
+      // logged, which is what a routine started on the phone holds (A1).
+      for (var number = 0; number < 3; number++) {
+        await repository.createObservation(
+          repsRow('sx-bench', number, 10, atMs: at),
+        );
+        await repository.createObservation(
+          weightRow('sx-bench', number, 40.0, atMs: at),
+        );
+      }
+
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-planned');
+
+      final first = (await phone.bridge.projectSession(null))!;
+      expect(
+        slotOf(first, 'sx-bench')['plannedSets'],
+        [
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+        ],
+        reason: 'the fixture: three planned sets, and the projection sends them',
+      );
+
+      final unchanged = (await phone.bridge.projectSession(null))!;
+      expect(
+        unchanged['revision'],
+        first['revision'],
+        reason:
+            'S-3622 nothing changed between the two projections, so the ladder '
+            'is the same and the revision already stated stands',
+      );
+
+      // The user edits the first planned set's reps in the session screen.
+      await phone.state.updateEntryValue('sx-bench', 0, 'reps', 12);
+
+      final second = (await phone.bridge.projectSession(null))!;
+      expect(
+        slotOf(second, 'sx-bench')['plannedSets'],
+        [
+          {'reps': 12, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+          {'reps': 10, 'loadKg': 40.0},
+        ],
+        reason: 'the edit reaches the projection, on the set it was made for',
+      );
+      expect(
+        second['revision'],
+        (first['revision']! as int) + 1,
+        reason:
+            'D-3 the wrist starts set 1 from what the phone sends, so a '
+            'planned-value edit is a changed ladder and must state a newer '
+            'revision (A5)',
+      );
+      expect(
+        jsonEncode(second),
+        isNot(jsonEncode(first)),
+        reason: 'S-3622 and the payload the wrist is asked to take differs',
+      );
+
+      final third = (await phone.bridge.projectSession(null))!;
+      expect(
+        third['revision'],
+        second['revision'],
+        reason:
+            'S-3622 a ladder that has not changed again keeps the revision the '
+            'edit stated',
       );
     });
   });
