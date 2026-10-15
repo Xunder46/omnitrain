@@ -353,6 +353,7 @@ class WatchSessionImporter {
         rows,
         freshCorrections,
         effortRows,
+        fillPlanned: true,
       );
       if (pass.writes != wasChanged) changedEffortIds.add(slot);
     }
@@ -754,14 +755,22 @@ class _Pass {
   /// phone makes to a wrist entry reaches only that entry's own rows, found by
   /// the stamp every imported row carries ([_EffortRows]). No wrist entry ever
   /// lands on, moves, edits or deletes a row the user made.
+  ///
+  /// [fillPlanned] is the live merge's rule (D-4): the phone's session still
+  /// holds the routine's planned sets, so a set the wrist logged FILLS the
+  /// first planned set the phone reads as unlogged — no rest follows it (I-1) —
+  /// instead of appending after the last row, and its arrival opens the rest at
+  /// that spot + 1 (D-6). A history import passes nothing: it places after the
+  /// last row exactly as it always did.
   Future<void> _placeAroundUserRows(
     _Key key,
     String effortId,
     List<_Entry> before,
     List<_Entry> now,
     Map<String, Set<String>> freshCorrections,
-    _EffortRows rows,
-  ) async {
+    _EffortRows rows, {
+    bool fillPlanned = false,
+  }) async {
     final placed = {for (final entry in before) entry.entryId};
     final live = {for (final entry in now) entry.entryId};
 
@@ -775,14 +784,73 @@ class _Pass {
       await _deleteInstance(entry, effortId);
     }
 
-    // New to history: after the effort's last row, in logged order — or where
-    // a pass that did not finish already put it.
+    // The spots the effort's rests mark logged: a set is logged exactly when a
+    // rest sits at its index + 1 (D-1), so those sets are never filled and
+    // their spot already has the rest the wrist's later report closes.
+    final rested = fillPlanned
+        ? {
+            for (final rest in await _repository.getEntryRests(effortId))
+              rest.entryIndex,
+          }
+        : <int>{};
+
+    // New to history: the phone's next planned set when the merge may fill one
+    // (D-4), else after the effort's last row, in logged order — or where a
+    // pass that did not finish already put it.
     var next = rows.lastIndex + 1;
     for (final entry in now) {
       if (placed.contains(entry.entryId)) continue;
-      final index = rows.unfinishedPlaceOf(entry) ?? next++;
+      final unfinished = rows.unfinishedPlaceOf(entry);
+      final fills = fillPlanned && entry.wireKind == WatchInboxEntry.kindSet;
+      final fill = unfinished == null && fills
+          ? await _plannedSetToFill(effortId, rested)
+          : null;
+      final index = unfinished ?? fill?.number ?? next++;
+      if (fill != null) {
+        // The planned row's own rows go: what the wrist logged fills the spot
+        // they held, and nothing the routine preset survives beside it.
+        for (final row in fill.rows) {
+          await _repository.deleteObservation(row.id);
+        }
+        changed = true;
+      }
       _placed[entry.entryId] = (effortId: effortId, index: index);
       await _createEntry(key, entry, effortId, index);
+      // The set's arrival starts a rest after it (D-6), where no rest sits
+      // already — the phone's own, or one an earlier pass opened.
+      if (fills && !rested.contains(index + 1)) {
+        // One rest runs at a time (A4): a rest the phone left open at an
+        // earlier spot ends where this set landed, exactly as its own
+        // `recordRestStart` closes the open rest it finds. Without this the
+        // wrist's set would leave two timers running at once.
+        for (final rest in await _repository.getEntryRests(effortId)) {
+          if (rest.restEndMs != null || rest.entryIndex > index) continue;
+          await _repository.updateEntryRest(
+            rest.copyWith(
+              restEndMs: entry.loggedAtMs > rest.restStartMs
+                  ? entry.loggedAtMs
+                  : rest.restStartMs,
+              restIsPaused: false,
+              restPausedAtMs: null,
+              updatedAtMs: entry.loggedAtMs,
+            ),
+          );
+          changed = true;
+        }
+        await _repository.createEntryRest(
+          EntryRest(
+            id: 'rest-$effortId-${index + 1}',
+            effortId: effortId,
+            entryIndex: index + 1,
+            restStartMs: entry.loggedAtMs,
+            restEndMs: null,
+            createdAtMs: entry.loggedAtMs,
+            updatedAtMs: entry.loggedAtMs,
+          ),
+        );
+        rested.add(index + 1);
+        changed = true;
+      }
       // An instance a pass that did not finish left elsewhere follows its rows.
       await _reindexInstance(entry, effortId, index);
     }
@@ -812,18 +880,36 @@ class _Pass {
 
   // --- Rests ------------------------------------------------------------------
 
+  /// The planned set a live merge fills (D-4): the first of [effortId]'s sets
+  /// that [rested] — the entry indexes the effort's rests sit at — does not
+  /// mark logged, which is the set the phone reads as still unlogged (I-1).
+  /// Null when every set is logged, and then the wrist's set appends after the
+  /// effort's last row instead.
+  Future<SetRows?> _plannedSetToFill(String effortId, Set<int> rested) async {
+    final groups = EntryRows.setGroups(
+      await _repository.getEffortObservations(effortId),
+    );
+    for (final group in groups) {
+      if (!rested.contains(group.number + 1)) return group;
+    }
+    return null;
+  }
+
   /// Writes the session's staged rests beside the entries they follow (D-215).
   ///
   /// A rest is not an entry (D-214): it is written through the repository's own
   /// rest method, keyed on the entry its `afterEntryId` names — the effort that
-  /// entry went into, at its index + 1 (D-167). In arrival order, a spot the
-  /// effort already holds a rest at keeps the one it has, so the phone's own
-  /// rest wins and a redelivery writes nothing (D-216, S-324, S-325); a row
-  /// whose `afterEntryId` names no placed entry, or whose window is not a
-  /// window (`endedAt <= startedAt`), is dropped (S-323, S-328, S-337). A
-  /// written rest counts as a write, so the summary recomputes and a merge can
-  /// name the effort (D-17); a dropped row does not. Either way the caller
-  /// marks the row applied, so it is never retried (D-215).
+  /// entry went into, at its index + 1 (D-167). In arrival order, a spot whose
+  /// rest the phone has finished keeps the one it has, so the phone's own rest
+  /// wins and a redelivery writes nothing (D-216, S-324, S-325); a spot whose
+  /// rest is still running holds the rest the set's own arrival opened (D-6),
+  /// and the wrist's report closes that same row in place rather than writing a
+  /// second one (D-7, S-3608). A row whose `afterEntryId` names no placed
+  /// entry, or whose window is not a window (`endedAt <= startedAt`), is
+  /// dropped (S-323, S-328, S-337). A written rest counts as a write, so the
+  /// summary recomputes and a merge can name the effort (D-17); a dropped row
+  /// does not. Either way the caller marks the row applied, so it is never
+  /// retried (D-215).
   ///
   /// Returns the efforts a rest was written into — the written side of the
   /// split, which is what a merge has to name.
@@ -844,8 +930,26 @@ class _Pass {
       }
       final entryIndex = placed.index + 1;
       final rests = await _repository.getEntryRests(placed.effortId);
-      if (rests.any((rest) => rest.entryIndex == entryIndex)) continue;
+      final existing = _restAt(rests, entryIndex);
       final loggedAtMs = _ms(payload['loggedAt']) ?? startedAtMs;
+      if (existing != null) {
+        // The phone's own finished rest stands (D-216). A rest that is still
+        // running is the one the set's own arrival opened (D-6): the wrist is
+        // reporting that same rest, so it takes the wrist's window and keeps
+        // its row — one rest per spot, never two (D-7).
+        if (existing.restEndMs != null) continue;
+        await _repository.updateEntryRest(
+          existing.copyWith(
+            restStartMs: startedAtMs,
+            restEndMs: endedAtMs,
+            createdAtMs: loggedAtMs,
+            updatedAtMs: loggedAtMs,
+          ),
+        );
+        changed = true;
+        written.add(placed.effortId);
+        continue;
+      }
       await _repository.createEntryRest(
         EntryRest(
           id: 'rest-${placed.effortId}-$entryIndex',
@@ -861,6 +965,13 @@ class _Pass {
       written.add(placed.effortId);
     }
     return written;
+  }
+
+  static EntryRest? _restAt(List<EntryRest> rests, int entryIndex) {
+    for (final rest in rests) {
+      if (rest.entryIndex == entryIndex) return rest;
+    }
+    return null;
   }
 
   static Map<int, List<({EffortObservation observation, String metricKey})>>

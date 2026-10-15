@@ -274,6 +274,9 @@ class WatchSessionAdoptionBridge {
             await _repository.getEffortObservations(effort.id),
           ),
           wristLoggedAtMs: _stampsOf(rows, PhoneEntries.setKind),
+          loggedNumbers: EntryRows.loggedSetNumbers(
+            await _repository.getEntryRests(effort.id),
+          ),
         );
       case PhoneEntries.timedKind:
         return PhoneEntries.projectTimed(

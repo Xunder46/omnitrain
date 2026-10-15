@@ -21,7 +21,7 @@ transport and the sensors are in
 | The session the wrist is running becoming the phone's own in-progress session | `WatchSessionAdoptionBridge.consider`, called by `WatchIncomingRouter` after the mirror has applied a snapshot |
 | Telling the wrist when its session is already history | `WatchIncomingRouter`'s answer to that snapshot: the mirror's `reportLifecycle` |
 | Ending the phone's copy when the wrist ends its own | `WatchSessionAdoptionBridge.onLifecycle` → the ordinary finish or the ordinary discard |
-| The ladder the phone asserts, and the entries it logged | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session — the ladder, plus the phone's own logged sets, timed, hold and round entries in the answer's `entries` (D-31, D-33, D-130) |
+| The ladder the phone asserts, and the entries it logged | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session — the ladder, plus the phone's own logged sets (a set is logged exactly when a rest sits at its index + 1; a planned row is sent as nothing), timed, hold and round entries in the answer's `entries` (D-31, D-33, D-130) |
 | Turning the phone's logged rows into wire entries | `PhoneEntries.project` / `PhoneEntries.ordered` in `lib/core/sync_protocol/phone_entries.dart` — pure, no repository and no clock |
 | Which phone record a wrist row already claimed | `WatchSessionAdoptionBridge`'s per-kind claim read over the session's live inbox rows (D-34) — `S-142 a wrist-logged entry of any kind is not doubled` |
 | Handing the rating the wrist recorded to the finish that writes the row | `WatchSessionAdoptionBridge.onLifecycle`'s read of the session row before it ends the session |
@@ -63,11 +63,19 @@ not sent back`, `S-74 five notifications without a change push nothing`,
 **D-31/D-33/D-34 — the answer carries the entries the phone logged, as its
 own.** `projectSession` reads each slot's own records through the repository —
 a `set` slot's row groups, and a `timed`, `hold` or `round` slot's instances
-(D-130) — and emits one entry per record, named `entry-<slotId>-<n>` with
-`eventId` equal to `entryId` (D-33). A record a live wrist row already produced
-is *claimed* by that row, per kind, and not sent back (D-34), so the wrist never
-re-receives its own work. Nothing is written while composing, and no value comes
-from a clock or a counter. Verified by
+(D-130) — and emits one entry per record the phone logged, named
+`entry-<slotId>-<n>` with `eventId` equal to `entryId` (D-33). A `set` record
+counts as logged exactly when a rest sits at its index + 1
+(`EntryRows.loggedSetNumbers`, the rule the session screen reads), so a
+routine's planned rows, and the default row a new exercise gets, are planned
+values and are sent as nothing — the wrist's menu shows no "N logged" for them
+(`test/watch_session_projection_test.dart`,
+`S-3601 a session of planned rows sends no entry`,
+`S-3602 only the set a rest follows is sent`,
+`S-3603 a logged set with no reps is still no entry`). A record a live wrist
+row already produced is *claimed* by that row, per kind, and not sent back
+(D-34), so the wrist never re-receives its own work. Nothing is written while
+composing, and no value comes from a clock or a counter. Verified by
 `test/watch_session_projection_test.dart`
 (`S-31 the phone's own sets arrive as entries`,
 `S-33 the wrist's own set is not sent back to it`,
@@ -327,6 +335,35 @@ in place, resending the structure as a snapshot and no new started lifecycle
   (`a set logged on the watch lands in the session the phone holds`) and
   `test/watch_session_merge_test.dart` (`S-9 a wrist set reaches the live phone
   session`, `S-12 a slot the session does not have`).
+- **A wrist set fills the phone's next unlogged planned row, in the held merge
+  only.** While the phone holds the session, a wrist `set` fills the first row
+  the phone reads as unlogged — no rest at its index + 1 — replacing that row's
+  values and stamping them with the wrist's `loggedAt`, so the row count does
+  not change; when every row is logged it appends after the last row, and a
+  history import always appends after the last row
+  (`test/watch_session_import_test.dart`,
+  `A-51 a late wrist set is placed after the user’s own set`; and, for the live
+  merge, `test/watch_session_merge_test.dart`,
+  `S-3604 a wrist set fills the planned row and opens its rest`,
+  `S-3605 a second wrist set fills the next planned row`,
+  `S-3606 a fourth set appends once the planned rows are filled`,
+  `S-3607 the phone's own logged set is never filled`,
+  `S-3616 a skipped planned row is not logged, so the wrist fills it`,
+  `S-11 the phone's own rows are the user's`). The fill opens the rest at that
+  spot + 1, run from the wrist's `loggedAt`, and ends the phone's older open
+  rest — one rest runs at a time; the wrist's own `rest` report later closes
+  that same rest in place with the wrist's window, and a rest the phone already
+  finished stands
+  (`S-3608 the wrist's rest closes the rest the fill opened`,
+  `S-3618 the wrist's set ends the phone's older open rest`). On the screen the
+  filled row reads LOGGED at once and is offered no second log
+  (`test/watch_live_refresh_screen_test.dart`,
+  `S-3514 a wrist merge fills the planned row in place`,
+  `S-3515 the set the wrist logged is offered no second log`,
+  `S-3610 a wrist set fills the row the screen is on`), and the filled row is
+  not echoed back to the wrist — its stamp claims it
+  (`test/watch_routine_round_trip_test.dart`,
+  `S-3609 the set the wrist logged is never echoed back to it`).
 - **The phone's finish and discard are announced (D-81).** The session announced
   is one the phone itself composed; that session's own stored row decides: an
   ended row reports its `completed` lifecycle and a row that is gone reports
@@ -373,9 +410,11 @@ in place, resending the structure as a snapshot and no new started lifecycle
 ## What does not sync
 
 Wrist logging is not on this list any more: a set logged on the wrist reaches
-the phone's live session as a row of the effort the phone's slot already has
-(`test/watch_session_merge_test.dart`, `S-9 a wrist set reaches the live phone
-session`), a rest the wrist took arrives as a `rest` observation the importer
+the phone's live session as a row of the effort the phone's slot already has,
+filling the first row the phone reads as unlogged in place or appending when
+every row is logged (`test/watch_session_merge_test.dart`, `S-9 a wrist set
+reaches the live phone session`), a rest the wrist took arrives as a `rest`
+observation the importer
 writes into the session's history
 (`test/watch_session_summary_integration_test.dart`, `S-329 the totals`), a
 wrist end closes the phone's copy
@@ -383,7 +422,8 @@ wrist end closes the phone's copy
 `S-4 the wrist ends its session, roster of logged sets first`), and a set logged
 while the phone was out of reach arrives at the wrist's next sync
 (`test/watch_session_merge_test.dart`, `S-19 a set logged while the phone was out
-of reach`). None of these is phone→wrist any more: the sets the phone logs itself ride
+of reach`). None of these is phone→wrist any more: the sets the phone has
+logged — and only those; a planned row rides no frame (D-31) — ride
 the frame the phone sends — its answer to a Sync, or the push a change triggers —
 as `entries`, which the wrist's existing snapshot merge stores
 (`test/watch_session_projection_test.dart`,
@@ -635,6 +675,15 @@ remains out is listed below.
   (`test/watch_session_auto_push_test.dart`,
   `S-73 discarding on the phone abandons the wrist's copy, once`). Only a session
   that ended and kept a row is protected. Not handled.
+- **A set the phone drops leaves the rest its fill opened.** Dropping a set
+  deletes only that set's observation rows; the rest the wrist's set opened at
+  its spot + 1 stays, open, until something else closes it
+  (`test/watch_session_merge_test.dart`, `S-337 a rest whose after-entry is
+  gone is dropped and consumed` asserts today's behaviour).
+- **The wrist is not shown the routine's plan.** Planned sets and presets do
+  not travel: the wrist sees only the sets the phone has logged (D-31), and a
+  routine started on the wrist still opens on the phone as a free session
+  without sets. Both are later plans (36b, 36c); no test claims either today.
 
 ## Related
 

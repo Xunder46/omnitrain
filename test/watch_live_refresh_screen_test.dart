@@ -55,6 +55,8 @@ const String _t1 = '2026-10-05T10:10:00Z';
 const String _t2 = '2026-10-05T10:20:00Z';
 const String _t3 = '2026-10-05T10:30:00Z';
 
+int _msOf(String iso) => DateTime.parse(iso).toUtc().millisecondsSinceEpoch;
+
 /// A clock a scenario can hold still.
 class _Clock {
   DateTime now = _phoneNow;
@@ -612,13 +614,14 @@ void main() {
     expect(phone.failures, isEmpty);
   });
 
-  testWidgets('S-3514 a wrist merge leaves the open entry and its rest alone', (
+  testWidgets('S-3514 a wrist merge fills the planned row in place', (
     WidgetTester tester,
   ) async {
     final phone = await _phone();
     await phone.router.receive(_snapshot());
 
-    // The user's own three sets on sl-1, with a rest running after the first.
+    // The user's own three sets on sl-1: row 0 logged (a rest follows it, so
+    // the phone reads it as logged), rows 1 and 2 still the plan's values.
     await phone.state.addEntry('sl-1');
     await phone.state.addEntry('sl-1');
     await phone.state.addEntry('sl-1');
@@ -630,7 +633,9 @@ void main() {
     expect(
       find.text('Set 2 of 3'),
       findsOneWidget,
-      reason: 'S-3514 the user is on set 2 of the three sets they logged',
+      reason:
+          'S-3514 the user is on set 2 of the three sets the effort holds: row 0 is logged '
+          'and row 1 is the next planned one',
     );
     expect(
       find.byKey(const Key('rest-overlay-chip')),
@@ -652,28 +657,96 @@ void main() {
     );
     await tester.pump();
 
+    final entries = _entriesOf(phone, 'sl-1');
     expect(
-      _entriesOf(phone, 'sl-1'),
-      hasLength(4),
-      reason: 'S-3514 the wrist\'s set landed as a fourth entry of the effort',
+      entries,
+      hasLength(3),
+      reason:
+          'S-3514 the wrist\'s set FILLED the planned row 1: the effort still holds the three '
+          'sets the plan wrote, and no fourth row appeared (entries $entries)',
+    );
+    expect(
+      entries[0]['reps'],
+      8,
+      reason:
+          'S-3514 row 0 is the user\'s own logged set and the merge left it alone',
+    );
+    expect(
+      entries[1]['reps'],
+      10,
+      reason:
+          'S-3514 the row that was filled reads as the wrist\'s set: its own reps are what '
+          'the row holds',
+    );
+    expect(
+      entries[1]['weight'],
+      45.0,
+      reason:
+          'S-3514 and its load is the wrist\'s 45 kg, so the row was rewritten and not just '
+          'marked',
+    );
+    expect(
+      find.text('Set 2 of 3'),
+      findsOneWidget,
+      reason:
+          'S-3514 the user is still on set 2 of three: the fill happened in place, so the '
+          'count the label reads is unchanged and their position was not moved (S-3617)',
     );
     expect(
       find.text('Set 2 of 4'),
+      findsNothing,
+      reason:
+          'S-3514 the label never counts four: the wrist\'s set did not land as an extra row '
+          'of the effort',
+    );
+    expect(
+      find.text('LOGGED'),
       findsOneWidget,
       reason:
-          'S-3514 the list was re-read (the new entry is in the label) and the user is still on '
-          'set 2, not moved to the first',
+          'S-3514 the set the user is on is the row the wrist\'s set filled: the screen reads '
+          'that row as logged, so the detail index still points at the same row it did before '
+          'the merge (S-3617)',
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Log Set'),
+      findsNothing,
+      reason:
+          'S-3514 and it offers the user no Log Set control for that row: the wrist logged it',
     );
     expect(
       find.byKey(const Key('rest-overlay-chip')),
       findsOneWidget,
-      reason: 'S-3514 the rest the user is in is still counting',
+      reason:
+          'S-3514 one running rest is on screen: the one the fill opened after the row it '
+          'filled, not the user\'s own rest it closed',
+    );
+    final rests = phone.state.getEntryRests('sl-1');
+    expect(
+      rests,
+      hasLength(2),
+      reason:
+          'S-3514 the effort holds exactly two rests — the user\'s own after row 0 and the '
+          'one the fill opened after row 1 (rests ${rests.map((rest) => 'index ${rest.entryIndex} '
+          '${rest.restEndMs == null ? 'open' : 'closed'}').toList()})',
     );
     expect(
-      find.text('Set 2 of 3'),
-      findsNothing,
+      rests.where((rest) => rest.entryIndex == 1 && rest.restEndMs != null),
+      hasLength(1),
       reason:
-          'S-3514 the old count is gone: the label was rebuilt from the list the resync read',
+          'S-3514 the wrist\'s set closed the user\'s rest after row 0: the wrist logged the '
+          'set that rest belonged to',
+    );
+    expect(
+      rests.where((rest) => rest.restEndMs == null),
+      hasLength(1),
+      reason: 'S-3514 exactly one rest of the effort is open',
+    );
+    expect(
+      rests.singleWhere((rest) => rest.restEndMs == null).entryIndex,
+      2,
+      reason:
+          'S-3514 and it is the fill\'s rest: it is open at the spot after the row the wrist\'s '
+          'set landed on',
     );
     expect(tester.takeException(), isNull, reason: 'S-3514 nothing escapes the frame');
     expect(phone.failures, isEmpty);
@@ -685,9 +758,11 @@ void main() {
     final phone = await _phone();
     await phone.router.receive(_snapshot());
 
-    // One entry the user has never logged: a row of sl-1 with no rest after it,
-    // so nothing marks it logged and the phone offers its Log Set control.
+    // One planned row of sl-1 the user has never logged: no rest follows it, so
+    // nothing marks it logged and the phone offers its Log Set control. sl-2
+    // carries a planned row of its own — the effort the control below walks to.
     await phone.state.addEntry('sl-1');
+    await phone.state.addEntry('sl-2');
 
     final restNotifications = FakeRestNotificationService();
     await _mount(
@@ -703,12 +778,15 @@ void main() {
       find.widgetWithText(FilledButton, 'Log Set'),
       findsOneWidget,
       reason:
-          'S-3515 the user is on the one set of the effort, and the phone has logged '
+          'S-3515 the user is on the one planned set of the effort, and the phone has logged '
           'nothing, so the control it offers is the Log Set button',
     );
+
+    final pingsBeforeTheMerge = restNotifications.scheduled.length;
+
     // The wrist's set for sl-1 and the rest it started after it, through the
-    // production path every other scenario here uses. The set lands as an extra
-    // entry of the effort, after the one the user added.
+    // production path every other scenario here uses. The set FILLS the row the
+    // user is on, and the wrist's own rest closes the rest the fill opened.
     await phone.router.receive(
       observationsUp('s-w1', [
         _set(
@@ -731,39 +809,35 @@ void main() {
     );
     await tester.pump();
 
-    expect(
-      _entriesOf(phone, 'sl-1'),
-      hasLength(2),
-      reason:
-          'S-3515 the set the wrist logged is an entry of the effort, beside the one the '
-          'user added',
-    );
-
-    final pingsBeforeTheNavigation = restNotifications.scheduled.length;
-
-    // The user walks with the screen's own next-set control onto the set the
-    // wrist logged.
-    await tester.tap(find.byTooltip('Next'));
-    await tester.pump();
-
     final entries = _entriesOf(phone, 'sl-1');
-    final wristEntry = entries[1];
     expect(
-      find.text('Set 2 of 2'),
+      entries,
+      hasLength(1),
+      reason:
+          'S-3515 the wrist\'s set FILLED the planned row the user was on: the effort still '
+          'holds one set, not a second one beside it (entries $entries)',
+    );
+    expect(
+      entries[0]['reps'],
+      10,
+      reason: 'S-3515 the row that was filled carries the wrist\'s reps',
+    );
+    expect(
+      entries[0]['weight'],
+      45.0,
+      reason: 'S-3515 and its load: the phone leaves the wrist\'s values alone',
+    );
+    expect(
+      find.text('Set 1 of 1'),
       findsOneWidget,
       reason:
-          'S-3515 the user is on the set the wrist logged: the label counts both entries of '
-          'the effort, the one the user added and the one the wrist sent (entries $entries)',
+          'S-3515 the user is on set 1 of one: the row they were on is the row the wrist\'s '
+          'set filled, so their position did not move and no second row appeared',
     );
     expect(
-      wristEntry['reps'],
-      10,
-      reason: 'S-3515 the set the wrist logged still carries its own reps',
-    );
-    expect(
-      wristEntry['weight'],
-      45.0,
-      reason: 'S-3515 and its own load: the phone leaves the wrist\'s values alone',
+      find.text('Set 2 of 2'),
+      findsNothing,
+      reason: 'S-3515 the label never counts two: the fill added no entry of the effort',
     );
     expect(
       find.text('LOGGED'),
@@ -780,53 +854,61 @@ void main() {
           'S-3515 and it offers no control that logs that set a second time: the phone '
           'starts no rest for a set the wrist logged, and schedules no rest pings for one',
     );
+    final rests = phone.state.getEntryRests('sl-1');
     expect(
-      phone.state.getEntryRests('sl-1'),
+      rests,
       hasLength(1),
       reason:
-          'S-3515 the effort holds the one rest the wrist\'s own set came with and no '
-          'other, so the phone opened no rest of its own for the set the user is on',
+          'S-3515 the effort holds exactly one rest — the window the wrist\'s own set came '
+          'with, which closed the rest the fill had opened after the row it filled '
+          '(rests $rests)',
     );
     expect(
-      phone.state.getEntryRests('sl-1').single.entryIndex,
-      2,
+      rests.single.entryIndex,
+      1,
       reason:
-          'S-3515 and that rest is the wrist\'s: it follows the entry the wrist sent',
+          'S-3515 and it follows the entry the wrist sent: it sits at the spot after the row '
+          'the wrist\'s set filled',
+    );
+    expect(
+      rests.single.restStartMs,
+      _msOf(_t2),
+      reason: 'S-3515 the window starts where the wrist\'s set was logged',
+    );
+    expect(
+      rests.single.restEndMs,
+      _msOf(_t3),
+      reason:
+          'S-3515 and ends where the wrist\'s rest did, so the phone opened no rest of its '
+          'own for the set the user is on',
     );
     expect(
       restNotifications.scheduled.length,
-      pingsBeforeTheNavigation,
+      pingsBeforeTheMerge,
       reason:
           'S-3515 no rest pings were scheduled either: nothing about the set the wrist '
           'logged restarted a rest on the phone',
     );
 
-    // Control. An effort whose set the wrist sent without a rest behind it
-    // leaves the resync nothing to read a status from: the control is there and
-    // pressing it does log the set and does start its rest. So the assertions
-    // above answer the wrist's rest, not the harness's ability to press the
-    // control.
-    await phone.router.receive(
-      observationsUp('s-w1', [
-        _set(
-          'sx-2',
-          slot: 'sl-2',
-          exerciseId: 'ex-2',
-          reps: 8,
-          loadKg: 40,
-          loggedAt: _t1,
-        ),
-      ], messageId: 'msg-set-2'),
-    );
-    await tester.pump();
-
+    // Control. A row the phone planned and never logged leaves the resync no
+    // rest to read a status from: the control is there, and pressing it does log
+    // the row and does start its rest. So the assertions above answer the
+    // wrist's set, not the harness's ability to press the control. sl-2 holds
+    // that row, and `Next` walks off the end of sl-1's one set onto it.
     await tester.tap(find.byTooltip('Next'));
     await tester.pump();
 
     expect(
       find.text('Set 1 of 1'),
       findsOneWidget,
-      reason: 'S-3515 the next effort holds the one set the wrist sent for it',
+      reason: 'S-3515 the next effort holds the one planned set',
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Log Set'),
+      findsOneWidget,
+      reason:
+          'S-3515 control: nothing has logged it, so the phone still offers its Log Set '
+          'control for a set of its own',
     );
 
     final pingsBeforeTheControlTap = restNotifications.scheduled.length;
@@ -853,6 +935,115 @@ void main() {
           'measures the wrist\'s rest and not a tap that never landed',
     );
     expect(tester.takeException(), isNull, reason: 'S-3515 nothing escapes the frame');
+    expect(phone.failures, isEmpty);
+  });
+
+  // Plan 36 S-3610 (Phase C): the fixture the owner's rule is written for — a
+  // planned three-set effort the phone wrote, and one set the wrist logged.
+  testWidgets('S-3610 a wrist set fills the row the screen is on', (
+    WidgetTester tester,
+  ) async {
+    final phone = await _phone();
+    await phone.router.receive(_snapshot());
+
+    // Fixture F: three planned rows of sl-1, no rests, so the phone has logged
+    // nothing and every row is the plan's.
+    for (int i = 0; i < 3; i++) {
+      await phone.state.addEntry('sl-1');
+      await phone.state.updateEntryValue('sl-1', i, 'weight', 40.0);
+    }
+
+    await _mount(tester, _screen(phone, initialFocusId: 'sl-1'));
+
+    expect(
+      find.text('Set 1 of 3'),
+      findsOneWidget,
+      reason: 'S-3610 the screen opens on set 1 of the three planned sets',
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Log Set'),
+      findsOneWidget,
+      reason: 'S-3610 and the planned row the user is on is the phone\'s to log',
+    );
+    expect(
+      find.byKey(const Key('rest-overlay-chip')),
+      findsNothing,
+      reason: 'S-3610 with no rest anywhere there is nothing counting on the strip',
+    );
+
+    await phone.router.receive(
+      observationsUp('s-w1', [
+        _set(
+          'sx-9',
+          slot: 'sl-1',
+          exerciseId: 'ex-1',
+          reps: 8,
+          loadKg: 42.5,
+          loggedAt: _t1,
+        ),
+      ], messageId: 'msg-set-9'),
+    );
+    await tester.pump();
+
+    final entries = _entriesOf(phone, 'sl-1');
+    expect(
+      entries,
+      hasLength(3),
+      reason:
+          'S-3610 the wrist\'s set FILLED the first planned row: the effort holds the three '
+          'sets the plan wrote and the wrist\'s set added no fourth (entries $entries)',
+    );
+    expect(
+      entries[0]['reps'],
+      8,
+      reason: 'S-3610 the filled row is the wrist\'s set: it carries the wrist\'s reps',
+    );
+    expect(
+      entries[0]['weight'],
+      42.5,
+      reason: 'S-3610 and the wrist\'s load, not the 40 kg the plan wrote',
+    );
+    expect(
+      find.text('Set 1 of 3'),
+      findsOneWidget,
+      reason:
+          'S-3610 the user is still on set 1 of three: the row they were on is the row the '
+          'wrist\'s set filled',
+    );
+    expect(
+      find.text('Set 1 of 4'),
+      findsNothing,
+      reason: 'S-3610 the label never counts a fourth set',
+    );
+    expect(
+      find.text('LOGGED'),
+      findsOneWidget,
+      reason:
+          'S-3610 the phone reads the set the user is on as logged: the wrist logged it, so '
+          'the phone is not the one to log it',
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Log Set'),
+      findsNothing,
+      reason: 'S-3610 and it offers no Log Set control for a set the wrist already logged',
+    );
+    expect(
+      find.byKey(const Key('rest-overlay-chip')),
+      findsOneWidget,
+      reason:
+          'S-3610 the rest the wrist\'s set opened after that row is running on the screen: '
+          'the wrist\'s set and the phone\'s rest timer are the same set and the same rest',
+    );
+    expect(
+      phone.state
+          .getEntryRests('sl-1')
+          .where((rest) => rest.entryIndex == 1 && rest.restEndMs == null),
+      hasLength(1),
+      reason:
+          'S-3610 and the effort holds that one open rest, at the spot after the row the '
+          'wrist\'s set filled',
+    );
+    expect(tester.takeException(), isNull, reason: 'S-3610 nothing escapes the frame');
     expect(phone.failures, isEmpty);
   });
 }

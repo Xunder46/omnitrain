@@ -609,6 +609,9 @@ void main() {
           'restPingSeconds': 0,
           // The default theme's accent (abyssalNeon), carried since plan 23d.
           'accentColorHex': '#2DE2E6',
+          // The phone's Units setting (kg, km by default), carried since S-3903.
+          'weightUnit': 'kg',
+          'distanceUnit': 'km',
         },
         reason: 'S-253 the setting as SettingsState holds it, stamped with '
             'the phone clock at send',
@@ -640,6 +643,8 @@ void main() {
           'effortRatingPrompt': true,
           'restPingSeconds': 0,
           'accentColorHex': '#2DE2E6',
+          'weightUnit': 'kg',
+          'distanceUnit': 'km',
         },
         reason: 'S-253 the setting turned on reaches the wrist at its next '
             'sync',

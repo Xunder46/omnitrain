@@ -23,6 +23,18 @@
 //     summary attaches, an abandoned end included, and an end the phone cannot
 //     read attaches nothing)
 //
+// Plan: `docs/plans/2026-10-14-36-routine-start-sync-plan/2026-10-14-36-routine-start-sync-plan.md`,
+// Phase B — a wrist set FILLS the phone's planned set (D-4), opens the rest at
+// that row's spot + 1 (D-6), and the wrist's own rest closes that row in place
+// (D-7). Scenario mapping:
+//   S-3604 a wrist set fills the planned row            → `S-3604 ...`
+//   S-3605 a second set fills the next planned row      → `S-3605 ...`
+//   S-3606 a fourth set appends once the plan is filled → `S-3606 ...`
+//   S-3607 the phone's own logged set is never filled   → `S-3607 ...`
+//   S-3608 the wrist's rest closes the fill's rest      → `S-3608 ...`
+//   S-3616 a skipped planned row is not logged          → `S-3616 ...`
+//   S-3618 the wrist's set ends the phone's older rest  → `S-3618 ...`
+//
 // Both groups run the same fixtures through the same phone: the merge must
 // produce the same rows under `HiveWorkoutRepository` and
 // `MockWorkoutRepository` (the plan's implementation-parity invariant). Plain
@@ -30,6 +42,7 @@
 // fake-async zone never drains.
 
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -75,6 +88,13 @@ const String _t3 = '2026-10-05T10:30:00Z';
 /// The wrist's rest window (18b D-166): 70 s, after the first set's stamp.
 const String _restStart = '2026-10-05T10:11:00Z';
 const String _restEnd = '2026-10-05T10:12:10Z';
+
+/// A fourth wrist set's stamp, for a pass that outruns the planned rows.
+const String _t4 = '2026-10-05T10:40:00Z';
+
+/// The stamp the phone's planned rows carry (plan 36 D-4): the routine wrote
+/// them before the session, so it is earlier than every wrist set's.
+const String _plannedAt = '2026-10-05T09:00:00Z';
 
 int _msOf(String iso) => DateTime.parse(iso).toUtc().millisecondsSinceEpoch;
 
@@ -367,6 +387,53 @@ Future<void> _phoneRows(
   }
 }
 
+/// Fixture F (plan 36 D-4): the phone's own slot holds [count] planned rows —
+/// a routine's presets, 10 reps at 40.0 kg — with no rest after any of them,
+/// so the phone reads none of them as logged (I-1).
+Future<void> _plannedRows(
+  WorkoutRepository repository, {
+  int count = 3,
+}) async {
+  for (var index = 0; index < count; index++) {
+    await _phoneRows(
+      repository,
+      effortId: 'sl-1',
+      entryIndex: index,
+      reps: 10,
+      weightKg: 40.0,
+      atMs: _msOf(_plannedAt),
+    );
+  }
+}
+
+/// One effort's rests, in entry-index order, so a scenario can name them.
+Future<List<EntryRest>> _rests(WorkoutRepository repository, String effortId) =>
+    repository.getEntryRests(effortId).then(
+          (rests) => [...rests]
+            ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex)),
+        );
+
+/// A rest the phone counted itself and finished, at [entryIndex] — the rest a
+/// set it logged leaves behind. Only a rest at `index + 1` reads as logged
+/// (I-1), so a fixture whose phone logged sets writes one per logged set.
+Future<void> _phoneRest(
+  WorkoutRepository repository, {
+  required String effortId,
+  required int entryIndex,
+  required int startedAtMs,
+  required int endedAtMs,
+}) => repository.createEntryRest(
+  EntryRest(
+    id: 'rest-$effortId-$entryIndex',
+    effortId: effortId,
+    entryIndex: entryIndex,
+    restStartMs: startedAtMs,
+    restEndMs: endedAtMs,
+    createdAtMs: startedAtMs,
+    updatedAtMs: endedAtMs,
+  ),
+);
+
 // ─── The scenarios ──────────────────────────────────────────────────────────
 
 void main() {
@@ -591,6 +658,22 @@ void _mergeTests({
       reps: 7,
       weightKg: 70,
       atMs: _msOf(_t3),
+    );
+    // Each of those rows is a logged set, so a rest follows it (I-1): the
+    // wrist's set then finds no unlogged row and appends, as it always did.
+    await _phoneRest(
+      repository,
+      effortId: 'sl-1',
+      entryIndex: 1,
+      startedAtMs: _msOf(_t2),
+      endedAtMs: _msOf(_t2) + 60000,
+    );
+    await _phoneRest(
+      repository,
+      effortId: 'sl-1',
+      entryIndex: 2,
+      startedAtMs: _msOf(_t3),
+      endedAtMs: _msOf(_t3) + 60000,
     );
 
     await phone.router.receive(
@@ -1164,23 +1247,75 @@ void _mergeTests({
       reason: 'S-16 an effort the merge did not touch is untouched',
     );
 
-    // The rest timer is still running: the refresh cleared nothing.
+    // The phone's own rest timer is not left running beside the set's: the
+    // set's arrival closes the older open rest, exactly as the phone's own
+    // flow does (A4), and opens its own at the spot it took + 1 (D-6).
     final restAfter = phone.state.getEntryRests('sl-1');
-    expect(restAfter, hasLength(1), reason: 'S-16 nothing cleared the rest');
     expect(
-      restAfter.single.id,
-      restBefore.single.id,
+      restAfter,
+      hasLength(2),
+      reason:
+          'S-16 the phone\'s own rest record and the one the placement '
+          'opened',
+    );
+    final ownRest = restAfter.singleWhere((rest) => rest.id == restBefore.single.id);
+    expect(
+      ownRest.restStartMs,
+      restBefore.single.restStartMs,
       reason: 'S-16 the rest is the same record, not a re-created one',
     );
     expect(
-      restAfter.single.restEndMs,
+      ownRest.entryIndex,
+      restBefore.single.entryIndex,
+      reason: 'S-16 and it keeps the spot it was logged at',
+    );
+    expect(
+      ownRest.restEndMs,
+      math.max(restBefore.single.restStartMs, _msOf(_t1)),
+      reason:
+          'S-16 the phone\'s older open rest is closed where the wrist\'s set '
+          'landed — never before the moment it started (A4)',
+    );
+    expect(
+      ownRest.restIsPaused,
+      isFalse,
+      reason: 'S-16 a closed rest is not still counted as paused',
+    );
+    expect(
+      ownRest.restPausedAtMs,
       isNull,
-      reason: 'S-16 the rest is still open — the running timer survived',
+      reason: 'S-16 and holds no pause instant',
+    );
+    final openedRest = restAfter.singleWhere((rest) => rest.id != ownRest.id);
+    expect(
+      openedRest.id,
+      'rest-sl-1-1',
+      reason: 'S-16 keyed on the spot the set took + 1 (D-167)',
+    );
+    expect(
+      openedRest.entryIndex,
+      1,
+      reason: 'S-16 the rest the set\'s arrival opened',
+    );
+    expect(
+      openedRest.restEndMs,
+      isNull,
+      reason: 'S-16 and it is the one rest the merge leaves running',
+    );
+    expect(
+      [for (final rest in restAfter) rest.restEndMs],
+      [math.max(restBefore.single.restStartMs, _msOf(_t1)), null],
+      reason: 'S-16 exactly one rest is open after the merge (A4)',
     );
     expect(
       phone.state.hasRestRecord('sl-1', 0),
+      isFalse,
+      reason: 'S-16 the phone\'s own rest timer is no longer the running one',
+    );
+    expect(
+      phone.state.hasRestRecord('sl-1', 1),
       isTrue,
-      reason: 'S-16 the rest timer is still running after the merge',
+      reason: 'S-16 the rest timer runs on the spot the wrist\'s set took',
     );
     expect(phone.failures, isEmpty);
   });
@@ -1339,10 +1474,17 @@ void _mergeTests({
           ),
         ], messageId: 'msg-set-1'),
       );
+      final opened = await repository.getEntryRests('sl-1');
       expect(
-        await repository.getEntryRests('sl-1'),
-        isEmpty,
-        reason: 'S-320 the set arrived alone',
+        opened,
+        hasLength(1),
+        reason: 'S-320 the set arrived alone, so it opened its rest (D-6)',
+      );
+      expect(opened.single.id, 'rest-sl-1-1', reason: 'S-320 keyed on its spot');
+      expect(
+        opened.single.restEndMs,
+        isNull,
+        reason: 'S-320 the rest the set\'s arrival opened is still running',
       );
       final afterSet = phone.refreshes.length;
 
@@ -1361,11 +1503,32 @@ void _mergeTests({
       );
 
       final rests = await repository.getEntryRests('sl-1');
-      expect(rests, hasLength(1), reason: 'S-320 the late rest is written');
+      expect(
+        rests,
+        hasLength(1),
+        reason:
+            'S-320 the late rest closed the running row in place — one rest, '
+            'never two (D-7)',
+      );
       expect(
         rests.single.id,
         'rest-sl-1-1',
         reason: 'S-320 the id names the effort and the index the set holds + 1',
+      );
+      expect(
+        rests.single.id,
+        opened.single.id,
+        reason: 'S-320 it is the row the set\'s arrival opened',
+      );
+      expect(
+        rests.single.restStartMs,
+        _msOf(_restStart),
+        reason: 'S-320 and it holds the window the wrist observed',
+      );
+      expect(
+        rests.single.restEndMs,
+        _msOf(_restEnd),
+        reason: 'S-320 which the wrist\'s own end closed',
       );
       expect(
         rests.single.entryIndex,
@@ -1411,11 +1574,20 @@ void _mergeTests({
         atMs: _msOf(_t1),
       );
       await phone.state.recordRestStart('sl-1', 1);
+      // The phone's own rest at that spot is finished: a rest the phone
+      // counted and closed is the phone's record, and the wrist's later report
+      // of the same rest never rewrites it (D-216).
+      await phone.state.recordRestEnd('sl-1', 1);
       final phoneRest = (await repository.getEntryRests('sl-1')).single.toMap();
       expect(
         phoneRest['entry_index'],
         1,
         reason: 'S-325 the fixture\'s own rest is at the spot the wrist names',
+      );
+      expect(
+        phoneRest['rest_end_ms'],
+        isNotNull,
+        reason: 'S-325 the fixture\'s own rest is finished',
       );
 
       await phone.router.receive(
@@ -1499,13 +1671,43 @@ void _mergeTests({
       );
 
       final rests = await repository.getEntryRests('sl-1');
-      expect(rests, hasLength(1), reason: 'S-338 one rest event, one row');
       expect(
-        rests.single.id,
+        rests,
+        hasLength(2),
+        reason:
+            'S-338 one rest event, one row — plus the rest each set\'s arrival '
+            'opened (D-6)',
+      );
+      final closed = rests.singleWhere((rest) => rest.id == 'rest-sl-1-2');
+      expect(
+        closed.id,
         'rest-sl-1-2',
         reason:
             'S-338 the rest follows the last of two entries, so its spot is '
             'the third',
+      );
+      expect(
+        closed.restStartMs,
+        _msOf(_restStart),
+        reason: 'S-338 it holds the window the wrist observed',
+      );
+      expect(
+        closed.restEndMs,
+        _msOf(_restEnd),
+        reason: 'S-338 closed where the wrist saw it end',
+      );
+      final between = rests.singleWhere((rest) => rest.id == 'rest-sl-1-1');
+      expect(
+        between.entryIndex,
+        1,
+        reason: 'S-338 keyed on the spot the first set took + 1',
+      );
+      expect(
+        between.restEndMs,
+        _msOf(_t2),
+        reason:
+            'S-338 the second set ends the rest the first one opened — one '
+            'rest runs at a time (A4)',
       );
       expect(
         await _ids(repository, 'sl-1'),
@@ -1572,12 +1774,23 @@ void _mergeTests({
         ], messageId: 'msg-rest-1'),
       );
 
+      final leftovers = await repository.getEntryRests('sl-1');
       expect(
-        await repository.getEntryRests('sl-1'),
-        isEmpty,
+        leftovers,
+        hasLength(1),
         reason:
-            'S-337 the entry the rest named is gone, so there is no spot to '
-            'key it on',
+            'S-337 the rest the deleted set\'s arrival opened is still there '
+            '— the wrist\'s rest wrote no row of its own',
+      );
+      expect(
+        leftovers.single.id,
+        'rest-sl-1-1',
+        reason: 'S-337 the entry the rest named is gone, so nothing keyed to it',
+      );
+      expect(
+        leftovers.single.restEndMs,
+        isNull,
+        reason: 'S-337 nothing closed the rest the deleted set left behind',
       );
       expect(
         (await _staged(repository))['rest-a1']?.appliedAtMs,
@@ -1618,10 +1831,21 @@ void _mergeTests({
         ], messageId: 'msg-rest-1'),
       );
 
+      final afterDrop = await repository.getEntryRests('sl-1');
       expect(
-        await repository.getEntryRests('sl-1'),
-        isEmpty,
-        reason: 'S-328 the rest names no entry this pass placed',
+        afterDrop,
+        hasLength(1),
+        reason: 'S-328 the rest names no entry the merge placed — no row added',
+      );
+      expect(
+        afterDrop.single.id,
+        'rest-sl-1-1',
+        reason: 'S-328 the only rest is the one the set\'s arrival opened',
+      );
+      expect(
+        afterDrop.single.restEndMs,
+        isNull,
+        reason: 'S-328 and it is still running',
       );
       expect(
         (await _staged(repository))['rest-a1']?.appliedAtMs,
@@ -1649,9 +1873,607 @@ void _mergeTests({
         ], messageId: 'msg-rest-1-again'),
       );
       expect(
+        (await repository.getEntryRests('sl-1')).map((rest) => rest.toMap()),
+        afterDrop.map((rest) => rest.toMap()),
+        reason: 'S-328 the retry is dropped again: the entry is still unknown',
+      );
+      expect(phone.failures, isEmpty);
+    });
+  });
+
+  // Plan 36 (routine start sync), Phase B: a set the wrist logged FILLS the
+  // phone's next planned set — the row the routine put there, which the phone
+  // reads as unlogged because no rest follows it (I-1) — and opens the rest at
+  // that row's spot + 1 (D-6). Rows behind the filled one keep the plan's
+  // stamp, so a fill replaces exactly one planned set and adds nothing (A3).
+  group('S-3604..S-3608 a wrist set fills the planned set', () {
+    test('S-3604 a wrist set fills the planned row and opens its rest', () async {
+      final phone = await _phone(repository);
+      await phone.router.receive(_snapshot());
+      await _plannedRows(repository);
+      expect(
         await repository.getEntryRests('sl-1'),
         isEmpty,
-        reason: 'S-328 the retry is dropped again: the entry is still unknown',
+        reason: 'S-3604 the fixture\'s planned rows carry no rest',
+      );
+
+      await phone.router.receive(
+        observationsUp('s-w1', [
+          _set(
+            'sx-1',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 8,
+            loadKg: 42.5,
+            loggedAt: _t1,
+          ),
+        ], messageId: 'msg-fill-1'),
+      );
+
+      expect(
+        await _ids(repository, 'sl-1'),
+        [
+          'obs-sl-1-0-reps',
+          'obs-sl-1-0-weight',
+          'obs-sl-1-1-reps',
+          'obs-sl-1-1-weight',
+          'obs-sl-1-2-reps',
+          'obs-sl-1-2-weight',
+        ],
+        reason: 'S-3604 the set fills row 0: the effort still holds three sets',
+      );
+      final rows = await sortedObservations(repository, 'sl-1');
+      expect(
+        rows[0].valueInt,
+        8,
+        reason: 'S-3604 the filled row holds the wrist\'s reps',
+      );
+      expect(
+        rows[0].createdAtMs,
+        _msOf(_t1),
+        reason: 'S-3604 carrying the wrist\'s stamp, so a later pass finds it',
+      );
+      expect(
+        rows[1].valueReal,
+        42.5,
+        reason: 'S-3604 and the wrist\'s load',
+      );
+      expect(
+        rows[1].createdAtMs,
+        _msOf(_t1),
+        reason: 'S-3604 stamped like its reps row',
+      );
+      expect(
+        rows[2].valueInt,
+        10,
+        reason: 'S-3604 the planned rows behind it stand',
+      );
+      expect(
+        rows[2].createdAtMs,
+        _msOf(_plannedAt),
+        reason: 'S-3604 with the plan\'s own stamp',
+      );
+      expect(
+        rows[4].valueInt,
+        10,
+        reason: 'S-3604 and the last planned row too',
+      );
+      expect(
+        (await repository.getEntryRests('sl-1')).map((rest) => rest.toMap()),
+        [
+          {
+            'id': 'rest-sl-1-1',
+            'effort_id': 'sl-1',
+            'entry_index': 1,
+            'rest_start_ms': _msOf(_t1),
+            'rest_end_ms': null,
+            'rest_is_paused': 0,
+            'rest_paused_at_ms': null,
+            'rest_paused_duration_ms': 0,
+            'created_at_ms': _msOf(_t1),
+            'updated_at_ms': _msOf(_t1),
+          },
+        ],
+        reason:
+            'S-3604 an open rest at the filled row + 1, run from the wrist\'s '
+            'log time (D-6, A4) — so the phone reads the row as logged at once',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-3605 a second wrist set fills the next planned row', () async {
+      final phone = await _phone(repository);
+      await phone.router.receive(_snapshot());
+      await _plannedRows(repository);
+      await phone.router.receive(
+        observationsUp('s-w1', [
+          _set(
+            'sx-1',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 8,
+            loadKg: 42.5,
+            loggedAt: _t1,
+          ),
+        ], messageId: 'msg-fill-1'),
+      );
+
+      await phone.router.receive(
+        observationsUp('s-w1', [
+          _set(
+            'sx-2',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 6,
+            loadKg: 45.0,
+            loggedAt: _t2,
+          ),
+        ], messageId: 'msg-fill-2'),
+      );
+
+      expect(
+        await _ids(repository, 'sl-1'),
+        [
+          'obs-sl-1-0-reps',
+          'obs-sl-1-0-weight',
+          'obs-sl-1-1-reps',
+          'obs-sl-1-1-weight',
+          'obs-sl-1-2-reps',
+          'obs-sl-1-2-weight',
+        ],
+        reason:
+            'S-3605 the second set fills row 1 — it is not appended after the '
+            'row the first set took',
+      );
+      final rows = await sortedObservations(repository, 'sl-1');
+      expect(rows[0].valueInt, 8, reason: 'S-3605 the first fill stands');
+      expect(rows[2].valueInt, 6, reason: 'S-3605 the second fill is row 1');
+      expect(
+        rows[2].createdAtMs,
+        _msOf(_t2),
+        reason: 'S-3605 carrying the second set\'s stamp',
+      );
+      expect(rows[3].valueReal, 45.0, reason: 'S-3605 and its load');
+      expect(
+        rows[4].valueInt,
+        10,
+        reason: 'S-3605 the last planned row is still the plan\'s',
+      );
+      expect(
+        rows[4].createdAtMs,
+        _msOf(_plannedAt),
+        reason: 'S-3605 with the plan\'s stamp',
+      );
+      final rests = await _rests(repository, 'sl-1');
+      expect(
+        [for (final rest in rests) rest.entryIndex],
+        [1, 2],
+        reason: 'S-3605 a rest at each filled row\'s spot + 1',
+      );
+      expect(
+        [for (final rest in rests) rest.restStartMs],
+        [_msOf(_t1), _msOf(_t2)],
+        reason: 'S-3605 each run from the set it followed',
+      );
+      expect(
+        [for (final rest in rests) rest.restEndMs],
+        [_msOf(_t2), null],
+        reason:
+            'S-3605 the second set ends the rest the first one opened — one '
+            'rest runs at a time (A4) — and only the second set\'s own rest '
+            'is still open',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-3606 a fourth set appends once the planned rows are filled',
+        () async {
+      final phone = await _phone(repository);
+      await phone.router.receive(_snapshot());
+      await _plannedRows(repository);
+
+      await phone.router.receive(
+        observationsUp('s-w1', [
+          _set(
+            'sx-1',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 8,
+            loadKg: 42.5,
+            loggedAt: _t1,
+          ),
+          _set(
+            'sx-2',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 6,
+            loadKg: 45.0,
+            loggedAt: _t2,
+          ),
+          _set(
+            'sx-3',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 5,
+            loadKg: 45.0,
+            loggedAt: _t3,
+          ),
+          _set(
+            'sx-4',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 4,
+            loadKg: 40.0,
+            loggedAt: _t4,
+          ),
+        ], messageId: 'msg-fill-4'),
+      );
+
+      expect(
+        await _ids(repository, 'sl-1'),
+        [
+          'obs-sl-1-0-reps',
+          'obs-sl-1-0-weight',
+          'obs-sl-1-1-reps',
+          'obs-sl-1-1-weight',
+          'obs-sl-1-2-reps',
+          'obs-sl-1-2-weight',
+          'obs-sl-1-3-reps',
+          'obs-sl-1-3-weight',
+        ],
+        reason: 'S-3606 three planned rows fill, and the fourth set appends one',
+      );
+      final rows = await sortedObservations(repository, 'sl-1');
+      expect(
+        [for (final row in rows) row.createdAtMs],
+        [
+          _msOf(_t1),
+          _msOf(_t1),
+          _msOf(_t2),
+          _msOf(_t2),
+          _msOf(_t3),
+          _msOf(_t3),
+          _msOf(_t4),
+          _msOf(_t4),
+        ],
+        reason: 'S-3606 every row holds its own wrist set, in logged order',
+      );
+      expect(
+        [for (final rest in await _rests(repository, 'sl-1')) rest.entryIndex],
+        [1, 2, 3, 4],
+        reason: 'S-3606 a rest after each of the four sets, the appended one too',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-3607 the phone\'s own logged set is never filled', () async {
+      final phone = await _phone(repository);
+      await phone.router.receive(_snapshot());
+      await _plannedRows(repository);
+      // The user logged set 0 on the phone itself and finished its rest: rows
+      // of the user's own, and a closed rest at the spot the wrist's set would
+      // otherwise take (I-2).
+      await _phoneRows(
+        repository,
+        effortId: 'sl-1',
+        entryIndex: 0,
+        reps: 12,
+        weightKg: 50.0,
+        atMs: _msOf(_t2),
+      );
+      await phone.state.recordRestStart('sl-1', 1);
+      await phone.state.recordRestEnd('sl-1', 1);
+      final ownRest = (await repository.getEntryRests('sl-1')).single.toMap();
+
+      await phone.router.receive(
+        observationsUp('s-w1', [
+          _set(
+            'sx-1',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 8,
+            loadKg: 42.5,
+            loggedAt: _t1,
+          ),
+        ], messageId: 'msg-fill-1'),
+      );
+
+      expect(
+        await _ids(repository, 'sl-1'),
+        [
+          'obs-sl-1-0-reps',
+          'obs-sl-1-0-weight',
+          'obs-sl-1-1-reps',
+          'obs-sl-1-1-weight',
+          'obs-sl-1-2-reps',
+          'obs-sl-1-2-weight',
+        ],
+        reason: 'S-3607 the wrist\'s set fills row 1, the phone\'s own row stands',
+      );
+      final rows = await sortedObservations(repository, 'sl-1');
+      expect(
+        rows[0].valueInt,
+        12,
+        reason: 'S-3607 the user\'s own set keeps what they logged',
+      );
+      expect(
+        rows[0].createdAtMs,
+        _msOf(_t2),
+        reason: 'S-3607 and the stamp they logged it at',
+      );
+      expect(rows[1].valueReal, 50.0, reason: 'S-3607 and their load');
+      expect(rows[2].valueInt, 8, reason: 'S-3607 the wrist\'s set is row 1');
+      expect(
+        rows[2].createdAtMs,
+        _msOf(_t1),
+        reason: 'S-3607 with the wrist\'s stamp',
+      );
+      final rests = await _rests(repository, 'sl-1');
+      expect(
+        [for (final rest in rests) rest.entryIndex],
+        [1, 2],
+        reason:
+            'S-3607 the phone\'s own rest, and the one the fill opened after '
+            'the row it filled',
+      );
+      expect(
+        rests.first.toMap(),
+        ownRest,
+        reason: 'S-3607 the phone\'s own closed rest is left alone',
+      );
+      expect(
+        rests.last.restStartMs,
+        _msOf(_t1),
+        reason: 'S-3607 the fill\'s rest runs from the wrist\'s log time',
+      );
+      expect(
+        rests.last.restEndMs,
+        isNull,
+        reason: 'S-3607 and is open, like every rest the merge opens',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-3608 the wrist\'s rest closes the rest the fill opened', () async {
+      final phone = await _phone(repository);
+      await phone.router.receive(_snapshot());
+      await _plannedRows(repository);
+      await phone.router.receive(
+        observationsUp('s-w1', [
+          _set(
+            'sx-1',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 8,
+            loadKg: 42.5,
+            loggedAt: _t1,
+          ),
+        ], messageId: 'msg-fill-1'),
+      );
+      expect(
+        (await _rests(repository, 'sl-1')).single.restEndMs,
+        isNull,
+        reason: 'S-3608 the set\'s arrival left the rest open',
+      );
+
+      // The rest the wrist counted behind that set: 60 s, T1 to T1 + 60 s.
+      final rest = _rest(
+        'rest-a1',
+        slot: 'sl-1',
+        exerciseId: 'ex-1',
+        startedAt: _t1,
+        endedAt: _restStart,
+        afterEntryId: 'sx-1',
+      );
+      await phone.router.receive(
+        observationsUp('s-w1', [rest], messageId: 'msg-fill-rest'),
+      );
+
+      final rests = await _rests(repository, 'sl-1');
+      expect(
+        rests,
+        hasLength(1),
+        reason: 'S-3608 the wrist\'s rest closes the row the fill opened — no second row',
+      );
+      expect(
+        rests.single.toMap(),
+        {
+          'id': 'rest-sl-1-1',
+          'effort_id': 'sl-1',
+          'entry_index': 1,
+          'rest_start_ms': _msOf(_t1),
+          'rest_end_ms': _msOf(_restStart),
+          'rest_is_paused': 0,
+          'rest_paused_at_ms': null,
+          'rest_paused_duration_ms': 0,
+          'created_at_ms': _msOf(_restStart),
+          'updated_at_ms': _msOf(_restStart),
+        },
+        reason:
+            'S-3608 the window the wrist measured, stamped when it was '
+            'reported (D-7)',
+      );
+      final closed = rests.single.toMap();
+
+      // The wrist re-sends it — the phone never got the receipt.
+      await phone.router.receive(
+        observationsUp('s-w1', [rest], messageId: 'msg-fill-rest-again'),
+      );
+      expect(
+        (await _rests(repository, 'sl-1')).map((row) => row.toMap()),
+        [closed],
+        reason: 'S-3608 a rest the phone already holds closed is left alone',
+      );
+      expect(
+        await _ids(repository, 'sl-1'),
+        [
+          'obs-sl-1-0-reps',
+          'obs-sl-1-0-weight',
+          'obs-sl-1-1-reps',
+          'obs-sl-1-1-weight',
+          'obs-sl-1-2-reps',
+          'obs-sl-1-2-weight',
+        ],
+        reason: 'S-3608 a rest is not an entry: the effort still holds three',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-3616 a skipped planned row is not logged, so the wrist fills it',
+        () async {
+      final phone = await _phone(repository);
+      await phone.router.receive(_snapshot());
+      await _plannedRows(repository);
+      // The user marked the first set as skipped: the row reads reps 0, and no
+      // rest follows it, so the phone does not count it as logged (I-1).
+      await _phoneRows(
+        repository,
+        effortId: 'sl-1',
+        entryIndex: 0,
+        reps: 0,
+        weightKg: 40.0,
+        atMs: _msOf(_plannedAt),
+      );
+
+      await phone.router.receive(
+        observationsUp('s-w1', [
+          _set(
+            'sx-1',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 8,
+            loadKg: 42.5,
+            loggedAt: _t1,
+          ),
+        ], messageId: 'msg-fill-1'),
+      );
+
+      expect(
+        await _ids(repository, 'sl-1'),
+        [
+          'obs-sl-1-0-reps',
+          'obs-sl-1-0-weight',
+          'obs-sl-1-1-reps',
+          'obs-sl-1-1-weight',
+          'obs-sl-1-2-reps',
+          'obs-sl-1-2-weight',
+        ],
+        reason: 'S-3616 the wrist\'s set fills the skipped row 0',
+      );
+      final rows = await sortedObservations(repository, 'sl-1');
+      expect(
+        rows[0].valueInt,
+        8,
+        reason: 'S-3616 the skipped row now holds the wrist\'s reps',
+      );
+      expect(
+        rows[0].createdAtMs,
+        _msOf(_t1),
+        reason: 'S-3616 with the wrist\'s stamp — a skip is not a log',
+      );
+      expect(rows[2].valueInt, 10, reason: 'S-3616 the planned rows behind stand');
+      expect(
+        rows[2].createdAtMs,
+        _msOf(_plannedAt),
+        reason: 'S-3616 untouched, plan stamp and all',
+      );
+      expect(
+        [for (final rest in await _rests(repository, 'sl-1')) rest.entryIndex],
+        [1],
+        reason: 'S-3616 the rest lands at the filled row\'s spot + 1',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
+    test('S-3618 the wrist\'s set ends the phone\'s older open rest', () async {
+      final phone = await _phone(repository);
+      await phone.router.receive(_snapshot());
+      await _plannedRows(repository);
+      // The phone logged set 0 itself: the rest it started after that set is
+      // still running when the wrist's next set arrives.
+      await repository.createEntryRest(
+        EntryRest(
+          id: 'rest-sl-1-1',
+          effortId: 'sl-1',
+          entryIndex: 1,
+          restStartMs: _msOf(_t1) - 90000,
+          restEndMs: null,
+          createdAtMs: _msOf(_t1) - 90000,
+          updatedAtMs: _msOf(_t1) - 90000,
+        ),
+      );
+
+      await phone.router.receive(
+        observationsUp('s-w1', [
+          _set(
+            'sx-1',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 8,
+            loadKg: 42.5,
+            loggedAt: _t1,
+          ),
+        ], messageId: 'msg-fill-open'),
+      );
+
+      expect(
+        await _ids(repository, 'sl-1'),
+        [
+          'obs-sl-1-0-reps',
+          'obs-sl-1-0-weight',
+          'obs-sl-1-1-reps',
+          'obs-sl-1-1-weight',
+          'obs-sl-1-2-reps',
+          'obs-sl-1-2-weight',
+        ],
+        reason:
+            'S-3618 the set fills row 1 — the phone\'s rest leaves row 0 read '
+            'as logged, so the fill takes the next unlogged row',
+      );
+      final rows = await sortedObservations(repository, 'sl-1');
+      expect(rows[2].valueInt, 8, reason: 'S-3618 the wrist\'s reps fill row 1');
+      expect(rows[3].valueReal, 42.5, reason: 'S-3618 and the wrist\'s load');
+
+      final rests = await _rests(repository, 'sl-1');
+      expect(
+        [for (final rest in rests) rest.toMap()],
+        [
+          {
+            'id': 'rest-sl-1-1',
+            'effort_id': 'sl-1',
+            'entry_index': 1,
+            'rest_start_ms': _msOf(_t1) - 90000,
+            'rest_end_ms': _msOf(_t1),
+            'rest_is_paused': 0,
+            'rest_paused_at_ms': null,
+            'rest_paused_duration_ms': 0,
+            'created_at_ms': _msOf(_t1) - 90000,
+            'updated_at_ms': _msOf(_t1),
+          },
+          {
+            'id': 'rest-sl-1-2',
+            'effort_id': 'sl-1',
+            'entry_index': 2,
+            'rest_start_ms': _msOf(_t1),
+            'rest_end_ms': null,
+            'rest_is_paused': 0,
+            'rest_paused_at_ms': null,
+            'rest_paused_duration_ms': 0,
+            'created_at_ms': _msOf(_t1),
+            'updated_at_ms': _msOf(_t1),
+          },
+        ],
+        reason:
+            'S-3618 the phone\'s older open rest ends where the wrist\'s set '
+            'landed, and the rest that set opened sits at its spot + 1 (A4: '
+            'one rest running, D-6)',
+      );
+      expect(
+        [for (final rest in rests) rest.restEndMs],
+        [_msOf(_t1), null],
+        reason:
+            'S-3618 exactly one rest on the effort is open — the older open '
+            'rest is closed, not left running beside the new one',
       );
       expect(phone.failures, isEmpty);
     });

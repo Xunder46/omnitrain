@@ -74,6 +74,7 @@ import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/sync_protocol/phone_envelope.dart';
+import 'package:omnitrain/core/utils/entry_rows.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -328,12 +329,41 @@ void main() {
   late List<Map<String, Object?>> wristFrames;
   late List<Object> failures;
 
+  /// Records a rest at the index after [effortId]'s last group, which is what
+  /// makes that set a logged set (D-1, I-1). A no-op for a slot holding no set
+  /// row at all (a `timed` slot logs no group when it is added).
+  Future<void> markLastSetLogged(String effortId) async {
+    final groups = EntryRows.setGroups(
+      await repository.getEffortObservations(effortId),
+    );
+    if (groups.isEmpty) return;
+    await phoneState.recordRestStart(effortId, groups.last.number + 1);
+  }
+
   /// One catalog exercise added to the phone's running session through the
   /// regular session path. Answers the effort id it was given, which is also
   /// the slot id the wrist sees (D-3).
+  ///
+  /// The session path writes a default row when an exercise is added; a row
+  /// nothing logged is a planned value and rides no frame (A1). The callers
+  /// here mean the logged set, so the rest that makes it one is written too.
   Future<String> add(String exerciseId) async {
     final exercise = (await repository.getExerciseById(exerciseId))!;
-    return phoneState.addExerciseToSession(exercise);
+    final effortId = await phoneState.addExerciseToSession(exercise);
+    await markLastSetLogged(effortId);
+    return effortId;
+  }
+
+  /// The phone logs one set on [effortId] — the entry the session screen's Log
+  /// writes, and then the rest that follows it (D-1, I-1): a set with no rest
+  /// after it is a planned value and rides no frame (A1). The rest is at the
+  /// index of the set, which is what `WorkoutSessionScreen._isSetLogged` reads.
+  Future<void> logSet(
+    String effortId, {
+    Map<String, dynamic>? previousValues,
+  }) async {
+    await phoneState.addEntry(effortId, previousValues: previousValues);
+    await markLastSetLogged(effortId);
   }
 
   /// How many sets the phone's own session holds on [effortId]. A set is two
@@ -436,7 +466,7 @@ void main() {
   /// The phone logs one of its own sets and pushes it: S-70's whole flow, which
   /// the later scenarios continue from. Answers the frame the phone sent.
   Future<Map<String, Object?>> pushPhoneSet() async {
-    await phoneState.addEntry(
+    await logSet(
       _firstSlot,
       previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
     );
@@ -454,7 +484,7 @@ void main() {
     final before = [
       if (snapshots.isNotEmpty) ..._entryIds(_payload(snapshots.last)),
     ];
-    await phoneState.addEntry(
+    await logSet(
       _firstSlot,
       previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
     );
@@ -759,7 +789,7 @@ void main() {
 
       final deadlift = await add('ex-deadlift');
       final row = await add('ex-row');
-      await phoneState.addEntry(_firstSlot);
+      await logSet(_firstSlot);
 
       expect(
         radio.ofType('session_snapshot'),
@@ -803,7 +833,7 @@ void main() {
       )..bindWorkoutState(phoneState);
       addTearDown(push.dispose);
 
-      await phoneState.addEntry(_firstSlot);
+      await logSet(_firstSlot);
 
       final deadline = DateTime.now().add(const Duration(seconds: 10));
       while (radio.ofType('session_snapshot').isEmpty &&
@@ -890,7 +920,7 @@ void main() {
         );
 
         // The phone's own next change is pushed, carrying the converged place.
-        await phoneState.addEntry(_firstSlot);
+        await logSet(_firstSlot);
         await graph.autoPush.flush();
         final pushes = radio.ofType('session_snapshot');
         expect(pushes, hasLength(afterFrame + 1));
@@ -1028,7 +1058,7 @@ void main() {
         graph.autoPush.bindWorkoutState(phoneState);
 
         radio.failing = true;
-        await phoneState.addEntry(_firstSlot);
+        await logSet(_firstSlot);
         await graph.autoPush.flush();
 
         expect(
@@ -1193,7 +1223,7 @@ void main() {
         await phoneState.createNewSession();
         final second = await add('ex-bench');
         final secondId = phoneState.currentSession!.id;
-        await phoneState.addEntry(
+        await logSet(
           second,
           previousValues: <String, dynamic>{'reps': 5, 'weight': 40},
         );
@@ -1223,7 +1253,7 @@ void main() {
         await phoneState.createNewSession();
         final third = await add('ex-deadlift');
         final thirdId = phoneState.currentSession!.id;
-        await phoneState.addEntry(third);
+        await logSet(third);
         await graph.autoPush.flush();
         await phoneState.discardCurrentSession();
         await graph.autoPush.flush();
@@ -1344,7 +1374,7 @@ void main() {
         radio.sent.clear();
 
         graph.autoPush.bindWorkoutState(phoneState);
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -1592,7 +1622,7 @@ void main() {
         )..bindWorkoutState(phoneState);
         addTearDown(push.dispose);
 
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -1659,7 +1689,7 @@ void main() {
       )..bindWorkoutState(phoneState);
       addTearDown(push.dispose);
 
-      await phoneState.addEntry(
+      await logSet(
         _firstSlot,
         previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
       );
@@ -1693,7 +1723,7 @@ void main() {
         addTearDown(push.dispose);
 
         radio.hangNext = true;
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -1706,7 +1736,7 @@ void main() {
         // A second change while that send is still hung: its flush joins the
         // running drain and asks for one more pass, which is the branch a
         // wedged drain used to swallow for the rest of the app run.
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 65.0},
         );
@@ -1771,7 +1801,7 @@ void main() {
         addTearDown(push.dispose);
 
         radio.throwing = true;
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -1788,7 +1818,7 @@ void main() {
         expect(radio.ofType('session_snapshot'), isEmpty);
 
         radio.throwing = false;
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 65.0},
         );
@@ -1835,7 +1865,7 @@ void main() {
 
         final unhandled = <Object>[];
         final body = runZonedGuarded(() async {
-          await phoneState.addEntry(
+          await logSet(
             _firstSlot,
             previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
           );
@@ -2042,11 +2072,11 @@ void main() {
 
         // Both changes land inside one debounce window: the set the user
         // dropped never left the phone, so the wrist was never told to hold it.
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -2561,7 +2591,7 @@ void main() {
         await dropping;
         await switching;
         final other = await add('ex-bench');
-        await phoneState.addEntry(other);
+        await logSet(other);
         await graph.autoPush.flush();
 
         expect(
@@ -2637,7 +2667,7 @@ void main() {
         // stated again with a later stamp, which is the wrist's own rule for a
         // re-created row (D-113.3).
         await Future<void>.delayed(const Duration(milliseconds: 5));
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -2713,7 +2743,7 @@ void main() {
         );
 
         graph.autoPush.bindWorkoutState(phoneState);
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -2940,7 +2970,7 @@ void main() {
       await phoneState.createNewSession();
       final own = await add('ex-squat');
       final sessionId = phoneState.currentSession!.id;
-      await phoneState.addEntry(
+      await logSet(
         own,
         previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
       );
@@ -3282,7 +3312,7 @@ void main() {
 
         await phoneState.createNewSession();
         final own = await add('ex-squat');
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -3360,7 +3390,7 @@ void main() {
         radio.attempted.clear();
 
         radio.unreachable = true;
-        await phoneState.addEntry(
+        await logSet(
           _secondSlot,
           previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
         );
@@ -3483,7 +3513,7 @@ void main() {
         await phoneState.createNewSession();
         final own = await add('ex-squat');
         final sessionId = phoneState.currentSession!.id;
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -3581,7 +3611,7 @@ void main() {
         await phoneState.createNewSession();
         final own = await add('ex-squat');
         final sessionId = phoneState.currentSession!.id;
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -3791,7 +3821,7 @@ void main() {
         );
         expect(radio.sent, isEmpty, reason: 'S-207 and no channel call');
 
-        await phoneState.addEntry(
+        await logSet(
           _secondSlot,
           previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
         );
@@ -3830,7 +3860,7 @@ void main() {
           heldWristEntryIds: graph.adoption.heldWristEntryIds,
         );
         push.bindWorkoutState(phoneState);
-        await phoneState.addEntry(
+        await logSet(
           _firstSlot,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -3865,7 +3895,7 @@ void main() {
         );
 
         passes = 0;
-        await phoneState.addEntry(
+        await logSet(
           _secondSlot,
           previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
         );
@@ -3910,7 +3940,7 @@ void main() {
         await phoneState.createNewSession();
         final own = await add('ex-squat');
         final sessionId = phoneState.currentSession!.id;
-        await phoneState.addEntry(
+        await logSet(
           own,
           previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
         );
@@ -4074,7 +4104,7 @@ void main() {
 
         radio.unreachable = true;
         radio.carriesWhileApart = true;
-        await phoneState.addEntry(
+        await logSet(
           _secondSlot,
           previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
         );
@@ -4241,7 +4271,7 @@ void main() {
 
         radio.unreachable = true;
         for (var i = 0; i < 10; i++) {
-          await phoneState.addEntry(
+          await logSet(
             _firstSlot,
             previousValues: <String, dynamic>{'reps': 11 + i, 'weight': 60.0},
           );

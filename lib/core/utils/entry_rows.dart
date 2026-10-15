@@ -167,6 +167,15 @@ abstract final class EntryRows {
     return [for (final number in numbers) SetRows(number, byNumber[number]!)];
   }
 
+  /// The set numbers [rests] mark logged (D-1): a set is logged exactly when a
+  /// rest exists at its index + 1, so each rest names the set one below it. The
+  /// rule the session screen reads (`WorkoutSessionScreen._isSetLogged`).
+  static Set<int> loggedSetNumbers(Iterable<EntryRest> rests) => {
+    for (final rest in rests)
+      // A rest at index 0 follows no set: `entryIndex - 1` is not a number.
+      if (rest.entryIndex >= 1) rest.entryIndex - 1,
+  };
+
   /// The effort's set entries as the UI reads them.
   static List<Map<String, dynamic>> setEntries(
     Iterable<EffortObservation> rows,
