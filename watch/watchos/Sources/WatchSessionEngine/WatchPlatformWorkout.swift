@@ -211,3 +211,108 @@ public final class WatchPlatformWorkout {
         return ended
     }
 }
+
+/// What the platform workout should be doing for a session.
+public enum WatchWorkoutAction: Equatable {
+    case start
+    case end
+    case none
+}
+
+/// One rule decides the workout's life, so every caller reaches the same answer:
+/// a workout is open exactly while a session is active.
+///
+/// A pure function of its two arguments — no store, no clock, no state — so what
+/// the watch should do is assertable off-device, and the coordinator that does it
+/// is a thin thing that cannot disagree with itself. A session that is not active
+/// (completed, abandoned, or gone entirely) closes the workout it owns: a
+/// dangling registration is the stuck state recovery exists to clear.
+public enum WatchWorkoutLifecycle {
+    public static func action(
+        session: WatchSessionRecord?,
+        running: WatchActivityType?
+    ) -> WatchWorkoutAction {
+        if session?.status == WatchSessionStatus.active {
+            return running == nil ? .start : .none
+        }
+        return running == nil ? .none : .end
+    }
+}
+
+/// The watch's workout, following the session's life.
+///
+/// The only caller of `WatchPlatformWorkout`, and a plain class rather than
+/// `@MainActor` or an `actor` so the package still builds and tests on macOS
+/// (`Package.swift` sets no default isolation). Its work runs on one serial tail
+/// — an `NSLock`-guarded task chained behind the previous one, the shape
+/// `WatchSensorWrites.enqueue` uses for sensor writes — so a refresh and a
+/// recovery never overlap and two refreshes produce the calls of one, in order.
+///
+/// It never throws and never retries within a session: the health service's
+/// refusals are the store's to swallow, and asking again while the same session
+/// is live would only ask the same question.
+public final class WatchWorkoutCoordinator {
+    private let platform: WatchPlatformWorkout
+    private let lock = NSLock()
+    private var tail: Task<Void, Never>?
+
+    /// The session the open workout belongs to, or nil when the watch has none
+    /// open. A change of id while one is open is the end-then-start of a session
+    /// replaced by the phone's reset (S-1504).
+    private(set) var openedForSessionId: String?
+
+    public init(platform: WatchPlatformWorkout) {
+        self.platform = platform
+    }
+
+    /// Brings the workout in line with `session`, whatever it is now.
+    public func refresh(_ session: WatchSessionRecord?) async {
+        await enqueue { await self.apply(session) }.value
+    }
+
+    /// Closes whatever a previous process left open, before a session can open
+    /// another. Called at launch, before anything starts.
+    public func recoverInProgress() async {
+        await enqueue { await self.recover() }.value
+    }
+
+    private func apply(_ session: WatchSessionRecord?) async {
+        if let opened = openedForSessionId, opened != session?.sessionId {
+            await platform.end()
+            openedForSessionId = nil
+        }
+
+        switch WatchWorkoutLifecycle.action(session: session, running: platform.running) {
+        case .start:
+            // Recorded before the store is asked, so a registration that never
+            // arrives is not asked for a second time on the next refresh.
+            openedForSessionId = session?.sessionId
+            if let session { await platform.start(session) }
+        case .end:
+            await platform.end()
+            openedForSessionId = nil
+        case .none:
+            break
+        }
+    }
+
+    private func recover() async {
+        await platform.recoverInProgress()
+        openedForSessionId = nil
+    }
+
+    /// Runs `work` after every call enqueued before it; awaiting the returned
+    /// task waits for this one.
+    private func enqueue(_ work: @escaping () async -> Void) -> Task<Void, Never> {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let previous = tail
+        let next = Task {
+            await previous?.value
+            await work()
+        }
+        tail = next
+        return next
+    }
+}

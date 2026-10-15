@@ -12,8 +12,7 @@
         "state": "paused",
         "startedAt": "2026-07-13T17:32:00Z",
         "pausedAt": "2026-07-13T17:32:45Z",
-        "accumulatedPauseMs": 45000,
-        "plannedDurationMs": 90000
+        "accumulatedPauseMs": 45000
       },
       "round": {
         "kind": "round",

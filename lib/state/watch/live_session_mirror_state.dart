@@ -20,6 +20,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/platform/watch_delivery.dart';
 import '../../core/sync_protocol/message_validator.dart';
 import '../../core/sync_protocol/phone_envelope.dart';
 import '../../core/sync_protocol/session_reconciler.dart';
@@ -30,12 +31,14 @@ import '../../watch/session/watch_records.dart';
 /// What [LiveSessionMirrorState] needs from whatever carries messages to the
 /// watch (WatchConnectivity on iOS, the Wear OS data layer, or a test double).
 ///
-/// There is no reachability flag here on purpose: the transport is
-/// fire-and-forget with retries, so a send that cannot be carried yet is the
-/// transport's problem to buffer, not a decision the session logic should make.
+/// There is no reachability flag here on purpose: a send answers
+/// [WatchDelivery] — [WatchDelivery.delivered] means the frame was handed to
+/// the radio while the counterpart was reachable, [WatchDelivery.undelivered]
+/// that it was not handed over — and the caller, not the transport, decides
+/// whether the frame is still owed (D-196).
 abstract interface class WatchMirrorTransport {
-  /// Hands the watch one message.
-  Future<void> send(Map<String, Object?> envelope);
+  /// Hands the watch one message, and answers whether the radio took it.
+  Future<WatchDelivery> send(Map<String, Object?> envelope);
 
   /// Asks the watch for its `session_snapshot`; the reply arrives through
   /// [LiveSessionMirrorState.receive], exactly as any other message does.
@@ -56,6 +59,15 @@ enum MirrorOutcome {
   /// answered with the phone's snapshot.
   refused,
 }
+
+/// The `sessionId` of `watchSessionPlaceholder` in `watch_sync_wiring.dart`:
+/// the phone's not-a-session, which names no wrist session and is therefore
+/// never named in a reset (D-176, D-173).
+///
+/// The constant lives here, beside the predicate that reads it, because the
+/// wiring constructs the mirror on top of this library: importing the wiring
+/// back would be a cycle. Both files read this one constant.
+const String watchSessionPlaceholderId = 's-phone-unjoined';
 
 class LiveSessionMirrorState extends ChangeNotifier {
   LiveSessionMirrorState({
@@ -96,6 +108,14 @@ class LiveSessionMirrorState extends ChangeNotifier {
 
   /// The session as the phone closed it. Null while it is running.
   Map<String, Object?>? _completedRecord;
+
+  /// How each session this phone announced an end for ended, by session id.
+  ///
+  /// [owesResetFor]'s status is the memory for the session this mirror is
+  /// holding; this is the memory for the ones it has moved off, which are
+  /// exactly the ones a wrist still announcing them is owed an answer for
+  /// (D-182's fourth row, S-190).
+  final Map<String, String> _fates = {};
 
   // ---------------------------------------------------------------------------
   // What the surface reads
@@ -270,13 +290,24 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The phone's own session as a protocol state, composed on demand from the
   /// bound session state (D-11) — the ladder a wrist snapshot is answered with.
   ///
+  /// Composed for the place the receiver last reported: the projection reads
+  /// that place out of the payload of the frame it is handed, and this is the
+  /// frame — the receiver's own position and nothing else, which is what the
+  /// account below carries. A phone that answered with slot 0 would yank a wrist
+  /// on exercise 3 back to exercise 1, and the payload composed here is also
+  /// what the phone pushes on its own (D-77). It names no session: a frame
+  /// without one is not the D-10 disagreement case, so a phone in its own
+  /// session still speaks for it.
+  ///
   /// Null when the phone has no session of its own to speak from; the caller
   /// falls back to what this mirror holds, which is all a phone with no bound
   /// session has.
   Future<Map<String, Object?>?> projectedSession() async {
     final projection = _projection;
     if (projection == null) return null;
-    return projection(null);
+    return projection(<String, Object?>{
+      'payload': <String, Object?>{'currentExerciseIndex': currentExerciseIndex},
+    });
   }
 
   /// The phone's live session as a protocol message — the answer to a snapshot
@@ -313,7 +344,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
 
   /// Hands the watch [state] as this phone's snapshot, over the same transport
   /// every other outgoing message uses.
-  Future<void> sendState(Map<String, Object?> state) =>
+  ///
+  /// The result is the transport's honest answer about whether the frame was
+  /// handed over, not the frame (D-196, D-197).
+  Future<WatchDelivery> sendState(Map<String, Object?> state) =>
       _transport.send(snapshotEnvelope(state: state));
 
   /// Asks the watch for its snapshot — the phone's half of joining a session
@@ -345,13 +379,15 @@ class LiveSessionMirrorState extends ChangeNotifier {
   ///
   /// [changes] are the protocol's change objects — `add_exercise`,
   /// `remove_exercise`, `reorder_exercises`, `swap_exercise`, `correct_entry`,
-  /// `delete_entry`. The `changeId` is minted here, which is what makes the
-  /// watch's application of a re-delivered change a no-op.
+  /// `delete_entry`. The `changeId` is minted here unless the caller names one,
+  /// which is what makes the watch's application of a re-delivered change a
+  /// no-op.
   Future<Map<String, Object?>> applyStructureChange(
-    List<Map<String, Object?>> changes,
-  ) async {
+    List<Map<String, Object?>> changes, {
+    String? changeId,
+  }) async {
     final envelope = _envelope('structure_change', {
-      'changeId': _newId(),
+      'changeId': changeId ?? _newId(),
       'changes': changes,
     });
     await _sendOwn(envelope);
@@ -450,6 +486,42 @@ class LiveSessionMirrorState extends ChangeNotifier {
         {'kind': 'delete_entry', 'entryId': entryId},
       ]);
 
+  /// Deletes the entry [entryId] of the session [sessionId], under a [changeId]
+  /// the caller names rather than a fresh one.
+  ///
+  /// [deleteEntry] mints a new id per call and names whatever session this
+  /// mirror holds, so a caller that has to say the same deletion twice — the
+  /// auto-push announcing a set gone (D-110) — would look like a new change
+  /// each time. A named id makes a re-delivered frame a no-op on the wrist: its
+  /// `appliedChangeIds` drops the repeat and the row the frame writes has the
+  /// same record id (D-116, S-120).
+  ///
+  /// [sessionId] is named the way [reportLifecycleFor] names one, because the
+  /// session the caller is deleting in is not necessarily the one this mirror
+  /// holds: the entries the auto-push composes for are the composed session's,
+  /// and applying the frame here would hide an entry of a session this frame
+  /// does not name. The name travels on the frame either way, and the wrist
+  /// applies it to the session it holds under that name.
+  ///
+  /// The result is the transport's, not the frame's (D-197).
+  Future<WatchDelivery> deleteEntryAs(
+    String sessionId,
+    String entryId, {
+    required String changeId,
+  }) async {
+    final envelope = _envelopeFor(sessionId, 'structure_change', {
+      'changeId': changeId,
+      'changes': [
+        {'kind': 'delete_entry', 'entryId': entryId},
+      ],
+    });
+    if (sessionId == this.sessionId) {
+      _reconciler.applyMessage(envelope);
+      notifyListeners();
+    }
+    return _transport.send(envelope);
+  }
+
   /// Closes the session from the phone and hands back the merged record.
   ///
   /// The record is made once: the wrist is told the session completed a single
@@ -470,6 +542,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
   ///
   /// The index travels only with `exercise_advanced`, because the schema allows
   /// it nowhere else.
+  ///
+  /// An end announced here is remembered against the session it names, so the
+  /// wrist still holding that session is told how it ended rather than being
+  /// offered the session back (D-182, S-190).
   Future<Map<String, Object?>> reportLifecycle(
     String state, {
     int? exerciseIndex,
@@ -479,8 +555,105 @@ class LiveSessionMirrorState extends ChangeNotifier {
       'at': utcIso(_clock()),
       'exerciseIndex': ?exerciseIndex,
     });
+    _recordFate(sessionId, state);
     await _sendOwn(envelope);
     return envelope;
+  }
+
+  /// Reports a lifecycle change for [sessionId] **by name** — the session the
+  /// caller is speaking about, which is not necessarily the one this mirror
+  /// holds.
+  ///
+  /// [reportLifecycle] names whatever session this mirror holds, which is the
+  /// same session only while the two agree: a wrist that starts its own session
+  /// moves the mirror onto one this phone never held (D-10), and an end
+  /// announced under that name would close a workout the wrist is still
+  /// running. The local apply happens only when this mirror is the one holding
+  /// [sessionId]; the frame reaches the transport either way.
+  ///
+  /// The merged record a closed session leaves behind is [completeSession]'s to
+  /// make, and is not made here.
+  ///
+  /// The end is remembered against [sessionId] — not against whatever this
+  /// mirror holds — for the same reason the frame names it: the wrist it is
+  /// owed to is the one still announcing that session (D-182, S-190).
+  ///
+  /// The result is the transport's, not the frame's (D-197).
+  Future<WatchDelivery> reportLifecycleFor(
+    String sessionId,
+    String state,
+  ) async {
+    final envelope = _envelopeFor(sessionId, 'session_lifecycle', {
+      'state': state,
+      'at': utcIso(_clock()),
+    });
+    _recordFate(sessionId, state);
+    if (sessionId == this.sessionId) {
+      _reconciler.applyMessage(envelope);
+      notifyListeners();
+    }
+    return _transport.send(envelope);
+  }
+
+  /// Whether this mirror's session is owed a reset before the phone asserts
+  /// the session [composedId] — D-176's one shared step.
+  ///
+  /// Owed when the phone composes a session `P` and this mirror holds a
+  /// different session `W` that is a wrist session: the placeholder is not one
+  /// (D-173), and a phone holding nothing has no structure to assert (D-11).
+  ///
+  /// Deliberately not conditioned on [isActive]: a first reset applies locally
+  /// and leaves this mirror's id on `W` — the wrist never confirmed it — so an
+  /// `isActive` test would drop the retry after the first pass while the
+  /// wrist's answer is what actually clears the debt (D-176, D-178).
+  ///
+  /// The last clause reads this mirror's own status for the session it holds —
+  /// not an announcement the phone made about it. A held `W` that has reached
+  /// `completed` is not reset: the wrist has been told how that session ended,
+  /// and an `abandoned` under the same name would rewrite a finished workout as
+  /// a discarded one (`test/watch_session_auto_push_test.dart`, "S-85 two
+  /// finishes and a discard are announced once each, under each session's own
+  /// id"). A held `abandoned` `W` still is — the retry after a failed send has
+  /// nothing but the status to show for it, and that retry is what S-180 pins.
+  bool owesResetFor(String? composedId) {
+    final held = sessionId;
+    return composedId != null &&
+        held != null &&
+        held != composedId &&
+        held != watchSessionPlaceholderId &&
+        status != WatchSessionStatus.completed;
+  }
+
+  /// How this phone ended the session [sessionId], or null when it has no
+  /// record of ending it (D-182's fourth row).
+  ///
+  /// The announced fates come first: a session this mirror has since moved off
+  /// still owes its end to a wrist that is still announcing it, and that is the
+  /// case this memory exists for (S-190). A session this mirror is holding
+  /// answers with its own status, which is how a fate that arrived as a frame
+  /// rather than from one of the two senders above is still found. `active` is
+  /// not a fate.
+  ///
+  /// Memory only, like the rest of the mirror: a relaunched phone is the
+  /// placeholder again and adopts what the wrist announces (Open question 10).
+  String? rememberedFateOf(String sessionId) {
+    final announced = _fates[sessionId];
+    if (announced != null) return announced;
+    if (sessionId != this.sessionId) return null;
+    final held = status;
+    return held == WatchSessionStatus.active ? null : held;
+  }
+
+  /// Remembers that [sessionId] was announced as ended — the only two ends a
+  /// wrist is ever told about (D-182). Any other lifecycle leaves the memory as
+  /// it is; nothing an incoming frame does clears one.
+  void _recordFate(String? sessionId, String state) {
+    if (sessionId == null) return;
+    if (state != WatchLifecycleState.completed &&
+        state != WatchLifecycleState.abandoned) {
+      return;
+    }
+    _fates[sessionId] = state;
   }
 
   /// A message the phone originates: applied here first, then handed to the
@@ -490,20 +663,31 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// at has to be the session the watch is told about, and a watch observation
   /// arriving in the meantime lands in the new shape rather than in a stale one.
   /// Every apply is idempotent, so a transport that retries cannot double-edit.
-  Future<void> _sendOwn(Map<String, Object?> envelope) async {
+  ///
+  /// The result is the transport's; callers that do not owe the frame ignore
+  /// it (D-197).
+  Future<WatchDelivery> _sendOwn(Map<String, Object?> envelope) async {
     _reconciler.applyMessage(envelope);
     notifyListeners();
-    await _transport.send(envelope);
+    return _transport.send(envelope);
   }
 
   Map<String, Object?> _envelope(String type, Map<String, Object?> payload) =>
-      phoneEnvelope(
-        type: type,
-        messageId: _newId(),
-        sentAt: _clock(),
-        sessionId: state['sessionId'] as String?,
-        payload: payload,
-      );
+      _envelopeFor(state['sessionId'] as String?, type, payload);
+
+  /// An envelope this phone originates, naming [sessionId] — which a caller can
+  /// take from anywhere, where [_envelope] names the session this mirror holds.
+  Map<String, Object?> _envelopeFor(
+    String? sessionId,
+    String type,
+    Map<String, Object?> payload,
+  ) => phoneEnvelope(
+    type: type,
+    messageId: _newId(),
+    sentAt: _clock(),
+    sessionId: sessionId,
+    payload: payload,
+  );
 
   // ---------------------------------------------------------------------------
   // Disagreement

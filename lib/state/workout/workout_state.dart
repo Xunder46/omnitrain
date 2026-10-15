@@ -169,6 +169,13 @@ class WorkoutState extends ChangeNotifier {
     effortKindOverride: effortKindOverride,
     segmentId: segmentId,
   );
+
+  /// Appends the wrist's added slots to the held session [sessionId], notifying
+  /// once. Touches no timer and moves no position (D-94).
+  Future<void> appendSessionSlots(
+    List<SegmentEffort> efforts, {
+    required String sessionId,
+  }) => _sessionCore.appendSessionSlots(efforts, sessionId: sessionId);
   Future<void> addEntry(
     String effortId, {
     Map<String, dynamic>? previousValues,

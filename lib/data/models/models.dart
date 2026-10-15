@@ -2593,7 +2593,7 @@ class SensorSummary {
 /// history: a wrist event, or one of the phone's own annotations on that
 /// session.
 ///
-/// Wrist kinds are the protocol's `set`, `timed`, `round`, `hold`,
+/// Wrist kinds are the protocol's `set`, `timed`, `round`, `hold`, `rest`,
 /// `effort_rating` and `session_end` events. Phone kinds are the phone's own
 /// rating (`phone_rating`), and the live corrections and deletions it sent
 /// for a wrist entry (`phone_correction`, `phone_deletion`). The phone mints
@@ -2620,6 +2620,7 @@ class WatchInboxEntry {
   static const String kindRound = 'round';
   static const String kindHold = 'hold';
   static const String kindEffortRating = 'effort_rating';
+  static const String kindRest = 'rest';
   static const String kindSessionEnd = 'session_end';
   static const String kindPhoneRating = 'phone_rating';
   static const String kindPhoneCorrection = 'phone_correction';
@@ -2631,6 +2632,7 @@ class WatchInboxEntry {
     kindTimed,
     kindRound,
     kindHold,
+    kindRest,
     kindEffortRating,
     kindSessionEnd,
   ];

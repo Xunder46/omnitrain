@@ -13,9 +13,9 @@ import WatchSessionEngine
 /// Owns the engine, its store, its start paths and its radio for the life of the
 /// app.
 ///
-/// One deliberate gap remains: the store is in-memory. The Swift package ships no
-/// persistent store, so nothing logged here survives a relaunch yet. The radio
-/// below is real, so a sync and a push do arrive.
+/// The store is an append-only file in the app's Application Support directory,
+/// so what the wrist logged survives a relaunch. The radio below is real, so a
+/// sync and a push do arrive.
 @MainActor
 final class WatchAppHost: ObservableObject {
     let engine: WatchSessionEngine
@@ -28,6 +28,12 @@ final class WatchAppHost: ObservableObject {
     /// picker and the phone's own pushes.
     let logging: WatchLoggingState
     let rating: WatchEffortRatingState
+
+    /// The platform workout, following the session's life. One coordinator for
+    /// the life of the app (D-1504, D-1508): it remembers the session it opened
+    /// the workout for, so a refresh never opens a second one for the same
+    /// session.
+    let workout: WatchWorkoutCoordinator
 
     /// Bumped whenever `paths` changes underneath us. `WatchSessionStartPaths` is
     /// a plain class that publishes nothing, so without this SwiftUI would never
@@ -53,7 +59,10 @@ final class WatchAppHost: ObservableObject {
         // then the engine that hands its emissions to that sink. The package's
         // own harnesses record emissions in a separate array and never hand them
         // to a bridge, so theirs is not the order to copy.
-        let store = InMemoryWatchSessionStore()
+        let storeDirectory = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("watch-session", isDirectory: true)
+        let store = FileWatchSessionStore(directory: storeDirectory)
         let session = OmniTrainWatchConnectivity(onSendFailure: reportWatchRadioFailure)
         let bridge = WatchConnectivityBridge(session: session, onFailure: reportWatchRadioFailure)
         let forwarder = WatchEmitForwarder(transport: bridge, onFailure: reportWatchRadioFailure)
@@ -72,12 +81,16 @@ final class WatchAppHost: ObservableObject {
             store: store,
             preferences: preferences
         )
+        let workout = WatchWorkoutCoordinator(
+            platform: WatchPlatformWorkout(store: HealthKitWorkoutStore())
+        )
 
         self.engine = engine
         self.paths = paths
         self.preferences = preferences
         self.logging = logging
         self.rating = rating
+        self.workout = workout
         self.orchestrator = orchestrator
         self.forwarder = forwarder
 
@@ -97,6 +110,10 @@ final class WatchAppHost: ObservableObject {
             guard let self else { return }
             self.phoneReachability = WatchPhoneReachability.observed(reachable: reachable)
             self.revision += 1
+            // The phone back in reach catches the wrist up by itself (D-96). Not
+            // awaited, so the handler is never blocked; the gate and the in-flight
+            // guard live in `catchUp`, not here.
+            Task { await self.orchestrator.catchUp(reachable: reachable) }
         }
 
         // End and the answer both change which surface the shell shows, and
@@ -108,22 +125,43 @@ final class WatchAppHost: ObservableObject {
                 Task { @MainActor in self?.revision += 1 }
             }
             .store(in: &cancellables)
+
+        // Every session change the surfaces see also settles the platform
+        // workout (D-1504). The subscription's first emission is the empty
+        // session before `restore()`, which the lifecycle rule answers with
+        // `.none`, so it is left as it is.
+        $revision
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    await self.workout.refresh(self.engine.session)
+                }
+            }
+            .store(in: &cancellables)
     }
 
-    /// Reads whatever the wrist already holds: the routines, the phone's settings
-    /// as the last `preferences_down` left them, and any rating the wrist's own
-    /// End still owes. Empty on a fresh install, because all three only arrive
+    /// Reads whatever the wrist already holds, in the order the surfaces need it:
+    /// the engine first (its session, the rows it logged and their timers) so a
+    /// relaunch mid-session comes back before anything is asked of it, then the
+    /// routines, the phone's settings as the last `preferences_down` left them,
+    /// and any rating the wrist's own End still owes. The routines, the settings
+    /// and the rating are empty on a fresh install, because all three only arrive
     /// when the user asks the phone for them.
     func restore() async {
+        // A stranded workout must end before a restored session can open one.
+        await workout.recoverInProgress()
+        await engine.restore()
         await paths.restore()
         await preferences.restore()
         await rating.restore()
         revision += 1
     }
 
-    /// Asks the phone for the routines and the wrist's session state — the one
-    /// action that starts a sync, because nothing arrives unless the user asks
-    /// (D-16, I-1).
+    /// Asks the phone for the routines and the wrist's session state — the Sync
+    /// button's own action, for what is not automatic: the first fetch on a fresh
+    /// watch, the routines and the settings, and a manual retry. A session the
+    /// wrist is running keeps itself in step with the phone without it, by its own
+    /// announcements and its reachability catch-up (D-96).
     ///
     /// The first sync asks for everything; a later one says what the wrist
     /// already has, so the phone can answer with what changed.
@@ -139,20 +177,42 @@ final class WatchAppHost: ObservableObject {
     func noteSurfaceChange() {
         revision += 1
     }
+
+    /// Catches the wrist up whenever the app becomes active (D-183), with what
+    /// the radio last observed: the same trigger the reachability edge uses, so
+    /// a wrist that woke beside a reachable phone converges without the Sync
+    /// button. Not awaited, so the handler is never blocked; the gate and the
+    /// in-flight guard live in `catchUp`.
+    func catchUpOnActivation() {
+        Task { await orchestrator.catchUp(reachable: phoneReachability == .reachable) }
+    }
 }
 
 struct ContentView: View {
     @ObservedObject var host: WatchAppHost
 
-    /// The exercise picker on the logging surface. The start surface keeps its
-    /// own sheet for the empty Free workout; this one moves between exercises and
-    /// adds new ones (R-1, S-30).
-    @State private var pickingExercise = false
+    /// The app's own lifecycle, so a wrist raised beside its phone catches up
+    /// without the user pressing Sync (D-183).
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// The session menu on the logging surface (D-1100). The start surface keeps
+    /// its own sheet for the empty Free workout; this one hosts the menu the
+    /// list button opens.
+    @State private var showingMenu = false
 
     var body: some View {
         Group {
             if host.rating.isPromptOwed {
                 owedRating
+            } else if host.logging.isResting {
+                // D-161: while a rest runs, the rest surface replaces logging —
+                // an owed rating still wins above, and the rest is ended by
+                // Next (or by logging the next set) below.
+                WatchRestView(
+                    state: host.logging,
+                    restPingSeconds: { host.preferences.restPingSeconds },
+                    onNext: { host.noteSurfaceChange() }
+                )
             } else if let session = host.engine.session,
                       session.status == WatchSessionStatus.active,
                       !session.exercises.isEmpty {
@@ -170,6 +230,9 @@ struct ContentView: View {
         .task {
             await host.restore()
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { host.catchUpOnActivation() }
+        }
     }
 
     /// D-24's first surface: the owed question, alone. The view carries no other
@@ -178,8 +241,9 @@ struct ContentView: View {
         WatchEffortRatingView(state: host.rating)
     }
 
-    /// D-24's second surface: logging, with the picker one tap away and the
-    /// package's own End on the same screen (D-25, R-1).
+    /// D-24's second surface: logging, with the session menu one tap away behind
+    /// its list button — the ladder's exercises with their logged counts to jump
+    /// to, then Finish (D-25, D-1100, D-1200). Exercises are added on the phone.
     ///
     /// The branch only shows this while the session is active and holds an
     /// exercise. A Free workout starts with none, so the start surface and its
@@ -187,31 +251,40 @@ struct ContentView: View {
     /// session its slot and the body switches here on the host's nudge.
     private var loggingSurface: some View {
         NavigationStack {
-            WatchLoggingView(state: host.logging)
+            WatchLoggingView(
+                state: host.logging,
+                onLogged: { host.noteSurfaceChange() }
+            )
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        WatchEndSessionView(state: host.rating)
-                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            pickingExercise = true
+                            showingMenu = true
                         } label: {
                             Image(systemName: "list.bullet")
                         }
                     }
                 }
-                .sheet(isPresented: $pickingExercise) {
-                    WatchExercisePickerView(
-                        paths: host.paths,
-                        revision: host.revision
-                    ) { _ in
-                        pickingExercise = false
-                        host.noteSurfaceChange()
-                    }
+                .sheet(isPresented: $showingMenu) {
+                    WatchMenuView(
+                        state: WatchMenuState(
+                            engine: host.engine,
+                            paths: host.paths,
+                            rating: host.rating
+                        ),
+                        revision: host.revision,
+                        onClose: {
+                            showingMenu = false
+                            host.noteSurfaceChange()
+                        },
+                        onFinish: {
+                            showingMenu = false
+                            host.noteSurfaceChange()
+                        }
+                    )
                 }
         }
-        // The picker is a presentation, not the screen: a session that ends
+        // The menu is a presentation, not the screen: a session that ends
         // underneath it must not leave it owed when the surface comes back.
-        .onDisappear { pickingExercise = false }
+        .onDisappear { showingMenu = false }
     }
 }

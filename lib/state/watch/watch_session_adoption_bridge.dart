@@ -64,6 +64,16 @@ const List<String> _declaredKinds = [
   BlockTypes.drill,
 ];
 
+/// The kinds a wrist inbox row can claim a phone record for (D-133): every kind
+/// the protocol carries an entry for. A row of any other kind — an
+/// `effort_rating`, a `session_end` — is not an entry and claims nothing.
+const List<String> _claimKinds = [
+  WatchInboxEntry.kindSet,
+  WatchInboxEntry.kindTimed,
+  WatchInboxEntry.kindHold,
+  WatchInboxEntry.kindRound,
+];
+
 /// The capabilities that decide a kind, most decisive first: the order the wrist
 /// resolves a slot's kind by.
 const List<String> _kindPrecedence = [
@@ -128,6 +138,15 @@ class WatchSessionAdoptionBridge {
   /// The ladder [_projectedRevision] was counted for. A projection of the same
   /// ladder states the same revision, so a peer that has converged stays quiet.
   String? _projectedLadder;
+
+  /// Every slot id each held session has ever carried, by session (D-93): the
+  /// union of the ladders of the snapshots the phone has applied for it and of
+  /// the phone's own ladder at each [consider].
+  ///
+  /// A slot that leaves the phone's ladder stays in the set, so a stale wrist
+  /// snapshot carrying it appends nothing back. An entry lives only while the
+  /// phone holds the session; a session it has moved on from keeps none.
+  final Map<String, Set<String>> _everSeen = {};
 
   /// Binds the state an adopted session is published into. Until this is called
   /// [consider] adopts nothing: a build with no session state has nowhere to put
@@ -195,7 +214,7 @@ class WatchSessionAdoptionBridge {
       if (named != null && named != session.id) return null;
     }
 
-    final wristStamps = await _wristRowStamps(session.id);
+    final wristRows = await _wristRowsBySlot(session.id);
 
     final slots = <Map<String, Object?>>[];
     final entries = <Map<String, Object?>>[];
@@ -204,7 +223,7 @@ class WatchSessionAdoptionBridge {
         final slot = _slotFor(effort, target);
         if (slot == null) continue;
         slots.add(slot);
-        entries.addAll(await _entriesFor(effort, slot, wristStamps));
+        entries.addAll(await _entriesFor(effort, slot, wristRows));
       }
     }
     // A ladder with nothing the wrist can render is not a state to send: an
@@ -228,54 +247,207 @@ class WatchSessionAdoptionBridge {
 
   /// One slot's own entries, in the protocol's order.
   ///
-  /// None for a kind with no wire entry yet (D-39): a `timed`, `hold` or `round`
-  /// effort's rows are its instances' companions, and their window and round
-  /// fields are not carried. `set` is the kind the wire can spell today.
+  /// The slot's kind decides which record it is read from (D-130): a `set` slot
+  /// contributes its groups, a `timed`, `hold` or `round` slot the instances the
+  /// regular session screen wrote for it. A kind the wire has no entry for
+  /// contributes none, as it always has.
+  ///
+  /// [wristRows] is the session's live watch-inbox read (`_wristRowsBySlot`).
+  /// A slot's rows claim the entries the wrist itself logged, matched per kind
+  /// (D-133), so a wrist-logged `timed` entry claims the phone record the
+  /// importer wrote for it and neither rides back (S-142).
   Future<List<Map<String, Object?>>> _entriesFor(
     SegmentEffort effort,
     Map<String, Object?> slot,
-    Map<String, List<int>> wristStamps,
+    Map<String, List<({int loggedAtMs, String entryId, String kind})>>
+    wristRows,
   ) async {
-    if (effort.effortKind != BlockTypes.set) return const [];
+    final exerciseId = slot['exerciseId']! as String;
+    final rows = wristRows[effort.id] ?? const [];
 
-    return PhoneEntries.project(
-      sessionExerciseId: effort.id,
-      exerciseId: slot['exerciseId']! as String,
-      groups: EntryRows.setGroups(
-        await _repository.getEffortObservations(effort.id),
-      ),
-      wristLoggedAtMs: wristStamps[effort.id] ?? const [],
-    );
+    switch (_wireKind(slot)) {
+      case PhoneEntries.setKind:
+        return PhoneEntries.project(
+          sessionExerciseId: effort.id,
+          exerciseId: exerciseId,
+          groups: EntryRows.setGroups(
+            await _repository.getEffortObservations(effort.id),
+          ),
+          wristLoggedAtMs: _stampsOf(rows, PhoneEntries.setKind),
+        );
+      case PhoneEntries.timedKind:
+        return PhoneEntries.projectTimed(
+          sessionExerciseId: effort.id,
+          exerciseId: exerciseId,
+          instances: await _repository.getTimedInstances(effort.id),
+          rows: await _repository.getEffortObservations(effort.id),
+          wristLoggedAtMs: _stampsOf(rows, PhoneEntries.timedKind),
+        );
+      case PhoneEntries.holdKind:
+        return PhoneEntries.projectHold(
+          sessionExerciseId: effort.id,
+          exerciseId: exerciseId,
+          instances: await _repository.getTimedInstances(effort.id),
+          rows: await _repository.getEffortObservations(effort.id),
+          wristLoggedAtMs: _stampsOf(rows, PhoneEntries.holdKind),
+        );
+      case PhoneEntries.roundKind:
+        return PhoneEntries.projectRound(
+          sessionExerciseId: effort.id,
+          exerciseId: exerciseId,
+          instances: await _repository.getRoundInstances(effort.id),
+          rows: await _repository.getEffortObservations(effort.id),
+          wristLoggedAtMs: _stampsOf(rows, PhoneEntries.roundKind),
+        );
+      default:
+        return const [];
+    }
   }
 
-  /// The `loggedAt` of every watch-inbox row that carries a set the wrist
-  /// logged in [sessionId], by slot (D-34).
+  /// [rows] of [kind] alone (D-133): a wrist-logged entry claims the records of
+  /// its own kind, so a `timed` row never claims a `round` record written in the
+  /// same millisecond.
   ///
-  /// A row claims its group whether or not the phone has marked it applied:
+  /// One narrowing for the stamps the projection is handed and the rows
+  /// [heldWristEntryIds] maps its claims back to, so the two cannot read
+  /// different rows (F4).
+  static List<({int loggedAtMs, String entryId, String kind})> _rowsOfKind(
+    List<({int loggedAtMs, String entryId, String kind})> rows,
+    String kind,
+  ) => [
+    for (final row in rows)
+      if (row.kind == kind) row,
+  ];
+
+  /// [rows]' stamps for the entries of [kind] (D-133) — what `PhoneEntries`'s
+  /// projections take as `wristLoggedAtMs`.
+  static List<int> _stampsOf(
+    List<({int loggedAtMs, String entryId, String kind})> rows,
+    String kind,
+  ) => [for (final row in _rowsOfKind(rows, kind)) row.loggedAtMs];
+
+  /// The wire kind a slot's own entries carry (D-130) — the name the wrist's own
+  /// logger gives the slot.
+  ///
+  /// A slot whose effort stores one of the wire's kinds keeps it, and a `drill`
+  /// is a `hold` on the wire — the kind the wrist's own logger writes for it
+  /// (`WatchLoggingState.metricPayload`). A slot storing a kind the wire has no
+  /// entry for (`amrap`, `interval`, `note`) resolves by capability through
+  /// `_effortKind`'s precedence, the order the wrist reads a slot that declares
+  /// none; a kind with no projection contributes no entries.
+  String _wireKind(Map<String, Object?> slot) {
+    final kind = _effortKind(slot);
+    return kind == BlockTypes.drill ? PhoneEntries.holdKind : kind;
+  }
+
+  /// The entry ids the wrist is expected to hold for [sessionId]: the ones its
+  /// own inbox rows carry while their stamp still claims a phone record of their
+  /// own kind (D-112, D-133).
+  ///
+  /// The ids the wrist logged and the phone still holds. A row whose record the
+  /// user deleted on the phone claims nothing and stops being held, which is the
+  /// deletion the phone has to announce (S-122, S-144): a `set` row claims its
+  /// slot's set groups (`PhoneEntries.resolveClaims`), and a `timed`, `hold` or
+  /// `round` row the instance the importer wrote for it
+  /// (`PhoneEntries.resolveRecordClaims` over `getTimedInstances` /
+  /// `getRoundInstances`' `createdAtMs`, the record lists the projection reads
+  /// for the same kind). Both claims come back as the position of the **row**
+  /// that did the claiming — `resolveClaims`/`resolveRecordClaims`' `stamps` —
+  /// because the ledger names rows: a record's position in the phone's list is
+  /// not a row's, and a phone-logged record can stand before the imported one
+  /// (S-144).
+  ///
+  /// The rows are the ones the projection narrows to ([_rowsOfKind]) and the
+  /// claim rule is the one `PhoneEntries`' projections apply, over the same
+  /// stamps in the same order — so the ids the wrist holds and the entries the
+  /// projection leaves out cannot disagree (F4).
+  Future<Set<String>> heldWristEntryIds(String sessionId) async {
+    final bySlot = await _wristRowsBySlot(sessionId);
+    final held = <String>{};
+    for (final slot in bySlot.keys) {
+      for (final kind in _claimKinds) {
+        final listed = _rowsOfKind(bySlot[slot]!, kind);
+        if (listed.isEmpty) continue;
+
+        final stamps = [for (final row in listed) row.loggedAtMs];
+        final claimed = switch (kind) {
+          PhoneEntries.setKind => PhoneEntries.resolveClaims(
+            groups: EntryRows.setGroups(
+              await _repository.getEffortObservations(slot),
+            ),
+            wristLoggedAtMs: stamps,
+          ).stamps,
+          PhoneEntries.roundKind => PhoneEntries.resolveRecordClaims(
+            createdAtMs: [
+              for (final instance in await _repository.getRoundInstances(slot))
+                instance.createdAtMs,
+            ],
+            wristLoggedAtMs: stamps,
+          ).stamps,
+          // A `timed` and a `hold` row claim records of the same list: a hold is
+          // the instance the wrist logged on an effort carrying the hold
+          // capability, which the store keeps beside the timed ones (D-130).
+          _ => PhoneEntries.resolveRecordClaims(
+            createdAtMs: [
+              for (final instance in await _repository.getTimedInstances(slot))
+                instance.createdAtMs,
+            ],
+            wristLoggedAtMs: stamps,
+          ).stamps,
+        };
+        for (final index in claimed) {
+          held.add(listed[index].entryId);
+        }
+      }
+    }
+    return held;
+  }
+
+  /// The wrist's own inbox rows for [sessionId], by slot: each row's stamp,
+  /// entry id and the wire kind it logged, ascending by stamp then entry id —
+  /// the order `PhoneEntries` reads a slot's stamps in.
+  ///
+  /// A row claims its record whether or not the phone has marked it applied:
   /// the importer writes an entry's rows *before* it marks the inbox row
-  /// applied, so an interrupted import leaves the session's groups on a staged
-  /// row. Reading only applied rows would leave those groups unclaimed and send
-  /// the wrist its own set back under a phone id — a duplicate that never goes
+  /// applied, so an interrupted import leaves the session's rows on a staged
+  /// row. Reading only applied rows would leave those entries unclaimed and send
+  /// the wrist its own entry back under a phone id — a duplicate that never goes
   /// away, since staged rows are never deleted (the repository's contract).
   /// `originWatch` means the wrist wrote the row rather than this phone
-  /// annotating one, so a phone-annotated row never claims its own group.
-  Future<Map<String, List<int>>> _wristRowStamps(String sessionId) async {
-    final stamps = <String, List<int>>{};
+  /// annotating one, so a phone-annotated row never claims its own entry.
+  ///
+  /// Every kind is listed, not only sets (D-133): a `timed`, `hold` or `round`
+  /// row is what claims the record the importer wrote for it, and each reader
+  /// narrows to the kinds it speaks for.
+  ///
+  /// One reader for both the projection's stamps and the ids the wrist holds, so
+  /// the two cannot list different rows (F4).
+  Future<Map<String, List<({int loggedAtMs, String entryId, String kind})>>>
+  _wristRowsBySlot(String sessionId) async {
+    final bySlot =
+        <String, List<({int loggedAtMs, String entryId, String kind})>>{};
     final rows = await _repository.getWatchInboxEntriesForSession(sessionId);
     for (final row in rows) {
       if (row.origin != WatchInboxEntry.originWatch) continue;
-      if (row.kind != WatchInboxEntry.kindSet) continue;
 
       final payload = row.payload;
       final slot = payload['sessionExerciseId'];
       final loggedAtMs = _loggedAtMs(payload['loggedAt']);
       if (slot is! String || slot.isEmpty || loggedAtMs == null) continue;
-      (stamps[slot] ??= []).add(loggedAtMs);
+      (bySlot[slot] ??= []).add((
+        loggedAtMs: loggedAtMs,
+        entryId: row.entryId,
+        kind: row.kind,
+      ));
     }
-    for (final slot in stamps.keys) {
-      stamps[slot]!.sort();
+    for (final listed in bySlot.values) {
+      listed.sort((a, b) {
+        final byStamp = a.loggedAtMs.compareTo(b.loggedAtMs);
+        if (byStamp != 0) return byStamp;
+        return a.entryId.compareTo(b.entryId);
+      });
     }
-    return stamps;
+    return bySlot;
   }
 
   /// A wire instant in epoch ms, or null when the payload carries none.
@@ -299,6 +471,18 @@ class WatchSessionAdoptionBridge {
     final capabilities = exercise?.capabilities ?? const <String>[];
     if (exerciseId == null || capabilities.isEmpty) return null;
 
+    // D-1409: the length of the period the wrist counts down is the one the
+    // phone's own round control counts from — the effort's last round, or the
+    // exercise's own default when it holds no round yet. The app-wide 180 s
+    // fallback is deliberately not sent: a number the user never chose is not
+    // one the wrist may show as theirs.
+    final rounds = effort.effortKind == BlockTypes.round
+        ? target.getRoundsForEffort(effort.id)
+        : const <RoundInstance>[];
+    final secs = rounds.isNotEmpty
+        ? rounds.last.plannedDurationSecs
+        : exercise?.defaultRoundDurationSecs;
+
     return <String, Object?>{
       'sessionExerciseId': effort.id,
       'exerciseId': exerciseId,
@@ -306,6 +490,8 @@ class WatchSessionAdoptionBridge {
       if (_declaredKinds.contains(effort.effortKind))
         'effortKind': effort.effortKind,
       'capabilities': [...capabilities],
+      if (effort.effortKind == BlockTypes.round && secs != null && secs >= 1)
+        'roundDurationSecs': secs,
     };
   }
 
@@ -343,6 +529,9 @@ class WatchSessionAdoptionBridge {
 
   /// The identity of a ladder as the wrist can see it: the facts a change to
   /// would make the wrist's copy stale.
+  ///
+  /// The length of a period is one of them (D-1410): the wrist renders it, so a
+  /// length-only edit is a changed ladder and must state a newer revision.
   static String _ladderOf(
     String sessionId,
     List<Map<String, Object?>> slots,
@@ -351,7 +540,8 @@ class WatchSessionAdoptionBridge {
     for (final slot in slots)
       '${slot['sessionExerciseId']}:${slot['exerciseId']}:${slot['name']}:'
           '${(slot['capabilities']! as List).join(',')}:'
-          '${slot['effortKind'] ?? ''}',
+          '${slot['effortKind'] ?? ''}:'
+          '${slot['roundDurationSecs'] ?? ''}',
   ].join('|');
 
   /// The session a wrist frame names, or null when it names none.
@@ -415,8 +605,22 @@ class WatchSessionAdoptionBridge {
 
     final held = target.currentSession;
     if (held != null && held.id == sessionId) {
+      // D-92: this phone holds the session, so the snapshot is not a fresh
+      // adoption — but a slot the wrist added since the adoption is one the
+      // phone's ladder grows by, add-only (D-92/D-93). Nothing else about the
+      // snapshot is acted on: no deletion, no reorder, no rename, and no move
+      // of the position or the status.
+      final additions = _reconcile(sessionId, converged);
+      if (additions.isNotEmpty) {
+        await target.appendSessionSlots(additions, sessionId: sessionId);
+      }
       return WatchSessionAdoption.alreadyHeld;
     }
+
+    // D-93: the ever-seen set belongs to a session the phone holds. Once it
+    // holds another one, nothing of the old session's set is worth keeping —
+    // the phone is not reconciling snapshots for it any more.
+    _everSeen.removeWhere((seenSessionId, _) => seenSessionId != held?.id);
 
     // D-10: only work logged in the session the phone holds makes the wrist's
     // one a conflict. An empty session is nothing to protect — the same way the
@@ -525,6 +729,83 @@ class WatchSessionAdoptionBridge {
       );
       orderIndex += 1;
     }
+
+    // The ladder the snapshot carries is one the phone now takes as its own, so
+    // every slot in it counts as seen (D-93).
+    _everSeen[sessionId] = _slotIds(converged);
+  }
+
+  /// The efforts [converged] adds to the session [sessionId] the phone holds,
+  /// in the snapshot's order — the append D-92 asks for, and nothing else.
+  ///
+  /// Add-only: nothing is removed, reordered or renamed, the position and the
+  /// status are not moved, and no timer is cleared — the phone's own rest and
+  /// timed timers keep running while its ladder grows. An empty result means
+  /// nothing is written and nothing is notified, which is what makes a
+  /// redelivery, a converged projection and a stale ladder reintroducing a slot
+  /// the phone already saw all silent.
+  ///
+  /// A slot is new when its id is not in the phone's ladder and no ladder the
+  /// phone has taken for this session carried it (D-93): the ladder of every
+  /// snapshot it has already applied, plus its own at each of these checks. That
+  /// second half is what keeps the phone's own additions from reading as the
+  /// wrist's, and what keeps a slot the phone added and then removed from being
+  /// appended back by a snapshot older than the removal.
+  ///
+  /// Each addition takes the next index after the phone's own last one, so the
+  /// snapshot's positions are not the phone's: an added slot the wrist placed
+  /// mid-ladder is still appended last, and every existing order stays where it
+  /// is. Among themselves the additions keep the snapshot's order.
+  List<SegmentEffort> _reconcile(
+    String sessionId,
+    Map<String, Object?> converged,
+  ) {
+    final target = _workoutState;
+    if (target == null) return const [];
+
+    final seen = _everSeen.putIfAbsent(sessionId, () => <String>{});
+    final held = <String>{};
+    var nextOrderIndex = 0;
+    for (final segment in target.segments) {
+      for (final effort in target.getEffortsForSegment(segment.id)) {
+        held.add(effort.id);
+        if (effort.orderIndex >= nextOrderIndex) {
+          nextOrderIndex = effort.orderIndex + 1;
+        }
+      }
+    }
+    seen.addAll(held);
+
+    final atMs = _clock().millisecondsSinceEpoch;
+    final segmentId = WatchSessionImporter.segmentIdFor(sessionId);
+    final additions = <SegmentEffort>[];
+    final slots = _slots(converged);
+    for (final slot in slots) {
+      final slotId = slot['sessionExerciseId'];
+      if (slotId is! String || slotId.isEmpty) continue;
+      if (held.contains(slotId) || !seen.add(slotId)) continue;
+      additions.add(
+        _effort(
+          slot,
+          segmentId: segmentId,
+          orderIndex: nextOrderIndex,
+          atMs: atMs,
+        ),
+      );
+      nextOrderIndex += 1;
+    }
+
+    return additions;
+  }
+
+  /// The non-empty slot ids of [converged].
+  Set<String> _slotIds(Map<String, Object?> converged) {
+    final ids = <String>{};
+    for (final slot in _slots(converged)) {
+      final slotId = slot['sessionExerciseId'];
+      if (slotId is String && slotId.isNotEmpty) ids.add(slotId);
+    }
+    return ids;
   }
 
   /// The converged ladder's slots, in order. The reconciler copies each slot

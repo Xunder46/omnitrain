@@ -215,9 +215,13 @@ final class WatchSensorSummaryTests: XCTestCase {
         )
         await engine.appendSensorSample(kind: WatchSensorKind.heartRate, value: 140, recordedAt: at("2026-09-25T10:05:00Z"))
 
-        harness.clock.now = at("2026-09-25T10:10:00Z")
+        // The window is the work clock's, not a dialled length: Start at the
+        // instant the old dial implied (10:10 minus 120 detents of 5 s), and
+        // the log instant is unchanged.
+        harness.clock.now = at("2026-09-25T10:04:00Z")
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
-        surface.adjust(WatchMetricKey.duration, detents: 120)
+        await surface.startWork()
+        harness.clock.now = at("2026-09-25T10:10:00Z")
         let run = try await surface.log().payload
 
         XCTAssertEqual(numericValue(run["avgHeartRateBpm"]), 140, "S-235 the heart rate was measured")
@@ -234,9 +238,11 @@ final class WatchSensorSummaryTests: XCTestCase {
         await engine.appendSensorSample(kind: WatchSensorKind.steps, value: 500, recordedAt: at("2026-09-25T10:01:00Z"))
         await engine.appendSensorSample(kind: WatchSensorKind.steps, value: 500, recordedAt: at("2026-09-25T10:08:00Z"))
 
-        harness.clock.now = at("2026-09-25T10:10:00Z")
+        // Start opens the same 8-minute window from 10:02 the dial used to.
+        harness.clock.now = at("2026-09-25T10:02:00Z")
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
-        surface.adjust(WatchMetricKey.duration, detents: 96) // an 8-minute window from 10:02
+        await surface.startWork()
+        harness.clock.now = at("2026-09-25T10:10:00Z")
         let run = try await surface.log().payload
 
         XCTAssertEqual(
@@ -260,10 +266,13 @@ final class WatchSensorSummaryTests: XCTestCase {
         await engine.appendSensorSample(kind: WatchSensorKind.heartRate, value: 135, recordedAt: at("2026-09-25T11:01:00Z"))
         await engine.appendSensorSample(kind: WatchSensorKind.heartRate, value: 200, recordedAt: at("2026-09-25T11:01:30Z"))
 
-        harness.clock.now = at("2026-09-25T11:01:00Z")
+        // The hold's own clock: Start at 11:00, the window's opening instant
+        // the 12-detent dial used to imply, and Log at the same 11:01.
+        harness.clock.now = at("2026-09-25T11:00:00Z")
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
         XCTAssertEqual(surface.effortKind, WatchEffortKind.drill)
-        surface.adjust(WatchMetricKey.duration, detents: 12)
+        await surface.startWork()
+        harness.clock.now = at("2026-09-25T11:01:00Z")
         let hold = try await surface.log().payload
 
         XCTAssertEqual(hold["kind"] as? String, "hold")

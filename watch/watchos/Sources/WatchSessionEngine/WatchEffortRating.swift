@@ -151,9 +151,9 @@ public final class WatchEffortRatingState: ObservableObject {
         }
         let owed = isRatingOwed(session.sessionId)
 
-        objectWillChange.send()
         let ended = await engine.finishSession()
         if owed { await noteOwedPrompt(session.sessionId) }
+        objectWillChange.send()
         return ended
     }
 
@@ -267,11 +267,11 @@ public final class WatchEffortRatingState: ObservableObject {
     public func confirm() async throws -> WatchObservationRecord? {
         guard let sessionId = promptSessionId, let rating = selected else { return nil }
 
-        objectWillChange.send()
         let recorded = try await engine.recordEffortRating(rating, sessionId: sessionId)
         selected = nil
         crownPosition = 0
         crownCarry = 0
+        objectWillChange.send()
         return recorded
     }
 }

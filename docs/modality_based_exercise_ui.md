@@ -39,7 +39,7 @@ WorkoutSessionScreen (StatefulWidget)
 │   │   └── Timer lifecycle methods (toggle, tick, pause, freeze, persist)
 │   ├── Exercise list state
 │   ├── Current exercise/set tracking
-│   ├── Rest timer state
+│   ├── Rest count-up state
 │   └── View mode state (list vs detail)
 ├── UI Modes (split across part files)
 │   ├── List View builders → workout_session_list_view.dart
@@ -70,7 +70,7 @@ WorkoutSessionScreen (StatefulWidget)
 
 4. **Haptic + Visual Feedback**
    - Light haptic on successful log (non-web)
-   - Rest timer appears after logging set
+   - The rest count-up appears after logging a set
    - Timer state indicators (RUNNING/STOPPED)
    - Completed set dots fill in
 
@@ -164,9 +164,12 @@ Transitions are validated by `_isValidRoundTransition()` in `WorkoutState`. Rapi
 - Clamped to [0, plannedDurationSecs] by the `remainingMs` getter — never negative
 - Actual duration capped at `plannedDurationSecs * WorkoutConstants.roundActualDurationCapFactor` on persist
 
-### 5. Rest Timer Overlay
+### 5. Rest Count-Up Overlay
 
-**Purpose**: Passive rest tracking between sets without requiring user action.
+**Purpose**: Passive rest tracking between sets without requiring user action. Rest is a count-up
+from the moment a set is logged to the moment the next set starts, with no preset length and no
+countdown ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up";
+`test/rest_is_count_up_contract_test.dart`).
 
 **Architecture**: Rest intervals are backed by `EntryRest` repository records — **not** a Stopwatch. The old `_restTimer`, `_restStopwatch`, and `_restElapsedSeconds` fields have been removed. See [rest_tracking.md](rest_tracking.md) for the full data layer documentation.
 
@@ -332,7 +335,7 @@ In edit mode (`editMode: true`) the session duration becomes editable.
 
 - Pending duration is stored in `_pendingDurationSecs`; `_originalDurationSecs` holds the value at edit entry.
 - `_hasDurationChanged()` returns `true` if the two differ — this feeds into the **Unsaved Changes** guard.
-- On **Save**: `workoutState.updateSessionEndTime(_pendingDurationSecs!)` writes `endedAtMs = startedAtMs + durationSecs × 1000`.
+- On **Save**: `workoutState.updateSessionEndTime(_pendingDurationSecs!)` stores the end clamped to the start (D-153). Verified by `test/session_window_never_inverted_test.dart` (`S-155 writer table — every phone-owned writer leaves an ordered window`).
 - On **Discard**: `_pendingDurationSecs` is reset to `_originalDurationSecs`; no repository write occurs.
 
 Discard throws away the user's own edits but never a wrist entry that arrived

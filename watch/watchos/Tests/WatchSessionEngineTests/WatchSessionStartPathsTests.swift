@@ -352,19 +352,17 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(derived, WatchEffortKind.drill)
     }
 
-    /// S-010: sync is watch-initiated, and the start surface has to say so.
-    /// Both clients read the sentence from the contract, so neither can drift.
-    func testS010TheStartSurfaceCarriesTheNoAutomaticSyncLabel() throws {
+    /// S-82: the start surface's button reads "Sync", and neither the code nor
+    /// the contract carries a "No automatic sync" line any more.
+    func testS082TheStartSurfaceSaysSyncAndCarriesNoAutomaticSyncLabel() throws {
         let surface = try object(try startContract()["startSurface"])
 
-        XCTAssertEqual(
-            WatchStartSurfaceCopy.noAutoSyncLabel,
-            surface["noAutoSyncLabel"] as? String
-        )
+        XCTAssertEqual(WatchStartSurfaceCopy.syncLabel, "Sync")
         XCTAssertEqual(
             WatchStartSurfaceCopy.syncLabel,
             surface["syncLabel"] as? String
         )
+        XCTAssertNil(surface["noAutoSyncLabel"])
     }
 
     func testS001ARelaunchWithNoPhoneStillListsAndStartsTheRoutine() async throws {
@@ -393,6 +391,127 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(harness.engine.session?.sessionId, started.sessionId)
         XCTAssertEqual(harness.engine.session?.startedAt, started.startedAt)
         XCTAssertEqual(slotIds(harness.engine.session!), slotIds(started))
+    }
+
+    // MARK: - S-1404 / S-1407 the period length a start path carries
+
+    private func roundRoutine() throws -> [String: Any] {
+        try object(try startContract()["roundRoutine"])
+    }
+
+    private func roundRoutinesDown() throws -> [String: Any] {
+        try object(try roundRoutine()["routinesDown"])
+    }
+
+    /// S-1404/S-1407: a routine's round effort takes the routine's own
+    /// `targets.durationMs`, and only a round takes one — a timed effort holding
+    /// a duration, and a round effort holding none, both travel without a length.
+    @MainActor
+    func testS1404ARoutineRoundEffortCarriesTheRoutinesOwnLength() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try roundRoutinesDown())
+        let expected = try objects(try roundRoutine()["expectedSlots"])
+
+        let session = try await harness.paths.startFromRoutine("routine-soccer")
+
+        XCTAssertEqual(session.exercises.count, expected.count)
+        for (slot, expectedSlot) in zip(session.exercises, expected) {
+            let slotId = expectedSlot["sessionExerciseId"] as? String ?? "?"
+            XCTAssertEqual(slot["effortKind"] as? String, expectedSlot["effortKind"] as? String)
+            XCTAssertEqual(
+                slot[WatchCatalogExercise.roundDurationKey] as? Int,
+                expectedSlot[WatchCatalogExercise.roundDurationKey] as? Int,
+                "\(slotId) carries the length the contract expects"
+            )
+        }
+
+        // The wrist reads the routine's own half — not the catalog's 2400, and
+        // not its own preset (D-1405).
+        XCTAssertEqual(harness.surface.effortKind, WatchEffortKind.round)
+        XCTAssertEqual(harness.surface.workRemainingSeconds(), 600)
+        let model = WatchLoggingModel(state: harness.surface, haptics: RecordingHaptics())
+        XCTAssertEqual(model.workReadout, try roundRoutine()["expectedReadout"] as? String)
+    }
+
+    /// S-1407: the stored catalog row carries the length back, so a wrist that
+    /// relaunches with no phone still counts down from the phone's number.
+    func testS1407TheStoredCatalogKeepsTheNumberThroughARelaunch() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try roundRoutinesDown())
+        let picker = try object(try roundRoutine()["picker"])
+
+        await harness.launch()
+
+        let picked = try XCTUnwrap(harness.paths.fallbackExercises.first {
+            $0.exerciseId == picker["exerciseId"] as? String
+        })
+        XCTAssertEqual(
+            picked.roundDurationSecs,
+            picker["roundDurationSecs"] as? Int,
+            "the catalog row kept the entry's own number"
+        )
+
+        let session = try await harness.paths.startFromRoutine("routine-soccer")
+        XCTAssertEqual(
+            session.exercises.first?[WatchCatalogExercise.roundDurationKey] as? Int,
+            600,
+            "the stored routine kept its own number too"
+        )
+        XCTAssertEqual(harness.surface.workRemainingSeconds(), 600)
+    }
+
+    /// S-1406: the pick decides. A round exercise keeps the catalog's number, an
+    /// exercise with none travels without one, and an entry that carries a number
+    /// for a kind that is not a round has it dropped (D-1413).
+    @MainActor
+    func testS1406APickKeepsTheCatalogNumberOnlyForARoundKind() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try roundRoutinesDown())
+        let picker = try object(try roundRoutine()["picker"])
+        let number = picker["roundDurationSecs"] as? Int
+
+        let soccer = try XCTUnwrap(harness.paths.fallbackExercises.first {
+            $0.exerciseId == picker["exerciseId"] as? String
+        })
+        let squat = try XCTUnwrap(harness.paths.fallbackExercises.first {
+            $0.exerciseId == picker["noLengthExerciseId"] as? String
+        })
+        let plank = try XCTUnwrap(harness.paths.fallbackExercises.first {
+            $0.exerciseId == picker["noLengthCarryingAFieldExerciseId"] as? String
+        })
+
+        XCTAssertEqual(soccer.roundDurationSecs, number, "the catalog carries the phone's number")
+        XCTAssertNil(squat.roundDurationSecs, "an exercise the phone gave no number keeps none")
+        XCTAssertEqual(plank.roundDurationSecs, number, "a hold can carry one the wrist must not read")
+
+        _ = await harness.paths.startFreeWorkout()
+
+        let round = await harness.paths.addExerciseToSession(soccer)
+        XCTAssertEqual(round.exercises.first?["sessionExerciseId"] as? String, picker["slotId"] as? String)
+        XCTAssertEqual(
+            round.exercises.first?[WatchCatalogExercise.roundDurationKey] as? Int,
+            number,
+            "a round pick keeps the number"
+        )
+        XCTAssertEqual(harness.surface.effortKind, WatchEffortKind.round)
+        XCTAssertEqual(harness.surface.workRemainingSeconds(), number)
+
+        let set = await harness.paths.addExerciseToSession(squat)
+        XCTAssertNil(
+            set.exercises.last?[WatchCatalogExercise.roundDurationKey],
+            "an exercise with no number gets none"
+        )
+
+        let hold = await harness.paths.addExerciseToSession(plank)
+        XCTAssertNil(
+            hold.exercises.last?[WatchCatalogExercise.roundDurationKey],
+            "a hold's number is not a round's length"
+        )
+        XCTAssertEqual(harness.surface.effortKind, WatchEffortKind.drill)
+        XCTAssertNil(harness.surface.workRemainingSeconds())
     }
 
     // MARK: - S-002 free workout, phone offline
@@ -483,6 +602,134 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(harness.engine.session?.sessionId, started.sessionId)
         XCTAssertTrue(harness.engine.session?.exercises.isEmpty ?? false)
     }
+
+    // MARK: - S-170/S-171/S-177/S-178 one session at a time
+
+    func testS177StartFreeWorkoutOnALiveSessionReturnsItAndEmitsNothing() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+        let held = try await harness.paths.startFromRoutine("routine-push-a")
+        let framesBefore = harness.emitted
+        let rowsBefore = await harness.store.readAll().sessions
+
+        let returned = await harness.paths.startFreeWorkout()
+        let rowsAfter = await harness.store.readAll().sessions
+
+        XCTAssertEqual(
+            returned.recordId,
+            held.recordId,
+            "the held session comes back, not a second one (D-177)"
+        )
+        XCTAssertEqual(returned.sessionId, held.sessionId)
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            held.exercises.compactMap { $0["sessionExerciseId"] as? String }
+        )
+        XCTAssertEqual(
+            harness.emitted.map { $0["type"] as? String },
+            framesBefore.map { $0["type"] as? String },
+            "a refused start emits nothing at all (S-177)"
+        )
+        XCTAssertEqual(
+            rowsAfter.count,
+            rowsBefore.count,
+            "and appends no row"
+        )
+        XCTAssertEqual(rowsBefore.count, 1)
+        XCTAssertEqual(harness.engine.session?.recordId, held.recordId)
+    }
+
+    func testS170StartFromRoutineOnASessionWithExercisesIsRefusedToo() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+        let held = try await harness.paths.startFromRoutine("routine-push-a")
+        let framesBefore = harness.emitted
+        let rowsBefore = await harness.store.readAll().sessions
+
+        let returned = try await harness.paths.startFromRoutine("routine-push-a")
+        let rowsAfter = await harness.store.readAll().sessions
+
+        XCTAssertEqual(
+            returned.recordId,
+            held.recordId,
+            "the live session is the one that answers (D-177)"
+        )
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            held.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            "a live ladder is never filled again (S-170)"
+        )
+        XCTAssertEqual(returned.exercises.count, 3)
+        XCTAssertEqual(harness.emitted.count, framesBefore.count)
+        XCTAssertEqual(rowsAfter.count, rowsBefore.count)
+    }
+
+    func testS178ARoutineFillsAnActiveEmptySessionInPlace() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+        let expected = try objects(try object(try startContract()["routineSession"])["expectedSlots"])
+        let empty = await harness.paths.startFreeWorkout()
+        XCTAssertTrue(empty.exercises.isEmpty)
+        XCTAssertEqual(empty.currentExerciseIndex, 0)
+        let framesBefore = harness.emitted.count
+
+        let returned = try await harness.paths.startFromRoutine("routine-push-a")
+        let rows = await harness.store.readAll().sessions
+
+        XCTAssertEqual(
+            returned.sessionId,
+            empty.sessionId,
+            "the routine fills the session already running (D-177)"
+        )
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            expected.compactMap { $0["sessionExerciseId"] as? String },
+            "the ladder is the routine, in template order (S-178)"
+        )
+        for (slot, expectedSlot) in zip(returned.exercises, expected) {
+            XCTAssertEqual(slot["exerciseId"] as? String, expectedSlot["exerciseId"] as? String)
+            XCTAssertEqual(slot["name"] as? String, expectedSlot["name"] as? String)
+            XCTAssertEqual(slot["capabilities"] as? [String], expectedSlot["capabilities"] as? [String])
+            XCTAssertEqual(slot["effortKind"] as? String, expectedSlot["effortKind"] as? String)
+        }
+        XCTAssertEqual(
+            returned.currentExerciseIndex,
+            0,
+            "the user stays where they were (S-178)"
+        )
+        XCTAssertEqual(
+            returned.startedAt,
+            empty.startedAt,
+            "the absorb does not restart the clock"
+        )
+        XCTAssertEqual(
+            harness.emitted("session_lifecycle").count,
+            1,
+            "no second started lifecycle (S-178)"
+        )
+        XCTAssertEqual(
+            Set(harness.emitted.dropFirst(framesBefore).compactMap { $0["type"] as? String }),
+            ["session_snapshot"],
+            "the absorb announces structure, no new frame kind (S-178)"
+        )
+        XCTAssertEqual(
+            Set(rows.map(\.sessionId)),
+            [empty.sessionId],
+            "every row still names the one session (D-171)"
+        )
+        XCTAssertEqual(rows.first?.recordId, empty.recordId)
+
+        // S-171: the free start on the filled session is refused like any other.
+        let afterAbsorb = harness.emitted.count
+        let again = await harness.paths.startFreeWorkout()
+        XCTAssertEqual(again.recordId, returned.recordId)
+        XCTAssertEqual(again.exercises.count, expected.count)
+        XCTAssertEqual(harness.emitted.count, afterAbsorb)
+    }
+
     // MARK: - S-006 session-started lifecycle event
 
     func testS006StartingFromARoutineEmitsOneConformantSessionStartedEvent() async throws {
@@ -502,6 +749,50 @@ final class WatchSessionStartPathsTests: XCTestCase {
         let payload = try object(envelope["payload"])
         XCTAssertEqual(payload["state"] as? String, expected["state"] as? String)
         XCTAssertEqual(payload["at"] as? String, utcIso(session.startedAt))
+    }
+
+    // MARK: - S-100 a start path announces the session it starts
+
+    // D-91: the start paths start through the engine, so the frame the path
+    // already sent keeps its position and exactly one snapshot follows it — the
+    // wrist's own start, announced without being asked.
+    func testS100ARoutineStartSendsTheLifecycleFrameThenItsOwnSnapshot() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+
+        let session = try await harness.paths.startFromRoutine("routine-push-a")
+
+        let types = harness.emitted.compactMap { $0["type"] as? String }
+        XCTAssertEqual(Array(types.suffix(2)), ["session_lifecycle", "session_snapshot"])
+        XCTAssertEqual(harness.emitted("session_lifecycle").count, 1)
+        let snapshot = try XCTUnwrap(harness.emitted("session_snapshot").first)
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(snapshot).isEmpty,
+            "the announcement is a frame the phone can read"
+        )
+        XCTAssertEqual(snapshot["sessionId"] as? String, session.sessionId)
+        let payload = try object(snapshot["payload"])
+        XCTAssertEqual(payload["status"] as? String, WatchSessionStatus.active)
+        XCTAssertEqual(
+            (payload["exercises"] as? [[String: Any]])?
+                .compactMap { $0["sessionExerciseId"] as? String },
+            session.exercises.compactMap { $0["sessionExerciseId"] as? String }
+        )
+    }
+
+    func testS100AFreeStartSendsTheLifecycleFrameThenItsOwnEmptySnapshot() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+
+        let session = await harness.paths.startFreeWorkout()
+
+        let types = harness.emitted.compactMap { $0["type"] as? String }
+        XCTAssertEqual(Array(types.suffix(2)), ["session_lifecycle", "session_snapshot"])
+        let snapshot = try XCTUnwrap(harness.emitted("session_snapshot").first)
+        XCTAssertEqual(snapshot["sessionId"] as? String, session.sessionId)
+        let payload = try object(snapshot["payload"])
+        XCTAssertEqual((payload["exercises"] as? [[String: Any]])?.count, 0)
     }
 
     func testS006AFreeWorkoutEmitsTheSameEventAndARelaunchDoesNotReEmitIt() async throws {

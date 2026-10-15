@@ -21,9 +21,9 @@ transport and the sensors are in
 | The session the wrist is running becoming the phone's own in-progress session | `WatchSessionAdoptionBridge.consider`, called by `WatchIncomingRouter` after the mirror has applied a snapshot |
 | Telling the wrist when its session is already history | `WatchIncomingRouter`'s answer to that snapshot: the mirror's `reportLifecycle` |
 | Ending the phone's copy when the wrist ends its own | `WatchSessionAdoptionBridge.onLifecycle` → the ordinary finish or the ordinary discard |
-| The ladder the phone asserts, and the sets it logged | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session — the ladder, plus the phone's own logged sets in the answer's `entries` (D-31, D-33) |
+| The ladder the phone asserts, and the entries it logged | `WatchSessionAdoptionBridge.projectSession`, composed on demand from the bound session — the ladder, plus the phone's own logged sets, timed, hold and round entries in the answer's `entries` (D-31, D-33, D-130) |
 | Turning the phone's logged rows into wire entries | `PhoneEntries.project` / `PhoneEntries.ordered` in `lib/core/sync_protocol/phone_entries.dart` — pure, no repository and no clock |
-| Which ladder group a wrist row already claimed | `WatchSessionAdoptionBridge._wristRowStamps`, read from the session's live inbox rows (D-34) |
+| Which phone record a wrist row already claimed | `WatchSessionAdoptionBridge`'s per-kind claim read over the session's live inbox rows (D-34) — `S-142 a wrist-logged entry of any kind is not doubled` |
 | Handing the rating the wrist recorded to the finish that writes the row | `WatchSessionAdoptionBridge.onLifecycle`'s read of the session row before it ends the session |
 | Merging a wrist's set into the session the phone holds | `WatchSessionImporter.apply`'s `phoneOwnsSession` branch — the held merge — told by `WatchSessionInbox` |
 | Which session the phone holds | `WatchSessionAdoptionBridge.holdsSession`, read by the inbox |
@@ -42,39 +42,90 @@ adopt the same rows`). An empty wrist session is adopted but reads as not yet
 active (D-6), verified by that file's
 `S-3 an empty wrist session is adopted but reads "not yet active"`.
 
-**D-11 — sync is manual, and the phone's answer is composed when asked.** No
-part of this model sends anything on its own: the phone asserts its ladder only
-inside the answer to a snapshot request, built at that moment from the session it
-holds. The revision in that answer rises with the ladder and with nothing else,
-which is what lets the wrist's replace-structure rule accept a real edit and stay
-silent on a replay. Verified by `test/watch_session_projection_test.dart`
+**D-11 — the answer is composed on demand, and a change to the phone's own
+session is pushed (D-75).** The phone asserts its ladder inside the answer to a
+snapshot request, built at that moment from the session it holds, and a change to
+that session is also sent unasked: `WatchSessionAutoPush` binds the same
+`WorkoutState`, coalesces a burst of notifications into one frame, and sends a
+frame only when its composed payload differs from the last one it sent. A phone
+with no session of its own has nothing to assert and sends nothing. The revision
+in the answer rises with the ladder and with nothing else, which is what lets the
+wrist's replace-structure rule accept a real edit and stay silent on a replay.
+Verified by `test/watch_session_projection_test.dart`
 (`D-11 the revision rises with the ladder, and only with it`,
 `S-2 a running phone session is answered with its own ladder`, and — an idle
-phone sends nothing at all — `S-2 an idle phone still answers with silence`).
+phone sends nothing at all — `S-2 an idle phone still answers with silence`) and
+by `test/watch_session_auto_push_test.dart`
+(`S-70 the phone's own set is pushed as one snapshot, and the wrist's own set is
+not sent back`, `S-74 five notifications without a change push nothing`,
+`S-75 three changes inside the window are one frame`).
 
-**D-31/D-33/D-34 — the answer carries the sets the phone logged, as its own.**
-`projectSession` reads each `set` slot's row groups through the repository and
-emits one `set` entry per row: id `entry-<slotId>-<n>` with `eventId` equal to
-`entryId` (D-33), `loggedAt` the row's own instant, and the ladder's
-`sessionExerciseId`/`exerciseId` beside the row's reps and load. A group a live
-wrist row already produced is *claimed* by that row and not sent back (D-34), so
-the wrist never re-receives its own set. Nothing is written while composing, and
-no value comes from a clock or a counter. Verified by
+**D-31/D-33/D-34 — the answer carries the entries the phone logged, as its
+own.** `projectSession` reads each slot's own records through the repository —
+a `set` slot's row groups, and a `timed`, `hold` or `round` slot's instances
+(D-130) — and emits one entry per record, named `entry-<slotId>-<n>` with
+`eventId` equal to `entryId` (D-33). A record a live wrist row already produced
+is *claimed* by that row, per kind, and not sent back (D-34), so the wrist never
+re-receives its own work. Nothing is written while composing, and no value comes
+from a clock or a counter. Verified by
 `test/watch_session_projection_test.dart`
 (`S-31 the phone's own sets arrive as entries`,
 `S-33 the wrist's own set is not sent back to it`,
 `S-34 one live row claims one ladder group`,
 `S-39 the projection is deterministic, and an echo is not sent`,
-`S-40 two sessions do not share entries`) and, at the mirror level,
+`S-40 two sessions do not share entries`,
+`S-140 a phone timed entry reaches the wrist`,
+`S-141 a round and a hold carry their own fields`,
+`S-142 a wrist-logged entry of any kind is not doubled`) and, at the mirror
+level,
 `test/live_mirroring_test.dart`
 (`S-31 a ladder the phone disagrees with is answered with its sets`).
 
-**D-10 — a conflict resolves to "each keeps its own".** A phone already running a
-session refuses to adopt another, and a wrist session the phone is not in is left
-alone. A refusal is the rule working, not an error: it is reported once per
+**D-35 — a set edited on the phone is re-stated on the wrist at the next push or
+Sync.** A set edited on the phone shows its new value on the watch at the next
+push or Sync, still
+as one set: an `entryId` the wrist already holds is *re-stated* from the answer —
+the wrist shows the phone's corrected values, stores no second row, and leaves the
+row it already holds unrewritten. Only the watch re-states: for an id it already
+holds it takes the values the answer carries. A phone that receives a watch
+snapshot keeps the values it already holds for an id — the watch does not edit
+existing records (authority rule 1), so the phone's model does not re-state — and
+the answer carries the watch's own values for the watch's own entries, so a
+re-statement of one is a no-op. Verified by `test/watch_session_projection_test.dart`
+(`S-35 an edit reaches the wrist and a delete is announced`,
+`S-35 a re-statement is append-only and doubles nothing`,
+`S-35 a second edit wins over the first`), by the two stacks' agreement in
+`test/watch_reconciliation_cross_stack_test.dart`
+(`S-35 a held id the phone edited is re-stated on the wrist, not resaved`), and on
+the native watchOS client by `WatchPhoneEntriesTests`
+(`testS35AReStatementShowsThePhonesNewValueAndLeavesTheRow`,
+`testASecondEditWinsOverTheFirst`) in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchPhoneEntriesTests.swift`.
+
+**D-10 — a conflict resolves to the phone's session (D-170).** A phone already
+running a session refuses to adopt another, and a wrist session the phone is not
+in is left where it is — but the pair does not stay split: a phone that still
+knows the wrist's session sends its own state preceded by a `session_lifecycle`
+naming that session `abandoned`, so the wrist ends it and then holds the phone's.
+A phone that has not sent the reset — one whose mirror holds the placeholder
+rather than a session (D-173) — sends no lifecycle at all: there is nothing on
+the wrist to abandon, and no frame anywhere may name the placeholder
+(`test/watch_session_auto_push_test.dart`, group `S-172 the phone resets the
+wrist's live session, then asserts its own`, test `S-181 case B a phone holding
+its own session over a wrist that holds nothing sends no lifecycle and never
+names the placeholder`). A refusal is the rule
+working, not an error: it is reported once per
 (held, offered) pair through the bridge's own `onSkipped` callback — one plain
 `debugPrint` line by default, carrying no stack — and never through the failure
-hook, which stays for a snapshot that cannot be written at all. Verified by
+hook, which stays for a snapshot that cannot be written at all. The phone's half
+of the reset is verified by `test/watch_session_auto_push_test.dart`
+(`S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer
+is what converges the pair`, and the retry
+`S-180 a reset the radio cannot carry is dropped, re-sent by the next pass, and
+owed by nobody once the pair agrees`), the wrist's half by
+`test/watch_session_projection_test.dart`
+(`S-183 case A the abandoned frame the reset carries ends the wrist's session
+and takes nothing else`), and the adoption half the reset leaves standing by
 `test/watch_session_adoption_bridge_test.dart`
 (`S-6 the phone keeps the session it is already running`, which asserts the skip
 arrives once and the failure list stays empty, `S-6 counter-case an empty phone
@@ -84,6 +135,28 @@ reported as a failure` for the hook itself), by `test/watch_session_finish_test.
 `test/watch_session_projection_test.dart`
 (`S-6 a wrist session this phone is not in is left alone`).
 
+**A snapshot of the session the phone holds grows that session, add-only
+(D-92/D-93).** Whenever a wrist snapshot for the session the phone has already
+adopted arrives, the phone appends the slots it has not already taken, in the
+snapshot's order, after the slots it holds, and changes nothing else: no
+deletion, no reorder, no rename, no move of the position or the status, and no
+rest or timed timer cleared. The append is one notification, and a ladder that
+adds nothing writes nothing and notifies nothing. (Known limit, and no test
+claims it: the slot ids this rule remembers live in memory only and are forgotten
+as soon as the phone holds another session, so leaving the session and coming
+back — or relaunching the app — re-opens the window in which a stale wrist
+snapshot can bring back a slot the phone removed.) Verified by
+`test/watch_session_adoption_bridge_test.dart`
+(`S-102 a slot the wrist added to the held session is appended`,
+`S-104 a snapshot with no new slot changes nothing`,
+`S-105 a phone-side rename is not undone by a wrist snapshot`,
+`S-106 the phone's own session is not taken away`), by
+`test/watch_session_adoption_build_notify_test.dart`
+(`S-103 the same snapshot twice, and a stale copy after a removal` and
+`S-111 an append while the phone is on another screen`) and by
+`test/watch_session_rest_timer_append_test.dart`
+(`S-110 a running rest survives the append`).
+
 ## The two directions of ending
 
 **The wrist ends the session: the phone's copy ends too (D-5).** A wrist
@@ -92,25 +165,157 @@ When it names the session the phone holds, `completed` runs the ordinary finish 
 one history entry, and the rating the wrist recorded is read from the session row
 first so the finish cannot write a stale copy over it (D-8); `abandoned` runs the
 ordinary discard, which clears the phone's copy and deletes the row. A lifecycle
-naming any other session changes nothing. Verified by
+naming any other session changes nothing. An end pressed while the phone is
+apart is not lost: the wrist re-announces it at its next catch-up, from its own
+stored end row and in the live frame's own identity, and the phone's copy ends
+then, its session screen leaving for one summary carrying the wrist's rating.
+While the wrist still holds a finished session, every catch-up re-announces that
+end, and the phone reads the repeat as the end it already holds. Verified by
 `test/watch_session_finish_test.dart` (`S-4 the wrist ends its session, roster of
 logged sets first`, the same scenario with `S-4 the wrist ends its session, end
 before the logged sets`, `a wrist abandoned lifecycle discards the phone's copy`,
-and `a lifecycle naming another session changes nothing`).
+and `a lifecycle naming another session changes nothing`), by
+`test/watch_session_engine_test.dart` (group `S-212 the replay is the live end
+frame, not a new event`, `S-212 the replay repeats the live frame field for
+field`, `S-214 a session still running replays nothing`), by
+`test/live_mirroring_test.dart` (group `S-216 the catch-up re-announces the
+wrist's end behind what it owes`, `S-216 the replay is gated on reachability: an
+apart sync re-announces nothing, and the later one does`,
+`S-215 every catch-up repeats the same frame, and the phone stays still`) and by
+`test/pr4_session_controls_test.dart` (`S-213 the end the wrist re-announces at
+its next catch-up leaves the screen for one summary carrying the wrist's
+rating`).
 
-**The phone ends the session: nothing is sent, and the wrist catches up (G2,
-G1).** The regular finish on the phone is `WorkoutState.endSession`; it writes
-history and reports nothing to the wrist, because sync is the wrist's to start.
-The wrist is still holding the session it believes is running, so its next sync
-is answered with the session's own `completed` lifecycle, and that session is not
-reloaded as the phone's current one — a session whose row already has an end is
-never adopted back. Verified by `test/watch_session_finish_test.dart`
-(`S-5 the phone's own finish is not reported, and the wrist is answered at its
-next sync`, `G1 a finished session is not adopted back after a restart`,
+**The phone ends the session: the wrist is told (D-81).** The regular finish on
+the phone is `WorkoutState.endSession`; it writes history, and the push that
+follows reports the session's own `completed` lifecycle, read from the session's
+stored row, so the wrist ends its copy rather than holding a session the phone has
+closed — and a session whose row already has an end is never adopted back. What
+is announced is the session the phone itself composed, never
+whichever session the mirror happens to be showing: a second session ended in the
+same run is announced for itself, a session the phone never held is not
+announced at all (S-85, S-86), and an end still pending when a frame from the
+wrist re-baselines the push onto a newer session is not lost to that frame
+(S-87), nor is a pending end lost when the user browses a past session and
+finishes the live one afterwards (S-88). Verified by `test/watch_session_auto_push_test.dart`
+(`S-72 finishing on the phone ends the wrist's copy, once`,
+`S-85 two finishes and a discard are announced once each, under each session's
+own id`, `S-85 the end the wrist itself caused is not announced back at it`,
+`S-86 the push ends the wrist's session as a deliberate reset and never as an
+end the phone was told about`,
+`S-87 a frame the wrist sends inside the window does not lose the finish it
+landed in`, `S-87 a frame the wrist sends inside the window does not lose the
+discard it landed in`,
+`S-88 browsing a past session and then finishing the live one inside one window
+still announces the finish`) and
+`test/watch_session_finish_test.dart`
+(`S-5 the phone's own finish is reported, and the wrist is answered at its next
+sync`, `G1 a finished session is not adopted back after a restart`,
 `G1 counter-case a running session is not answered with an end`). The wrist's own
 half — it ends its session on receiving that lifecycle — is
 `WatchSessionEngineTests.testThePhonesLifecycleEndsAWristSessionAtTheMomentItNames`
 in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
+
+## Catching up by itself
+
+**The wrist catches up when the phone comes back in reach and whenever its app
+wakes (D-96, D-183).** A reachability edge or the wrist's own activation runs the
+same catch-up the Sync button runs, once and without the user pressing anything:
+the routines, the messages the wrist owes, and then the session state — a wrist
+holding a session hands that session over, and a wrist holding none asks the
+phone for its workout instead of doing nothing, so the session the wrist should
+be in appears after its own was discarded, at the price of re-asking for the
+routines on every wake. A trigger that arrives while one is already running is
+dropped: never queued, never cancelling the running one. Verified by
+`test/live_mirroring_test.dart` (`the wrist catches up at its next activation`:
+`S-186 a session-less wrist asks, and installs the phone's session`,
+`S-187 an unreachable activation is a no-op, and the reachability edge does the
+work`, `S-188 an activation burst is dropped, and the later trigger runs`) and by
+`WatchConnectivityBridgeTests.testS186AWristWithNoSessionAsksAtItsNextActivation`,
+`testS187AnUnreachableActivationIsANoOpAndTheEdgeDoesTheWork` and
+`testS188AnActivationBurstIsDroppedAndTheLaterTriggerRuns`, with
+`WatchConnectivityBridgeTests.testS107TheWristCatchesUpOnAReachabilityEdgeOnce`
+still covering the edge and the drop of a trigger that arrives in flight, in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`.
+
+**The phone catches up when the app resumes, once (D-96).** Resuming the app asks
+for one sync: the phone asserts its own session and then asks the wrist for its
+own, so a change the wrist made while the app was backgrounded lands without the
+user pressing Sync. The trigger is the app lifecycle alone — no timer, no polling —
+and a phone with no watch mounts no observer at all. Verified by
+`test/watch_resume_sync_test.dart`
+(`S-109 a resume asks for one sync, no other lifecycle state asks for any, and an
+unmounted observer asks for none`, `S-109 every reported resume asks
+for exactly one sync, and no other lifecycle state asks for any`) and by
+`test/watch_session_projection_test.dart`
+(`S-109 case A one resume is one catch-up: the phone's OWN session and then the
+request for the wrist's, once per resume`,
+`S-109 case B a phone holding no session sends no snapshot at all`,
+`S-109 case C the phone asserts its own session, never the wrist's copy`).
+
+**A wedged send cannot silence either device (D-98).** Each frame a device chains
+is bounded: a send that does not complete within its bound is reported through the
+device's failure hook and the chain moves on to the next frame — nothing is
+retried and nothing is queued, because the row the frame came from is still owed
+and the next sync re-sends it from storage. A frame the radio could not carry is
+not marked sent either: the push's baseline, a pending end and an owed deletion
+advance only on a delivered one, so what is owed is offered again at the next
+trigger — a WorkoutState pass, a resume, a frame applied from the wrist, or the
+answer to a wrist announcement. Delivery means the frame was handed to the radio
+while the counterpart was reachable, never that it was applied. A wrist whose app
+is not in the foreground is out of the phone's reach, so it hears from the phone
+at its next wake, when it asks. Verified on the phone by
+`test/watch_session_auto_push_test.dart`
+(`S-112 a send that never completes is abandoned and reported, and the change made
+while it hung still leaves the phone`, group `S-200 a frame the radio did not
+carry stays owed`, `S-200 the baseline does not advance on an undelivered send,
+so the same state is offered again when the radio comes back`, `S-200 a resume
+whose own snapshot the radio refused stays owed, and the push offers it again
+(D-191 site 4, D-198)`, group `S-205 a frame from the wrist re-offers what is
+owed, never itself`, `S-205 (S-209) the wrist's own set arrives while a deletion
+is owed: it is applied, never echoed, and the deletion leaves after it`) and on
+the wrist by
+`WatchEmitForwarderTests.testS112AHungSendCannotWedgeTheQueue` in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchEmitForwarderTests.swift`.
+
+**What the Sync button is still for.** Sync is what is not automatic: the first
+fetch on a fresh watch (routines, preferences and the food catalog) and a manual
+retry. A session's own changes travel by themselves in both directions (D-90,
+D-91, D-96).
+
+**A phone session now takes over the wrist's running one (D-102, D-170).** A
+snapshot the phone sends for a different session is still refused whole and
+silently while the wrist holds an active session **with a non-empty ladder**, but
+it no longer arrives alone: the reset in front of it is an `abandoned` lifecycle
+naming that very session, so the wrist ends it and the snapshot that follows is
+the phone's session taking its place. The alternative — leaving the wrist's work
+standing and the two devices on two sessions — is the defect D-170 fixes.
+Pinned, for the phone's half, by
+`test/watch_session_auto_push_test.dart`
+(`S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer
+is what converges the pair`) and, for the wrist's half, by
+`test/watch_session_projection_test.dart`
+(`S-183 case A the abandoned frame the reset carries ends the wrist's session
+and takes nothing else`, `S-183 case B a lifecycle naming a session the wrist is
+not holding is a no-op`); the refusal the reset works around stays pinned by
+`WatchSessionEngineTests.testS77AForeignSnapshotChangesNothingAndSaysNothing`,
+with the empty-ladder counter-case
+`WatchSessionEngineTests.testS77AWristWithAnEmptyLadderReservesNothing`, in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
+
+**A start on the wrist never opens a second session there (D-171, D-177).** A
+free start while the wrist holds a session hands that session back and emits
+nothing; a routine start over a session that has exercises is refused the same
+way, with the ladder untouched; a routine over an active *empty* session fills it
+in place, resending the structure as a snapshot and no new started lifecycle
+(`test/watch_session_start_test.dart`,
+`S-177 startFreeWorkout on a live session returns it and emits nothing`,
+`S-170 startFromRoutine on a session with exercises is refused too`,
+`S-178 a routine fills an active empty session in place`; on the watch target by
+`WatchSessionStartPathsTests.testS177StartFreeWorkoutOnALiveSessionReturnsItAndEmitsNothing`,
+`…testS170StartFromRoutineOnASessionWithExercisesIsRefusedToo` and
+`…testS178ARoutineFillsAnActiveEmptySessionInPlace`, in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchSessionStartPathsTests.swift`).
 
 ## Invariants
 
@@ -122,12 +327,41 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
   (`a set logged on the watch lands in the session the phone holds`) and
   `test/watch_session_merge_test.dart` (`S-9 a wrist set reaches the live phone
   session`, `S-12 a slot the session does not have`).
-- **The phone's finish is silent.** `reportLifecycle` has one production caller —
-  the router's answer to a snapshot naming an ended session — and the finish path
-  reaches none of it. Verified by
+- **The phone's finish and discard are announced (D-81).** The session announced
+  is one the phone itself composed; that session's own stored row decides: an
+  ended row reports its `completed` lifecycle and a row that is gone reports
+  `abandoned` — never the phone's current-session pointer, which browsing a past
+  session repoints, and never a session the mirror shows but the phone refused.
+  The id is forgotten once announced, so a second session ended in the same run is
+  announced for itself, and a session whose end is still pending when a frame from
+  the wrist re-baselines the push is announced for itself too (S-87), and one that
+  is still running when the user browses a past session keeps its pending end until
+  it is finished (S-88). Verified by
+  `test/watch_session_auto_push_test.dart`
+  (`S-72 finishing on the phone ends the wrist's copy, once`,
+  `S-73 discarding on the phone abandons the wrist's copy, once`,
+  `S-84 opening a past session pushes nothing for the live one`,
+  `S-85 two finishes and a discard are announced once each, under each session's
+  own id`, `S-85 the end the wrist itself caused is not announced back at it`,
+  `S-86 the push ends the wrist's session as a deliberate reset and never as an
+  end the phone was told about`,
+  `S-87 a frame the wrist sends inside the window does not lose the finish it
+  landed in`, `S-87 a frame the wrist sends inside the window does not lose the
+  discard it landed in`,
+  `S-88 browsing a past session and then finishing the live one inside one window
+  still announces the finish`) and by
   `test/watch_session_finish_test.dart`
-  (`S-5 the phone's own finish is not reported, and the wrist is answered at its
-  next sync`), whose recorded transport stays empty through the finish.
+  (`S-5 the phone's own finish is reported, and the wrist is answered at its next
+  sync`).
+- **A flush that cannot read the session leaves nothing behind.** A `getSession`
+  that throws an `Exception` is swallowed: no frame is sent, no async error
+  escapes, and the session's end is announced by the next flush. Two flushes that
+  overlap run one after the other, so the end is announced once. An `Error` is not
+  swallowed — it is a programming fault, and it reaches the caller. Verified by
+  `test/watch_session_auto_push_test.dart`
+  (`F4 a throwing getSession leaks no async error and the next flush announces the
+  end`, `F4 two overlapping flushes announce the end once`,
+  `G2 an Error from the session read is not swallowed`).
 - **A finished session is never resurrected.** Verified by
   `test/watch_session_finish_test.dart`
   (`G1 a finished session is not adopted back after a restart`: the next sync
@@ -141,14 +375,18 @@ in `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`.
 Wrist logging is not on this list any more: a set logged on the wrist reaches
 the phone's live session as a row of the effort the phone's slot already has
 (`test/watch_session_merge_test.dart`, `S-9 a wrist set reaches the live phone
-session`), a wrist end closes the phone's copy
+session`), a rest the wrist took arrives as a `rest` observation the importer
+writes into the session's history
+(`test/watch_session_summary_integration_test.dart`, `S-329 the totals`), a
+wrist end closes the phone's copy
 (`test/watch_session_finish_test.dart`,
 `S-4 the wrist ends its session, roster of logged sets first`), and a set logged
 while the phone was out of reach arrives at the wrist's next sync
 (`test/watch_session_merge_test.dart`, `S-19 a set logged while the phone was out
-of reach`). Neither is phone→wrist any more: the sets the phone logs itself ride
-its answer to a Sync as `entries`, which the wrist's existing snapshot merge
-stores (`test/watch_session_projection_test.dart`,
+of reach`). None of these is phone→wrist any more: the sets the phone logs itself ride
+the frame the phone sends — its answer to a Sync, or the push a change triggers —
+as `entries`, which the wrist's existing snapshot merge stores
+(`test/watch_session_projection_test.dart`,
 `S-31 the phone's own sets arrive as entries`, and the wrist adopting a session
 it does not hold — `S-38 the wrist adopts a session it does not hold`). What
 remains out is listed below.
@@ -157,16 +395,55 @@ remains out is listed below.
   reps are below 1, has no place in the protocol's `set` shape
   (`additionalProperties: false`, `reps` ≥ 1), so it is left out of the answer
   and stays on the phone — and a set's added weight goes with it, `extraLoadKg`
-  being a hold's load. A set logged with a negative weight (band assist) is not
-  carried to the watch either: `loadKg` has a minimum of 0 and a `set` has no
-  negative-load field, so a band-assisted set stays on the phone. A rejected
-  entry would reject the whole snapshot
+  being a hold's load. A set the wire *can* carry is carried with its sign: a
+  band-assisted set reaches the wrist as a negative `loadKg`, down to the wire's
+  floor (`WireLimits.minLoadKg`, D-58/D-59). The floor is one number, which the
+  three schema minimums, the projection and the wrist's dial all state (D-59) —
+  so a weighted row *below* it is omitted like any other the wire cannot
+  carry, and a row with no load is carried without a `loadKg` key at all (D-60). A
+  rejected entry would reject the whole snapshot
   (`test/watch_session_projection_test.dart`,
-  `S-42 a set the wire cannot carry is omitted`).
-- **Only sets are carried.** D-39 projects `set` entries only: a `timed`, `hold`
-  or `round` effort contributes nothing to `entries`, while the ladder still
-  carries its slot (`test/watch_session_projection_test.dart`,
-  `S-2 a running phone session is answered with its own ladder`).
+  `S-59 a snapshot carries the assist, and omits only the row without reps`;
+  `S-60 the floor is carried, one step below it is not`;
+  `test/watch_wire_limits_test.dart`,
+  `S-061 the three schema loadKg floors are the one constant`).
+- **All four entry kinds are carried: `set`, `timed`, `hold` and `round`.** D-39
+  projected `set` entries only; D-130 completes it — a slot's kind decides which
+  records it projects, so a `timed` or `hold` slot sends its `TimedInstance`s (the
+  window, and the distance the effort's metric carries) and a `round` slot its
+  `RoundInstance`s (its `roundNumber` and the time it spent paused), while the
+  ladder still carries every slot (`test/watch_session_projection_test.dart`,
+  `S-140 a phone timed entry reaches the wrist`,
+  `S-141 a round and a hold carry their own fields`,
+  `S-142 a wrist-logged entry of any kind is not doubled`;
+  `test/watch_session_engine_test.dart`,
+  `S-145 the twin applies the phone's timed, hold and round entries once each,
+  with the phone's fields, and a re-statement doubles nothing`).
+- **A kind's claim rule is its own.** A `timed` row claims a `timed` record and
+  never a `round` record written in the same millisecond, so neither kind is
+  doubled or lost (`test/watch_session_projection_test.dart`,
+  `D-133 a timed row never claims a round record written at the same millisecond`).
+  The push's ledger reads the same rule against the row a claim came from, so the
+  deletion it announces names the row the projection left out
+  (`test/watch_session_adoption_bridge_test.dart`,
+  `S-144 the ledger holds the row whose stamp claimed a record, not the record's
+  position in the phone's list`).
+- **An instance the wire cannot express is omitted, never faked.** An instance
+  that never started, and a window of no length, carry no entry at all; a
+  distance of exactly 0 is left out of the fields a `timed` entry would otherwise
+  carry, and so is the added weight of a hold held with nothing added
+  (`test/watch_session_projection_test.dart`,
+  `S-143 an unrepresentable instance is omitted, not faked`,
+  `D-132 a hold held with nothing added is projected without the field`).
+- **A set's weight rides as its total, and a skipped set does not ride at all.**
+  An entry's `loadKg` is the set's own total, whole: `extraLoadKg` is the
+  hold/drill path's added load
+  (`lib/core/sync_protocol/phone_entries.dart`), so a set's added weight reaches
+  the wrist as the set's total and never as a second number. A set with no reps
+  was never performed and the wire has no field to say so, so it is left out of
+  `entries` — never sent as a zero — while every other set of its slot still
+  rides (`test/watch_session_projection_test.dart`,
+  `S-59 a snapshot carries the assist, and omits only the row without reps`).
 - **An entry is asserted once, not re-asserted.** The answer's `entries` are
   byte-identical between two Syncs of an unchanged ladder, and the wrist's echo
   of that answer is not answered again — an entry-only difference is no
@@ -174,28 +451,93 @@ remains out is listed below.
   `S-39 the projection is deterministic, and an echo is not sent`;
   `test/live_mirroring_test.dart`,
   `S-32/S-39 an entry-only difference is not re-asserted`).
-- **An edit to a set already on the wrist does not update the wrist's copy.**
-  The phone states a set once, when it first reaches the wrist; editing the
-  phone's row afterwards changes nothing on the wrist, which keeps the values it
-  received (`test/watch_session_projection_test.dart`,
-  `D-38 an edit leaves the wrist's copy and a delete is not sent`).
-- **A delete does not reach the wrist.** A set deleted on the phone stays on the
-  wrist until the wrist's own session is replaced
+- **A delete reaches the wrist, and the wrist hides the entry rather than
+  dropping it.** The phone announces the deletion as a `structure_change` naming
+  the entry's own id, so a set removed on the phone leaves the session the wrist
+  is showing — and so does a `timed`, `hold` or `round` entry, the wrist's own
+  among them (`test/watch_session_auto_push_test.dart`,
+  `S-120 the push names the set the phone dropped, in a frame the wrist applies, before the snapshot that no longer carries it`;
+  `S-144 a non-set entry the wrist logged leaves under the wrist's own id, and
+  one the phone logged under the id the phone minted`;
+  `S-144 a phone-logged record before the wrist's own does not hide the deletion
+  of the wrist's row`;
+  `test/watch_session_projection_test.dart`,
+  `S-35 an edit reaches the wrist and a delete is announced`). The deletion is a
+  **lens over the projection**: the observation row stays — the store is
+  append-only — and the lens is durable, so a wrist restart does not bring the
+  set back (`test/watch_session_engine_test.dart`,
+  `S-124 the deleted set stays hidden across a restart`;
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift`,
+  `testS124ADeletionSurvivesAWristRelaunch`). Each deletion is announced under an
+  id of its own, so a second deletion of a number the phone re-used is a new
+  change rather than a repeat the wrist drops (`test/watch_session_auto_push_test.dart`,
+  `F2 a number the phone re-used and dropped again is announced again, under a
+  change id the wrist has not applied`), and a deletion the push could not send
+  is announced by the next push under the id it was minted with rather than being
+  lost — the same case whether the radio refused the frame or reported it
+  `undelivered` (`test/watch_session_auto_push_test.dart`,
+  `F7 the next pass announces the deletion the failed one could not, under the
+  change id it was minted with`,
+  S-203 a deletion frame the radio reports `undelivered` stays owed under the
+  change id it was minted with`). A snapshot that carries the id
+  clears its deletion, so a slot whose set was deleted and re-created under the
+  reused number converges (`test/watch_session_engine_test.dart`,
+  `S-125 the wrist shows the new set's own fields`, `S-125 an id the wrist never held is shown when a snapshot carries it`;
+  Swift twin, `testS125AReUsedNumberShowsTheNewEntrysOwnFields`), while a
+  snapshot that only repeats the row the wrist already holds leaves the deletion
+  standing (`test/watch_session_projection_test.dart`,
+  `S-35 a re-statement of a deleted id stays deleted`).
+- **The wrist's own start is not carried, and its place and timers are its own.**
+  The phone adopts a wrist session from a snapshot, never from the wrist's start
+  lifecycle (`test/watch_session_adoption_bridge_test.dart`,
+  `S-1 a wrist snapshot becomes the phone's in-progress session`); the answer the
+  phone composes carries the place the wrist reported rather than the phone's own
   (`test/watch_session_projection_test.dart`,
-  `D-38 an edit leaves the wrist's copy and a delete is not sent`).
-- **The wrist's own start, current exercise and timers are not carried.** The
-  answer the phone composes carries its own current index and its own timers, not
-  the wrist's (`test/watch_session_projection_test.dart`,
-  `S-2 a running phone session is answered with its own ladder`).
-- **Starting a session, changing exercises and converging two sessions still
-  need a manual Sync.** The phone's ladder, its place and its timers arrive only
-  in its answer to a wrist Sync (`test/watch_session_projection_test.dart`,
-  `S-2 a running phone session is answered with its own ladder`), and the phone
-  adopts a wrist session from the snapshot it asks for at a Sync
+  `S-76 the answer carries the position the wrist is on`) and asserts no timers,
+  so the timer the wrist started is the one that stands
+  (`test/watch_logging_timers_test.dart`,
+  `S-79 a snapshot leaves the wrist's countdown running and stops the phone's
+  own`).
+- **The wrist's own start and its own adds are announced (D-90, D-91).** A
+  session started on the wrist, and an exercise the wrist adds to its ladder,
+  reach the phone without being asked: the start emits its lifecycle frame and
+  then the session's own `session_snapshot`, and an add emits a second snapshot
+  whose revision has moved, because the shape is the wrist's own (D-101). A
+  change that arrived from the phone — a push, a structure change, a snapshot —
+  is applied silently and never announced back. The phone still adopts a wrist
+  session from a `session_snapshot`, never from the start lifecycle
   (`test/watch_session_adoption_bridge_test.dart`,
-  `S-1 a wrist snapshot becomes the phone's in-progress session`). What a
-  settled set and the wrist's End do without one is listed above
-  (`WatchEmitForwarderTests.testTheEnginesEmissionsReachTheSinkInOrder`).
+  `S-1 a wrist snapshot becomes the phone's in-progress session`). Verified by
+  `test/watch_session_engine_test.dart`
+  (`S-100 a wrist start sends its lifecycle, then its own snapshot`,
+  `S-101 a wrist-added exercise arrives as a second snapshot with a moved
+  revision` and `S-104 nothing from the phone is announced back`) and, on the
+  watch target, by `WatchSessionEngineTests.testS100AWristStartSendsItsLifecycleThenItsOwnSnapshot`,
+  `…testS101AWristAddedExerciseArrivesAsASecondSnapshotWithAMovedRevision`, and — for
+  the three frames a change from the phone can arrive as —
+  `…testS104AnExercisePushFromThePhoneIsNeverAnnouncedBack`,
+  `…testS104AStructureChangeFromThePhoneIsNeverAnnouncedBack` and
+  `…testS104ASnapshotFromThePhoneIsNeverAnsweredWithTheWristsOwn`. Routines,
+  preferences and the food catalog still travel by their own paths. When both
+  devices hold their own session, the phone's own state is preceded by the
+  reset — an `abandoned` lifecycle naming the wrist's session, then the phone's
+  snapshot, then one snapshot request — so the wrist ends W and holds P, and the
+  wrist's answer is what moves the phone's mirror off W
+  (`test/watch_session_auto_push_test.dart`,
+  `S-172 the pass sends abandoned(W) then P's own state, and the wrist's answer
+  is what converges the pair`, and the resume
+  `S-182 the resume sends the reset before its own state, and the answer clears
+  the debt`). A reset the transport cannot carry leaves the wrist on W until the
+  next pass, the next reconnect's resume, or either device's next unlock or app
+  focus sends it (`S-186 a session-less wrist asks, and installs the phone's
+  session` is the wrist-side half of that: the wrist's own activation reaches the
+  phone), and is owed by nobody once the pair agrees
+  (`S-180 a reset the radio cannot carry is dropped, re-sent by the next pass, and
+  owed by nobody once the pair agrees`). The wrist's own place
+  is the wrist's to report and the phone follows it, so the phone's own move of
+  its current exercise does not move the watch
+  (`test/watch_session_projection_test.dart`,
+  `S-76 the answer carries the position the wrist is on`).
 - **Per-effort heart-rate summaries are attached only where the import places
   an effort** (`WatchSessionImporter._attachSetBlockSummary`, reached from
   `WatchSessionImporter._placeEffort`). A merge into a session the phone owns
@@ -206,18 +548,75 @@ remains out is listed below.
   from a `session_lifecycle` naming the held session
   (`test/watch_session_finish_test.dart`,
   `a lifecycle naming another session changes nothing`).
-- **Nothing logged on the wrist survives a relaunch.** The shell's store is in
-  memory, so quitting or force-quitting the watch app loses the session, its
-  logged rows and any owed rating question before a sync can carry them.
+- **A relaunch keeps what the wrist logged, with two gaps.** The shell's store
+  is an append-only file, so the session with its place in the ladder, every set
+  logged, a running rest and an owed rating question come back after the app is
+  closed, force-quit or the watch restarts, with no Sync in between —
+  `WatchFileStoreTests.testS44ALoggedSetSurvivesTheProcess` and
+  `…testS47TheOwedRatingQuestionSurvivesTheKill` in
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`, and
+  the rest screen counts from the restored start rather than from zero
+  (`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`). A
+  session still running when the app died is still running after the relaunch
+  until it is ended on the wrist or the phone's Sync ends it
+  (`…testS44ALoggedSetSurvivesTheProcess`, whose restored session reads active),
+  and what the wrist still owes the phone is sent exactly once at the next Sync
+  (`…testS45ExactlyOneDeliveryAfterARelaunch`). A kill mid-write loses only the
+  row being written, never the rows already on disk
+  (`…testS49ATornLastRecordCostsThatRecordOnly`), and a file written by a newer
+  app is left alone rather than overwritten
+  (`…testS53AVersionThisBinaryDoesNotKnowIsNeverDamaged`). A wrist that cannot
+  write to its storage keeps working in memory and every row already on disk
+  still reads, but the row whose write failed is not treated as stored, so what
+  was logged since the writes began failing is lost if the app is killed before
+  the next Sync
+  (`…testF1AnAppendThatCannotBeWrittenIsNotStoredAndKeepsItsSequence`). What does
+  not come back: a set the phone edited after it reached the wrist shows the
+  phone's first
+  value until the next Sync, because the correction lives only in memory
+  (`…testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync`). What
+  does come back is the **deletion lens** — the ids the phone has deleted ride on
+  the session row itself, so a relaunch reads them back and the same sets stay
+  hidden, while the watch's own corrections stay memory-only
+  (`WatchSessionEngineTests.testS124ADeletionSurvivesAWristRelaunch`,
+  `…testS124TheLensRidesOnTheRowsWrittenAfterIt`, and
+  `WatchFileStoreTests.testS124TheLensSurvivesAStoreReopen` in
+  `watch/watchos/Tests/WatchSessionEngineTests/WatchFileStoreTests.swift`). By
+  design the wrist's record file is never trimmed — the lens is the only thing a
+  deletion changes.
 - **No sensor samples are collected.** The watch app wires no sensor source, so
   a session it logs carries no heart-rate or step values of its own; the
   recording layer exists and is exercised only by its own suites
   (`WatchSensorRecordingTests`, `test/watch_sensor_recording_test.dart`).
-- **The phone's rest timer is not carried.** The answer projects no timers and
-  the wrist adopts that as authoritative, so a countdown running on the wrist at
-  a Sync loses its remaining-time line and its milestone haptic (D-26). Held by
-  the reconciliation fixture `timer_cleared.json`, replayed by
+- **A rest's timer is device-local and a rest has no length; the rest itself travels (D-26, D-80's
+  device-local rule, D-160, D-219/D-220).** The
+  answer projects no timers, and a snapshot stops only the timer the phone
+  itself wrote there: the rest the wrist started is the wrist's through a
+  snapshot, while a phone-written timer loses its milestone haptic. A rest
+  record carries no `plannedDurationMs`, and the wire refuses one outright
+  (`test/sync_protocol_fixtures_test.dart`,
+  `S-165 the wire refuses a rest length` —
+  `a rest carries no planned length, a round keeps one, and a rest with one is
+  refused`; Swift twin,
+  `SyncProtocolValidatorTests.testS165ARestCarriesNoPlannedLengthAndStillConforms`
+  and `…testS165ARestWithAPlannedLengthIsRefused`). When it ends — **Next**, or
+  the next logged set — the wrist emits it as a `rest` observation, and the
+  phone's importer writes it as an `EntryRest` row, so the session's totals count
+  it like the phone's own rest
+  (`test/watch_session_engine_test.dart`,
+  `S-320 Next ends the rest and the window travels, once`; Swift twin,
+  `WatchSessionEngineTests.testS320TheRestTheWristEndsTravelsAsARestEvent`;
+  `test/watch_session_summary_integration_test.dart`, `S-329 the totals`).
+  Verified by
+  `test/watch_logging_timers_test.dart`
+  (`S-79 a snapshot leaves the wrist's countdown running and stops the phone's
+  own`); the phone-written case is held by the reconciliation fixture
+  `timer_cleared.json`, replayed by
   `WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`.
+  The wrist taps at each multiple of the interval the phone sent in
+  `preferences_down` (`restPingSeconds`), with no sound — a haptic tap only
+  (`WatchRestPingTests.testS241AnIntervalTapsAtItsMultiplesAndNowhereElse`;
+  `test/watch_rest_ping_test.dart`).
 - **The wrist labels load in kilograms.** The shell hands the surfaces no unit
   preferences, so the rows read kg whatever the phone's saved unit is, while the
   payload is always kilograms on the wire, which keeps the phone's history and
@@ -225,9 +624,17 @@ remains out is listed below.
   (`WatchLoggingTimersTests.testS007APoundPreferenceStepsInPoundsStoredInKilograms`).
 - **A session discarded on the phone can come back from the wrist.** A discard
   deletes the row, so the phone has nothing left to recognise; a wrist that still
-  holds that session offers it again at its next sync and the phone adopts it as
-  a new in-progress session. Only a session that ended and kept a row is
-  protected. Not handled.
+  holds that session — one the discard never reached — offers it again at its next
+  sync and the phone adopts it as a new in-progress session. It resolves itself at
+  the wrist's next unlock or app focus when the phone has a session of its own: the
+  wrist's announcement is answered with the reset, so the wrist's old session is
+  discarded and the phone's is shown
+  (`test/watch_session_finish_test.dart`,
+  `S-189 the wrist's own announcement is answered with the reset`). A wrist the
+  discard did reach is told to abandon its copy instead
+  (`test/watch_session_auto_push_test.dart`,
+  `S-73 discarding on the phone abandons the wrist's copy, once`). Only a session
+  that ended and kept a row is protected. Not handled.
 
 ## Related
 

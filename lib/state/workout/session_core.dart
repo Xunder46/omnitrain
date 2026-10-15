@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../../core/constants/metric_ids.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/workout_constants.dart';

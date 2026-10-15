@@ -81,7 +81,7 @@ final class WatchLiveMirroringTests: XCTestCase {
             modality: "resistance_lifting",
             exercises: [exercise("sx-bench"), exercise("sx-plank"), exercise("sx-squat")]
         )
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90_000)
+        _ = try await engine.startTimer(WatchTimerKind.rest)
         let rest = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
 
         let applied = try await engine.applyMessage(
@@ -181,6 +181,12 @@ final class WatchLiveMirroringTests: XCTestCase {
                     "state": "running",
                     "startedAt": "2026-07-13T06:25:00Z",
                     "accumulatedPauseMs": 0,
+                ],
+                "round": [
+                    "kind": "round",
+                    "state": "running",
+                    "startedAt": "2026-07-13T06:25:00Z",
+                    "accumulatedPauseMs": 0,
                     "plannedDurationMs": 90_000,
                 ],
             ]
@@ -197,8 +203,12 @@ final class WatchLiveMirroringTests: XCTestCase {
         )
         XCTAssertEqual(engine.entries.map(\.entryId), ["e-phone-1"])
         XCTAssertEqual(engine.timerFor(WatchTimerKind.rest)?.state, WatchTimerState.running)
-        XCTAssertEqual(
+        XCTAssertNil(
             engine.timerFor(WatchTimerKind.rest).flatMap(completionInstant),
+            "a rest is a count-up: it has no end moment (D-160)"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.round).flatMap(completionInstant),
             try XCTUnwrap(parseUtcIso("2026-07-13T06:26:30Z"))
         )
     }
@@ -290,6 +300,37 @@ final class WatchLiveMirroringTests: XCTestCase {
         XCTAssertTrue(
             harness.transport.sent.allSatisfy { $0["type"] as? String != "session_snapshot" }
         )
+    }
+
+    // MARK: - S-77 a foreign snapshot does not switch the wrist's session
+
+    /// The wrist is mid-workout on its own session and the phone answers with
+    /// its own. The wrist does not switch, and says nothing about it (D-78).
+    func testAForeignSnapshotDoesNotSwitchTheSessionAndEmitsNothing() async throws {
+        let harness = Harness(sessionId: "s-2")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-9")])
+        harness.clearEmitted()
+
+        let applied = try await engine.applyMessage(
+            sessionSnapshot(
+                sessionId: "s-1",
+                revision: 1,
+                status: WatchSessionStatus.active,
+                currentExerciseIndex: 0,
+                exercises: [exercise("sx-1")],
+                entries: [[String: Any]](),
+                timers: [String: Any]()
+            )
+        )
+
+        XCTAssertFalse(applied)
+        XCTAssertEqual(engine.session?.sessionId, "s-2")
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-9"]
+        )
+        XCTAssertTrue(harness.emitted.isEmpty, "a refused frame is answered with silence")
     }
 
     // MARK: - Helpers

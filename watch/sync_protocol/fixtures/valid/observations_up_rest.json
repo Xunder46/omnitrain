@@ -1,0 +1,33 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-rest-1",
+  "sessionId": "s-cap-rest",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-10-08T10:12:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "entry-a1",
+        "entryId": "entry-a1",
+        "kind": "set",
+        "loggedAt": "2026-10-08T10:05:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-bench",
+        "reps": 5,
+        "loadKg": 80
+      },
+      {
+        "eventId": "rest-a1",
+        "entryId": "rest-a1",
+        "kind": "rest",
+        "loggedAt": "2026-10-08T10:06:10Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-bench",
+        "startedAt": "2026-10-08T10:05:00Z",
+        "endedAt": "2026-10-08T10:06:10Z",
+        "afterEntryId": "entry-a1"
+      }
+    ]
+  }
+}

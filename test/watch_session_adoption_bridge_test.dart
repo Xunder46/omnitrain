@@ -9,6 +9,26 @@
 //   S-3 an empty wrist session does not surface as active → `S-3 ...`
 //   S-6 the phone keeps the session it already has → `S-6 ...`, `S-6 counter-case ...`
 //
+// Plan: `docs/plans/2026-10-06-17b-watch-auto-sync-pr2-plan/2026-10-06-17b-watch-auto-sync-pr2-plan.md`,
+// Phase 1 — D-92, D-93, D-94: a snapshot of the session the phone already holds
+// is reconciled add-only. Scenario mapping:
+//   S-102 a slot the wrist added to the held session → `S-102 ...`
+//   S-104 a snapshot with no new slot changes nothing → `S-104 ...`
+//   S-105 a phone-side rename is not undone → `S-105 ...`
+//   S-106 the phone's own session is not taken away → `S-106 ...`
+//   (S-103 and S-111 need the app's own screen and live in
+//    `test/watch_session_adoption_build_notify_test.dart`.)
+//
+// Plan: `docs/plans/2026-10-06-17c-watch-auto-sync-pr3-plan/2026-10-06-17c-watch-auto-sync-pr3-plan.md`,
+// review 1, F4 — D-112: the ids the push holds and the groups the projection
+// claims are read in one pass over a slot's stamps.
+//   F4 two rows of one slot sharing a stamp hold one id → `F4 ...`
+//
+// Plan: `docs/plans/2026-10-07-17d-watch-auto-sync-pr4-plan/2026-10-07-17d-watch-auto-sync-pr4-plan.md`,
+// Phase 3 item 0 — D-133: a claimed record answers the row whose stamp claimed
+// it, whatever position the record holds in its own list.
+//   S-144 the ledger holds the row the claim names → `S-144 the ledger holds ...`
+//
 // Every snapshot arrives through the real `LiveSessionMirrorState` behind the
 // real `WatchIncomingRouter`, so the bridge reads the reconciler's own converged
 // output and the wiring is part of what these tests prove. Plain `test()`: no
@@ -67,6 +87,18 @@ Future<WorkoutRepository> _repository() async {
       ExerciseCapability.load,
     ],
   );
+  // The harness writes an exercise's capabilities through its constructor, and
+  // neither implementation keeps them there: both read them from a store of
+  // their own (`_exerciseCapabilities` in the in-memory twin). Set them the way
+  // the app does, or every slot this session projects is unrenderable and
+  // `projectSession` has no ladder to speak from.
+  for (final id in const ['ex-bench', 'ex-squat']) {
+    await repository.setExerciseCapabilities(id, const [
+      ExerciseCapability.sets,
+      ExerciseCapability.reps,
+      ExerciseCapability.load,
+    ]);
+  }
   return repository;
 }
 
@@ -89,6 +121,7 @@ class _Phone {
     required this.mirror,
     required this.state,
     required this.bridge,
+    required this.transport,
     required this.failures,
     required this.skipped,
   });
@@ -97,6 +130,10 @@ class _Phone {
   final LiveSessionMirrorState mirror;
   final WorkoutState state;
   final WatchSessionAdoptionBridge bridge;
+
+  /// What the phone sent. The mirror's own answers live here too, which is what
+  /// tells a frame this phase composes apart from one it does not.
+  final CaptureTransport transport;
 
   /// What the bridge reported as a failure: nothing, in these tests.
   final List<Object> failures;
@@ -145,6 +182,7 @@ Future<_Phone> _phone(WorkoutRepository repository) async {
     mirror: mirror,
     state: state,
     bridge: bridge,
+    transport: transport,
     failures: failures,
     skipped: skipped,
   );
@@ -209,6 +247,7 @@ Future<void> _seedPhoneSession(
   WorkoutRepository repository, {
   required String sessionId,
   List<(String effortId, String exerciseId)> efforts = const [],
+  List<String> kinds = const [],
   String? loggedEffortId,
 }) async {
   const at = 1780000000000;
@@ -236,7 +275,7 @@ Future<void> _seedPhoneSession(
         segmentId: segmentId,
         orderIndex: index,
         topLevelOrderIndex: index,
-        effortKind: BlockTypes.set,
+        effortKind: kinds.isEmpty ? BlockTypes.set : kinds[index],
         exerciseId: effort.$2,
         createdAtMs: at,
         updatedAtMs: at,
@@ -247,6 +286,23 @@ Future<void> _seedPhoneSession(
     await repository.createObservation(repsRow(loggedEffortId, 0, 5, atMs: at));
   }
 }
+
+/// Counts the notifications [state] fires from now on.
+///
+/// A reader over a counter, so a test can hold one and read it before and after
+/// a delivery — which is what makes D-94's "exactly one" and D-92's "nothing
+/// changed, nothing notified" observable.
+int Function() _notifications(WorkoutState state) {
+  var count = 0;
+  state.addListener(() => count += 1);
+  return () => count;
+}
+
+/// The ladder one `session_snapshot` the phone sent carries, by slot id.
+List<Object?> _sentLadder(Map<String, Object?> envelope) => [
+  for (final slot in (envelope['payload'] as Map)['exercises'] as List)
+    (slot as Map)['sessionExerciseId'],
+];
 
 void main() {
   test('S-1 a wrist snapshot becomes the phone\'s in-progress session', () async {
@@ -534,9 +590,10 @@ void main() {
       reason: 'D-2: the phone holds this session, so there is nothing to adopt',
     );
 
-    // A ladder the wrist rewrote. The mirror applies it and re-asserts the
-    // phone's own (its rule, unchanged by this phase); the phone's rows stand,
-    // because it already holds this session and owns its structure (D-2).
+    // A ladder the wrist rewrote. The row it replaced the ladder with carries a
+    // slot the phone has never seen; the phone appends that one and keeps its
+    // own two where they are (D-92/D-93). The mirror applies the frame and
+    // re-asserts the phone's own, which is its rule and unchanged by this phase.
     final rewritten = await phone.router.receive(
       _snapshot(
         sessionId: 's-w1',
@@ -546,13 +603,301 @@ void main() {
       ),
     );
     expect(rewritten.session, MirrorOutcome.applied);
-    expect(await importedRows(repository, 's-w1'), rows);
+    expect(
+      [for (final effort in await importedEfforts(repository, 's-w1')) effort.id],
+      ['sl-1', 'sl-2', 'sl-9'],
+      reason: 'D-92 the ladder grows by the unknown slot, add-only',
+    );
+    expect(
+      [
+        for (final effort in await importedEfforts(repository, 's-w1'))
+          effort.orderIndex,
+      ],
+      [0, 1, 2],
+      reason:
+          'the phone\'s own slots keep their places and the new one is last: '
+          'nothing is reordered',
+    );
+    expect(
+      (await repository.getSession('s-w1'))!.endedAtMs,
+      isNull,
+      reason: 'the session is still running after the append',
+    );
+    expect(phone.state.currentSession?.id, 's-w1');
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-102 a slot the wrist added to the held session is appended', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    await phone.router.receive(_s1Envelope());
+
+    final segment = await importedSegment(repository, 's-w1');
+    final before = phone.state.currentSession!;
+    final indexBefore = phone.mirror.state['currentExerciseIndex'];
+    final notifications = _notifications(phone.state);
+
+    final receipt = await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w1',
+        revision: 4,
+        currentExerciseIndex: 1,
+        exercises: [
+          _slot('sl-1', 'ex-bench'),
+          _slot('sl-2', 'ex-squat'),
+          _slot('sl-3', 'ex-deadlift'),
+        ],
+        messageId: 'msg-s102',
+      ),
+    );
+
+    expect(receipt.session, MirrorOutcome.applied);
+    expect(
+      [
+        for (final effort in phone.state.getEffortsForSegment(segment.id))
+          effort.id,
+      ],
+      ['sl-1', 'sl-2', 'sl-3'],
+      reason: 'D-92 the phone\'s ladder grows by the slot the wrist added',
+    );
+    final efforts = await importedEfforts(repository, 's-w1');
+    expect(
+      [for (final effort in efforts) effort.id],
+      ['sl-1', 'sl-2', 'sl-3'],
+      reason: 'D-3 the appended slot is a real row, under its own slot id',
+    );
+    expect(
+      [for (final effort in efforts) effort.orderIndex],
+      [0, 1, 2],
+      reason: 'appended last, after the two the phone already held',
+    );
+    expect(
+      efforts.last.segmentId,
+      segment.id,
+      reason: 'the appended effort joins the session\'s existing segment',
+    );
+    expect(
+      efforts.last.exerciseId,
+      'ex-deadlift',
+      reason: 'the slot\'s own exercise is what the row carries',
+    );
+
+    final after = phone.state.currentSession!;
+    expect(
+      after.updatedAtMs,
+      before.updatedAtMs,
+      reason:
+          'D-92 the session row is not rewritten: its stamps, its start and its '
+          'status are the phone\'s',
+    );
+    expect(after.startedAtMs, before.startedAtMs);
+    expect(after.endedAtMs, isNull, reason: 'the session is still running');
+    expect(
+      phone.mirror.state['currentExerciseIndex'],
+      indexBefore,
+      reason: 'the position the wrist reports is not moved',
+    );
+    expect(
+      notifications(),
+      1,
+      reason:
+          'D-94 one notify for the one change, not the three a session reload '
+          'fires',
+    );
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-104 a snapshot with no new slot changes nothing', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    await phone.router.receive(_s1Envelope());
+    final rows = await importedRows(repository, 's-w1');
+    final notifications = _notifications(phone.state);
+    final snapshotsBefore = phone.transport.ofType('session_snapshot').length;
+
+    // The same ladder with a moved revision: a change of the phone's own,
+    // echoed back to it.
+    final receipt = await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w1',
+        revision: 7,
+        currentExerciseIndex: 1,
+        exercises: [_slot('sl-1', 'ex-bench'), _slot('sl-2', 'ex-squat')],
+        messageId: 'msg-s104',
+      ),
+    );
+
+    expect(receipt.session, MirrorOutcome.applied);
+    expect(
+      await importedRows(repository, 's-w1'),
+      rows,
+      reason: 'nothing is added, removed or reordered: no row is written',
+    );
     expect(
       [for (final effort in await importedEfforts(repository, 's-w1')) effort.id],
       ['sl-1', 'sl-2'],
-      reason: 'the adopted ladder stands',
     );
-    expect(phone.state.currentSession?.id, 's-w1');
+    expect(
+      notifications(),
+      0,
+      reason: 'the reconcile is a no-op, so nothing notifies',
+    );
+    for (final envelope
+        in phone.transport.ofType('session_snapshot').skip(snapshotsBefore)) {
+      expect(
+        _sentLadder(envelope),
+        ['sl-1', 'sl-2'],
+        reason:
+            'no frame composed by the reconcile is sent: what the phone answers '
+            'with is the ladder it already held',
+      );
+    }
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-105 a phone-side rename is not undone by a wrist snapshot', () async {
+    final repository = await _repository();
+    final phone = await _phone(repository);
+    await phone.router.receive(_s1Envelope());
+
+    // The user renames B on the phone. The wrist's ladder still carries the
+    // name B had when the session was adopted: a snapshot's slot name is a copy
+    // of an exercise row, and the phone owns that row.
+    final renamed = (await repository.getExerciseById('ex-squat'))!;
+    await repository.updateExercise(
+      Exercise(
+        id: renamed.id,
+        name: 'Back Squat (my bar)',
+        createdAtMs: renamed.createdAtMs,
+        updatedAtMs: 1788000009999,
+      ),
+    );
+    await phone.state.loadHistoricalSession('s-w1');
+    expect(
+      phone.state.getExercise('ex-squat')?.name,
+      'Back Squat (my bar)',
+      reason: 'the phone holds the user\'s name',
+    );
+    final rows = await importedRows(repository, 's-w1');
+    final notifications = _notifications(phone.state);
+
+    await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w1',
+        revision: 5,
+        currentExerciseIndex: 1,
+        exercises: [_slot('sl-1', 'ex-bench'), _slot('sl-2', 'ex-squat')],
+        messageId: 'msg-s105',
+      ),
+    );
+
+    expect(
+      [for (final effort in await importedEfforts(repository, 's-w1')) effort.id],
+      ['sl-1', 'sl-2'],
+      reason:
+          'the slot is known by its sessionExerciseId, so the wrist\'s stale '
+          'name is not a second B',
+    );
+    expect(
+      await importedRows(repository, 's-w1'),
+      rows,
+      reason: 'nothing is written for a ladder the phone has taken',
+    );
+    final ladder = (await phone.bridge.projectSession(null))!['exercises']! as List;
+    expect(
+      [for (final slot in ladder) (slot as Map)['name']],
+      ['Barbell Bench Press', 'Back Squat (my bar)'],
+      reason:
+          'the ladder the phone would send names B the way the user renames it, '
+          'not the way the wrist\'s stale copy does',
+    );
+    expect(
+      [for (final slot in ladder) (slot as Map)['sessionExerciseId']],
+      ['sl-1', 'sl-2'],
+      reason: 'and the order is unchanged',
+    );
+    expect(notifications(), 0, reason: 'nothing changed, so nothing notifies');
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-106 the phone\'s own session is not taken away', () async {
+    final repository = await _repository();
+    await _seedPhoneSession(
+      repository,
+      sessionId: 'session-phone-1',
+      efforts: const [('effort-a', 'ex-bench'), ('effort-b', 'ex-squat')],
+      loggedEffortId: 'effort-a',
+    );
+    final phone = await _phone(repository);
+    await phone.state.loadHistoricalSession('session-phone-1');
+    final segment = phone.state.segments.single;
+    final rows = await importedRows(repository, 'session-phone-1');
+    final indexBefore =
+        (await phone.bridge.projectSession(null))!['currentExerciseIndex'];
+    final notifications = _notifications(phone.state);
+
+    // A different session, with an active status: the wrist started its own.
+    final receipt = await phone.router.receive(
+      _snapshot(
+        sessionId: 's-w2',
+        revision: 1,
+        exercises: [_slot('sl-9', 'ex-deadlift')],
+        messageId: 'msg-s106',
+      ),
+    );
+
+    expect(receipt.session, MirrorOutcome.applied);
+    expect(
+      await phone.bridge.consider(phone.mirror.state),
+      WatchSessionAdoption.refusedConflict,
+      reason: '17a D-10: a session the phone is not in is refused whole',
+    );
+    expect(
+      phone.state.currentSession?.id,
+      'session-phone-1',
+      reason: 'the phone still holds the session it is running',
+    );
+    expect(
+      [
+        for (final effort in phone.state.getEffortsForSegment(segment.id))
+          effort.id,
+      ],
+      ['effort-a', 'effort-b'],
+      reason: 'D-92 nothing of the wrist\'s ladder is appended to the phone\'s',
+    );
+    expect(
+      (await phone.bridge.projectSession(null))!['currentExerciseIndex'],
+      indexBefore,
+      reason: 'and its position is untouched',
+    );
+    expect(
+      await importedRows(repository, 'session-phone-1'),
+      rows,
+      reason: 'no row of the phone\'s session was written',
+    );
+    expect(
+      await repository.getSession('s-w2'),
+      isNull,
+      reason: 'the wrist\'s session is not adopted either',
+    );
+    expect(
+      await importedEfforts(repository, 's-w2'),
+      isEmpty,
+      reason: 'and none of its slots are',
+    );
+    expect(
+      phone.transport.ofType('session_snapshot').map(_sentLadder),
+      isEmpty,
+      reason:
+          'the phone has no ladder for another session to answer with: the '
+          'mirror switches without an answer frame',
+    );
+    expect(notifications(), 0, reason: 'nothing of the phone\'s own was touched');
+    expect(
+      phone.skipped,
+      [(held: 'session-phone-1', offered: 's-w2')],
+      reason: 'the skip is reported once, for the pair it acted on',
+    );
     expect(phone.failures, isEmpty);
   });
 
@@ -716,4 +1061,488 @@ void main() {
       );
     },
   );
+
+  // F4: one row, one claim. The ids the push's ledger holds and the groups the
+  // projection leaves out are two readings of one rule, so a slot whose wrist
+  // rows outnumber its groups by a shared stamp must hold as many ids as the
+  // projection pairs with groups — never one id per row.
+  test(
+    'F4 two wrist rows of one slot that share a stamp hold one id — the row the '
+    'projection pairs with the slot\'s one group',
+    () async {
+      const at = 1780000000000;
+      const slot = 'sl-1';
+      final repository = await _repository();
+      await repository.createSession(
+        TrainingSession(
+          id: 's-1',
+          ownerUserId: LoggedEntryRows.ownerUserId,
+          startedAtMs: at,
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.createSegment(
+        LoggedEntryRows.defaultSegment(
+          id: 'segment-s-1',
+          sessionId: 's-1',
+          atMs: at,
+        ),
+      );
+      await repository.createEffort(
+        SegmentEffort(
+          id: slot,
+          segmentId: 'segment-s-1',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          effortKind: BlockTypes.set,
+          exerciseId: 'ex-bench',
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      // The slot's one group: the phone's own set, written in the millisecond
+      // both of the wrist's rows carry (D-34).
+      await repository.createObservation(repsRow(slot, 0, 5, atMs: at));
+
+      final loggedAt = DateTime.fromMillisecondsSinceEpoch(
+        at,
+        isUtc: true,
+      ).toIso8601String();
+      final rows = const ['entry-sl-1-0', 'entry-sl-1-1'];
+      for (final entryId in rows) {
+        await repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: entryId,
+            watchSessionId: 's-1',
+            kind: WatchInboxEntry.kindSet,
+            origin: WatchInboxEntry.originWatch,
+            payload: <String, dynamic>{
+              'entryId': entryId,
+              'eventId': entryId,
+              'kind': 'set',
+              'loggedAt': loggedAt,
+              'sessionExerciseId': slot,
+              'exerciseId': 'ex-bench',
+              'reps': 5,
+              'loadKg': 55.0,
+            },
+            receivedAtMs: at,
+          ),
+        );
+        await repository.markWatchInboxEntriesApplied([entryId], at);
+      }
+
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('s-1');
+
+      final projected = (await phone.bridge.projectSession(null))!;
+      expect(
+        [
+          for (final entry in projected['entries']! as List)
+            (entry as Map)['entryId'],
+        ],
+        isEmpty,
+        reason:
+            'the fixture: both rows carry the stamp of the slot\'s one group, '
+            'and the row that claims it is the wrist\'s, so the projection '
+            'pairs that group with a row and leaves none of its own to send '
+            '(D-34)',
+      );
+
+      expect(
+        await phone.bridge.heldWristEntryIds('s-1'),
+        {'entry-sl-1-0'},
+        reason:
+            'F4 the ledger names the one row the claim rule pairs with the '
+            'slot\'s one group: asking stamp by stamp instead names both rows, '
+            'and the push then reads the second row as a set the phone still '
+            'holds and never announces its deletion (D-112, S-122)',
+      );
+    },
+  );
+
+  // 17d Phase 3 item 0: `resolveRecordClaims` answers *record* positions, and
+  // the ledger holds one value per wrist row — so a claim must be read back
+  // through the row's own index. A phone-logged record can stand before the
+  // record the importer wrote for a wrist row: reading the record position as a
+  // row index then names the wrong row, or none at all when the wrist holds
+  // fewer rows than the phone holds records, and the push never announces the
+  // deletion that row needs (S-144).
+  test(
+    'S-144 the ledger holds the row whose stamp claimed a record, not the '
+    'record\'s position in the phone\'s list',
+    () async {
+      const at = 1780000000000;
+      const wristStamp = at + 60000;
+      final repository = await _repository();
+      await repository.createSession(
+        TrainingSession(
+          id: 's-1',
+          ownerUserId: LoggedEntryRows.ownerUserId,
+          startedAtMs: at,
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+      await repository.createSegment(
+        LoggedEntryRows.defaultSegment(
+          id: 'segment-s-1',
+          sessionId: 's-1',
+          atMs: at,
+        ),
+      );
+      Future<void> slot(String id, String kind) => repository.createEffort(
+        SegmentEffort(
+          id: id,
+          segmentId: 'segment-s-1',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          effortKind: kind,
+          exerciseId: 'ex-bench',
+          createdAtMs: at,
+          updatedAtMs: at,
+        ),
+      );
+
+      // A timed slot: the phone's own record (index 0) stands before the one
+      // the wrist's row imported (index 1).
+      await slot('sl-timed', BlockTypes.timed);
+      await repository.createTimedInstance(
+        timedInstance('sl-timed', 0, entryIndex: 0, durationSecs: 60)
+            .copyWith(createdAtMs: at),
+      );
+      await repository.createTimedInstance(
+        timedInstance(
+          'sl-timed',
+          1,
+          entryIndex: 1,
+          durationSecs: 30,
+          startedAtMs: wristStamp,
+          finishedAtMs: wristStamp + 30000,
+        ).copyWith(createdAtMs: wristStamp),
+      );
+
+      // A rounds slot with the same shape.
+      await slot('sl-round', BlockTypes.round);
+      await repository.createRoundInstance(
+        roundInstance('sl-round', 0).copyWith(createdAtMs: at),
+      );
+      await repository.createRoundInstance(
+        roundInstance(
+          'sl-round',
+          1,
+          startedAtMs: wristStamp,
+        ).copyWith(createdAtMs: wristStamp),
+      );
+
+      // The counter-case: the wrist's record (index 0) stands before the
+      // phone's own (index 1).
+      await slot('sl-counter', BlockTypes.timed);
+      await repository.createTimedInstance(
+        timedInstance(
+          'sl-counter',
+          0,
+          entryIndex: 0,
+          durationSecs: 60,
+          startedAtMs: wristStamp,
+          finishedAtMs: wristStamp + 60000,
+        ).copyWith(createdAtMs: wristStamp),
+      );
+      await repository.createTimedInstance(
+        timedInstance('sl-counter', 1, entryIndex: 1, durationSecs: 30)
+            .copyWith(createdAtMs: at),
+      );
+
+      final loggedAt = DateTime.fromMillisecondsSinceEpoch(
+        wristStamp,
+        isUtc: true,
+      ).toIso8601String();
+      for (final row in const [
+        (
+          entryId: 'row-timed',
+          slot: 'sl-timed',
+          kind: WatchInboxEntry.kindTimed,
+        ),
+        (
+          entryId: 'row-round',
+          slot: 'sl-round',
+          kind: WatchInboxEntry.kindRound,
+        ),
+        (
+          entryId: 'row-counter',
+          slot: 'sl-counter',
+          kind: WatchInboxEntry.kindTimed,
+        ),
+      ]) {
+        await repository.stageWatchInboxEntry(
+          WatchInboxEntry(
+            entryId: row.entryId,
+            watchSessionId: 's-1',
+            kind: row.kind,
+            origin: WatchInboxEntry.originWatch,
+            payload: <String, dynamic>{
+              'entryId': row.entryId,
+              'eventId': row.entryId,
+              'kind': row.kind,
+              'loggedAt': loggedAt,
+              'sessionExerciseId': row.slot,
+              'exerciseId': 'ex-bench',
+            },
+            receivedAtMs: at,
+          ),
+        );
+        await repository.markWatchInboxEntriesApplied([row.entryId], at);
+      }
+
+      final phone = await _phone(repository);
+
+      expect(
+        await phone.bridge.heldWristEntryIds('s-1'),
+        {'row-timed', 'row-round', 'row-counter'},
+        reason:
+            'S-144 the ledger holds each row whose stamp still claims a record '
+            'of its kind: the claim\'s record positions must be read back '
+            'through the rows, or the timed slot reads the second record\'s '
+            'position as a second row (RangeError) and no deletion of the '
+            'three is ever announced',
+      );
+    },
+  );
+
+  // Plan 2026-10-09-21b, Phase 2 (D-1409, D-1410, D-1411). The length a wrist
+  // counts a period down from is the number the phone's own round control would
+  // count from, and a length-only edit is a changed ladder.
+  group('S-1405 the phone sends the number', () {
+    /// One slot of a projection, by its id, so a scenario reads a field without
+    /// pinning the frame's shape.
+    Map<String, Object?> slotOf(Map<String, Object?> projection, String id) =>
+        (projection['exercises']! as List)
+            .cast<Map<String, Object?>>()
+            .firstWhere((slot) => slot['sessionExerciseId'] == id);
+
+    /// The harness catalog plus a round exercise whose period length the phone
+    /// knows: Soccer, a 40-minute half. Squat keeps its capabilities but gains
+    /// none of the number, which is the exercise-with-no-length case.
+    Future<WorkoutRepository> roundRepository() async {
+      final repository = await _repository();
+      await repository.createExercise(
+        Exercise(
+          id: 'ex-soccer',
+          name: 'Soccer',
+          defaultRoundDurationSecs: 2400,
+          createdAtMs: _adoptedAt.millisecondsSinceEpoch,
+          updatedAtMs: _adoptedAt.millisecondsSinceEpoch,
+        ),
+      );
+      await repository.setExerciseCapabilities('ex-soccer', const [
+        ExerciseCapability.time,
+        ExerciseCapability.rounds,
+      ]);
+      await repository.setExerciseCapabilities('ex-squat', const [
+        ExerciseCapability.time,
+        ExerciseCapability.rounds,
+      ]);
+      return repository;
+    }
+
+    test('S-1405 a round effort carries the exercise default, or its own round',
+        () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-round',
+        efforts: const [('sx-soccer', 'ex-soccer')],
+        kinds: const [BlockTypes.round],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-round');
+
+      expect(
+        slotOf(
+          (await phone.bridge.projectSession(null))!,
+          'sx-soccer',
+        )['roundDurationSecs'],
+        2400,
+        reason:
+            'S-1405 an effort holding no round yet carries the exercise\'s own '
+            'period length, the number the phone would start the first round '
+            'from',
+      );
+
+      // The user re-times the slot's round: the effort's own number wins over
+      // the exercise default.
+      await phone.state.addRound('sx-soccer', plannedDurationSecs: 180);
+      await phone.state.updateRoundPlannedDuration('sx-soccer', 0, 900);
+      expect(
+        slotOf(
+          (await phone.bridge.projectSession(null))!,
+          'sx-soccer',
+        )['roundDurationSecs'],
+        900,
+        reason:
+            'S-1405 the effort\'s own round is what the phone counts the next '
+            'one from (D-1409)',
+      );
+    });
+
+    test('S-1405 a timed effort and an exercise with no length send no field',
+        () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-mixed',
+        efforts: const [
+          ('sx-round', 'ex-soccer'),
+          ('sx-timed', 'ex-soccer'),
+          ('sx-no-length', 'ex-squat'),
+          ('sx-set', 'ex-squat'),
+        ],
+        kinds: const [
+          BlockTypes.round,
+          BlockTypes.timed,
+          BlockTypes.round,
+          BlockTypes.set,
+        ],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-mixed');
+      final projection = (await phone.bridge.projectSession(null))!;
+
+      expect(
+        slotOf(projection, 'sx-round')['roundDurationSecs'],
+        2400,
+        reason:
+            'the frame carries the field at all, so each absence below is that '
+            'slot\'s and not the frame\'s',
+      );
+      expect(
+        slotOf(projection, 'sx-timed').containsKey('roundDurationSecs'),
+        isFalse,
+        reason:
+            'S-1405 a timed effort is not a period: the number is omitted '
+            'whatever the exercise knows',
+      );
+      expect(
+        slotOf(projection, 'sx-no-length').containsKey('roundDurationSecs'),
+        isFalse,
+        reason:
+            'S-1405 a round effort on an exercise with no default and no round '
+            'has no number to send',
+      );
+      expect(
+        slotOf(projection, 'sx-no-length')['capabilities'],
+        isNotEmpty,
+        reason: 'the fixture: that slot rides the ladder, so the absence is the '
+            'field\'s and not the slot\'s',
+      );
+      expect(
+        slotOf(projection, 'sx-set').containsKey('roundDurationSecs'),
+        isFalse,
+        reason: 'S-1405 a set effort never carries a period length',
+      );
+    });
+
+    test('S-1408 a non-round kind never gets the field', () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-amrap',
+        efforts: const [
+          ('sx-amrap', 'ex-soccer'),
+          ('sx-round', 'ex-soccer'),
+        ],
+        kinds: const [BlockTypes.amrap, BlockTypes.round],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-amrap');
+
+      // An AMRAP holds a round record of 900 s, and a receiver still resolves
+      // `round` from its capabilities — but the phone's own round control does
+      // not count an AMRAP down, so no number travels (D-1409). The round
+      // effort beside it, re-timed to the same 900 s, does travel.
+      await phone.state.addRound('sx-amrap', plannedDurationSecs: 900);
+      await phone.state.addRound('sx-round', plannedDurationSecs: 900);
+      final projection = (await phone.bridge.projectSession(null))!;
+
+      expect(
+        slotOf(projection, 'sx-round')['roundDurationSecs'],
+        900,
+        reason: 'the round effort\'s own 900 s is exactly what must travel',
+      );
+      expect(
+        slotOf(projection, 'sx-amrap').containsKey('roundDurationSecs'),
+        isFalse,
+        reason:
+            'S-1408 the kind that decides is the phone\'s own effort kind, and '
+            'an AMRAP is not a round',
+      );
+    });
+
+    test('S-1409 a length-only change moves the revision', () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-retime',
+        efforts: const [('sx-soccer', 'ex-soccer')],
+        kinds: const [BlockTypes.round],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-retime');
+      await phone.state.addRound('sx-soccer', plannedDurationSecs: 180);
+
+      final first = (await phone.bridge.projectSession(null))!;
+      expect(slotOf(first, 'sx-soccer')['roundDurationSecs'], 180);
+
+      await phone.state.updateRoundPlannedDuration('sx-soccer', 0, 600);
+
+      final second = (await phone.bridge.projectSession(null))!;
+      expect(slotOf(second, 'sx-soccer')['roundDurationSecs'], 600);
+      expect(
+        second['revision'],
+        (first['revision']! as int) + 1,
+        reason:
+            'D-1410 the wrist renders the length, so a length-only edit is a '
+            'changed ladder and must state a newer revision',
+      );
+
+      final third = (await phone.bridge.projectSession(null))!;
+      expect(
+        third['revision'],
+        second['revision'],
+        reason:
+            'D-1410 a ladder that has not changed keeps the revision already '
+            'stated',
+      );
+    });
+
+    test('S-1411 the same number twice is the same bytes', () async {
+      final repository = await roundRepository();
+      await _seedPhoneSession(
+        repository,
+        sessionId: 'session-twice',
+        efforts: const [('sx-soccer', 'ex-soccer')],
+        kinds: const [BlockTypes.round],
+      );
+      final phone = await _phone(repository);
+      await phone.state.loadHistoricalSession('session-twice');
+
+      final first = (await phone.bridge.projectSession(null))!;
+      final second = (await phone.bridge.projectSession(null))!;
+
+      expect(
+        slotOf(second, 'sx-soccer'),
+        slotOf(first, 'sx-soccer'),
+        reason:
+            'S-1411 nothing changed between the two projections, so the slot is '
+            'the same map, field for field',
+      );
+      expect(slotOf(second, 'sx-soccer')['roundDurationSecs'], 2400);
+      expect(
+        second['revision'],
+        first['revision'],
+        reason: 'S-1411 and the revision does not move for an unchanged ladder',
+      );
+    });
+  });
 }

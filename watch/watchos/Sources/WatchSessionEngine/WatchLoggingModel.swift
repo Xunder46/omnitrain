@@ -64,12 +64,11 @@ public final class WatchLoggingModel: ObservableObject {
         objectWillChange.send()
     }
 
-    /// What is left of the running countdown, in seconds, or nil when none is
-    /// running.
+    /// What is left of the running round countdown, in seconds, or nil when
+    /// none is running. A rest is a count-up and has no remaining time (D-160).
     public var countdown: Double? {
-        let timer = state.timer(for: WatchTimerKind.round)
-            ?? state.timer(for: WatchTimerKind.rest)
-        guard let timer, timer.state != WatchTimerState.stopped else { return nil }
+        guard let timer = state.timer(for: WatchTimerKind.round),
+              timer.state != WatchTimerState.stopped else { return nil }
         guard let remaining = remainingMs(timer, now: state.now()) else { return nil }
         return Double(remaining) / 1000
     }
@@ -77,6 +76,57 @@ public final class WatchLoggingModel: ObservableObject {
     public func adjust(_ metricKey: String, detents: Double) {
         state.adjust(metricKey, detents: detents)
         poll()
+    }
+
+    /// Starts the effort's work clock (D-1308).
+    public func startWork() async {
+        await state.startWork()
+        poll()
+    }
+
+    /// Whether the one button is still offering Start: a timed effort whose
+    /// clock has not begun. A set is never awaiting a start, and neither is an
+    /// effort already running (D-1316).
+    private var isAwaitingStart: Bool { state.isTimedWork && !state.isWorkRunning }
+
+    /// What the one button says: Start until the effort's clock is running, then
+    /// Log — and always Log for a set, whose button never starts anything
+    /// (D-1316).
+    public var primaryTitle: String { isAwaitingStart ? "Start" : "Log" }
+
+    /// What the one button does: starts the clock when nothing is running, and
+    /// logs the effort otherwise (D-1316).
+    public func primaryAction() async {
+        if isAwaitingStart {
+            await state.startWork()
+        } else {
+            _ = try? await state.log()
+        }
+        poll()
+    }
+
+    /// The readout, or nil for a set, whose rows are what it shows instead: a
+    /// period's remaining time (its preset before Start), and the elapsed time
+    /// for the kinds that count up (D-1316).
+    public var workReadout: String? {
+        guard state.isTimedWork else { return nil }
+        if let remaining = state.workRemainingSeconds() {
+            return WatchLoggingState.clock(Double(remaining))
+        }
+        return WatchLoggingState.clock(Double(state.workElapsedSeconds()))
+    }
+
+    /// The period the next log will record, in this modality's own word and
+    /// singular ("Period 2"), or nil for the kinds without periods (D-1307).
+    /// The view renders this line; the rule lives here so the desktop toolchain
+    /// can assert it (D-1316).
+    public var periodLine: String? {
+        guard state.effortKind == WatchEffortKind.round else { return nil }
+        return "\(Self.singular(state.roundsLabel)) \(state.nextRoundNumber)"
+    }
+
+    private static func singular(_ label: String) -> String {
+        label.hasSuffix("s") ? String(label.dropLast()) : label
     }
 
     public func log() async {
@@ -112,16 +162,26 @@ public final class WatchLoggingModel: ObservableObject {
 /// wrist is owed one can be asserted.
 public final class RecordingHaptics: WatchHaptics {
     public private(set) var milestones: [WatchTimerMilestone] = []
+    public private(set) var restPings = 0
 
     public init() {}
 
     public func play(_ milestone: WatchTimerMilestone) {
         milestones.append(milestone)
     }
+
+    public func playRestPing() {
+        restPings += 1
+    }
 }
 
-/// How the wrist is told a countdown ended. The watchOS implementation lives in
+/// How the wrist is told a countdown ended, and that a rest has reached another
+/// multiple of its interval. The watchOS implementation lives in
 /// `WatchLoggingView.swift`, behind the platform guard; this is the contract.
 public protocol WatchHaptics {
     func play(_ milestone: WatchTimerMilestone)
+
+    /// The rest ping: a rest counts up and is owed nothing when it ends, so this
+    /// is its own cue rather than a `WatchTimerMilestone` case (D-244, D-251).
+    func playRestPing()
 }

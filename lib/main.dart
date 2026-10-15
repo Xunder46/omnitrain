@@ -393,6 +393,9 @@ Future<Widget> runStartup({
   // adopts a snapshot into the state built just above, once the mirror has
   // reconciled it.
   watchSync?.adoption.bindWorkoutState(workoutState);
+  // The phone's own session reaches the wrist by itself (D-75): the graph's one
+  // push listens to the same state.
+  watchSync?.autoPush.bindWorkoutState(workoutState);
   final exerciseLibraryState = ExerciseLibraryState(
     service: exerciseLibraryService,
     workoutState: workoutState,
@@ -430,5 +433,8 @@ Future<Widget> runStartup({
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,
+    // D-96: the phone asks the wrist for its session once per resume. Null
+    // without a watch graph, so no observer is mounted at all.
+    onWatchResume: watchSync?.sync,
   );
 }

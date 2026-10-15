@@ -18,6 +18,7 @@
 // structure-change fixture pins.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -203,9 +204,10 @@ class _PhoneTransport implements WatchMirrorTransport {
   final List<Map<String, Object?>> sent = [];
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
     await bridge.wrist.applyMessage(envelope);
+    return WatchDelivery.delivered;
   }
 
   /// A message handed over without being counted as an outgoing send — how the
@@ -353,16 +355,16 @@ void main() {
     );
   });
 
-  group('S-003 reorder while a rest timer runs', () {
+  group('S-003 reorder while a round timer runs', () {
     test('the wrist reorders and the running timer is undisturbed', () async {
       final bridge = await _connectedBridge();
       await bridge.wrist.startTimer(
-        WatchTimerKind.rest,
+        WatchTimerKind.round,
         plannedDurationMs: 90 * Duration.millisecondsPerSecond,
       );
       await bridge.deliverWristEmits();
-      final restBefore = bridge.wrist.timerFor(WatchTimerKind.rest)!;
-      final restEndBefore = completionInstant(restBefore)!;
+      final roundBefore = bridge.wrist.timerFor(WatchTimerKind.round)!;
+      final roundEndBefore = completionInstant(roundBefore)!;
 
       await bridge.phone.reorderExercises(['sx-squat', 'sx-bench', 'sx-plank']);
 
@@ -377,10 +379,10 @@ void main() {
         'sx-plank',
       ]);
 
-      final restAfter = bridge.wrist.timerFor(WatchTimerKind.rest)!;
-      expect(restAfter.state, WatchTimerState.running);
-      expect(restAfter.startedAt, restBefore.startedAt);
-      expect(completionInstant(restAfter), restEndBefore);
+      final roundAfter = bridge.wrist.timerFor(WatchTimerKind.round)!;
+      expect(roundAfter.state, WatchTimerState.running);
+      expect(roundAfter.startedAt, roundBefore.startedAt);
+      expect(completionInstant(roundAfter), roundEndBefore);
     });
 
     test('slots the order does not name keep their relative order', () async {

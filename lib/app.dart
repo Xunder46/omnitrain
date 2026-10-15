@@ -18,6 +18,7 @@ import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
 import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
+import 'state/watch/watch_resume_sync.dart';
 
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -47,6 +48,10 @@ class MyApp extends StatelessWidget {
   final RestNotificationService restNotificationService;
   final AppVersionInfo? appVersionInfo;
 
+  /// The watch graph's catch-up call, when this platform has a watch (D-96).
+  /// Null means no observer is mounted at all.
+  final Future<void> Function()? onWatchResume;
+
   MyApp({
     super.key,
     required this.repository,
@@ -67,6 +72,7 @@ class MyApp extends StatelessWidget {
     required this.exerciseLibraryState,
     required this.timerAlertService,
     this.appVersionInfo,
+    this.onWatchResume,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -93,7 +99,7 @@ class MyApp extends StatelessWidget {
           onSecondary: getOnSecondaryForTheme(activeTheme),
         );
 
-        return MaterialApp(
+        final appShell = MaterialApp(
           title: 'Omnitrain',
           debugShowCheckedModeBanner: false,
           theme: appTheme,
@@ -162,6 +168,13 @@ class MyApp extends StatelessWidget {
                   appVersionInfo: appVersionInfo,
                 ),
         );
+
+        // D-96: with a wrist graph the app asks it for its session once per
+        // resume. Without one, no observer is mounted at all.
+        final onResume = onWatchResume;
+        return onResume == null
+            ? appShell
+            : WatchResumeSync(onResume: onResume, child: appShell);
       },
     );
   }

@@ -541,7 +541,7 @@ strings persist across app upgrades; keep them stable.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `currentDataVersion` | `14` | Version a device reaches once the last consolidated migration step has run |
+| `currentDataVersion` | `15` | Version a device reaches once the last consolidated migration step has run |
 
 Replaces the former ~13 independent one-time `bool`-gated steps with a single
 ordered sequence tracked by the device's `data_version` integer. Steps are

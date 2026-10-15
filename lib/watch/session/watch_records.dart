@@ -65,7 +65,24 @@ abstract final class WatchObservationKind {
   /// slot: it names a food and a portion, and nothing else.
   static const String nutritionQuickLog = 'nutrition_quick_log';
 
-  static const List<String> all = [set, timed, round, hold, nutritionQuickLog];
+  /// The window between two efforts, hung on the entry it followed. It records
+  /// no work in a slot, so it is not an effort: it never joins [efforts], and
+  /// the set block's span and the effort debt do not see it.
+  static const String rest = 'rest';
+
+  static const List<String> all = [
+    set,
+    timed,
+    round,
+    hold,
+    nutritionQuickLog,
+    rest,
+  ];
+
+  /// The kinds that record work done in a slot — what "an effort entry" means
+  /// to a set block's span and to whether an effort rating is owed. The set a
+  /// rest may hang on is one of these, and nothing else.
+  static const List<String> efforts = [set, timed, round, hold];
 }
 
 /// The session id a nutrition quick-log carries when the wrist has no session
@@ -178,6 +195,7 @@ final class WatchSessionRecord extends WatchRecord {
     required this.currentExerciseIndex,
     this.exercises = const [],
     this.revision = 0,
+    this.deletedEntryIds = const [],
     super.sequence,
   });
 
@@ -206,6 +224,12 @@ final class WatchSessionRecord extends WatchRecord {
   /// at the same session shape. Zero until a snapshot says otherwise.
   final int revision;
 
+  /// The entry ids the phone deleted, as the newest row knows them: the durable
+  /// half of the deletion lens (plan D-113), so a relaunch rebuilds it from
+  /// storage instead of forgetting it. Ids the newest snapshot carries are not
+  /// in it — an entry the phone still sends exists.
+  final List<String> deletedEntryIds;
+
   Map<String, Object?>? get currentExercise => exercises.isEmpty
       ? null
       : exercises[currentExerciseIndex.clamp(0, exercises.length - 1)];
@@ -225,8 +249,26 @@ final class WatchSessionRecord extends WatchRecord {
     currentExerciseIndex: currentExerciseIndex,
     exercises: exercises,
     revision: revision,
+    deletedEntryIds: deletedEntryIds,
     sequence: sequence,
   );
+
+  /// The same row carrying [deletedEntryIds] as its deletion lens.
+  WatchSessionRecord withDeletedEntryIds(List<String> deletedEntryIds) =>
+      WatchSessionRecord(
+        recordId: recordId,
+        sessionId: sessionId,
+        recordedAt: recordedAt,
+        startedAt: startedAt,
+        modality: modality,
+        source: source,
+        status: status,
+        currentExerciseIndex: currentExerciseIndex,
+        exercises: exercises,
+        revision: revision,
+        deletedEntryIds: deletedEntryIds,
+        sequence: sequence,
+      );
 
   @override
   Map<String, Object?> toJson() => {
@@ -242,6 +284,7 @@ final class WatchSessionRecord extends WatchRecord {
     'currentExerciseIndex': currentExerciseIndex,
     'exercises': exercises,
     'revision': revision,
+    'deletedEntryIds': deletedEntryIds,
   };
 
   static WatchSessionRecord fromJson(Map<String, Object?> json) =>
@@ -258,6 +301,10 @@ final class WatchSessionRecord extends WatchRecord {
             .map(asJsonObject)
             .toList(growable: false),
         revision: (json['revision'] as int?) ?? 0,
+        deletedEntryIds: [
+          for (final id in (json['deletedEntryIds'] as List?) ?? const [])
+            id! as String,
+        ],
         sequence: (json['sequence'] as int?) ?? 0,
       );
 }
@@ -416,7 +463,11 @@ final class WatchTimerRecord extends WatchRecord {
     if (pausedAt != null) 'pausedAt': utcIso(pausedAt!),
     if (stoppedAt != null) 'stoppedAt': utcIso(stoppedAt!),
     'accumulatedPauseMs': accumulatedPauseMs,
-    if (plannedDurationMs != null) 'plannedDurationMs': plannedDurationMs,
+    // A rest is a count-up (docs/global_conventions.md, rest rule): a row
+    // written before that had a length still stores one, and the wire refuses
+    // it, so the frame never carries it.
+    if (plannedDurationMs != null && kind != 'rest')
+      'plannedDurationMs': plannedDurationMs,
   };
 
   @override

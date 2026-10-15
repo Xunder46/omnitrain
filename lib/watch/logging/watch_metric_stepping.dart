@@ -10,6 +10,7 @@
 /// display through `UnitFormatter`, which owns the conversion constants.
 library;
 
+import '../../core/sync_protocol/wire_limits.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/settings/settings_state.dart';
 
@@ -40,11 +41,13 @@ abstract final class WatchMetricKey {
 }
 
 /// The units a logging surface is set to. Weight and distance are the two
-/// preferences that change what a detent means.
+/// preferences that change what a detent means. It also carries the Rest Ping
+/// interval the rest surface taps on, so no screen reads the setting itself.
 class WatchUnitPreferences {
   const WatchUnitPreferences({
     this.weightUnit = 'kg',
     this.distanceUnit = 'km',
+    this.restPingSeconds = 0,
   });
 
   /// The preferences the user has saved, read through their canonical owner so
@@ -53,6 +56,7 @@ class WatchUnitPreferences {
       WatchUnitPreferences(
         weightUnit: settings.preferredWeightUnit,
         distanceUnit: settings.preferredDistanceUnit,
+        restPingSeconds: settings.restPingInterval,
       );
 
   /// `kg` or `lbs`.
@@ -60,6 +64,10 @@ class WatchUnitPreferences {
 
   /// `km` or `miles`.
   final String distanceUnit;
+
+  /// The phone's Rest Ping interval in seconds, 0 when it is Off (or a wrist
+  /// that has not heard from the phone yet).
+  final int restPingSeconds;
 }
 
 /// What one rotary detent does, per metric.
@@ -121,8 +129,9 @@ abstract final class WatchMetricStepping {
   }
 
   /// Holds [value] inside the range the metric's own semantics allow: counts
-  /// start at one, load and distance never go negative, and extra load is
-  /// signed because negative is band assist.
+  /// start at one, load is floored at the wire's own `-200 kg` (band assist,
+  /// D-58/D-62), distance never goes negative, and extra load is signed because
+  /// negative is band assist.
   static double clampTo(String metricKey, double value) {
     switch (metricKey) {
       case WatchMetricKey.reps:
@@ -131,6 +140,7 @@ abstract final class WatchMetricStepping {
       case WatchMetricKey.extraWeight:
         return value;
       case WatchMetricKey.weight:
+        return value < WireLimits.minLoadKg ? WireLimits.minLoadKg : value;
       case WatchMetricKey.duration:
       case WatchMetricKey.distance:
       case WatchMetricKey.roundDuration:

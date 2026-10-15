@@ -23,25 +23,6 @@
 
 import SwiftUI
 
-/// "The phone will not do this for you" — the one thing the wrist has to say
-/// about a routine list that only changes when the user asks.
-///
-/// Plan: `docs/plans/2026-09-21-13-watch-integration-shipping.md`,
-/// D-7 and S-010. Sync is watch-initiated, so a user who never learns that waits
-/// for routines that are never coming. The Flutter client renders the same
-/// sentence from the same constants.
-public struct WatchNoAutomaticSyncHint: View {
-    public static let label = WatchStartSurfaceCopy.noAutoSyncLabel
-
-    public init() {}
-
-    public var body: some View {
-        Label(Self.label, systemImage: "slash.circle")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-    }
-}
-
 /// "The full catalog is a phone away" — shown only while the phone can actually
 /// be reached, because it is a promise about a radio.
 public struct WatchSearchOnPhoneHint: View {
@@ -105,8 +86,8 @@ public struct WatchStartView: View {
     /// workout running.
     public static let logFoodLabel = "Log food"
 
-    /// The user's explicit action — the only thing that asks the phone for
-    /// anything.
+    /// The user's explicit action — recovering a device that was out of reach
+    /// and refreshing the routine list.
     public static let syncLabel = WatchStartSurfaceCopy.syncLabel
 
     @State private var pickingExercise = false
@@ -161,8 +142,6 @@ public struct WatchStartView: View {
 
                 // D-8: said only once the radio has observed it.
                 if phoneStatus.sentence != nil { WatchPhoneUnreachableHint() }
-
-                WatchNoAutomaticSyncHint()
 
                 if let onOpenNutrition {
                     Button(Self.logFoodLabel, action: onOpenNutrition)

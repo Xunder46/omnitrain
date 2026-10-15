@@ -16,10 +16,13 @@ import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/sync_protocol_harness.dart';
+import 'helpers/watch_capture_import_harness.dart';
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -66,6 +69,86 @@ Widget _buildSessionScreen(_Deps deps) {
     ),
   );
 }
+
+// ── S-340 — a wrist rest on the phone's own surfaces ────────────────────────
+//
+// The rest the wrist sent arrives as one closed `EntryRest` after the set it
+// followed (18c D-210 – D-216, 18d D-235). Closed means no surface counts it,
+// and a rest after a set is what makes that set read as logged.
+
+const String _importedSessionId = 's-cap-1';
+const String _importedExerciseName = 'Barbell Bench Press';
+const String _importedSessionStart = '2026-09-25T10:00:00.000Z';
+const String _importedSessionEnd = '2026-09-25T11:00:00.000Z';
+const String _importedRestStart = '2026-09-25T10:00:10.000Z';
+const String _importedRestEnd = '2026-09-25T10:01:20.000Z';
+
+/// A phone that took the wrist session S-340's fixture names: set A at
+/// `T0 = 10:00:00`, the rest that followed it from `T0+10s` to `T0+80s`, and
+/// the end at `T0+3600s`. Staged one `observations_up` per event and imported,
+/// the way `test/watch_session_import_test.dart` imports S-320.
+Future<MockWorkoutRepository> _importedRepoWithRest() async {
+  final repository = MockWorkoutRepository();
+  await repository.initialize();
+  // Suppress first-run coach-mark sheets that interfere with finder assertions.
+  await repository.setPreferenceBool('hint_seen_exercise_info', true);
+  await repository.setPreferenceBool('hint_seen_exercise_notes', true);
+  await seedCaptureCatalog(repository);
+  var ids = 0;
+  final inbox = WatchSessionInbox(
+    repository: repository,
+    transport: CaptureTransport(),
+    validator: loadProtocolValidator(),
+    clock: () => DateTime.utc(2026, 9, 25, 11),
+    idFactory: () => 'msg-phone-${++ids}',
+    onFailure: Error.throwWithStackTrace,
+  );
+  final events = <Map<String, Object?>>[
+    {
+      'entryId': 'e-set-a',
+      'eventId': 'e-set-a',
+      'kind': 'set',
+      'loggedAt': _importedSessionStart,
+      'sessionExerciseId': 'sx-bench',
+      'exerciseId': 'ex-bench',
+      'reps': 5,
+      'loadKg': 80,
+    },
+    {
+      'entryId': 'e-rest-a',
+      'eventId': 'e-rest-a',
+      'kind': 'rest',
+      'loggedAt': _importedRestEnd,
+      'sessionExerciseId': 'sx-bench',
+      'exerciseId': 'ex-bench',
+      'startedAt': _importedRestStart,
+      'endedAt': _importedRestEnd,
+      'afterEntryId': 'e-set-a',
+    },
+    {
+      'entryId': 'end-$_importedSessionId',
+      'eventId': 'end-$_importedSessionId',
+      'kind': 'session_end',
+      'loggedAt': _importedSessionEnd,
+      'startedAt': _importedSessionStart,
+      'endedAt': _importedSessionEnd,
+      'status': 'completed',
+    },
+  ];
+  for (var i = 0; i < events.length; i++) {
+    await inbox.receive(
+      observationsUp(_importedSessionId, [events[i]], messageId: 'msg-s340-$i'),
+    );
+  }
+  return repository;
+}
+
+_Deps _depsOver(MockWorkoutRepository repository) => (
+  workoutState: WorkoutState(repository),
+  routineState: RoutineState(repository),
+  sessionSummaryService: SessionSummaryService(repository),
+  settingsState: SettingsState(repository, fakePreferencesService()),
+);
 
 Future<void> _openDetailView(WidgetTester tester, String exerciseName) async {
   await tester.pumpAndSettle();
@@ -538,6 +621,170 @@ void main() {
           reason:
               'detail view must hide the chip once the timed entry\'s '
               'effort is actively running',
+        );
+      },
+    );
+  });
+
+  // Plan: `docs/plans/2026-10-08-18d-watch-rest-emit-and-docs-plan/`
+  // (S-340) — the phone shows an imported rest where it shows any rest.
+  //
+  // Two tests, because an *ended* imported session whose exercise is opened
+  // hands its screen over to the summary as soon as the note load notifies
+  // (`_onWorkoutStateChanged`, D-179): the detail view that renders "LOGGED"
+  // cannot be read on it. The first keeps S-340's exact ended fixture and
+  // checks the rest the phone holds; the second checks what that row shape
+  // does to a live surface, using the phone's own writer.
+  group('S-340 an imported wrist rest', () {
+    testWidgets(
+      'S-340 an ended session holds the imported closed rest as history, and '
+      'counts it nowhere',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repository = await _importedRepoWithRest();
+        final deps = _depsOver(repository);
+        await deps.workoutState.loadHistoricalSession(_importedSessionId);
+
+        // The import left one row, and it is closed — nothing is resting.
+        final effort = (await repository.getSessionSegments(_importedSessionId))
+            .single;
+        final effortId = (await repository.getSegmentEfforts(effort.id))
+            .single
+            .id;
+        final rests = await repository.getEntryRests(effortId);
+        expect(rests, hasLength(1), reason: 'S-340 the import left one rest');
+        expect(rests.single.entryIndex, 1, reason: 'S-340 after the set');
+        expect(
+          rests.single.restEndMs,
+          DateTime.parse(_importedRestEnd).toUtc().millisecondsSinceEpoch,
+          reason: 'S-340 the rest arrives over, not counting',
+        );
+
+        final alerts = FakeTimerAlertService();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: deps.workoutState,
+              routineState: deps.routineState,
+              sessionSummaryService: deps.sessionSummaryService,
+              timerAlertService: alerts,
+              settingsState: deps.settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byType(WorkoutSessionScreen),
+          findsOneWidget,
+          reason: 'S-340 the imported session renders, and does not crash',
+        );
+        expect(
+          find.text(_importedExerciseName),
+          findsOneWidget,
+          reason: 'S-340 the imported effort is on the session list',
+        );
+        expect(
+          find.byKey(const Key('rest-overlay-chip')),
+          findsNothing,
+          reason:
+              'S-340 no surface may count an imported rest: it is closed, so '
+              'the overlay rule finds no open rest',
+        );
+
+        // The loaded session holds the same single closed row the repository
+        // does — and holds it as history, not as a rest in flight.
+        final loaded = deps.workoutState.getEntryRests(effortId);
+        expect(
+          loaded,
+          hasLength(1),
+          reason: 'S-340 the phone holds the imported rest, closed',
+        );
+        expect(
+          loaded.single.entryIndex,
+          1,
+          reason: 'S-340 it sits beside the set it followed',
+        );
+        expect(
+          loaded.single.restEndMs,
+          isNotNull,
+          reason: 'S-340 and it arrived already over',
+        );
+        expect(
+          deps.workoutState.hasRestRecord(effortId, 1),
+          isFalse,
+          reason:
+              'S-340 the phone holds no open rest, so the most recent open '
+              'rest key finds none',
+        );
+        expect(
+          deps.workoutState.getRestElapsedSeconds(effortId, 1),
+          0,
+          reason: 'S-340 a closed rest has no elapsed to judge',
+        );
+      },
+    );
+
+    testWidgets(
+      'S-340 the closed rest beside a set reads that set as logged',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final deps = await _buildDeps(modality: 'resistance_lifting');
+        // A ping interval is live, so a rest held as open would ping here.
+        await deps.settingsState.setRestPingInterval(30);
+        final catalog = await _freshRepo();
+        final setExercise = (await catalog.getExercises()).firstWhere(
+          (e) => e.capabilities.contains('reps'),
+        );
+        final effortId = await deps.workoutState.addExerciseToSession(
+          setExercise,
+          chosenMetric: 'reps',
+        );
+
+        // Start and stop the rest beside entry 0: one row at entryIndex 1,
+        // already over. That is the shape the wrist's rest arrives in.
+        // (Whether that rest pings is S-340's other clause, proven in
+        // `test/watch_rest_ping_test.dart`: the ping rule reads the wall clock,
+        // which a widget test cannot advance.)
+        await deps.workoutState.recordRestStart(effortId, 1);
+        await deps.workoutState.recordRestEnd(effortId, 1);
+
+        final alerts = FakeTimerAlertService();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: deps.workoutState,
+              routineState: deps.routineState,
+              sessionSummaryService: deps.sessionSummaryService,
+              timerAlertService: alerts,
+              settingsState: deps.settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await _openDetailView(tester, setExercise.name);
+
+        expect(
+          find.text('LOGGED'),
+          findsOneWidget,
+          reason:
+              'S-340 a rest at entryIndex + 1 is what reads the set before it '
+              'as logged, whether or not that rest is over',
+        );
+
+        expect(
+          find.widgetWithText(FilledButton, 'Log Set'),
+          findsNothing,
+          reason: 'S-340 a logged set offers no Log Set control',
+        );
+        expect(
+          find.byKey(const Key('rest-overlay-chip')),
+          findsNothing,
+          reason: 'S-340 a rest that is over draws no counting overlay',
         );
       },
     );

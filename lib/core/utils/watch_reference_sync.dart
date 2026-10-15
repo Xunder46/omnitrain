@@ -36,11 +36,14 @@ import '../../data/repositories/workout_repository.dart';
 ///
 /// Capabilities are the one thing an [Exercise] row does not hold — they live in
 /// their own table, which is why they are resolved once here and travel with the
-/// name rather than being looked up again per effort row.
+/// name rather than being looked up again per effort row. The exercise's own
+/// period length comes from the row itself and travels for the same reason
+/// (D-1411).
 typedef _SyncedExercise = ({
   String id,
   String name,
   List<String> capabilities,
+  int? defaultRoundDurationSecs,
 });
 
 /// Resolves exercises to what the wire carries, reading each one's capabilities
@@ -50,6 +53,7 @@ class _ExerciseResolver {
 
   final WorkoutRepository _repository;
   final Map<String, String> _names = {};
+  final Map<String, int?> _defaultRoundSecs = {};
   final Map<String, List<String>> _capabilities = {};
 
   Future<_SyncedExercise?> resolve(String? exerciseId) async {
@@ -58,6 +62,7 @@ class _ExerciseResolver {
     if (_names.isEmpty) {
       for (final exercise in await _repository.getExercises()) {
         _names[exercise.id] = exercise.name;
+        _defaultRoundSecs[exercise.id] = exercise.defaultRoundDurationSecs;
       }
     }
     final name = _names[exerciseId];
@@ -67,7 +72,12 @@ class _ExerciseResolver {
         await _repository.getExerciseCapabilities(exerciseId);
     if (capabilities.isEmpty) return null;
 
-    return (id: exerciseId, name: name, capabilities: capabilities);
+    return (
+      id: exerciseId,
+      name: name,
+      capabilities: capabilities,
+      defaultRoundDurationSecs: _defaultRoundSecs[exerciseId],
+    );
   }
 }
 
@@ -138,6 +148,10 @@ abstract final class WatchReferenceSync {
   /// The fallback list is what lets the wrist run a routine with the phone
   /// unreachable, so a routine this list does not cover is a routine the watch
   /// must not hold (PROTOCOL.md, "Message families").
+  ///
+  /// The exercise's own period length travels with it (D-1411) whenever it holds
+  /// one: a catalog entry declares no effort kind, so the wrist decides at pick
+  /// time whether the length applies (D-1404).
   static List<Map<String, Object?>> _fallbackJson(
     Map<String, _SyncedExercise> referenced,
   ) => [
@@ -146,6 +160,9 @@ abstract final class WatchReferenceSync {
         'exerciseId': exercise.id,
         'name': exercise.name,
         'capabilities': exercise.capabilities,
+        if (exercise.defaultRoundDurationSecs != null &&
+            exercise.defaultRoundDurationSecs! >= 1)
+          'roundDurationSecs': exercise.defaultRoundDurationSecs!,
       },
   ];
 
@@ -292,7 +309,8 @@ abstract final class WatchReferenceSync {
 
   /// The phone's settings the wrist honours, as the `preferences_down` message
   /// it reads — today, whether a session ended on the wrist asks for the
-  /// session effort rating ([effortRatingPrompt]).
+  /// session effort rating ([effortRatingPrompt]) and how often the wrist pings
+  /// while a rest of its own is open ([restPingSeconds], 0 for Off).
   ///
   /// Its own message rather than a field on `routines_down`, because
   /// [buildRoutinesDown] answers null for a phone with no routines, and a
@@ -305,16 +323,18 @@ abstract final class WatchReferenceSync {
   /// that must not be dropped as a redelivery.
   static Map<String, Object?> buildPreferencesDown({
     required bool effortRatingPrompt,
+    required int restPingSeconds,
     required DateTime generatedAt,
   }) => phoneEnvelope(
     type: 'preferences_down',
     messageId:
         'msg-preferences-${generatedAt.toUtc().millisecondsSinceEpoch}-'
-        '${effortRatingPrompt ? 'on' : 'off'}',
+        '${effortRatingPrompt ? 'on' : 'off'}-$restPingSeconds',
     sentAt: generatedAt,
     payload: {
       'generatedAt': utcIso(generatedAt),
       'effortRatingPrompt': effortRatingPrompt,
+      'restPingSeconds': restPingSeconds,
     },
   );
 

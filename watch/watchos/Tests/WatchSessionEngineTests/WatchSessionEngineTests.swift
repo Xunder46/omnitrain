@@ -65,11 +65,25 @@ final class Harness {
         return live
     }
 
+    /// Forget what has been emitted so far, so a test asserts its own frame and
+    /// not the session setup's.
+    func clearEmitted() { emitted.removeAll() }
+
     static func validator() -> SyncProtocolValidator {
         SyncProtocolValidator(
             schemaDocuments: (try? Fixtures.schemaDocuments()) ?? [:]
         )
     }
+}
+
+/// Records the frames an engine emits where the shared harness's own emitter is
+/// not the one in use — an engine a test built to mint its own session ids.
+final class EmitRecorder {
+    private(set) var frames: [[String: Any]] = []
+
+    func append(_ frame: [String: Any]) { frames.append(frame) }
+
+    var types: [String?] { frames.map { $0["type"] as? String } }
 }
 
 func exercise(_ slot: String) -> [String: Any] {
@@ -108,6 +122,59 @@ func setEvent(_ clock: TestClock, entryId: String, slot: String = "sx-bench") ->
     ]
 }
 
+/// A schema-conformant `effort_rating` observation: the wrist's session rating,
+/// the event the end frame is owed behind (D-174, D-193).
+func ratingEvent(_ clock: TestClock, entryId: String, rating: Int = 4) -> [String: Any] {
+    [
+        "entryId": entryId,
+        "eventId": entryId,
+        "kind": "effort_rating",
+        "loggedAt": utcIso(clock.now),
+        "rating": rating,
+    ]
+}
+
+/// 2026-10-08T10:00:00Z — the instant the S-212 fixture ends `w9` at, built from
+/// components so it is the same end instant the Dart suite uses rather than a
+/// hand-computed epoch.
+func octoberInstant() -> Date {
+    var components = DateComponents()
+    components.year = 2026
+    components.month = 10
+    components.day = 8
+    components.hour = 10
+    components.timeZone = TimeZone(secondsFromGMT: 0)
+    return Calendar(identifier: .gregorian).date(from: components)!
+}
+
+/// Asserts two frames are the same frame, field for field — including the
+/// payload's own. A replay that only looks like the live frame (a re-minted
+/// `messageId`, a `sentAt` taken from the catch-up) fails here.
+func assertSameFrame(
+    _ frame: [String: Any],
+    _ expected: [String: Any],
+    _ message: String
+) {
+    XCTAssertEqual(
+        Set(frame.keys), Set(expected.keys),
+        "\(message): the frame names the fields the live one does"
+    )
+    for key in ["type", "messageId", "sessionId", "origin", "sentAt"] {
+        XCTAssertEqual(
+            frame[key] as? String, expected[key] as? String,
+            "\(message): the frame's \(key)"
+        )
+    }
+    XCTAssertEqual(
+        frame["protocolVersion"] as? Int, expected["protocolVersion"] as? Int,
+        "\(message): the frame's protocolVersion"
+    )
+    XCTAssertEqual(
+        frame["payload"] as? NSDictionary, expected["payload"] as? NSDictionary,
+        "\(message): the frame's payload"
+    )
+}
+
 final class WatchSessionEngineTests: XCTestCase {
 
     // MARK: - S-001 force-kill restores an in-progress session
@@ -124,9 +191,9 @@ final class WatchSessionEngineTests: XCTestCase {
             try await engine.appendObservation(setEvent(harness.clock, entryId: entryId))
             harness.clock.advance(120)
         }
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 180_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 180_000)
 
-        // Killed 30 s into the rest timer; relaunched two minutes later.
+        // Killed 30 s into the round timer; relaunched two minutes later.
         harness.clock.advance(30)
         _ = await engine.advanceExercise()
         harness.clock.advance(120)
@@ -139,10 +206,10 @@ final class WatchSessionEngineTests: XCTestCase {
         XCTAssertEqual(relaunched.observations.map(\.entryId), ["e-1", "e-2", "e-3"])
         XCTAssertEqual(relaunched.observations[0].payload["reps"] as? Int, 5)
 
-        let rest = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.rest))
-        XCTAssertEqual(rest.state, WatchTimerState.running)
+        let round = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(round.state, WatchTimerState.running)
         XCTAssertEqual(
-            remainingMs(rest, now: harness.clock.now),
+            remainingMs(round, now: harness.clock.now),
             180_000 - 150_000,
             "remaining time derives from startedAt and the current clock, "
                 + "never from a counter frozen at kill time"
@@ -154,15 +221,15 @@ final class WatchSessionEngineTests: XCTestCase {
         let engine = await harness.runningEngine()
         _ = await engine.createSession(modality: nil, exercises: [exercise("sx-plank")])
 
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 120_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 120_000)
         harness.clock.advance(20)
         _ = await engine.pauseTimer()
 
         let relaunched = await harness.runningEngine()
-        let rest = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.rest))
+        let round = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.round))
 
-        XCTAssertEqual(rest.state, WatchTimerState.paused)
-        XCTAssertEqual(remainingMs(rest, now: harness.clock.now), 120_000 - 20_000)
+        XCTAssertEqual(round.state, WatchTimerState.paused)
+        XCTAssertEqual(remainingMs(round, now: harness.clock.now), 120_000 - 20_000)
     }
 
     func testS001RestoringOverAnUntouchedStoreYieldsNoSession() async throws {
@@ -216,10 +283,14 @@ final class WatchSessionEngineTests: XCTestCase {
             harness.clock.advance(60)
         }
 
-        // A session start announces itself; the three entries follow it.
+        // A session start announces itself — the lifecycle frame, then the
+        // snapshot carrying the ladder (D-91) — and the three entries follow both.
         XCTAssertEqual(
             harness.emitted.map { $0["type"] as? String },
-            ["session_lifecycle", "observations_up", "observations_up", "observations_up"]
+            [
+                "session_lifecycle", "session_snapshot",
+                "observations_up", "observations_up", "observations_up",
+            ]
         )
 
         // Killed before anything left the watch: the replay rebuilds the same
@@ -377,6 +448,445 @@ final class WatchSessionEngineTests: XCTestCase {
         XCTAssertTrue(relaunched.observations.isEmpty)
     }
 
+    // MARK: - S-48 / G3 a pruned row takes its lens with it
+
+    func testS48APrunedRowTakesItsCorrectionWithIt() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+
+        for entryId in ["e-1", "e-2", "e-3"] {
+            try await engine.appendObservation(setEvent(harness.clock, entryId: entryId))
+        }
+        _ = try await engine.applyMessage(
+            structureChangeMessage(
+                changeId: "chg-correct-1",
+                changes: [
+                    ["kind": "correct_entry", "entryId": "e-1", "correction": ["loadKg": 70.0]]
+                ]
+            )
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "e-1" }?.payload["loadKg"] as? Double,
+            70,
+            "S-48 the phone's correction is what the wrist shows"
+        )
+        _ = await engine.confirmObservations(["e-1", "e-2"])
+
+        let pruned = await engine.pruneConfirmed()
+        XCTAssertEqual(Set(pruned), ["e-1", "e-2"], "S-48 the confirmed rows are the ones dropped")
+
+        _ = try await engine.applyMessage(
+            snapshotMessage(
+                messageId: "msg-resend-1",
+                sessionId: harness.sessionId,
+                revision: 7,
+                entries: [entryMap("e-1", at: utcIso(testInstant()), loadKg: 60)]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["e-1", "e-3"],
+            "S-48 the re-carried id is a fresh row again, and the unconfirmed entry is untouched"
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "e-1" }?.payload["loadKg"] as? Double,
+            60,
+            "S-48/G3 a pruned row takes its correction with it: the fresh row shows what was delivered, not 70"
+        )
+    }
+
+    func testS48APrunedRowTakesItsDeletionMarkerWithIt() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        try await engine.appendObservation(setEvent(harness.clock, entryId: "e-1"))
+
+        _ = try await engine.applyMessage(
+            structureChangeMessage(
+                changeId: "chg-delete-1",
+                changes: [["kind": "delete_entry", "entryId": "e-1"]]
+            )
+        )
+        XCTAssertTrue(engine.entries.isEmpty, "S-48 the phone's deletion hides the entry")
+
+        _ = await engine.confirmObservations(["e-1"])
+        let pruned = await engine.pruneConfirmed()
+        XCTAssertEqual(pruned, ["e-1"], "S-48 the deleted row is still a stored row, so a prune drops it")
+
+        _ = try await engine.applyMessage(
+            snapshotMessage(
+                messageId: "msg-resend-2",
+                sessionId: harness.sessionId,
+                revision: 8,
+                entries: [entryMap("e-1", at: utcIso(testInstant()), loadKg: 60)]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["e-1"],
+            "S-48/G3 the deletion marker went with the pruned row, so a re-carried id is shown again"
+        )
+    }
+
+    // MARK: - D-113 the durable deletion lens, and a snapshot's answer
+
+    /// A phone `set` entry as the wire carries it, with no load and no reps —
+    /// what a re-created bodyweight set wears.
+    private func bodyweightEntry(_ entryId: String, at loggedAt: String) -> [String: Any] {
+        [
+            "entryId": entryId,
+            "eventId": entryId,
+            "kind": "set",
+            "loggedAt": loggedAt,
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-sx-bench",
+        ]
+    }
+
+    func testS124ADeletionSurvivesAWristRelaunch() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s124-1",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-1",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["entry-bench-2"],
+            "S-124 the phone's deletion hides the set while the wrist runs"
+        )
+
+        let relaunched = await harness.runningEngine()
+
+        XCTAssertEqual(
+            relaunched.entries.map(\.entryId),
+            ["entry-bench-2"],
+            "S-124 the lens is read back from the newest session row: a wrist "
+                + "relaunch does not resurrect the deleted set"
+        )
+        XCTAssertEqual(
+            relaunched.observations.map(\.entryId),
+            ["entry-bench-1", "entry-bench-2"],
+            "I-3 the row is still stored — the lens hides it, nothing deletes it"
+        )
+    }
+
+    func testS124TheLensRidesOnTheRowsWrittenAfterIt() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s124-2",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-1",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+        // An ordinary frame after the delete: the newest row must still know.
+        _ = try await engine.applyMessage(
+            lifecycleFrame(
+                harness.sessionId,
+                messageId: "msg-life-s124",
+                state: WatchLifecycleState.exerciseAdvanced,
+                exerciseIndex: 0
+            )
+        )
+
+        let relaunched = await harness.runningEngine()
+
+        XCTAssertEqual(
+            relaunched.entries.map(\.entryId),
+            ["entry-bench-2"],
+            "S-124 the deletion is carried onto every later session row, so the "
+                + "newest one still speaks for it"
+        )
+    }
+
+    /// F1 (review 1): a wrist action of its own writes a newer session row than
+    /// the one the phone's delete wrote, and `restore()` reads the lens off the
+    /// newest row. A transition that drops the lens forgets the deletion on the
+    /// next relaunch — the deleted set comes back.
+    func testF1ALocalTransitionAfterADeleteKeepsTheLens() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: nil,
+            exercises: [exercise("sx-bench"), exercise("sx-row")]
+        )
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-f1-1",
+                exercises: [exercise("sx-bench"), exercise("sx-row")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-1",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+
+        // The wrist's own actions, with no frame from the phone involved: the
+        // newest session row is now the one these transitions write.
+        _ = await engine.advanceExercise()
+        _ = await engine.finishSession()
+
+        let relaunched = await harness.runningEngine()
+
+        XCTAssertEqual(
+            relaunched.session?.deletedEntryIds,
+            ["entry-bench-1"],
+            "F1 the row a local transition writes carries the deletion the phone sent"
+        )
+        XCTAssertEqual(
+            relaunched.entries
+                .filter { $0.kind != WatchObservationKind.sessionEnd }
+                .map(\.entryId),
+            ["entry-bench-2"],
+            "F1 a wrist transition after a delete does not resurrect the deleted set"
+        )
+    }
+
+    func testS125AReUsedNumberShowsTheNewEntrysOwnFields() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s125-1",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "entry-bench-2" }?.payload["loadKg"] as? Double,
+            60,
+            "the fixture: the wrist holds the set the phone is about to reuse"
+        )
+
+        // The phone deletes the newest set of the slot and logs another one,
+        // which its mint (highest number + 1) numbers `entry-bench-2` again —
+        // this time a bodyweight set with no load and no reps.
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-2",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-2"]]
+            )
+        )
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s125-2",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    bodyweightEntry("entry-bench-2", at: "2026-07-13T06:05:00Z"),
+                ]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["entry-bench-1", "entry-bench-2"],
+            "S-125 the snapshot clears the tombstone for the id it carries "
+                + "(D-113.2), and the new set sorts by its own loggedAt"
+        )
+        XCTAssertNil(
+            engine.entries.first { $0.entryId == "entry-bench-2" }?.payload["loadKg"],
+            "S-125 a differing loggedAt replaces the held entry outright: the "
+                + "deleted set's load does not survive on the new one (D-113.3)"
+        )
+        XCTAssertNil(
+            engine.entries.first { $0.entryId == "entry-bench-2" }?.payload["reps"],
+            "S-125 no field the phone did not send comes from the dead set"
+        )
+        XCTAssertEqual(
+            engine.entries.first { $0.entryId == "entry-bench-1" }?.payload["loadKg"] as? Double,
+            60,
+            "S-125 the entry the snapshot re-stated unchanged keeps its values"
+        )
+    }
+
+    func testS125AnIdTheWristNeverHeldIsShownByASnapshot() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+
+        // The phone deletes an id this wrist has no row for: the frame names a
+        // set that never reached it.
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "del-entry-bench-2",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-2"]]
+            )
+        )
+        XCTAssertTrue(engine.entries.isEmpty, "the fixture: nothing is stored under that id yet")
+
+        // The phone then re-states the id as a live set — the reused number.
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s125-3",
+                exercises: [exercise("sx-bench")],
+                entries: [entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 40)]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["entry-bench-2"],
+            "S-125 a tombstone with no row behind it can never be answered for, "
+                + "so the snapshot that names the id shows it (D-113.2)"
+        )
+        XCTAssertEqual(
+            engine.entries.first?.payload["loadKg"] as? Double,
+            40,
+            "S-125 the entry shown is the phone's own, not a dead one"
+        )
+    }
+
+    func testS35AReStatementOfADeletedIdStaysDeleted() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s35-1",
+                exercises: [exercise("sx-bench")],
+                entries: [entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60)]
+            )
+        )
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                harness.sessionId,
+                changeId: "chg-delete-s35",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+        XCTAssertTrue(engine.entries.isEmpty, "the delete drops the id from the projection")
+
+        // An answer that still names the deleted id, stamp and all: the wrist
+        // holds the row, so the snapshot only repeats it — and a re-statement of
+        // a deleted id stays deleted (D-115, D-113.2).
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s35-2",
+                exercises: [exercise("sx-bench")],
+                entries: [entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60)]
+            )
+        )
+
+        XCTAssertTrue(
+            engine.entries.isEmpty,
+            "S-35 a re-statement does not resurrect a deletion: the phone owns "
+                + "the delete, and the id stays dropped"
+        )
+        XCTAssertEqual(
+            engine.observations.map(\.entryId),
+            ["entry-bench-1"],
+            "S-35 the row is not un-stored either; only the projection hides it"
+        )
+    }
+
+    func testS126AForeignDeleteIsRefusedAndARepeatIsANoOp() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                harness.sessionId,
+                messageId: "msg-s126-1",
+                exercises: [exercise("sx-bench")],
+                entries: [
+                    entryMap("entry-bench-1", at: "2026-07-13T06:00:00Z", loadKg: 60),
+                    entryMap("entry-bench-2", at: "2026-07-13T06:01:00Z", loadKg: 60),
+                ]
+            )
+        )
+
+        let before = await harness.store.readAll()
+        let refused = try await engine.applyMessage(
+            structureChangeFrame(
+                "s-other",
+                changeId: "del-entry-bench-1",
+                changes: [["kind": "delete_entry", "entryId": "entry-bench-1"]]
+            )
+        )
+        XCTAssertFalse(refused, "D-79 a delete naming another session is refused")
+        let afterRefusal = await harness.store.readAll()
+        XCTAssertEqual(
+            afterRefusal.sessions.count,
+            before.sessions.count,
+            "S-126 a refused frame writes no session row"
+        )
+
+        let frame = structureChangeFrame(
+            harness.sessionId,
+            changeId: "del-entry-not-here",
+            changes: [["kind": "delete_entry", "entryId": "entry-not-here"]]
+        )
+        let applied = try await engine.applyMessage(frame)
+        XCTAssertTrue(applied, "the fixture: the first delivery applies")
+        let once = await harness.store.readAll()
+        let repeated = try await engine.applyMessage(frame)
+        XCTAssertFalse(repeated, "D-116 a frame re-delivered under the same changeId is a no-op")
+        let twice = await harness.store.readAll()
+
+        XCTAssertEqual(
+            twice.sessions.count,
+            once.sessions.count,
+            "S-126 the second delivery appends no row"
+        )
+        XCTAssertEqual(
+            engine.entries.map(\.entryId),
+            ["entry-bench-1", "entry-bench-2"],
+            "S-126 the held session is unchanged by either frame"
+        )
+    }
+
     // MARK: - Timer derivation
 
     func testTimerMathFollowsTheClockAcrossEveryState() throws {
@@ -439,18 +949,18 @@ final class WatchSessionEngineTests: XCTestCase {
         _ = await engine.createSession(modality: nil, exercises: [exercise("sx-row")])
 
         let startedAt = harness.clock.now
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 120_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 120_000)
         harness.clock.advance(30)
         _ = await engine.pauseTimer()
         harness.clock.advance(40)
         _ = await engine.resumeTimer()
         harness.clock.advance(20)
 
-        let rest = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
-        XCTAssertEqual(rest.startedAt, startedAt)
-        XCTAssertEqual(rest.accumulatedPauseMs, 40_000)
-        XCTAssertEqual(rest.state, WatchTimerState.running)
-        XCTAssertEqual(remainingMs(rest, now: harness.clock.now), 120_000 - 50_000)
+        let round = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(round.startedAt, startedAt)
+        XCTAssertEqual(round.accumulatedPauseMs, 40_000)
+        XCTAssertEqual(round.state, WatchTimerState.running)
+        XCTAssertEqual(remainingMs(round, now: harness.clock.now), 120_000 - 50_000)
     }
 
     func testAdvancingPastTheLastExerciseStaysOnIt() async throws {
@@ -510,6 +1020,62 @@ final class WatchSessionEngineTests: XCTestCase {
         ]
     }
 
+    /// A phone entry, as a snapshot carries it.
+    private func entryMap(_ entryId: String, at loggedAt: String, loadKg: Double) -> [String: Any] {
+        [
+            "entryId": entryId,
+            "eventId": entryId,
+            "kind": "set",
+            "loggedAt": loggedAt,
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-sx-bench",
+            "reps": 8,
+            "loadKg": loadKg,
+        ]
+    }
+
+    /// One `session_snapshot` from the phone, over the wrist's own session.
+    private func snapshotMessage(
+        messageId: String,
+        sessionId: String,
+        revision: Int,
+        entries: [[String: Any]]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": sessionId,
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:30:00Z",
+            "payload": [
+                "sessionId": sessionId,
+                "revision": revision,
+                "status": WatchSessionStatus.active,
+                "currentExerciseIndex": 0,
+                "exercises": [exercise("sx-bench")],
+                "entries": entries,
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ]
+    }
+
+    /// One `structure_change` from the phone, over the wrist's own session.
+    private func structureChangeMessage(
+        changeId: String,
+        changes: [[String: Any]]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-\(changeId)",
+            "sessionId": "s-watch-1",
+            "type": "structure_change",
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:30:00Z",
+            "payload": ["changeId": changeId, "changes": changes],
+        ]
+    }
+
     func testTheWristsEndIsStoredAndSentBeforeTheSessionIsMarkedComplete() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
@@ -554,6 +1120,113 @@ final class WatchSessionEngineTests: XCTestCase {
 
         XCTAssertEqual(sessionEnd(engine)?["status"] as? String, WatchSessionStatus.abandoned, "D-120")
         XCTAssertNil(sessionEnd(engine)?["modality"], "D-120 a session with no modality says none")
+    }
+
+    // MARK: - S-212/S-214 the end is replayed, never re-minted (D-199)
+
+    /// The S-212 fixture: a wrist holding `w9`, created and ended at
+    /// 2026-10-08T10:00:00Z while the phone was out of reach, so the end frame
+    /// is the one the next catch-up owes it.
+    private func endedW9(abandon: Bool = false) async throws
+        -> (harness: Harness, engine: WatchSessionEngine, live: [String: Any])
+    {
+        let harness = Harness(sessionId: "w9")
+        let engine = await harness.runningEngine()
+        harness.clock.now = octoberInstant()
+        let started = await engine.createSession(modality: nil, exercises: [exercise("u-squat")])
+        XCTAssertEqual(started.sessionId, "w9", "the fixture's session")
+        harness.clearEmitted()
+
+        if abandon {
+            _ = await engine.abandonSession()
+        } else {
+            _ = await engine.finishSession()
+        }
+
+        XCTAssertEqual(engine.session?.recordId, "rec-2", "the fixture's terminal row")
+        XCTAssertEqual(
+            harness.emitted.suffix(2).map { $0["type"] as? String },
+            ["observations_up", "session_lifecycle"],
+            "the fixture ends it once, live: the end observation, then the frame"
+        )
+        return (harness, engine, harness.emitted[1])
+    }
+
+    func testS212TheReplayRepeatsTheLiveFrameFieldForField() async throws {
+        let fixture = try await endedW9()
+        fixture.harness.clock.advance(5400)
+
+        fixture.engine.replaySessionEnd()
+
+        XCTAssertEqual(
+            fixture.harness.emitted.count, 3,
+            "exactly one more frame (D-199): the end observation, the live"
+                + " frame, the replay"
+        )
+        let replay = fixture.harness.emitted[2]
+        assertSameFrame(replay, fixture.live, "S-212 the frame the phone would have received live")
+        XCTAssertEqual(replay["messageId"] as? String, "msg-rec-2", "the end row keys it")
+        XCTAssertEqual(
+            replay["sentAt"] as? String, "2026-10-08T10:00:00.000Z",
+            "the end's instant, not the catch-up's"
+        )
+        XCTAssertEqual(replay["sessionId"] as? String, "w9")
+        XCTAssertEqual(
+            replay["payload"] as? NSDictionary,
+            ["state": WatchSessionStatus.completed, "at": "2026-10-08T10:00:00.000Z"] as NSDictionary,
+            "the state and the moment the wrist ended it (D-199)"
+        )
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(replay).isEmpty,
+            "the replay is a frame the phone can read"
+        )
+        XCTAssertEqual(fixture.engine.session?.recordId, "rec-2", "nothing appended")
+        let stored = await fixture.harness.store.readAll()
+        XCTAssertEqual(
+            stored.sessions.count, 2,
+            "no row either — the replay mints nothing"
+        )
+    }
+
+    func testS212AnAbandonedSessionReplaysTheSameWay() async throws {
+        let fixture = try await endedW9(abandon: true)
+        fixture.harness.clock.advance(5400)
+
+        fixture.engine.replaySessionEnd()
+
+        XCTAssertEqual(fixture.harness.emitted.count, 3)
+        let replay = fixture.harness.emitted[2]
+        assertSameFrame(replay, fixture.live, "S-212 a given-up session replays as itself")
+        XCTAssertEqual(replay["messageId"] as? String, "msg-rec-2")
+        XCTAssertEqual(
+            replay["payload"] as? NSDictionary,
+            ["state": WatchSessionStatus.abandoned, "at": "2026-10-08T10:00:00.000Z"] as NSDictionary
+        )
+    }
+
+    func testS214ASessionStillRunningReplaysNothing() async throws {
+        let harness = Harness(sessionId: "w9")
+        let engine = await harness.runningEngine()
+        harness.clock.now = octoberInstant()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("u-squat")])
+        let frames = harness.emitted.count
+
+        engine.replaySessionEnd()
+
+        XCTAssertEqual(
+            harness.emitted.count, frames,
+            "a session in progress has no end to re-announce (D-199)"
+        )
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.active)
+    }
+
+    func testS214AWristWithNoSessionReplaysNothing() async throws {
+        let harness = Harness(sessionId: "w9")
+        let engine = await harness.runningEngine()
+
+        engine.replaySessionEnd()
+
+        XCTAssertTrue(harness.emitted.isEmpty, "there is nothing to end")
     }
 
     func testThePhonesLifecycleEndsAWristSessionAtTheMomentItNames() async throws {
@@ -736,11 +1409,11 @@ final class WatchSessionEngineTests: XCTestCase {
         let engine = await harness.runningEngine()
         _ = await engine.createSession(modality: nil, exercises: [exercise("sx-row")])
 
-        _ = try await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 180_000)
+        _ = try await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 180_000)
         harness.clock.advance(45)
         _ = await engine.stopTimer()
 
-        let stopped = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
+        let stopped = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
         XCTAssertEqual(stopped.state, WatchTimerState.stopped)
         XCTAssertEqual(remainingMs(stopped, now: harness.clock.now), 135_000)
 
@@ -748,8 +1421,966 @@ final class WatchSessionEngineTests: XCTestCase {
         // stop instant, so it must not have kept counting.
         harness.clock.advance(600)
         let relaunched = await harness.runningEngine()
-        let restored = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.rest))
+        let restored = try XCTUnwrap(relaunched.timerFor(WatchTimerKind.round))
         XCTAssertEqual(restored.state, WatchTimerState.stopped)
         XCTAssertEqual(remainingMs(restored, now: harness.clock.now), 135_000)
     }
+
+    // MARK: - S-77/S-78 the wrist's session-acceptance rules
+
+    /// A phone frame about whichever session the caller names — S-77 and S-78
+    /// are both about a frame the wrist must refuse.
+    private func phoneFrame(
+        _ type: String,
+        sessionId: String,
+        messageId: String,
+        payload: [String: Any]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": sessionId,
+            "type": type,
+            "origin": "phone",
+            "sentAt": "2026-07-13T06:30:00Z",
+            "payload": payload,
+        ]
+    }
+
+    private func snapshotFrame(
+        _ sessionId: String,
+        messageId: String,
+        status: String = WatchSessionStatus.active,
+        exercises: [[String: Any]],
+        entries: [[String: Any]] = [],
+        timers: [String: Any] = [:]
+    ) -> [String: Any] {
+        phoneFrame("session_snapshot", sessionId: sessionId, messageId: messageId, payload: [
+            "sessionId": sessionId,
+            "revision": 1,
+            "status": status,
+            "currentExerciseIndex": 0,
+            "exercises": exercises,
+            "entries": entries,
+            "timers": timers,
+        ])
+    }
+
+    private func lifecycleFrame(
+        _ sessionId: String,
+        messageId: String,
+        state: String,
+        exerciseIndex: Int? = nil
+    ) -> [String: Any] {
+        var payload: [String: Any] = ["state": state, "at": "2026-07-13T06:30:00Z"]
+        if let exerciseIndex { payload["exerciseIndex"] = exerciseIndex }
+        return phoneFrame("session_lifecycle", sessionId: sessionId, messageId: messageId, payload: payload)
+    }
+
+    private func timerStateFrame(
+        _ sessionId: String,
+        messageId: String,
+        timers: [String: Any]
+    ) -> [String: Any] {
+        phoneFrame("timer_state", sessionId: sessionId, messageId: messageId, payload: ["timers": timers])
+    }
+
+    private func structureChangeFrame(
+        _ sessionId: String,
+        changeId: String,
+        changes: [[String: Any]]
+    ) -> [String: Any] {
+        phoneFrame(
+            "structure_change",
+            sessionId: sessionId,
+            messageId: "msg-\(changeId)",
+            payload: ["changeId": changeId, "changes": changes]
+        )
+    }
+
+    private func exercisePushFrame(
+        _ sessionId: String,
+        messageId: String,
+        slot: String
+    ) -> [String: Any] {
+        phoneFrame("exercise_push", sessionId: sessionId, messageId: messageId, payload: [
+            "exercise": exercise(slot),
+            "insertAtIndex": 1,
+        ])
+    }
+
+    /// A running timer as the wire spells one. A rest is a count-up, so a rest
+    /// carries no planned length (D-160); the length is written only when the
+    /// caller names one.
+    private func timerJson(
+        _ kind: String,
+        startedAt: String,
+        plannedDurationMs: Int? = nil
+    ) -> [String: Any] {
+        var json: [String: Any] = [
+            "kind": kind,
+            "state": WatchTimerState.running,
+            "startedAt": startedAt,
+        ]
+        if let plannedDurationMs = plannedDurationMs {
+            json["plannedDurationMs"] = plannedDurationMs
+        }
+        return json
+    }
+
+    /// The wrist mid-workout, holding its own `s-2` — the fixture S-77 and S-78
+    /// are measured against. Holding nothing would prove nothing.
+    private func wristMidWorkout() async -> (Harness, WatchSessionEngine) {
+        let harness = Harness(sessionId: "s-2")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-9")])
+        _ = try? await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+        return (harness, engine)
+    }
+
+    /// Applies one frame the wrist must refuse, and asserts it left `s-2` exactly
+    /// as it was: nothing applied, nothing stored, nothing emitted.
+    private func assertRefused(
+        _ frame: [String: Any],
+        _ engine: WatchSessionEngine,
+        _ harness: Harness,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let before = await harness.store.readAll()
+
+        let applied = try await engine.applyMessage(frame)
+
+        XCTAssertFalse(applied, "D-79", file: file, line: line)
+        XCTAssertEqual(engine.session?.sessionId, "s-2", file: file, line: line)
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.active, file: file, line: line)
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-9"],
+            "a frame naming another session is about another session",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(engine.session?.currentExerciseIndex, 0, file: file, line: line)
+        let after = await harness.store.readAll()
+        XCTAssertEqual(after.sessions.count, before.sessions.count, file: file, line: line)
+        XCTAssertEqual(after.timers.count, before.timers.count, file: file, line: line)
+        XCTAssertTrue(harness.emitted.isEmpty, file: file, line: line)
+    }
+
+    func testS77AForeignSnapshotChangesNothingAndSaysNothing() async throws {
+        let (harness, engine) = await wristMidWorkout()
+
+        let applied = try await engine.applyMessage(
+            snapshotFrame(
+                "s-1",
+                messageId: "msg-p-1",
+                exercises: [exercise("sx-1"), exercise("sx-2")],
+                entries: [entryMap("e-p1", at: "2026-07-13T06:30:00Z", loadKg: 80)]
+            )
+        )
+
+        XCTAssertFalse(applied, "the phone is in its own session")
+        XCTAssertEqual(engine.session?.sessionId, "s-2")
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-9"],
+            "the wrist is mid-workout; the phone's ladder is not its"
+        )
+        XCTAssertFalse(
+            engine.observations.contains { $0.entryId == "e-p1" },
+            "a foreign snapshot brings no entries with it"
+        )
+        let stored = await harness.store.readAll()
+        XCTAssertEqual(stored.sessions.count, 1, "a refused snapshot writes no row of its own")
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.running,
+            "a refused frame is no reason for the wrist to stop anything"
+        )
+        XCTAssertTrue(harness.emitted.isEmpty, "no receipt, no answer, no lifecycle — nothing at all")
+    }
+
+    /// The refusal runs ahead of the snapshot's end capture, so a frame the wrist
+    /// refuses cannot end a session the wrist created earlier (D-78).
+    func testS77ARefusedSnapshotDoesNotEndASessionTheWristCreatedEarlier() async throws {
+        let harness = Harness(sessionId: "s-1")
+        let engine = await harness.runningEngine()
+        // The wrist's own session, still empty: the phone's workout takes over
+        // (the empty-ladder counter-case), which is how the wrist comes to hold a
+        // session of the phone's while the row it created is still open.
+        _ = await engine.createSession(modality: nil, exercises: [])
+        _ = try await engine.applyMessage(
+            snapshotFrame("s-2", messageId: "msg-p-2", exercises: [exercise("sx-2")])
+        )
+        XCTAssertEqual(engine.session?.sessionId, "s-2")
+        XCTAssertTrue(engine.observations.isEmpty)
+        let before = await harness.store.readAll()
+
+        let applied = try await engine.applyMessage(
+            snapshotFrame(
+                "s-1",
+                messageId: "msg-p-1",
+                status: WatchSessionStatus.completed,
+                exercises: [exercise("sx-1")]
+            )
+        )
+
+        XCTAssertFalse(applied, "s-2 is running, so s-1 is not the wrist's business")
+        XCTAssertEqual(engine.session?.sessionId, "s-2")
+        let after = await harness.store.readAll()
+        XCTAssertEqual(
+            after.observations.count,
+            before.observations.count,
+            "a refused snapshot captures no end for the session it names"
+        )
+    }
+
+    func testS77TheSameSnapshotAppliesOnceTheWristHasFinished() async throws {
+        let harness = Harness(sessionId: "s-2")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-9")])
+        _ = await engine.finishSession()
+        harness.clearEmitted()
+
+        let applied = try await engine.applyMessage(
+            snapshotFrame("s-1", messageId: "msg-p-1", exercises: [exercise("sx-1"), exercise("sx-2")])
+        )
+
+        XCTAssertTrue(applied, "the phone's next workout is the ordinary case")
+        XCTAssertEqual(engine.session?.sessionId, "s-1")
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.active)
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-1", "sx-2"]
+        )
+    }
+
+    func testS77AWristWithAnEmptyLadderReservesNothing() async throws {
+        let harness = Harness(sessionId: "s-2")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil)
+
+        let applied = try await engine.applyMessage(
+            snapshotFrame("s-1", messageId: "msg-p-1", exercises: [exercise("sx-1")])
+        )
+
+        XCTAssertTrue(applied, "no exercise to interrupt means nothing to refuse")
+        XCTAssertEqual(engine.session?.sessionId, "s-1")
+    }
+
+    func testS78ALifecycleForAnotherSessionConcernsNobodyHere() async throws {
+        let (harness, engine) = await wristMidWorkout()
+
+        try await assertRefused(
+            lifecycleFrame("s-1", messageId: "msg-life-1", state: WatchLifecycleState.completed),
+            engine,
+            harness
+        )
+    }
+
+    func testS78AnAdvancedPositionForAnotherSessionMovesNothing() async throws {
+        let (harness, engine) = await wristMidWorkout()
+
+        try await assertRefused(
+            lifecycleFrame(
+                "s-1",
+                messageId: "msg-life-2",
+                state: WatchLifecycleState.exerciseAdvanced,
+                exerciseIndex: 0
+            ),
+            engine,
+            harness
+        )
+    }
+
+    func testS78TimerStateForAnotherSessionAdoptsNoTimer() async throws {
+        let (harness, engine) = await wristMidWorkout()
+
+        try await assertRefused(
+            timerStateFrame(
+                "s-1",
+                messageId: "msg-timers-1",
+                timers: ["rest": timerJson(WatchTimerKind.rest, startedAt: "2026-07-13T06:29:50Z")]
+            ),
+            engine,
+            harness
+        )
+
+        XCTAssertTrue(
+            engine.timerFor(WatchTimerKind.rest)?.recordId.hasPrefix("rec-") == true,
+            "the wrist keeps its own row"
+        )
+    }
+
+    func testS78AStructureChangeForAnotherSessionWritesNoRow() async throws {
+        let (harness, engine) = await wristMidWorkout()
+
+        try await assertRefused(
+            structureChangeFrame(
+                "s-1",
+                changeId: "chg-foreign-1",
+                changes: [["kind": "remove_exercise", "sessionExerciseId": "sx-9"]]
+            ),
+            engine,
+            harness
+        )
+    }
+
+    func testS78AnExercisePushForAnotherSessionLandsNowhere() async throws {
+        let (harness, engine) = await wristMidWorkout()
+
+        try await assertRefused(
+            exercisePushFrame("s-1", messageId: "msg-push-1", slot: "sx-10"),
+            engine,
+            harness
+        )
+    }
+
+    func testS81AReDeliveredSnapshotLeavesTheStoreAsItWas() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-bench")])
+        let snapshot = snapshotFrame(
+            "s-watch-1",
+            messageId: "msg-replayed-1",
+            exercises: [exercise("sx-bench")],
+            entries: [entryMap("e-p1", at: "2026-07-13T06:30:00Z", loadKg: 80)],
+            timers: ["rest": timerJson(WatchTimerKind.rest, startedAt: "2026-07-13T06:20:00Z")]
+        )
+
+        _ = try await engine.applyMessage(snapshot)
+        let once = await harness.store.readAll()
+
+        _ = try await engine.applyMessage(snapshot)
+        let twice = await harness.store.readAll()
+
+        XCTAssertEqual(
+            twice.sessions.map(\.recordId),
+            once.sessions.map(\.recordId),
+            "the same message mints no second row id"
+        )
+        XCTAssertEqual(twice.timers.map(\.recordId), once.timers.map(\.recordId))
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-bench"]
+        )
+        XCTAssertEqual(engine.session?.status, WatchSessionStatus.active)
+    }
+
+    // MARK: - S-100/S-101/S-104 the wrist announces its own structure (D-91, D-101)
+
+    /// The `session_snapshot` frames the wrist emitted from its own sink, in
+    /// order — the frames the phone's adoption reads.
+    private func wristSnapshots(_ harness: Harness) -> [[String: Any]] {
+        harness.emitted.filter { $0["type"] as? String == "session_snapshot" }
+    }
+
+    private func snapshotPayload(_ frame: [String: Any]) -> [String: Any] {
+        (frame["payload"] as? [String: Any]) ?? [:]
+    }
+
+    /// The `sessionExerciseId`s a snapshot's ladder carries, in order.
+    private func snapshotLadder(_ frame: [String: Any]) -> [String] {
+        (snapshotPayload(frame)["exercises"] as? [[String: Any]] ?? [])
+            .compactMap { $0["sessionExerciseId"] as? String }
+    }
+
+    private func snapshotRevision(_ frame: [String: Any]) -> Int? {
+        snapshotPayload(frame)["revision"] as? Int
+    }
+
+    func testS100AWristStartSendsItsLifecycleThenItsOwnSnapshot() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [exercise("sx-a"), exercise("sx-b")]
+        )
+
+        XCTAssertEqual(
+            harness.emitted.map { $0["type"] as? String },
+            ["session_lifecycle", "session_snapshot"],
+            "D-91 the frame the start already sent keeps its place and the snapshot follows it, one each"
+        )
+
+        let lifecycle = try XCTUnwrap(harness.emitted.first)
+        let snapshot = try XCTUnwrap(harness.emitted.last)
+        XCTAssertEqual(lifecycle["sessionId"] as? String, "s-watch-1")
+        XCTAssertEqual(snapshot["sessionId"] as? String, "s-watch-1")
+        XCTAssertNotEqual(
+            lifecycle["messageId"] as? String,
+            snapshot["messageId"] as? String,
+            "two announcements, two identities: each is re-deliverable on its own"
+        )
+        XCTAssertEqual(snapshotLadder(snapshot), ["sx-a", "sx-b"], "the ladder the phone adopts")
+        XCTAssertEqual(snapshotPayload(snapshot)["status"] as? String, WatchSessionStatus.active)
+        XCTAssertEqual(snapshotPayload(snapshot)["currentExerciseIndex"] as? Int, 0)
+        XCTAssertEqual(snapshotRevision(snapshot), engine.session?.revision)
+        XCTAssertTrue(
+            Harness.validator().validateEnvelope(snapshot).isEmpty,
+            "a telling this build could not send would be dropped, so what the sink got is a frame the protocol accepts"
+        )
+    }
+
+    func testS101AWristAddedExerciseArrivesAsASecondSnapshotWithAMovedRevision() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        // S-101's fixture: a free session started with no exercise at all, then
+        // the user's own pick.
+        _ = await engine.createSession(modality: nil, exercises: [])
+        let first = try XCTUnwrap(wristSnapshots(harness).first, "the free start announces itself")
+        XCTAssertEqual(snapshotLadder(first).count, 0, "the ladder the wrist started with, empty")
+        let before = try XCTUnwrap(snapshotRevision(first))
+
+        _ = await engine.insertExercise(exercise("sx-c"), moveTo: true)
+
+        let snapshots = wristSnapshots(harness)
+        XCTAssertEqual(snapshots.count, 2, "the wrist's own add is announced once, and nothing else is")
+        let second = try XCTUnwrap(snapshots.last)
+        XCTAssertEqual(snapshotLadder(second), ["sx-c"])
+        XCTAssertEqual(
+            snapshotPayload(second)["currentExerciseIndex"] as? Int,
+            0,
+            "the user's own add moves the session onto the exercise they just added"
+        )
+        XCTAssertGreaterThan(
+            try XCTUnwrap(snapshotRevision(second)),
+            before,
+            "D-101 a wrist-originated structural change moves the revision"
+        )
+        XCTAssertEqual(
+            snapshotRevision(second),
+            engine.session?.revision,
+            "the snapshot carries the number the row holds"
+        )
+        XCTAssertTrue(Harness.validator().validateEnvelope(second).isEmpty)
+    }
+
+    func testS104AStructureChangeFromThePhoneIsNeverAnnouncedBack() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [exercise("sx-a"), exercise("sx-b")]
+        )
+        harness.clearEmitted()
+
+        _ = try await engine.applyMessage(
+            structureChangeFrame(
+                "s-watch-1",
+                changeId: "chg-phone-1",
+                changes: [["kind": "remove_exercise", "sessionExerciseId": "sx-b"]]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-a"],
+            "the change really applied, so the silence below is not a refused frame's"
+        )
+        XCTAssertTrue(
+            harness.emitted.isEmpty,
+            "D-91 the phone is the structure authority: a change it wrote is not announced back at it"
+        )
+    }
+
+    func testS104AnExercisePushFromThePhoneIsNeverAnnouncedBack() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-a")])
+        harness.clearEmitted()
+
+        _ = try await engine.applyMessage(
+            exercisePushFrame("s-watch-1", messageId: "msg-push-1", slot: "sx-c")
+        )
+
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-a", "sx-c"],
+            "the push landed and left the user where they were"
+        )
+        XCTAssertTrue(
+            harness.emitted.isEmpty,
+            "D-91 an `exercise_push` applies with `announce: false`: the phone wrote it, so the phone hears nothing"
+        )
+    }
+
+    func testS104ASnapshotFromThePhoneIsNeverAnsweredWithTheWristsOwn() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: "resistance_lifting", exercises: [exercise("sx-a")])
+        harness.clearEmitted()
+
+        _ = try await engine.applyMessage(
+            snapshotFrame(
+                "s-watch-1",
+                messageId: "msg-snap-1",
+                exercises: [exercise("sx-a"), exercise("sx-b")]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.session?.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["sx-a", "sx-b"],
+            "the snapshot applied"
+        )
+        XCTAssertTrue(
+            harness.emitted.isEmpty,
+            "D-91 a snapshot is answered with silence: answering it would be a snapshot the phone did not ask for"
+        )
+    }
+
+    // MARK: - S-176 a refused start emits nothing
+
+    /// The S-176 fixture: a running engine whose first start mints `w1` and
+    /// whose next would mint `w2`, so a second session is distinguishable from
+    /// the session that should have been handed back.
+    private func liveW1(_ harness: Harness) async -> (WatchSessionEngine, EmitRecorder) {
+        let recorder = EmitRecorder()
+        var records = 0
+        var sessions = 0
+        let engine = WatchSessionEngine(
+            store: harness.store,
+            onEmit: { recorder.append($0) },
+            validator: Harness.validator(),
+            clock: harness.clock.call,
+            idFactory: {
+                records += 1
+                return "rec-\(records)"
+            },
+            sessionIdFactory: {
+                sessions += 1
+                return "w\(sessions)"
+            }
+        )
+        await engine.restore()
+        let held = await engine.createSession(
+            modality: nil,
+            exercises: [exercise("u-squat"), exercise("u-press")]
+        )
+        XCTAssertEqual(held.sessionId, "w1", "the fixture starts w1")
+        XCTAssertEqual(held.recordId, "rec-1", "the fixture appended one row")
+        XCTAssertEqual(
+            recorder.types,
+            ["session_lifecycle", "session_snapshot"],
+            "the fixture emitted its started lifecycle and one snapshot"
+        )
+        return (engine, recorder)
+    }
+
+    func testS176ARefusedStartHandsBackW1AndChangesNothing() async throws {
+        let harness = Harness()
+        let (engine, recorder) = await liveW1(harness)
+        let framesBefore = recorder.types
+        let rowsBefore = await harness.store.readAll().sessions
+
+        let returned = await engine.createSession(
+            modality: nil,
+            exercises: [exercise("u-row")]
+        )
+        let rowsAfter = await harness.store.readAll().sessions
+
+        XCTAssertEqual(returned.sessionId, "w1", "w2 never exists (D-177)")
+        XCTAssertEqual(returned.recordId, "rec-1", "the held row comes back")
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["u-squat", "u-press"],
+            "the refused start's exercise is absent (S-176)"
+        )
+        XCTAssertEqual(
+            recorder.types,
+            framesBefore,
+            "no second started lifecycle, no snapshot (D-177)"
+        )
+        XCTAssertEqual(
+            rowsAfter.count,
+            rowsBefore.count,
+            "the row store still holds one row (S-176)"
+        )
+        XCTAssertEqual(rowsBefore.count, 1)
+        XCTAssertEqual(
+            engine.session?.recordId,
+            "rec-1",
+            "the session getter still answers w1"
+        )
+    }
+
+    func testS176AnEmptySecondStartIsRefusedTheSameWay() async throws {
+        let harness = Harness()
+        let (engine, recorder) = await liveW1(harness)
+        let framesBefore = recorder.types
+
+        let returned = await engine.createSession(modality: nil)
+        let rowsAfter = await harness.store.readAll().sessions
+
+        XCTAssertEqual(returned.recordId, "rec-1")
+        XCTAssertEqual(
+            returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
+            ["u-squat", "u-press"]
+        )
+        XCTAssertEqual(
+            recorder.types,
+            framesBefore,
+            "an empty start is still a start (D-177)"
+        )
+        XCTAssertEqual(rowsAfter.count, 1, "no second row")
+    }
+
+    // MARK: - S-320…S-336 the wrist emits the rests it took
+
+    /// A phone's `timer_state` naming `timers`, sent at the instant the fixture
+    /// names rather than at `phoneFrame`'s fixed one.
+    private func timerStateAt(
+        _ sessionId: String,
+        messageId: String,
+        sentAt: Date,
+        timers: [String: Any]
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId,
+            "sessionId": sessionId,
+            "type": "timer_state",
+            "origin": "phone",
+            "sentAt": utcIso(sentAt),
+            "payload": ["timers": timers],
+        ]
+    }
+
+    /// One slot and one logged set — the fixture S-320 to S-336 share. Returns
+    /// the engine and the set's `entryId`, the entry a rest hangs on.
+    private func sessionWithOneSet(
+        _ harness: Harness
+    ) async throws -> (WatchSessionEngine, String) {
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        let entry = try await engine.appendObservation(
+            setEvent(harness.clock, entryId: "entry-1")
+        )
+        return (engine, entry.entryId)
+    }
+
+    func testS320TheRestTheWristEndsTravelsAsARestEvent() async throws {
+        let harness = Harness()
+        let (engine, entryId) = try await sessionWithOneSet(harness)
+        let t0 = harness.clock.now
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+
+        harness.clock.advance(70)
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 1, "one rest ended, one event")
+        let rest = try XCTUnwrap(rests.first)
+        XCTAssertEqual(rest["kind"] as? String, WatchObservationKind.rest)
+        XCTAssertEqual(rest["sessionExerciseId"] as? String, "sx-bench")
+        XCTAssertEqual(rest["exerciseId"] as? String, "ex-sx-bench")
+        assertRest(rest, startedAt: t0, endedAt: harness.clock.now, afterEntryId: entryId)
+        XCTAssertEqual(
+            rest["loggedAt"] as? String,
+            rest["endedAt"] as? String,
+            "the rest was written when it ended"
+        )
+
+        let row = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
+        XCTAssertEqual(
+            rest["eventId"] as? String,
+            "\(row.recordId)-rest",
+            "the id is derived from the row, so a re-send is the same event (D-224)"
+        )
+        XCTAssertNotEqual(
+            rest["eventId"] as? String,
+            row.recordId,
+            "and can never collide with the row's own timer_state frame"
+        )
+        XCTAssertEqual(
+            engine.observations.last?.kind,
+            WatchObservationKind.rest,
+            "the emission is a stored row, not a frame built at send time"
+        )
+    }
+
+    func testS322ARestRunningAtTheEndIsEmittedBeforeTheEnd() async throws {
+        let harness = Harness()
+        let (engine, entryId) = try await sessionWithOneSet(harness)
+        let t0 = harness.clock.now
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+
+        harness.clock.advance(30)
+        _ = await engine.finishSession()
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 1, "a rest running at the end still travels")
+        assertRest(
+            try XCTUnwrap(rests.first),
+            startedAt: t0,
+            endedAt: t0.addingTimeInterval(30),
+            afterEntryId: entryId
+        )
+        XCTAssertEqual(
+            emittedKinds(harness),
+            ["set", "rest", "session_end"],
+            "the rest travels after the set it followed and before the end it is closed by"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped,
+            "and it is over: no rest outlives the workout"
+        )
+    }
+
+    func testS323ARestThatEndsWhereItStartedIsNotSent() async throws {
+        let harness = Harness()
+        let (engine, _) = try await sessionWithOneSet(harness)
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        XCTAssertTrue(
+            emittedRests(harness).isEmpty,
+            "a rest that ends where it started is nothing to write"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped,
+            "the stop itself still happened: only the travel is skipped"
+        )
+        XCTAssertEqual(
+            engine.observations.filter { $0.kind == WatchObservationKind.rest }.count,
+            0
+        )
+    }
+
+    func testS332ASecondStopOfTheSameRestSendsNothing() async throws {
+        let harness = Harness()
+        let (engine, entryId) = try await sessionWithOneSet(harness)
+        let t0 = harness.clock.now
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+
+        harness.clock.advance(70)
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+        assertRest(
+            try XCTUnwrap(emittedRests(harness).first),
+            startedAt: t0,
+            endedAt: t0.addingTimeInterval(70),
+            afterEntryId: entryId
+        )
+
+        harness.clearEmitted()
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        XCTAssertTrue(
+            emittedRests(harness).isEmpty,
+            "a rest that has already ended ends once"
+        )
+        XCTAssertEqual(
+            engine.observations.filter { $0.kind == WatchObservationKind.rest }.count,
+            1,
+            "and nothing was written a second time"
+        )
+        XCTAssertEqual(
+            engine.timerRows(WatchTimerKind.rest).count,
+            2,
+            "the running row and the row that stopped it"
+        )
+    }
+
+    func testS333APhoneSentStopEmitsNothing() async throws {
+        let harness = Harness()
+        let (engine, _) = try await sessionWithOneSet(harness)
+        let sessionId = try XCTUnwrap(engine.session?.sessionId)
+
+        // The phone owns this rest: it starts one at T0+5s and stops it at
+        // T0+20s, and the wrist only mirrors both.
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clock.advance(5)
+        _ = try await engine.applyMessage(
+            timerStateAt(
+                sessionId,
+                messageId: "msg-phone-rest",
+                sentAt: harness.clock.now,
+                timers: [
+                    "rest": timerJson(
+                        WatchTimerKind.rest,
+                        startedAt: utcIso(harness.clock.now)
+                    ),
+                ]
+            )
+        )
+        harness.clearEmitted()
+
+        harness.clock.advance(15)
+        _ = try await engine.applyMessage(
+            timerStateAt(
+                sessionId,
+                messageId: "msg-phone-stop",
+                sentAt: harness.clock.now,
+                timers: ["rest": NSNull()]
+            )
+        )
+
+        XCTAssertTrue(
+            emittedRests(harness).isEmpty,
+            "the phone ended it, so the wrist must not hand it back (D-219)"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped,
+            "the stop itself applied"
+        )
+    }
+
+    func testS334ARestWithNoEntryToFollowIsNotSent() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        harness.clock.advance(5)
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+        harness.clearEmitted()
+
+        harness.clock.advance(35)
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        XCTAssertTrue(
+            emittedRests(harness).isEmpty,
+            "there is no effort entry for the rest to hang on"
+        )
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.rest)?.state,
+            WatchTimerState.stopped
+        )
+    }
+
+    func testS336ARestThePhoneStartedAndTheWristEndsStillTravels() async throws {
+        let harness = Harness()
+        let (engine, entryId) = try await sessionWithOneSet(harness)
+        let sessionId = try XCTUnwrap(engine.session?.sessionId)
+        let t0 = harness.clock.now
+        _ = try await engine.startTimer(WatchTimerKind.rest)
+
+        // The phone's rest, started at T0+8s, arriving at T0+10s: the wrist's
+        // own row is superseded by the row the phone owns.
+        harness.clock.advance(10)
+        _ = try await engine.applyMessage(
+            timerStateAt(
+                sessionId,
+                messageId: "msg-phone-rest",
+                sentAt: harness.clock.now,
+                timers: [
+                    "rest": timerJson(
+                        WatchTimerKind.rest,
+                        startedAt: utcIso(t0.addingTimeInterval(8))
+                    ),
+                ]
+            )
+        )
+        harness.clearEmitted()
+
+        harness.clock.advance(30)
+        _ = await engine.stopTimer(kind: WatchTimerKind.rest)
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 1, "the wrist ended it, so the wrist reports it")
+        assertRest(
+            try XCTUnwrap(rests.first),
+            startedAt: t0.addingTimeInterval(8),
+            endedAt: t0.addingTimeInterval(40),
+            afterEntryId: entryId
+        )
+    }
+
+    func testS335ThreeSetsLeaveThreeRests() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        var minted = 0
+        let state = WatchLoggingState(
+            engine: engine,
+            clock: harness.clock.call,
+            idFactory: { minted += 1; return "entry-\(minted)" }
+        )
+        let t0 = harness.clock.now
+
+        try await state.log()
+        harness.clock.advance(45)
+        try await state.log()
+        harness.clock.advance(15)
+        try await state.log()
+        harness.clock.advance(30)
+        await state.endRest()
+
+        let rests = emittedRests(harness)
+        XCTAssertEqual(rests.count, 3, "one rest per set that followed one")
+        XCTAssertEqual(
+            rests.compactMap { $0["afterEntryId"] as? String },
+            ["entry-1", "entry-2", "entry-3"],
+            "each rest hangs on the entry that started it"
+        )
+        XCTAssertEqual(
+            rests.map { restLengthSeconds($0) },
+            [45, 15, 30],
+            "the three windows the two stacks have to agree on"
+        )
+        XCTAssertEqual(
+            emittedKinds(harness),
+            ["set", "rest", "set", "rest", "set", "rest"],
+            "and the order they were taken in"
+        )
+        XCTAssertEqual(
+            rests.map { $0["startedAt"] as? String },
+            [
+                utcIso(t0),
+                utcIso(t0.addingTimeInterval(45)),
+                utcIso(t0.addingTimeInterval(60)),
+            ]
+        )
+    }
+}
+
+/// Every `rest` observation in the frames the harness's engine emitted.
+func emittedRests(_ harness: Harness) -> [[String: Any]] {
+    harness.emitted
+        .filter { $0["type"] as? String == "observations_up" }
+        .flatMap { ($0["payload"] as? [String: Any])?["events"] as? [[String: Any]] ?? [] }
+        .filter { $0["kind"] as? String == WatchObservationKind.rest }
+}
+
+/// The kinds of every observation in the frames the harness's engine emitted,
+/// in the order they were sent.
+func emittedKinds(_ harness: Harness) -> [String] {
+    harness.emitted
+        .filter { $0["type"] as? String == "observations_up" }
+        .flatMap { ($0["payload"] as? [String: Any])?["events"] as? [[String: Any]] ?? [] }
+        .compactMap { $0["kind"] as? String }
+}
+
+/// The seconds between a `rest` event's own two instants.
+func restLengthSeconds(_ rest: [String: Any]) -> Double {
+    guard let started = (rest["startedAt"] as? String).flatMap({ try? parseUtcIso($0) }),
+          let ended = (rest["endedAt"] as? String).flatMap({ try? parseUtcIso($0) })
+    else { return -1 }
+    return ended.timeIntervalSince(started)
+}
+
+/// Asserts a `rest` event is the window it should be, hung on the entry it
+/// should be — the shape the phone's importer reads.
+func assertRest(
+    _ rest: [String: Any],
+    startedAt: Date,
+    endedAt: Date,
+    afterEntryId: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    XCTAssertEqual(rest["startedAt"] as? String, utcIso(startedAt), file: file, line: line)
+    XCTAssertEqual(rest["endedAt"] as? String, utcIso(endedAt), file: file, line: line)
+    XCTAssertEqual(rest["afterEntryId"] as? String, afterEntryId, file: file, line: line)
+    XCTAssertNotNil(rest["entryId"] as? String, file: file, line: line)
+    XCTAssertNotNil(rest["eventId"] as? String, file: file, line: line)
 }

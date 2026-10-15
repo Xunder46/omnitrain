@@ -9,8 +9,9 @@
 //  Reference data, like the routines and the food list: the wrist learns it when
 //  it syncs, keeps every copy it accepts, and reads the newest. Sync is the
 //  wrist's to start, so a setting changed on the phone arrives at the wrist's
-//  next sync and not before. Today the message carries one setting: whether a
-//  session the wrist ends asks for the session effort rating.
+//  next sync and not before. Today the message carries two settings: whether a
+//  session the wrist ends asks for the session effort rating, and how often a
+//  rest pings.
 //
 
 import Foundation
@@ -33,11 +34,16 @@ public struct WatchPreferencesRecord {
     /// Whether a session the wrist ends asks for the session effort rating.
     public let effortRatingPrompt: Bool
 
+    /// How often a rest pings, in whole seconds; 0 is Off. The phone's one
+    /// setting for this, carried on every copy (D-242).
+    public let restPingSeconds: Int
+
     public init(
         recordId: String,
         recordedAt: Date,
         generatedAt: Date,
         effortRatingPrompt: Bool,
+        restPingSeconds: Int = 0,
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -46,6 +52,7 @@ public struct WatchPreferencesRecord {
         self.sequence = sequence
         self.generatedAt = generatedAt
         self.effortRatingPrompt = effortRatingPrompt
+        self.restPingSeconds = restPingSeconds
     }
 
     public func withSequence(_ sequence: Int) -> WatchPreferencesRecord {
@@ -54,6 +61,7 @@ public struct WatchPreferencesRecord {
             recordedAt: recordedAt,
             generatedAt: generatedAt,
             effortRatingPrompt: effortRatingPrompt,
+            restPingSeconds: restPingSeconds,
             sequence: sequence
         )
     }
@@ -67,6 +75,7 @@ public struct WatchPreferencesRecord {
             "sequence": sequence,
             "generatedAt": utcIso(generatedAt),
             "effortRatingPrompt": effortRatingPrompt,
+            "restPingSeconds": restPingSeconds,
         ]
     }
 
@@ -76,6 +85,9 @@ public struct WatchPreferencesRecord {
             recordedAt: try parseUtcIso(json["recordedAt"]),
             generatedAt: try parseUtcIso(json["generatedAt"]),
             effortRatingPrompt: (json["effortRatingPrompt"] as? Bool) ?? false,
+            // A row written before the wrist knew this setting carries no key,
+            // and reads as Off (D-242).
+            restPingSeconds: (json["restPingSeconds"] as? NSNumber)?.intValue ?? 0,
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }
@@ -112,6 +124,13 @@ public final class WatchPhonePreferences {
         current?.effortRatingPrompt ?? WatchEffortRatingCopy.promptBeforeFirstSync
     }
 
+    /// How often a rest pings, in seconds, as the copy that applies carries it.
+    /// A wrist that has never heard from the phone reads 0, which is Off: it
+    /// does not invent a rest ping (S-242).
+    public var restPingSeconds: Int {
+        current?.restPingSeconds ?? 0
+    }
+
     /// Reads every accepted copy back out of storage. Call on launch.
     public func restore() async {
         copies = await store.readAll().preferences
@@ -134,7 +153,8 @@ public final class WatchPhonePreferences {
               let payload = envelope["payload"] as? [String: Any],
               let generatedAt = try? parseUtcIso(payload["generatedAt"]),
               isBoolean(payload["effortRatingPrompt"]),
-              let asks = payload["effortRatingPrompt"] as? Bool
+              let asks = payload["effortRatingPrompt"] as? Bool,
+              let restPingSeconds = wholeSeconds(payload["restPingSeconds"])
         else { return WatchCatalogSyncResult(applied: false, rejections: []) }
 
         if let current, generatedAt < current.generatedAt {
@@ -148,7 +168,8 @@ public final class WatchPhonePreferences {
                     recordId: recordId,
                     recordedAt: clock(),
                     generatedAt: generatedAt,
-                    effortRatingPrompt: asks
+                    effortRatingPrompt: asks,
+                    restPingSeconds: restPingSeconds
                 )
             )
         )
@@ -159,4 +180,18 @@ public final class WatchPhonePreferences {
 
         return WatchCatalogSyncResult(applied: current?.recordId == recordId, rejections: [])
     }
+}
+
+/// A payload's field as a non-negative whole number of seconds, or nil for
+/// anything else — an absent key, a boolean, a negative, and a JSON `90.0`,
+/// which the phone's validator refuses as an integer too (F-10). A copy that
+/// does not carry a readable interval is refused rather than read as Off
+/// (D-242).
+private func wholeSeconds(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber,
+          !isBoolean(number),
+          !CFNumberIsFloatType(number),
+          number.intValue >= 0
+    else { return nil }
+    return number.intValue
 }

@@ -1,5 +1,7 @@
 library;
 
+import 'dart:math' as math;
+
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
@@ -17,8 +19,10 @@ class SessionSummaryService {
     final session = await _repository.getSession(sessionId);
     if (session == null) return 0;
     final windowStart = session.startedAtMs;
-    final windowEnd =
-        session.endedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+    final windowEnd = math.max(
+      windowStart,
+      session.endedAtMs ?? DateTime.now().millisecondsSinceEpoch,
+    );
 
     // Step 2 — collect closed intervals from all efforts, clipped to session window
     final intervals = <(int, int)>[];

@@ -15,6 +15,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
+import '../../core/platform/watch_delivery.dart';
 import '../../core/services/preferences_service.dart';
 import '../../core/utils/watch_reference_sync.dart';
 import '../../data/models/models.dart';
@@ -640,8 +641,9 @@ class _PhoneTransport implements WatchMirrorTransport {
   Future<void> requestSnapshot() async => link.flush();
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
     await link.down(envelope);
+    return WatchDelivery.delivered;
   }
 }

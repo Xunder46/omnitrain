@@ -2,7 +2,7 @@
 //  WatchEffortRatingView.swift
 //  WatchSessionEngine
 //
-//  The native watchOS effort-rating prompt and End control. Plan:
+//  The native watchOS effort-rating prompt. Plan:
 //  `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`, D-118
 //  and D-119.
 //
@@ -91,26 +91,6 @@ public struct WatchEffortRatingView: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(!state.canConfirm)
-    }
-}
-
-/// The End control: ends the session the wrist is on. Whether a prompt follows
-/// is the state's decision.
-public struct WatchEndSessionView: View {
-    @ObservedObject private var state: WatchEffortRatingState
-
-    public init(state: WatchEffortRatingState) {
-        self.state = state
-    }
-
-    public var body: some View {
-        Button {
-            Task { await state.end() }
-        } label: {
-            Text("End").frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .disabled(!state.canEnd)
     }
 }
 

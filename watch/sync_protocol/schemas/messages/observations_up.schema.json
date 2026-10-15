@@ -82,6 +82,17 @@
             {
               "required": ["kind", "startedAt", "endedAt", "status"],
               "properties": { "kind": { "const": "session_end" } }
+            },
+            {
+              "required": [
+                "kind",
+                "sessionExerciseId",
+                "exerciseId",
+                "startedAt",
+                "endedAt",
+                "afterEntryId"
+              ],
+              "properties": { "kind": { "const": "rest" } }
             }
           ]
         }

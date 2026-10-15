@@ -9,6 +9,11 @@
 //   S-006 manual distance entry without GPS                  → `S-006 ...`
 //   S-007 metric stepping                                    → watch_logging_stepping_test.dart
 //   S-008 terminology parity with the phone                  → `S-008 ...`
+//   S-062 zero still means "no load claim"                   → `S-062 ...`
+//   S-063 the assist carries to the next set                 → `S-063 ...`
+//   S-064 a leading minus renders in the user's unit         → `S-064 ...`
+//   S-160 the wrist's rest has no length                     → `S-160 ...`
+//   S-226 the rest ping is its own haptic entry point        → `S-226 ...`
 //
 // Every event asserted here is validated against the shared protocol schemas
 // read from the repository — the same documents the phone's validator and the
@@ -27,6 +32,7 @@ import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/watch/logging/watch_logging_screen.dart';
 import 'package:omnitrain/watch/logging/watch_logging_state.dart';
 import 'package:omnitrain/watch/logging/watch_metric_stepping.dart';
+import 'package:omnitrain/watch/logging/watch_rest_screen.dart';
 import 'package:omnitrain/watch/logging/watch_timer_haptics.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -53,17 +59,43 @@ Map<String, Object?> _slot(String id, List<String> capabilities) => {
   'capabilities': capabilities,
 };
 
+/// One `session_lifecycle` from the phone — its own way of saying the session
+/// is over.
+Map<String, Object?> _phoneLifecycle(
+  String sessionId, {
+  String state = WatchLifecycleState.completed,
+  String messageId = 'msg-phone-lifecycle',
+}) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': 'session_lifecycle',
+  'origin': 'phone',
+  'sentAt': '2026-07-13T17:01:00Z',
+  'payload': {'state': state, 'at': '2026-07-13T17:01:00Z'},
+};
+
 Map<String, Object?> _asObject(Object? value) =>
     (value as Map).cast<String, Object?>();
 
 /// Records what the screen asked the haptic channel to play, so the wiring from
 /// a due countdown to the platform channel can be asserted rather than assumed.
+/// A rest ping is counted separately: it is its own entry point, not a
+/// milestone (S-226, D-251).
 class _RecordingHaptics implements WatchHaptics {
   final List<WatchTimerMilestone> played = [];
+
+  /// How many times the rest surface asked for its own ping.
+  int restPings = 0;
 
   @override
   void play(WatchTimerMilestone milestone) {
     played.add(milestone);
+  }
+
+  @override
+  void playRestPing() {
+    restPings++;
   }
 }
 
@@ -129,19 +161,27 @@ void main() {
 
   Future<WatchLoggingState> surfaceFor(
     String? modality,
-    Map<String, Object?> slot,
-  ) async {
+    Map<String, Object?> slot, {
+    WatchUnitPreferences units = const WatchUnitPreferences(),
+  }) async {
     engine = WatchSessionEngine(
       InMemoryWatchSessionStore(),
       clock: clock.call,
       onEmit: emitted.add,
     );
     await engine.createSession(modality: modality, exercises: [slot]);
-    return WatchLoggingState(engine: engine, clock: clock.call);
+    return WatchLoggingState(
+      engine: engine,
+      clock: clock.call,
+      units: units,
+    );
   }
 
   double fieldValue(WatchLoggingState surface, String metricKey) =>
       surface.fields.firstWhere((field) => field.metricKey == metricKey).value;
+
+  WatchMetricField fieldOf(WatchLoggingState surface, String metricKey) =>
+      surface.fields.firstWhere((field) => field.metricKey == metricKey);
 
   setUp(() {
     clock = _Clock(DateTime.utc(2026, 7, 13, 17));
@@ -208,6 +248,113 @@ void main() {
       final logged = _emittedEvent(emitted);
       expect(logged.rejections, isEmpty);
       expect(logged.event.containsKey('loadKg'), isFalse);
+    });
+  });
+
+  group('S-062 zero still means "no load claim"', () {
+    test('S-062 an assisted load is emitted with its sign', () async {
+      final surface = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+      );
+
+      // Eight detents down from the 0 kg default: a 20 kg band assist.
+      surface.adjust(WatchMetricKey.weight, -8);
+      expect(fieldValue(surface, WatchMetricKey.weight), -20);
+
+      await surface.log();
+
+      final logged = _emittedEvent(emitted);
+      expect(logged.rejections, isEmpty);
+      expect(logged.event, containsPair('loadKg', -20));
+    });
+
+    test('S-062 an untouched dial and a bodyweight set send no loadKg', () async {
+      final untouched = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-bench', ['reps', 'sets', 'load']),
+      );
+      await untouched.log();
+      expect(_emittedEvent(emitted).event.containsKey('loadKg'), isFalse);
+
+      emitted.clear();
+      final bodyweight = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-pushup', ['reps', 'sets']),
+      );
+      await bodyweight.log();
+      expect(_emittedEvent(emitted).event.containsKey('loadKg'), isFalse);
+    });
+
+    test('S-062 a drill sends its extra load and never a loadKg', () async {
+      final surface = await surfaceFor(
+        'isometric_stretching',
+        _slot('sx-plank', ['hold', 'time']),
+      );
+
+      surface.adjust(WatchMetricKey.extraWeight, -4);
+      await surface.log();
+
+      final logged = _emittedEvent(emitted);
+      expect(logged.rejections, isEmpty);
+      expect(logged.event, containsPair('extraLoadKg', -10));
+      expect(logged.event.containsKey('loadKg'), isFalse);
+    });
+  });
+
+  group('S-063 the assist carries to the next set', () {
+    test('S-063 the next set opens at the assisted load just logged', () async {
+      final surface = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+      );
+
+      surface.adjust(WatchMetricKey.weight, -8);
+      await surface.log();
+
+      // The carry-over reads the stored `loadKg` back, sign and all; it must
+      // not fall back to zero.
+      expect(fieldValue(surface, WatchMetricKey.weight), -20);
+    });
+  });
+
+  group('S-064 a leading minus renders in the user\'s unit', () {
+    test('S-064 a negative load prints a leading minus in kg and lbs', () async {
+      final kg = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+      );
+      kg.adjust(WatchMetricKey.weight, -8);
+      expect(fieldOf(kg, WatchMetricKey.weight).displayValue, '-20.0');
+      expect(fieldOf(kg, WatchMetricKey.weight).unitLabel, 'kg');
+
+      const pounds = WatchUnitPreferences(weightUnit: 'lbs');
+      final lbs = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+        units: pounds,
+      );
+      final step = WatchMetricStepping.stepFor(
+        WatchMetricKey.weight,
+        units: pounds,
+      );
+      // Dial to exactly -20 kg, so the same load prints in the saved unit.
+      lbs.adjust(WatchMetricKey.weight, -20 / step);
+      expect(fieldValue(lbs, WatchMetricKey.weight), -20);
+      expect(fieldOf(lbs, WatchMetricKey.weight).displayValue, '-44.1');
+      expect(fieldOf(lbs, WatchMetricKey.weight).unitLabel, 'lbs');
+    });
+
+    test('S-064 a zero load never prints a signed zero', () async {
+      final surface = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-assisted', ['reps', 'sets', 'load']),
+      );
+
+      // A fractional detent that rounds to zero must not leave a "-0.0"
+      // behind: zero is zero.
+      surface.adjust(WatchMetricKey.weight, -0.0001);
+      expect(fieldOf(surface, WatchMetricKey.weight).displayValue, '0.0');
     });
   });
 
@@ -496,6 +643,80 @@ void main() {
       expect(orphan.fields, isEmpty);
       expect(orphan.log, throwsStateError);
     });
+
+    test('S-52 the wrist\'s own End closes the logging surface', () async {
+      final store = InMemoryWatchSessionStore();
+      final engine = WatchSessionEngine(
+        store,
+        clock: clock.call,
+        onEmit: emitted.add,
+        validator: _validator(),
+      );
+      await engine.createSession(
+        modality: null,
+        exercises: [_slot('sx-free', ['reps', 'load'])],
+      );
+      final surface = WatchLoggingState(engine: engine, clock: clock.call);
+      await surface.log();
+
+      await engine.finishSession();
+      expect(engine.session!.status, WatchSessionStatus.completed);
+
+      // The count after the end includes the `session_end` row the engine
+      // appends; the refused log must add nothing to it.
+      final afterEnd = (await store.readAll()).observations.length;
+
+      expect(
+        surface.canLog,
+        isFalse,
+        reason: 'a finished session is not a surface to log into',
+      );
+      expect(surface.fields, isEmpty);
+
+      await expectLater(surface.log(), throwsStateError);
+      expect(
+        (await store.readAll()).observations.length,
+        afterEnd,
+        reason: 'the refused log appended no observation row',
+      );
+    });
+
+    test('S-52 a session the phone ended is not a surface to log into', () async {
+      final store = InMemoryWatchSessionStore();
+      final engine = WatchSessionEngine(
+        store,
+        clock: clock.call,
+        onEmit: emitted.add,
+        validator: _validator(),
+      );
+      await engine.createSession(
+        modality: null,
+        exercises: [_slot('sx-free', ['reps', 'load'])],
+      );
+      final surface = WatchLoggingState(engine: engine, clock: clock.call);
+      await surface.log();
+      final sessionId = engine.session!.sessionId;
+
+      clock.advance(const Duration(minutes: 1));
+      expect(await engine.applyMessage(_phoneLifecycle(sessionId)), isTrue);
+      expect(engine.session!.status, WatchSessionStatus.completed);
+
+      final afterEnd = (await store.readAll()).observations.length;
+
+      expect(
+        surface.canLog,
+        isFalse,
+        reason: 'S-52 a session the phone ended is not a surface to log into',
+      );
+      expect(surface.fields, isEmpty);
+
+      await expectLater(surface.log(), throwsStateError);
+      expect(
+        (await store.readAll()).observations.length,
+        afterEnd,
+        reason: 'the refused log appended no observation row',
+      );
+    });
   });
 
   group('The surface the user taps', () {
@@ -587,14 +808,42 @@ void main() {
       );
     });
 
+    testWidgets('S-160 a rest is a count-up with no "left" line', (
+      tester,
+    ) async {
+      final surface = await pumpSurface(
+        tester,
+        modality: 'resistance_lifting',
+        slot: _slot('sx-bench', ['reps', 'sets', 'load']),
+      );
+
+      await tester.tap(find.text('Log'));
+      await tester.pump();
+
+      expect(
+        surface.timerFor(WatchTimerKind.rest)!.plannedDurationMs,
+        isNull,
+        reason: 'a rest starts with no preset length',
+      );
+      expect(
+        find.textContaining('left'),
+        findsNothing,
+        reason: 'a rest has no length, so there is no remaining time to show',
+      );
+      expect(find.text('Log'), findsOneWidget, reason: 'the surface stays up');
+    });
+
     testWidgets('a due countdown reaches the injected haptic channel', (
       tester,
     ) async {
       final haptics = _RecordingHaptics();
       final surface = await surfaceFor(
-        'resistance_lifting',
-        _slot('sx-bench', ['reps', 'sets', 'load']),
+        'sports',
+        _slot('sx-round', ['time', 'rounds']),
       );
+      final length = fieldValue(surface, WatchMetricKey.roundDuration);
+      final startedAt = clock.now;
+
       await tester.pumpWidget(
         MaterialApp(
           home: WatchLoggingScreen(state: surface, haptics: haptics),
@@ -605,7 +854,7 @@ void main() {
       await tester.tap(find.text('Log'));
       await tester.pump();
 
-      // The rest countdown ran while the screen did not. Coming back is the
+      // The round countdown ran while the screen did not. Coming back is the
       // moment its haptic is owed.
       clock.advance(const Duration(minutes: 5));
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -613,11 +862,69 @@ void main() {
 
       expect(
         haptics.played,
-        isNotEmpty,
+        [
+          WatchTimerMilestone(
+            kind: WatchTimerKind.round,
+            at: startedAt.add(Duration(seconds: length.toInt())),
+          ),
+        ],
         reason:
             'the screen must hand a due countdown to the channel it was '
             'given, not to the platform one',
       );
+    });
+
+    testWidgets('S-226 the rest surface pings through its own entry point, '
+        'never a milestone', (tester) async {
+      final haptics = _RecordingHaptics();
+      final surface = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-bench', ['reps', 'sets', 'load']),
+        units: const WatchUnitPreferences(restPingSeconds: 30),
+      );
+
+      await surface.log();
+      expect(surface.isResting, isTrue, reason: 'logging a set opens a rest');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WatchRestScreen(
+            state: surface,
+            haptics: haptics,
+            onNext: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // The screen's own one-second tick, driven across the rest.
+      for (var i = 0; i < 90; i++) {
+        clock.advance(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      expect(
+        haptics.restPings,
+        3,
+        reason: 'S-226 one tap at each multiple of the interval',
+      );
+      expect(
+        haptics.played,
+        isEmpty,
+        reason: 'S-226 the ping is its own entry point, not a milestone',
+      );
+      expect(
+        WatchTimerHaptics(engine).poll(clock.now),
+        isEmpty,
+        reason: 'S-226 the timer haptics owe a rest nothing',
+      );
+
+      expect(find.text('sx-bench'), findsOneWidget);
+      expect(find.text('1:30'), findsOneWidget);
+      expect(find.text('Next'), findsOneWidget);
+
+      // Dispose the screen so its ticker does not outlive the test.
+      await tester.pumpWidget(const SizedBox());
     });
   });
 

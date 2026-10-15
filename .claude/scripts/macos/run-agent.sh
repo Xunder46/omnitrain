@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Runs a GitHub Copilot CLI custom agent in the background, waits for it, and prints a compact
-# summary (status, changed files, health, log tail) for the governing Claude Code session.
-#   bash .claude/scripts/macos/run-agent.sh start  <agent> <prompt-file> [model]
-#   bash .claude/scripts/macos/run-agent.sh wait   <RUN_ID>     (blocks up to WAIT_MINUTES)
+# Runs a GitHub Copilot CLI custom agent in the background and prints a compact summary (status,
+# changed files, health, log tail) for the governing Claude Code session.
+#   bash .claude/scripts/macos/run-agent.sh start  <agent> <prompt-file> [model]   (returns at once)
+#   bash .claude/scripts/macos/run-agent.sh wait   <RUN_ID>     (blocks up to WAIT_MINUTES; run it in the background)
 #   bash .claude/scripts/macos/run-agent.sh status <RUN_ID>     (returns at once)
 #   bash .claude/scripts/macos/run-agent.sh stop   <RUN_ID>
 #   bash .claude/scripts/macos/run-agent.sh list
@@ -17,7 +17,7 @@
 # Written for the bash 3.2 that ships with macOS; needs git, perl and pgrep, nothing from Homebrew.
 set -euo pipefail
 
-CONFIG_KEYS="WAIT_MINUTES TAIL_LINES POLL_SECONDS COPILOT_BIN COPILOT_WRAPPER MAX_RUN_MINUTES STALL_MINUTES REPEAT_STOP NO_WRITE_STOP HUNG_CHILD_MINUTES PLANNER_MODEL DEVELOPER_MODEL REVIEWER_MODEL"
+CONFIG_KEYS="WAIT_MINUTES TAIL_LINES POLL_SECONDS COPILOT_BIN COPILOT_WRAPPER MAX_RUN_MINUTES STALL_MINUTES REPEAT_STOP NO_WRITE_STOP LONG_RUN_MINUTES COPILOT_NO_CUSTOM_INSTRUCTIONS COPILOT_REASONING_EFFORT HUNG_CHILD_MINUTES PLANNER_MODEL DEVELOPER_MODEL REVIEWER_MODEL"
 
 ORIG_PWD="$PWD"
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
@@ -40,7 +40,7 @@ load_config() {
     done
   fi
   # Keep WAIT_MINUTES below Claude Code's Bash timeout so every call returns on its own.
-  : "${WAIT_MINUTES:=15}"
+  : "${WAIT_MINUTES:=25}"
   : "${TAIL_LINES:=40}"
   : "${POLL_SECONDS:=15}"
   : "${COPILOT_BIN:=copilot}"
@@ -51,6 +51,12 @@ load_config() {
   : "${STALL_MINUTES:=30}"        # stop when log AND diff are both idle this long; 0 = off
   : "${REPEAT_STOP:=40}"          # stop when one agent action repeats this often; 0 = off
   : "${NO_WRITE_STOP:=20}"        # stop an implementer that has changed no file after this long; 0 = off
+  : "${LONG_RUN_MINUTES:=30}"     # warn when an implementer run passes this long (one concern per run); 0 = off
+  : "${COPILOT_NO_CUSTOM_INSTRUCTIONS:=1}"  # 1 = agents do not auto-load AGENTS.md / CLAUDE.md (see worker)
+  : "${COPILOT_REASONING_EFFORT=}"        # none|minimal|low|medium|high|xhigh|max; empty = model default
+  case "$COPILOT_REASONING_EFFORT" in ""|none|minimal|low|medium|high|xhigh|max) ;;
+    *) echo "COPILOT_REASONING_EFFORT must be empty or one of none|minimal|low|medium|high|xhigh|max (got '$COPILOT_REASONING_EFFORT')" >&2; exit 2 ;;
+  esac
   : "${HUNG_CHILD_MINUTES:=10}"   # report a child process idle (≈0% CPU) this long
   : "${PLANNER_MODEL=}" "${DEVELOPER_MODEL=}" "${REVIEWER_MODEL=}"   # empty = provider default
 }
@@ -103,6 +109,16 @@ agent_rules() {
                for (i = 1; i <= n; i++) if (w[i] == a) inc = 1 }
              if (inc) print; next }
     inc { print }' "$file"
+}
+
+# The "Known long-running or hanging commands" section of AGENTS.md (project knowledge an agent needs
+# that no agent file or rule carries), without its HTML comment. Injected into the prompt because
+# agents run with --no-custom-instructions.
+known_hangs() {
+  local file="$REPO_ROOT/AGENTS.md"
+  [[ -f $file ]] || return 0
+  awk '/^## Known long-running or hanging commands/ { on = 1; next } on && /^## / { exit }
+       on && /<!--/ { c = 1 } on && c { if (/-->/) c = 0; next } on { print }' "$file" | sed '/^[[:space:]]*$/d'
 }
 
 # The model for an agent's role, from .claude/pipeline.env (empty = provider default).
@@ -168,8 +184,25 @@ Standing rules for every run (a brief may add to them, never relax them):
 ${rules}"
   fi
   load_permissions "$agent"
+  # Agents get their rules from the prompt (agent-rules.md) and project facts from their agent file,
+  # so Copilot's automatic loading of AGENTS.md / CLAUDE.md into every request only adds tokens.
+  local hangs
+  hangs="$(known_hangs)"
+  if [[ -n $hangs ]]; then
+    prompt="${prompt}
+
+Known long-running or hanging commands in this repository:
+
+${hangs}"
+  fi
   local args=(-p "$prompt" --agent "$agent" --no-ask-user "${PERM_FLAGS[@]}")
+  if [[ $COPILOT_NO_CUSTOM_INSTRUCTIONS == 1 ]]; then args+=(--no-custom-instructions); fi
+  # Agents never need GitHub access (git and PRs belong to the governor): no built-in GitHub MCP
+  # server, so neither its tools nor its instructions reach the agent. Exact usage goes to a file,
+  # which also covers runs that end without printing their token line.
+  args+=(--disable-builtin-mcps --usage-output-file "$dir/usage.json")
   if [[ -n $model ]]; then args+=(--model "$model"); fi
+  if [[ -n $COPILOT_REASONING_EFFORT ]]; then args+=(--reasoning-effort "$COPILOT_REASONING_EFFORT"); fi
   export OPENCODE_SESSION="copilot-$(basename "$dir")"   # one stable session per run
   export OPENCODE_PROXY_LOG="$dir/proxy.log"              # kept with the run (with-opencode.sh)
   local cmd=()
@@ -346,6 +379,14 @@ print_health() {
   if is_implementer "$(cat "$dir/agent" 2>/dev/null)" && no_write_yet "$dir" && [[ ! -f $dir/exit ]]; then
     echo "  FIRST_WRITE: none yet after $(minutes_since "$(cat "$dir/started_epoch")") min (auto-stop at ${NO_WRITE_STOP:-0}; 0 = off)"
   fi
+  # Runs over ~30 minutes cost the most (a 60-minute run cost as much as five short ones) and are
+  # where scope piles up: two phases in one brief, or a 1,000-line test file. Not stopped: say so
+  # in the next brief, and split.
+  local elapsed; elapsed="$(minutes_since "$(cat "$dir/started_epoch")")"
+  if [[ ${LONG_RUN_MINUTES:-0} -gt 0 && ! -f $dir/exit ]] && is_implementer "$(cat "$dir/agent" 2>/dev/null)" \
+     && awk -v e="$elapsed" -v l="$LONG_RUN_MINUTES" 'BEGIN { exit !(e >= l) }'; then
+    echo "  LONG_RUN: $elapsed min, past $LONG_RUN_MINUTES; split the remaining work into its own run next time"
+  fi
   if [[ -f $dir/proxy.log ]]; then
     requests="$(grep -c ' -> ' "$dir/proxy.log" || true)"
     echo "  MODEL_REQUESTS: $requests (errors: $(grep -cE ' -> [45][0-9][0-9]' "$dir/proxy.log" || true))"
@@ -481,7 +522,10 @@ list_runs() {
 cmd="${1:-}"
 if [[ $# -gt 0 ]]; then shift; fi
 case "$cmd" in
-  start)    if [[ $# -lt 2 ]]; then usage; fi; id="$(start_run "$@")"; wait_run "$id" ;;
+  # start returns at once: a governor that forgets to background the call loses seconds, not the
+  # session (a foreground wait blocks it for up to WAIT_MINUTES and stopping it kills the agent).
+  start)    if [[ $# -lt 2 ]]; then usage; fi; id="$(start_run "$@")"
+            printf 'RUN_ID: %s\nSTATUS: STARTED\nNEXT: Started. Wait for it in the background (run_in_background: true): bash %s wait %s\n' "$id" "${SCRIPT#"$REPO_ROOT"/}" "$id" ;;
   wait)     if [[ $# -ne 1 ]]; then usage; fi; wait_run "$1" ;;
   status)   if [[ $# -ne 1 ]]; then usage; fi; d="$(run_dir_for "$1")"; check_health "$d"; summary "$1" ;;
   stop)     if [[ $# -ne 1 ]]; then usage; fi; stop_run "$1" user ;;

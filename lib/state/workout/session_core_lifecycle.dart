@@ -18,7 +18,9 @@ extension SessionCoreLifecycleMethods on SessionCore {
         ownerUserId: _currentSession!.ownerUserId,
         routineTemplateId: _currentSession!.routineTemplateId,
         startedAtMs: _currentSession!.startedAtMs,
-        endedAtMs: now,
+        // D-153: an end can never be stored before its start, whatever the
+        // clock says (a start ahead of `now` is clamped up, not overtaken).
+        endedAtMs: math.max(_currentSession!.startedAtMs, now),
         title: _currentSession!.title,
         note: _currentSession!.note,
         locationText: _currentSession!.locationText,
@@ -56,10 +58,15 @@ extension SessionCoreLifecycleMethods on SessionCore {
   /// Called once when the first exercise is added to a live session so that
   /// the global elapsed timer begins counting from the moment training actually
   /// starts, rather than from when the empty session was created.
+  ///
+  /// A session that already has an end is history: a finished window is never
+  /// reopened, so this writes nothing and the start stays where it was (D-153).
   Future<void> resetSessionTimerStart() async {
     if (_currentSession == null) return;
 
     _clearError();
+
+    if (_currentSession!.endedAtMs != null) return;
 
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -143,7 +150,10 @@ extension SessionCoreLifecycleMethods on SessionCore {
     _clearError();
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final newEndedAtMs = _currentSession!.startedAtMs + (durationSecs * 1000);
+      final newEndedAtMs = math.max(
+        _currentSession!.startedAtMs,
+        _currentSession!.startedAtMs + (durationSecs * 1000),
+      );
       final updatedSession = TrainingSession(
         id: _currentSession!.id,
         ownerUserId: _currentSession!.ownerUserId,

@@ -19,6 +19,12 @@
 //   S-273 empty completed session               → `S-273 ...`
 //   S-274 shape parity with phone logging       → `S-274 ...`
 //   S-281, S-284 the phone-rating API (state)   → `S-281 ...`, `S-284 ...`
+//
+// Negative load (band assist):
+//   S-58 a −20 kg set imports and sums negative → `S-58 ...`
+//   S-63 the phone reads the negative back      → `S-63 ...`
+//   S-65 corrections down to the −200 kg floor  → `S-65 ...`
+// Plan: `docs/plans/2026-10-06-16-watch-negative-load-plan/` (D-59, D-63).
 // S-272 (Hive ↔ Mock) is `test/watch_capture_contract_test.dart`.
 //
 // Every value the full-case tests expect is the capture contract's own
@@ -41,6 +47,8 @@ import 'package:omnitrain/state/watch/watch_incoming_router.dart';
 import 'package:omnitrain/state/watch/watch_nutrition_log_bridge.dart';
 import 'package:omnitrain/state/watch/watch_session_inbox.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
+import 'package:omnitrain/state/workout/session_summary_builder.dart';
+import 'package:omnitrain/state/workout/timer_manager.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
 import 'helpers/sync_protocol_harness.dart';
@@ -63,13 +71,14 @@ WatchSessionInbox _inbox(
   WorkoutRepository repository,
   CaptureTransport transport, {
   Future<void> Function()? onHistoryChanged,
+  DateTime Function()? clock,
 }) {
   var ids = 0;
   return WatchSessionInbox(
     repository: repository,
     transport: transport,
     validator: loadProtocolValidator(),
-    clock: () => _phoneNow,
+    clock: clock ?? () => _phoneNow,
     idFactory: () => 'msg-phone-${++ids}',
     onHistoryChanged: onHistoryChanged,
     // A failure inside the inbox fails the test where it happened.
@@ -163,6 +172,30 @@ Map<String, Object?> _rating(
   'rating': rating,
 };
 
+/// An ISO instant as the epoch milliseconds every row carries.
+int _msOf(String iso) => DateTime.parse(iso).toUtc().millisecondsSinceEpoch;
+
+/// A rest event in the protocol's shape (18b D-166): a window, no length, and
+/// the id of the set it follows.
+Map<String, Object?> _rest(
+  String entryId, {
+  required String startedAt,
+  required String endedAt,
+  required String afterEntryId,
+  String slot = 'sx-bench',
+  String exerciseId = 'ex-bench',
+}) => {
+  'entryId': entryId,
+  'eventId': entryId,
+  'kind': 'rest',
+  'loggedAt': endedAt,
+  'sessionExerciseId': slot,
+  'exerciseId': exerciseId,
+  'startedAt': startedAt,
+  'endedAt': endedAt,
+  'afterEntryId': afterEntryId,
+};
+
 /// Whether the phone already holds the rows [entryId] of [caseName] becomes —
 /// what a receipt is allowed to name.
 Future<bool> _rowsExist(
@@ -196,6 +229,25 @@ Future<bool> _rowsExist(
       );
       return (await repository.getRoundInstances(effortId)).any(
         (r) => r.id == WatchSessionImporter.roundInstanceIdFor(_capId, entryId),
+      );
+    case 'rest':
+      final effortId = WatchSessionImporter.effortIdFor(
+        _capId,
+        event['sessionExerciseId']! as String,
+        event['exerciseId']! as String,
+        'set',
+      );
+      final setEntries = [
+        for (final e in captureEvents(caseName))
+          if (e['kind'] == 'set') e['entryId'],
+      ];
+      final index = setEntries.indexOf(event['afterEntryId']! as String) + 1;
+      return (await repository.getEntryRests(effortId)).any(
+        (row) =>
+            row.id == 'rest-$effortId-$index' &&
+            row.entryIndex == index &&
+            row.restStartMs == _msOf(event['startedAt']! as String) &&
+            row.restEndMs == _msOf(event['endedAt']! as String),
       );
     default:
       final effortId = WatchSessionImporter.effortIdFor(
@@ -257,7 +309,7 @@ class _RecordingHealthPlatform implements HealthPlatformService {
 void main() {
   group('S-261 import from the offline stream', () {
     for (final caseName in const ['full', 'no-sensors', 'prompt-off']) {
-      test('S-261 $caseName: nine envelopes through the router import exactly '
+      test('S-261 $caseName: every envelope through the router imports exactly '
           'the contract', () async {
         final repository = await _repository();
         final transport = CaptureTransport();
@@ -733,6 +785,129 @@ void main() {
     });
   });
 
+  group('S-58 a band assist crosses into history with its sign', () {
+    test('S-58 a set logged at −20 kg imports at −20 kg and sums −160', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, 's-58', [
+        _set('e-58', loggedAt: '2026-09-25T10:10:00.000Z', reps: 8, loadKg: -20),
+        _end(
+          's-58',
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:20:00.000Z',
+        ),
+      ]);
+
+      final bench = WatchSessionImporter.effortIdFor(
+        's-58',
+        'sx-bench',
+        'ex-bench',
+        'set',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'reps'))?.valueInt,
+        8,
+        reason: 'S-58 the wrist’s eight reps land',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -20.0,
+        reason: 'S-58 the assist is not clamped to zero on the way in',
+      );
+
+      final session = (await repository.getSession('s-58'))!;
+      final segments = await repository.getSessionSegments('s-58');
+      final efforts = <String, List<SegmentEffort>>{};
+      final observations = <String, List<EffortObservation>>{};
+      for (final segment in segments) {
+        final segmentEfforts = await repository.getSegmentEfforts(segment.id);
+        efforts[segment.id] = segmentEfforts;
+        for (final effort in segmentEfforts) {
+          observations[effort.id] = await repository.getEffortObservations(
+            effort.id,
+          );
+        }
+      }
+      final summary = SessionSummaryBuilder(
+        timerManager: TimerManager(
+          repository,
+          notify: () {},
+          setError: (_) {},
+          clearError: () {},
+        ),
+        observations: observations,
+        efforts: efforts,
+        segments: segments,
+        exerciseCache: const {},
+      ).buildSessionSummary(session);
+      expect(
+        summary.totalVolume,
+        -160.0,
+        reason: 'S-58 the summary counts 8 reps of a −20 kg assist as −160',
+      );
+    });
+
+    test('S-63 the phone reads the negative load back, and a set with no '
+        'history keeps the default', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, 's-63', [
+        _set('e-63', loggedAt: '2026-09-25T10:10:00.000Z', reps: 8, loadKg: -20),
+        _end(
+          's-63',
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:20:00.000Z',
+        ),
+      ]);
+
+      // What the logging screen seeds the dial from: the exercise's last
+      // logged set, read back through the phone's own history path.
+      final history = WorkoutState(repository);
+      await history.loadHistoricalSession('s-63');
+      final logged = history
+          .getExercisesWithEntries()
+          .firstWhere((row) => row['exerciseId'] == 'ex-bench');
+      final lastSet = (logged['entries']! as List).last as Map;
+      expect(
+        lastSet['reps'],
+        8,
+        reason: 'S-63 the last logged set is the one the dial carries',
+      );
+      expect(
+        lastSet['weight'],
+        -20.0,
+        reason: 'S-63 the assist carries over negative, not as 0 kg or a target',
+      );
+
+      // An exercise with no history has nothing to carry, so the existing
+      // default stands — a negative carry-over must not invent one.
+      await seedExercise(
+        repository,
+        id: 'ex-row',
+        name: 'Barbell Row',
+        capabilities: ['sets', 'reps', 'load'],
+      );
+      final fresh = WorkoutState(repository);
+      await fresh.createNewSession();
+      final effortId = await fresh.addExerciseToSession(
+        (await repository.getExerciseById('ex-row'))!,
+      );
+      await fresh.addEntry(effortId);
+      final added = fresh
+          .getExercisesWithEntries()
+          .firstWhere((row) => row['exerciseId'] == 'ex-row');
+      expect(
+        ((added['entries']! as List).last as Map)['weight'],
+        0.0,
+        reason: 'S-63 no history → the existing default, not a negative',
+      );
+    });
+  });
+
   group('S-267 live corrections carry into history', () {
     /// The mirror holding s-cap-1 live, with its outgoing corrections staged
     /// through [inbox] before they reach [transport].
@@ -890,6 +1065,89 @@ void main() {
         (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
         90.0,
         reason: 'S-267 the user’s own edit of the weight stays',
+      );
+    });
+
+    test('S-65 a band assist corrects down to the floor and no further', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      // Corrections are stamped by the inbox's clock, and a later correction of
+      // the same metric only wins on a strictly later stamp: a fixed clock would
+      // make the second correction a no-op, which is not what the wire does.
+      var now = _phoneNow;
+      final inbox = _inbox(repository, transport, clock: () => now);
+      final mirror = liveMirror(inbox, transport);
+      final bench = WatchSessionImporter.effortIdFor(
+        _capId,
+        'sx-bench',
+        'ex-bench',
+        'set',
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-neg', loggedAt: '2026-09-25T10:10:00.000Z', loadKg: 60),
+        _end(
+          _capId,
+          startedAt: '2026-09-25T10:00:00.000Z',
+          endedAt: '2026-09-25T10:20:00.000Z',
+        ),
+      ]);
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        60.0,
+        reason: 'S-65 the wrist logged 60 kg',
+      );
+
+      now = now.add(const Duration(seconds: 1));
+      await mirror.correctEntry('e-neg', {'loadKg': -20});
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -20.0,
+        reason: 'S-65 a −20 kg assist is a correction the phone may make',
+      );
+
+      now = now.add(const Duration(seconds: 1));
+      await mirror.correctEntry('e-neg', {'loadKg': -200});
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -200.0,
+        reason: 'S-65 the floor itself is a correction the phone may make',
+      );
+
+      now = now.add(const Duration(seconds: 1));
+      // The row as the −200 kg correction left it. A refusal must leave it
+      // untouched; a clamp would re-stamp it at the −240 kg correction.
+      final beforeRefusal = await observationAt(repository, bench, 0, 'weight');
+      final below = await mirror.correctEntry('e-neg', {'loadKg': -240});
+      final decision = SyncProtocolValidator.evaluateOrAccept(
+        loadProtocolValidator(),
+        below,
+      );
+      expect(
+        decision.accepted,
+        isFalse,
+        reason: 'S-65 a −240 kg assist is below the wire floor',
+      );
+      expect(
+        decision.rejectionCodes,
+        contains('constraint_violation'),
+        reason: 'S-65 the schema names the refusal',
+      );
+      expect(
+        [for (final rejection in decision.rejections) rejection.path],
+        contains(contains('loadKg')),
+        reason: 'S-65 the refusal points at the load',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.valueReal,
+        -200.0,
+        reason: 'S-65 a correction below the floor leaves the last value',
+      );
+      expect(
+        (await observationAt(repository, bench, 0, 'weight'))?.toMap(),
+        beforeRefusal?.toMap(),
+        reason: 'S-65 refused, not clamped: the row is unchanged from before the '
+            '−240 kg correction, value and stamp alike',
       );
     });
   });
@@ -2059,6 +2317,29 @@ void main() {
                 'loggedAt': '2026-09-25T10:30:00.000Z',
                 'startedAt': '2026-09-25T10:00:00.000Z',
               },
+              // A rest is stageable only with the entry it follows (D-214);
+              // the same row carrying it is staged.
+              {
+                'entryId': 'rest-s-snap-partial',
+                'eventId': 'rest-s-snap-partial',
+                'kind': 'rest',
+                'loggedAt': '2026-09-25T10:06:10.000Z',
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-bench',
+                'startedAt': '2026-09-25T10:05:00.000Z',
+                'endedAt': '2026-09-25T10:06:10.000Z',
+              },
+              {
+                'entryId': 'rest-s-snap-whole',
+                'eventId': 'rest-s-snap-whole',
+                'kind': 'rest',
+                'loggedAt': '2026-09-25T10:06:10.000Z',
+                'sessionExerciseId': 'sx-bench',
+                'exerciseId': 'ex-bench',
+                'startedAt': '2026-09-25T10:05:00.000Z',
+                'endedAt': '2026-09-25T10:06:10.000Z',
+                'afterEntryId': 'e-snap-1',
+              },
             ],
             'timers': const <String, Object?>{},
           },
@@ -2071,7 +2352,18 @@ void main() {
         );
         expect(result.stagedEntryIds, [
           'e-snap-1',
-        ], reason: 'A-3 only the complete entry');
+          'rest-s-snap-whole',
+        ], reason: 'A-3 only the complete entries');
+        expect(
+          await repository.getWatchInboxEntry('rest-s-snap-partial'),
+          isNull,
+          reason: 'A-3 a rest without the entry it follows is not staged',
+        );
+        expect(
+          await repository.getWatchInboxEntry('rest-s-snap-whole'),
+          isNotNull,
+          reason: 'A-3 the same rest with it is staged',
+        );
         expect(
           await repository.getWatchInboxEntry('rating-s-snap'),
           isNull,
@@ -2123,6 +2415,365 @@ void main() {
         transport.receiptedEntryIds.toSet(),
         {'e-snap-2', 'end-s-snap-1', 'rating-s-snap-1'},
         reason: 'D-132 the snapshot entries are acknowledged',
+      );
+    });
+  });
+
+  // Plan: `docs/plans/2026-10-08-18c-watch-rest-to-phone-plan/` (D-210,
+  // D-214 – D-216, D-222) — the wrist's rest becomes an `EntryRest` of the
+  // effort whose set it followed, in the ordinary import flow.
+  //   S-320 a staged set and rest become one rest row → `S-320 ...`
+  //   S-323 zero length is dropped                  → `S-323 ...`
+  //   S-324 duplicate delivery, and a re-run pass   → `S-324 ...`
+  //   S-326 a rest alone imports no session         → `S-326 ...`
+  //   S-327 deleting the set leaves the rest        → `S-327 ...`
+  //   S-328 an unresolvable rest is consumed        → `S-328 ...`
+  group('the wrist’s rests (D-210)', () {
+    final bench = WatchSessionImporter.effortIdFor(
+      _capId,
+      'sx-bench',
+      'ex-bench',
+      'set',
+    );
+    const restStart = '2026-09-25T10:05:00.000Z';
+    const restEnd = '2026-09-25T10:06:10.000Z';
+    const sessionStart = '2026-09-25T10:00:00.000Z';
+    const sessionEnd = '2026-09-25T10:30:00.000Z';
+
+    /// The rest the fixture above sends, as the importer writes it.
+    Map<String, Object?> restRow(String effortId, {int entryIndex = 1}) => {
+      'id': 'rest-$effortId-$entryIndex',
+      'effort_id': effortId,
+      'entry_index': entryIndex,
+      'rest_start_ms': _msOf(restStart),
+      'rest_end_ms': _msOf(restEnd),
+      'rest_is_paused': 0,
+      'rest_paused_at_ms': null,
+      'rest_paused_duration_ms': 0,
+      'created_at_ms': _msOf(restEnd),
+      'updated_at_ms': _msOf(restEnd),
+    };
+
+    test('S-320 a staged set and rest import one rest row after the set',
+        () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        _rest(
+          'e-rest1',
+          startedAt: restStart,
+          endedAt: restEnd,
+          afterEntryId: 'e-set1',
+        ),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      final rests = await repository.getEntryRests(bench);
+      expect(rests, hasLength(1), reason: 'S-320 one rest event, one row');
+      expect(
+        rests.single.toMap(),
+        restRow(bench),
+        reason:
+            'S-320 D-167’s row: the id from the index the set took, the '
+            'window as sent, never paused',
+      );
+      expect(
+        await observationAt(repository, bench, 0, 'reps'),
+        isNotNull,
+        reason: 'S-320 the set the rest followed still lands at index 0',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        containsAll(['e-set1', 'e-rest1', 'end-$_capId']),
+        reason: 'S-320 the rest is consumed in the same pass as the set',
+      );
+      expect(
+        await repository.getAllSessions(),
+        hasLength(1),
+        reason: 'S-320 the rest creates no session of its own',
+      );
+    });
+
+    test('S-323 a rest of no length is dropped, consumed and never retried',
+        () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+      final zeroLength = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restStart,
+        afterEntryId: 'e-set1',
+      );
+
+      // The wire refuses it, so it never arrives as a message (D-222).
+      final refused = await inbox.receive(
+        observationsUp(_capId, [zeroLength], messageId: 'msg-zero'),
+      );
+      expect(
+        refused.outcome,
+        WatchInboxOutcome.refused,
+        reason: 'S-323 the wire refuses a rest that is not a window',
+      );
+      expect(
+        await repository.getWatchInboxEntry('e-rest1'),
+        isNull,
+        reason: 'S-323 so nothing is staged',
+      );
+
+      // An older peer staged one anyway (D-222): the pass that runs next drops
+      // it, and consumes it rather than holding it back for ever.
+      await repository.stageWatchInboxEntry(
+        WatchInboxEntry(
+          entryId: 'e-rest1',
+          watchSessionId: _capId,
+          kind: WatchInboxEntry.kindRest,
+          origin: WatchInboxEntry.originWatch,
+          payload: Map<String, dynamic>.from(zeroLength),
+          receivedAtMs: _phoneNow.millisecondsSinceEpoch,
+        ),
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-323 a rest of no length is never written',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-323 and the row is consumed rather than left unapplied',
+      );
+
+      // A pass that runs again over the same row drops it the same way.
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-323 the second pass writes nothing either',
+      );
+    });
+
+    test('S-324 a redelivered rest and a re-run pass write one row', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+      final rest = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restEnd,
+        afterEntryId: 'e-set1',
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        rest,
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+      final written = await repository.getEntryRests(bench);
+      expect(written, hasLength(1), reason: 'S-324 the first delivery wrote it');
+
+      // The wrist never got the receipt, so it sends the rest again.
+      await _deliverEach(inbox, _capId, [rest], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        hasLength(1),
+        reason: 'S-324 a redelivery writes nothing: the row is already applied',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        contains('e-rest1'),
+        reason: 'S-324 and it is acknowledged, so the wrist may forget it',
+      );
+
+      // A pass that runs again over the same row — the recovery path clears
+      // the watermark — finds the spot taken and leaves the row alone.
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [rest], tag: 'third');
+      final after = await repository.getEntryRests(bench);
+      expect(
+        after.map((r) => r.toMap()),
+        [written.single.toMap()],
+        reason:
+            'S-324 first write wins: Mock appends and Hive puts by id, so the '
+            'index guard is what keeps the two implementations equal',
+      );
+    });
+
+    test('S-326 a rest and an end alone create no session', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      await _deliverEach(inbox, _capId, [
+        _rest(
+          'e-rest1',
+          startedAt: restStart,
+          endedAt: restEnd,
+          afterEntryId: 'e-set1',
+        ),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      expect(
+        await repository.getSession(_capId),
+        isNull,
+        reason: 'S-326 D-214 a rest is not an effort entry, so it imports none',
+      );
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-326 a pass that creates no session writes no rest',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-326 D-215 the row is consumed, so it is not retried',
+      );
+    });
+
+    test('S-327 deleting the set leaves its rest', () async {
+      final repository = await _repository();
+      final inbox = _inbox(repository, CaptureTransport());
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        _rest(
+          'e-rest1',
+          startedAt: restStart,
+          endedAt: restEnd,
+          afterEntryId: 'e-set1',
+        ),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+      final before = await repository.getEntryRests(bench);
+      expect(before, hasLength(1), reason: 'S-327 the rest is imported');
+
+      final workout = WorkoutState(repository);
+      await workout.loadHistoricalSession(_capId);
+      await workout.deleteEntry(bench, 0);
+
+      expect(
+        await observationAt(repository, bench, 0, 'reps'),
+        isNull,
+        reason: 'S-327 the user deleted the set the rest followed',
+      );
+      expect(
+        (await repository.getEntryRests(bench)).map((r) => r.toMap()),
+        [before.single.toMap()],
+        reason:
+            'S-327 D-167(b) a rest is not an entry: deleting the set deletes '
+            'the observations and nothing else',
+      );
+    });
+
+    test('S-328 an unresolvable rest is dropped, consumed and not retried',
+        () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+      final orphan = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restEnd,
+        afterEntryId: 'e-set2',
+      );
+
+      await _deliverEach(inbox, _capId, [
+        _set('e-set1', loggedAt: restStart),
+        orphan,
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the after-entry was never placed, so there is no spot',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-328 the row is consumed with the set it arrived with',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        containsAll(['e-set1', 'e-rest1']),
+        reason: 'S-328 and it is acknowledged',
+      );
+
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [orphan], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the next pass does not retry it',
+      );
+    });
+
+    test('S-328 a rest naming one of two same-instant sets is dropped and '
+        'consumed', () async {
+      final repository = await _repository();
+      final transport = CaptureTransport();
+      final inbox = _inbox(repository, transport);
+
+      // Two sets the wrist logged on the same instant: their rows cannot be
+      // told apart by stamp, so neither position can be named.
+      await _deliverEach(inbox, _capId, [
+        _set('e-dup1', loggedAt: restStart),
+        _set('e-dup2', loggedAt: restStart),
+        _end(_capId, startedAt: sessionStart, endedAt: sessionEnd),
+      ]);
+
+      // The user adds a row of their own (A-51), so the effort is the user's
+      // to arrange and the wrist's already-placed rows are resolved by stamp.
+      final workout = WorkoutState(repository);
+      await workout.loadHistoricalSession(_capId);
+      await workout.addEntry(
+        bench,
+        previousValues: {'reps': 8, 'weight': 100.0},
+      );
+
+      final ambiguous = _rest(
+        'e-rest1',
+        startedAt: restStart,
+        endedAt: restEnd,
+        afterEntryId: 'e-dup1',
+      );
+      await _deliverEach(inbox, _capId, [ambiguous], tag: 'rest');
+
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the two same-instant sets leave no spot to name',
+      );
+      expect(
+        (await repository.getWatchInboxEntry('e-rest1'))?.appliedAtMs,
+        isNotNull,
+        reason: 'S-328 the row is consumed rather than left unapplied',
+      );
+      expect(
+        transport.receiptedEntryIds,
+        contains('e-rest1'),
+        reason: 'S-328 and it is acknowledged',
+      );
+
+      await repository.clearWatchInboxApplied(['e-rest1']);
+      await _deliverEach(inbox, _capId, [ambiguous], tag: 'again');
+      expect(
+        await repository.getEntryRests(bench),
+        isEmpty,
+        reason: 'S-328 the next pass does not retry it',
       );
     });
   });

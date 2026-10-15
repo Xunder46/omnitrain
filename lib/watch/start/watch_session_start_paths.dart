@@ -175,6 +175,21 @@ class WatchSessionStartPaths {
   /// from the routine. See the plan's open items.
   Future<WatchSessionRecord> startFromRoutine(String routineId) async {
     final routine = _routine(routineId);
+    // A routine picked while an empty session is live is what that session was
+    // waiting for: the routine's slots fill it in place, in template order, and
+    // the user stays where they were (D-177, S-178). Once the session has
+    // exercises the user is training, and the pick is refused like any other
+    // second start (S-170).
+    final held = _engine.session;
+    if (held != null &&
+        held.status == WatchSessionStatus.active &&
+        held.exercises.isEmpty) {
+      var filled = held;
+      for (final slot in routine.slots) {
+        filled = await _engine.insertExercise(slot, moveTo: false);
+      }
+      return filled;
+    }
     return _engine.createSession(modality: null, exercises: routine.slots);
   }
 

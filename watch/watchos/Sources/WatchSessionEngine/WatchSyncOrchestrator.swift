@@ -55,6 +55,13 @@ public final class WatchSyncOrchestrator {
     /// has nothing to do with a `preferences_down`.
     private let preferences: WatchPhonePreferences?
 
+    /// Whether a catch-up is running. The class is not main-actor isolated, so
+    /// the flag is protected by a lock: the test-and-set in `catchUp` has no
+    /// suspension point between the check and the set, so two triggers can never
+    /// both pass it.
+    private let catchUpLock = NSLock()
+    private var catchUpInFlight = false
+
     public init(
         transport: WatchSyncTransport,
         paths: WatchSessionStartPaths,
@@ -90,11 +97,41 @@ public final class WatchSyncOrchestrator {
             await transport.send(message)
         }
 
+        // D-199: the rating observation above must reach the phone before the
+        // replay, so the copy ends with the wrist's rating already in it.
+        if paths.phoneReachable { engine.replaySessionEnd() }
+
         if engine.session == nil {
             await transport.requestSnapshot()
         } else {
             await answerSnapshotRequest()
         }
+    }
+
+    /// Catches the wrist up with the phone when it becomes the active app and
+    /// the radio reports the phone in reach, without the user pressing Sync
+    /// (D-96, D-183).
+    ///
+    /// One gate, here rather than in the shell: the phone must be `reachable`.
+    /// The wrist's own session no longer matters — a wrist with no session asks
+    /// the phone for its current workout and for the routines (D-183), so the
+    /// workout the wrist should be in appears after its own was discarded. A
+    /// trigger that arrives while one is already running is dropped: never
+    /// queued, never cancelling the running one; the next trigger after it
+    /// completes runs a fresh catch-up.
+    public func catchUp(reachable: Bool) async {
+        guard reachable else { return }
+
+        let alreadyRunning = catchUpLock.withLock { () -> Bool in
+            if catchUpInFlight { return true }
+            catchUpInFlight = true
+            return false
+        }
+        guard !alreadyRunning else { return }
+
+        defer { catchUpLock.withLock { catchUpInFlight = false } }
+
+        await sync(reconnect: paths.syncedAt != nil)
     }
 
     /// Answers a snapshot request from the phone with the watch's live session.

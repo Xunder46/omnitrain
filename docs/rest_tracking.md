@@ -6,6 +6,26 @@ OmniTrain uses **wall-clock-persisted rest records** to track recovery time betw
 
 ---
 
+## The rule: rest is a count-up
+
+Rest is a count-up from the moment a set is logged to the moment the next set starts. There is no
+preset rest length, no rest countdown and no end-of-rest alarm on any device
+([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up";
+`docs/plans/2026-10-08-18b-watch-rest-count-up-plan`, D-160). A routine's stored `restSeconds` is a
+prescription read at routine setup, never a timer (D-168). The one allowed rest cue is the rest ping:
+a repeating nudge at each multiple of the Rest Ping interval while a rest is open, on the device that
+holds the rest, and it reaches the phone and the watch from that one setting — a haptic tap and no
+sound on the wrist, and never a countdown ([Theme and Settings](theme_and_settings.md); Dart
+`test/watch_rest_ping_test.dart`, `S-241 an interval of 30 polled every second from 0 to 100 taps at 30,
+60 and 90 and nowhere else`; Swift `WatchRestPingTests.testS241AnIntervalTapsAtItsMultiplesAndNowhereElse`).
+Every rest record on the wire carries no length, and the shared contract refuses one
+(`test/sync_protocol_fixtures_test.dart`,
+`S-165 the wire refuses a rest length` — `a rest carries no planned length, a round keeps one, and a
+rest with one is refused`). `test/rest_is_count_up_contract_test.dart` fails if a scanned tree
+reintroduces a preset rest length or a rest countdown.
+
+---
+
 ## Why Wall-Clock Rest Tracking
 
 The original implementation used a `Stopwatch` + `Timer.periodic` inside `WorkoutSessionScreen` to track rest. This had two problems:
@@ -121,7 +141,7 @@ When a timed, round, or drill effort timer starts, `closeAllOpenRests(effortId)`
 
 2. **Asynchronous repository persist** (`closeAllOpenRests`): After the in-memory close, the updated rest records are persisted to the repository asynchronously. This may lag behind UI rendering on high-latency devices, but queries to `hasRestRecord()` and `getRestElapsedSeconds()` see the closed state immediately from the in-memory cache.
 
-**Why two phases?** On real devices with network/IO latency, the repository persist can lag by hundreds of milliseconds. Without the in-memory close, the rest overlay would display stale elapsed time (rest time + new timer time) in that window, creating a confusing visual flicker. The two-phase approach ensures the UI is always consistent with in-memory state, even when the database is still catching up.
+**Why two phases?** On real devices with network/IO latency, the repository persist can lag by hundreds of milliseconds. Without the in-memory close, the rest overlay would display stale elapsed time (rest time + new timer time) in that window, creating a confusing visual flicker. The two-phase approach ensures the UI is always consistent with in-memory state, even when the repository is still catching up.
 
 **Testing**: Scenario S-2 in the rest-timer-timed-overlap-bug plan verifies this behaviour by simulating a 500ms async persist delay and confirming that `hasRestRecord()` returns `false` and `getRestElapsedSeconds()` returns `0` immediately, while the repository persist is still in-flight.
 
@@ -202,6 +222,27 @@ Pause/resume behaviour:
   duration never includes stopped time.
 
 Logging the next entry or starting an effort timer still closes open rest as described above.
+
+---
+
+## The Wrist's Rest
+
+The watch runs its own rest, and it is a count-up with nothing to configure. The shipped wrist
+screen is `watch/watchos/Sources/WatchSessionEngine/WatchRestView.swift`; the Dart file
+`lib/watch/logging/watch_rest_screen.dart` is its twin, mounted by no runtime harness
+(`docs/state_management/watch_surface.md`). Verified by `test/watch_rest_surface_test.dart` (`S-161
+the rest elapsed counts up and survives the screen turning off`, `S-162 Next ends the rest at the
+tap instant`, `S-163 logging ends a running rest first`), its Swift twin
+`WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`, and the logging path
+that starts the rest with no length (`test/watch_logging_timers_test.dart`, `S-160 a logged set
+starts a rest with no planned length`).
+
+A rest's timer is device-local — no message carries a rest length or a countdown — but the rest
+itself travels: when it ends, the wrist emits a `rest` observation and the phone's importer writes
+it as an `EntryRest` row, so the Session Summary counts it like the phone's own rest (18d
+D-219/D-220, 18c D-215; `test/watch_session_summary_integration_test.dart`, `S-329 a rest the wrist
+sent and a rest the phone counted, over the same window, total the same`; Swift wrist,
+`WatchSessionEngineTests.testS320TheRestTheWristEndsTravelsAsARestEvent`).
 
 ---
 

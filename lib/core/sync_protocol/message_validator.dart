@@ -271,9 +271,17 @@ class SyncProtocolValidator {
     final payload = _asObject(message['payload']);
     switch (message['type']) {
       case 'timer_state':
-        return _timerKindRejections(_asObject(payload['timers']));
+        final timers = _asObject(payload['timers']);
+        return [
+          ..._timerKindRejections(timers),
+          ..._restLengthRejections(timers),
+        ];
       case 'session_snapshot':
-        return _snapshotRejections(payload);
+        final timers = payload['timers'];
+        return [
+          ..._snapshotRejections(payload),
+          ..._restLengthRejections(timers is Map ? _asObject(timers) : null),
+        ];
       case 'observations_up':
         return [
           ..._duplicateEventRejections(payload),
@@ -281,6 +289,7 @@ class SyncProtocolValidator {
             payload['events']! as List,
             '$_root.payload.events',
           ),
+          ..._restWindowRejections(payload['events']! as List),
         ];
       case 'receipt':
         return _duplicateAcknowledgementRejections(payload);
@@ -304,6 +313,54 @@ class SyncProtocolValidator {
           code: _semanticViolation,
           path: '$_root.payload.timers.$kind.kind',
           message: "timer '$kind' declares kind ${_describe(timer['kind'])}",
+        ),
+      );
+    }
+    return rejections;
+  }
+
+  /// The one timer that never carries a planned length is the rest: rest is a
+  /// count-up (`docs/global_conventions.md`, rest rule). A `timer_state` and a
+  /// `session_snapshot` both carry `timers`, so both are held to this rule and
+  /// a rest with a plan is never adopted into the wrist's own row (D-164,
+  /// D-169).
+  List<SyncProtocolRejection> _restLengthRejections(
+    Map<String, Object?>? timers,
+  ) {
+    final rest = timers?['rest'];
+    if (rest is! Map || rest['plannedDurationMs'] == null) return const [];
+    return [
+      SyncProtocolRejection(
+        code: _semanticViolation,
+        path: '$_root.payload.timers.rest.plannedDurationMs',
+        message:
+            'a rest has no planned length: rest is a count-up '
+            '(docs/global_conventions.md, rest rule)',
+      ),
+    ];
+  }
+
+  /// A rest is a window between two instants, so one that does not end after it
+  /// starts is nothing to write: the wrist never builds one (D-166) and the
+  /// phone drops such a row (S-323). An unparseable instant adds nothing here —
+  /// the schema's `type` rule already reports it.
+  List<SyncProtocolRejection> _restWindowRejections(List<Object?> events) {
+    final rejections = <SyncProtocolRejection>[];
+    for (var index = 0; index < events.length; index++) {
+      final event = _asObject(events[index]);
+      if (event['kind'] != 'rest') continue;
+      final startedAt = DateTime.tryParse(event['startedAt'] as String? ?? '');
+      final endedAt = DateTime.tryParse(event['endedAt'] as String? ?? '');
+      if (startedAt == null || endedAt == null) continue;
+      if (endedAt.isAfter(startedAt)) continue;
+      rejections.add(
+        SyncProtocolRejection(
+          code: _semanticViolation,
+          path: '$_root.payload.events[$index].endedAt',
+          message:
+              'a rest must end after it starts: '
+              'endedAt ${event['endedAt']} is not after startedAt '
+              '${event['startedAt']}',
         ),
       );
     }

@@ -9,8 +9,12 @@
 > omits D-35's re-statement rule, and the reconciliation fixture pins the no-double-store merge rather
 > than a re-statement.
 
-> Status: DRAFT — plan complete, owner answers pending (`## Open questions` at the end)
-> Next handoff: **@dba (Phase 1 — the contract)**
+> Status: PR 3a and PR 3b are both **built and verified** — PR 3a (Phases 1, 2, 4, plus review fix
+> round 1), PR 3b (Phase 3, the wrist takes a re-statement, plus fix 1 and the docs-only fix 2).
+> Outstanding: the owner walkthroughs (Phase 4 item 3, `docs/watch-app-setup-and-qa.md` step (g)).
+> Plan complete; owner answers pending (`## Open questions` at the end)
+> Next handoff: **owner walkthroughs** (Phase 4 item 3, `docs/watch-app-setup-and-qa.md` step (g)) —
+> code review 2 returned APPROVE; the G2/G3 follow-ups go to the durable-store (PR 4) plan.
 > Binding conventions: `docs/global_conventions.md`. Normative contract: `watch/sync_protocol/PROTOCOL.md`
 > (this PR amends it, D-32). Series index: `docs/plans/2026-10-05-15-watch-session-sync-index.md`.
 > Areas: `docs/watch_session_sync.md`, `docs/state_management/watch_surface.md`,
@@ -369,18 +373,18 @@ set reach the wrist; Phase 4 closes the docs. Phases 2 and 3 could swap, at the 
 
 ### Phase 3: The wrist takes a re-statement (@dba)
 
-1. [ ] Dart twin: in `lib/watch/session/watch_session_engine.dart` `_storeSnapshotEntry` (697), an id
+1. [x] Dart twin: in `lib/watch/session/watch_session_engine.dart` `_storeSnapshotEntry` (697), an id
        the engine already holds folds the snapshot payload into `_entryCorrections` instead of
        returning early (D-35); a new id is stored as today.
-2. [ ] Swift: the same in
+2. [x] Swift: the same in
        `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift` `storeSnapshotEntry` (718).
-3. [ ] Assert the store stays append-only: the stored row's payload is unchanged after a
+3. [x] Assert the store stays append-only: the stored row's payload is unchanged after a
        re-statement (both stacks).
-4. [ ] Tests: S-32, S-35, S-41 on both stacks — Dart `test/watch_session_projection_test.dart` (or the
+4. [x] Tests: S-32, S-35, S-41 on both stacks — Dart `test/watch_session_projection_test.dart` (or the
        engine's own file) and Swift
        `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionEngineTests.swift` (or a new
        `WatchPhoneEntriesTests.swift` beside it, which SwiftPM picks up automatically).
-5. [ ] S-38 (adopt a session the wrist does not hold) on both stacks: the entries land under the
+5. [x] S-38 (adopt a session the wrist does not hold) on both stacks: the entries land under the
        adopted session id.
 
 **Done Criteria**: `.github/copilot/scripts/macos/gateway.sh lint`, `.github/copilot/scripts/macos/gateway.sh test`, `.github/copilot/scripts/macos/gateway.sh swift-test`.
@@ -473,7 +477,11 @@ set reach the wrist; Phase 4 closes the docs. Phases 2 and 3 could swap, at the 
       clock-stamped `loggedAt` → S-39). Green `+65` across `test/watch_session_projection_test.dart` +
       `test/live_mirroring_test.dart`; whole suite `+3935 ~1`, 0 failures; `swift-test` 268 / 0; `lint`
       196 / 0. Evidence: `<plan>.evidence.md`.
-- [ ] Phase 3 — the wrist takes a re-statement (@dba)
+- [x] Phase 3 — the wrist takes a re-statement (@developer, PR 3b) — **Complete.** Both stacks re-state a
+      held `entryId` from the snapshot payload (Dart twin and Swift engine), the stored row is left
+      unrewritten and no second row is made; a deleted id stays deleted and the newest snapshot wins
+      over an earlier correction. Three mutations caught in the phase, two in fix 1. Whole suite
+      `+3945 ~1`, 0 failures; `swift-test` 275 / 0; `lint` 196 / 0. Evidence: `<plan>.evidence.md`.
 - [x] Phase 4 — docs, walkthrough, residue sweep (@developer, PR 3a) — **Complete.** The
       `watch_session_sync.md` limits finished (the edit and delete limits added, the phone's rest timer
       named plainly, the sets-only bullet made plain); `watch_surface.md` states the answer carries the
@@ -561,9 +569,8 @@ promote to a D-x — or REVERT, opening a remediation item.)*
   plan's one-to-one claim already accepts as benign). Chosen: claim staged rows.
 - **A-16 (Developer, fix round 1).** F8: `docs/state_management/watch_surface.md` now cites D-31/D-33
   for "a set the phone logged reaches the wrist at its Sync". D-35 is the *re-statement* decision and
-  belongs to Phase 3 (PR 3b), so the sentence named a decision PR 3a does not implement. **PR 3b must
-  revisit this sentence** and add D-35 (and D-38's edit/delete limits) once the wrist takes a
-  re-statement.
+  belongs to Phase 3 (PR 3b), so the sentence named a decision PR 3a does not implement. **Done in
+  PR 3b:** the sentence now names D-35 and cites the wrist-side re-statement tests.
 - **A-17 (Developer, fix round 1).** S-43 is modelled in the projection harness as an answer that is
   composed and never delivered: the request reaches the phone through the radio, the phone composes
   its answer, and the test never hands it to the wrist engine. Transport-level delivery failure is
@@ -576,12 +583,54 @@ promote to a D-x — or REVERT, opening a remediation item.)*
   once-each rule `test/watch_reconciliation_cross_stack_test.dart`, `S-31 a snapshot's own entries are
   absorbed by both stacks, once each`, rather than restating the store's contract.
 
+- **A-19 (Developer, Phase 3 / PR 3b).** D-35 exactly: a held `entryId` is *re-stated*. Options:
+  (a) keep the early return (a re-carried id is ignored); (b) re-statement folds the payload into
+  `_entryCorrections` and leaves the stored row alone; (c) rewrite the stored observation row. Chosen:
+  (b), on both stacks, mirrored line for line. (c) would break the append-only store and the relapse
+  contract (`WatchObservationRecord.payload` is never rewritten); (a) is the behaviour the edit/delete
+  pin exists to remove.
+- **A-20 (Developer, Phase 3 / PR 3b).** The stays-deleted rule is proven in the projection group, not
+  in `test/watch_session_engine_test.dart` as the brief's pointer allowed. Options: the engine's own
+  file, or beside S-31…S-43 where the rest of this register lives (the brief left the choice open).
+  Chosen: `test/watch_session_projection_test.dart`,
+  `S-35 a re-statement of a deleted id stays deleted` — `entries` drops `_deletedEntryIds` **before**
+  it reads a correction, and `_applySnapshot` never clears the set, so a re-statement revives nothing.
+- **A-21 (Developer, Phase 3 / PR 3b).** S-41's confirmation half uses the receipt path
+  (`WatchNutritionLogBridge.receiptFor`) rather than a snapshot that names the wrist's own set: a
+  `session_snapshot` naming nothing confirms nothing, and the answer never echoes the wrist's own entry
+  back (S-33/D-42). Chosen: assert survival + one row + still owed after the empty answer, then confirm
+  through the receipt that names it. The Swift side uses `engine.confirmObservations`.
+- **A-22 (Developer, Phase 3 / PR 3b).** The brief's fixture change is **Blocked (scope)**: the shared
+  `phone_entries_merge.json` carries one `expected` block, deep-compared to both stacks, while D-35
+  makes them deliberately diverge, so no value satisfies both readings (both directions observed; the
+  fixture is byte-identical to HEAD). Chosen: pin the divergence in
+  `test/watch_reconciliation_cross_stack_test.dart`, which compares no entry block to `expected`, and
+  raise the fixture format as an open question — not absorb a fixture-format change, and not edit the
+  two unpredicted tests (`test/live_mirroring_test.dart`, `test/sync_protocol_fixtures_test.dart`) or
+  Swift `WatchLiveMirroringTests`.
+- **A-23 (Governor, PR 3b).** `fixtures/reconciliation/phone_entries_merge.json` stays **unchanged**:
+  its single `expected` block is deep-compared to both stacks by three readers, and D-35 makes the
+  stacks deliberately diverge on an edited set, so no one value satisfies both. The re-statement is
+  pinned by the wrist-side tests instead (`WatchPhoneEntriesTests`; `S-35` in
+  `test/watch_session_projection_test.dart` and `test/watch_reconciliation_cross_stack_test.dart`).
+- **A-24 (Governor, PR 3b).** **Only the wrist re-states.** A phone receiving a watch snapshot keeps
+  the values it holds (authority rule 1: the watch never edits history), so the phone-side
+  `SyncSessionReconciler` is unchanged on purpose; the re-statement is a one-way correction the watch
+  applies to entries the phone logged and sent it.
+
 ## Feedback
 
 Code review 1 (PR 3a) — `2026-10-05-15d-watch-session-sync-pr3-plan.review.md`, findings F1–F8.
 Fix list for one round: F1 (a negative weight makes the whole snapshot invalid — AC-6/R7 unmet),
 F6 (`docs/watch_session_sync.md:174-179` name no test; Phase 4 criterion 1 unmet), F7 (S-43 has no
 test), plus the F2 and F3 guard tests; F4/F5 ride along in the same file. F8 is a planner note for 3b.
+
+Code review 2 (PR 3b) — same file, "Code review 2 (PR 3b)", findings G1–G4. **Nothing blocking.**
+Follow-up list (PR 4, where pruning becomes real): G1 (the `PROTOCOL.md:288-289` /
+`docs/watch_session_sync.md:79-80` authority carve-out is unenforced and unverified — add the guard or
+reword both), G2 (the held-id check is not filtered by session — add the shared-id guard), G3
+(`pruneConfirmed` leaves the correction lens behind — clear it with the row), G4 (bookkeeping: the
+stale `Next handoff` line, the duplicated open-question numbers, the drifted line pointers).
 
 ## Open questions
 
@@ -621,7 +670,8 @@ Each has a recommended default; the plan proceeds on the defaults.
     them.*
 11. **The plan assigns Phase 1 to @dba; the brief assigned it to @developer.** *Default: follow the
     brief (A-5) — no model, repository or seed changes here.*
-8. **The snapshot is authoritative for the entries it carries** (D-35), which is how a phone edit
-   reaches the wrist without a new message. *Default: yes.*
-9. **One plan, four phases, no 3a/3b split** — the governor does not need to create a second plan
-   folder. *Default: one plan.*
+12. **The snapshot is authoritative for the entries it carries** (D-35), which is how a phone edit
+    reaches the wrist without a new message. *Default: yes.*
+13. ~~**One plan, four phases, no 3a/3b split** — the governor does not need to create a second plan
+    folder. *Default: one plan.*~~ **Superseded** by the governor's Split note at the top of this plan
+    (2026-10-05): this plan is PR 3a + PR 3b in one folder.

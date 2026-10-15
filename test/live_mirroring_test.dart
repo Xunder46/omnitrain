@@ -16,6 +16,11 @@
 //   S-251 a snapshot of another session replaces it    → `S-251 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-130; S-252 is the S-008 group, which stays unchanged)
+//   S-212/S-215/S-216 the wrist's end is re-announced at its next catch-up
+//                                                      → `S-216 ...`, `S-215 ...`
+//         (Honest delivery, `docs/plans/2026-10-08-19b-honest-delivery-plan/`,
+//         D-193/D-199; S-213's screen half is in `pr4_session_controls_test.dart`,
+//         S-214's replay guard in `watch_session_engine_test.dart`)
 //
 // Two implementations, one register. The phone's live mirror
 // (`lib/state/watch/live_session_mirror_state.dart`) and the watch's engine
@@ -30,6 +35,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
@@ -127,6 +133,38 @@ Map<String, Object?> _snapshot({
   ),
 };
 
+/// S-186's phone: `p1`, active, revision 4, the ladder it names — `u-squat`
+/// with two sets and `u-press` with three.
+Map<String, Object?> _p1PhoneState() => _snapshotPayload(
+  sessionId: 'p1',
+  revision: 4,
+  exercises: [_slot('u-squat'), _slot('u-press')],
+  entries: [
+    for (var index = 1; index <= 2; index++)
+      {
+        'entryId': 'e-u-squat-$index',
+        'eventId': 'e-u-squat-$index',
+        'kind': 'set',
+        'loggedAt': '2026-07-13T06:0$index:00Z',
+        'sessionExerciseId': 'u-squat',
+        'exerciseId': 'ex-u-squat',
+        'reps': 5,
+        'loadKg': 80,
+      },
+    for (var index = 1; index <= 3; index++)
+      {
+        'entryId': 'e-u-press-$index',
+        'eventId': 'e-u-press-$index',
+        'kind': 'set',
+        'loggedAt': '2026-07-13T06:1$index:00Z',
+        'sessionExerciseId': 'u-press',
+        'exerciseId': 'ex-u-press',
+        'reps': 8,
+        'loadKg': 40,
+      },
+  ],
+);
+
 /// Timers compare by instant, not by spelling: the engine writes timestamps in
 /// the protocol's wire shape with milliseconds, a fixture may write the same
 /// instant without them.
@@ -157,8 +195,12 @@ List<String> _slotIdsIn(Object? exercises) => [
 /// transport buffers what it cannot carry, exactly as a store-and-forward radio
 /// would.
 class _Session {
-  _Session({required Map<String, Object?> phoneState, TestClock? clock})
-    : clock = clock ?? TestClock(DateTime.utc(2026, 7, 13, 6)) {
+  _Session({
+    required Map<String, Object?> phoneState,
+    TestClock? clock,
+    String sessionId = 's-live-1',
+    bool deliverOnEmit = false,
+  }) : clock = clock ?? TestClock(DateTime.utc(2026, 7, 13, 6)) {
     final validator = loadProtocolValidator();
     final store = InMemoryWatchSessionStore();
 
@@ -167,11 +209,16 @@ class _Session {
 
     engine = WatchSessionEngine(
       store,
-      onEmit: emitted.add,
+      // A test that pins the order frames reach the radio wires the wrist the
+      // way the app does — emitted, sent — instead of holding them for
+      // `deliverEmitted`.
+      onEmit: deliverOnEmit
+          ? (frame) => _watchTransport.send(frame)
+          : emitted.add,
       validator: validator,
       clock: this.clock.call,
       idFactory: () => 'rec-${++_ids}',
-      sessionIdFactory: () => 's-live-1',
+      sessionIdFactory: () => sessionId,
     );
     paths = WatchSessionStartPaths(
       engine: engine,
@@ -251,20 +298,32 @@ class _WatchTransport implements WatchSyncTransport {
   /// How many times the watch asked the phone for its snapshot.
   int snapshotRequests = 0;
 
+  /// What each routines request carried as `since` — null for a first sync.
+  final List<DateTime?> routinesRequests = [];
+
+  /// Every step the orchestrator asked of the radio, in the order it asked, so
+  /// a test can pin the sequence one `sync` performs.
+  final List<String> steps = [];
+
   @override
   bool isPhoneReachable = true;
 
   @override
-  Future<void> requestRoutines({DateTime? since}) async {}
+  Future<void> requestRoutines({DateTime? since}) async {
+    steps.add('routines');
+    routinesRequests.add(since);
+  }
 
   @override
   Future<void> requestSnapshot() async {
+    steps.add('snapshot');
     snapshotRequests++;
     if (session.linked) await session.phone.sendSnapshot();
   }
 
   @override
   Future<void> send(Map<String, Object?> envelope) async {
+    steps.add('send:${envelope['type']}');
     sent.add(envelope);
     if (session.linked) {
       await session.phone.receive(envelope);
@@ -284,9 +343,10 @@ class _PhoneTransport implements WatchMirrorTransport {
   final List<Map<String, Object?>> sent = [];
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
     if (session.linked) await session.orchestrator.receive(envelope);
+    return WatchDelivery.delivered;
   }
 
   @override
@@ -301,7 +361,10 @@ class _RecordingTransport implements WatchMirrorTransport {
   final List<Map<String, Object?>> sent = [];
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async => sent.add(envelope);
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
+    sent.add(envelope);
+    return WatchDelivery.delivered;
+  }
 
   @override
   Future<void> requestSnapshot() async {}
@@ -455,10 +518,7 @@ void main() {
       await session.engine.appendObservation(
         _setEvent(session.clock, entryId: 'e-plank-1', slot: 'sx-plank'),
       );
-      await session.engine.startTimer(
-        WatchTimerKind.rest,
-        plannedDurationMs: 90000,
-      );
+      await session.engine.startTimer(WatchTimerKind.rest);
       final rest = session.engine.timerFor(WatchTimerKind.rest)!;
       await session.deliverEmitted();
 
@@ -485,7 +545,7 @@ void main() {
 
   group('S-005 the timer\'s end moment is the same on both devices', () {
     test(
-      'a rest timer started on the wrist ends when the phone says it does',
+      'a round timer started on the wrist ends when the phone says it does',
       () async {
         final session = _Session(
           phoneState: _snapshotPayload(exercises: [_slot('sx-bench')]),
@@ -497,15 +557,15 @@ void main() {
         await session.deliverEmitted();
 
         final timer = await session.engine.startTimer(
-          WatchTimerKind.rest,
+          WatchTimerKind.round,
           plannedDurationMs: 90000,
         );
         await session.deliverEmitted();
 
         final onPhone = asObject(
-          asObject(session.phone.state['timers'])['rest'],
+          asObject(session.phone.state['timers'])['round'],
         );
-        expect(onPhone['kind'], 'rest');
+        expect(onPhone['kind'], 'round');
         expect(
           onPhone.containsKey('remainingSeconds'),
           isFalse,
@@ -513,11 +573,11 @@ void main() {
         );
         expect(
           completionInstant(timer),
-          session.phone.timerEnd('rest'),
+          session.phone.timerEnd('round'),
           reason: 'both sides derive the end from the same timestamps',
         );
         expect(
-          session.phone.timerEnd('rest'),
+          session.phone.timerEnd('round'),
           equals(session.clock.now.add(const Duration(seconds: 90))),
         );
       },
@@ -559,6 +619,12 @@ void main() {
               'state': 'running',
               'startedAt': '2026-07-13T06:25:00Z',
               'accumulatedPauseMs': 0,
+            },
+            'round': {
+              'kind': 'round',
+              'state': 'running',
+              'startedAt': '2026-07-13T06:25:00Z',
+              'accumulatedPauseMs': 0,
               'plannedDurationMs': 90000,
             },
           },
@@ -584,7 +650,14 @@ void main() {
       );
       final rest = session.engine.timerFor(WatchTimerKind.rest)!;
       expect(rest.state, WatchTimerState.running);
-      expect(completionInstant(rest), DateTime.utc(2026, 7, 13, 6, 26, 30));
+      expect(
+        completionInstant(rest),
+        isNull,
+        reason: 'a rest is a count-up: it has no end moment (D-160)',
+      );
+      final round = session.engine.timerFor(WatchTimerKind.round)!;
+      expect(round.state, WatchTimerState.running);
+      expect(completionInstant(round), DateTime.utc(2026, 7, 13, 6, 26, 30));
     });
   });
 
@@ -1081,6 +1154,285 @@ void main() {
         reason:
             'S-31 the ladder the phone asserts carries the sets it logged in '
             'it (D-31/D-34), so a wrist that drifted gets them back',
+      );
+    });
+  });
+
+  // D-183. The wrist's own activation carries the convergence: whenever the
+  // app wakes and the phone is reachable, the wrist catches up by itself. A
+  // wrist with no session is exactly the one that must ask, because the phone
+  // may hold the session it should be in.
+  group('S-186 the wrist catches up at its next activation', () {
+    /// S-186's pair: the phone holds `p1` with an answer path for a snapshot
+    /// request, and the wrist holds nothing yet — only a synced catalog, so the
+    /// catch-up runs as a reconnect.
+    Future<_Session> pair() async {
+      final session = _Session(phoneState: _p1PhoneState());
+      await session.paths.applyRoutinesDown(
+        readProtocolJson('fixtures/valid/routines_down.json'),
+      );
+      expect(session.engine.session, isNull);
+      expect(session.engine.pendingObservations(), isEmpty);
+      return session;
+    }
+
+    test('S-186 a session-less wrist asks, and installs the phone\'s session',
+        () async {
+      final session = await pair();
+      final syncedAt = session.paths.syncedAt;
+      expect(syncedAt, isNotNull, reason: 'the catch-up runs as a reconnect');
+
+      await session.orchestrator.catchUp(reachable: true);
+
+      expect(
+        session._watchTransport.routinesRequests,
+        [syncedAt],
+        reason: 'one reconnect-shaped routines request',
+      );
+      expect(session._watchTransport.snapshotRequests, 1);
+      expect(
+        session._watchTransport.sent,
+        isEmpty,
+        reason: 'nothing else leaves the wrist',
+      );
+
+      final joined = session.watchSession;
+      expect(joined.sessionId, 'p1');
+      expect(joined.status, WatchSessionStatus.active);
+      expect(joined.revision, 4);
+      expect(_slotIds(session.engine), ['u-squat', 'u-press']);
+      expect(
+        session.engine.entries.map((entry) => entry.entryId),
+        [
+          'e-u-squat-1',
+          'e-u-squat-2',
+          'e-u-press-1',
+          'e-u-press-2',
+          'e-u-press-3',
+        ],
+      );
+
+      expect(
+        session._phoneTransport.sent.map((frame) => frame['type']),
+        ['session_snapshot'],
+        reason: 'the phone answers once, and sends no lifecycle',
+      );
+    });
+
+    test('S-187 an unreachable activation is a no-op, and the reachability '
+        'edge does the work', () async {
+      final session = await pair();
+
+      await session.orchestrator.catchUp(reachable: false);
+
+      expect(session._watchTransport.routinesRequests, isEmpty);
+      expect(session._watchTransport.snapshotRequests, 0);
+      expect(session._watchTransport.sent, isEmpty);
+      expect(session.engine.session, isNull, reason: 'nothing was carried');
+
+      await session.orchestrator.catchUp(reachable: true);
+
+      expect(session._watchTransport.routinesRequests, hasLength(1));
+      expect(session._watchTransport.snapshotRequests, 1);
+      expect(session.watchSession.sessionId, 'p1');
+    });
+
+    test('S-188 an activation burst is dropped, and the later trigger runs',
+        () async {
+      final session = await pair();
+
+      // Three triggers in a row without awaiting the first: what a waking app
+      // produces when more than one observer fires.
+      final burst = [
+        session.orchestrator.catchUp(reachable: true),
+        session.orchestrator.catchUp(reachable: true),
+        session.orchestrator.catchUp(reachable: true),
+      ];
+      await Future.wait(burst);
+
+      expect(
+        session._watchTransport.routinesRequests,
+        hasLength(1),
+        reason: 'the burst ran one sync, not three',
+      );
+      expect(session._watchTransport.snapshotRequests, 1);
+      expect(session.watchSession.sessionId, 'p1');
+
+      // The next trigger after it completes runs a fresh catch-up: the wrist
+      // now holds p1, so it answers with its own snapshot instead of asking.
+      await session.orchestrator.catchUp(reachable: true);
+
+      expect(session._watchTransport.routinesRequests, hasLength(2));
+      expect(session._watchTransport.snapshotRequests, 1);
+      expect(session._watchTransport.sent, hasLength(1));
+      expect(session._watchTransport.sent.single['type'], 'session_snapshot');
+    });
+  });
+
+  group('S-216 the catch-up re-announces the wrist\'s end behind what it owes', () {
+    /// D-193's fixture: `w9` was created and adopted while the phone was up,
+    /// then logged, rated and ended with the phone out of reach, so the rating
+    /// and the end are owed and the phone still holds the session as live.
+    Future<({_Session session, Map<String, Object?> live})> apart() async {
+      final session = _Session(
+        sessionId: 'w9',
+        deliverOnEmit: true,
+        phoneState: _snapshotPayload(
+          sessionId: 'w9',
+          exercises: [_slot('u-squat')],
+        ),
+      );
+      await session.engine.restore();
+      await session.engine.createSession(
+        modality: 'resistance_lifting',
+        exercises: [_slot('u-squat')],
+      );
+      expect(session.phone.sessionId, 'w9', reason: 'the phone holds the copy');
+      expect(session.phone.isActive, isTrue);
+
+      session.linked = false;
+      session._watchTransport.isPhoneReachable = false;
+      await session.engine.appendObservation({
+        'entryId': 'rating-w9',
+        'eventId': 'rating-w9',
+        'kind': 'effort_rating',
+        'loggedAt': isoUtc(session.clock.now),
+        'rating': 4,
+      });
+      await session.engine.finishSession();
+
+      expect(
+        session._watchTransport.buffered.map((frame) => frame['type']),
+        ['observations_up', 'session_lifecycle'],
+        reason: 'S-216 fixture: the rating and the end never left the wrist',
+      );
+      final live = session._watchTransport.buffered.singleWhere(
+        (frame) => frame['type'] == 'session_lifecycle',
+      );
+      expect(
+        session.phone.status,
+        WatchSessionStatus.active,
+        reason: 'the phone missed the end and still shows the session as live',
+      );
+      return (session: session, live: live);
+    }
+
+    test('S-216 the rating is announced before the end frame, and the exchange '
+        'follows it', () async {
+      final fixture = await apart();
+      final session = fixture.session;
+      session.clock.advance(const Duration(minutes: 90));
+      session._watchTransport.sent.clear();
+      session._watchTransport.steps.clear();
+
+      session.linked = true;
+      session._watchTransport.isPhoneReachable = true;
+      await session.orchestrator.sync(reconnect: true);
+
+      expect(
+        session._watchTransport.steps,
+        [
+          'routines',
+          'send:observations_up',
+          'send:session_lifecycle',
+          'send:session_snapshot',
+        ],
+        reason: 'S-216 the owed rating goes first, the end follows it, then '
+            'the exchange answers the routines the wrist just received',
+      );
+
+      final replay = session._watchTransport.sent.singleWhere(
+        (frame) => frame['type'] == 'session_lifecycle',
+      );
+      expect(
+        replay,
+        fixture.live,
+        reason: 'S-212 the catch-up repeats the live end frame, field for field',
+      );
+      expect(replay['sessionId'], 'w9');
+      expect(replay['origin'], 'watch');
+      expect(replay['messageId'], 'msg-${session.engine.session!.recordId}');
+      expect(
+        DateTime.parse(replay['sentAt']! as String).toUtc(),
+        session.engine.session!.recordedAt.toUtc(),
+        reason: 'S-212 the end\'s own instant, not the catch-up\'s',
+      );
+      expect(
+        DateTime.parse((replay['payload']! as Map)['at']! as String).toUtc(),
+        session.engine.session!.recordedAt.toUtc(),
+        reason: 'S-212 the frame still says when the wrist ended it',
+      );
+      expect(
+        session.phone.status,
+        WatchSessionStatus.completed,
+        reason: 'S-213 the phone reads the re-announced end as the end of its copy',
+      );
+    });
+
+    test('S-216 the replay is gated on reachability: an apart sync re-announces '
+        'nothing, and the later one does', () async {
+      final fixture = await apart();
+      final session = fixture.session;
+      session._watchTransport.steps.clear();
+      session._watchTransport.sent.clear();
+
+      await session.orchestrator.sync(reconnect: true);
+
+      expect(
+        session._watchTransport.steps,
+        ['routines', 'send:observations_up', 'send:session_snapshot'],
+        reason: 'S-216 with the phone out of reach the catch-up neither leaves '
+            'the end frame nor expects an answer that could come back',
+      );
+      expect(
+        session._watchTransport.sent
+            .where((frame) => frame['type'] == 'session_lifecycle'),
+        isEmpty,
+        reason: 'S-216 and the owed end stays owed, for the next reachable sync',
+      );
+
+      session.linked = true;
+      session._watchTransport.isPhoneReachable = true;
+      await session.orchestrator.sync(reconnect: true);
+
+      expect(
+        session._watchTransport.sent
+            .where((frame) => frame['type'] == 'session_lifecycle'),
+        [fixture.live],
+        reason: 'S-216 the reachable catch-up re-announces it',
+      );
+    });
+
+    test('S-215 every catch-up repeats the same frame, and the phone stays still',
+        () async {
+      final fixture = await apart();
+      final session = fixture.session;
+      session.linked = true;
+      session._watchTransport.isPhoneReachable = true;
+      // The end the wrist sent while apart is in `sent` too; from here on,
+      // every lifecycle frame is one the catch-up put on the radio.
+      session._watchTransport.sent.clear();
+
+      await session.orchestrator.sync(reconnect: true);
+      final settled = Map<String, Object?>.of(session.phone.state);
+      expect(session.phone.status, WatchSessionStatus.completed);
+
+      session.clock.advance(const Duration(minutes: 5));
+      await session.orchestrator.sync(reconnect: true);
+
+      final replays = session._watchTransport.sent
+          .where((frame) => frame['type'] == 'session_lifecycle')
+          .toList();
+      expect(
+        replays,
+        [fixture.live, fixture.live],
+        reason: 'S-215 one re-announcement per catch-up, each the frame the '
+            'wrist sent when it ended — the same message id at the same instant',
+      );
+      expect(
+        session.phone.state,
+        settled,
+        reason: 'S-215 the phone reads the repeat as the end it already holds',
       );
     });
   });

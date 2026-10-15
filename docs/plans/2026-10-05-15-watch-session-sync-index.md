@@ -1,9 +1,12 @@
 # Series: watch-session-sync — "a session in progress is the same session on the phone and the watch"
 
-> Status: DRAFT (index + full PR 1 + full PR 2a + full PR 2b; PR 1 and PR 2a implemented, base `612b356`)
-> Next handoff: @developer (PR 2b, Phase 1 — the package's outgoing sink and the active-session guard)
+> Status: DRAFT (index + full PR 1 + full PR 2a + full PR 2b + full PR 3 + full PR 4, the last split into 4a / 4b; PR 1, PR 2a, PR 2b, PR 3, PR 4a and PR 4b implemented — 4a's review fix 1 and 4b's review fix 2 applied; the PR 4 plan's own Status line carries the per-PR detail)
+> Next handoff: @code-reviewer (PR 4b — Phases 4–5 built, review fix 2 applied; PR 4a's review fix 1 and the 4a re-review's G1–G4 are closed in 4b)
 > Binding conventions: `docs/global_conventions.md`, `watch/sync_protocol/PROTOCOL.md`
 > Builds on: `docs/plans/2026-10-04-14-watch-shell-bridge-plan/2026-10-04-14-watch-shell-bridge-plan.md` (UNCOMMITTED verified unit, base commit 373c39b)
+> See also: `docs/plans/2026-10-06-17-watch-auto-sync-index.md` — the follow-on series that makes sync
+> automatic; it supersedes decision 4, the tail of decision 2, and the "the phone's finish is silent"
+> rule this series documents as final.
 
 ## Goal
 
@@ -16,10 +19,24 @@ the wrist's in-progress session. Both devices eventually log sets into the one s
 1. **True two-way logging** — both devices log sets into the one session.
 2. **No conflict-resolution UI or merge logic.** When both devices already hold different
    sessions, each keeps its own until one is finished — nothing lost, no prompt — via R1's
-   phone-policy guard above the protocol's replace-wholesale rule. A later series adds auto-sync.
+   phone-policy guard above the protocol's replace-wholesale rule. **That later series now exists:**
+   `docs/plans/2026-10-06-17-watch-auto-sync-index.md` (the tail of this decision is superseded there).
 3. **Remove all three phone-side watch surfaces**: the Watch Session screen, the home
    entry-point card (+ layout budget), and the picker "Send to watch session" icon.
-4. **Sync stays manual / watch-initiated.**
+4. ~~**Sync stays manual / watch-initiated.**~~ **Superseded 2026-10-06** — see the note under this
+   list and `docs/plans/2026-10-06-17-watch-auto-sync-index.md`.
+
+> **Superseded 2026-10-06 by the auto-sync series**
+> (`docs/plans/2026-10-06-17-watch-auto-sync-index.md`). Decision 4 and the tail of decision 2 above
+> no longer describe the app: anything about a *running* session syncs by itself, and the Sync button
+> is the fallback for a device that was out of reach and for the routine list. Two further statements
+> of this series are superseded there — "the phone's finish is silent" (D-16/"G2", pinned by
+> `test/watch_session_finish_test.dart`'s S-5 and written in `docs/watch_session_sync.md`) becomes a
+> pushed end, and the D-26 rest-timer bullet ("a Sync stops a running wrist countdown") becomes
+> "each device keeps its own countdown". Everything else in this file — including the
+> replace-wholesale conflict rule, which the new series extends to the wrist — still holds, and the
+> history in this file and its evidence files is left exactly as it was.
+
 
 ## Decomposition
 
@@ -27,9 +44,9 @@ the wrist's in-progress session. Both devices eventually log sets into the one s
 |---|---|---|---|
 | **1** | Phone-side convergence: remove the three surfaces; wrist session → phone's normal in-progress session; phone session → wrist's in-progress ladder. No set logging. | `lib/` (+ docs) | Full plan in this series. Its A33 deferred the merge of a held session's wrist rows to "the merge PR" (G3). |
 | **2a** | **Merge a set the wrist logged into the session the phone holds** — the G3 gap PR 1 left. No wrist surface, no protocol change; inert until 2b ships. | `lib/` (+ docs) | Full plan in this series (replaces the old PR 2 outline). |
-| **2b** | Host the wrist logging surface (set logging, End, rating prompt) over the in-memory store, and **wire the outgoing sink the engine already has** — `onEmit` exists and every emission point calls it, but `ios/OmniTrain Watch App/ContentView.swift` built the engine with no sink, so every frame was dropped until this PR wired it. | `watch/watchos/` (+ `ios/` shell) | Full plan in this series. Split out of PR 2 for the scope budget. Manual QA steps 15–18 of `docs/watch-app-setup-and-qa.md` become runnable here; step 17 additionally needs PR 4's durable store, and steps 19–20 stay Phase 8. |
+| **2b** | Host the wrist logging surface (set logging, End, rating prompt) over the in-memory store, and **wire the outgoing sink the engine already has** — `onEmit` exists and every emission point calls it, but `ios/OmniTrain Watch App/ContentView.swift` built the engine with no sink, so every frame was dropped until this PR wired it. | `watch/watchos/` (+ `ios/` shell) | Full plan in this series. Split out of PR 2 for the scope budget. Manual QA steps 15–18 of `docs/watch-app-setup-and-qa.md` become runnable here; step 17 additionally needs PR 4a's durable store, and steps 19–20 stay Phase 8. |
 | **3** | Phone → wrist set logging: a set logged on the phone appears on the wrist. The one contract decision. | `lib/` + `watch/watchos/` + `watch/sync_protocol/` | **Full plan in this series** (D-31…D-42, S-31…S-43; four phases), **split by scope into two PRs: 3a = Phases 1, 2, 4** (PROTOCOL amendment + fixtures, the phone's projection, the docs) and **3b = Phase 3** (the wrist takes a re-statement of an edited entry, with its PROTOCOL sentence and fixture case). 3a ships the headline — a phone-logged set reaches the wrist and the existing merge stores it — and leaves an edit to such a set sent-and-dropped until 3b. The contract decision landed as **(b)**: the phone's entries ride the existing `session_snapshot` answer — see the section below, which supersedes the `entries_down` proposal. |
-| **4** | Durable wrist store (if still needed after PR 2/3). | `watch/watchos/` | Conditional. |
+| **4** | **A durable wrist store**: an append-only file store that replaces the shell's in-memory one, so a logged set, its session, its timers and an owed rating question survive the watch app closing, being killed or the watch restarting — plus the carried defects this change makes reachable or rides the same files: the rating surface's late notification (F-6), the Dart logging surface's missing status guard (F-9) and the correction lens the prunes leave behind (G3). | `watch/watchos/` + `ios/` shell + `lib/watch/` (+ docs) | **Full plan in this series** (D-43…D-57, S-44…S-56; five phases), **split by scope into two PRs: 4a = Phases 1–3** (the append-only file store, the shell that builds it, F-6 and the docs for those) and **4b = Phases 4–5** (a pruned row takes its stale correction with it, G3; the Dart twin refuses an ended session, F-9; the 4a re-review's small items; and their docs). **Both are built, with their reviews outstanding.** 4a ships the headline — a set logged on the wrist survives a kill — and is what QA step 11 and the wrist walkthrough's force-quit need. 4b is otherwise independent of 4a (its Phase 4 cases run over the in-memory store) but now also adds one line to `FileWatchSessionStore.compact` for the 4b review, so the two can land in either order but not concurrently. **Dropped:** the un-scoped held-id check (G2 in this row's original wording, D-53) with its S-56 — the store dedupes on `(recordType, recordId)` store-wide, so one `entryId` can never be held for two sessions and the fixture cannot be built (A-44). **Outstanding (owner/governor):** QA step 11 and step 17's force-quit, and the watch shell's `xcodebuild`, stay **(owner)** / governor — only the shipped shell can show them. No longer conditional: PR 3 gave the wrist a session worth persisting. |
 | **5** | What PR 3 left open: a deletion reaching the wrist (`structure_change` `delete_entry`, no phone sender yet), the phone's `timed`/`hold`/`round` entries, and the phone's rest timer. | `lib/` + `watch/sync_protocol/` | Named by PR 3's scope boundaries (D-38, D-39, D-42). Not planned yet. |
 
 ## Order and rationale
@@ -39,8 +56,19 @@ projection, and the removal is the visible, low-risk half. **PR 2a comes next**:
 session the phone adopted missing every set the wrist logged in it, and that is the defect the
 wrist's logging surface would otherwise ship into — 2a closes it while the code is still inert.
 PR 2b then gives the wrist its logging screen. PR 3 closes the loop (phone-logged sets reach the
-wrist) and is the only PR that touches the protocol. PR 4 is deferred and may be cancelled; PR 5
-collects what PR 3 leaves open and is not yet planned.
+wrist) and is the only PR that touches the protocol. PR 4 then makes what the wrist logs outlive the
+process — it is no longer conditional, because PR 2b and PR 3 are what give the wrist a session worth
+persisting, and it also carries the four defects those two left behind: the rating surface's late
+notification (F-6), the Dart logging surface's missing status guard (F-9), the correction lens the
+prunes leave behind (G3) and the un-scoped held-id check (G2 — **dropped**, D-53: the store dedupes
+store-wide, so one `entryId` can never be held for two sessions and the fixture cannot be built).
+PR 4 is itself two PRs, both now built: **4a** (the store and the shell that builds it, F-6, its
+docs) is the owner-visible half and is what QA step 11 and the force-quit walkthrough need; **4b**
+(G3, F-9, the 4a re-review's small items, their docs) is independent of 4a — its Phase 4 cases run
+over the in-memory store — and ships second only because 4a is the visible win, though it now adds one
+line to the file store's `compact` for its own review, so the two can land in either order but not
+concurrently.
+PR 5 collects what PR 3 leaves open and is not yet planned.
 
 ## Dependency graph
 
@@ -52,6 +80,10 @@ collects what PR 3 leaves open and is not yet planned.
 - PR 1 → PR 3 (PR 3 sends phone entries to the wrist's live session; needs PR 1's session identity).
 - PR 2b → PR 3 (two-way set sync is testable only once the wrist can log at all).
 - PR 3 → PR 4 (a durable store matters only once the wrist holds a session worth persisting).
+- PR 4a and 4b are independent in ordering: every one of 4b's Phase 4 cases runs over the in-memory
+  store, so it can land before 4a — but not concurrently with it, because review fix 2 adds one line
+  to 4a's `FileWatchSessionStore.compact`. 4a's own phases chain (the shell's store swap needs the
+  new class; the docs need both).
 - PR 2b and PR 3 are otherwise independent and could swap order; 2a may not move after 2b.
 
 ## The one hard-to-reverse contract decision (decided in PR 3)
@@ -94,3 +126,6 @@ Owner-visible consequences are listed in the PR 3 plan's **Open questions**: del
 - Full PR 3 plan (phone → wrist entries): `docs/plans/2026-10-05-15d-watch-session-sync-pr3-plan/2026-10-05-15d-watch-session-sync-pr3-plan.md`
   — its Overview and D-31 supersede this index's `entries_down` proposal; its Open questions list what
   PR 3 leaves open (the PR 5 row above).
+- Full PR 4 plan (the durable wrist store), split into 4a (Phases 1–3) and 4b (Phases 4–5): `docs/plans/2026-10-06-15e-watch-session-sync-pr4-plan/2026-10-06-15e-watch-session-sync-pr4-plan.md`
+  — its D-51 keeps pruning unscheduled, so PR 2b's D-27 deferral stands; its Open questions are the
+  owner-visible consequences of the store outliving the process.

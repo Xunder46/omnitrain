@@ -382,7 +382,7 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
           _SurfaceDivider(theme: theme),
           _SettingsRow(
             label: 'Rest Ping',
-            subtitle: 'Periodic reminder during rest',
+            subtitle: 'Periodic reminder during rest, on phone and watch',
             trailing: Text(
               _intervalLabel(widget.settingsState.restPingInterval),
               style: theme.textTheme.bodySmall?.copyWith(
@@ -394,7 +394,7 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
           _SurfaceDivider(theme: theme),
           _SettingsRow(
             label: 'Rest Ping Sound',
-            subtitle: 'Sound used for the rest interval ping',
+            subtitle: 'Sound for the rest ping, phone only (the watch taps your wrist)',
             trailing: Text(
               SettingsState.soundDisplayNames[widget
                       .settingsState

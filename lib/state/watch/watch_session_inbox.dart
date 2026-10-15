@@ -23,6 +23,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/platform/watch_delivery.dart';
 import '../../core/services/watch_session_importer.dart';
 import '../../core/sync_protocol/message_validator.dart';
 import '../../data/models/models.dart';
@@ -187,6 +188,13 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
       'exerciseId',
       'startedAt',
       'endedAt',
+    ],
+    WatchInboxEntry.kindRest: [
+      'sessionExerciseId',
+      'exerciseId',
+      'startedAt',
+      'endedAt',
+      'afterEntryId',
     ],
     WatchInboxEntry.kindEffortRating: ['rating'],
     WatchInboxEntry.kindSessionEnd: ['startedAt', 'endedAt', 'status'],
@@ -548,9 +556,9 @@ class WatchInboxStagingTransport implements WatchMirrorTransport {
   final WatchSessionInbox _inbox;
 
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     await _inbox.stagePhoneChanges(envelope);
-    await _inner.send(envelope);
+    return _inner.send(envelope);
   }
 
   @override

@@ -15,7 +15,7 @@
     {
       "path": "valid/preferences_down.json",
       "type": "preferences_down",
-      "scenario": "S-204"
+      "scenario": "S-246"
     },
     {
       "path": "valid/observations_up_session_capture.json",
@@ -41,6 +41,47 @@
       "path": "valid/session_snapshot_with_entries.json",
       "type": "session_snapshot",
       "scenario": "S-31"
+    },
+    {
+      "path": "valid/observations_up_band_assist.json",
+      "type": "observations_up",
+      "scenario": "S-58",
+      "note": "A set's loadKg may be negative down to -200 kg (a band or partner assist); `evt-assist-1` carries -20 and `evt-assist-2` the floor -200."
+    },
+    {
+      "path": "valid/session_snapshot_band_assist.json",
+      "type": "session_snapshot",
+      "scenario": "S-59",
+      "note": "The phone's snapshot carries an assisted set verbatim: `entry-slot-bench-0` is -20 kg and `entry-slot-bench-1` the floor -200 kg."
+    },
+    {
+      "path": "valid/structure_change_band_assist.json",
+      "type": "structure_change",
+      "scenario": "S-65"
+    },
+    {
+      "path": "valid/routines_down_band_assist.json",
+      "type": "routines_down",
+      "scenario": "S-66",
+      "note": "A routine target may be negative too: `eff-bench` targets -20 kg and `eff-goblet-squat` the floor -200 kg."
+    },
+    {
+      "path": "valid/observations_up_rest.json",
+      "type": "observations_up",
+      "scenario": "S-330",
+      "note": "A rest is a window between two instants: `rest-a1` is the 70 s `rest` that follows the set `entry-a1`, named by `afterEntryId` and carrying no planned length."
+    },
+    {
+      "path": "valid/session_snapshot_round_length.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "note": "A slot MAY carry the phone's period length: `sx-soccer` is a round slot at 2400 s and `sx-soccer-plain` the same slot with the field omitted. `sx-marathon` carries 86400 s — the schema declares `minimum: 1` and no maximum, so this slot is the top of the range the walker accepts (S-1412)."
+    },
+    {
+      "path": "valid/routines_down_round_length.json",
+      "type": "routines_down",
+      "scenario": "S-1404",
+      "note": "The routine's round effort keeps the phone's target: `eff-soccer-half` carries `durationMs: 600000` (600 s) while `eff-soccer-extra` has no length target and `eff-plank` is a `timed` effort."
     }
   ],
   "invalid": [
@@ -118,6 +159,22 @@
       "note": "The only fixture that carries a remaining-time field, on purpose: the field is the defect. Every fixture that represents timer state must be free of one — see test/sync_protocol_fixtures_test.dart (S-003)."
     },
     {
+      "path": "invalid/timer_state_rest_with_planned_duration.json",
+      "type": "timer_state",
+      "scenario": "S-165",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "a rest has no planned length",
+      "note": "A rest is a count-up, so a planned length on a rest timer is the defect (D-164, docs/global_conventions.md rest rule). Every other timer kind keeps its plannedDurationMs — valid/timer_state.json carries the rest without one."
+    },
+    {
+      "path": "invalid/session_snapshot_rest_with_planned_duration.json",
+      "type": "session_snapshot",
+      "scenario": "S-165",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "a rest has no planned length",
+      "note": "The refusal is not timer_state-only: a snapshot carrying a rest plan is refused too (D-164, D-169). Without this fixture the snapshot branch's clause is unreachable, which is exactly the gap it pins."
+    },
+    {
       "path": "invalid/observations_up_steps_on_round.json",
       "type": "observations_up",
       "scenario": "S-202",
@@ -186,6 +243,27 @@
       "scenario": "S-202",
       "expectedCode": "missing_required_field",
       "expectedReasonContains": "effortRatingPrompt"
+    },
+    {
+      "path": "invalid/preferences_down_negative_rest_ping.json",
+      "type": "preferences_down",
+      "scenario": "S-246",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 0"
+    },
+    {
+      "path": "invalid/preferences_down_string_rest_ping.json",
+      "type": "preferences_down",
+      "scenario": "S-246",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer"
+    },
+    {
+      "path": "invalid/preferences_down_missing_rest_ping.json",
+      "type": "preferences_down",
+      "scenario": "S-246",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "restPingSeconds"
     },
     {
       "path": "invalid/session_snapshot_set_without_slot.json",
@@ -278,6 +356,70 @@
       "scenario": "S-875",
       "expectedCode": "unexpected_field",
       "expectedReasonContains": "distanceMeters"
+    },
+    {
+      "path": "invalid/observations_up_load_below_floor.json",
+      "type": "observations_up",
+      "scenario": "S-58",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least -200",
+      "note": "The floor is shared by every loadKg the protocol defines; -240 kg is below it and MUST be refused, not clamped."
+    },
+    {
+      "path": "invalid/observations_up_rest_missing_after_entry_id.json",
+      "type": "observations_up",
+      "scenario": "S-330",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "afterEntryId",
+      "note": "A rest must name the set it follows: the eighth event shape requires afterEntryId."
+    },
+    {
+      "path": "invalid/observations_up_rest_planned_duration.json",
+      "type": "observations_up",
+      "scenario": "S-330",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "plannedDurationMs",
+      "note": "A rest is a count-up: the shared entry shape carries no plannedDurationMs, so the event is refused."
+    },
+    {
+      "path": "invalid/observations_up_rest_not_after.json",
+      "type": "observations_up",
+      "scenario": "S-330",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "endedAt",
+      "note": "A rest of no length cannot travel: endedAt is not after startedAt, so the window rule refuses it."
+    },
+    {
+      "path": "invalid/session_snapshot_round_length_zero.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1",
+      "note": "A round length of 0 is not a length: the schema's minimum is 1."
+    },
+    {
+      "path": "invalid/session_snapshot_round_length_negative.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1",
+      "note": "A negative round length is below the schema's minimum of 1."
+    },
+    {
+      "path": "invalid/session_snapshot_round_length_fractional.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer",
+      "note": "The length is whole seconds: 12.5 is a number, not an integer."
+    },
+    {
+      "path": "invalid/session_snapshot_round_length_string.json",
+      "type": "session_snapshot",
+      "scenario": "S-1400",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer",
+      "note": "The length is a number, never a string: `\"2400\"` is refused as the wrong type."
     }
   ],
   "scenarios": [
@@ -350,6 +492,11 @@
       "path": "reconciliation/phone_entries_merge.json",
       "scenario": "S-31",
       "property": "a snapshot adds the entries the phone logged, once each, and replaces structure"
+    },
+    {
+      "path": "reconciliation/band_assist_carried.json",
+      "scenario": "S-67",
+      "property": "a re-stated band-assisted set is neither duplicated nor zeroed"
     }
   ]
 }

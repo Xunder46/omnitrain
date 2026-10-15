@@ -317,8 +317,18 @@ class HiveWorkoutRepository implements WorkoutRepository {
         'foodCategoryToGroupId',
         () => repo._migrateFoodCategoryToGroupId(),
       ),
+      _MethodStep(
+        15,
+        'clampInvertedSessionWindows',
+        () => repo._clampInvertedSessionWindows(),
+      ),
     ];
   }
+
+  /// The consolidated migration sequence, exposed so tests can assert a
+  /// newly appended step's version and name and re-run a step directly.
+  @visibleForTesting
+  List<DataMigrationStep> dataMigrationStepsForTest() => _dataMigrationSteps();
 
   /// Seed the food catalog from the bundled asset on first install.
   /// The catalog is read-only; this method only runs once (guarded by
@@ -486,6 +496,26 @@ class HiveWorkoutRepository implements WorkoutRepository {
   Future<void> rerunCategoryMigrationForTest() async {
     await _metaBox.delete(_foodCategoryGroupIdMigratedKey);
     await _migrateFoodCategoryToGroupId();
+  }
+
+  /// Repairs session rows already stored with an end before their start.
+  ///
+  /// Before D-153 the phone could move a finished session's start past its
+  /// stored end. The end is clamped up to the start; the start is never
+  /// moved (calendar and period math key on it) and a running row
+  /// (`ended_at_ms == null`) is never touched. Rows that are already valid
+  /// are skipped, so a retry of this step writes nothing.
+  Future<void> _clampInvertedSessionWindows() async {
+    for (final entry in _sessionsBox.toMap().entries) {
+      final sessionMap = _asStringMap(entry.value);
+      final startedAtMs = sessionMap['started_at_ms'] as int?;
+      final endedAtMs = sessionMap['ended_at_ms'] as int?;
+      if (startedAtMs == null || endedAtMs == null) continue;
+      if (endedAtMs >= startedAtMs) continue;
+
+      sessionMap['ended_at_ms'] = startedAtMs;
+      await _sessionsBox.put(entry.key, sessionMap);
+    }
   }
 
   Future<void> _seedData() async {

@@ -1,0 +1,4314 @@
+// The phone pushes its own session to the wrist, without a Sync (auto-sync PR
+// 1b, Phase 3A).
+//
+// Plan: `docs/plans/2026-10-06-17a-watch-auto-sync-pr1-plan/` (D-75…D-84).
+// Scenario mapping:
+//   S-70 a change on the phone reaches the wrist       → `S-70 ...`
+//   S-71 a push carries the converged place            → `S-71 ...`
+//   S-72 the phone's finish is announced               → `S-72 ...`
+//   S-73 the phone's discard abandons the wrist's copy → `S-73 ...`
+//   S-74 a notification that changes nothing pushes nothing → `S-74 ...`
+//   S-75 a burst inside one window is one push         → `S-75 ...`
+//   S-80 an applied frame is not pushed back           → `S-80 ...`
+//   S-81 a re-delivered frame changes nothing          → `S-81 ...`
+//   S-83 a push the radio cannot carry is owed         → `S-83 ...`
+//   S-84 browsing another session pushes nothing       → `S-84 ...`
+//   S-85 every session in one run is announced once    → `S-85 ...`
+//   S-86 a session the phone never held is ended only by the reset
+//                                                     → `S-86 ...`
+//   S-87 a wrist frame inside the window loses no finish → `S-87 ...`
+//   S-88 browsing away does not lose a later finish   → `S-88 ...`
+//   S-112 a hung send cannot wedge the push           → `S-112 ...`
+//   S-113 a debounce-path failure is reported         → `S-113 ...`
+//   S-120 a set deleted on the phone disappears on the wrist
+//                                                     → `S-120 ...`
+//   S-121 several deletions, and a deletion that never was → `S-121 ...`
+//   S-122 an entry the wrist logged, imported and deleted → `S-122 ...`
+//   S-123 the first pass announces nothing (negative guard) → `S-123 ...`
+//   S-144 a timed, hold or round entry deleted on the phone → `S-144 ...`
+//   S-144 the record order does not shift the announced row → `S-144 the record order ...`
+//   S-126 another session's deletion changes nothing   → `S-126 ...`
+//   D-114 leaving a session and coming back re-seeds its ledger → `D-114 ...`
+//   F4 a flush never leaks and never announces twice   → `F4 ...`
+//   F2 a set the phone re-used and dropped again is announced again
+//                                                     → `F2 ...`
+//   F3 a deletion frame names the session it is about  → `F3 ...`
+//   F7 a deletion whose send failed is owed, then sent → `F7 ...`
+//   G2 an Error from the session read is not swallowed  → `G2 ...`
+//
+// 19a Phase 2 (`docs/plans/2026-10-08-19a-phone-authority-plan/`, D-170…D-178):
+//   S-172 the phone resets the wrist's live session     → `S-172 ...`
+//   S-180 a reset the radio cannot carry                → `S-180 ...`
+//   S-181 the pairs that owe no reset (negative guard)  → `S-181 ...`
+//   S-182 the wrist's answer clears the debt            → `S-182 ...`
+//
+// 19b Phase 2 (`docs/plans/2026-10-08-19b-honest-delivery-plan/`, D-191, D-192,
+// D-197, D-198, D-201, D-202): a frame the radio did not carry is never marked
+// sent, so what is owed is re-offered at the triggers that already exist.
+//   S-200 what the radio did not carry stays owed      → `S-200 ...` (×2)
+//   S-201 an end the radio did not carry stays pending → `S-201 ...`
+//   S-203 an undelivered deletion stays owed           → `S-203 ...`
+//   S-205/S-209 a frame from the wrist re-offers what is owed, never itself
+//                                                     → `S-205 ...`
+//   S-207 nothing owed is nothing sent                 → `S-207 ...`
+//   S-208 triggers in one window make one pass         → `S-208 ...`
+//   S-210 an undelivered reset is re-offered whole     → `S-210 ...`
+//   S-211 re-offering an arrived frame changes nothing → `S-211 ...`
+//   S-217 the phone's own end is not owed (D-197)      → `S-217 ...`
+//   S-218 ten changes while the wrist is apart are one owed frame → `S-218 ...`
+//
+// The delete half is 17c Phase 1 (D-110…D-114, S-120…S-126); S-124, S-125 and
+// S-126's dedupe half are the engine's and live in `watch_session_engine_test.dart`.
+//
+// The phone side is the graph `createWatchSync` builds — the shipping wiring,
+// including the push it returns — over a fake radio; the wrist side is the real
+// engine over an in-memory store, so every pushed frame is applied the way the
+// watch app applies one. The push is bound where a scenario starts from a
+// settled fixture, so the fixture's own notifications are not part of the
+// scenario, and every window is closed by `flush()` rather than by waiting.
+
+import 'dart:async';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/metric_ids.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
+import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/core/sync_protocol/phone_envelope.dart';
+import 'package:omnitrain/core/utils/logged_entry_rows.dart';
+import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/data/repositories/workout_repository.dart';
+import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
+import 'package:omnitrain/state/watch/watch_session_auto_push.dart';
+import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
+import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
+import 'package:omnitrain/watch/session/watch_session_engine.dart';
+
+import 'helpers/fake_preferences_service.dart';
+// `seedExercise` comes from the capture harness: it writes capabilities through
+// `setExerciseCapabilities`, which is the only way they reach a repository —
+// `createExercise` ignores the inline list. The projection refuses a slot whose
+// exercise carries none, so this is load-bearing.
+import 'helpers/watch_capture_import_harness.dart' show seedExercise;
+
+final DateTime _now = DateTime.utc(2026, 10, 6, 9);
+
+Map<String, Object?> _asObject(Object? value) =>
+    (value as Map).cast<String, Object?>();
+
+List<Map<String, Object?>> _objects(Object? value) =>
+    (value! as List).map(_asObject).toList(growable: false);
+
+Map<String, Object?> _payload(Map<String, Object?> envelope) =>
+    _asObject(envelope['payload']);
+
+List<String> _slotIds(Map<String, Object?> payload) => [
+  for (final slot in _objects(payload['exercises']))
+    slot['sessionExerciseId']! as String,
+];
+
+List<String> _entryIds(Map<String, Object?> payload) => [
+  for (final entry in _objects(payload['entries']))
+    entry['entryId']! as String,
+];
+
+List<String> _sorted(Iterable<String> ids) => [...ids]..sort();
+
+/// One ladder slot as the protocol spells it — what a wrist writes when it
+/// starts a session on its own.
+Map<String, Object?> _slot(
+  String id,
+  String exerciseId,
+  String name,
+  List<String> capabilities, {
+  String effortKind = 'set',
+}) => <String, Object?>{
+  'sessionExerciseId': id,
+  'exerciseId': exerciseId,
+  'name': name,
+  'effortKind': effortKind,
+  'capabilities': capabilities,
+};
+
+/// Lets the radio's dispatch settle before the next frame is handed over.
+Future<void> _settle() => pumpEventQueue();
+
+/// Polls [ready] to a bounded deadline — never unbounded — so a push that never
+/// settles fails the test rather than hanging it.
+Future<void> _until(bool Function() ready, {required String reason}) async {
+  for (var attempt = 0; attempt < 500; attempt++) {
+    if (ready()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+  }
+  fail(reason);
+}
+
+/// The instant a fixture's rows are stamped with: [minute] past the phone's own
+/// `_now` on the same day.
+int _at(int minute) =>
+    DateTime.utc(2026, 10, 6, 9, minute).millisecondsSinceEpoch;
+
+/// The same instant, as the protocol writes one.
+String _atIso(int minute) =>
+    utcIso(DateTime.fromMillisecondsSinceEpoch(_at(minute), isUtc: true));
+
+/// The first set the wrist logs in these fixtures: its own id, which the phone
+/// imports and must never send back (D-34).
+const String _wristEntryId = '9f2c1d2e-3b4a-4c5d-8e6f-7a8b9c0d1e2f';
+
+/// A second set the wrist logs.
+const String _wristEntryId2 = '2b7e4f6a-1c8d-4e5f-9a0b-3c4d5e6f7a8b';
+
+/// The slot id the phone's own sets land on, and the id the wrist's ladder
+/// carries it under (D-3: an adopted effort's row id IS its slot id).
+const String _firstSlot = 'sx-1';
+
+/// The second slot, which the phone never logs in.
+const String _secondSlot = 'sx-2';
+
+/// The third slot of S-144's fixture: the hold the wrist logs its own entry on.
+const String _holdSlot = 'sx-3';
+
+/// S-144's fourth and fifth slots: the ones the phone logs its own `timed` and
+/// `round` entries on, so the announced id is a phone-minted one.
+const String _phoneTimedSlot = 'sx-4';
+const String _phoneRoundSlot = 'sx-5';
+
+/// The `timed`, `round` and `hold` entries the wrist logs in S-144's fixture —
+/// its own ids, which the phone imports and must announce when it drops them
+/// (D-112).
+const String _wristTimedEntryId = '3c1f0a44-5d2b-4e7a-8f19-6b0c2d3e4f50';
+const String _wristRoundEntryId = 'a7d5e2b1-9c3f-4a68-b0d1-2e4f5a6b7c8d';
+const String _wristHoldEntryId = 'd41b7e93-2a5c-4f80-9e37-5c6d7a8b9e0f';
+
+/// A catalog the phone can open a session from.
+Future<void> _seedCatalog(WorkoutRepository repository) async {
+  await seedExercise(
+    repository,
+    id: 'ex-squat',
+    name: 'Squat',
+    capabilities: ['sets', 'reps', 'load'],
+  );
+  await seedExercise(
+    repository,
+    id: 'ex-bench',
+    name: 'Bench Press',
+    capabilities: ['sets', 'reps', 'load'],
+  );
+  await seedExercise(
+    repository,
+    id: 'ex-deadlift',
+    name: 'Deadlift',
+    capabilities: ['sets', 'reps', 'load'],
+  );
+  await seedExercise(
+    repository,
+    id: 'ex-row',
+    name: 'Barbell Row',
+    capabilities: ['sets', 'reps', 'load'],
+  );
+  // S-144's fixture logs the kinds the phone used to drop: one exercise carries
+  // both the timed and the hold capability, the other the rounds.
+  await seedExercise(
+    repository,
+    id: 'ex-plank',
+    name: 'Plank',
+    capabilities: ['time', 'hold'],
+  );
+  await seedExercise(
+    repository,
+    id: 'ex-burpee',
+    name: 'Burpees',
+    capabilities: ['rounds', 'time'],
+  );
+}
+
+/// The phone's radio: records what the phone sent, hands the phone one frame
+/// from the wrist the way the platform channel does, and reports what it cannot
+/// carry the way the platform channel does — never by throwing (D-83).
+class _PhoneRadio implements WatchTransport {
+  _PhoneRadio(this.onFailure);
+
+  final void Function(Object error) onFailure;
+
+  final List<Map<String, Object?>> sent = [];
+
+  /// Every frame handed to `send`, including the ones it then failed: what a
+  /// pass tried to announce is not visible in [sent] alone (F7).
+  final List<Map<String, Object?>> attempted = [];
+
+  /// True while the wrist is out of range: `send` reports and carries nothing.
+  bool failing = false;
+
+  /// True while the wrist is out of range and nothing reports it — the radio's
+  /// quiet half of D-201: `send` answers `undelivered` without a failure.
+  bool unreachable = false;
+
+  /// True while the frame reaches the wrist although the result cannot come
+  /// back (S-211): a real radio can lose the answer, so the frame is carried
+  /// even though the pass reads `undelivered`.
+  bool carriesWhileApart = false;
+
+  /// True while the next `send` is not to complete at all — a radio that has
+  /// gone silent (S-112's seam). One frame, then the flag clears itself.
+  bool hangNext = false;
+
+  /// True while `send` throws instead of reporting — a platform channel that
+  /// fails the future rather than the callback (S-113's seam).
+  bool throwing = false;
+
+  WatchInboundHandler? _handler;
+
+  @override
+  bool get isPhoneReachable => true;
+
+  @override
+  void onIncoming(WatchInboundHandler handler) => _handler = handler;
+
+  @override
+  Future<void> refreshReachability() async {}
+
+  @override
+  Future<void> requestRoutines({DateTime? since}) async =>
+      send(WatchTransportRequest.routinesFrame(since: since));
+
+  @override
+  Future<void> requestSnapshot() async =>
+      send(WatchTransportRequest.snapshotFrame());
+
+  @override
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
+    attempted.add(envelope);
+    if (failing) {
+      onFailure(StateError('the wrist is out of range'));
+      return WatchDelivery.undelivered;
+    }
+    if (unreachable) {
+      if (carriesWhileApart) sent.add(envelope);
+      return WatchDelivery.undelivered;
+    }
+    if (throwing) throw Exception('the radio refused the frame');
+    if (hangNext) {
+      hangNext = false;
+      return Completer<WatchDelivery>().future;
+    }
+    sent.add(envelope);
+    return WatchDelivery.delivered;
+  }
+
+  /// One frame from the wrist, the way the radio delivers one.
+  Future<void> fromWrist(Map<String, Object?> frame) async {
+    final handler = _handler;
+    if (handler == null) {
+      throw StateError('the phone graph never bound its inbound handler');
+    }
+    await handler(frame);
+  }
+
+  /// Everything the phone sent of one type, in order.
+  List<Map<String, Object?>> ofType(String type) => [
+    for (final envelope in sent)
+      if (envelope['type'] == type) envelope,
+  ];
+}
+
+void main() {
+  late MockWorkoutRepository repository;
+  late WorkoutState phoneState;
+  late SettingsState phoneSettings;
+  late _PhoneRadio radio;
+  late WatchSyncGraph graph;
+  late WatchSessionEngine engine;
+  late InMemoryWatchSessionStore wristStore;
+  late List<Map<String, Object?>> wristFrames;
+  late List<Object> failures;
+
+  /// One catalog exercise added to the phone's running session through the
+  /// regular session path. Answers the effort id it was given, which is also
+  /// the slot id the wrist sees (D-3).
+  Future<String> add(String exerciseId) async {
+    final exercise = (await repository.getExerciseById(exerciseId))!;
+    return phoneState.addExerciseToSession(exercise);
+  }
+
+  /// How many sets the phone's own session holds on [effortId]. A set is two
+  /// rows — reps and weight — so the reps rows are what count entries.
+  Future<int> phoneEntries(String effortId) async => [
+    for (final row in await repository.getEffortObservations(effortId))
+      if (row.metricId == MetricIds.reps) row,
+  ].length;
+
+  /// The phone's ladder as slot ids, in order.
+  List<String> phoneSlots() => [
+    for (final segment in phoneState.segments)
+      for (final effort in phoneState.getEffortsForSegment(segment.id))
+        effort.id,
+  ];
+
+  /// The wrist's ladder as slot ids, in order.
+  List<String> wristSlots() => [
+    for (final slot in engine.session!.exercises)
+      slot['sessionExerciseId']! as String,
+  ];
+
+  /// The ids of the entries the wrist's store holds.
+  List<String> wristEntryIds() => [
+    for (final row in engine.entries) row.recordId,
+  ];
+
+  /// Every row the wrist's store holds, as `type:id` — the identity a
+  /// re-delivered frame must leave alone (S-81).
+  Future<List<String>> wristRows() async {
+    final contents = await wristStore.readAll();
+    return <String>[
+      for (final row in contents.sessions) 'session:${row.recordId}',
+      for (final row in contents.observations) 'observation:${row.recordId}',
+      for (final row in contents.timers) 'timer:${row.recordId}',
+      for (final row in contents.sensorSamples) 'sample:${row.recordId}',
+    ]..sort();
+  }
+
+  /// The phone graph a fresh app start builds, over [radio]. The app binds its
+  /// own `WorkoutState` to the adoption and to the push in `lib/main.dart`; a
+  /// scenario binds the push itself, once its fixture has settled.
+  Future<WatchSyncGraph> startGraph() async {
+    final created = (await createWatchSync(
+      repository: repository,
+      nutritionState: NutritionState(repository),
+      foodLibraryState: FoodLibraryState(repository),
+      settingsState: phoneSettings,
+      transport: radio,
+      clock: () => _now,
+      onFailure: (error, stack) => failures.add(error),
+    ))!;
+    created.adoption.bindWorkoutState(phoneState);
+    return created;
+  }
+
+  /// The wrist starts `s-1` with two slots and logs one set on the first, and
+  /// the phone adopts it: the fixture every scenario here starts from.
+  ///
+  /// The snapshot goes over first, because an observation for a session the
+  /// phone does not own is staged as history rather than merged into the live
+  /// one — the adoption is what makes `s-1` the phone's own session.
+  Future<void> wristStartsSession() async {
+    await engine.createSession(
+      modality: null,
+      exercises: [
+        _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+        _slot(_secondSlot, 'ex-bench', 'Bench Press', ['sets', 'reps', 'load']),
+      ],
+    );
+    await radio.fromWrist(engine.sessionSnapshot()!);
+    await _settle();
+
+    await engine.appendObservation(<String, Object?>{
+      'entryId': _wristEntryId,
+      'eventId': _wristEntryId,
+      'kind': 'set',
+      'loggedAt': _atIso(1),
+      'sessionExerciseId': _firstSlot,
+      'exerciseId': 'ex-squat',
+      'reps': 8,
+      'loadKg': 60.0,
+    });
+    await radio.fromWrist(wristFrames.last);
+    await _settle();
+
+    expect(
+      phoneState.currentSession?.id,
+      's-1',
+      reason: 'the fixture: the phone\'s own session is the wrist\'s',
+    );
+    expect(phoneSlots(), [_firstSlot, _secondSlot]);
+    expect(
+      await phoneEntries(_firstSlot),
+      1,
+      reason: 'the fixture: the wrist\'s set merged into the phone\'s session',
+    );
+  }
+
+  /// The phone logs one of its own sets and pushes it: S-70's whole flow, which
+  /// the later scenarios continue from. Answers the frame the phone sent.
+  Future<Map<String, Object?>> pushPhoneSet() async {
+    await phoneState.addEntry(
+      _firstSlot,
+      previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+    );
+    await graph.autoPush.flush();
+    final pushes = radio.ofType('session_snapshot');
+    expect(pushes, hasLength(1), reason: 'S-70 one change, one frame');
+    return pushes.single;
+  }
+
+  /// The phone logs one more of its own sets, pushes it and the wrist applies
+  /// the frame — the state S-120's fixture needs, where the wrist holds a set
+  /// the phone is about to drop. Answers the id the phone minted for it.
+  Future<String> logSetHeldByBoth() async {
+    final snapshots = radio.ofType('session_snapshot');
+    final before = [
+      if (snapshots.isNotEmpty) ..._entryIds(_payload(snapshots.last)),
+    ];
+    await phoneState.addEntry(
+      _firstSlot,
+      previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+    );
+    await graph.autoPush.flush();
+    final push = radio.ofType('session_snapshot').last;
+    final added = _entryIds(_payload(push)).firstWhere(
+      (entryId) => !before.contains(entryId),
+      orElse: () => fail('the fixture: the phone logged no new set'),
+    );
+    await engine.applyMessage(push);
+    return added;
+  }
+
+  setUp(() async {
+    failures = [];
+    repository = MockWorkoutRepository();
+    await repository.initialize();
+    await _seedCatalog(repository);
+
+    phoneState = WorkoutState(repository);
+    phoneSettings = SettingsState(repository, fakePreferencesService());
+    await phoneSettings.initialize();
+
+    radio = _PhoneRadio(failures.add);
+    graph = await startGraph();
+
+    wristFrames = [];
+    wristStore = InMemoryWatchSessionStore();
+    engine = WatchSessionEngine(
+      wristStore,
+      clock: () => _now,
+      sessionIdFactory: () => 's-1',
+      onEmit: wristFrames.add,
+    );
+  });
+
+  group('S-70 a change on the phone reaches the wrist without a sync', () {
+    test(
+      'S-70 the phone\'s own set is pushed as one snapshot, and the wrist\'s '
+      'own set is not sent back',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+
+        final push = await pushPhoneSet();
+
+        expect(push['origin'], 'phone');
+        expect(push['sessionId'], 's-1');
+        final payload = _payload(push);
+        expect(push['type'], 'session_snapshot');
+        expect(
+          _slotIds(payload),
+          [_firstSlot, _secondSlot],
+          reason: 'S-70 the push carries the ladder the phone holds',
+        );
+        expect(
+          _entryIds(payload),
+          ['entry-$_firstSlot-1'],
+          reason:
+              'S-70 the phone\'s own set rides the push, and the wrist\'s own '
+              'set does not come back to it under a phone id (D-34). The '
+              'wrist\'s set is the first group of the slot, so the phone\'s is '
+              'the second: the session path numbers a new set above every '
+              'number the effort holds (D-325)',
+        );
+        expect(
+          _objects(payload['entries']).single['reps'],
+          8,
+          reason:
+              'S-70 the phone\'s set rides the push with the values it was '
+              'logged with (the fixture\'s 62.5 kg × 8), so the wrist holds the '
+              'same set the phone does',
+        );
+        expect(_objects(payload['entries']).single['loadKg'], 62.5);
+        expect(payload['timers'], isEmpty);
+        expect(payload['currentExerciseIndex'], 0);
+
+        await engine.applyMessage(push);
+        expect(wristSlots(), [_firstSlot, _secondSlot]);
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1']),
+          reason:
+              'S-70 the wrist applies the push: the phone\'s set lands beside '
+              'the set the wrist logged itself',
+        );
+        final own = engine.entries.firstWhere(
+          (row) => row.recordId == _wristEntryId,
+        );
+        expect(own.payload['reps'], 8);
+        expect(own.payload['loadKg'], 60.0);
+        expect(
+          engine.session!.currentExerciseIndex,
+          0,
+          reason: 'S-70 the push does not move the wrist off its exercise',
+        );
+        expect(failures, isEmpty);
+
+        await phoneState.refreshEfforts([_firstSlot]);
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-70 a notification that changes nothing the wrist can see '
+              'pushes nothing (D-76)',
+        );
+      },
+    );
+  });
+
+  group('S-71 a push carries the converged place', () {
+    test('S-71 the push reports the wrist\'s position, not slot 0', () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      // The wrist moves to its second slot and re-asserts its own snapshot at
+      // the next sync; the phone converges on it.
+      await engine.startTimer('rest');
+      final restTimer = engine.timerFor('rest')!;
+      await engine.advanceExercise();
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+      expect(
+        graph.mirror.currentExerciseIndex,
+        1,
+        reason: 'the fixture: the phone converged on the wrist\'s position',
+      );
+      expect(
+        engine.session!.currentExercise!['sessionExerciseId'],
+        _secondSlot,
+      );
+
+      // The mirror's own re-assertion is not this scenario's frame: the push is
+      // what the phone sends about its own session.
+      radio.sent.clear();
+
+      final third = await add('ex-deadlift');
+      await graph.autoPush.flush();
+
+      final push = radio.ofType('session_snapshot');
+      expect(push, hasLength(1), reason: 'S-71 one change, one frame');
+      final payload = _payload(push.single);
+      expect(
+        payload['currentExerciseIndex'],
+        1,
+        reason:
+            'S-71 the push carries the place the two devices converged on, not '
+            'slot 0 and not the phone\'s own place (D-77)',
+      );
+      expect(_slotIds(payload), [_firstSlot, _secondSlot, third]);
+      expect(
+        payload['timers'],
+        isEmpty,
+        reason:
+            'S-71 the phone asserts no timers of its own, so the wrist\'s own '
+            'countdown is the one that stands (D-80)',
+      );
+
+      await engine.applyMessage(push.single);
+      expect(wristSlots(), [_firstSlot, _secondSlot, third]);
+      expect(
+        engine.session!.currentExerciseIndex,
+        1,
+        reason: 'S-71 the push leaves the wrist on the exercise it is on',
+      );
+      final after = engine.timerFor('rest')!;
+      expect(after.recordId, restTimer.recordId);
+      expect(
+        after.stoppedAt,
+        isNull,
+        reason:
+            'S-71 the wrist\'s own rest is still running after the push',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-72 the phone\'s finish is announced', () {
+    test('S-72 finishing on the phone ends the wrist\'s copy, once', () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      final snapshotsBefore = radio.ofType('session_snapshot').length;
+      await phoneState.endSession();
+      await graph.autoPush.flush();
+
+      final ends = radio.ofType('session_lifecycle');
+      expect(ends, hasLength(1), reason: 'S-72 the end is announced');
+      expect(ends.single['sessionId'], 's-1');
+      expect(_payload(ends.single)['state'], WatchLifecycleState.completed);
+      expect(
+        radio.ofType('session_snapshot'),
+        hasLength(snapshotsBefore),
+        reason:
+            'S-72 an ended session has nothing of the phone\'s own to assert',
+      );
+      expect(
+        graph.mirror.status,
+        WatchSessionStatus.completed,
+        reason: 'S-72 the mirror holds the session as closed',
+      );
+
+      await phoneState.loadSessionData();
+      await graph.autoPush.flush();
+      expect(
+        radio.ofType('session_lifecycle'),
+        hasLength(1),
+        reason: 'S-72 the end is announced once, however often the state notifies',
+      );
+
+      await engine.applyMessage(ends.single);
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(
+        wristEntryIds(),
+        contains(_wristEntryId),
+        reason: 'S-72 the wrist\'s own set survives the phone\'s finish',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-73 the phone\'s discard abandons the wrist\'s copy', () {
+    test('S-73 discarding on the phone abandons the wrist\'s copy, once',
+        () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      final snapshotsBefore = radio.ofType('session_snapshot').length;
+      await phoneState.discardCurrentSession();
+      await graph.autoPush.flush();
+
+      final ends = radio.ofType('session_lifecycle');
+      expect(ends, hasLength(1));
+      expect(ends.single['sessionId'], 's-1');
+      expect(
+        _payload(ends.single)['state'],
+        WatchLifecycleState.abandoned,
+        reason:
+            'S-73 a session the phone no longer holds at all is abandoned, not '
+            'completed (D-81)',
+      );
+      expect(
+        radio.ofType('session_snapshot'),
+        hasLength(snapshotsBefore),
+        reason:
+            'S-73 a session the phone no longer holds has nothing to assert '
+            'either, so the announcement is the whole of it',
+      );
+
+      await phoneState.loadSessionData();
+      await graph.autoPush.flush();
+      expect(
+        radio.ofType('session_lifecycle'),
+        hasLength(1),
+        reason: 'S-73 the abandonment is announced once',
+      );
+
+      await engine.applyMessage(ends.single);
+      expect(engine.session!.status, WatchSessionStatus.abandoned);
+      expect(
+        wristEntryIds(),
+        contains(_wristEntryId),
+        reason: 'S-73 the wrist\'s own set stays logged (D-81)',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-74 a notification that changes nothing pushes nothing', () {
+    test('S-74 five notifications without a change push nothing', () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      await phoneState.refreshEfforts([_firstSlot]);
+      await phoneState.refreshEfforts([_firstSlot]);
+      await phoneState.loadSessionData();
+      await phoneState.updateSessionNote('felt strong');
+      await phoneState.refreshEfforts([_firstSlot]);
+      await graph.autoPush.flush();
+
+      expect(
+        radio.ofType('session_snapshot'),
+        hasLength(1),
+        reason:
+            'S-74 the payload is compared by its encoding, so a reload, a note '
+            'and a refresh that leave the session the same send nothing (D-76)',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-75 a burst of changes inside one window is one push', () {
+    test('S-75 three changes inside the window are one frame', () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      final deadlift = await add('ex-deadlift');
+      final row = await add('ex-row');
+      await phoneState.addEntry(_firstSlot);
+
+      expect(
+        radio.ofType('session_snapshot'),
+        hasLength(1),
+        reason:
+            'S-75 the trailing window is still open, so a burst is not three '
+            'frames (D-76)',
+      );
+
+      await graph.autoPush.flush();
+      final pushes = radio.ofType('session_snapshot');
+      expect(pushes, hasLength(2), reason: 'S-75 the window closes into one');
+      final payload = _payload(pushes.last);
+      expect(_slotIds(payload), [_firstSlot, _secondSlot, deadlift, row]);
+      expect(
+        _sorted(_entryIds(payload)),
+        _sorted([
+          'entry-$_firstSlot-1',
+          'entry-$_firstSlot-2',
+          'entry-$deadlift-0',
+          'entry-$row-0',
+        ]),
+        reason:
+            'S-75 the one frame carries everything the burst changed: the '
+            'phone\'s sets, and the set the session path logs for each exercise '
+            'it added',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-75 the trailing window closes by itself', () async {
+      await wristStartsSession();
+
+      // A push of its own, over the same mirror and repository the graph wired,
+      // with a window short enough to wait for — the only scenario here that
+      // lets the timer fire instead of closing the window by hand.
+      final push = WatchSessionAutoPush(
+        mirror: graph.mirror,
+        getSession: repository.getSession,
+        debounce: const Duration(milliseconds: 5),
+      )..bindWorkoutState(phoneState);
+      addTearDown(push.dispose);
+
+      await phoneState.addEntry(_firstSlot);
+
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (radio.ofType('session_snapshot').isEmpty &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+
+      final pushes = radio.ofType('session_snapshot');
+      expect(
+        pushes,
+        hasLength(1),
+        reason:
+            'S-75 the window closes on its own and pushes what changed, with '
+            'nobody asking (D-76)',
+      );
+      expect(
+        _entryIds(_payload(pushes.single)),
+        ['entry-$_firstSlot-1'],
+      );
+    });
+  });
+
+  group('S-80 a frame the phone applied from the wrist is not pushed back', () {
+    test(
+      'S-80 the wrist\'s own set and its snapshot are not answered with a push',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        final pushesBefore = radio.ofType('session_snapshot').length;
+
+        // The wrist logs its own second set and reports it.
+        await engine.appendObservation(<String, Object?>{
+          'entryId': _wristEntryId2,
+          'eventId': _wristEntryId2,
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _firstSlot,
+          'exerciseId': 'ex-squat',
+          'reps': 6,
+          'loadKg': 65.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+
+        expect(
+          [for (final entry in graph.mirror.entries) entry['entryId']],
+          contains(_wristEntryId2),
+          reason: 'the fixture: the phone\'s mirror holds the wrist\'s set',
+        );
+        expect(
+          await phoneEntries(_firstSlot),
+          3,
+          reason:
+              'the fixture: the wrist\'s set merged into the phone\'s own '
+              'session, beside the wrist\'s first set and the phone\'s own',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(pushesBefore),
+          reason:
+              'S-80 a frame the phone applied from the wrist is not pushed '
+              'back: the rows it brought in are not news (D-82)',
+        );
+
+        // The wrist moves on and re-asserts its snapshot at the next sync. The
+        // phone converges on it, and whatever the frame itself settles (a
+        // re-assertion of its own shape included) is where the count stands.
+        await engine.advanceExercise();
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(graph.mirror.currentExerciseIndex, 1);
+        final afterFrame = radio.ofType('session_snapshot').length;
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(afterFrame),
+          reason:
+              'S-80 the applied frame became the baseline, so the place it '
+              'reports is not pushed back either (D-82)',
+        );
+
+        // The phone's own next change is pushed, carrying the converged place.
+        await phoneState.addEntry(_firstSlot);
+        await graph.autoPush.flush();
+        final pushes = radio.ofType('session_snapshot');
+        expect(pushes, hasLength(afterFrame + 1));
+        expect(_payload(pushes.last)['currentExerciseIndex'], 1);
+        expect(
+          _entryIds(_payload(pushes.last)),
+          ['entry-$_firstSlot-1', 'entry-$_firstSlot-3'],
+          reason:
+              'S-80 the push carries the phone\'s own sets, never the wrist\'s '
+              'own back to it (D-34). The wrist\'s two sets took groups 0 and '
+              '2 as they merged in, so the phone\'s second set is numbered 3 '
+              '(D-325)',
+        );
+
+        await engine.applyMessage(pushes.last);
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[
+            _wristEntryId,
+            _wristEntryId2,
+            'entry-$_firstSlot-1',
+            'entry-$_firstSlot-3',
+          ]),
+          reason: 'S-80 the wrist keeps its own sets and gains the phone\'s',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-81 a re-delivered frame changes nothing', () {
+    test('S-81 the same snapshot twice writes nothing new on the wrist',
+        () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      final push = await pushPhoneSet();
+
+      expect(await engine.applyMessage(push), isTrue);
+      final applied = await wristRows();
+      expect(
+        wristEntryIds(),
+        contains('entry-$_firstSlot-1'),
+        reason: 'the fixture: the phone\'s set is on the wrist',
+      );
+
+      expect(
+        await engine.applyMessage(push),
+        isTrue,
+        reason:
+            'S-81 a re-delivered snapshot is applied, not refused: the wrist '
+            'is in the session it names',
+      );
+      expect(
+        await wristRows(),
+        applied,
+        reason:
+            'S-81 the same message id leaves the wrist\'s rows exactly as they '
+            'were — no second entry, no second session row, no second timer '
+            '(the transport can carry this frame again)',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-81 the same lifecycle twice ends the wrist\'s copy once', () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      await phoneState.endSession();
+      await graph.autoPush.flush();
+      final end = radio.ofType('session_lifecycle').single;
+
+      expect(await engine.applyMessage(end), isTrue);
+      final ended = await wristRows();
+      expect(engine.session!.status, WatchSessionStatus.completed);
+
+      expect(await engine.applyMessage(end), isTrue);
+      expect(
+        await wristRows(),
+        ended,
+        reason: 'S-81 the same end re-delivered writes no second end row',
+      );
+      expect(engine.session!.status, WatchSessionStatus.completed);
+      expect(failures, isEmpty);
+    });
+
+    test(
+      'S-81 the same observation twice leaves the phone unchanged and pushes '
+      'nothing',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        final pushesBefore = radio.ofType('session_snapshot').length;
+
+        final replayed = wristFrames.last;
+        final rowsBefore =
+            (await repository.getEffortObservations(_firstSlot)).length;
+        await radio.fromWrist(replayed);
+        await _settle();
+        await radio.fromWrist(replayed);
+        await _settle();
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(pushesBefore),
+          reason:
+              'S-81 a wrist frame re-delivered with the same message id changes '
+              'nothing and pushes nothing (D-76, D-82)',
+        );
+        expect(
+          (await repository.getEffortObservations(_firstSlot)).length,
+          rowsBefore,
+          reason: 'S-81 the phone\'s own rows are unchanged by the replay',
+        );
+        expect(
+          radio.ofType('receipt'),
+          isNotEmpty,
+          reason:
+              'S-81 the phone still acknowledges the re-delivered entry — the '
+              'wrist never got its receipt (D-132)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-83 a push the radio cannot carry is owed', () {
+    test(
+      'S-83 a failed send is reported per attempt, changes nothing, and the '
+      'same state is offered again',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+
+        radio.failing = true;
+        await phoneState.addEntry(_firstSlot);
+        await graph.autoPush.flush();
+
+        expect(
+          failures,
+          hasLength(1),
+          reason:
+              'S-83 the radio reports what it cannot carry, once per attempt '
+              '(D-83)',
+        );
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason: 'S-83 nothing left the phone',
+        );
+        expect(
+          await phoneEntries(_firstSlot),
+          2,
+          reason:
+              'S-83 the phone\'s own state is undisturbed: the push writes '
+              'nothing and queues nothing',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          failures,
+          hasLength(2),
+          reason:
+              'S-83 the payload that failed is NOT baselined, so the next '
+              'trigger composes it again and offers it again (D-191, S-200): '
+              'one report per attempt is what an owed frame costs',
+        );
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason: 'S-83 the radio still cannot carry it',
+        );
+
+        radio.failing = false;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-83 the state the wrist never got leaves the phone as soon as '
+              'the radio carries it',
+        );
+        expect(failures, hasLength(2));
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-83 and once it was delivered the baseline advances: the same '
+              'state is not offered a second time',
+        );
+        expect(failures, hasLength(2));
+      },
+    );
+  });
+
+  group('S-84 browsing another session pushes nothing', () {
+    test('S-84 opening a past session pushes nothing for the live one',
+        () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+      final pushesBefore = radio.ofType('session_snapshot').length;
+
+      // A finished session in the phone's history, with a ladder of its own.
+      final start = _at(0);
+      await repository.createSession(
+        TrainingSession(
+          id: 'h-1',
+          ownerUserId: LoggedEntryRows.ownerUserId,
+          startedAtMs: start,
+          endedAtMs: start + 60000,
+          createdAtMs: start,
+          updatedAtMs: start + 60000,
+        ),
+      );
+      await repository.createSegment(
+        LoggedEntryRows.defaultSegment(
+          id: 'segment-h-1',
+          sessionId: 'h-1',
+          atMs: start,
+        ),
+      );
+      await repository.createEffort(
+        SegmentEffort(
+          id: 'h-slot',
+          segmentId: 'segment-h-1',
+          orderIndex: 0,
+          effortKind: 'set',
+          exerciseId: 'ex-bench',
+          createdAtMs: start,
+          updatedAtMs: start,
+        ),
+      );
+      for (final row in LoggedEntryRows.setObservations(
+        effortId: 'h-slot',
+        entryIndex: 0,
+        reps: 5,
+        weightKg: 50,
+        exerciseHasLoad: true,
+        atMs: start,
+      )) {
+        await repository.createObservation(row);
+      }
+
+      // The user opens it. The mirror still holds the wrist's session as live,
+      // and that session's own row has no end.
+      await phoneState.loadHistoricalSession('h-1');
+      await graph.autoPush.flush();
+
+      expect(
+        radio.ofType('session_snapshot'),
+        hasLength(pushesBefore),
+        reason:
+            'S-84 a finished session the user is reading is not a session to '
+            'push, and the live one has not changed',
+      );
+      expect(
+        radio.ofType('session_lifecycle'),
+        isEmpty,
+        reason:
+            'S-84 browsing history must not end the session the wrist is still '
+            'in: the rule reads that session\'s own row, never the phone\'s '
+            'current-session pointer (D-81)',
+      );
+
+      // Opening the live session again is still nothing: the payload is the one
+      // the phone last sent for it.
+      await phoneState.loadHistoricalSession('s-1');
+      await graph.autoPush.flush();
+      expect(
+        radio.ofType('session_snapshot'),
+        hasLength(pushesBefore),
+        reason:
+            'S-84 re-reading the live session sends nothing: the payload equals '
+            'the one already on the wrist (D-76)',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-85 every session in one app run is announced for itself', () {
+    test(
+      'S-85 two finishes and a discard are announced once each, under each '
+      'session\'s own id',
+      () async {
+        // Session 1: adopted off the wrist, logged into and finished on the
+        // phone. The mirror holds this one.
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        // Session 2: the phone's own, started after the first finished. The
+        // mirror still holds session 1.
+        await phoneState.createNewSession();
+        final second = await add('ex-bench');
+        final secondId = phoneState.currentSession!.id;
+        await phoneState.addEntry(
+          second,
+          previousValues: <String, dynamic>{'reps': 5, 'weight': 40},
+        );
+        await graph.autoPush.flush();
+        expect(
+          [
+            for (final frame in radio.ofType('session_snapshot'))
+              frame['sessionId'],
+          ],
+          contains(secondId),
+          reason: 'the fixture: session 2 is the phone\'s own and is pushed',
+        );
+
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        // Session 3: started, pushed, then discarded without ever ending.
+        // The phone names a session `session-<millisecondsSinceEpoch>`
+        // (`lib/state/workout/session_core_io.dart`), so two sessions started
+        // inside one millisecond collide on their id — and this fixture would
+        // then hold two sessions under one id, a state the rule under test
+        // ("under each session's own id") cannot satisfy. Start the third once
+        // the id clock has moved past the second.
+        while ('session-${DateTime.now().millisecondsSinceEpoch}' == secondId) {
+          await Future<void>.delayed(const Duration(milliseconds: 1));
+        }
+        await phoneState.createNewSession();
+        final third = await add('ex-deadlift');
+        final thirdId = phoneState.currentSession!.id;
+        await phoneState.addEntry(third);
+        await graph.autoPush.flush();
+        await phoneState.discardCurrentSession();
+        await graph.autoPush.flush();
+
+        final announced = <String, List<String>>{};
+        for (final frame in radio.ofType('session_lifecycle')) {
+          (announced[frame['sessionId']! as String] ??= []).add(
+            _payload(frame)['state']! as String,
+          );
+        }
+        expect(
+          announced,
+          <String, List<String>>{
+            's-1': [WatchLifecycleState.completed],
+            secondId: [WatchLifecycleState.completed],
+            thirdId: [WatchLifecycleState.abandoned],
+          },
+          reason:
+              'S-85 the rule reads the phone\'s own session, so a second '
+              'session in the same app run is announced like the first, under '
+              'its own id, and each one exactly once (D-81)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test('S-85 the end the wrist itself caused is not announced back at it',
+        () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      // The wrist ends its own session, and says so. The phone's copy ends with
+      // it, through the router, so both devices hold the fact already.
+      await engine.finishSession();
+      final lifecycle = wristFrames.last;
+      expect(
+        lifecycle['type'],
+        'session_lifecycle',
+        reason: 'the fixture: the wrist announces its own end',
+      );
+      await radio.fromWrist(lifecycle);
+      await _settle();
+      expect(graph.mirror.status, WatchSessionStatus.completed);
+      expect(
+        phoneState.currentSession?.endedAtMs,
+        isNotNull,
+        reason: 'the fixture: the wrist is the authority on its own session',
+      );
+      radio.sent.clear();
+
+      await graph.autoPush.flush();
+      await phoneState.loadSessionData();
+      await graph.autoPush.flush();
+
+      expect(
+        radio.ofType('session_lifecycle'),
+        isEmpty,
+        reason:
+            'S-85 the phone announces ends it caused, not ends it was told '
+            'about: the wrist already holds this one, so there is nothing left '
+            'to say (D-81)',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-86 a session the phone never held is not ended by the phone\'s own '
+      'rule', () {
+    test(
+      'S-86 the push ends the wrist\'s session as a deliberate reset and never '
+      'as an end the phone was told about',
+      () async {
+        // The phone starts a session of its own and puts a ladder in it.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final ownSessionId = phoneState.currentSession!.id;
+
+        // The wrist is running a session of its own — X — which the phone has
+        // no row for and refuses to adopt (D-10).
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+        expect(
+          await repository.getSession('s-1'),
+          isNull,
+          reason:
+              'the fixture: the phone never held X, so there is no row for it '
+              '(D-10 refused the adoption)',
+        );
+        expect(phoneState.currentSession?.id, ownSessionId);
+
+        // The announcement above is answered before this scenario's window
+        // opens: the phone holds a session of its own, so D-182's second row
+        // ends the wrist's under its own name and hands over the phone's
+        // ladder — the pair S-189 pins, in the frame order S-172 reads in
+        // full. What this scenario witnesses is the push pass, alone.
+        expect(
+          [
+            for (final frame in radio.sent)
+              '${frame['type']}:${frame['sessionId']}',
+          ],
+          ['session_lifecycle:s-1', 'session_snapshot:$ownSessionId'],
+          reason:
+              'D-182 row two: the wrist\'s own announcement is answered with '
+              'W\'s end, then P, before the pass',
+        );
+        radio.sent.clear();
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await graph.autoPush.flush();
+
+        expect(
+          [
+            for (final frame in radio.ofType('session_lifecycle'))
+              '${frame['sessionId']}:${_payload(frame)['state']}',
+          ],
+          ['s-1:${WatchLifecycleState.abandoned}'],
+          reason:
+              'S-86, as 19a amends it (D-170, D-176): the missing row is what '
+              'keeps the pending-ends rule from announcing an end for a session '
+              'the phone never held — never `completed`, and never `abandoned` '
+              'for a session the phone is not in. The one lifecycle this push '
+              'sends is the deliberate reset naming the wrist\'s own session, '
+              'which S-172 reads in full',
+        );
+        final pushes = radio.ofType('session_snapshot');
+        expect(
+          pushes,
+          hasLength(1),
+          reason: 'S-86 the phone\'s own session is the only snapshot it sends',
+        );
+        expect(pushes.single['sessionId'], ownSessionId);
+        expect(_slotIds(_payload(pushes.single)), [own]);
+        expect(
+          engine.session!.status,
+          WatchSessionStatus.active,
+          reason:
+              'S-86 the frames are messages: they end nothing on the wrist '
+              'until the wrist applies them, and this fixture does not hand '
+              'them over',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-87 a finish survives a wrist frame inside its window', () {
+    test(
+      'S-87 a frame the wrist sends inside the window does not lose the '
+      'finish it landed in',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+
+        // The phone finishes its session and starts another: two notifications
+        // inside one debounce window, so no flush has run yet and the finish is
+        // still pending when the frame below lands.
+        await phoneState.endSession();
+        await phoneState.createNewSession();
+        final secondId = phoneState.currentSession!.id;
+
+        // The phone is already logging in the new session: a session with no
+        // rows of its own is one the projection cannot speak for, so a frame
+        // that re-baselines onto it would compose nothing and never reach the
+        // pending finish. (The discard variant carries the same effort.)
+        await add('ex-squat');
+
+        // A frame from the wrist lands in that window. The shipping wiring
+        // re-baselines the push after every applied frame (D-82), so the push
+        // composes the phone's new session while the finish is still pending.
+        await engine.appendObservation(<String, Object?>{
+          'entryId': _wristEntryId2,
+          'eventId': _wristEntryId2,
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 6,
+          'loadKg': 45.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+
+        // News of the phone's own session, so that the push that follows the
+        // finish is a real change and not a no-op.
+        await add('ex-row');
+        await graph.autoPush.flush();
+
+        final announced = radio.ofType('session_lifecycle');
+        expect(
+          [for (final frame in announced) frame['sessionId']],
+          ['s-1'],
+          reason:
+              'S-87 the finish the frame landed in is announced, under the '
+              'session that finished: re-baselining the push onto the session '
+              'the phone moved to must not erase a finish not yet said (D-81)',
+        );
+        expect(
+          _payload(announced.single)['state'],
+          WatchLifecycleState.completed,
+        );
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          secondId,
+          reason: 'S-87 the session the phone moved to is still pushed',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-87 a frame the wrist sends inside the window does not lose the '
+      'discard it landed in',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+
+        // The phone discards its session and starts another: two notifications
+        // inside one debounce window, so the discard is still pending when the
+        // frame below lands.
+        await phoneState.discardCurrentSession();
+        await phoneState.createNewSession();
+        final secondId = phoneState.currentSession!.id;
+
+        // The phone is already logging in the new session: a session with no
+        // rows of its own is one the projection cannot speak for, and a frame
+        // that re-baselines onto it would compose nothing at all.
+        await add('ex-squat');
+
+        await engine.appendObservation(<String, Object?>{
+          'entryId': _wristEntryId2,
+          'eventId': _wristEntryId2,
+          'kind': 'set',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-bench',
+          'reps': 6,
+          'loadKg': 45.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+
+        // News of the phone's own session, so that the push that follows the
+        // discard is a real change and not a no-op.
+        await add('ex-row');
+        await graph.autoPush.flush();
+
+        final announced = radio.ofType('session_lifecycle');
+        expect(
+          [for (final frame in announced) frame['sessionId']],
+          ['s-1'],
+          reason:
+              'S-87 a session the phone discarded inside the window is '
+              'abandoned once, not lost to the frame that landed in it',
+        );
+        expect(
+          _payload(announced.single)['state'],
+          WatchLifecycleState.abandoned,
+        );
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          secondId,
+          reason: 'S-87 the session the phone moved to is still pushed',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-88 browsing away does not lose a later finish', () {
+    test(
+      'S-88 browsing a past session and then finishing the live one inside '
+      'one window still announces the finish',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        final pushesBefore = radio.ofType('session_snapshot').length;
+
+        // A finished session in the phone's history, which the user opens.
+        final start = _at(0);
+        await repository.createSession(
+          TrainingSession(
+            id: 'h-1',
+            ownerUserId: LoggedEntryRows.ownerUserId,
+            startedAtMs: start,
+            endedAtMs: start + 60000,
+            createdAtMs: start,
+            updatedAtMs: start + 60000,
+          ),
+        );
+
+        // The browse: the phone composes nothing of its own, and the live
+        // session's own row is still unended, so nothing is announced — the
+        // S-84 shape, which stays silent.
+        await phoneState.loadHistoricalSession('h-1');
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(pushesBefore),
+          reason: 'S-88 browsing history sends nothing (S-84)',
+        );
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'S-88 a past session the user reads is not an end: the live '
+              'session\'s own row is still unended (D-81)',
+        );
+
+        // Back to the live session, and finished with no flush in between: the
+        // end is decided while the phone composes nothing of its own.
+        await phoneState.loadHistoricalSession('s-1');
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        final ends = radio.ofType('session_lifecycle');
+        expect(
+          [for (final frame in ends) frame['sessionId']],
+          ['s-1'],
+          reason:
+              'S-88 a running session the phone merely stopped composing while '
+              'the user browsed keeps its pending end: finishing it afterwards '
+              'is announced once, not lost to the browse (D-81)',
+        );
+        expect(_payload(ends.single)['state'], WatchLifecycleState.completed);
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('F4 a flush that cannot finish does not disturb the phone', () {
+    test(
+      'F4 a throwing getSession leaks no async error and the next flush '
+      'announces the end',
+      () async {
+        await wristStartsSession();
+
+        var readable = true;
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: (sessionId) async {
+            // A repository read that fails is an `Exception`: an `Error` here
+            // would be a programming fault, which the push leaves to surface
+            // (G2 — see `G2 an Error from the session read is not swallowed`).
+            if (!readable) throw Exception('the repository cannot be read');
+            return repository.getSession(sessionId);
+          },
+        )..bindWorkoutState(phoneState);
+        addTearDown(push.dispose);
+
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await push.flush();
+        expect(radio.ofType('session_snapshot'), hasLength(1));
+
+        // The session ends while its row cannot be read: the flush must not
+        // throw and must not lose the end.
+        readable = false;
+        await phoneState.endSession();
+        await push.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'F4 a read the phone cannot make sends nothing — and the phone '
+              'is undisturbed: the flush returns rather than throwing',
+        );
+
+        readable = true;
+        await push.flush();
+        final ends = radio.ofType('session_lifecycle');
+        expect(
+          ends,
+          hasLength(1),
+          reason: 'F4 the next notification still announces the end',
+        );
+        expect(ends.single['sessionId'], 's-1');
+        expect(_payload(ends.single)['state'], WatchLifecycleState.completed);
+        expect(failures, isEmpty);
+      },
+    );
+
+    test('F4 two overlapping flushes announce the end once', () async {
+      await wristStartsSession();
+      graph.autoPush.bindWorkoutState(phoneState);
+      await pushPhoneSet();
+
+      await phoneState.endSession();
+      final first = graph.autoPush.flush();
+      final second = graph.autoPush.flush();
+      await Future.wait(<Future<void>>[first, second]);
+
+      final ends = radio.ofType('session_lifecycle');
+      expect(
+        ends,
+        hasLength(1),
+        reason:
+            'F4 two flushes that overlap are one drain, so the session is '
+            'announced once (D-81)',
+      );
+      expect(ends.single['sessionId'], 's-1');
+      expect(_payload(ends.single)['state'], WatchLifecycleState.completed);
+      expect(failures, isEmpty);
+    });
+
+    test('G2 an Error from the session read is not swallowed', () async {
+      await wristStartsSession();
+
+      final push = WatchSessionAutoPush(
+        mirror: graph.mirror,
+        getSession: (sessionId) async =>
+            throw StateError('the session read is broken'),
+      )..bindWorkoutState(phoneState);
+      addTearDown(push.dispose);
+
+      await phoneState.addEntry(
+        _firstSlot,
+        previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+      );
+
+      await expectLater(push.flush(), throwsStateError);
+      expect(
+        radio.ofType('session_snapshot'),
+        isEmpty,
+        reason: 'G2 the pass stopped at the fault: nothing was sent for it',
+      );
+      push.dispose();
+    });
+  });
+
+  group('S-112 a hung send cannot wedge the push', () {
+    test(
+      'S-112 a send that never completes is abandoned and reported, and the '
+      'change made while it hung still leaves the phone',
+      () async {
+        await wristStartsSession();
+
+        final reported = <Object>[];
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: repository.getSession,
+          // A real, small bound: the pass is abandoned this long after the
+          // radio goes silent, well inside the poll deadline below.
+          sendTimeout: const Duration(milliseconds: 200),
+          onFailure: (error, stack) => reported.add(error),
+        )..bindWorkoutState(phoneState);
+        addTearDown(push.dispose);
+
+        radio.hangNext = true;
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        final hung = push.flush();
+        await _until(
+          () => !radio.hangNext,
+          reason: 'S-112 the fixture: the first send was reached and is hung',
+        );
+
+        // A second change while that send is still hung: its flush joins the
+        // running drain and asks for one more pass, which is the branch a
+        // wedged drain used to swallow for the rest of the app run.
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 65.0},
+        );
+        final joined = push.flush();
+        await _until(
+          () => reported.isNotEmpty,
+          reason:
+              'S-112 the pass that never finishes is abandoned at sendTimeout '
+              'and reported, instead of holding the drain open for ever',
+        );
+        await hung;
+        await joined;
+
+        expect(
+          reported,
+          hasLength(1),
+          reason: 'S-112 exactly one failure is reported for the hung pass',
+        );
+        expect(
+          reported.single,
+          isA<TimeoutException>(),
+          reason: 'S-112 a pass that outran its bound is reported as a timeout',
+        );
+
+        final pushes = radio.ofType('session_snapshot');
+        expect(
+          pushes,
+          hasLength(1),
+          reason:
+              'S-112 the second change left the phone, once: the newest state '
+              'supersedes what the hung pass carried, and the payload that '
+              'hung is not sent beside it (D-191: only a delivered send '
+              'advances the baseline)',
+        );
+        expect(
+          [
+            for (final entry in _objects(_payload(pushes.single)['entries']))
+              entry['loadKg'],
+          ],
+          contains(65.0),
+          reason:
+              'S-112 the frame carries the second change — the newest state, '
+              'not a replay of the hung one',
+        );
+      },
+    );
+  });
+
+  group('S-113 a failure on the push path is reported', () {
+    test(
+      'S-113 a throwing send is reported once, and the next change still '
+      'pushes',
+      () async {
+        await wristStartsSession();
+
+        final reported = <Object>[];
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: repository.getSession,
+          onFailure: (error, stack) => reported.add(error),
+        )..bindWorkoutState(phoneState);
+        addTearDown(push.dispose);
+
+        radio.throwing = true;
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await push.flush();
+
+        expect(
+          reported,
+          hasLength(1),
+          reason:
+              'S-113 an Exception the send threw is reported through the hook '
+              'rather than swallowed (D-98)',
+        );
+        expect(reported.single, isA<Exception>());
+        expect(radio.ofType('session_snapshot'), isEmpty);
+
+        radio.throwing = false;
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 65.0},
+        );
+        await push.flush();
+
+        final pushes = radio.ofType('session_snapshot');
+        expect(
+          pushes,
+          hasLength(1),
+          reason:
+              'S-113 the push still works on the next change: the throw left '
+              'the payload owed rather than queued, and the next change '
+              'composes the newest state, so one frame carries it (D-191)',
+        );
+        expect(
+          [
+            for (final entry in _objects(_payload(pushes.single)['entries']))
+              entry['loadKg'],
+          ],
+          contains(65.0),
+          reason: 'S-113 the frame that follows carries the newest state',
+        );
+        expect(reported, hasLength(1));
+      },
+    );
+
+    test(
+      'S-113 an Error from the debounce timer path is reported, not unhandled, '
+      'and a direct flush still throws it',
+      () async {
+        await wristStartsSession();
+
+        final reported = <Object>[];
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          // An `Error` is a programming fault: `_pushOnce` does not catch it, so
+          // it escapes `flush()` (G2).
+          getSession: (sessionId) async =>
+              throw StateError('the session read is broken'),
+          debounce: const Duration(milliseconds: 5),
+          onFailure: (error, stack) => reported.add(error),
+        )..bindWorkoutState(phoneState);
+        addTearDown(push.dispose);
+
+        final unhandled = <Object>[];
+        final body = runZonedGuarded(() async {
+          await phoneState.addEntry(
+            _firstSlot,
+            previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+          );
+          // Either the pass reports it (D-99) or it escapes as an unhandled
+          // async error: waiting for either is what keeps a regression from
+          // hanging this test instead of failing it.
+          await _until(
+            () => reported.isNotEmpty || unhandled.isNotEmpty,
+            reason:
+                'S-113 an Error escaping the debounce timer\'s flush is '
+                'either reported through the hook (D-99) or unhandled — it '
+                'never simply disappears',
+          );
+
+          // The direct caller is still told: the timer path swallows nothing
+          // that a non-timer caller would have seen (G2).
+          await expectLater(push.flush(), throwsStateError);
+        }, (error, stack) => unhandled.add(error));
+        await body;
+
+        expect(
+          reported,
+          hasLength(1),
+          reason:
+              'S-113 the timer path reports what escapes a pass through the '
+              'hook instead of raising an unhandled async error (D-99)',
+        );
+        expect(reported.single, isA<StateError>());
+        expect(
+          unhandled,
+          isEmpty,
+          reason:
+              'S-113 the timer path raises no unhandled async error: it is '
+              'recorded through the hook instead (D-99)',
+        );
+      },
+    );
+  });
+
+  group('S-120 a set deleted on the phone disappears on the wrist', () {
+    test(
+      'S-120 the push names the set the phone dropped, in a frame the wrist '
+      'applies, before the snapshot that no longer carries it',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+
+        final first = await pushPhoneSet();
+        await engine.applyMessage(first);
+        final doomed = await logSetHeldByBoth();
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1', doomed]),
+          reason: 'the fixture: the wrist holds both of the phone\'s sets',
+        );
+
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+
+        final deletions = radio.ofType('structure_change');
+        expect(
+          deletions,
+          hasLength(1),
+          reason:
+              'S-120 one frame per set that vanished, and none for the sets '
+              'that did not',
+        );
+        final deletion = deletions.single;
+        final snapshot = radio.ofType('session_snapshot').last;
+        expect(
+          radio.sent.indexOf(deletion),
+          lessThan(radio.sent.indexOf(snapshot)),
+          reason:
+              'D-111 the deletion goes out before the snapshot of the same '
+              'pass, so a set the phone re-created under a reused id ends up '
+              'visible rather than deleted',
+        );
+        expect(
+          deletion['sessionId'],
+          's-1',
+          reason:
+              'D-114 the frame names the session both devices hold: the wrist '
+              'refuses a frame naming any other',
+        );
+        expect(
+          _payload(deletion)['changeId'],
+          startsWith('del-$doomed-'),
+          reason:
+              'D-116 (F2) the id names the entry *and* the delete event, so a '
+              're-delivery of this frame is a no-op on the wrist while the '
+              'second deletion of a number the phone re-used is not',
+        );
+        expect(
+          _payload(deletion)['changes'],
+          [
+            {'kind': 'delete_entry', 'entryId': doomed},
+          ],
+          reason: 'S-120 the frame names the set the phone dropped (D-110)',
+        );
+        expect(
+          _entryIds(_payload(snapshot)),
+          ['entry-$_firstSlot-1'],
+          reason:
+              'S-120 the snapshot that follows carries the survivors only — '
+              'and never the set the wrist logged itself (D-34)',
+        );
+
+        await engine.applyMessage(deletion);
+        expect(
+          _sorted(wristEntryIds()),
+          _sorted(<String>[_wristEntryId, 'entry-$_firstSlot-1']),
+          reason:
+              'S-120 the wrist hides the set the frame named, so a set the '
+              'phone dropped leaves the ladder it was logged against',
+        );
+        expect(
+          [
+            for (final row in engine.observations) row.payload['entryId'],
+          ],
+          contains(doomed),
+          reason:
+              'I-3 the wrist\'s log is append-only: the row the entry was '
+              'projected from is still stored, only hidden',
+        );
+      },
+    );
+  });
+
+  group('S-121 several deletions, and a deletion that never was', () {
+    test(
+      'S-121 two sets dropped in one pass are two frames in ascending id '
+      'order, and the snapshot carries the survivors',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+
+        await pushPhoneSet();
+        final second = await logSetHeldByBoth();
+        final third = await logSetHeldByBoth();
+        final fourth = await logSetHeldByBoth();
+        expect(
+          _sorted(<String>[second, third, fourth]),
+          _sorted(<String>[
+            'entry-$_firstSlot-2',
+            'entry-$_firstSlot-3',
+            'entry-$_firstSlot-4',
+          ]),
+          reason:
+              'the fixture: the phone numbers its own sets above every row the '
+              'effort holds (D-325)',
+        );
+
+        // The later entry goes first: the phone's own set 4 is addressed by
+        // number, so dropping it does not renumber the survivors.
+        await phoneState.deleteEntry(_firstSlot, 4);
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+
+        final deletions = radio.ofType('structure_change');
+        expect(
+          deletions,
+          hasLength(2),
+          reason: 'S-121 one frame per set that vanished',
+        );
+        expect(
+          [
+            for (final frame in deletions) _payload(frame)['changeId'],
+          ],
+          [startsWith('del-$second-'), startsWith('del-$fourth-')],
+          reason:
+              'S-121 the frames go out in ascending id order, so the same two '
+              'deletions look the same however the store listed the rows',
+        );
+        expect(
+          [
+            for (final frame in deletions) _payload(frame)['changes'],
+          ],
+          [
+            [
+              {'kind': 'delete_entry', 'entryId': second},
+            ],
+            [
+              {'kind': 'delete_entry', 'entryId': fourth},
+            ],
+          ],
+          reason: 'S-121 each frame names exactly the set it is about',
+        );
+        expect(
+          _sorted(
+            _entryIds(_payload(radio.ofType('session_snapshot').last)),
+          ),
+          _sorted(<String>['entry-$_firstSlot-1', third]),
+          reason: 'S-121 the snapshot of that pass carries the two survivors',
+        );
+      },
+    );
+
+    test(
+      'S-121 a set logged and dropped inside one window is announced to nobody',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+
+        // Both changes land inside one debounce window: the set the user
+        // dropped never left the phone, so the wrist was never told to hold it.
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await phoneState.deleteEntry(_firstSlot, 3);
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'S-121 an id the phone never announced cannot vanish: the '
+              'ledger is what the wrist was told, not what the phone holds '
+              '(D-111)',
+        );
+        expect(
+          _sorted(
+            _entryIds(_payload(radio.ofType('session_snapshot').last)),
+          ),
+          _sorted(<String>['entry-$_firstSlot-1', 'entry-$_firstSlot-2']),
+          reason: 'S-121 the snapshot carries the sets the phone kept',
+        );
+      },
+    );
+  });
+
+  group('S-122 a set the wrist logged, imported and deleted on the phone', () {
+    test(
+      'S-122 the frame names the wrist\'s own entry id, so the entry the wrist '
+      'logged leaves it too',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1']),
+          reason:
+              'the fixture: the wrist holds the set it logged and the set the '
+              'phone logged',
+        );
+
+        // The slot's first group is the row the phone imported from the wrist
+        // (D-34), so entry 0 is the set the user sees as the wrist's.
+        await phoneState.deleteEntry(_firstSlot, 0);
+        await graph.autoPush.flush();
+
+        final deletion = radio.ofType('structure_change').single;
+        expect(
+          _payload(deletion)['changes'],
+          [
+            {'kind': 'delete_entry', 'entryId': _wristEntryId},
+          ],
+          reason:
+              'S-122 the frame names the wrist\'s own row id — the id the '
+              'phone\'s inbox row carries — and not a phone-minted one (D-112)',
+        );
+        expect(
+          _payload(deletion)['changeId'],
+          startsWith('del-$_wristEntryId-'),
+          reason: 'D-116 the id names the entry the deletion is about',
+        );
+        expect(
+          await phoneEntries(_firstSlot),
+          1,
+          reason:
+              'S-122 the phone\'s group stays deleted: only the phone\'s own '
+              'set is left on the slot',
+        );
+
+        await engine.applyMessage(deletion);
+        expect(
+          wristEntryIds(),
+          isNot(contains(_wristEntryId)),
+          reason:
+              'S-122 the wrist hides the set it logged itself when the phone '
+              'deleted it (TRAP 1)',
+        );
+        expect(wristEntryIds(), contains('entry-$_firstSlot-1'));
+        expect(
+          [
+            for (final row in engine.observations) row.payload['entryId'],
+          ],
+          contains(_wristEntryId),
+          reason:
+              'I-3 the wrist\'s own row is hidden, never deleted from the '
+              'append-only log',
+        );
+      },
+    );
+  });
+
+  group('S-144 a timed, hold or round entry deleted on the phone', () {
+    test(
+      'S-144 a non-set entry the wrist logged leaves under the wrist\'s own id, '
+      'and one the phone logged under the id the phone minted',
+      () async {
+        // The fixture: one kind per slot. The wrist logs an entry of its own on
+        // the first three, which the phone imports; on the last two the phone
+        // logs its own through the session screen's own paths, and both ride
+        // back in the snapshot the push sends (D-76).
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-plank', 'Plank', ['time'],
+                effortKind: 'timed'),
+            _slot(_secondSlot, 'ex-burpee', 'Burpees', ['rounds'],
+                effortKind: 'round'),
+            _slot(_holdSlot, 'ex-plank', 'Plank', ['hold'],
+                effortKind: 'drill'),
+            _slot(_phoneTimedSlot, 'ex-plank', 'Plank', ['time'],
+                effortKind: 'timed'),
+            _slot(_phoneRoundSlot, 'ex-burpee', 'Burpees', ['rounds'],
+                effortKind: 'round'),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+
+        Future<void> wristLogs(Map<String, Object?> entry) async {
+          await engine.appendObservation(entry);
+          await radio.fromWrist(wristFrames.last);
+          await _settle();
+        }
+
+        await wristLogs(<String, Object?>{
+          'entryId': _wristTimedEntryId,
+          'eventId': _wristTimedEntryId,
+          'kind': 'timed',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _firstSlot,
+          'exerciseId': 'ex-plank',
+          'startedAt': _atIso(1),
+          'endedAt': _atIso(2),
+        });
+        await wristLogs(<String, Object?>{
+          'entryId': _wristRoundEntryId,
+          'eventId': _wristRoundEntryId,
+          'kind': 'round',
+          'loggedAt': _atIso(4),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-burpee',
+          'startedAt': _atIso(3),
+          'endedAt': _atIso(4),
+          'roundNumber': 1,
+        });
+        await wristLogs(<String, Object?>{
+          'entryId': _wristHoldEntryId,
+          'eventId': _wristHoldEntryId,
+          'kind': 'hold',
+          'loggedAt': _atIso(6),
+          'sessionExerciseId': _holdSlot,
+          'exerciseId': 'ex-plank',
+          'startedAt': _atIso(5),
+          'endedAt': _atIso(6),
+          'extraLoadKg': 12.0,
+        });
+
+        await phoneState.addTimedEntry(_phoneTimedSlot, targetDurationSecs: 60);
+        await phoneState.startTimedEntry(_phoneTimedSlot, 0);
+        await phoneState.finishTimedEntry(_phoneTimedSlot, 0);
+        await phoneState.addRound(_phoneRoundSlot);
+        await phoneState.startRound(_phoneRoundSlot, 0);
+        await phoneState.completeRound(_phoneRoundSlot, 0);
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'S-123 the first pass seeds its ledger from what the phone holds '
+              'and announces nothing',
+        );
+        await engine.applyMessage(radio.ofType('session_snapshot').last);
+        expect(
+          _sorted(wristEntryIds()),
+          _sorted(<String>[
+            _wristTimedEntryId,
+            _wristRoundEntryId,
+            _wristHoldEntryId,
+            'entry-$_phoneTimedSlot-0',
+            'entry-$_phoneRoundSlot-0',
+          ]),
+          reason:
+              'the fixture: the wrist holds its own three entries and the two '
+              'the phone logged, so both provenances are on the wrist when the '
+              'deletions are announced',
+        );
+
+        // The user deletes all five on the phone, each through the path its
+        // kind is deleted by.
+        await phoneState.deleteTimedEntry(_firstSlot, 0);
+        await phoneState.deleteRound(_secondSlot, 0);
+        await phoneState.deleteTimedEntry(_holdSlot, 0);
+        await phoneState.deleteTimedEntry(_phoneTimedSlot, 0);
+        await phoneState.deleteRound(_phoneRoundSlot, 0);
+        await graph.autoPush.flush();
+
+        final frames = radio.ofType('structure_change');
+        expect(
+          frames,
+          hasLength(5),
+          reason:
+              'S-144 every entry the wrist was told to hold and no longer '
+              'exists is announced, whatever kind it is — one frame each '
+              '(S-121)',
+        );
+        for (final frame in frames) {
+          expect(
+            _objects(_payload(frame)['changes']),
+            hasLength(1),
+            reason: 'S-121 each frame names exactly the entry it is about',
+          );
+          expect(
+            frame['sessionId'],
+            's-1',
+            reason: 'F3 a deletion frame names the session it is about',
+          );
+        }
+        expect(
+          _sorted(<String>[
+            for (final frame in frames)
+              _objects(_payload(frame)['changes']).single['entryId']!
+                  as String,
+          ]),
+          _sorted(<String>[
+            _wristTimedEntryId,
+            _wristRoundEntryId,
+            _wristHoldEntryId,
+            'entry-$_phoneTimedSlot-0',
+            'entry-$_phoneRoundSlot-0',
+          ]),
+          reason:
+              'S-144 a `timed`, `hold` or `round` entry the wrist logged leaves '
+              'under the id its own inbox row carries (D-112, D-133), and the '
+              'phone\'s own under the id the phone minted for it (D-131)',
+        );
+
+        for (final frame in frames) {
+          await engine.applyMessage(frame);
+        }
+        expect(
+          wristEntryIds(),
+          isEmpty,
+          reason: 'S-144 the wrist holds none of the five any more',
+        );
+        expect(
+          [for (final row in engine.observations) row.payload['entryId']],
+          containsAll(<String>[
+            _wristTimedEntryId,
+            _wristRoundEntryId,
+            _wristHoldEntryId,
+          ]),
+          reason:
+              'I-3 the wrist\'s own rows are hidden, never deleted from the '
+              'append-only log',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  // 17d Phase 3 item 0: a phone-logged record can stand before the record the
+  // importer wrote for a wrist row. The row's stamp still claims it, but the
+  // claim's answer is a position in the record list, not in the row list —
+  // read as a row index it names the wrong row, or throws a RangeError at the
+  // push pass and announces nothing at all (S-144).
+  group('S-144 the record order does not shift the id a deletion names', () {
+    test(
+      'S-144 a phone-logged record before the wrist\'s own does not hide the '
+      'deletion of the wrist\'s row',
+      () async {
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(
+              _firstSlot,
+              'ex-plank',
+              'Plank',
+              ['time'],
+              effortKind: 'timed',
+            ),
+            _slot(
+              _secondSlot,
+              'ex-burpee',
+              'Burpees',
+              ['rounds'],
+              effortKind: 'round',
+            ),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          phoneState.currentSession?.id,
+          's-1',
+          reason: 'the fixture: the phone adopted the wrist\'s session',
+        );
+
+        // The phone logs its own entry on both slots before the wrist logs on
+        // them, so each imported record stands after a phone-logged one
+        // (entryIndex 1).
+        await phoneState.addTimedEntry(_firstSlot, targetDurationSecs: 60);
+        await phoneState.startTimedEntry(_firstSlot, 0);
+        await phoneState.finishTimedEntry(_firstSlot, 0);
+        await phoneState.addRound(_secondSlot);
+        await phoneState.startRound(_secondSlot, 0);
+        await phoneState.completeRound(_secondSlot, 0);
+
+        Future<void> wristLogs(Map<String, Object?> entry) async {
+          await engine.appendObservation(entry);
+          await radio.fromWrist(wristFrames.last);
+          await _settle();
+        }
+
+        await wristLogs(<String, Object?>{
+          'entryId': _wristTimedEntryId,
+          'eventId': _wristTimedEntryId,
+          'kind': 'timed',
+          'loggedAt': _atIso(2),
+          'sessionExerciseId': _firstSlot,
+          'exerciseId': 'ex-plank',
+          'startedAt': _atIso(1),
+          'endedAt': _atIso(2),
+        });
+        await wristLogs(<String, Object?>{
+          'entryId': _wristRoundEntryId,
+          'eventId': _wristRoundEntryId,
+          'kind': 'round',
+          'loggedAt': _atIso(4),
+          'sessionExerciseId': _secondSlot,
+          'exerciseId': 'ex-burpee',
+          'startedAt': _atIso(3),
+          'endedAt': _atIso(4),
+          'roundNumber': 1,
+        });
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'S-123 the first pass seeds its ledger from what the phone holds '
+              'and announces nothing',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'the seed pass reads each wrist row\'s own record',
+        );
+
+        // Each delete removes the record the wrist's row imported — the slot's
+        // last, so the phone's own record keeps its entry id.
+        await phoneState.deleteTimedEntry(_firstSlot, 1);
+        await phoneState.deleteRound(_secondSlot, 1);
+        await graph.autoPush.flush();
+
+        final frames = radio.ofType('structure_change');
+        expect(
+          frames,
+          hasLength(2),
+          reason:
+              'S-121 one frame per vanished entry: the two imported records '
+              'are gone and each row they claimed is announced',
+        );
+        expect(
+          _sorted(<String>[
+            for (final frame in frames)
+              _objects(_payload(frame)['changes']).single['entryId']!
+                  as String,
+          ]),
+          _sorted(<String>[_wristTimedEntryId, _wristRoundEntryId]),
+          reason:
+              'S-144 each deletion names the row whose stamp claimed the '
+              'deleted record, wherever that record sat in the phone\'s list',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-123 the first pass announces nothing', () {
+    test(
+      'S-123 a push that binds to a session the wrist already holds seeds its '
+      'ledger and announces no deletion',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        final second = await logSetHeldByBoth();
+        final third = await logSetHeldByBoth();
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1', second, third]),
+          reason:
+              'the fixture: the wrist has held all three sets since before the '
+              'push below existed, the way it has after a re-launch',
+        );
+
+        final rebound = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: repository.getSession,
+        )..bindWorkoutState(phoneState);
+        addTearDown(rebound.dispose);
+
+        await rebound.flush();
+
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'S-123 the first pass of a session seeds the ledger from what '
+              'the phone holds: announcing the difference against an empty '
+              'set would order the wrist to delete everything it holds',
+        );
+        expect(
+          _sorted(
+            _entryIds(_payload(radio.ofType('session_snapshot').last)),
+          ),
+          _sorted(<String>['entry-$_firstSlot-1', second, third]),
+          reason:
+              'S-123 the first pass is otherwise the snapshot the push always '
+              'sent (D-76)',
+        );
+      },
+    );
+  });
+
+  group('S-126 another session\'s deletion changes nothing', () {
+    test(
+      'S-126 a delete frame naming a session the wrist is not running is '
+      'refused whole, twice',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1']),
+          reason: 'the fixture: the wrist holds two sets of its session',
+        );
+
+        // What a phone whose mirror holds another session sends: the same
+        // envelope builder the mirror uses, naming the session it holds.
+        final foreign = phoneEnvelope(
+          type: 'structure_change',
+          messageId: 'msg-other-session',
+          sentAt: _now,
+          sessionId: 'sess-b',
+          payload: {
+            'changeId': 'chg-other-session',
+            'changes': [
+              {'kind': 'delete_entry', 'entryId': 'entry-$_firstSlot-1'},
+            ],
+          },
+        );
+        final before = await wristRows();
+
+        expect(
+          await engine.applyMessage(foreign),
+          isFalse,
+          reason:
+              'S-126 the wrist\'s session guard refuses a frame naming another '
+              'session (D-79)',
+        );
+        expect(
+          await engine.applyMessage(foreign),
+          isFalse,
+          reason: 'S-126 the same refusal again, with nothing applied either time',
+        );
+        expect(
+          _sorted(wristEntryIds()),
+          _sorted(<String>[_wristEntryId, 'entry-$_firstSlot-1']),
+          reason: 'S-126 a foreign session\'s deletion leaves the ladder alone',
+        );
+        expect(
+          await wristRows(),
+          before,
+          reason:
+              'S-126 no row is appended for a foreign session, so the store '
+              'does not accumulate copies of a change it refuses',
+        );
+      },
+    );
+  });
+
+  group('D-114 leaving a session and coming back re-seeds the ledger', () {
+    test(
+      'D-114 the session the phone comes back to seeds its ledger again, so '
+      'the set it lost in between is not announced by the return pass',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        final doomed = await logSetHeldByBoth();
+        await graph.autoPush.flush();
+        expect(
+          wristEntryIds(),
+          containsAll(<String>[_wristEntryId, 'entry-$_firstSlot-1', doomed]),
+          reason:
+              'the fixture: the wrist holds the set it logged and the phone\'s '
+              'two, which is what the push\'s ledger records for `s-1`',
+        );
+
+        // The user drops the phone's second set and starts a session of their
+        // own, both inside one window and both started in this turn, so no pass
+        // composes `s-1` between the two: the set is gone from `s-1` before any
+        // pass of `s-1` sees it go (D-114, D-111's 250 ms window).
+        final dropping = phoneState.deleteEntry(_firstSlot, 2);
+        final switching = phoneState.createNewSession();
+        await dropping;
+        await switching;
+        final other = await add('ex-bench');
+        await phoneState.addEntry(other);
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          isNot('s-1'),
+          reason:
+              'the fixture: the window the switch closed composed the phone\'s '
+              'new session',
+        );
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'the fixture: nobody announced the dropped set, because no pass '
+              'of `s-1` ran between the deletion and the switch',
+        );
+
+        // Back to the session the wrist is running, which no longer holds one
+        // of the phone's sets.
+        await phoneState.loadHistoricalSession('s-1');
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          's-1',
+          reason: 'the fixture: the pass after the browse composed `s-1` again',
+        );
+
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason:
+              'D-114 the ledger is dropped on every pass but the composed '
+              'session\'s, so a phone that leaves `s-1` and comes back seeds '
+              'again from what it holds now instead of comparing `s-1` against '
+              'the ids it announced before the switch: the first pass of the '
+              'returned session announces nothing, and in particular no '
+              'deletion for the set that stopped being held in between',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('F2 a deletion is announced per delete event, not per entry', () {
+    test(
+      'F2 a number the phone re-used and dropped again is announced again, '
+      'under a change id the wrist has not applied',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        await logSetHeldByBoth();
+        final doomed = await logSetHeldByBoth();
+        expect(
+          doomed,
+          'entry-$_firstSlot-3',
+          reason: 'the fixture: the phone numbered its third set 3 (D-325)',
+        );
+
+        // The user drops that set: the frame goes out and the wrist hides it.
+        await phoneState.deleteEntry(_firstSlot, 3);
+        await graph.autoPush.flush();
+        final first = radio.ofType('structure_change').single;
+        await engine.applyMessage(first);
+        expect(
+          wristEntryIds(),
+          isNot(contains(doomed)),
+          reason: 'the fixture: the wrist hid the set the phone dropped',
+        );
+
+        // The phone logs another set, which its mint numbers 3 again, and the
+        // wrist applies the snapshot carrying it: the id the lens hides is
+        // stated again with a later stamp, which is the wrist's own rule for a
+        // re-created row (D-113.3).
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await graph.autoPush.flush();
+        await engine.applyMessage(radio.ofType('session_snapshot').last);
+        expect(
+          wristEntryIds(),
+          contains(doomed),
+          reason:
+              'the fixture: the row the phone re-created under number 3 is '
+              'visible on the wrist again',
+        );
+
+        // Dropping it is a second deletion *event*, of a number the phone has
+        // already announced once (F2).
+        await phoneState.deleteEntry(_firstSlot, 3);
+        await graph.autoPush.flush();
+        final second = radio.ofType('structure_change').last;
+        expect(
+          _payload(second)['changeId'],
+          isNot(_payload(first)['changeId']),
+          reason:
+              'F2 two deletion events are two change ids: the wrist drops a '
+              'change id it has already applied, durably, so an id derived '
+              'from the entry alone would have it swallow the second deletion '
+              'of a number the phone re-used',
+        );
+        expect(
+          _payload(second)['changeId'],
+          startsWith('del-$doomed-'),
+          reason: 'F2 the id still names the entry the event is about',
+        );
+
+        await engine.applyMessage(second);
+        expect(
+          wristEntryIds(),
+          isNot(contains(doomed)),
+          reason:
+              'F2 the wrist hides the set the second event names: the frame is '
+              'not deduped against the one it already applied',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('F3 a deletion frame names the session it is about', () {
+    test(
+      'F3 a deletion of the phone\'s own session neither names nor moves the '
+      'wrist\'s session, which the phone never held',
+      () async {
+        // The phone starts a session of its own — Y — which is what the push
+        // composes.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final ownSessionId = phoneState.currentSession!.id;
+
+        // The wrist is running a session of its own — X — which the phone has
+        // no row for: the mirror takes it (S-86) and refuses to adopt it
+        // (D-10).
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot').last['sessionId'],
+          ownSessionId,
+          reason: 'the fixture: the push composes the phone\'s own session',
+        );
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason:
+              'the fixture: the mirror still holds the wrist\'s session, and '
+              'the phone\'s is the one the payload names',
+        );
+        final before = graph.mirror.state;
+        final beforeIds = _entryIds(
+          _payload(radio.ofType('session_snapshot').last),
+        );
+        expect(
+          beforeIds,
+          hasLength(2),
+          reason: 'the fixture: the phone\'s own session holds its two sets',
+        );
+
+        await phoneState.deleteEntry(own, 0);
+        await graph.autoPush.flush();
+
+        // The set the phone dropped, read off the pass that followed it: the
+        // deletion and the snapshot of the same pass go out together (D-111).
+        final afterIds = _entryIds(
+          _payload(radio.ofType('session_snapshot').last),
+        );
+        final dropped = beforeIds.firstWhere(
+          (entryId) => !afterIds.contains(entryId),
+          orElse: () => fail('the fixture: the phone dropped no set'),
+        );
+
+        final deletion = radio.ofType('structure_change').single;
+        expect(
+          deletion['sessionId'],
+          ownSessionId,
+          reason:
+              'F3 the frame names the session the deletion is about — the one '
+              'the pass composed — and not the session the mirror happens to '
+              'hold: the wrist refuses a frame naming any other session, so '
+              'this deletion would be invisible to the user',
+        );
+        expect(
+          _payload(deletion)['changes'],
+          [
+            {'kind': 'delete_entry', 'entryId': dropped},
+          ],
+          reason: 'F3 the frame still names the set the phone dropped',
+        );
+        expect(
+          graph.mirror.state,
+          before,
+          reason:
+              'F3 a deletion of the phone\'s session never moves the mirror\'s '
+              'state for the wrist\'s: applying it locally would hide an entry '
+              'of a session the frame does not name',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('F7 a deletion whose send failed is owed, not lost', () {
+    test(
+      'F7 the next pass announces the deletion the failed one could not, under '
+      'the change id it was minted with',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        final doomed = await logSetHeldByBoth();
+
+        // The frame the deletion owes never leaves the phone: the transport
+        // fails the future rather than reporting it (S-113's seam).
+        radio.throwing = true;
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+        expect(
+          failures,
+          hasLength(1),
+          reason: 'F7 the failed pass is reported, once (D-98)',
+        );
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason: 'F7 the transport carried no deletion frame',
+        );
+        final attempted = [
+          for (final frame in radio.attempted)
+            if (frame['type'] == 'structure_change') frame,
+        ];
+        expect(
+          attempted,
+          hasLength(1),
+          reason: 'F7 the pass did try to announce the deletion it owed',
+        );
+
+        // The radio comes back. The deletion is still owed, and it is the same
+        // change: a new id would be a second change for the one deletion.
+        radio.throwing = false;
+        await graph.autoPush.flush();
+        final retried = radio.ofType('structure_change');
+        expect(
+          retried,
+          hasLength(1),
+          reason:
+              'F7 a deletion stays owed until its frame has gone: the ledger of '
+              'what the wrist was told is never updated by a send that failed',
+        );
+        expect(
+          _payload(retried.single)['changeId'],
+          _payload(attempted.single)['changeId'],
+          reason: 'F7 the owed event keeps the change id it was minted with',
+        );
+        expect(failures, hasLength(1), reason: 'the retry did not fail');
+
+        await engine.applyMessage(retried.single);
+        expect(
+          wristEntryIds(),
+          isNot(contains(doomed)),
+          reason: 'F7 the retried frame hides the set the phone dropped',
+        );
+
+        // It has gone: no later pass announces it again.
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          hasLength(1),
+          reason: 'F7 an announced deletion is not announced again',
+        );
+        expect(failures, hasLength(1));
+      },
+    );
+
+    test(
+      'S-203 a deletion frame the radio reports `undelivered` stays owed under '
+      'the change id it was minted with',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        final doomed = await logSetHeldByBoth();
+
+        // The wrist is out of range and the radio says so quietly: the frame
+        // is minted and refused, so the deletion is neither carried nor lost
+        // (D-191, D-197 site 3).
+        radio.unreachable = true;
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          isEmpty,
+          reason: 'S-203 nothing left the phone: the radio carried no frame',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason:
+              'S-203 a radio that reports `undelivered` is quiet: there is no '
+              'failure to report (D-201)',
+        );
+        final attempted = [
+          for (final frame in radio.attempted)
+            if (frame['type'] == 'structure_change') frame,
+        ];
+        expect(
+          attempted,
+          hasLength(1),
+          reason: 'S-203 the pass did mint and offer the deletion it owes',
+        );
+
+        // The wrist comes back: the same deletion goes out, once, under the
+        // same change id — a new one would be a second change for one deletion.
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final retried = radio.ofType('structure_change');
+        expect(
+          retried,
+          hasLength(1),
+          reason:
+              'S-203 a deletion stays owed until its frame has been delivered '
+              '(D-191, D-197 site 3)',
+        );
+        expect(
+          _payload(retried.single)['changeId'],
+          _payload(attempted.single)['changeId'],
+          reason: 'S-203 the owed event keeps the change id it was minted with',
+        );
+
+        await engine.applyMessage(retried.single);
+        expect(
+          wristEntryIds(),
+          isNot(contains(doomed)),
+          reason: 'S-203 the retried frame hides the set the phone dropped',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('structure_change'),
+          hasLength(1),
+          reason: 'S-203 a delivered deletion is not announced again',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  // 19a Phase 2: the phone resets a wrist that is running a session the phone
+  // is not in. D-176's step is three frames — `abandoned(W)`, P's snapshot,
+  // `requestSnapshot()` — sent by the push pass and by the resume catch-up.
+  group('S-172 the phone resets the wrist\'s live session, then asserts its '
+      'own', () {
+    /// The mismatched pair: the phone holds a session of its own, and the
+    /// mirror holds the wrist's own live one, which the phone refused to adopt
+    /// (D-10). Answers the phone's session id and the slot it holds.
+    Future<({String sessionId, String slot})> mismatchedPair() async {
+      await phoneState.createNewSession();
+      final own = await add('ex-squat');
+      final sessionId = phoneState.currentSession!.id;
+      await phoneState.addEntry(
+        own,
+        previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+      );
+
+      await engine.createSession(
+        modality: null,
+        exercises: [
+          _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+        ],
+      );
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+      expect(
+        graph.mirror.sessionId,
+        's-1',
+        reason: 'the fixture: the mirror took the wrist\'s own session',
+      );
+      expect(
+        phoneState.currentSession?.id,
+        sessionId,
+        reason: 'the fixture: the phone kept its own session (D-10)',
+      );
+      expect(failures, isEmpty);
+
+      graph.autoPush.bindWorkoutState(phoneState);
+      // The announcement above is answered by D-182's second row before this
+      // scenario's window opens — W's end, then P, the pair S-189 pins in
+      // full — so both logs start after it and each scenario reads its own
+      // pass alone.
+      expect(
+        [
+          for (final frame in radio.sent)
+            '${frame['type']}:${frame['sessionId']}',
+        ],
+        ['session_lifecycle:s-1', 'session_snapshot:$sessionId'],
+        reason:
+            'the fixture: the wrist\'s own announcement is answered with the '
+            'reset pair, before the pass',
+      );
+      radio.sent.clear();
+      radio.attempted.clear();
+      return (sessionId: sessionId, slot: own);
+    }
+
+    /// Every frame the radio carried, as `kind:id` — the order the wrist sees
+    /// them in, which is half of what these scenarios pin.
+    List<String> sentOrder() => [
+      for (final frame in radio.sent)
+        if (frame['type'] == 'session_lifecycle')
+          'lifecycle:${frame['sessionId']}'
+        else if (frame['type'] == 'session_snapshot')
+          'snapshot:${frame['sessionId']}'
+        else
+          'request:${WatchTransportRequest.nameOf(frame)}',
+    ];
+
+    test(
+      'S-172 the pass sends abandoned(W) then P\'s own state, and the wrist\'s '
+      'answer is what converges the pair',
+      () async {
+        final pair = await mismatchedPair();
+
+        await graph.autoPush.flush();
+
+        expect(
+          sentOrder(),
+          [
+            'lifecycle:s-1',
+            'snapshot:${pair.sessionId}',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-172 the reset names the session the wrist is running before '
+              'every frame that names the phone\'s own, and the request that '
+              'asks what the wrist holds now comes last (D-176)',
+        );
+        expect(
+          _payload(radio.ofType('session_lifecycle').single)['state'],
+          WatchLifecycleState.abandoned,
+          reason:
+              'S-172 the wrist\'s session is abandoned, never `completed`: an '
+              'end the phone never held is not the phone\'s to announce (D-176)',
+        );
+        expect(
+          _slotIds(_payload(radio.ofType('session_snapshot').single)),
+          [pair.slot],
+          reason: 'S-172 the snapshot in the reset is the phone\'s own ladder',
+        );
+
+        // What the wrist does with them, in the order they arrived.
+        await engine.applyMessage(radio.ofType('session_lifecycle').single);
+        await engine.applyMessage(radio.ofType('session_snapshot').single);
+        expect(
+          engine.session!.sessionId,
+          pair.sessionId,
+          reason:
+              'S-172 the wrist ends W and installs the phone\'s session — the '
+              'snapshot naming P would be refused whole while the wrist\'s own '
+              'active W is in front of it (D-78), which is what the frame '
+              'ahead of it clears',
+        );
+        expect(wristSlots(), [pair.slot]);
+        expect(
+          [
+            for (final row in (await wristStore.readAll()).sessions)
+              if (row.sessionId == 's-1') row.status,
+          ],
+          contains(WatchSessionStatus.abandoned),
+          reason:
+              'S-172 W is abandoned on the wrist — a row, never a deletion '
+              '(I-3)',
+        );
+
+        // What the request asks for: the wrist's answer, which is the only
+        // thing that moves the phone's own mirror off W.
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          pair.sessionId,
+          reason:
+              'S-172 the debt clears on the wrist\'s answer, not on anything '
+              'the phone wrote: nothing in the reset writes the mirror\'s own '
+              'id (D-176)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-180 a reset the radio cannot carry is dropped, re-sent by the next '
+      'pass, and owed by nobody once the pair agrees',
+      () async {
+        final pair = await mismatchedPair();
+
+        // Pass 1: the radio fails the future rather than reporting it, so the
+        // pass ends on its first frame and carries nothing (S-113's seam).
+        radio.throwing = true;
+        await graph.autoPush.flush();
+        expect(
+          failures,
+          hasLength(1),
+          reason: 'S-180 the failed pass is reported, once (D-98)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-180 the reset is the pass\'s first frame and nothing else is '
+              'attempted: a pass that failed drops the rest of its work rather '
+              'than queueing it (D-178, S-83)',
+        );
+        expect(radio.ofType('session_lifecycle'), isEmpty);
+        expect(radio.ofType('session_snapshot'), isEmpty);
+        expect(
+          phoneState.currentSession?.id,
+          pair.sessionId,
+          reason: 'S-180 a failed pass changes nothing on the phone',
+        );
+
+        // Pass 2: the radio is back. Nothing was told to the wrist, so the
+        // reset is still owed — although the failed attempt applied the
+        // lifecycle locally and left this mirror holding W abandoned.
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture for the retry: the reset writes no id (D-176)',
+        );
+        expect(
+          graph.mirror.status,
+          WatchSessionStatus.abandoned,
+          reason:
+              'the fixture for the retry: the frame is applied locally before '
+              'the transport is asked, so the debt must survive a mirror that '
+              'is no longer active — which is why the predicate is not '
+              'conditioned on `isActive` (D-176)',
+        );
+        radio.throwing = false;
+        radio.sent.clear();
+        await graph.autoPush.flush();
+        expect(
+          sentOrder(),
+          [
+            'lifecycle:s-1',
+            'snapshot:${pair.sessionId}',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-180 the retry sends the abandoned frame the failed pass could '
+              'not carry, then the phone\'s own state — an owed reset is not '
+              'cleared by the attempt that failed (D-178)',
+        );
+        expect(failures, hasLength(1), reason: 'S-180 the retry did not fail');
+
+        // The wrist applies them and answers the request.
+        await engine.applyMessage(radio.ofType('session_lifecycle').single);
+        await engine.applyMessage(radio.ofType('session_snapshot').single);
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(graph.mirror.sessionId, pair.sessionId);
+        expect(engine.session!.sessionId, pair.sessionId);
+
+        // Pass 3: nothing is owed any more, so no lifecycle is ever sent for
+        // the session the two now share.
+        radio.sent.clear();
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'S-180 with the pair agreed the predicate is false: the phone '
+              'never abandons the session it is working through (D-176)',
+        );
+        expect(
+          sentOrder(),
+          isEmpty,
+          reason:
+              'S-180 and the pass settles to nothing at all — no reset, no '
+              'state, no request — once the wrist\'s answer has converged the '
+              'pair (D-176, D-178)',
+        );
+        expect(failures, hasLength(1), reason: 'S-180 nothing else failed');
+      },
+    );
+
+    test(
+      'S-181 case A a pair that already agrees sends exactly what it sent '
+      'before',
+      () async {
+        // Case A: the phone adopted the wrist's session, so the two agree.
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason: 'S-181 A the push of an agreeing pair sends no lifecycle',
+        );
+        expect(radio.ofType('session_snapshot'), hasLength(1));
+
+        radio.sent.clear();
+        await graph.sync();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'S-181 A the resume is untouched where the mirror\'s id is the '
+              'composed session\'s own: the predicate is `sessionId != '
+              'composedId` (D-176)',
+        );
+        expect(
+          sentOrder(),
+          [
+            'snapshot:${phoneState.currentSession!.id}',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-181 A an agreeing pair sends the frames S-109 has always '
+              'pinned: its own state, then exactly one request',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-182 the resume sends the reset before its own state, and the answer '
+      'clears the debt',
+      () async {
+        final pair = await mismatchedPair();
+
+        await graph.sync();
+        expect(
+          sentOrder(),
+          [
+            'lifecycle:s-1',
+            'snapshot:${pair.sessionId}',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-182 the catch-up sends the same two frames the push sends, '
+              'before its one request (D-176, D-178)',
+        );
+        expect(
+          _payload(radio.ofType('session_lifecycle').single)['state'],
+          WatchLifecycleState.abandoned,
+          reason: 'S-182 the frame ahead of the phone\'s own is the `abandoned`',
+        );
+
+        // The wrist applies them and answers the request with what it holds.
+        await engine.applyMessage(radio.ofType('session_lifecycle').single);
+        await engine.applyMessage(radio.ofType('session_snapshot').single);
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          pair.sessionId,
+          reason:
+              'S-182 the answer names the phone\'s session, which is what '
+              'clears the debt (D-176)',
+        );
+
+        radio.sent.clear();
+        await graph.sync();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'S-182 the second resume of the same pair is quiet: the debt is '
+              'cleared by the wrist, so nothing is re-abandoned, and a '
+              're-sent `abandoned(W)` would be refused by the wrist\'s guard '
+              'once it holds P (D-79, D-176)',
+        );
+        expect(
+          sentOrder(),
+          [
+            'snapshot:${pair.sessionId}',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-182 and what is left is the resume itself: the phone\'s own '
+              'state and exactly one request',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-181 case B a phone holding its own session over a wrist that holds '
+      'nothing sends no lifecycle and never names the placeholder',
+      () async {
+        expect(
+          graph.mirror.sessionId,
+          watchSessionPlaceholderId,
+          reason:
+              'the fixture: a freshly wired graph holds the phone\'s '
+              'not-a-session, which is a valid id that names no session '
+              '(D-23, D-173)',
+        );
+
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        expect(
+          phoneState.currentSession!.id,
+          isNot(watchSessionPlaceholderId),
+          reason: 'the fixture: the phone is composing a real session',
+        );
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'S-181 B the mirror holds the placeholder, which is not a '
+              'session: nothing is abandoned to clear it (D-173)',
+        );
+        expect(radio.ofType('session_snapshot'), hasLength(1));
+
+        radio.sent.clear();
+        await graph.sync();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason: 'S-181 B and the resume of the same pair does not either',
+        );
+        expect(
+          [
+            for (final frame in radio.sent) ...[
+              frame['sessionId'],
+              if (frame['payload'] is Map)
+                (frame['payload']! as Map)['sessionId'],
+            ],
+          ],
+          isNot(contains(watchSessionPlaceholderId)),
+          reason:
+              'S-181 B no frame anywhere names the placeholder: a wrist '
+              'holding nothing must not be handed a junk id to store as an '
+              'abandoned session (D-173)',
+        );
+        expect(
+          sentOrder(),
+          [
+            'snapshot:${phoneState.currentSession!.id}',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-181 B the placeholder is not a session to reset, so the '
+              'resume is exactly what S-109 pinned',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  // 19b Phase 2 (D-191, D-192, D-197, D-198, D-201, D-202): a frame the radio
+  // did not carry is never marked sent. What is owed stays owed and is offered
+  // again at the triggers that already exist — a WorkoutState pass, a resume, a
+  // frame from the wrist — and a pass that owes nothing sends nothing.
+  //
+  // `_PhoneRadio.unreachable` is the honest half of the radio's answer: the
+  // frame never left, the channel is not called, and nothing is reported. The
+  // `throwing` seam (S-83, F7, S-180) is the other half — an exception — and
+  // both leave the same sites owed.
+  group('S-200 a frame the radio did not carry stays owed', () {
+    test(
+      'S-200 the baseline does not advance on an undelivered send, so the same '
+      'state is offered again when the radio comes back',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await phoneState.addEntry(
+          _secondSlot,
+          previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
+        );
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason: 'S-200 nothing left the phone while the wrist was apart',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason:
+              'S-200 an unreachable radio is quiet: being out of range is not '
+              'a failure to report (D-201)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-200 the pass composed the change and offered it once: what '
+              'the radio refused is owed, not sent',
+        );
+        expect(
+          radio.attempted.single['type'],
+          'session_snapshot',
+          reason: 'S-200 a change on the phone is offered as a snapshot',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final offered = radio.ofType('session_snapshot');
+        expect(
+          offered,
+          hasLength(1),
+          reason:
+              'S-200 the payload the wrist never got is offered again at the '
+              'next trigger: the baseline did not advance (D-191, D-192(a))',
+        );
+        expect(
+          offered.single['sessionId'],
+          phoneState.currentSession!.id,
+          reason: 'S-200 and it is the phone\'s own session, unchanged',
+        );
+        expect(
+          _entryIds(_payload(offered.single)),
+          _entryIds(_payload(radio.attempted.first)),
+          reason:
+              'S-200 it carries the very state that was refused — nothing '
+              'changed on the phone in between',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-200 the delivered frame is the one the baseline takes: the '
+              'same state is not offered twice (S-207)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-200 a resume whose own snapshot the radio refused stays owed, and the '
+      'push offers it again (D-191 site 4, D-198)',
+      () async {
+        await wristStartsSession();
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await graph.sync();
+
+        expect(
+          radio.sent,
+          isEmpty,
+          reason: 'S-200 the resume carried nothing while the wrist was apart',
+        );
+        expect(
+          radio.attempted,
+          hasLength(2),
+          reason:
+              'S-200 the resume offered its own snapshot and the request that '
+              'follows it, and nothing else (S-181 B pins the pair)',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'S-200 and it reported nothing (D-201)',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-200 the resume\'s payload equalled the push\'s baseline when '
+              'the resume ran, so only `forgetBaseline()` makes the next pass '
+              'offer it again (D-198)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-201 an end the radio refused stays pending', () {
+    test(
+      'S-201 the phone\'s finish is offered once when the radio comes back, and '
+      'the pending set empties only on the delivered frame',
+      () async {
+        // The mismatched pair (D-10): the phone holds its own session P, the
+        // wrist announces its own live one, and the phone refuses to adopt it.
+        // P's end therefore travels as a lifecycle naming P — the branch D-197
+        // gates on the transport's answer.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final sessionId = phoneState.currentSession!.id;
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        // One settled pass, so P has been announced before the scenario's own
+        // window opens.
+        await graph.autoPush.flush();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason: 'S-201 the end did not leave the phone',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'S-201 an unreachable radio reports nothing (D-201)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-201 the pass composed nothing (the phone ended its session) '
+              'and offered the pending end, once',
+        );
+        expect(radio.attempted.single['sessionId'], sessionId);
+        expect(
+          _payload(radio.attempted.single)['state'],
+          WatchLifecycleState.completed,
+          reason: 'S-201 the row ended, so the end announced is `completed`',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final ends = radio.ofType('session_lifecycle');
+        expect(
+          ends,
+          hasLength(1),
+          reason:
+              'S-201 the end stayed pending and goes out at the next trigger, '
+              'once (D-191, D-197 site 2)',
+        );
+        expect(ends.single['sessionId'], sessionId);
+        expect(
+          _payload(ends.single)['state'],
+          WatchLifecycleState.completed,
+          reason: 'S-201 and it is the same end, not a second one',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          hasLength(1),
+          reason:
+              'S-201 the pending-ends set empties on the delivered frame: no '
+              'later pass announces the end again',
+        );
+        expect(
+          radio.attempted,
+          hasLength(2),
+          reason: 'S-201 and nothing else is ever attempted for it',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-201 a discard the radio did not carry stays pending and is announced '
+      'when the watch can be reached',
+      () async {
+        // The mismatched pair (D-10), as above: the phone holds its own session
+        // P, the wrist announces its own live one, and the phone refuses to
+        // adopt it. Discarding P removes its row, so its end travels as a
+        // lifecycle naming P — the `row == null` branch.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final sessionId = phoneState.currentSession!.id;
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+
+        graph.autoPush.bindWorkoutState(phoneState);
+        // One settled pass, so P has been announced before the scenario's own
+        // window opens.
+        await graph.autoPush.flush();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await phoneState.discardCurrentSession();
+        await graph.autoPush.flush();
+
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason: 'S-201 the discard did not leave the phone',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'S-201 an unreachable radio reports nothing (D-201)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-201 the pass composed nothing (the phone discarded its '
+              'session) and offered the pending end, once',
+        );
+        expect(radio.attempted.single['sessionId'], sessionId);
+        expect(
+          _payload(radio.attempted.single)['state'],
+          WatchLifecycleState.abandoned,
+          reason: 'S-201 the row is gone, so the end announced is `abandoned`',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final ends = radio.ofType('session_lifecycle');
+        expect(
+          ends,
+          hasLength(1),
+          reason:
+              'S-201 the end stayed pending and goes out at the next trigger, '
+              'once (D-191, D-197 site 2)',
+        );
+        expect(ends.single['sessionId'], sessionId);
+        expect(
+          _payload(ends.single)['state'],
+          WatchLifecycleState.abandoned,
+          reason: 'S-201 and it is the same end, not a second one',
+        );
+
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          hasLength(1),
+          reason:
+              'S-201 the pending-ends set empties on the delivered frame: no '
+              'later pass announces the end again',
+        );
+        expect(
+          radio.attempted,
+          hasLength(2),
+          reason: 'S-201 and nothing else is ever attempted for it',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-205 a frame from the wrist re-offers what is owed, never itself', () {
+    test(
+      'S-205 (S-209) the wrist\'s own set arrives while a deletion is owed: it '
+      'is applied, never echoed, and the deletion leaves after it',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await engine.applyMessage(await pushPhoneSet());
+        final doomed = await logSetHeldByBoth();
+
+        // A deletion the radio could not carry: still owed when the wrist
+        // speaks first.
+        radio.unreachable = true;
+        await phoneState.deleteEntry(_firstSlot, 2);
+        await graph.autoPush.flush();
+        final refused = [
+          for (final frame in radio.attempted)
+            if (frame['type'] == 'structure_change') frame,
+        ];
+        expect(
+          refused,
+          hasLength(1),
+          reason: 'the fixture: the deletion is minted and refused, still owed',
+        );
+        radio.sent.clear();
+        radio.attempted.clear();
+        radio.unreachable = false;
+
+        await engine.appendObservation(<String, Object?>{
+          'entryId': _wristEntryId2,
+          'eventId': _wristEntryId2,
+          'kind': 'set',
+          'loggedAt': _atIso(3),
+          'sessionExerciseId': _firstSlot,
+          'exerciseId': 'ex-squat',
+          'reps': 5,
+          'loadKg': 70.0,
+        });
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+
+        expect(
+          await phoneEntries(_firstSlot),
+          3,
+          reason:
+              'S-205 the frame is applied to the phone\'s own session before '
+              'anything is offered (two sets left after the deletion, plus the '
+              'wrist\'s new one)',
+        );
+        final deletions = radio.ofType('structure_change');
+        expect(
+          deletions,
+          hasLength(1),
+          reason:
+              'S-205 the applied frame is the trigger that re-offers what is '
+              'owed (D-192(c), D-198)',
+        );
+        expect(
+          _payload(deletions.single)['changeId'],
+          _payload(refused.single)['changeId'],
+          reason: 'S-205 with the change id it was minted with (S-203)',
+        );
+        expect(
+          _payload(deletions.single)['changes'],
+          [
+            {'kind': 'delete_entry', 'entryId': doomed},
+          ],
+          reason: 'S-205 and it names the entry that vanished',
+        );
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason:
+              'S-205 the frame the wrist sent is the new baseline, not news '
+              'back to it: an applied frame is not echoed (D-82, D-198)',
+        );
+        expect(
+          [
+            for (final frame in radio.sent)
+              if (frame['type'] != 'receipt' &&
+                  '$frame'.contains(_wristEntryId2))
+                frame,
+          ],
+          isEmpty,
+          reason:
+              'S-205 nothing carries the observation\'s own row id back to the '
+              'wrist that logged it — no snapshot and no observation (the '
+              'receipt that acknowledges it is not an echo of its row)',
+        );
+        expect(
+          radio.ofType('receipt'),
+          hasLength(1),
+          reason: 'S-205 the applied frame is acknowledged once (D-82)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-207 nothing owed is nothing sent', () {
+    test(
+      'S-207 a pass with an unchanged payload and nothing owed sends nothing, '
+      'and one change sends one snapshot',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        await graph.autoPush.flush();
+        await graph.autoPush.flush();
+
+        expect(
+          radio.attempted,
+          isEmpty,
+          reason:
+              'S-207 the payload equals the baseline and nothing is owed, so '
+              'no site is even attempted — a push is not a heartbeat',
+        );
+        expect(radio.sent, isEmpty, reason: 'S-207 and no channel call');
+
+        await phoneState.addEntry(
+          _secondSlot,
+          previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
+        );
+        await graph.autoPush.flush();
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason: 'S-207 one change, one offer',
+        );
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason: 'S-207 and one frame on the wire',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-208 triggers inside one window make one drain', () {
+    test(
+      'S-208 three triggers in flight are one running pass and, at most, the '
+      'one pass they asked for',
+      () async {
+        await wristStartsSession();
+        // A hand-built push, so the pass count is observable through the one
+        // seam a pass always uses: it reads the row of every session whose end
+        // is still pending, and every pass composes a session.
+        var passes = 0;
+        final push = WatchSessionAutoPush(
+          mirror: graph.mirror,
+          getSession: (sessionId) async {
+            passes++;
+            return repository.getSession(sessionId);
+          },
+          heldWristEntryIds: graph.adoption.heldWristEntryIds,
+        );
+        push.bindWorkoutState(phoneState);
+        await phoneState.addEntry(
+          _firstSlot,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        await push.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason: 'the fixture: one settled pass, so the baseline is set',
+        );
+        radio.sent.clear();
+        radio.attempted.clear();
+        passes = 0;
+
+        await Future.wait(<Future<void>>[
+          push.flush(),
+          push.flush(),
+          push.flush(),
+        ]);
+
+        expect(
+          passes,
+          lessThanOrEqualTo(2),
+          reason:
+              'S-208 three triggers inside one window are bounded: the trigger '
+              'that arrives while a pass runs asks for one more, it never '
+              'starts a pass of its own',
+        );
+        expect(
+          radio.attempted,
+          isEmpty,
+          reason: 'S-208 and the drain has nothing to send',
+        );
+
+        passes = 0;
+        await phoneState.addEntry(
+          _secondSlot,
+          previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
+        );
+        await _until(
+          () => radio.ofType('session_snapshot').isNotEmpty,
+          reason: 'S-208 the window closes into the change\'s own pass',
+        );
+        expect(passes, 1, reason: 'S-208 one change, one pass');
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason: 'S-208 and one snapshot, the newest state',
+        );
+        expect(
+          radio.sent,
+          hasLength(1),
+          reason:
+              'S-208 nothing else is ever sent: no lifecycle for the session '
+              'the phone is still in, no deletion',
+        );
+        await _settle();
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason: 'S-208 and the pass does not offer the same state twice',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-210 an undelivered reset is re-offered whole', () {
+    test(
+      'S-210 pass one carries nothing and the debt stays, the next pass sends '
+      'the three frames in order, and the wrist\'s answer is what clears it',
+      () async {
+        // 19a's S-180 fixture: the phone holds its own session P; the wrist is
+        // running its own W, which the phone refused to adopt (D-10). The radio
+        // is apart while W's announcement arrives, so the router's own answer to
+        // it (D-182) is refused too, and neither the push nor the resume has
+        // landed the step.
+        await phoneState.createNewSession();
+        final own = await add('ex-squat');
+        final sessionId = phoneState.currentSession!.id;
+        await phoneState.addEntry(
+          own,
+          previousValues: <String, dynamic>{'reps': 8, 'weight': 62.5},
+        );
+        graph.autoPush.bindWorkoutState(phoneState);
+        radio.unreachable = true;
+        await engine.createSession(
+          modality: null,
+          exercises: [
+            _slot(_firstSlot, 'ex-squat', 'Squat', ['sets', 'reps', 'load']),
+          ],
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          's-1',
+          reason: 'the fixture: the mirror took the wrist\'s own session',
+        );
+        expect(
+          phoneState.currentSession?.id,
+          sessionId,
+          reason: 'the fixture: the phone kept its own session (D-10)',
+        );
+        expect(
+          graph.mirror.owesResetFor(sessionId),
+          isTrue,
+          reason: 'the fixture: the reset is owed (D-176)',
+        );
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        String kindOf(Map<String, Object?> frame) {
+          if (frame['type'] == 'session_lifecycle') {
+            return 'lifecycle:${frame['sessionId']}';
+          }
+          if (frame['type'] == 'session_snapshot') {
+            return 'snapshot:${frame['sessionId']}';
+          }
+          return 'request:${WatchTransportRequest.nameOf(frame)}';
+        }
+
+        // Pass 1: nothing at all leaves the phone, and no failure is reported.
+        await graph.autoPush.flush();
+        expect(
+          radio.sent,
+          isEmpty,
+          reason:
+              'S-210 the radio refuses before the channel, so pass one carries '
+              'nothing at all (D-201)',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason: 'S-210 and it reports nothing (D-201)',
+        );
+        expect(
+          [
+            for (final frame in radio.attempted) kindOf(frame),
+          ],
+          [
+            'lifecycle:s-1',
+            'snapshot:$sessionId',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-210 the reset is one step of three frames, offered whole in '
+              'the order the live path uses (D-176, D-202)',
+        );
+        expect(
+          graph.mirror.owesResetFor(sessionId),
+          isTrue,
+          reason: 'S-210 and the debt is still owed (D-178, D-202)',
+        );
+
+        // Pass 2: the radio is back, and the whole step is offered again.
+        radio.unreachable = false;
+        final before = radio.attempted.length;
+        await graph.autoPush.flush();
+        expect(
+          [
+            for (final frame in radio.sent) kindOf(frame),
+          ],
+          [
+            'lifecycle:s-1',
+            'snapshot:$sessionId',
+            'request:${WatchTransportRequest.snapshot}',
+          ],
+          reason:
+              'S-210 the refused step is re-offered whole, in order: the '
+              '`abandoned(W)` frame was never marked sent (D-191, D-202)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(before + 3),
+          reason: 'S-210 exactly the same three frames, nothing more',
+        );
+
+        // What the wrist does with them, and its answer, which is the only
+        // thing that clears the debt.
+        await engine.applyMessage(radio.ofType('session_lifecycle').single);
+        await engine.applyMessage(radio.ofType('session_snapshot').single);
+        expect(
+          engine.session!.sessionId,
+          sessionId,
+          reason: 'S-210 the wrist ends W and installs the phone\'s session',
+        );
+        await radio.fromWrist(engine.sessionSnapshot()!);
+        await _settle();
+        expect(
+          graph.mirror.sessionId,
+          sessionId,
+          reason:
+              'S-210 the debt clears on the wrist\'s answer, not on anything '
+              'the phone wrote (D-176)',
+        );
+        expect(
+          graph.mirror.owesResetFor(sessionId),
+          isFalse,
+          reason: 'S-210 and with the pair agreeing the reset is owed to nobody',
+        );
+
+        final landed = radio.sent.length;
+        await graph.autoPush.flush();
+        expect(
+          radio.sent,
+          hasLength(landed),
+          reason:
+              'S-210 the settled pair sends nothing: no lifecycle, no second '
+              'assertion (D-202, S-207)',
+        );
+        expect(
+          radio.ofType('session_lifecycle'),
+          hasLength(1),
+          reason: 'S-210 the abandoned frame went out exactly once',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-211 re-offering an arrived frame changes nothing', () {
+    test(
+      'S-211 a frame that reached the wrist although its result did not is '
+      're-offered, and the wrist is unchanged by the second copy',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        // Every snapshot the phone has sent so far reaches the wrist, so the
+        // pair is converged before the change this test is about.
+        for (final frame in radio.ofType('session_snapshot')) {
+          await engine.applyMessage(frame);
+        }
+        radio.sent.clear();
+        radio.attempted.clear();
+        expect(
+          wristEntryIds(),
+          hasLength(2),
+          reason: 'the fixture: the wrist holds its own set and one copy',
+        );
+
+        radio.unreachable = true;
+        radio.carriesWhileApart = true;
+        await phoneState.addEntry(
+          _secondSlot,
+          previousValues: <String, dynamic>{'reps': 6, 'weight': 40.0},
+        );
+        await graph.autoPush.flush();
+        final first = radio.ofType('session_snapshot');
+        expect(
+          first,
+          hasLength(1),
+          reason:
+              'the fixture: the frame reached the wrist although the result '
+              'did not come back — a lost answer, not a lost frame',
+        );
+        await engine.applyMessage(first.single);
+        // The state the second copy of the same payload must leave untouched.
+        final ids = wristEntryIds();
+        final slots = wristSlots();
+        expect(
+          ids,
+          hasLength(3),
+          reason:
+              'the fixture: the copy that arrived carried the phone\'s new set',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        final second = [
+          for (final frame in radio.ofType('session_snapshot'))
+            if (frame['messageId'] != first.single['messageId']) frame,
+        ];
+        expect(
+          second,
+          hasLength(1),
+          reason:
+              'S-211 the pass read `undelivered`, so the payload is not owed '
+              'as delivered and is re-offered (D-191)',
+        );
+        expect(
+          _entryIds(_payload(second.single)),
+          _entryIds(_payload(first.single)),
+          reason: 'S-211 and it is the same state as the copy that arrived',
+        );
+        expect(
+          second.single['messageId'],
+          isNot(first.single['messageId']),
+          reason:
+              'S-211 it is a new frame, not a queued one: the re-offer is what '
+              'makes a lost result recoverable (D-196)',
+        );
+
+        await engine.applyMessage(second.single);
+        expect(
+          wristEntryIds(),
+          ids,
+          reason:
+              'S-211 the wrist applies the same state twice and nothing is '
+              'duplicated and nothing shifts (the safety property that makes '
+              're-offering legitimate)',
+        );
+        expect(wristSlots(), slots);
+        expect(
+          engine.session!.sessionId,
+          's-1',
+          reason: 'S-211 and the session is the same one',
+        );
+
+        final landed = radio.ofType('session_snapshot').length;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(landed),
+          reason:
+              'S-211 the delivered re-offer is what the baseline takes: the '
+              'state is not offered again',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-217 the phone\'s own end is not owed (D-197)', () {
+    test(
+      'S-217 a refused `completeSession()` frame is not re-offered: the '
+      'exclusion the plan kept, pinned as the behaviour it is',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        await phoneState.endSession();
+        await graph.autoPush.flush();
+
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-217 the phone\'s own end goes out as the mirror\'s own '
+              'lifecycle frame, once, and its result is refused',
+        );
+        expect(
+          _payload(radio.attempted.single)['state'],
+          WatchLifecycleState.completed,
+          reason: 'S-217 the frame is the session\'s own `completed`',
+        );
+        expect(radio.attempted.single['sessionId'], 's-1');
+        expect(radio.sent, isEmpty, reason: 'S-217 nothing arrived');
+        expect(failures, isEmpty, reason: 'S-217 and nothing is reported');
+        expect(
+          graph.mirror.status,
+          WatchSessionStatus.completed,
+          reason:
+              'S-217 the frame is applied to the mirror locally whatever the '
+              'radio answers: `completeSession` is not a site D-197 holds '
+              'owed, so the phone\'s copy is closed on both devices\' terms '
+              'only in name',
+        );
+
+        // Reachable again: the pass has nothing left to offer. `completeSession`
+        // reports through `reportLifecycle`, whose result it discards (D-197),
+        // and the "next pass's snapshot" cannot happen for the phone's own end
+        // at all: once the phone ends its session it composes nothing, so no
+        // snapshot follows (S-72 pins the same zero). This is the finding
+        // recorded against the plan's S-217 wording — see the plan's Open
+        // question 8 — and the test states the behaviour rather than pretending
+        // the end comes back.
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_lifecycle'),
+          isEmpty,
+          reason:
+              'S-217 the refused end is not re-offered by a later pass: '
+              '`completeSession()` has no owed site (D-197)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason: 'S-217 and nothing is attempted again for it',
+        );
+        expect(
+          radio.ofType('session_snapshot'),
+          isEmpty,
+          reason:
+              'S-217 and no snapshot follows: a phone that ended its own '
+              'session composes nothing of its own (S-72)',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-218 ten changes while the wrist is apart are one owed frame', () {
+    test(
+      'S-218 ten notifications with the radio unreachable attempt one frame — '
+      'the newest payload — and report nothing',
+      () async {
+        await wristStartsSession();
+        graph.autoPush.bindWorkoutState(phoneState);
+        await pushPhoneSet();
+        radio.sent.clear();
+        radio.attempted.clear();
+
+        radio.unreachable = true;
+        for (var i = 0; i < 10; i++) {
+          await phoneState.addEntry(
+            _firstSlot,
+            previousValues: <String, dynamic>{'reps': 11 + i, 'weight': 60.0},
+          );
+        }
+        await _until(
+          () => radio.attempted.isNotEmpty,
+          reason:
+              'S-218 the ten notifications are one debounce window and it '
+              'closes into one pass',
+        );
+        await _settle();
+
+        expect(
+          radio.sent,
+          isEmpty,
+          reason: 'S-218 the channel is never reached: nothing is carried',
+        );
+        expect(
+          failures,
+          isEmpty,
+          reason:
+              'S-218 and the failure hook is not called — being apart is not a '
+              'failure (D-201)',
+        );
+        expect(
+          radio.attempted,
+          hasLength(1),
+          reason:
+              'S-218 the ten changes are one owed frame, not ten reports: the '
+              'window coalesces and the payload supersedes what was never sent',
+        );
+        expect(
+          radio.attempted.single['type'],
+          'session_snapshot',
+          reason: 'S-218 and the owed frame is the newest state',
+        );
+        expect(
+          _entryIds(_payload(radio.attempted.single)),
+          hasLength(11),
+          reason:
+              'S-218 the newest payload carries every set the burst logged '
+              '(the fixture\'s one plus ten)',
+        );
+
+        radio.unreachable = false;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(1),
+          reason:
+              'S-218 the owed state goes out once when the radio comes back',
+        );
+        expect(
+          _entryIds(_payload(radio.ofType('session_snapshot').single)),
+          hasLength(11),
+          reason: 'S-218 and it is that same newest payload, whole',
+        );
+
+        final landed = radio.ofType('session_snapshot').length;
+        await graph.autoPush.flush();
+        expect(
+          radio.ofType('session_snapshot'),
+          hasLength(landed),
+          reason: 'S-218 delivered once, owed never again',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+}

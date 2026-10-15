@@ -13,9 +13,12 @@
 //    S-002 log timed work (duration, optional distance)  → `testS002...`
 //    S-003 log a round                                   → `testS003...`
 //    S-004 log a hold / drill                            → `testS004...`
-//    S-006 manual distance entry without GPS             → `testS006...`
+//    S-006 a manual distance never reaches the log      → `testS006...`
 //    S-007 metric stepping                               → WatchLoggingTimersTests
 //    S-008 terminology parity with the phone             → `testS008...`
+//    S-062 zero still means "no load claim"              → `testS062...`
+//    S-063 the assist carries to the next set            → `testS063...`
+//    S-064 a leading minus renders in the user's unit    → `testS064...`
 //
 //  Every event asserted here is validated against the shared protocol schemas
 //  read from the repository — the same documents the phone's validator and the
@@ -62,6 +65,10 @@ final class WatchLoggingSurfacesTests: XCTestCase {
 
     private func value(_ state: WatchLoggingState, _ metricKey: String) -> Double? {
         state.fields.first(where: { $0.metricKey == metricKey })?.value
+    }
+
+    private func field(_ state: WatchLoggingState, _ metricKey: String) -> WatchMetricField {
+        state.fields.first(where: { $0.metricKey == metricKey })!
     }
 
     // MARK: - S-001 log a set (reps + load)
@@ -128,6 +135,122 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         XCTAssertNil(logged.event["loadKg"])
     }
 
+    // MARK: - S-062 zero still means "no load claim"
+
+    func testS062AnAssistedLoadIsEmittedWithItsSign() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-assisted")]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        // Eight detents down from the 0 kg default: a 20 kg band assist.
+        surface.adjust(WatchMetricKey.weight, detents: -8)
+        XCTAssertEqual(value(surface, WatchMetricKey.weight), -20)
+
+        try await surface.log()
+
+        let logged = try loggedEvent(harness)
+        XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
+        XCTAssertEqual(logged.event["loadKg"] as? Double, -20)
+    }
+
+    func testS062AnUntouchedLoadDialSendsNoLoadKg() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-bench")]
+        )
+
+        try await WatchLoggingState(engine: engine, clock: harness.clock.call).log()
+
+        XCTAssertNil(try loggedEvent(harness).event["loadKg"])
+    }
+
+    func testS062ADrillSendsItsExtraLoadAndNeverALoadKg() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "isometric_stretching",
+            exercises: [slot("sx-plank", capabilities: ["hold", "time"])]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        surface.adjust(WatchMetricKey.extraWeight, detents: -4)
+        await surface.startWork()
+        try await surface.log()
+
+        let logged = try loggedEvent(harness)
+        XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
+        XCTAssertEqual(logged.event["extraLoadKg"] as? Double, -10)
+        XCTAssertNil(logged.event["loadKg"])
+    }
+
+    // MARK: - S-063 the assist carries to the next set
+
+    func testS063TheNextSetCarriesTheAssist() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-assisted")]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        surface.adjust(WatchMetricKey.weight, detents: -8)
+        try await surface.log()
+
+        // The carry-over reads the stored `loadKg` back, sign and all; it must
+        // not fall back to zero.
+        XCTAssertEqual(value(surface, WatchMetricKey.weight), -20)
+    }
+
+    // MARK: - S-064 a leading minus renders in the user's unit
+
+    func testS064ANegativeLoadPrintsALeadingMinusInKgAndLbs() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-assisted")]
+        )
+        let kg = WatchLoggingState(engine: engine, clock: harness.clock.call)
+        kg.adjust(WatchMetricKey.weight, detents: -8)
+        XCTAssertEqual(field(kg, WatchMetricKey.weight).displayValue, "-20.0")
+        XCTAssertEqual(field(kg, WatchMetricKey.weight).unitLabel, "kg")
+
+        let pounds = WatchUnitPreferences(weightUnit: "lbs")
+        let lbs = WatchLoggingState(
+            engine: engine,
+            clock: harness.clock.call,
+            units: pounds
+        )
+        let step = WatchMetricStepping.step(for: WatchMetricKey.weight, units: pounds)
+        // Dial to exactly -20 kg, so the same load prints in the saved unit.
+        lbs.adjust(WatchMetricKey.weight, detents: -20 / step)
+        XCTAssertEqual(value(lbs, WatchMetricKey.weight), -20)
+        XCTAssertEqual(field(lbs, WatchMetricKey.weight).displayValue, "-44.1")
+        XCTAssertEqual(field(lbs, WatchMetricKey.weight).unitLabel, "lbs")
+    }
+
+    func testS064AZeroLoadNeverPrintsASignedZero() async throws {
+        let harness = Harness()
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-assisted")]
+        )
+        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
+
+        // A fractional detent that rounds to zero must not leave a "-0.0"
+        // behind: zero is zero.
+        surface.adjust(WatchMetricKey.weight, detents: -0.0001)
+        XCTAssertEqual(field(surface, WatchMetricKey.weight).displayValue, "0.0")
+    }
+
     // MARK: - S-002 log timed work (duration, optional distance)
 
     func testS002DurationIsLoggedAsTheWindowThatEndedAtTheLog() async throws {
@@ -140,10 +263,13 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
 
         XCTAssertEqual(surface.effortKind, WatchEffortKind.timed)
-        surface.adjust(WatchMetricKey.duration, detents: 60)
-        XCTAssertEqual(value(surface, WatchMetricKey.duration), 300)
 
-        harness.clock.advance(360)
+        // The window is the work clock's, not a dialled length: Start opens it
+        // at the instant the old dial implied, and the 60 s before it belongs
+        // to no effort at all.
+        harness.clock.advance(60)
+        await surface.startWork()
+        harness.clock.advance(300)
         let loggedAt = harness.clock.now
         try await surface.log()
 
@@ -166,12 +292,29 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         )
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
 
-        surface.adjust(WatchMetricKey.duration, detents: 60)
-        surface.adjust(WatchMetricKey.distance, detents: 5)
+        await surface.startWork()
+        harness.clock.advance(300)
         try await surface.log()
 
-        XCTAssertEqual(value(surface, WatchMetricKey.duration), 0)
-        XCTAssertEqual(value(surface, WatchMetricKey.distance), 0)
+        // The next effort is its own clock: the logged period stops, and a
+        // fresh Start opens a window that starts from zero.
+        XCTAssertFalse(surface.isWorkRunning)
+        harness.clock.advance(30)
+        await surface.startWork()
+        XCTAssertTrue(surface.isWorkRunning)
+        XCTAssertEqual(surface.workElapsedSeconds(now: harness.clock.now), 0)
+
+        harness.clock.advance(60)
+        let loggedAt = harness.clock.now
+        try await surface.log()
+
+        let second = try loggedEvent(harness).event
+        XCTAssertEqual(
+            second["startedAt"] as? String,
+            utcIso(loggedAt.addingTimeInterval(-60)),
+            "the second effort is its own window, not the first one again"
+        )
+        XCTAssertEqual(second["endedAt"] as? String, utcIso(loggedAt))
     }
 
     func testS002AnExerciseThatCannotCoverDistanceOffersNoDistance() async throws {
@@ -183,7 +326,10 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         )
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
 
-        XCTAssertEqual(surface.fields.map(\.metricKey), [WatchMetricKey.duration])
+        XCTAssertTrue(
+            surface.fields.isEmpty,
+            "a timed surface has no dialled length at all, distance or duration (D-1305)"
+        )
     }
 
     // MARK: - S-003 log a round
@@ -201,7 +347,7 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         XCTAssertEqual(surface.roundsLabel, "Periods")
     }
 
-    func testS003LoggingARoundNumbersItAndStartsTheNextCountdown() async throws {
+    func testS003StartStartsTheRoundCountdown() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
         _ = await engine.createSession(
@@ -211,6 +357,15 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
 
         XCTAssertEqual(surface.nextRoundNumber, 1)
+        await surface.startWork()
+
+        // Start, not Log, opens a period, and it opens it with the wrist's own
+        // 3:00 preset (D-1303).
+        let countdown = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(countdown.plannedDurationMs, 180_000)
+        XCTAssertEqual(countdown.state, WatchTimerState.running)
+
+        harness.clock.advance(60)
         try await surface.log()
 
         let logged = try loggedEvent(harness)
@@ -219,8 +374,12 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         XCTAssertEqual(logged.event["roundNumber"] as? Int, 1)
 
         XCTAssertEqual(surface.nextRoundNumber, 2)
-        let countdown = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
-        XCTAssertEqual(countdown.plannedDurationMs, 180_000)
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.round)?.state,
+            WatchTimerState.stopped,
+            "Log stops the period; it starts no next countdown (D-1306)"
+        )
+        XCTAssertFalse(surface.isWorkRunning)
     }
 
     func testS003ARoundThatRanItsCountdownEndsWhereTheCountdownDid() async throws {
@@ -232,7 +391,7 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         )
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
 
-        try await surface.log()
+        await surface.startWork()
         let countdown = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
         let roundEnd = try XCTUnwrap(completionInstant(countdown))
 
@@ -240,17 +399,17 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         harness.clock.advance(200)
         try await surface.log()
 
-        let second = try loggedEvent(harness).event
-        XCTAssertEqual(second["roundNumber"] as? Int, 2)
+        let logged = try loggedEvent(harness).event
+        XCTAssertEqual(logged["roundNumber"] as? Int, 1)
         XCTAssertEqual(
-            second["endedAt"] as? String,
+            logged["endedAt"] as? String,
             utcIso(roundEnd),
             "the round ended when its countdown did, not when it was seen"
         )
         XCTAssertEqual(
-            second["startedAt"] as? String,
+            logged["startedAt"] as? String,
             utcIso(countdown.startedAt),
-            "round two is the countdown's own window"
+            "the period is the countdown's own window"
         )
     }
 
@@ -266,9 +425,10 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
 
         XCTAssertEqual(surface.effortKind, WatchEffortKind.drill)
-        surface.adjust(WatchMetricKey.duration, detents: 12)
         surface.adjust(WatchMetricKey.extraWeight, detents: -4)
 
+        await surface.startWork()
+        harness.clock.advance(60)
         try await surface.log()
 
         let logged = try loggedEvent(harness)
@@ -282,9 +442,9 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         XCTAssertEqual(logged.event["extraLoadKg"] as? Double, -10)
     }
 
-    // MARK: - S-006 manual distance entry without GPS
+    // MARK: - S-006 a manual distance never reaches the log
 
-    func testS006AManualDistanceReachesTheObservationWithNoFixNeeded() async throws {
+    func testS006AManualDistanceNeverReachesTheObservation() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
         _ = await engine.createSession(
@@ -293,13 +453,16 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         )
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
 
-        surface.adjust(WatchMetricKey.duration, detents: 120)
-        surface.adjust(WatchMetricKey.distance, detents: 4)
+        await surface.startWork()
+        harness.clock.advance(120)
         try await surface.log()
 
         let logged = try loggedEvent(harness)
         XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
-        XCTAssertEqual(logged.event["distanceMeters"] as? Double, 400)
+        XCTAssertNil(
+            logged.event["distanceMeters"],
+            "a timed surface shows no distance row, so nothing dials one (D-1305)"
+        )
     }
 
     // MARK: - S-008 terminology parity with the phone
@@ -480,9 +643,29 @@ final class WatchLoggingSurfacesTests: XCTestCase {
             modality: "cardio_endurance",
             exercises: [slot("sx-ride", capabilities: ["time", "distance"])]
         )
-        let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
-        surface.adjust(WatchMetricKey.duration, detents: 120)
-        surface.adjust(WatchMetricKey.distance, detents: 24)
+        // The fixture's event carries a distance, and a timed surface has no
+        // distance row left to dial: a measured fix is the only way to that
+        // key set now (D-1305).
+        let source = FakeSensorSource()
+        let sensors = WatchSessionSensors(
+            platform: WatchPlatformWorkout(store: FakePlatformStore()),
+            recorder: WatchSensorRecorder(
+                engine: engine,
+                source: source,
+                clock: harness.clock.call
+            )
+        )
+        await sensors.start(try XCTUnwrap(engine.session))
+        source.fix(2400)
+        await eventually { sensors.recorder.readings.distanceMeters == 2400 }
+
+        let surface = WatchLoggingState(
+            engine: engine,
+            clock: harness.clock.call,
+            sensors: sensors.recorder
+        )
+        await surface.startWork()
+        harness.clock.advance(1200)
         try await surface.log()
 
         let logged = try loggedEvent(harness)

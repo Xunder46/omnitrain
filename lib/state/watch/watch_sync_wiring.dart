@@ -22,9 +22,11 @@
 library;
 
 import '../../core/platform/no_watch_transport.dart';
+import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/utils/platform_watch_transport_factory.dart';
 import '../../data/repositories/workout_repository.dart';
+import '../../watch/session/watch_records.dart' show WatchLifecycleState;
 import '../food_library_state.dart';
 import '../nutrition_state.dart';
 import '../settings/settings_state.dart';
@@ -32,6 +34,7 @@ import 'live_session_mirror_state.dart';
 import 'watch_incoming_router.dart';
 import 'watch_nutrition_log_bridge.dart';
 import 'watch_session_adoption_bridge.dart';
+import 'watch_session_auto_push.dart';
 import 'watch_session_inbox.dart';
 import 'watch_sync_request_handler.dart';
 
@@ -47,7 +50,7 @@ import 'watch_sync_request_handler.dart';
 /// The status is `abandoned` so nothing offers this not-a-session as live: the
 /// home panel appears only while a session is active.
 const Map<String, Object?> watchSessionPlaceholder = {
-  'sessionId': 's-phone-unjoined',
+  'sessionId': watchSessionPlaceholderId,
   'status': 'abandoned',
   'revision': 0,
   'currentExerciseIndex': 0,
@@ -63,6 +66,7 @@ class WatchSyncGraph {
     required this.ratings,
     required this.lateEntryRecovery,
     required this.adoption,
+    required this.autoPush,
   });
 
   /// The session running on the wrist, as the phone mirrors it.
@@ -81,6 +85,49 @@ class WatchSyncGraph {
   /// Where the session the wrist is running becomes the phone's own: the app
   /// binds its `WorkoutState` to this once it has built it (D-2).
   final WatchSessionAdoptionBridge adoption;
+
+  /// The one object that pushes the phone's own session to the watch: the app
+  /// binds the same `WorkoutState` to it (D-75).
+  final WatchSessionAutoPush autoPush;
+
+  /// Asks the wrist for its session once — the phone's half of catching up
+  /// after being out of reach (D-96).
+  ///
+  /// The frame it sends is the phone's **own** session, composed on the spot
+  /// from the projection (D-11), and none at all when the phone holds no
+  /// session: the mirror's own copy is what this phone converged with the
+  /// wrist, not what it is working through, and a phone with nothing running
+  /// must not assert the placeholder. The request follows either way.
+  ///
+  /// When the mirror still holds a *different* wrist session `W`, that session
+  /// is ended by name before this phone's own is asserted (D-176): the wrist
+  /// holds W actively, so it would refuse a foreign snapshot, and W's unsynced
+  /// work is discarded rather than rescued. The wrist's answer to the request
+  /// below is what moves the mirror onto the phone's session.
+  ///
+  /// A snapshot the radio did not carry is owed like any other: the push's
+  /// baseline is forgotten, so the next trigger offers this projection again
+  /// (D-191 site 4).
+  ///
+  /// Verified by `test/watch_session_projection_test.dart` (`S-109 case A one
+  /// resume is one catch-up: the phone's OWN session and then the request for
+  /// the wrist's, once per resume`, `S-109 case B a phone holding no session
+  /// sends no snapshot at all`, `S-109 case C the phone asserts its own session,
+  /// never the wrist's copy`).
+  Future<void> sync() async {
+    final composed = await mirror.projectedSession();
+    if (composed != null) {
+      if (mirror.owesResetFor(composed['sessionId'] as String?)) {
+        await mirror.reportLifecycleFor(
+          mirror.sessionId!,
+          WatchLifecycleState.abandoned,
+        );
+      }
+      final delivery = await mirror.sendState(composed);
+      if (delivery == WatchDelivery.undelivered) autoPush.forgetBaseline();
+    }
+    await mirror.requestSnapshot();
+  }
 }
 
 /// Builds the phone's watch graph and answers the handles the app keeps on it,
@@ -165,14 +212,41 @@ Future<WatchSyncGraph?> createWatchSync({
     settings: settingsState,
     clock: clock,
   );
+  // Built after the mirror, from the same repository the graph already holds:
+  // the push reads the mirrored session's own row — never the current-session
+  // pointer — to decide whether that session has ended (D-75, D-81). The
+  // graph's failure hook is the push's too: a pass it cannot make, or one that
+  // times out, is reported rather than swallowed (D-98, D-99).
+  final push = WatchSessionAutoPush(
+    mirror: mirror,
+    getSession: repository.getSession,
+    // The wrist's own imported ids come from the bridge, which owns the claim
+    // rule in one place (D-112). Nothing of the phone's own needs it: those ids
+    // travel inside the composed payload this push already has.
+    heldWristEntryIds: adoption.heldWristEntryIds,
+    // The graph's clock stamps a deletion frame's change id (F2), so tests pin
+    // it the way they pin every other stamp this graph makes.
+    clock: clock,
+    onFailure: onFailure,
+  );
 
   resolved.onIncoming((frame) async {
     final request = WatchTransportRequest.nameOf(frame);
+    var answeredReset = false;
     if (request != null) {
       await requests.handle(request);
-      return;
+    } else {
+      answeredReset = (await router.receive(frame)).answeredReset;
     }
-    await router.receive(frame);
+    // A frame the phone applied from the wrist is not news to push back (D-82):
+    // the rows it just brought in become the baseline rather than a send.
+    await push.rebaseline();
+    // D-192(c): the frame proves the radio works, so what is owed goes out now.
+    // The one exception is a snapshot the router has already answered with
+    // D-176's reset: those frames have just gone out, and a pass here would
+    // send the same step a second time. The debt is untouched either way, so a
+    // step the radio did not carry is re-offered at the next trigger (D-202).
+    if (!answeredReset) await push.flush();
   });
 
   await inbox.resume();
@@ -181,5 +255,6 @@ Future<WatchSyncGraph?> createWatchSync({
     ratings: inbox,
     lateEntryRecovery: inbox,
     adoption: adoption,
+    autoPush: push,
   );
 }

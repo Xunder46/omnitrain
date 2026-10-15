@@ -11,10 +11,10 @@
 ///    is the seam the platform plugin plugs into — so a hand-rolled
 ///    `MethodChannel` + `WCSession` implementation, or a Wear data-layer one,
 ///    replaces the channel without touching a caller.
-/// 2. **Fire-and-forget, with the protocol doing the recovering.** There is no
-///    queue here by design: a frame the radio cannot carry right now is reported
-///    and dropped, and what the peer still owes is re-sent from storage on the
-///    next sync (PROTOCOL.md, "Idempotency and reconciliation").
+/// 2. **A send answers, with the protocol doing the recovering.** There is no
+///    queue here by design: the caller learns whether the frame was handed over
+///    ([WatchDelivery]), and what the peer still owes is re-sent from storage
+///    on the next sync (PROTOCOL.md, "Idempotency and reconciliation").
 library;
 
 import 'dart:async';
@@ -22,6 +22,7 @@ import 'dart:async';
 import '../sync_protocol/wire_timestamps.dart';
 import '../../watch/start/watch_sync_orchestrator.dart';
 import '../../state/watch/live_session_mirror_state.dart';
+import 'watch_delivery.dart';
 
 /// What a transport needs from the platform's watch API — the package's
 /// `WCSession` wrapper on iOS, the Wear data layer on Android, a fake in tests.
@@ -98,8 +99,9 @@ class WatchConnectivityTransport implements WatchTransport {
   }) : _channel = channel,
        _onFailure = onFailure;
 
-  /// A frame that could not be carried does not take the session down with it:
-  /// the caller reports it and the next sync re-sends what is owed.
+  /// A frame the radio refuses does not take the session down with it: it is
+  /// reported here, its caller learns it was not delivered, and the next sync
+  /// re-sends what is owed.
   final void Function(Object error, StackTrace stack)? _onFailure;
 
   final WatchMessageChannel _channel;
@@ -137,13 +139,29 @@ class WatchConnectivityTransport implements WatchTransport {
   Future<void> requestSnapshot() =>
       send(WatchTransportRequest.snapshotFrame());
 
+  /// Hands the peer one frame, and answers whether the radio took it.
+  ///
+  /// Reachability is read per send, never from the cached [isPhoneReachable]
+  /// hint, which is the UI's (D-190). An unreachable counterpart is
+  /// [WatchDelivery.undelivered] without calling the channel and without a
+  /// report — the caller re-offers the frame at its next trigger (D-201).
   @override
-  Future<void> send(Map<String, Object?> envelope) async {
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
+    final bool reachable;
+    try {
+      reachable = await _channel.isReachable;
+    } catch (error, stack) {
+      _report(error, stack);
+      return WatchDelivery.undelivered;
+    }
+    if (!reachable) return WatchDelivery.undelivered;
     try {
       await _channel.send(envelope);
       _phoneReachable = true;
+      return WatchDelivery.delivered;
     } catch (error, stack) {
       _report(error, stack);
+      return WatchDelivery.undelivered;
     }
   }
 

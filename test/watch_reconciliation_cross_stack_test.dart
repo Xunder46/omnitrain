@@ -26,12 +26,26 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/sync_protocol/session_reconciler.dart';
+import 'package:omnitrain/watch/logging/watch_logging_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
 import 'package:omnitrain/watch/session/watch_session_engine.dart';
 
 const String _fixtures = 'watch/sync_protocol/fixtures/reconciliation';
 
 final DateTime _now = DateTime.utc(2026, 9, 21, 12);
+
+/// Deterministic clock: both engines read time only through an injected clock,
+/// so the scripted five-step run is a list of instants, not a wait.
+class _Clock {
+  _Clock(this.now);
+
+  DateTime now;
+
+  DateTime call() => now;
+
+  void advance(Duration delta) => now = now.add(delta);
+}
 
 Map<String, Object?> _asObject(Object? value) =>
     (value as Map).cast<String, Object?>();
@@ -185,6 +199,127 @@ void main() {
     expect(phoneEntryIds.length, phoneEntryIds.toSet().length);
   });
 
+  test('S-35 a held id the phone edited is re-stated on the wrist, not resaved',
+      () async {
+    // The shared fixture re-carries `entry-slot-bench-0` with the same values,
+    // so its single `expected` block — the phone's converged state, which keeps
+    // the first value it stored for a held id — cannot show the divergence a
+    // real edit produces. The edit is made here, on the fixture as it is read:
+    // same id, same row group, a new weight.
+    final fixture = fixtures.firstWhere(
+      (fixture) => (fixture['name']! as String).contains('adds the entries'),
+    );
+    final stream = jsonDecode(jsonEncode(_streamOf(fixture)))! as List;
+    for (final message in stream.cast<Map<String, Object?>>()) {
+      if (message['type'] != 'session_snapshot') continue;
+      for (final entry in _objectsIn(_payloadOf(message)['entries'])) {
+        if (entry['entryId'] == 'entry-slot-bench-0') entry['loadKg'] = 65;
+      }
+    }
+
+    final snapshot = _asObject(fixture['snapshot']);
+    final phone = SyncSessionReconciler.fromSnapshot(_payloadOf(snapshot));
+    final engine = WatchSessionEngine(
+      InMemoryWatchSessionStore(),
+      clock: () => _now,
+    );
+    await engine.applyMessage(snapshot);
+
+    for (final message in stream.cast<Map<String, Object?>>()) {
+      phone.applyMessage(message);
+      if (message['type'] == 'observations_up') continue;
+      await engine.applyMessage(message);
+    }
+
+    Map<String, Object?> entryOf(String id) => _objectsIn(
+      phone.convergedState()['entries'],
+    ).firstWhere((entry) => entry['entryId'] == id);
+
+    final wrist = {
+      for (final entry in engine.entries) entry.entryId: entry.payload,
+    };
+
+    expect(
+      wrist['entry-slot-bench-0']!['loadKg'],
+      65,
+      reason:
+          'S-35 the wrist holds the id, so the answer re-states it: the wrist '
+          'shows the weight the phone has now',
+    );
+    expect(
+      entryOf('entry-slot-bench-0')['loadKg'],
+      60,
+      reason:
+          'D-35 the phone keeps the first value it stored for a held id; only '
+          'the wrist re-states, which is why the two stacks diverge here',
+    );
+    expect(
+      wrist.keys.toList()..sort(),
+      ['entry-slot-bench-0', 'entry-slot-bench-1'],
+      reason: 'S-35 a re-statement neither appends a row nor drops one',
+    );
+    expect(wrist['entry-slot-bench-1']!['loadKg'], 62.5);
+    expect(
+      engine.observations.map((observation) => observation.entryId).toList(),
+      ['entry-slot-bench-0', 'entry-slot-bench-1'],
+      reason: 'S-35 the store is append-only: exactly one row per held id',
+    );
+  });
+
+  test('S-67 a re-stated assist is neither duplicated nor zeroed', () async {
+    final fixture = _asObject(
+      jsonDecode(
+        File(
+          '${Directory.current.path}/$_fixtures/band_assist_carried.json',
+        ).readAsStringSync(),
+      ),
+    );
+    final snapshot = _asObject(fixture['snapshot']);
+    final phone = SyncSessionReconciler.fromSnapshot(_payloadOf(snapshot));
+    final engine = WatchSessionEngine(
+      InMemoryWatchSessionStore(),
+      clock: () => _now,
+    );
+    await engine.applyMessage(snapshot);
+
+    for (final message in _streamOf(fixture)) {
+      phone.applyMessage(message);
+      // The wrist's own product: it logged that assist, and a device does not
+      // apply its own observations back onto itself.
+      if (message['type'] == 'observations_up') continue;
+      await engine.applyMessage(message);
+    }
+
+    const expectedLoads = <String, Object?>{
+      'entry-slot-bench-0': -20,
+      'B7D3E1F2-9A4C-4D6E-8F10-2A3B4C5D6E7F': -22.5,
+      'entry-slot-bench-1': -200,
+    };
+
+    expect(
+      {
+        for (final entry in _objectsIn(phone.convergedState()['entries']))
+          entry['entryId']! as String: entry['loadKg'],
+      },
+      equals(expectedLoads),
+      reason: 'S-67 the phone converges on the assist it held, the assist the '
+          'wrist logged and the new floor set — none zeroed, none re-signed',
+    );
+    expect(
+      {
+        for (final entry in engine.entries)
+          entry.entryId: entry.payload['loadKg'],
+      },
+      equals(expectedLoads),
+      reason: 'S-67 the wrist shows the same three ids with the same loads',
+    );
+    expect(
+      engine.entries.map((entry) => entry.entryId).toSet().length,
+      engine.entries.length,
+      reason: 'S-67 a re-statement stores no second row',
+    );
+  });
+
   test('S-009 removing the current exercise leaves both stacks on the next one',
       () async {
     final fixture = fixtures.firstWhere(
@@ -221,5 +356,94 @@ void main() {
     );
     expect(engine.session!.currentExerciseIndex, after['currentExerciseIndex']);
     expect(engine.session!.currentExerciseIndex, lessThan(ladderAfter.length));
+  });
+
+  test('S-335 the scripted run leaves three rests, the same in both stacks',
+      () async {
+    final clock = _Clock(_now);
+    final emitted = <Map<String, Object?>>[];
+    final store = InMemoryWatchSessionStore();
+    final engine = WatchSessionEngine(
+      store,
+      clock: clock.call,
+      onEmit: emitted.add,
+    );
+    await engine.createSession(
+      modality: 'resistance_lifting',
+      exercises: [
+        {
+          'sessionExerciseId': 'sx-bench',
+          'exerciseId': 'ex-bench',
+          'name': 'Bench Press',
+          'capabilities': const ['reps', 'sets', 'load'],
+        },
+      ],
+    );
+    final surface = WatchLoggingState(engine: engine, clock: clock.call);
+
+    await surface.log(); // A at T0
+    clock.advance(const Duration(seconds: 45));
+    await surface.log(); // B at T0+45s, which ends R1
+    clock.advance(const Duration(seconds: 15));
+    await surface.log(); // C at T0+60s, which ends R2
+    clock.advance(const Duration(seconds: 30));
+    await surface.endRest(); // Next at T0+90s, which ends R3
+    clock.advance(const Duration(seconds: 30));
+    await engine.finishSession(); // End at T0+120s, no rest running
+
+    final events = [
+      for (final envelope in emitted)
+        if (envelope['type'] == 'observations_up')
+          for (final event in _objectsIn(_payloadOf(envelope)['events'])) event,
+    ];
+    expect(
+      [for (final event in events) event['kind']],
+      ['set', 'rest', 'set', 'rest', 'set', 'rest'],
+      reason: 'S-335 rest(R1) < B < rest(R2) < C < rest(R3), and End adds none',
+    );
+
+    final sets = [
+      for (final event in events)
+        if (event['kind'] == 'set') event,
+    ];
+    final rests = [
+      for (final event in events)
+        if (event['kind'] == 'rest') event,
+    ];
+    expect(
+      [for (final rest in rests) rest['afterEntryId']],
+      [for (final set in sets) set['entryId']],
+      reason: 'S-335 each rest follows the set that ended it',
+    );
+    expect(
+      [for (final rest in rests) rest['startedAt']],
+      [
+        utcIso(_now),
+        utcIso(_now.add(const Duration(seconds: 45))),
+        utcIso(_now.add(const Duration(seconds: 60))),
+      ],
+      reason: 'S-335 each rest starts at the instant its set was logged',
+    );
+    expect(
+      [for (final rest in rests) rest['endedAt']],
+      [
+        utcIso(_now.add(const Duration(seconds: 45))),
+        utcIso(_now.add(const Duration(seconds: 60))),
+        utcIso(_now.add(const Duration(seconds: 90))),
+      ],
+      reason: 'S-335 the windows are 45 s, 15 s and 30 s',
+    );
+
+    expect(
+      [
+        for (final row in (await store.readAll()).observations)
+          if (row.kind == WatchObservationKind.rest)
+            [row.payload['startedAt'], row.payload['endedAt']],
+      ],
+      [
+        for (final rest in rests) [rest['startedAt'], rest['endedAt']],
+      ],
+      reason: 'S-335 emitted state is stored state',
+    );
   });
 }

@@ -70,6 +70,12 @@ public enum WatchMetricStepping {
     /// Counts move by one.
     public static let countPerDetent = 1.0
 
+    /// The lowest canonical load the wire carries, in kilograms — a band or
+    /// partner assist. Mirrors `envelope.schema.json` `$defs.entry.loadKg` and
+    /// the phone's `WireLimits.minLoadKg` (D-58/D-59); a value below it is
+    /// refused by the schema, so the dial must not produce one.
+    public static let minimumLoadKg: Double = -200
+
     /// Mirrors `UnitFormatter`'s conversion constants.
     public static let kilogramsPerPound = 2.20462
     public static let kilometresPerMile = 0.621371
@@ -131,15 +137,18 @@ public enum WatchMetricStepping {
     }
 
     /// Holds `value` inside the range the metric's own semantics allow: counts
-    /// start at one, load and distance never go negative, and extra load is
-    /// signed because negative is band assist.
+    /// start at one, load is floored at the wire's own `-200 kg` (band assist,
+    /// D-58/D-62), distance never goes negative, and extra load is signed
+    /// because negative is band assist.
     public static func clamp(_ value: Double, metricKey: String) -> Double {
         switch metricKey {
         case WatchMetricKey.reps, WatchMetricKey.rounds:
             return value < countPerDetent ? countPerDetent : value
         case WatchMetricKey.extraWeight:
             return value
-        case WatchMetricKey.weight, WatchMetricKey.duration, WatchMetricKey.distance,
+        case WatchMetricKey.weight:
+            return value < minimumLoadKg ? minimumLoadKg : value
+        case WatchMetricKey.duration, WatchMetricKey.distance,
              WatchMetricKey.roundDuration:
             return value < 0 ? 0 : value
         default:

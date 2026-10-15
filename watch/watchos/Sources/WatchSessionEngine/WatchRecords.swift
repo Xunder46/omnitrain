@@ -67,8 +67,13 @@ public enum WatchObservationKind {
     /// (`WatchSessionCapture.sessionEndId`).
     public static let sessionEnd = "session_end"
 
+    /// The window between two efforts, hung on the entry it followed. It
+    /// records no work in a slot, so it is not an effort: it never joins
+    /// `efforts`, and the set block's span and the effort debt do not see it.
+    public static let rest = "rest"
+
     public static let all = [
-        set, timed, round, hold, nutritionQuickLog, effortRating, sessionEnd,
+        set, timed, round, hold, nutritionQuickLog, effortRating, sessionEnd, rest,
     ]
 
     /// The kinds that record work done in a slot — what "an effort entry" means
@@ -197,6 +202,12 @@ public struct WatchSessionRecord {
     /// at the same session shape. Zero until a snapshot says otherwise.
     public let revision: Int
 
+    /// The entry ids the phone deleted, as the newest row knows them: the
+    /// durable half of the deletion lens (plan D-113), so a relaunch rebuilds
+    /// it from storage instead of forgetting it. Ids the newest snapshot
+    /// carries are not in it — an entry the phone still sends exists.
+    public let deletedEntryIds: [String]
+
     public init(
         recordId: String,
         sessionId: String,
@@ -208,6 +219,7 @@ public struct WatchSessionRecord {
         currentExerciseIndex: Int,
         exercises: [[String: Any]] = [],
         revision: Int = 0,
+        deletedEntryIds: [String] = [],
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -221,6 +233,7 @@ public struct WatchSessionRecord {
         self.currentExerciseIndex = currentExerciseIndex
         self.exercises = exercises
         self.revision = revision
+        self.deletedEntryIds = deletedEntryIds
     }
 
     public var currentExercise: [String: Any]? {
@@ -240,6 +253,25 @@ public struct WatchSessionRecord {
             currentExerciseIndex: currentExerciseIndex,
             exercises: exercises,
             revision: revision,
+            deletedEntryIds: deletedEntryIds,
+            sequence: sequence
+        )
+    }
+
+    /// The same row carrying `deletedEntryIds` as its deletion lens.
+    public func withDeletedEntryIds(_ deletedEntryIds: [String]) -> WatchSessionRecord {
+        WatchSessionRecord(
+            recordId: recordId,
+            sessionId: sessionId,
+            recordedAt: recordedAt,
+            startedAt: startedAt,
+            modality: modality,
+            source: source,
+            status: status,
+            currentExerciseIndex: currentExerciseIndex,
+            exercises: exercises,
+            revision: revision,
+            deletedEntryIds: deletedEntryIds,
             sequence: sequence
         )
     }
@@ -258,6 +290,7 @@ public struct WatchSessionRecord {
             "currentExerciseIndex": currentExerciseIndex,
             "exercises": exercises,
             "revision": revision,
+            "deletedEntryIds": deletedEntryIds,
         ]
     }
 
@@ -273,6 +306,7 @@ public struct WatchSessionRecord {
             currentExerciseIndex: (json["currentExerciseIndex"] as? NSNumber)?.intValue ?? 0,
             exercises: (json["exercises"] as? [[String: Any]]) ?? [],
             revision: (json["revision"] as? NSNumber)?.intValue ?? 0,
+            deletedEntryIds: (json["deletedEntryIds"] as? [String]) ?? [],
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }
@@ -448,7 +482,12 @@ public struct WatchTimerRecord {
         ]
         if let pausedAt { json["pausedAt"] = utcIso(pausedAt) }
         if let stoppedAt { json["stoppedAt"] = utcIso(stoppedAt) }
-        if let plannedDurationMs { json["plannedDurationMs"] = plannedDurationMs }
+        // A rest is a count-up (docs/global_conventions.md, rest rule): a row
+        // written before that had a length still stores one, and the wire
+        // refuses it, so the frame never carries it.
+        if kind != "rest", let plannedDurationMs {
+            json["plannedDurationMs"] = plannedDurationMs
+        }
         return json
     }
 

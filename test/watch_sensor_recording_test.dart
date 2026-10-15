@@ -759,6 +759,9 @@ void main() {
       () async {
         final sensors = await sensorsFor();
         await sensors.start(await sessionFor(Modality.resistanceLifting));
+        // The wrist runs one session at a time (D-171): a second workout is
+        // only reachable once the first one has ended.
+        await engine.finishSession();
         await sensors.start(await sessionFor(null));
 
         expect(health.begun, [
@@ -790,8 +793,10 @@ void main() {
       );
       expect(
         emitted,
-        hasLength(1),
-        reason: 'starting a session tells the phone',
+        hasLength(2),
+        reason:
+            'starting a session tells the phone, with its lifecycle frame and '
+            'the snapshot that follows it (D-91)',
       );
 
       await watched.appendSensorSample(
@@ -801,7 +806,7 @@ void main() {
       expect(watched.sensorSamples, hasLength(1));
       expect(
         emitted,
-        hasLength(1),
+        hasLength(2),
         reason:
             'a reading adds nothing to the outbound stream: the sync protocol '
             'carries the logged effort, and the distance in it is the reading '

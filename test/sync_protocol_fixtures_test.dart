@@ -244,6 +244,71 @@ void main() {
     }
   });
 
+  group('S-165 the wire refuses a rest length', () {
+    test('a rest carries no planned length, a round keeps one, and a rest '
+        'with one is refused', () {
+      final valid = _readJson('fixtures/valid/timer_state.json');
+      final rest = _asObject(
+        _asObject(_payloadOf(valid)['timers'])['rest'],
+      );
+      expect(rest['kind'], 'rest');
+      expect(
+        rest.containsKey('plannedDurationMs'),
+        isFalse,
+        reason: 'a rest is a count-up: it carries no planned length (D-164)',
+      );
+      expect(_validator.validateEnvelope(valid), isEmpty);
+
+      // The rule is about `rest` alone: every other kind keeps its length.
+      final roundWithPlan = _readJson('fixtures/valid/timer_state.json');
+      _asObject(
+        _asObject(_payloadOf(roundWithPlan)['timers'])['round'],
+      )['plannedDurationMs'] = 60000;
+      expect(_validator.validateEnvelope(roundWithPlan), isEmpty);
+
+      final rejections = _validator.validateEnvelope(
+        _readJson('fixtures/invalid/timer_state_rest_with_planned_duration.json'),
+      );
+      expect(
+        rejections,
+        isNotEmpty,
+        reason: 'a rest with a planned length must not conform',
+      );
+      expect(rejections.first.code, 'semantic_violation');
+      expect(
+        rejections.first.path,
+        r'$.payload.timers.rest.plannedDurationMs',
+      );
+      expect(
+        rejections.first.message,
+        contains('a rest has no planned length'),
+      );
+
+      // The refusal is not `timer_state`-only: a snapshot carrying a rest plan
+      // is refused at the same path, so the plan is never adopted into the
+      // wrist's own row (D-169).
+      final snapshotRejections = _validator.validateEnvelope(
+        _readJson(
+          'fixtures/invalid/session_snapshot_rest_with_planned_duration.json',
+        ),
+      );
+      final restPlanRejection = snapshotRejections.firstWhere(
+        (rejection) =>
+            rejection.path == r'$.payload.timers.rest.plannedDurationMs',
+        orElse: () => throw StateError(
+          'a snapshot with a rest plan must be refused at '
+          r'$.payload.timers.rest.plannedDurationMs, got '
+          '${snapshotRejections.map((r) => '${r.code} ${r.path}')}',
+        ),
+      );
+      expect(restPlanRejection.code, 'semantic_violation');
+      expect(
+        restPlanRejection.message,
+        contains('a rest has no planned length'),
+      );
+    });
+  });
+
   group('S-31 phone-logged entries', () {
     final fixture = _readJson(
       'fixtures/valid/session_snapshot_with_entries.json',
@@ -294,6 +359,126 @@ void main() {
         entries.first['eventId'],
         equals(entries.first['entryId']),
         reason: 'a phone entry\'s eventId is its entryId',
+      );
+    });
+  });
+
+  group('S-59 the band-assisted set travels with its sign', () {
+    final fixture = _readJson(
+      'fixtures/valid/session_snapshot_band_assist.json',
+    );
+    final entries = _objectsIn(_payloadOf(fixture)['entries']);
+
+    test('an assisted snapshot conforms and reaches the converged state', () {
+      expect(
+        _validator.validateEnvelope(fixture).map((r) => r.toString()).toList(),
+        isEmpty,
+      );
+      expect(
+        entries.map((entry) => entry['entryId']),
+        equals(<String>['entry-slot-bench-0', 'entry-slot-bench-1']),
+      );
+
+      final state = _reconcilerFor(fixture).convergedState();
+
+      expect(
+        (state['entries']! as List).map((entry) => _asObject(entry)['entryId']),
+        equals(<String>['entry-slot-bench-0', 'entry-slot-bench-1']),
+      );
+    });
+
+    test('an assisted entry names its slot, its set and its negative load', () {
+      expect(
+        entries.first,
+        equals(<String, Object?>{
+          'entryId': 'entry-slot-bench-0',
+          'eventId': 'entry-slot-bench-0',
+          'kind': 'set',
+          'loggedAt': '2026-10-06T10:05:00Z',
+          'sessionExerciseId': 'slot-bench',
+          'exerciseId': 'ex-bench',
+          'reps': 8,
+          'loadKg': -20,
+        }),
+      );
+      expect(
+        _slotIds(_objectsIn(_payloadOf(fixture)['exercises'])),
+        contains(entries.first['sessionExerciseId']),
+        reason: 'an entry must name a slot the snapshot carries',
+      );
+      expect(
+        entries.last['loadKg'],
+        -200,
+        reason: 'the floor is carried verbatim, not rounded or re-signed',
+      );
+    });
+  });
+
+  group('S-58 an assisted set on the observations wire', () {
+    test('observations_up carries a negative load and conforms', () {
+      final fixture = _readJson(
+        'fixtures/valid/observations_up_band_assist.json',
+      );
+
+      expect(
+        _validator.validateEnvelope(fixture).map((r) => r.toString()).toList(),
+        isEmpty,
+      );
+      expect(
+        _objectsIn(_payloadOf(fixture)['events']).last,
+        equals(<String, Object?>{
+          'eventId': 'evt-assist-2',
+          'entryId': 'evt-assist-2',
+          'kind': 'set',
+          'loggedAt': '2026-10-06T18:14:00Z',
+          'sessionExerciseId': 'sx-bench',
+          'exerciseId': 'ex-bench',
+          'reps': 5,
+          'loadKg': -200,
+        }),
+      );
+    });
+  });
+
+  group('S-65/S-66 one floor for a correction and a target', () {
+    test('a correction may carry an assist down to the floor', () {
+      final fixture = _readJson(
+        'fixtures/valid/structure_change_band_assist.json',
+      );
+
+      expect(
+        _validator.validateEnvelope(fixture).map((r) => r.toString()).toList(),
+        isEmpty,
+      );
+      expect(
+        _objectsIn(_payloadOf(fixture)['changes'])
+            .where((change) => change['kind'] == 'correct_entry')
+            .map((change) => _asObject(change['correction'])['loadKg'])
+            .where((load) => load != null),
+        equals(<Object?>[-20, -200]),
+      );
+    });
+
+    test('a routine target may carry an assist down to the floor', () {
+      final fixture = _readJson('fixtures/valid/routines_down_band_assist.json');
+
+      expect(
+        _validator.validateEnvelope(fixture).map((r) => r.toString()).toList(),
+        isEmpty,
+      );
+      final efforts = _objectsIn(
+        _objectsIn(
+          _objectsIn(_payloadOf(fixture)['routines']).first['segments'],
+        ).first['efforts'],
+      );
+
+      expect(
+        {
+          for (final effort in efforts)
+            if (_asObject(effort['targets'])['loadKg'] != null)
+              effort['effortId']: _asObject(effort['targets'])['loadKg'],
+        },
+        equals(<String, Object?>{'eff-bench': -20, 'eff-goblet-squat': -200}),
       );
     });
   });

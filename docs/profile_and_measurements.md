@@ -102,6 +102,11 @@ opening their respective editors.
   - outlined add button (except Lean Mass — see below)
 - Row tap (chart area) opens chart history sheet
 - Add button opens log sheet
+- The in-row quick chart (`MeasurementSparkline`) plots **and labels** in the
+  active display unit: a `unit-kg` measurement converts from canonical kilograms
+  to the preferred weight unit (`UnitFormatter.convertWeight`), so its y-axis
+  scale matches the history sheet; every other measurement plots as stored.
+  Verified by `test/profile_measurement_sparkline_unit_test.dart`.
 - **Lean Mass** is a read-only computed row with no manual entry path. Its value derives from
   `ProfileState.computedLeanMassKg` (body weight × (1 − body fat %)), and reads as an em dash when
   either input is missing rather than showing a misleading number.

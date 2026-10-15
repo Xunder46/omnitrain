@@ -646,6 +646,7 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = OmniTrainWatchApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S3976AA7K8;
@@ -653,7 +654,10 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
@@ -694,6 +698,7 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = OmniTrainWatchApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S3976AA7K8;
@@ -701,7 +706,10 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
@@ -739,6 +747,7 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = OmniTrainWatchApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S3976AA7K8;
@@ -746,7 +755,10 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;

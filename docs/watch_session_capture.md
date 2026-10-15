@@ -31,7 +31,7 @@ and the Platform Workout").
 
 | Concern | Owner |
 |---|---|
-| Staging what a wrist sends: effort entries, the effort rating and the session end, from `observations_up` and from a wrist `session_snapshot` | `WatchSessionInbox.receive`, which `WatchIncomingRouter` calls before the mirror and the nutrition bridge |
+| Staging what a wrist sends: effort entries, the effort rating, the session end and the rests it observed (D-210), from `observations_up` and from a wrist `session_snapshot` | `WatchSessionInbox.receive`, which `WatchIncomingRouter` calls before the mirror and the nutrition bridge |
 | Staging the phone's own corrections and deletions of wrist entries | `WatchInboxStagingTransport`, the mirror's transport in `createWatchSync` |
 | The phone's own effort rating for a wrist session | `WatchSessionInbox.recordPhoneRating` |
 | Asking for the rating, after the fact | The Session Summary's `EffortRatingSheet` — its automatic prompt and its EFFORT row both open it — writing through `WorkoutState.updateSessionFeeling` |
@@ -195,10 +195,11 @@ the wrist asks, which the capture contract pins for both.
 - **Receipts name only applied entries.** Verified by `S-261` (`receipts are
   sent after the rows exist`) and `S-266` (a late entry is acknowledged and
   dropped).
-- **Only wrist effort kinds and the two session-scoped kinds are staged, and
-  only when they carry the fields their kind requires.** A nutrition quick-log
-  stays with the nutrition bridge. Verified by the `what the inbox stages`
-  group in `test/watch_session_import_test.dart`.
+- **Only wrist effort kinds, the two session-scoped kinds and the rests the wrist
+  observed are staged, and only when they carry the fields their kind requires.**
+  A nutrition quick-log stays with the nutrition bridge. Verified by the `what the
+  inbox stages` group in `test/watch_session_import_test.dart`, and — for a rest —
+  by the `the wrist’s rests (D-210)` group there (`S-320`, `S-323`).
 - **A wrist entry that arrived while an Edit Session was open survives
   Discard.** The restore un-marks exactly the entries applied after the
   snapshot's watermark and runs one import pass, so the entry returns as the
@@ -225,7 +226,7 @@ session end, summary or effort rating.
 | The phone's preferences, as the newest `preferences_down` brought them | `WatchPhonePreferences`, fed by `WatchSyncOrchestrator` |
 | The End action, whether it owes an effort rating, and the prompt that asks for it | `WatchEffortRatingState` |
 | The session's one effort rating | `WatchSessionEngine.recordEffortRating` |
-| The prompt and End views | `WatchEffortRatingView` and `WatchEndSessionView`, which bind to `WatchEffortRatingState` and compile only for watchOS; where they appear is the app target's to decide |
+| The prompt view | `WatchEffortRatingView`, which binds to `WatchEffortRatingState` and compiles only for watchOS; where it appears is the app target's to decide |
 
 **Why the wrist sends the end, whoever ended the session.** The import waits for
 a `session_end`, and only the wrist holds the readings its summaries come from.

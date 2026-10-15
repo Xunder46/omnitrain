@@ -61,7 +61,8 @@ exactly the tool permissions in `.github/copilot/permissions/common.flags` + `<n
    profiles).
 3. Never write or edit product code, tests or docs. Every change goes through an agent. The only files
    you create or edit are under `.work/`; the only other changes you make are the empty directories and the file deletions a plan lists
-   (agents cannot make either, and the gateway reverts a deletion made through a check).
+   (agents cannot make either, and the gateway reverts a deletion made through a check). You also write the seed of each plan (step 2):
+   its decisions, core scenarios and phase outline.
 4. Friction is record-only. Append entries to `.work/friction.md` in the format below. Do not fix,
    work around, or propose changes for anything you record, and do not mention fixes in your reports.
 5. Do not read full agent logs. Work from the runner summary. If you need more, search the log for
@@ -142,12 +143,33 @@ file paths inside that folder, and these lines:
 "Do not measure or maintain line counts; the governor measures the plan." (A planner once looped 74
 minutes re-counting lines.)
 
+**Seed the plan first: write the part a plan most often gets wrong.** Every plan revision so far
+traced to a decision or a scenario: a misapplied rule, a false "the framework does X", a circular
+definition, a missing case. You read that code in step 1, so write these sections into the plan file
+yourself before the planner runs, and keep a copy as `.work/<slug>/seed.md`:
+- **Goal and acceptance criteria.**
+- **Decision Ledger:** each `D-n` an enforceable rule (the math, the fallback, the exact matching),
+  checked against the code; cite the `file:symbol` behind any claim about existing behaviour.
+- **Core scenarios:** each `S-n` with the exact fixture, the expected outcome, and why it fails
+  without the change (what `prove-red` will check).
+- **Phase outline:** name, owning agent and goal per phase, in order, each small enough for 8 items.
+- **Code pointers:** the files and symbols each phase changes.
+
+Keep the seed short (about 100–150 lines) and leave everything mechanical to the planner. Add to the
+planner brief: "This plan is seeded. Its Ledger entries, scenarios and phase outline are fixed: do not
+edit, renumber or delete them; append new D/S entries after them. Expand each phase into items with
+file + symbol, Done Criteria and Predicted Files, and add the impact rows and edge scenarios. If a
+seeded entry looks wrong, keep it and raise it under Open questions with the evidence (file:line)."
+Skip the seed only for trivial, single-phase work.
+
 Run the planner. Find the plan file in FILES_CHANGED_DURING_RUN.
 
 Validate the plan against the repo: right files and layers, follows existing patterns, covers every
 acceptance criterion, testable, no scope creep, open questions resolvable, and every phase has Done
 Criteria (commands), Predicted Files and fixture-enumerated scenarios. Then the checks that caught
 real plan defects:
+- **The seed is intact.** Compare the plan's Ledger, scenarios and outline with `seed.md`: an edited
+  or dropped seeded entry is a defect, whatever the reason.
 - **Re-derive the numbers.** Re-implement any non-trivial rule in a throwaway script and compare EVERY
   fixture value and expected result. Plans have shipped circular definitions (a threshold measured
   against a baseline that depended on the thing being detected) and wrong arithmetic.
@@ -156,6 +178,8 @@ real plan defects:
   but the higher priority renders first.)
 - **Each mutation check names the seed or stub that turns it red**; one the real fixture cannot tell
   apart proves nothing.
+- **No phase over 8 items.** A bigger phase becomes part A and part B, one run each (a two-phase brief
+  ran 61 minutes; an 11-step phase was sent back).
 - **A new entry in a shared registry lists the existing tests it could also satisfy** (they go red
   when two results appear where one was expected).
 
@@ -173,20 +197,27 @@ run, create the new directories and make the file deletions the phase's Predicte
 `.work/<slug>/brief-<agent>-<phase>.md` with only what is specific to the run: the approved plan path;
 the plan sections to read (decisions, scenarios, this phase); "implement the plan exactly, test-first
 from the scenario register"; and **code pointers**: for each item, the file and the symbol to change,
-with an approximate line, collected while you validated the plan. Never paste standing rules into a
+with an approximate line, collected while you validated the plan. For an item that changes existing
+logic, paste the current lines it changes (up to about 20) into the brief: every run stopped for not
+writing (three so far) had pointers by file and line only, and each re-brief with the code written out
+wrote files within minutes. Never paste standing rules into a
 brief: the runner appends `.github/copilot/agent-rules.md` (see Standing agent rules). After the run,
 carry out the "Governor actions" the agent listed (deletions, directories) when they are in the
 plan's scope; log the rest as friction.
 
 **One phase per run** (split a large phase into part A and part B): each phase then gets its own
-verify and commit checkpoint, a failure costs one phase, and the run stays short (see Cost). Give
-several phases to one run only when each is a few steps.
+verify and commit checkpoint, a failure costs one phase, and the run stays short (see Cost). Never brief
+two phases into one run: a two-phase brief ran 61 minutes, as much as five short runs. Each brief
+also names the base commit (the commit before this unit), which agents pass to `prove-red`.
 
 ### 4. Verify (you)
 Run the verify commands yourself, each through the timeout wrapper; do not trust the agent's claim. Also
 run the invariant checks. Read the code of the one or two files where the plan's core invariant lives.
 Check `git diff --stat`: an existing file with a far bigger diff than its edit is formatter damage. Look
 for mutation residue (read the lines the evidence says were mutated) and for stray scratch files.
+Read the `prove-red` verdicts in the evidence: every new or changed guard must be RED AT the base (or,
+where it cannot compile there, proven by a mutation). A GREEN AT verdict, or none, is a failed verify:
+that is how a test that passed on the old code reached review three times on one PR.
 
 On failure, write `brief-fix-<N>.md` with the **full, untrimmed failure output**, the plan path, and the
 **goal and the acceptance test**, not a prescribed mechanism: name the defect and what must be true
@@ -237,22 +268,22 @@ preflight needs a clean tree, so say that the owner has to commit first.
 - Status hygiene: the plan's `> Status:` header reads CLOSED (or names what is open), its Progress table
   is complete, and any "state of the build" section in `AGENTS.md`/`CLAUDE.md` that the feature made
   false is listed for the user to update (you may not edit those files yourself).
-- Append the SUMMARY entry to `.work/friction.md`.
+- Append the SUMMARY entry to `.work/friction.md`. Run `bash .claude/scripts/macos/pipeline-stats.sh --since "<the unit's start>"` and paste its
+  lines under the SUMMARY: what the unit cost and how much code it produced.
 - Report to the owner in a few lines, in terms of what the app now does: rounds used, what is
   committed or left for them to commit, owner checks outstanding, anything left open.
 
 ## Running agents
 
-Start a run: `bash .claude/scripts/macos/run-agent.sh start <agent> .work/<slug>/<brief>.md [model]`
-
-Always run `start` and `wait` with the Bash tool's `run_in_background: true`. A foreground call
-blocks the whole session until the agent finishes or the check-in interval passes, so the user cannot
-reach you, and stopping the call kills the agent. When the background command exits you are re-invoked
+Start a run: `bash .claude/scripts/macos/run-agent.sh start <agent> .work/<slug>/<brief>.md [model]`. It returns at once with
+the RUN_ID. Then wait: `bash .claude/scripts/macos/run-agent.sh wait <RUN_ID>`, always with the Bash tool's
+`run_in_background: true`. A foreground wait blocks the whole session until the agent finishes or the
+check-in interval passes, so the user cannot reach you, and stopping the call kills the agent. When the background command exits you are re-invoked
 with its output; until then, answer the user normally ("is it running?" →
 `bash .claude/scripts/macos/run-agent.sh status <RUN_ID>`, which returns at once). Never stop a background run
 unless the user asks or a limit is hit. Do not poll.
 
-The runner returns at the check-in interval (`WAIT_MINUTES` in `.claude/pipeline.env`) or when the agent
+`wait` returns at the check-in interval (`WAIT_MINUTES` in `.claude/pipeline.env`) or when the agent
 finishes, and prints a summary. Read STATUS:
 - `DONE` → use FILES_CHANGED_DURING_RUN and the log tail.
 - `RUNNING` → read the HEALTH block (below), then `bash .claude/scripts/macos/run-agent.sh wait <RUN_ID>`.
@@ -275,6 +306,7 @@ The runner prints a HEALTH block so you do not have to gather it by hand:
 - `DENIED` / `TOP_TEXT_REPEAT` — permission denials, and the most repeated line of prose
 - `TOP_READ` — the file read most often across line ranges (re-reading is the main cost of a run)
 - `FIRST_WRITE` — an implementer that has changed no file yet, and for how long
+- `LONG_RUN` — an implementer past `LONG_RUN_MINUTES` (30): not stopped; split the rest into its own run
 - `MODEL_REQUESTS` / `TOKENS` — requests so far (with the proxy), and Copilot's token totals at the end
 - `HUNG_CHILD` — a child process running ≥ 10 min at ~0% CPU (pid, elapsed, command)
 - `HIGH_LOAD` — the machine is saturated; timings are unreliable
@@ -331,7 +363,7 @@ At the end of each feature (shipped or stopped), add:
 
 ```
 ### <YYYY-MM-DD> · <slug> · SUMMARY
-- Plan revisions: <n> · Fix rounds: <n> · Verify green on first try: <yes/no> · Review found blocker/major behind green: <yes/no> · Agent time: <n> min · Model requests: <n> · Outcome: <ready for owner commit / committed <hashes> / stopped: reason>
+- Seeded: <yes/no> · Plan revisions: <n> · Fix rounds: <n> · Verify green on first try: <yes/no> · Review found blocker/major behind green: <yes/no> · Agent time: <n> min · Model requests: <n> · Outcome: <ready for owner commit / committed <hashes> / stopped: reason>
 ```
 
 Record facts only. No suggested fixes, no opinions about the agents' instructions — `/retro` turns the

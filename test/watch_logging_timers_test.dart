@@ -3,12 +3,17 @@
 // Plan: `docs/plans/2026-07-13-07-a2-watch-wrist-logging-surfaces-plan.md`.
 // Scenario mapping:
 //   S-003 the round countdown fires at the right wall-clock moment → `S-003 ...`
-//   S-005 rest timer with screen-off haptic                        → `S-005 ...`
+//   S-160 the wrist's rest has no length                            → `S-160 ...`
+//   S-161 a rest survives the screen turning off                    → `S-161 ...`
+//   S-164 no alert is ever owed for a rest                          → `S-164 ...`
 //
 // A haptic is owed when a countdown reaches zero, and the instant it is owed at
 // comes from the timer's own timestamps. Nothing here counts down: every case
 // below moves a clock, never a ticker, which is what makes the screen-off case
 // the same case as the on-screen one.
+//
+// A rest is the exception: it is a count-up with no length, so it has no
+// remaining time and is never owed a haptic (D-160).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/watch/logging/watch_logging_state.dart';
@@ -38,6 +43,49 @@ Map<String, Object?> _slot(String id, List<String> capabilities) => {
   'capabilities': capabilities,
 };
 
+/// A countdown as a phone frame carries it: the shape, not the row.
+Map<String, Object?> _timerJson(
+  String kind, {
+  required String startedAt,
+  int? plannedDurationMs,
+}) => {
+  'kind': kind,
+  'state': WatchTimerState.running,
+  'startedAt': startedAt,
+  'plannedDurationMs': plannedDurationMs,
+};
+
+Map<String, Object?> _frame(
+  String type,
+  String sessionId,
+  String messageId,
+  Map<String, Object?> payload,
+) => {
+  'protocolVersion': 1,
+  'messageId': messageId,
+  'sessionId': sessionId,
+  'type': type,
+  'origin': 'phone',
+  'sentAt': '2026-07-13T17:00:00Z',
+  'payload': payload,
+};
+
+/// The phone's whole account of the session, timers included.
+Map<String, Object?> _snapshotFrame(
+  String sessionId,
+  String messageId, {
+  required Map<String, Object?> timers,
+  List<Map<String, Object?>> exercises = const [],
+}) => _frame('session_snapshot', sessionId, messageId, {
+  'sessionId': sessionId,
+  'revision': 1,
+  'status': WatchSessionStatus.active,
+  'currentExerciseIndex': 0,
+  'exercises': exercises,
+  'entries': const [],
+  'timers': timers,
+});
+
 void main() {
   late _Clock clock;
   late WatchSessionStore store;
@@ -57,104 +105,162 @@ void main() {
     surface = WatchLoggingState(engine: engine, clock: clock.call);
   });
 
-  group('S-005 rest timer with screen-off haptic', () {
-    test(
-      'S-005 logging a set starts a rest countdown of the surface length',
-      () async {
-        await surface.log();
+  group('S-160 / S-161 / S-164 the wrist\'s rest is a count-up', () {
+    test('S-160 a logged set starts a rest with no planned length', () async {
+      await surface.log();
 
-        final rest = engine.timerFor(WatchTimerKind.rest);
-        expect(rest, isNotNull);
-        expect(rest!.startedAt, clock.now);
-        expect(rest.plannedDurationMs, 90000);
-      },
-    );
+      final rest = engine.timerFor(WatchTimerKind.rest);
+      expect(rest, isNotNull);
+      expect(rest!.startedAt, clock.now);
+      expect(rest.plannedDurationMs, isNull, reason: 'a rest has no preset length');
+      expect(activeElapsedMs(rest, clock.now), 0);
+      expect(
+        activeElapsedMs(rest, clock.now.add(const Duration(seconds: 7))),
+        7000,
+        reason: 'the rest counts up from the instant the set was logged',
+      );
+      expect(
+        remainingMs(rest, clock.now.add(const Duration(seconds: 90))),
+        isNull,
+        reason: 'nothing is left of a rest to show, at any instant',
+      );
+    });
 
-    test(
-      'S-005 the haptic is owed exactly at the instant the countdown ends',
-      () async {
-        await surface.log();
-        final haptics = WatchTimerHaptics(engine);
+    test('S-161 a rest survives the screen turning off', () async {
+      await surface.log();
+      final startedAt = clock.now;
 
-        final deadline = clock.now.add(const Duration(seconds: 90));
-        expect(
-          haptics.poll(deadline.subtract(const Duration(seconds: 1))),
-          isEmpty,
-          reason: 'a second early is early',
-        );
-        expect(haptics.poll(deadline), [
-          WatchTimerMilestone(kind: WatchTimerKind.rest, at: deadline),
-        ]);
-        expect(
-          haptics.poll(deadline.add(const Duration(minutes: 10))),
-          isEmpty,
-          reason: 'a countdown the user has been told about is told once',
-        );
-      },
-    );
+      // Four minutes with the screen off: nothing ticked and nothing was
+      // handed across in memory — the stored row is the whole account of it.
+      clock.advance(const Duration(minutes: 4));
+      final relaunched = WatchSessionEngine(store, clock: clock.call);
+      await relaunched.restore();
 
-    test(
-      'S-005 a screen-off gap fires the haptic, at the moment it was due',
-      () async {
-        await surface.log();
-        final haptics = WatchTimerHaptics(engine);
+      final rest = relaunched.timerFor(WatchTimerKind.rest)!;
+      expect(rest.startedAt, startedAt, reason: 'the restore left the row alone');
+      expect(rest.state, WatchTimerState.running);
+      expect(rest.stoppedAt, isNull);
+      expect(
+        activeElapsedMs(rest, clock.now),
+        240000,
+        reason: 'the elapsed comes from the row, not from a ticker that stopped',
+      );
+    });
 
-        // Ten minutes pass with the screen off: no poll happened in between.
-        clock.advance(const Duration(minutes: 10));
+    test('S-164 no alert is ever owed for a rest', () async {
+      await surface.log();
+      await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 60000);
 
-        expect(haptics.poll(clock.now), [
+      // Five minutes, polled every second: the round is owed its one milestone,
+      // and the rest is owed nothing at any instant.
+      final haptics = WatchTimerHaptics(engine);
+      final startedAt = clock.now;
+      final milestones = <WatchTimerMilestone>[];
+      for (var second = 0; second <= 300; second++) {
+        milestones.addAll(haptics.poll(startedAt.add(Duration(seconds: second))));
+      }
+
+      expect(
+        milestones,
+        [
           WatchTimerMilestone(
-            kind: WatchTimerKind.rest,
-            at: DateTime.utc(2026, 7, 13, 17, 1, 30),
+            kind: WatchTimerKind.round,
+            at: startedAt.add(const Duration(seconds: 60)),
           ),
-        ]);
-      },
-    );
+        ],
+        reason: 'a rest has no length, so no alert is ever owed for one',
+      );
+    });
 
-    test(
-      'S-005 a pause moves the deadline by the pause, not the tick count',
-      () async {
-        await surface.log();
-        final haptics = WatchTimerHaptics(engine);
-        final startedAt = clock.now;
+    test('S-164 a paused rest is still owed no alert', () async {
+      await surface.log();
+      final haptics = WatchTimerHaptics(engine);
+      final startedAt = clock.now;
 
-        clock.advance(const Duration(seconds: 30));
-        await engine.pauseTimer(kind: WatchTimerKind.rest);
-        clock.advance(const Duration(seconds: 30));
-        await engine.resumeTimer(kind: WatchTimerKind.rest);
+      clock.advance(const Duration(seconds: 30));
+      await engine.pauseTimer(kind: WatchTimerKind.rest);
+      clock.advance(const Duration(seconds: 30));
+      await engine.resumeTimer(kind: WatchTimerKind.rest);
 
+      for (var second = 0; second <= 600; second++) {
         expect(
-          haptics.poll(startedAt.add(const Duration(seconds: 90))),
+          haptics.poll(startedAt.add(Duration(seconds: second))),
           isEmpty,
-          reason: 'the paused half-minute has not been counted yet',
+          reason: 'a rest owes no alert, running or paused',
         );
-        expect(haptics.poll(startedAt.add(const Duration(seconds: 120))), [
+      }
+    });
+
+    test('S-164 a stored rest row with a stale plan owes no alert', () async {
+      // A row an older build wrote: a rest that still carries its 90-second
+      // plan. Nothing in this build writes one, but an upgrade restores one
+      // from the store, and its clamped-to-zero remaining time must not read
+      // as a countdown to alarm (F1, R-13).
+      await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90000);
+      await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 60000);
+
+      final haptics = WatchTimerHaptics(engine);
+      final startedAt = clock.now;
+      final milestones = <WatchTimerMilestone>[];
+      for (var second = 0; second <= 300; second++) {
+        milestones.addAll(haptics.poll(startedAt.add(Duration(seconds: second))));
+      }
+
+      expect(
+        milestones,
+        [
           WatchTimerMilestone(
-            kind: WatchTimerKind.rest,
-            at: startedAt.add(const Duration(seconds: 120)),
+            kind: WatchTimerKind.round,
+            at: startedAt.add(const Duration(seconds: 60)),
           ),
-        ]);
-      },
-    );
+        ],
+        reason: 'the stale plan on a rest row is not a countdown to alarm',
+      );
+    });
+  });
 
-    test(
-      'S-005 a rest timer is a wall clock after a kill, not a counter',
-      () async {
-        await surface.log();
-        final deadline = clock.now.add(const Duration(seconds: 90));
+  group('S-321 a set logged mid-rest ends it at that set\'s own instant', () {
+    test('S-321 the rest ends at the instant the set carries', () async {
+      await surface.log();
+      final setA = engine.observations.single;
+      final restStartedAt = engine.timerFor(WatchTimerKind.rest)!.startedAt;
+      // The set's own instant, ahead of the clock the surface reads: a stop
+      // that read the clock instead would end the rest where it started.
+      final setBAt = clock.now.add(const Duration(seconds: 45));
 
-        // A relaunch: a brand-new engine over the same storage, nothing handed
-        // across in memory, and the same clock the watch would be holding.
-        final relaunched = WatchSessionEngine(store, clock: clock.call);
-        await relaunched.restore();
+      await surface.log(now: setBAt);
 
-        expect(
-          WatchTimerHaptics(relaunched).poll(deadline),
-          [WatchTimerMilestone(kind: WatchTimerKind.rest, at: deadline)],
-          reason: 'the countdown reads its own timestamp, not a counter',
-        );
-      },
-    );
+      final rest = engine.observations.singleWhere(
+        (row) => row.kind == WatchObservationKind.rest,
+      );
+      final setB = engine.observations.last;
+      expect(setB.kind, WatchObservationKind.set);
+      expect(rest.payload['afterEntryId'], setA.entryId);
+      expect(rest.payload['startedAt'], utcIso(restStartedAt));
+      expect(
+        rest.payload['endedAt'],
+        utcIso(setBAt),
+        reason: "the log's own instant, not a second read of the clock",
+      );
+      expect(rest.payload['endedAt'], setB.payload['loggedAt']);
+      expect(
+        rest.sequence,
+        lessThan(setB.sequence),
+        reason: 'the rest was written before the set that ended it',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.running,
+        reason: 'the set that ended the rest started one of its own',
+      );
+      expect(
+        engine.observations.where(
+          (row) => row.kind == WatchObservationKind.rest,
+        ),
+        hasLength(1),
+        reason: "and that new rest has no observation yet",
+      );
+    });
   });
 
   group('S-003 round countdown', () {
@@ -235,11 +341,11 @@ void main() {
     });
 
     test('a countdown the user ended early never fires', () async {
-      await engine.startTimer(WatchTimerKind.rest, plannedDurationMs: 90000);
+      await engine.startTimer(WatchTimerKind.round, plannedDurationMs: 60000);
       final haptics = WatchTimerHaptics(engine);
 
-      clock.advance(const Duration(seconds: 60));
-      await engine.stopTimer(kind: WatchTimerKind.rest);
+      clock.advance(const Duration(seconds: 30));
+      await engine.stopTimer(kind: WatchTimerKind.round);
 
       clock.advance(const Duration(minutes: 5));
       expect(haptics.poll(clock.now), isEmpty);
@@ -266,5 +372,84 @@ void main() {
         );
       },
     );
+  });
+
+  group('S-79 each device owns only the countdown it started', () {
+    late String sessionId;
+
+    setUp(() async {
+      sessionId = engine.session!.sessionId;
+      // The phone's countdown: the row id is derived from the message that
+      // named it, which is what marks it as the sender's own (D-80).
+      await engine.applyMessage(
+        _frame('timer_state', sessionId, 'm-7', {
+          'timers': {
+            'round': _timerJson(
+              WatchTimerKind.round,
+              startedAt: '2026-07-13T16:59:50Z',
+              plannedDurationMs: 60000,
+            ),
+          },
+        }),
+      );
+      // The wrist's own countdown, started on the watch. A rest has no length
+      // (D-160); its ownership is what this case is about.
+      await engine.startTimer(WatchTimerKind.rest);
+    });
+
+    test(
+      "S-79 a snapshot leaves the wrist's countdown running and stops the "
+      "phone's own",
+      () async {
+        final wristTimer = engine.timerFor(WatchTimerKind.rest)!;
+        expect(wristTimer.state, WatchTimerState.running);
+
+        await engine.applyMessage(
+          _snapshotFrame(
+            sessionId,
+            'snap-msg-1',
+            timers: const {},
+            exercises: [_slot('sx-bench', ['reps', 'sets', 'load'])],
+          ),
+        );
+
+        final rest = engine.timerFor(WatchTimerKind.rest)!;
+        expect(
+          rest.recordId,
+          wristTimer.recordId,
+          reason: 'the wrist started it, so the phone is not speaking about it',
+        );
+        expect(rest.state, WatchTimerState.running);
+        expect(rest.stoppedAt, isNull);
+
+        final round = engine.timerFor(WatchTimerKind.round)!;
+        expect(round.state, WatchTimerState.stopped);
+        expect(round.stoppedAt, clock.now);
+
+        expect(
+          [for (final row in (await store.readAll()).timers)
+            if (row.kind == WatchTimerKind.round) row.recordId],
+          ['tms-m-7-round', 'tms-snap-msg-1-round'],
+          reason: "the phone's own row is never rewritten: the stop is a row",
+        );
+      },
+    );
+
+    test('S-79 a kind named null is still cleared', () async {
+      await engine.applyMessage(
+        _snapshotFrame(
+          sessionId,
+          'snap-msg-2',
+          timers: const {'rest': null},
+          exercises: [_slot('sx-bench', ['reps', 'sets', 'load'])],
+        ),
+      );
+
+      expect(
+        engine.timerFor(WatchTimerKind.rest)!.state,
+        WatchTimerState.stopped,
+        reason: 'a kind the phone names is a kind the phone is speaking about',
+      );
+    });
   });
 }

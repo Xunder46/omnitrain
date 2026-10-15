@@ -188,6 +188,12 @@ Do not leave a conforming section next to a prohibited one without flagging it.
 missing scope block is a review blocker. A behavioural claim with no
 verification pointer is a review blocker.
 
+**Records are outside this standard.** Plans, release notes and agent memories
+(the `plans/`, `releases/` and `memories/` folders), `future-work.md` and
+`watch-app-setup-and-qa.md` are records of work, not documentation. The manual
+watch QA guide is a numbered script by design; section 3.1 does not apply to it.
+This is not an exception to section 6: nothing else is exempt.
+
 **When behaviour genuinely needs recording** — because it is subtle, costly to
 rediscover, or the reason a bug was fixed — the correct action is to write a
 test. The test is the record. The document may then point at it.

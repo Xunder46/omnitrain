@@ -47,7 +47,12 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
   @override
   void initState() {
     super.initState();
-    widget.routineState.loadRoutines();
+    // D-150/D-151: `loadRoutines` notifies `RoutineState` synchronously, so the
+    // first load waits for the frame that mounts this screen — a notifying
+    // listener above it cannot be marked dirty mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.routineState.loadRoutines();
+    });
   }
 
   @override

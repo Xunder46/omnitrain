@@ -6,6 +6,7 @@
   "sentAt": "2026-09-25T09:00:00Z",
   "payload": {
     "generatedAt": "2026-09-25T09:00:00Z",
-    "effortRatingPrompt": false
+    "effortRatingPrompt": false,
+    "restPingSeconds": 90
   }
 }

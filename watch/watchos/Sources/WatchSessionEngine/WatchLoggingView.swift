@@ -35,6 +35,12 @@ public struct WristHaptics: WatchHaptics {
     public func play(_ milestone: WatchTimerMilestone) {
         WKInterfaceDevice.current().play(.notification)
     }
+
+    /// A rest ping is not a countdown ending: it is a shorter nudge, so it does
+    /// not share the countdown's alert (D-251).
+    public func playRestPing() {
+        WKInterfaceDevice.current().play(.click)
+    }
 }
 
 public struct WatchLoggingView: View {
@@ -50,11 +56,18 @@ public struct WatchLoggingView: View {
 
     @StateObject private var model: WatchLoggingModel
 
+    /// Called after a successful log, so the app shell can re-evaluate which
+    /// surface it shows — logging a set starts a rest, and the shell swaps to
+    /// the rest surface on that nudge (D-161).
+    private let onLogged: (() -> Void)?
+
     public init(
         state: WatchLoggingState,
-        haptics: WatchHaptics = WristHaptics()
+        haptics: WatchHaptics = WristHaptics(),
+        onLogged: (() -> Void)? = nil
     ) {
         _model = StateObject(wrappedValue: WatchLoggingModel(state: state, haptics: haptics))
+        self.onLogged = onLogged
     }
 
     public var body: some View {
@@ -64,8 +77,13 @@ public struct WatchLoggingView: View {
             ForEach(model.state.fields, id: \.metricKey) { field in
                 row(field)
             }
+            if let readout = model.workReadout {
+                Text(readout)
+                    .font(.largeTitle)
+                    .monospacedDigit()
+            }
             Spacer(minLength: 0)
-            logButton
+            primaryButton
         }
         .padding(.horizontal, Self.surfaceInset)
         .onAppear { model.start() }
@@ -85,7 +103,14 @@ public struct WatchLoggingView: View {
             Text(model.state.exerciseName ?? "No exercise")
                 .font(.caption2)
                 .lineLimit(1)
-            if let countdown = model.countdown {
+            if let round = roundLine {
+                Text(round)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            // The readout already carries the period's time, so the header drops
+            // its own countdown line rather than repeating it.
+            if model.workReadout == nil, let countdown = model.countdown {
                 Text("\(WatchLoggingState.clock(countdown)) left")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -99,6 +124,10 @@ public struct WatchLoggingView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    /// The period the next log will record, in this modality's own word and
+    /// singular ("Period 2"), or nil for the kinds without periods (D-1307).
+    private var roundLine: String? { model.periodLine }
 
     /// What the sensors are reading, as one line: the heart rate, the distance,
     /// and the pace it is being covered at. Absent pieces are left out rather
@@ -174,12 +203,16 @@ public struct WatchLoggingView: View {
     }
 
     /// The primary action, and the largest thing on the screen: a wrist log is
-    /// one glance and one confirm.
-    private var logButton: some View {
+    /// one glance and one confirm. It reads Start while the effort's clock is
+    /// stopped and Log once it runs (D-1307).
+    private var primaryButton: some View {
         Button {
-            Task { await model.log() }
+            Task {
+                await model.primaryAction()
+                onLogged?()
+            }
         } label: {
-            Text("Log").frame(maxWidth: .infinity)
+            Text(model.primaryTitle).frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .disabled(!model.state.canLog)
