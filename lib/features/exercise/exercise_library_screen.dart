@@ -4,6 +4,9 @@
 // Opened via the wired maintenance-sheet `Exercise Library` tile
 // (NOT the home tile grid).
 //
+// This is where exercises are created: the header `+` action opens
+// ExerciseEditorScreen (plan 37 moved it off the picker).
+//
 // Differences from ExercisePickerScreen:
 //   - No "Add to workout" action (rows never pop a selected exercise).
 //   - "Custom only" toggle (key `exercise_library_custom_only_toggle`).
@@ -23,6 +26,7 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
+import 'exercise_editor_screen.dart';
 import 'exercise_library_detail_screen.dart';
 
 class ExerciseLibraryScreen extends StatefulWidget {
@@ -101,7 +105,22 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
         return Scaffold(
           backgroundColor: Colors.transparent,
           extendBodyBehindAppBar: true,
-          appBar: const OmniBackHeader(title: 'Exercise Library'),
+          appBar: OmniBackHeader(
+            title: 'Exercise Library',
+            actions: [
+              Semantics(
+                label: 'New Exercise',
+                button: true,
+                child: IconButton(
+                  key: const Key('exercise_library_new_button'),
+                  icon: const Icon(Icons.add),
+                  tooltip: 'New Exercise',
+                  color: OmniTheme.colors.textDominant,
+                  onPressed: _openCreateExercise,
+                ),
+              ),
+            ],
+          ),
           body: SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -299,6 +318,19 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
       await widget.exerciseLibraryState.reload();
       await _warmCache(widget.exerciseLibraryState.exercises);
     }
+  }
+
+  Future<void> _openCreateExercise() async {
+    final created = await OmniNavigator.push<Exercise>(
+      context,
+      (_) => ExerciseEditorScreen(workoutState: widget.workoutState),
+    );
+    if (created == null || !mounted) return;
+
+    _exerciseMuscleLinksCache.remove(created.id);
+    _searchController.text = created.name;
+    await widget.exerciseLibraryState.reload();
+    if (mounted) await _warmCache(widget.exerciseLibraryState.exercises);
   }
 
   Future<void> _warmCache(List<Exercise> exercises) async {

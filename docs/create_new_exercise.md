@@ -20,13 +20,35 @@ The current editor is **modality-first**: the chosen modality drives which disci
 | `initialExercise` | Optional exercise for edit mode |
 | `contextModality` | Optional prefill from the calling flow |
 
-Create flow typically passes `contextModality` and leaves `initialExercise` null.
+Create flow leaves `initialExercise` null. `contextModality` is passed only by the
+picker's empty-state create button (the session's modality prefills the form); the
+Exercise Library's header `+` passes none — the user picks the modality in the form.
 
 ---
 
 ## Entry Points
 
-- `ExercisePickerScreen` → `New Exercise`
+- `ExerciseLibraryScreen` header `+` (`exercise_library_new_button`, tooltip
+  `New Exercise`) → `ExerciseEditorScreen(workoutState)` with no
+  `contextModality`; on a created exercise the library clears that exercise's
+  cached muscle links, puts its name in the search field, reloads and warms the
+  cache. Verified by `test/pr8_exercise_library_test.dart` (group
+  `ExerciseLibraryScreen` · `S-4102: header carries the create action`,
+  `S-4103: the action opens the editor in create mode`,
+  `S-4106: the editor is opened without a session modality`,
+  `S-4105: backing out of the editor changes nothing`,
+  `S-4104: a saved exercise lands in the search field and list`).
+- `ExercisePickerScreen` empty state (`No exercises found`) → outlined
+  `New Exercise` button (`exercise_picker_new_button` in `OmniEmptyState.action`)
+  → `ExerciseEditorScreen(workoutState, contextModality: sessionModality)`; on a
+  created exercise the picker puts its name in the search field and re-searches.
+  Shown only when the filtered list is empty. Verified by
+  `test/screen_widget_test.dart` (group `ExercisePickerScreen` ·
+  `S-4108: empty results offer New Exercise; a populated list does not`,
+  `S-4109: the button opens the editor with the session modality`,
+  `S-4110: a saved exercise lands in the picker search field and list`); the
+  picker itself no longer carries a top create button
+  (`S-4101: no New Exercise button; search field comes first`).
 - `ExerciseLibraryDetailScreen` → `Edit` (custom exercises only; built-in rows offer Copy). Verified by `test/pr8_exercise_library_test.dart` (group `ExerciseLibraryDetailScreen` · `S-9: Edit opens the full editor and saves through it`).
 - Any edit flow that pushes `ExerciseEditorScreen(initialExercise: exercise)`
 
@@ -163,4 +185,4 @@ The picker flow refreshes and re-ranks results after the editor returns.
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-10-15. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

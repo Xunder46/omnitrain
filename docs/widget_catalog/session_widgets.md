@@ -242,7 +242,18 @@ exercises by relevance.
   (verified by `test/muscle_filter_picker_test.dart`, groups
   `S-2: Muscle filter grouped by region` and `S-3 / S-9: rows show main
   muscles only`)
-- Inline "New Exercise" creation → pushes `ExerciseEditorScreen` with picker/session modality prefilled via `contextModality`
+- Empty-state "New Exercise" creation: when the filtered list is empty, the
+  `No exercises found` `OmniEmptyState` carries an outlined `New Exercise`
+  button (`exercise_picker_new_button`) that pushes `ExerciseEditorScreen` with
+  the session modality prefilled via `contextModality`; on return the created
+  exercise's name is placed in the search field and the list re-searches
+  (verified by `test/screen_widget_test.dart`, group `ExercisePickerScreen` ·
+  `S-4108: empty results offer New Exercise; a populated list does not`,
+  `S-4109: the button opens the editor with the session modality`,
+  `S-4110: a saved exercise lands in the picker search field and list`). With
+  any result listed the button is not shown, and the picker has no top create
+  button (`S-4101: no New Exercise button; search field comes first`) —
+  creating from the library lives on `ExerciseLibraryScreen`'s header `+`
 - Returns the selected `Exercise` on pop
 
 Pushed from `WorkoutSessionScreen`,
@@ -308,4 +319,4 @@ Used by `WorkoutSessionScreen` and `RoutineSetupScreen` for ephemeral UI state.
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-10-13. This page is one part of the [Widget Catalog](../widget_catalog.md); see that index for the full component list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+> **Doc freshness** — Last reconciled against source: 2026-10-15. This page is one part of the [Widget Catalog](../widget_catalog.md); see that index for the full component list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.

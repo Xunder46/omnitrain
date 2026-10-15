@@ -14,8 +14,10 @@ import '../../widgets/layout/omni_back_header.dart';
 
 /// Full-screen page for selecting an exercise with search and filters.
 ///
-/// Replaces the former [ExercisePickerDialog]. All search, ranking,
-/// create-new, and exercise-return behaviour is preserved exactly.
+/// Replaces the former [ExercisePickerDialog]. All search, ranking
+/// and exercise-return behaviour is preserved exactly; creating an
+/// exercise also lives on the Exercise Library header, and on this
+/// screen's empty ("No exercises found") state.
 /// Use [OmniNavigator.push<Exercise>] to open and await the result.
 class ExercisePickerScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -175,9 +177,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
         contextModality: widget.sessionModality,
       ),
     );
-
     if (created == null) return;
-
     _exerciseMuscleLinksCache.remove(created.id);
     _searchController.text = created.name;
     await _searchExercises();
@@ -199,30 +199,6 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // New Exercise button
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _openCreateExercise,
-                  icon: const Icon(Icons.add),
-                  label: const Text('New Exercise'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: theme.colorScheme.primary,
-                    backgroundColor: Colors.transparent,
-                    side: BorderSide(
-                      color: theme.colorScheme.primary,
-                      width: 1.5,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
               // Search field
               TextField(
                 textCapitalization: TextCapitalization.none,
@@ -452,10 +428,29 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _filteredExercises.isEmpty
-                    ? const OmniEmptyState(
+                    ? OmniEmptyState(
                         icon: Icons.search_off,
                         title: 'No exercises found',
                         hint: 'Try adjusting your filters',
+                        action: OutlinedButton.icon(
+                          key: const Key('exercise_picker_new_button'),
+                          onPressed: _openCreateExercise,
+                          icon: const Icon(Icons.add),
+                          label: const Text('New Exercise'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: theme.colorScheme.primary,
+                            backgroundColor: Colors.transparent,
+                            side: BorderSide(
+                              color: theme.colorScheme.primary,
+                              width: 1.5,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                OmniTheme.buttonUtilityRadius,
+                              ),
+                            ),
+                          ),
+                        ),
                       )
                     : _buildExerciseList(theme),
               ),

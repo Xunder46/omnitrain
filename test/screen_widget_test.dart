@@ -7394,7 +7394,9 @@ void main() {
       expect(find.text('Search exercises...'), findsOneWidget);
     });
 
-    testWidgets('shows New Exercise button', (WidgetTester tester) async {
+    testWidgets('S-4101: no New Exercise button; search field comes first', (
+      WidgetTester tester,
+    ) async {
       await tester.binding.setSurfaceSize(const Size(800, 1200));
       final repo = await _freshRepo();
       final workoutState = WorkoutState(repo);
@@ -7404,7 +7406,38 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('New Exercise'), findsOneWidget);
+      // The search field is the first child of the body column: the
+      // full-width `New Exercise` button and its 16 dp gap are gone, and
+      // creating an exercise now lives on the library header (S-4102).
+      final searchField = find.byType(TextField).first;
+      final searchWidget = tester.widget<TextField>(searchField);
+      final bodyColumn = find
+          .ancestor(of: searchField, matching: find.byType(Column))
+          .evaluate()
+          .map((element) => element.widget)
+          .whereType<Column>()
+          .firstWhere(
+            (column) => column.children.contains(searchWidget),
+            orElse: () => throw StateError(
+              'No Column directly holds the picker search field',
+            ),
+          );
+      expect(bodyColumn.children.first, same(searchWidget));
+
+      // …and it sits just under the header rather than below the removed
+      // button and its 16 dp gap.
+      final searchTop = tester.getTopLeft(searchField).dy;
+      final headerBottom = tester.getBottomLeft(find.byType(OmniBackHeader)).dy;
+      expect(
+        searchTop - headerBottom,
+        lessThanOrEqualTo(24.0),
+        reason:
+            'search field top $searchTop must sit within 24 px of the header '
+            'bottom $headerBottom',
+      );
+
+      expect(find.text('New Exercise'), findsNothing);
+      expect(find.byIcon(Icons.add), findsNothing);
     });
 
     testWidgets(
@@ -7527,6 +7560,142 @@ void main() {
       );
     });
 
+    testWidgets(
+      'S-4108: empty results offer New Exercise; a populated list does not',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
+        );
+        await tester.pumpAndSettle();
+
+        // With the seeded catalog listed there is no empty state, so the
+        // create button is absent (S-4101 stays green).
+        expect(
+          find.byKey(const Key('exercise_picker_new_button')),
+          findsNothing,
+        );
+
+        await tester.enterText(
+          find.byType(TextField).first,
+          'zzzznotanexercise',
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        expect(find.text('No exercises found'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(OmniEmptyState),
+            matching: find.byKey(const Key('exercise_picker_new_button')),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'S-4109: the button opens the editor with the session modality',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ExercisePickerScreen(
+              workoutState: workoutState,
+              sessionModality: Modality.sports,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(
+          find.byType(TextField).first,
+          'zzzznotanexercise',
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('exercise_picker_new_button')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExerciseEditorScreen), findsOneWidget);
+        expect(
+          tester
+              .widget<ExerciseEditorScreen>(find.byType(ExerciseEditorScreen))
+              .contextModality,
+          Modality.sports,
+        );
+      },
+    );
+
+    testWidgets(
+      'S-4110: a saved exercise lands in the picker search field and list',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ExercisePickerScreen(
+              workoutState: workoutState,
+              sessionModality: Modality.sports,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(
+          find.byType(TextField).first,
+          'zzzznotanexercise',
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('exercise_picker_new_button')));
+        await tester.pumpAndSettle();
+
+        // Sports is prefilled from the session: one of its required
+        // capabilities plus a name make the form valid.
+        await tester.tap(find.widgetWithText(FilterChip, 'Time'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.widgetWithText(TextField, 'Exercise name'),
+          'Zercher Squat 4110',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Save exercise'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExerciseEditorScreen), findsNothing);
+        expect(
+          tester
+              .widget<TextField>(find.byType(TextField).first)
+              .controller!
+              .text,
+          'Zercher Squat 4110',
+        );
+
+        // The controller write debounces into a fresh search (300 ms).
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.descendant(
+            of: find.byType(ListView),
+            matching: find.text('Zercher Squat 4110'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
     testWidgets('does not overflow when keyboard is open with empty results', (
       WidgetTester tester,
     ) async {
@@ -7553,7 +7722,7 @@ void main() {
     });
 
     testWidgets(
-      'New Exercise label is not wrapped in shrink-to-fit FittedBox',
+      'dropdown value text uses a smaller, explicit type role',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(800, 1200));
         final repo = await _freshRepo();
@@ -7564,38 +7733,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(
-          find.ancestor(
-            of: find.text('New Exercise'),
-            matching: find.byType(FittedBox),
-          ),
-          findsNothing,
-        );
-      },
-    );
-
-    testWidgets(
-      'New Exercise label type role is more prominent than dropdown value text',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(800, 1200));
-        final repo = await _freshRepo();
-        final workoutState = WorkoutState(repo);
-
-        await tester.pumpWidget(
-          MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
-        );
-        await tester.pumpAndSettle();
-
-        // After Fix 1, 'New Exercise' Text has no explicit downscaled style
-        final newExerciseText = tester.widget<Text>(find.text('New Exercise'));
-        expect(
-          newExerciseText.style?.fontSize,
-          isNull,
-          reason:
-              'New Exercise label must not have an explicit downscaled fontSize',
-        );
-
-        // After Fix 2, dropdown 'All' Text has an explicitly small style (bodySmall)
+        // Dropdown 'All' Text has an explicitly small style (bodySmall)
         final allTextWidgets = tester
             .widgetList<Text>(find.text('All'))
             .toList();
@@ -7610,11 +7748,14 @@ void main() {
             isNotNull,
             reason: 'Dropdown value text must have an explicit muted style',
           );
+          // Pinned to the bodySmall type role, not merely "smaller than 14":
+          // the picker builds these texts with
+          // `theme.textTheme.bodySmall?.copyWith(...)`.
+          final theme = Theme.of(tester.element(find.text('All').first));
           expect(
-            w.style!.fontSize!,
-            lessThan(14.0),
-            reason:
-                'Dropdown value text must be smaller than standard body text',
+            w.style!.fontSize,
+            theme.textTheme.bodySmall!.fontSize,
+            reason: 'Dropdown value text must use the bodySmall type role',
           );
         }
       },

@@ -22,6 +22,7 @@ import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/features/exercise/exercise_editor_screen.dart';
 import 'package:omnitrain/features/exercise/exercise_library_detail_screen.dart';
 import 'package:omnitrain/features/exercise/exercise_library_screen.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
@@ -540,6 +541,208 @@ void main() {
         find.byKey(const Key('exercise_library_row_add_button')),
         findsNothing,
         reason: 'The library must NOT offer an Add-to-Workout action',
+      );
+    });
+
+    // ── Plan 37: creating an exercise from the library header ───────────
+    // The picker's full-width `New Exercise` button moved here as a header
+    // action (S-4101 removes it from the picker).
+
+    testWidgets('S-4102: header carries the create action', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryScreen(
+            exerciseLibraryState: bundle.state,
+            workoutState: bundle.workout,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final newButton = find.byKey(const Key('exercise_library_new_button'));
+      expect(newButton, findsOneWidget);
+      expect(tester.widget<IconButton>(newButton).tooltip, 'New Exercise');
+    });
+
+    testWidgets('S-4103: the action opens the editor in create mode', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryScreen(
+            exerciseLibraryState: bundle.state,
+            workoutState: bundle.workout,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('exercise_library_new_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ExerciseEditorScreen), findsOneWidget);
+      expect(find.text('New Exercise'), findsOneWidget);
+      expect(find.text('Edit Exercise'), findsNothing);
+      // No modality is pre-selected: `_ModalityTile` renders its check icon
+      // only for the selected tile, and the library has no session modality.
+      expect(find.byIcon(Icons.check), findsNothing);
+    });
+
+    testWidgets('S-4106: the editor is opened without a session modality', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryScreen(
+            exerciseLibraryState: bundle.state,
+            workoutState: bundle.workout,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('exercise_library_new_button')));
+      await tester.pumpAndSettle();
+
+      // The action must actually open the editor: a no-op button would
+      // otherwise make every "nothing changed" assertion below trivially
+      // pass.
+      expect(find.byType(ExerciseEditorScreen), findsOneWidget);
+
+      expect(
+        tester
+            .widget<ExerciseEditorScreen>(find.byType(ExerciseEditorScreen))
+            .contextModality,
+        isNull,
+      );
+    });
+
+    testWidgets('S-4105: backing out of the editor changes nothing', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryScreen(
+            exerciseLibraryState: bundle.state,
+            workoutState: bundle.workout,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final namesBefore = bundle.state.exercises.map((e) => e.name).toList();
+
+      await tester.tap(find.byKey(const Key('exercise_library_new_button')));
+      await tester.pumpAndSettle();
+
+      // The action must actually open the editor: a no-op button would
+      // otherwise make every "nothing changed" assertion below trivially
+      // pass.
+      expect(find.byType(ExerciseEditorScreen), findsOneWidget);
+
+      // An untouched form pops straight away.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ExerciseEditorScreen),
+          matching: find.byIcon(Icons.arrow_back),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ExerciseEditorScreen), findsNothing);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('exercise_library_search_field')),
+            )
+            .controller!
+            .text,
+        isEmpty,
+      );
+      expect(bundle.state.searchText, isNull);
+      expect(bundle.state.exercises.map((e) => e.name).toList(), namesBefore);
+    });
+
+    testWidgets('S-4104: a saved exercise lands in the search field and list', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryScreen(
+            exerciseLibraryState: bundle.state,
+            workoutState: bundle.workout,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('exercise_library_new_button')));
+      await tester.pumpAndSettle();
+
+      // A sports exercise needs only a modality, one of its required
+      // capabilities and a name (no muscle section).
+      await tester.tap(find.byKey(const Key('modality_tile_sports')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Time'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Exercise name'),
+        'Zercher Squat 4104',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save exercise'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ExerciseEditorScreen), findsNothing);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('exercise_library_search_field')),
+            )
+            .controller!
+            .text,
+        'Zercher Squat 4104',
+      );
+
+      // The controller write debounces into `setSearchText` (300 ms).
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.text('Zercher Squat 4104'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('exercise_row_custom_marker')),
+        findsOneWidget,
+      );
+      expect(
+        bundle.state.exercises.map((e) => e.name),
+        contains('Zercher Squat 4104'),
       );
     });
   });
