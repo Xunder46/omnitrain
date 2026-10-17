@@ -804,49 +804,50 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               children: [
                 _buildHeader(theme),
 
-                const SizedBox(height: 0),
+                // D-8: the set bar is pinned under the header, outside the
+                // scroll view, so it neither scrolls away nor sits in a 48 dp
+                // cell below the header.
+                _buildSetBar(entries.length, effortKind),
 
                 Expanded(
                   child: Column(
                     children: [
                       Expanded(
-                        child: AnimatedPadding(
-                          duration: _kRestStripAnimationDuration,
-                          curve: Curves.easeOut,
-                          padding: EdgeInsets.only(
-                            bottom: showRestStrip
-                                ? OmniTheme.restStripHeight
-                                : 0,
-                          ),
-                          child: SingleChildScrollView(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _buildMetricWidget(
-                                    exercise,
-                                    currentEntry,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _buildSetProgress(
+                        // The docked RestTimerStrip below already reserves
+                        // OmniTheme.restStripHeight in this Column, so the
+                        // scroll area must not reserve it a second time: the
+                        // second reservation (a leftover from the earlier
+                        // Stack-overlay strip) pushed the sets control off the
+                        // bottom of the screen whenever a rest was up.
+                        child: SingleChildScrollView(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                _buildMetricWidget(
+                                  exercise,
+                                  currentEntry,
+                                  effortKind,
+                                  theme,
+                                ),
+                                const SizedBox(height: 24),
+                                SetCountStepper(
+                                  text: _setCountText(
                                     entries.length,
                                     effortKind,
-                                    theme,
                                   ),
-                                  const SizedBox(height: 16),
-                                  _buildSetIndicator(
-                                    entries.length,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  SizedBox(
-                                    height: 24 + _kSessionScrollBottomExtra,
-                                  ),
-                                ],
-                              ),
+                                  canAdd:
+                                      entries.length <
+                                      WorkoutConstants.maxEntriesPerEffort,
+                                  removeIsExercise: entries.length == 1,
+                                  onAdd: _addSet,
+                                  onRemove: _deleteLastUnloggedSet,
+                                ),
+                                SizedBox(
+                                  height: 24 + _kSessionScrollBottomExtra,
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -857,11 +858,9 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                       // shared _shouldShowRestOverlay() helper
                       // (covers edit-mode, running effort, and
                       // cross-effort rest scenarios in one rule).
-                      // The strip's height animates in sync with
-                      // the scrollable's bottom padding so the
-                      // content can scroll clear of it and the
-                      // strip collapses to zero when no rest is
-                      // open.
+                      // The strip's height is reserved once, here in the
+                      // flow; it collapses to zero when no rest is open, so
+                      // the scroll area above it takes the room back.
                       RestTimerStrip(
                         visible: showRestStrip,
                         child: _buildRestOverlayChip(
@@ -979,6 +978,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         : null;
 
     return Padding(
+      key: const Key('session-detail-header'),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Row(
         children: [
@@ -1025,6 +1025,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                       ? '${widget.editMode ? '$_sessionDisplayName · ' : ''}${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}'
                       : (_exercises.isNotEmpty
                             ? 'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}'
+                                  '${currentSegmentName?.isNotEmpty ?? false ? ' · $currentSegmentName' : ''}'
                             : ''),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: widget.editMode
@@ -1034,18 +1035,6 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (!_showListView && (currentSegmentName?.isNotEmpty ?? false))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      currentSegmentName!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.colors.textSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
               ],
             ),
           ),

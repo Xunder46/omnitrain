@@ -53,6 +53,9 @@ class TimerManager {
   Map<String, List<RoundInstance>> get roundInstancesSnapshot =>
       Map.unmodifiable(_roundInstances);
 
+  Map<String, List<EntryRest>> get entryRestsSnapshot =>
+      Map.unmodifiable(_entryRests);
+
   Map<String, List<TimedInstance>> get timedInstancesSnapshot =>
       Map.unmodifiable(_timedInstances);
 
@@ -305,11 +308,13 @@ class TimerManager {
     }
   }
 
-  Future<void> deleteRound(String effortId, int roundIndex) async {
+  /// Deletes the round at [roundIndex]. Returns `false` when the effort holds
+  /// no such round — nothing was deleted.
+  Future<bool> deleteRound(String effortId, int roundIndex) async {
     _clearError();
     try {
       final list = _roundInstances[effortId];
-      if (list == null || roundIndex >= list.length) return;
+      if (list == null || roundIndex >= list.length) return false;
       await _repository.deleteRoundInstance(list[roundIndex].id);
       list.removeAt(roundIndex);
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -320,8 +325,10 @@ class TimerManager {
         await _repository.updateRoundInstance(reindexed);
       }
       _notify();
+      return true;
     } catch (e) {
       _setError('Failed to delete round: $e');
+      return false;
     }
   }
 
@@ -351,6 +358,57 @@ class TimerManager {
       _notify();
     } catch (e) {
       _setError('Failed to update round duration: $e');
+    }
+  }
+
+  /// Applies [newDurationSecs] to the round at [fromIndex] and to every later
+  /// round that has not started yet — a length change before Start moves the
+  /// whole remaining set (O-6).
+  ///
+  /// The round at [fromIndex] is written unless it is already finished. Every
+  /// LATER round is written only when it has not started; a later round that is
+  /// running, paused or finished keeps its length. Each touched round is
+  /// written to the cache before its `updateRoundInstance` (rows below read the
+  /// same list). Returns the written indexes, ascending.
+  Future<List<int>> updatePlannedDurationFrom(
+    String effortId,
+    int fromIndex,
+    int newDurationSecs,
+  ) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || fromIndex < 0 || fromIndex >= list.length) {
+        return <int>[];
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final touched = <int>[];
+      for (int i = fromIndex; i < list.length; i++) {
+        final old = list[i];
+        if (i == fromIndex) {
+          if (old.state == RoundState.finished) {
+            debugPrint('Cannot update planned duration for finished round');
+            continue;
+          }
+        } else if (old.state != RoundState.notStarted) {
+          continue;
+        }
+
+        final updated = old.copyWith(
+          plannedDurationSecs: newDurationSecs,
+          updatedAtMs: now,
+        );
+        list[i] = updated;
+        await _repository.updateRoundInstance(updated);
+        touched.add(i);
+      }
+
+      _notify();
+      return touched;
+    } catch (e) {
+      _setError('Failed to update round duration: $e');
+      return <int>[];
     }
   }
 
@@ -581,12 +639,13 @@ class TimerManager {
     }
   }
 
-  Future<void> deleteTimedEntry(String effortId, int entryIndex) async {
+  /// Deletes the timed entry at [entryIndex] and its rows. Returns `false`
+  /// when the effort holds no such entry — nothing was deleted.
+  Future<bool> deleteTimedEntry(String effortId, int entryIndex) async {
     _clearError();
     try {
       final list = _timedInstances[effortId];
-      if (list == null || entryIndex < 0 || entryIndex >= list.length) return;
-
+      if (list == null || entryIndex < 0 || entryIndex >= list.length) return false;
       // D-326: the entry's own rows are found before the instance goes, since
       // the rule pairs them against the positions the instances hold now.
       final doomed = _rowsOfTimedEntry(effortId, entryIndex, list.length);
@@ -611,8 +670,45 @@ class TimerManager {
       }
 
       _notify();
+      return true;
     } catch (e) {
       _setError('Failed to delete timed entry: $e');
+      return false;
+    }
+  }
+
+  /// Moves every rest of [effortId] down with the entries a delete kept (D-1).
+  ///
+  /// A `set` entry counts as logged exactly when a rest sits at its index + 1,
+  /// so the rest at `deletedIndex + 1` — the mark of the entry that just went —
+  /// is removed, every rest above it is re-keyed one down (same stamps, same
+  /// open/paused state, id `rest-<effortId>-<newIndex>`) and every rest at
+  /// [deletedIndex] or below stays. The in-memory cache is replaced first, then
+  /// the store: Hive keys rests by id, so a re-key is a delete-and-re-create
+  /// rather than an update.
+  ///
+  /// No-op when no rest sits at or above the deleted entry's mark. Never
+  /// notifies — the caller's own delete already does.
+  Future<void> rekeyEntryRestsAfterDelete(
+    String effortId,
+    int deletedIndex,
+  ) async {
+    _clearError();
+
+    try {
+      final list = _entryRests[effortId];
+      if (list == null || list.isEmpty) return;
+      final kept = EntryRows.restsAfterDelete(list, effortId, deletedIndex);
+      if (kept == null) return;
+
+      _entryRests[effortId] = kept;
+
+      await _repository.deleteEntryRestsForEffort(effortId);
+      for (final rest in kept) {
+        await _repository.createEntryRest(rest);
+      }
+    } catch (e) {
+      _setError('Failed to delete entry rests: $e');
     }
   }
 

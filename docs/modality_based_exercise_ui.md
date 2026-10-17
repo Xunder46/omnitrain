@@ -46,9 +46,10 @@ WorkoutSessionScreen (StatefulWidget)
 │   └── Detail View builders → workout_session_detail_view.dart
 └── Reusable Widgets
     ├── InlineMetricEditor (scrollable value adjustment)
-    ├── Header (navigation + context)
-    ├── Set Progress Indicator
-    ├── Set Dots (visual progress)
+    ├── ValueStepperRow (reps / weight rows with − and +, boxed)
+    ├── Header (navigation + one-line exercise counter)
+    ├── SetSegmentBar (one tappable segment per set / interval / round / hold, with per-set captions)
+    ├── SetCountStepper (boxed add / remove entry control)
     └── Control Buttons
 ```
 
@@ -71,8 +72,8 @@ WorkoutSessionScreen (StatefulWidget)
 4. **Haptic + Visual Feedback**
    - Light haptic on successful log (non-web)
    - The rest count-up appears after logging a set
-   - Timer state indicators (RUNNING/STOPPED)
-   - Completed set dots fill in
+   - Timer state conveyed by the ticking digits and the centre button label — `timed` and `drill` have no status row (`test/timed_emphasis_redesign_test.dart`, group `Timed emphasis redesign` · `free-session timed and drill running states keep dominant digits and show no status chrome across all themes`)
+   - Logged segments of the set bar fill in (`SetSegmentBar`)
 
 ---
 
@@ -105,21 +106,102 @@ class InlineMetricEditor extends StatefulWidget {
 **Visual Design**:
 - Value changes by tapping the number and using the popup/dialog; the editor is tap-only (no drag path exists in `lib/widgets/session/inline_metric_editor.dart`)
 
+**Set efforts render stepper rows**: for an effort of kind `set` (resistance
+and free training) the reps and weight values render as two `ValueStepperRow`
+rows, reps then weight — `−` on the left, the number in the middle, `+` on the
+right, each row boxed in the shared `OmniSurface` with no shadow. Tapping the
+number still opens the popup; one tap on a button steps the value, holding a
+button repeats it.
+
+Verified by `test/reps_screen_test.dart` (group `Reps screen — stepper rows —
+resistance (S-4250..S-4256)` · `S-4250: the two rows step reps and weight and
+store both`, `S-4254: tapping the weight number still opens Edit Weight`,
+`S-4253: holding plus stores the stepped value once, on lift`) and
+`test/logger_shell_screen_test.dart` (group `Logger polish — header, captions,
+boxes, layout (S-4311..S-4317, S-4322..S-4324)` · `S-4316: the reps and weight
+rows sit in an OmniSurface`).
+
+**Count-up efforts render plain digits**: the two count-up kinds — `timed`
+(cardio interval) and `drill` (isometric hold) — show the elapsed time as
+plain large digits with no ring, no status row (no play/pause glyph, no
+`STOPPED` / `RUNNING` / `PAUSED` text) and no time stepper before Start; a
+caption sits under the digits — `ELAPSED` while the entry is unfinished,
+`COMPLETED` once it is finished (owner O-13 restored what 38c had removed);
+running is conveyed by the digits ticking and the centre button label
+(`Start`, then `Log Interval` / `Log Hold`). The only way to produce a value is Start → run → log, which
+locks the elapsed time; there is no Pause control, and an entry restored from
+storage in the paused state shows `Resume` in the centre slot. An interval
+has no weight control anywhere, live or in the session editor, whatever the
+exercise carries (O-11): stored `extra-weight` rows of old intervals stay in
+the data, untouched by summaries, and the screen neither shows nor edits
+them. A hold shows one full-width `ValueStepperRow` weight row under the
+digits, always visible (the old collapsible `Weight adjustment` button is
+gone): it steps 2.5 kg or 5 lb (`MetricStepping.weightStepFor`), tapping the
+number opens the existing `Edit Weight` popup (limits −200..999 in the shown
+unit, and the number carries no `+` sign), and the row is editable before
+Start and while the hold runs; once the hold is logged in a live session its
+buttons dim and do nothing, and it is never locked in the session editor.
+The row's key is per set, so moving to another set discards a hold in
+progress. In the session editor an interval keeps only its duration editor
+(dialog `Edit Interval Duration`) and a hold its duration editor (`Edit Hold
+Duration`) plus the weight row.
+
+Verified by `test/count_up_screen_test.dart` (group `Count-up — timed
+intervals (S-4260..S-4263)` · `S-4260: an interval with no load shows digits
+and no chrome`, `S-4260: a stored extra weight changes nothing on an
+interval`, `S-4261: Start leaves the digits plain and the button logs`,
+`S-4262: the interval editor keeps its duration dialog only`, `S-4263:
+logging an interval leaves its data untouched`, `S-4277: a live interval's
+digits open nothing on a tap`; group `Count-up — holds (S-4264..S-4270)` ·
+`S-4264: a hold shows digits plus one weight row`, `S-4265: the hold weight
+steps 2.5 kg at a time`, `S-4265: a pounds preference steps 5 lb and stores
+kg`, `S-4266: a weight step does not stop a running hold`, `S-4267: a logged
+hold locks both weight buttons`, `S-4267: a logged hold stays editable in the
+editor`, `S-4268: the hold weight number opens Edit Weight`, `S-4269: a
+stored 10.0 reads as 10.0, with no sign`, `S-4269: a stored -10.0 reads as
+-10.0 and plus gives -7.5`, `S-4270: a long press survives the one-second
+rebuilds`, `S-4276: a hold dies with its set when the arrows move focus`,
+`S-4278: a live hold's digits open nothing on a tap`, `S-4279: the hold
+editor keeps its duration dialog`; group `Count-up — restored paused entries
+(S-4273, S-4274)` · `S-4273: a paused interval shows its elapsed and Resume`,
+`S-4274: a paused hold keeps its elapsed, weight and Resume`; group `Count-up
+— a running hold survives a weight step (S-4275)` · `S-4275: the reload keeps
+the elapsed time and the timer`; group `Count-up — layout guard (S-4271)` ·
+`S-4271: with the rest strip up the hold's controls are reachable`; group
+`Count-up — a finished entry reads COMPLETED (S-4402)` · `S-4402: a finished
+interval swaps ELAPSED for COMPLETED`, `S-4402: a finished hold swaps ELAPSED
+for COMPLETED`),
+`test/exercise_detail_emphasis_tier_test.dart` (`S-106 hold effort weight row
+renders dominant tier`, `S-106b interval effort renders no weight editor`),
+`test/timed_emphasis_redesign_test.dart` (group `Timed emphasis redesign` ·
+`free-session timed and drill stopped states show dominant digits only: no
+status chrome, no weight row on an interval, one on a hold, across all
+themes`, `free-session timed and drill running states keep dominant digits
+and show no status chrome across all themes`, `routine-backed timed and drill
+session details show dominant digits with no status chrome across all
+themes`), `test/logger_shell_screen_test.dart` (group `Logger shell — logged
+sets are locked live (S-4216/S-4217)` · `S-4217: a logged hold's weight is
+read-only live`, `S-4217: edit mode keeps a logged hold's weight editable`)
+and `test/session_toolbar_rework_test.dart` (`S-009: tapping Start button
+starts the timer (centre button becomes Log Interval)`, `S-010: centre button
+reads Start before the timer runs`, `S-011: centre button reads Log Interval
+while running`, `S-013: jumping to another set leaves the timer running`).
+
 ### 2. Timer State Management
 
 **Challenge**: Multiple exercises with multiple sets, each potentially with independent timers.
 
 **Solution**: All effort timers are **wall-clock derived from persisted records**; the only `Stopwatch` / `Timer.periodic` in the session screen is a 1-Hz UI repaint driver. There is no `Stopwatch`-based elapsed counter in the active source.
 
-> **Note on prior implementations:** Earlier drafts of this file described "Stopwatch-Based Timers (set / timed / drill efforts)" with a `_effortStopwatches` field. That implementation no longer exists in the source. The current `set` effort has no timer at all (reps + weight are scroller inputs persisted on every `updateEntryValue`); `timed` and `drill` elapsed time is derived from `TimedInstance` wall-clock records; `round` elapsed time is derived from `RoundInstance` wall-clock records. A single `_ticker = Timer.periodic(1 s)` drives UI repaints; it never computes elapsed time itself.
+> **Note on prior implementations:** Earlier drafts of this file described "Stopwatch-Based Timers (set / timed / drill efforts)" with a `_effortStopwatches` field. That implementation no longer exists in the source. The current `set` effort has no timer at all (reps + weight are stepper-row inputs persisted on every `updateEntryValue`); `timed` and `drill` elapsed time is derived from `TimedInstance` wall-clock records; `round` elapsed time is derived from `RoundInstance` wall-clock records. A single `_ticker = Timer.periodic(1 s)` drives UI repaints; it never computes elapsed time itself.
 
 #### Effort kinds and their timer model
 
 | Effort kind | Has a running timer? | Source of truth for elapsed time | Persisted record |
 |---|---|---|---|
-| `set` | No — reps + weight are scroller inputs | n/a (no clock) | `EffortObservation` rows written on every `updateEntryValue` |
-| `timed` | Yes (start / pause / resume from the timer display) | Wall-clock derived from `TimedInstance.startedAtMs` − `pausedAtMs` − `totalPausedDurationMs` | `TimedInstance` row |
-| `drill` | Yes (same UX as `timed`) | Wall-clock derived from `TimedInstance` (same formula as `timed`) | `TimedInstance` row |
+| `set` | No — reps + weight are stepper-row inputs | n/a (no clock) | `EffortObservation` rows written on every `updateEntryValue` |
+| `timed` | Yes (started from the centre button; `Resume` only for an entry restored from storage in the paused state) | Wall-clock derived from `TimedInstance.startedAtMs` − `pausedAtMs` − `totalPausedDurationMs` | `TimedInstance` row |
+| `drill` | Yes (same timer model as `timed`) | Wall-clock derived from `TimedInstance` (same formula as `timed`) | `TimedInstance` row |
 | `round` | Yes (start / pause / resume from the timer display) | Wall-clock derived from `RoundInstance` timestamps via the `elapsedMs` getter | `RoundInstance` row |
 
 #### Per-tick UI state (timer mixin)
@@ -157,9 +239,65 @@ Round lifecycle is enforced by `RoundState` enum in `RoundInstance`:
 
 Transitions are validated by `_isValidRoundTransition()` in `WorkoutState`. Rapid-tap protection is provided by the `_pendingRoundTransitions` set in `WorkoutSessionScreen`, which blocks duplicate dispatches while a write is in-flight.
 
-**Round Countdown Display**:
-- Display value = `round.remainingMs / 1000` (i.e. `plannedDurationSecs - elapsedSecs`)
-- Clamped to [0, plannedDurationSecs] by the `remainingMs` getter — never negative
+**Round Countdown Display** (live `round` effort):
+- The hero is a `TimerRing` (`lib/widgets/session/timer_ring.dart`) with the
+  remaining-time digits centred inside it. The ring and the digits derive from
+  the same pair — the timer mixin's per-tick `_effortElapsed` cache and
+  `_getEffortTargetDuration` — as `effectiveTarget - elapsed`, clamped to
+  `[0, effectiveTarget]`; the display never reads
+  `RoundInstance.remainingMs`, which re-derives from `DateTime.now()` at
+  build time and can disagree with the digits between ticks. Verified by
+  `test/round_countdown_screen_test.dart` (group `Round countdown — ring
+  (S-4401)` · `S-4401: a fresh 180 s round draws a full ring`, `S-4401: an
+  active round 45 s in shows a 0.75 ring`).
+- Ring states: full before Start; following the digits while running (a
+  falling progress sweeps linearly over one second between the 1 Hz ticks);
+  frozen at its fraction for a round restored paused; empty once the round is
+  finished, by expiry or by logging early. Verified by `test/timer_ring_test.dart`
+  (group `S-4408 sweep` · `a falling progress sweeps while running`, `a
+  stopped ring applies the new value at once`, `a growing progress while
+  running is applied at once`) and `test/round_countdown_screen_test.dart`
+  (group `Round countdown — restored instances (S-4410, S-4411)` · `S-4410: a
+  paused round 45 s in reads 02:15, frozen at 0.75`, `S-4411: a round logged
+  early reads 01:00 + COMPLETED, ring empty`).
+- Captions: `REMAINING` under the digits while the round is unfinished,
+  `COMPLETED` once it is finished. The old chrome is gone: no `ROUND n` /
+  `PERIOD n` heading, no `DURATION` / `RUNNING` / `STOPPED` / `PAUSED`
+  labels, no play/pause status row. Verified by
+  `test/round_countdown_screen_test.dart` (group `Round countdown — digits
+  and caption (S-4402)` · `S-4402: martial arts reads 03:00 + REMAINING with
+  no old chrome`, `S-4402: sports reads 03:00 + REMAINING with no old chrome`)
+  and `test/sports_emphasis_redesign_test.dart` (group `Sports effort emphasis
+  redesign` · `S-001 free session stopped hierarchy is correct`, `S-002 free
+  session running hierarchy is correct`).
+- Round-length row under the ring: a `ValueStepperRow` in its duration mode
+  with the inline label `ROUND LENGTH` — one step is 15 s, the row is floored
+  at 15 s and ceilinged by `MetricStepCalc`, tapping the number opens
+  `showDurationEntryDialog` (`Edit Round Duration`), and the row is read-only
+  while the round runs, mid-round or finished. Verified by
+  `test/round_countdown_screen_test.dart` (group `Round countdown — length
+  row (S-4403, S-4413)` · `S-4403: + adds 15 s to the round length (03:15)`,
+  `S-4403: − removes 15 s from the round length (02:45)`, `S-4413: − at 00:15
+  stays at 00:15`, `S-4413: + at 60:00 stays at 60:00`, `S-4403: the row
+  number opens the duration dialog`, `S-4403: the row is read-only while the
+  round runs`) and `test/value_stepper_row_test.dart` (group `S-4413 duration
+  mode`).
+- A live length change applies to the round at the edited index (unless it is
+  finished) and to every later round that has not started; running and
+  finished rounds keep their own length. The single writer is
+  `TimerManager.updatePlannedDurationFrom`
+  (`lib/state/workout/timer_manager.dart`), exposed by `WorkoutState` and
+  called by the screen's `round-duration` path. Verified by
+  `test/state_test.dart` (`round: updatePlannedDurationFrom reaches the later
+  unstarted rounds`, `round: updatePlannedDurationFrom keeps the running
+  round its length`) and `test/round_planned_duration_parity_test.dart`
+  (groups `Mock` and `Hive` · `S-4412 a finished round keeps its length, the
+  later ones follow`, `S-4412 a running round keeps the length it started
+  with`).
+- Session editor (`editMode`): the same `ValueStepperRow` length row without
+  the ring. Verified by `test/round_countdown_screen_test.dart` (group
+  `Round countdown — layout and edit mode (S-4408, S-4409)` · `S-4409: edit
+  mode shows the length row and no ring`).
 - Actual duration capped at `plannedDurationSecs * WorkoutConstants.roundActualDurationCapFactor` on persist
 
 ### 5. Rest Count-Up Overlay
@@ -182,7 +320,34 @@ countdown ([Global Conventions](global_conventions.md), "Rest rule: rest is a co
 
 ### 6. Set Navigation and Control
 
-Detail view uses two distinct control rows instead of a single toolbar.
+The detail view's header is one line under the exercise name:
+`Exercise N / M · <section name>` — just `Exercise N / M` when the section has
+no name (key `session-detail-header`).
+
+Directly under the header, pinned outside the scroll, sits the set bar block:
+one tappable segment per set / interval / round / hold (`SetSegmentBar`) with
+one caption per segment under it — the logged value (`reps×weight` for a set,
+`m:ss` for an interval, hold or round), blank for an unlogged set, shown only
+when the exercise has 5 sets or fewer. The entry stepper (`SetCountStepper`)
+sits in the scroll body below the exercise's controls, away from the primary
+row: a boxed full-width control with `−` on the left, the count text in the
+middle (`Set 2 of 3`, `Interval 2 of 3`, `Round`/`Period 2 of 3`, `Hold 2 of 3`)
+and `+` on the right.
+
+Verified by `test/logger_shell_screen_test.dart` (group `Logger shell — set bar
+and logged line (S-4210..S-4214)` · `S-4210: logging through the button fills
+the bar and line`, `S-4214: nothing logged keeps the line empty at its height`;
+group `Logger shell — layout (S-4221/S-4223)` · `S-4221: the bar sits above the
+controls, the stepper below`; group `Logger polish — header, captions, boxes,
+layout (S-4311..S-4317, S-4322..S-4324)` · `S-4311: the counter and the section
+name are one text`, `S-4312: every logged set carries its own caption`,
+`S-4315: the sets control boxes the count text`, `S-4317: at 390 x 844 the bar
+hugs the header and the sets control stays reachable`,
+`S-4322: an empty section name leaves the counter alone`) and
+`test/set_shell_widgets_test.dart` (group `Mock S-4201 SetSegmentBar` ·
+`one segment per set, 48 dp tall, tap reports its index`; group
+`Mock S-4325 SetSegmentBar captions` · `one caption per set, in its cell,
+under a top-aligned bar`).
 
 **Timer Control Rule**:
 
@@ -191,10 +356,50 @@ Detail view uses two distinct control rows instead of a single toolbar.
 - navigating to another set or exercise leaves a running timer running — elapsed time is wall-clock derived, so it keeps advancing and still expires on schedule while the user is elsewhere
 - a paused entry (only reachable from a session persisted mid-pause) shows `Resume` in the same centre slot
 
-**Delete / Remove Rule**:
+**Lock Rule (live sessions)**:
 
-- removing a logged entry shows a confirmation dialog
-- removing the last remaining entry shows a stronger confirmation because it deletes the whole exercise from the session
+- in a live session a logged set cannot be edited: its reps and weight render
+  as `ValueStepperRow` rows whose buttons are dimmed and do nothing, a hold's
+  weight row dims the same way once the hold is logged, and the centre control
+  keeps showing `LOGGED`
+- in the session editor (`editMode`) nothing is locked; its controls stay
+  navigation-only with a screen-level Save
+
+Verified by `test/logger_shell_screen_test.dart` (group `Logger shell — logged
+sets are locked live (S-4216/S-4217)` · `S-4216: a logged set is read-only and
+shows LOGGED`, `S-4216: edit mode leaves a logged set editable`, `S-4217: a
+logged hold's weight is read-only live`, `S-4217: edit mode keeps a logged
+hold's weight editable`). The dimmed button icons of the locked rows are
+asserted by `test/value_stepper_row_test.dart` (group `S-4246 read-only` · `a
+locked row dims its buttons`); that the locked rows do nothing is
+`test/reps_screen_test.dart` (group `Reps screen — stepper rows — resistance
+(S-4250..S-4256)` · `S-4252: live, a logged set is locked and an unlogged one
+steps`).
+
+**Auto-Advance Rule**:
+
+- after a log, focus moves to the first unlogged set after the focused one; if
+  every later set is logged it moves to the next exercise; on the last exercise
+  it stays
+
+Verified by `test/logger_shell_screen_test.dart` (group `Logger shell —
+auto-advance (S-4215)` · `S-4215: logging set 1 moves focus to set 2`,
+`S-4215: a logged set ahead is skipped`, `S-4215: the last set moves to the
+next exercise`).
+
+**Stepper Remove Rule**:
+
+- the stepper's `−` removes the last unlogged set, or the last set when every
+  set is logged — not the focused set; `+` adds a set up to the 12-entry cap
+- removing a logged entry shows a confirmation dialog (`Delete logged Set?`);
+  removing the last remaining entry shows a stronger confirmation because it
+  deletes the whole exercise from the session (`Remove Exercise?`)
+
+Verified by `test/logger_shell_screen_test.dart` (group `Logger shell — sets
+stepper (S-4220/S-4230/S-4231)` · `S-4220: − removes the last unlogged set
+without a dialog`, `S-4220: − on an all-logged effort asks to delete a logged
+set`, `S-4231: one logged set left asks to remove the exercise`,
+`S-4230: at the 12-set cap + is disabled`).
 
 ### 7. List View vs Detail View Toggle
 
@@ -294,9 +499,26 @@ Verified by `test/session_screen_build_phase_notify_test.dart`
 exception").
 
 ### Set Skip vs Delete
-- **Skip Set**: Advance without logging via forward navigation (set dot remains hollow)
-- **Remove Entry**: When the exercise has **more than one set**, the minus (`Icons.remove`) icon deletes the current entry (set dot removed). When **only one set remains**, the minus icon is replaced by a trash-can (`Icons.delete_outline`) at the same colour and size — signalling that confirming will remove the entire exercise from the session. Tooltip text also switches from "Remove set" to "Remove exercise".
+- **Skip Set**: Advance without logging via forward navigation (the segment stays unlogged)
+- **Remove Entry**: The stepper's `−` removes the last unlogged set, or the last set when every set is logged — not the focused set. When the effort has **only one set**, the `−` icon is a trash-can (`Icons.delete_outline`) — confirming removes the entire exercise from the session. Tooltip text also switches from "Remove set" to "Remove exercise".
+- **A deleted logged set takes its rest with it**: the rest that marked the set logged is removed and every later rest moves down one, so a set added afterwards is a new unlogged set (pre-filled from the previous set as the carry-forward does). The rest history of the deleted set disappears with it.
 - Use case: Skip = "I'm moving on without logging this effort", Remove = "This entry should not exist"
+
+Verified by `test/logger_shell_screen_test.dart` (group `Logger shell — skipped
+log (S-4233)` · `S-4233: a zero-rep log leaves the segment unlogged`; group
+`Logger shell — sets stepper (S-4220/S-4230/S-4231)` · `S-4231: one logged set
+left asks to remove the exercise`; group `Logger polish — deleting a logged set
+(S-4310, S-4319..S-4321)` · `S-4310: the set added after a delete reads
+unlogged and logs cleanly`, `S-4320: deleting the set whose rest is open hides
+the chip and cancels the pings`, `S-4321: removing the exercise cascades its
+logged set and rest away`) and `test/set_shell_widgets_test.dart`
+(group `Mock S-4204 SetCountStepper` · `a one-set exercise offers Remove
+exercise with a trash icon`). The state-layer rule is
+`test/entry_delete_rests_test.dart` (group
+`<harness> — deleteEntry takes the rest with the entry` · `S-4301 deleting the
+last set takes its rest, so a new set reads unlogged`, `S-4302 deleting the
+first set moves every rest down with the sets it keeps`, `S-4303 deleting a
+middle set drops its own rest and moves the rest above it down`).
 
 ### Modality Change Warning
 **Trigger**: User taps different modality tile while session active
@@ -381,17 +603,17 @@ lib/features/session/
   workout_session_screen.dart
     ├── State (_WorkoutSessionScreenState)
     ├── Lifecycle (initState, dispose, _loadExercises)
-    ├── Actions (_logSet, _skipSet, _addSet, _deleteLastSet)
-    ├── Timer Management (_startEffortTimer, _pauseEffortTimer, _resumeEffortTimer)
+    ├── Actions (_logSet, _addSet, _deleteSetAt, _deleteLastUnloggedSet)
+    ├── Timer Management (_toggleEffortTimer — in workout_session_timer_mixin.dart)
     ├── UI Builders (_buildHeader, _buildListView, _buildMetricWidget, _buildSetControls)
-    └── Helpers (_formatValue, _jumpToSet, _switchExercise)
+    └── Helpers (_jumpToSet, _switchExercise)
 
 lib/widgets/session/
   inline_metric_editor.dart
     ├── State (_InlineMetricEditorState)
     ├── Value Formatting (_formatValue)
-    ├── Gesture Handling (onVerticalDragUpdate)
-    └── UI (GestureDetector + Text display)
+    ├── Gesture Handling (_onNumberTap)
+    └── UI (tap-to-edit number display)
 ```
 
 ---
@@ -409,8 +631,8 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 
 ---
 
-**Document Version**: 1.5
-**Last Updated**: July 27, 2026
+**Document Version**: 1.7
+**Last Updated**: October 16, 2026
 **Author**: Automated documentation generated from codebase analysis
 **Related Docs**:
 - [modality_tracking.md](modality_tracking.md) — Data layer + business logic
@@ -421,4 +643,4 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-10-16. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

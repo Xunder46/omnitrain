@@ -52,7 +52,298 @@ Touch-optimized value input for workout environments. Tap the number to open a n
 
 **Visual**: Value size and styling unchanged. The crown is not rendered. When `isReadOnly` and `emphasisTier` are both set, the emphasis tier wins and the value is not dimmed.
 
-**Session context (live timed/round/drill)**: In `WorkoutSessionScreen` detail view, the `InlineMetricEditor` for live timer-based efforts (`timed`, `round`, `drill`) uses `onTap` wired to `showDurationEntryDialog` so tapping the time value opens the h/m/s editor. When the effort is finished (`isTimedFinished`, `isFinished`, `isDrillFinished`), `isReadOnly: true` is set so the value cannot be edited from live mode (use edit mode for corrections). Play/pause control is a separate Start button — not a tap on the value display. Timed and drill timers render at the dominant tier; the play/pause status label sits on a line below the value.
+**Session context (live timed/round/drill)**: In `WorkoutSessionScreen`
+detail view the live `timed` and `drill` editors render the elapsed time as
+plain large digits at the dominant tier with the unit label as the caption —
+`ELAPSED` while the entry is unfinished, `COMPLETED` once it is finished; they
+are read-only and tapping the digits opens nothing — corrections happen in
+the session editor, whose duration dialogs are `Edit Interval Duration` and
+`Edit Hold Duration`. The live `round` editor sits inside a `TimerRing`
+(below) with the caption `REMAINING` under the digits and `COMPLETED` once
+the round is finished; the old status label (`RUNNING` / `STOPPED` / …) is
+gone. The centre button carries the timer control (`Start`, then `Log
+Interval` / `Log Hold` / `Log Round`; `Resume` for an entry restored paused)
+— never a tap on the value display.
+
+Verified by `test/count_up_screen_test.dart` (group `Count-up — timed
+intervals (S-4260..S-4263)` · `S-4260: an interval with no load shows digits
+and no chrome`, `S-4262: the interval editor keeps its duration dialog only`,
+`S-4277: a live interval's digits open nothing on a tap`; group `Count-up —
+holds (S-4264..S-4270)` · `S-4264: a hold shows digits plus one weight row`,
+`S-4278: a live hold's digits open nothing on a tap`, `S-4279: the hold
+editor keeps its duration dialog`; group `Count-up — restored paused entries
+(S-4273, S-4274)` · `S-4273: a paused interval shows its elapsed and Resume`;
+group `Count-up — a finished entry reads COMPLETED (S-4402)` · `S-4402: a
+finished interval swaps ELAPSED for COMPLETED`, `S-4402: a finished hold
+swaps ELAPSED for COMPLETED`),
+`test/round_countdown_screen_test.dart` (group `Round countdown — digits and
+caption (S-4402)` · `S-4402: martial arts reads 03:00 + REMAINING with no old
+chrome`, `S-4402: sports reads 03:00 + REMAINING with no old chrome`) and
+`test/sports_emphasis_redesign_test.dart` (group `Sports effort emphasis
+redesign` · `S-001 free session stopped hierarchy is correct`, `S-002 free
+session running hierarchy is correct` — the ring and its caption).
+
+---
+
+### `TimerRing`
+
+**File**: `lib/widgets/session/timer_ring.dart`
+
+Countdown ring for the `round` effort: a track circle and a `primary` arc
+that empties as the time runs out, with the digits centred inside it. The arc
+sweeps clockwise from the top for `progress` of a full turn (1.0 = full ring,
+0.0 = expired), with a round cap; colours come from
+`Theme.of(context).colorScheme` only. The ring is a `StatefulWidget` — the
+state owns the sweep between the screen's 1 Hz ticks.
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `progress` | `double` | Remaining fraction, 1.0 (nothing elapsed) down to 0.0 (expired) |
+| `running` | `bool` | Whether the ring is counting down — only then does a falling progress sweep |
+| `child` | `Widget` | Centred inside the ring: the remaining-time digits |
+| `size` | `double` | Largest diameter; a narrow surface shrinks it so the ring never touches the screen edges (the default size and the kept-clear inset are owned by `timer_ring.dart`) |
+
+**Behaviour**: while `running` a falling `progress` animates linearly over
+one second between the ticks, so the ring and the digits move together; a
+stopped ring and a progress that rises (the round length was just edited)
+apply at once. The ring carries a `Time remaining` semantics label; the
+digits are scaled down by a `FittedBox` rather than overflowing the ring.
+
+Verified by `test/timer_ring_test.dart` (group `S-4401 ring progress` ·
+`a full ring reads progress 1.0 with scheme colours`, `0.75 and 0.0 read back
+unchanged`; group `S-4402 digits` · `the child is centred inside the ring`,
+`the ring carries the remaining-time label`; group `S-4408 size` (the default
+diameter and its narrow-surface clamp); group `S-4408 sweep` · `a
+falling progress sweeps while running`, `a stopped ring applies the new value
+at once`, `a growing progress while running is applied at once`) and
+`test/round_countdown_screen_test.dart` (group `Round countdown — ring
+(S-4401)` · `S-4401: a fresh 180 s round draws a full ring`, `S-4401: an
+active round 45 s in shows a 0.75 ring`; group `Round countdown — restored
+instances (S-4410, S-4411)` · `S-4410: a paused round 45 s in reads 02:15,
+frozen at 0.75`, `S-4411: a round logged early reads 01:00 + COMPLETED, ring
+empty`).
+
+**Call site**: the live `round` branch of `_buildMetricWidget` in
+`lib/features/session/workout_session_detail_view.dart` — the only `TimerRing`
+in `lib/`. The session editor shows the round-length row without the ring.
+
+---
+
+### `SetSegmentBar`
+
+**File**: `lib/widgets/session/set_segment_bar.dart`
+
+Thin set-progress bar for the session exercise screen: one tappable segment per
+entry of the effort — set, interval, round or hold — so the bar is identical
+across every modality. Tapping a segment jumps to that entry. The bar sits at
+the top of a tap cell that meets the platform minimum touch target, so a
+caption under a segment lives in the same cell.
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `count` | `int` | Number of entries in the current effort (1..`maxEntriesPerEffort`) |
+| `focusedIndex` | `int` | Zero-based index of the entry the screen is showing |
+| `isLogged` | `bool Function(int)` | Whether the entry at the given index has been logged |
+| `captions` | `List<String?>?` | Optional caption under each segment — the logged value, or `null` for a blank one. Rendered only when the list has exactly `count` entries and `count <= kSetBarCaptionMaxSets` (5); with 6 or more sets there are no captions and no reserved space |
+| `onTap` | `ValueChanged<int>` | Called with the tapped segment's index |
+
+**Visual**: a `Row` of `Expanded` segments; each segment's tap area meets the
+platform minimum touch target and its painted bar is a thin strip with a small
+corner radius and no border, the same thickness on every segment. Three looks:
+not logged (`onSurface` at alpha 51), focused and not logged (`primary` at
+alpha 115), logged (full `primary`); a segment that is both logged and focused
+shows the logged fill. Colours come from `Theme.of(context).colorScheme` only.
+
+**Captions**: one line under their own segment, `bodySmall`, centred,
+ellipsised, in a fixed-height row that keeps its height when every caption is
+blank, so the first log does not push the body down. The focused set's caption
+is `OmniTheme.colors.textDominant`, the others `textSecondary` — the only focus
+cue a logged, focused set carries beyond its fill. Caption keys
+`set-caption-$i` (i = 0-based segment index).
+
+**Keys and semantics**: segment keys `set-segment-$i`; each segment carries a
+`Semantics` label `Set N of M, logged|not logged|current|logged, current`.
+
+Verified by `test/set_shell_widgets_test.dart` (groups `Mock S-4201
+SetSegmentBar` — the three segment-look tests, each pinning its fill, the
+absent border and the uniform bar height (`S-4201`); `Mock S-4202
+SetSegmentBar logged and focused` · `the label reads logged, current and the
+fill is logged` (`S-4202`); `Mock S-4325 SetSegmentBar captions` · `one caption
+per set, in its cell, under a top-aligned bar`, `the focused caption is
+dominant, the others secondary`, `no captions without a list, with a short list
+or above the set cap` (`S-4325`)) and `test/logger_shell_screen_test.dart`
+(group `Logger shell — bar and chip (S-4232/S-4222)` · `S-4232: tapping a
+segment jumps to that set`; group `Logger polish — header, captions, boxes,
+layout (S-4311..S-4317, S-4322..S-4324)` · `S-4312: six sets drop the captions
+and their space`, `S-4323: the captions row is there, blank, before a log`,
+`S-4324: a logged, focused set reads dominant`, and `S-4314`, which pins the
+absent border and the uniform bar height on the screen).
+
+### `SetCountStepper`
+
+**File**: `lib/widgets/session/set_count_stepper.dart`
+
+Boxed full-width control that adds or removes an entry of the current effort:
+`−` on the left, the count line in the middle, `+` on the right, inside an
+`OmniSurface(showShadow: false)` with the control's own horizontal outer
+margin. It sits in the body below the exercise's controls, away from the
+primary row, and is shorter than a reps/weight row.
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `text` | `String` | The count line between the two buttons, e.g. `Set 2 of 3`, `Interval 2 of 3`, `Round`/`Period 2 of 3`, `Hold 2 of 3` — the caller's whole line, so the control stays modality-neutral |
+| `canAdd` | `bool` | Whether another entry may be added (`false` at the per-effort cap) |
+| `removeIsExercise` | `bool` | When true the `−` removes the whole exercise instead of one entry |
+| `onAdd` | `VoidCallback` | Called by `+` |
+| `onRemove` | `VoidCallback` | Called by `−` |
+| `canRemove` | `bool` | When false the `−` button is disabled and does nothing (default `true`). Callers whose rule is narrower than `removeIsExercise` pass it instead of hiding the button — the routine editor only removes the last entry of several |
+| `addKey` | `Key?` | Replaces the `+` button's key (default `set-count-add`) |
+| `removeKey` | `Key?` | Replaces the `−` button's key (default `set-count-remove`) |
+
+**Behaviour**: both buttons meet the platform minimum touch target even though
+the glyphs are small. Tooltips: `Add set`, `Remove set`, `Remove exercise` (when
+`removeIsExercise`, which also swaps the icon to `Icons.delete_outline`), and
+`Max 12 entries` on the disabled `+` at the cap. Keys `set-count-remove` and
+`set-count-add`, overridable per caller with `removeKey` / `addKey` — the
+routine editor passes `routine-remove-set` / `routine-add-set`. A `canRemove:
+false` `−` stays in the tree, disabled. The old separate `3` + `SETS` pair is
+gone — the count text is the middle of the control.
+
+Verified by `test/set_shell_widgets_test.dart` (group `Mock S-4204
+SetCountStepper` · the tooltips/touch-target/callbacks test — its name spells
+the target size, which the docs value scan may not quote — plus `add
+disabled at the cap carries the cap tooltip and fires nothing`, `a one-set
+exercise offers Remove exercise with a trash icon`, `addKey / removeKey
+override the default button keys`, `canRemove false nulls the minus callback
+and leaves plus working`, `without the new parameters the keys are
+set-count-add / set-count-remove and both buttons are enabled`) and
+`test/logger_shell_screen_test.dart` (group `Logger shell — sets stepper
+(S-4220/S-4230/S-4231)`; group `Logger polish — header, captions, boxes,
+layout (S-4311..S-4317, S-4322..S-4324)` · `S-4315: the sets control boxes the
+count text`, `S-4317: at 390 x 844 the bar hugs the header and the sets control
+stays reachable`).
+
+---
+
+### `ValueStepperRow`
+
+**File**: `lib/widgets/session/value_stepper_row.dart`
+
+Full-width `−  <number>  +` row for a reps, weight or duration metric: a
+round step button on the left, the number in the middle, a round step button
+on the right. The row is boxed in the shared `OmniSurface(showShadow: false)`
+— the row owns its outer margin left/right and top/bottom, and the stepper
+inside it has its own inner padding — and the number is the
+existing `InlineMetricEditor`, so tapping it opens `showMetricEditPopup`
+unless the caller replaces the tap with `onEditorTap`; the two buttons step
+the value by `step` in the shown unit.
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `metricType` | `String` | `reps`, `weight` or `duration` |
+| `currentValue` | `num` | The value to show, in the unit the screen displays (`int` for reps and duration, `double` for weight) |
+| `unitLabel` | `String` | The unit beside the number (`REPS`, `KG`, `LBS`, `ROUND LENGTH`) |
+| `step` | `double?` | One step, in the shown unit (`MetricStepping.weightStepFor` for weight); optional — defaults to 15 s for `duration` and 1 otherwise |
+| `isReadOnly` | `bool` | When true the buttons are dimmed and do nothing and the number is not tappable (a logged set is locked) |
+| `min` | `num?` | Optional floor for the stepped value: a step that would land below it lands on it, and a row at the floor steps no further down; the ceiling stays `MetricStepCalc`'s |
+| `onEditorTap` | `VoidCallback?` | When given, handed to the inner editor as its `onTap`, so tapping the number calls it instead of opening `showMetricEditPopup` (the round-length row opens the duration dialog); `null` keeps the popup |
+| `onValueChanged` | `ValueChanged<dynamic>` | Called with the stepped value (`int` for reps and duration, `double` for weight) |
+
+**Behaviour**: a quick tap commits at once through `onValueChanged` and keeps a
+pending value, so two quick taps compose before the parent rebuilds. Press and
+hold repeats the step — the first tick fires when the long press starts, then
+the repeat speeds up in two stages (`ValueStepperRow.repeatInterval` owns the
+schedule); the number follows the hold and `onValueChanged` is called once when
+the finger lifts, and a cancelled hold also commits once. Step math goes
+through `MetricStepCalc.parseAndClamp` (reps clamped to 0..999, weight to
+-200..999 in the shown unit), the same clamp owner the edit popup uses; a step
+that changes nothing does nothing. A read-only row's buttons do nothing and
+its number is not tappable; the button icons are dimmed (`test/value_stepper_row_test.dart`,
+group `S-4246 read-only` · `a locked row dims its buttons`; the circle fill's
+alpha is unasserted). A lock that arrives mid-hold drops the hold without
+storing. Pending is cleared when the parent's value changes; it stays when the
+store takes no write (an entry with no row for the metric), so the stepped
+number remains on screen until the screen next loads — unguarded (no test
+drives a repository that drops the write). Keys
+`value-stepper-minus-<metricType>` and `value-stepper-plus-<metricType>`;
+tooltips `Decrease reps`, `Increase reps`, `Decrease weight`,
+`Increase weight`, `Decrease duration`, `Increase duration`. The step buttons
+are deliberately not `IconButton`s — a long-press tooltip trigger would fight
+the hold-to-repeat.
+
+**Duration mode**: a `duration` row keeps the value an `int` number of
+seconds (the editor renders it as clock text), steps 15 s at a time by
+default (`ValueStepperRow.durationStepSeconds`) unless the caller gives
+`step`, is floored by `min` (the 3600 s ceiling comes from `MetricStepCalc`),
+and hands `onEditorTap` to the inner editor's `onTap` — `null` keeps the
+generic popup. The step-button noun reads `duration`.
+
+Verified by `test/value_stepper_row_test.dart` (group `S-4413 duration mode`
+· `an int duration renders as clock text with its label`, `plus and minus
+step 15 s and report an int`, `the duration step is 15 s when the caller
+gives none`, `a step that would cross the 15 s floor lands on it`, `minus at
+15 s calls nothing`, `plus at 3600 s calls nothing`, `onEditorTap takes the
+number tap and no popup opens`, `without onEditorTap the number keeps the
+generic popup`, `a read-only duration row steps nothing and taps nothing`).
+
+Verified by `test/value_stepper_row_test.dart` (groups `S-4241 reps row`,
+`S-4242 weight row`, `S-4243 pending`, `S-4244/S-4245 hold`, `S-4246
+read-only`, `S-4247 geometry`, `S-4258 clamped step`, `S-4259 lock mid-hold`,
+`S-4248 hold teardown`, `S-4326 boxed row` · `one shadowless OmniSurface, 20/4
+outside, 12/8 inside`, `S-4413 duration mode`) and `test/reps_screen_test.dart`
+(group `Reps screen — stepper rows — resistance (S-4250..S-4256)`).
+
+**Hold call site**: the session detail view uses the row for an isometric
+hold's weight (`_buildHoldWeightRow` in
+`lib/features/session/workout_session_detail_view.dart`) — its third call
+site after the reps screen's two rows. `metricType` is `weight`; the stored
+key stays `extra-weight`, which the screen converts from the shown unit to kg
+inside the `onValueChanged` closure. Tapping the number opens the existing
+`Edit Weight` popup (limits −200..999 in the shown unit, and the number
+carries no `+` sign); the step is `MetricStepping.weightStepFor`. The row is
+always visible under the hold's digits and is locked (`isReadOnly`) once the
+hold is logged in a live session — never in the session editor. Its key
+includes the set, so moving to another set discards a hold in progress.
+
+Verified by `test/count_up_screen_test.dart` (group `Count-up — holds
+(S-4264..S-4270)` · `S-4264: a hold shows digits plus one weight row`,
+`S-4265: the hold weight steps 2.5 kg at a time`, `S-4265: a pounds
+preference steps 5 lb and stores kg`, `S-4267: a logged hold locks both
+weight buttons`, `S-4267: a logged hold stays editable in the editor`,
+`S-4268: the hold weight number opens Edit Weight`, `S-4276: a hold dies with
+its set when the arrows move focus`), `test/logger_shell_screen_test.dart`
+(group `Logger shell — logged sets are locked live (S-4216/S-4217)` ·
+`S-4217: a logged hold's weight is read-only live`, `S-4217: edit mode keeps
+a logged hold's weight editable`) and `test/exercise_detail_emphasis_tier_test.dart`
+(`S-106 hold effort weight row renders dominant tier`).
+
+**Steps**: the step sizes live in `MetricStepping`
+(`lib/core/utils/metric_stepping.dart`): `kilogramsPerStep`, `poundsPerStep`,
+`repsPerStep`, and `weightStepFor(unit)`, which returns the weight step in the
+shown unit. A test pins the numbers to the watch's `WatchMetricStepping`
+detents, so a crown detent and a phone tap move the same amount; phone code
+never imports `lib/watch`.
+
+Verified by `test/metric_stepping_test.dart` (group `S-4240 MetricStepping`).
+
+**Round-length call site**: the live `round` branch of the session detail
+view uses the row for the round length — `metricType: 'duration'`, inline
+label `ROUND LENGTH`, `min: 15`, `onEditorTap` opening
+`showDurationEntryDialog` (`Edit Round Duration`) — and locks it
+(`isReadOnly`) while the round runs, mid-round or finished. A live change
+writes the edited round and every later round that has not started
+(`WorkoutState.updatePlannedDurationFrom`); the session editor shows the same
+row without the ring. Verified by `test/round_countdown_screen_test.dart`
+(group `Round countdown — length row (S-4403, S-4413)` · `S-4403: + adds 15 s
+to the round length (03:15)`, `S-4413: − at 00:15 stays at 00:15`, `S-4403:
+the row number opens the duration dialog`, `S-4403: the row is read-only
+while the round runs`; group `Round countdown — layout and edit mode
+(S-4408, S-4409)` · `S-4409: edit mode shows the length row and no ring`),
+`test/state_test.dart` (`round: updatePlannedDurationFrom reaches the later
+unstarted rounds`, `round: updatePlannedDurationFrom keeps the running round
+its length`) and `test/round_planned_duration_parity_test.dart` (groups
+`Mock` and `Hive` · `S-4412 a finished round keeps its length, the later ones
+follow`, `S-4412 a running round keeps the length it started with`).
 
 ---
 

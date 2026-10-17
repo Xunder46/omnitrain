@@ -241,6 +241,18 @@ class WorkoutState extends ChangeNotifier {
     newDurationSecs,
   );
 
+  /// Applies [newDurationSecs] to the round at [fromIndex] and to every later
+  /// round that has not started yet. Returns the written indexes, ascending.
+  Future<List<int>> updatePlannedDurationFrom(
+    String effortId,
+    int fromIndex,
+    int newDurationSecs,
+  ) => _timerManager.updatePlannedDurationFrom(
+    effortId,
+    fromIndex,
+    newDurationSecs,
+  );
+
   Future<void> addTimedEntry(String effortId, {int targetDurationSecs = 0}) =>
       _timerManager.addTimedEntry(
         effortId,

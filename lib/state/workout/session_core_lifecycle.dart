@@ -295,6 +295,10 @@ extension SessionCoreLifecycleMethods on SessionCore {
         for (final entry in _timerManager.timedInstancesSnapshot.entries)
           entry.key: List<TimedInstance>.from(entry.value),
       },
+      entryRests: {
+        for (final entry in _timerManager.entryRestsSnapshot.entries)
+          entry.key: List<EntryRest>.from(entry.value),
+      },
       exerciseCache: Map<String, Exercise>.from(_exerciseCache),
       sensorSummaries: List<SensorSummary>.from(_sensorSummaries),
     );
@@ -332,6 +336,11 @@ extension SessionCoreLifecycleMethods on SessionCore {
             for (final ti in snapshot.timedInstances[effort.id] ?? []) {
               await _repository.createTimedInstance(ti);
             }
+            // D-9: the effort's rests went with it (deleteEffort cascades), so
+            // the snapshot's copies come back with the effort.
+            for (final rest in snapshot.entryRests[effort.id] ?? []) {
+              await _repository.createEntryRest(rest);
+            }
           }
         }
       }
@@ -357,6 +366,15 @@ extension SessionCoreLifecycleMethods on SessionCore {
           await _repository.deleteTimedInstancesForEffort(effortId);
           for (final ti in snapshot.timedInstances[effortId]!) {
             await _repository.createTimedInstance(ti);
+          }
+        }
+
+        // D-9: a delete re-keyed this effort's rests (D-1), so the snapshot's
+        // rests replace whatever the edit left.
+        if (snapshot.entryRests.containsKey(effortId)) {
+          await _repository.deleteEntryRestsForEffort(effortId);
+          for (final rest in snapshot.entryRests[effortId]!) {
+            await _repository.createEntryRest(rest);
           }
         }
       }

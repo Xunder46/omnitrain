@@ -82,7 +82,9 @@ Observations are persisted one-per-entry and grouped by effort kind:
   - `metric-distance` (valueReal)
   - `metric-extra-weight` (valueReal) — enables loaded carries and weighted cardio (negative = band assist, positive = added load)
   
-  > **Backward Compatibility Note**: Pre-existing timed entries (created before March 2026) contain only `metric-distance`. New entries always include both. The UI uses a guard pattern (`if (entryData['extra-weight'] != null)`) to show the extra-weight editor only for entries that have the observation.
+  > **Backward Compatibility Note**: Pre-existing timed entries (created before March 2026) contain only `metric-distance`. New entries always include both. The interval screen shows no weight control at all — a stored `extra-weight` value stays in the data, untouched by summaries, and the screen neither shows nor edits it; a hold always shows its weight row, whether or not the observation exists yet.
+  >
+  > Verified by `test/count_up_screen_test.dart` (group `Count-up — timed intervals (S-4260..S-4263)` · `S-4260: a stored extra weight changes nothing on an interval`, `S-4263: logging an interval leaves its data untouched`; group `Count-up — holds (S-4264..S-4270)` · `S-4264: a hold shows digits plus one weight row`).
   
 - **`drill` effort**: 1 observation per entry
   - `metric-extra-weight` (valueReal) — for isometric holds with additional load

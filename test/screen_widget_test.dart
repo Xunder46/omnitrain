@@ -61,6 +61,7 @@ import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/widgets/pickers/metric_chooser_dialog.dart';
 import 'package:omnitrain/widgets/pickers/modality_picker_dialog.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
+import 'package:omnitrain/widgets/session/value_stepper_row.dart';
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/test_nutrition_primer_state.dart';
 import 'helpers/fake_preferences_service.dart';
@@ -1685,7 +1686,8 @@ void main() {
     });
 
     testWidgets(
-      'timed effort with extra-weight target renders InlineMetricEditor',
+      'timed effort detail shows no editor and leaves the stored '
+      'extra-weight target untouched',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final repo = await _freshRepo();
@@ -1703,13 +1705,14 @@ void main() {
           'timed',
         );
 
-        // Seed an extra-weight target so the UI guard shows the editor.
+        // Seed an extra-weight target: A5/O-11 keep it in the data while the
+        // interval shows no editor, so nothing may read or rewrite it.
         await routineState.setTargetValue(
           effortId,
           MetricIds.extraWeight,
           MetricIds.unitKg,
           setIndex: 0,
-          targetMin: 0.0,
+          targetMin: 12.5,
         );
 
         await routineState.saveRoutine();
@@ -1730,9 +1733,21 @@ void main() {
         await tester.tap(find.text(timedExercise.name).first);
         await tester.pumpAndSettle();
 
-        // The extra-weight InlineMetricEditor should be visible.
-        expect(find.byType(InlineMetricEditor), findsWidgets);
-        expect(find.text('EXTRA KG'), findsOneWidget);
+        // A5: an interval's body holds no editable value at all.
+        expect(find.byType(ValueStepperRow), findsNothing);
+        expect(find.byType(InlineMetricEditor), findsNothing);
+        expect(find.text('EXTRA KG'), findsNothing);
+
+        // The seeded target survives the render unchanged.
+        final storedExtraWeight = routineState
+            .getEffortTargets(effortId)
+            .where((target) => target.metricId == MetricIds.extraWeight)
+            .toList();
+        expect(storedExtraWeight, hasLength(1));
+        expect(storedExtraWeight.single.targetMin, 12.5);
+
+        // The sets control is the only body control an interval shows.
+        expect(find.text('Interval 1 of 1'), findsOneWidget);
       },
     );
 
@@ -1802,8 +1817,11 @@ void main() {
 
       // The hold-time unit label 'HOLD TIME' must be absent.
       expect(find.text('HOLD TIME'), findsNothing);
-      // Drill efforts still expose the extra-weight editor.
-      expect(find.text('EXTRA KG'), findsOneWidget);
+      // A4: a hold shows exactly one boxed weight row — the extraWeight
+      // target — with the plain unit label and no EXTRA prefix.
+      expect(find.byType(ValueStepperRow), findsOneWidget);
+      expect(find.text('KG'), findsOneWidget);
+      expect(find.text('EXTRA KG'), findsNothing);
       // The set-count label for a drill effort is still visible.
       expect(find.text('Hold 1 of 1'), findsOneWidget);
     });
@@ -1819,7 +1837,18 @@ void main() {
 
         final exercises = await repo.getExercises();
         await routineState.createNewRoutine('Round Duration');
-        await routineState.addExerciseToRoutine(exercises.first, 'round');
+        final roundEffortId = await routineState.addExerciseToRoutine(
+          exercises.first,
+          'round',
+        );
+        // Seed a stored round length so the row reads a target, not a default.
+        await routineState.setTargetValue(
+          roundEffortId,
+          MetricIds.roundDuration,
+          MetricIds.unitSeconds,
+          setIndex: 0,
+          targetInt: 180,
+        );
         await routineState.saveRoutine();
         final templateId = routineState.currentTemplate!.id;
 
@@ -1837,9 +1866,16 @@ void main() {
         await tester.tap(find.text(exercises.first.name).first);
         await tester.pumpAndSettle();
 
-        // Round-duration editor must still be present.
-        expect(find.text('DURATION'), findsOneWidget);
-        expect(find.text('ROUND 1'), findsOneWidget);
+        // A6: one round-length row captioned ROUND LENGTH, showing the stored
+        // 180 s as mm:ss; the big ROUND n heading is gone.
+        expect(
+          find.byKey(ValueKey('$roundEffortId-0-round-length')),
+          findsOneWidget,
+        );
+        expect(find.byType(ValueStepperRow), findsOneWidget);
+        expect(find.text('ROUND LENGTH'), findsOneWidget);
+        expect(find.text('03:00'), findsOneWidget);
+        expect(find.text('ROUND 1'), findsNothing);
       },
     );
 
@@ -1873,8 +1909,11 @@ void main() {
         await tester.tap(find.text(exercises.first.name).first);
         await tester.pumpAndSettle();
 
-        expect(find.byType(InlineMetricEditor), findsOneWidget);
-        expect(find.text('EXTRA KG'), findsOneWidget);
+        // A5: an interval renders no editor whether or not a stale
+        // extraWeight target exists (_buildMetricWidget returns a shrink).
+        expect(find.byType(ValueStepperRow), findsNothing);
+        expect(find.byType(InlineMetricEditor), findsNothing);
+        expect(find.text('EXTRA KG'), findsNothing);
         // Set count row is still visible.
         expect(find.text('Interval 1 of 1'), findsOneWidget);
       },
@@ -8037,10 +8076,10 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // WorkoutSessionScreen – weight adjustment toggle
+  // WorkoutSessionScreen – extra weight display
   // ══════════════════════════════════════════════════════════════════════════
 
-  group('WorkoutSessionScreen – weight adjustment toggle', () {
+  group('WorkoutSessionScreen – extra weight display', () {
     testWidgets(
       'set weight editor displays canonical kg value converted to lbs',
       (WidgetTester tester) async {
@@ -8093,7 +8132,7 @@ void main() {
     );
 
     testWidgets(
-      'timed extra-weight displays canonical kg value converted to lbs',
+      'timed effort shows neither extra-weight value nor stepper',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(800, 1200));
         final repo = await _freshRepo();
@@ -8116,7 +8155,8 @@ void main() {
           effortKindOverride: 'timed',
         );
 
-        // Canonical storage is kg; 22.6796 kg should render as +50.0 lbs.
+        // Canonical storage is kg; an interval has no weight control any more,
+        // so 22.6796 kg (50.0 lbs) is never shown.
         await workoutState.updateEntryValue(
           effortId,
           0,
@@ -8140,8 +8180,12 @@ void main() {
         await tester.tap(find.text(timedExercise.name).first);
         await tester.pumpAndSettle();
 
-        expect(find.text('+50.0'), findsOneWidget);
-        expect(find.text('LBS'), findsOneWidget);
+        expect(find.text('+50.0'), findsNothing);
+        expect(find.text('LBS'), findsNothing);
+        expect(
+          find.byKey(const Key('value-stepper-plus-weight')),
+          findsNothing,
+        );
       },
     );
 
@@ -8169,7 +8213,7 @@ void main() {
           effortKindOverride: 'drill',
         );
 
-        // Canonical storage is kg; 22.6796 kg should render as +50.0 lbs.
+        // Canonical storage is kg; 22.6796 kg should render as 50.0 lbs.
         await workoutState.updateEntryValue(
           effortId,
           0,
@@ -8193,69 +8237,8 @@ void main() {
         await tester.tap(find.text(drillExercise.name).first);
         await tester.pumpAndSettle();
 
-        expect(find.text('+50.0'), findsOneWidget);
+        expect(find.text('50.0'), findsOneWidget);
         expect(find.text('LBS'), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'timed exercise reveals extra weight only after tapping the link',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(800, 1200));
-        final repo = await _freshRepo();
-        await repo.setPreferenceString('preferred_weight_unit', 'lbs');
-        final workoutState = WorkoutState(repo);
-        final routineState = RoutineState(repo);
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
-        await workoutState.markExerciseInfoHintSeen();
-        await workoutState.markExerciseNotesHintSeen();
-        await workoutState.createNewSession(modality: 'cardio_endurance');
-
-        final exercises = await repo.getExercises();
-        final timedExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-          orElse: () => exercises.first,
-        );
-        await workoutState.addExerciseToSession(
-          timedExercise,
-          effortKindOverride: 'timed',
-        );
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: WorkoutSessionScreen(
-              workoutState: workoutState,
-              routineState: routineState,
-              sessionSummaryService: SessionSummaryService(repo),
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: settingsState,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text(timedExercise.name).first);
-        await tester.pumpAndSettle();
-
-        final linkFinder = find.widgetWithText(
-          OutlinedButton,
-          'Weight adjustment',
-        );
-        await tester.ensureVisible(linkFinder);
-
-        expect(linkFinder, findsOneWidget);
-        expect(find.text('EXTRA KG'), findsNothing);
-
-        await tester.tap(linkFinder);
-        await tester.pumpAndSettle();
-        expect(find.text('EXTRA KG'), findsNothing);
-        expect(find.text('LBS'), findsOneWidget);
-
-        await tester.ensureVisible(linkFinder);
-        await tester.tap(linkFinder);
-        await tester.pumpAndSettle();
-        expect(find.text('EXTRA KG'), findsNothing);
       },
     );
 
@@ -8345,96 +8328,6 @@ void main() {
       // the exercise's load capability.
       expect(find.text('Weight adjustment'), findsNothing);
     });
-
-    testWidgets(
-      'weight adjustment renders as OutlinedButton with expand icon, not plain TextButton',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(800, 1200));
-        final repo = await _freshRepo();
-        await repo.setPreferenceString('preferred_weight_unit', 'kg');
-        final workoutState = WorkoutState(repo);
-        final routineState = RoutineState(repo);
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
-        await workoutState.markExerciseInfoHintSeen();
-        await workoutState.markExerciseNotesHintSeen();
-        await workoutState.createNewSession(modality: 'cardio_endurance');
-
-        final exercises = await repo.getExercises();
-        final timedExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-          orElse: () => exercises.first,
-        );
-        await workoutState.addExerciseToSession(
-          timedExercise,
-          effortKindOverride: 'timed',
-        );
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: WorkoutSessionScreen(
-              workoutState: workoutState,
-              routineState: routineState,
-              sessionSummaryService: SessionSummaryService(repo),
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: settingsState,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text(timedExercise.name).first);
-        await tester.pumpAndSettle();
-
-        final outlinedFinder = find.widgetWithText(
-          OutlinedButton,
-          'Weight adjustment',
-        );
-        await tester.ensureVisible(outlinedFinder);
-        final outlinedButton = tester.widget<OutlinedButton>(outlinedFinder);
-        final theme = Theme.of(tester.element(outlinedFinder));
-        final resolvedForeground = outlinedButton.style?.foregroundColor
-            ?.resolve(<WidgetState>{});
-        final resolvedSide = outlinedButton.style?.side?.resolve(
-          <WidgetState>{},
-        );
-
-        // Must render as OutlinedButton, not plain TextButton
-        expect(outlinedFinder, findsOneWidget);
-        expect(
-          find.widgetWithText(TextButton, 'Weight adjustment'),
-          findsNothing,
-        );
-        expect(
-          resolvedForeground,
-          theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
-        );
-        expect(
-          resolvedSide?.color,
-          theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
-        );
-
-        // Must show expand icon when collapsed
-        expect(
-          find.descendant(
-            of: outlinedFinder,
-            matching: find.byIcon(Icons.expand_more),
-          ),
-          findsOneWidget,
-        );
-
-        // Tap to expand — icon must flip to expand_less
-        await tester.tap(outlinedFinder);
-        await tester.pumpAndSettle();
-        expect(
-          find.descendant(
-            of: outlinedFinder,
-            matching: find.byIcon(Icons.expand_less),
-          ),
-          findsOneWidget,
-        );
-      },
-    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -9274,7 +9167,7 @@ void main() {
         await tester.tap(find.text(blockALateEx.name).first);
         await tester.pumpAndSettle();
 
-        expect(find.text('Exercise 3 / 4'), findsOneWidget);
+        expect(find.text('Exercise 3 / 4 · Main Workout'), findsOneWidget);
       },
     );
 

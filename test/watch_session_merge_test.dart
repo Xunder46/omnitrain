@@ -35,6 +35,23 @@
 //   S-3616 a skipped planned row is not logged          → `S-3616 ...`
 //   S-3618 the wrist's set ends the phone's older rest  → `S-3618 ...`
 //
+// Plan: `docs/plans/2026-10-16-38g-importer-positional-rests-plan/2026-10-16-38g-importer-positional-rests-plan.md`,
+// Phase 1 — the importer reads and writes rests by POSITION (D-1..D-3). A
+// rest's `entryIndex` is a position — the rest at `k` marks the set at position
+// `k - 1` logged — while a set row's id number is never renumbered, so a phone
+// delete leaves the numbers holed. Scenario mapping:
+//   S-4501 the wrist's set after the phone's delete  → `S-4501 ...`
+//   S-4502 the wrist's late rest report              → `S-4502a ...`,
+//     `S-4502b ...`
+//   S-4503 a fill after the phone's delete           → `S-4503 ...`
+//   S-4504 a fill below an open rest                 → `S-4504 ...`
+//   S-4505 a delete of a wrist set re-keys the rests → `S-4505 ...`
+//   S-4506 the numbers and the positions disagree    → `S-4506 ...`
+//   S-4507 the only rest goes with its set           → `S-4507 ...`
+//   S-4509 a retry opens no second rest              → `S-4509 ...`
+//   S-4510 a delete of a set appended after a hole   → `S-4510 ...`
+//   S-4511 two wrist sets in one message             → `S-4511 ...`
+//
 // Both groups run the same fixtures through the same phone: the merge must
 // produce the same rows under `HiveWorkoutRepository` and
 // `MockWorkoutRepository` (the plan's implementation-parity invariant). Plain
@@ -50,6 +67,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/services/watch_session_importer.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
+import 'package:omnitrain/core/utils/entry_rows.dart';
 import 'package:omnitrain/core/utils/logged_entry_rows.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/hive_workout_repository.dart';
@@ -333,6 +351,22 @@ Map<String, Object?> _correctionEnvelope({
         'entryId': entryId,
         'correction': {'reps': reps},
       },
+    ],
+  },
+};
+
+/// A `structure_change` the phone is about to send, deleting one entry.
+Map<String, Object?> _deleteEnvelope(String changeId, String entryId) => {
+  'protocolVersion': SyncProtocolValidator.protocolVersion,
+  'messageId': 'msg-$changeId',
+  'sessionId': 's-w1',
+  'type': 'structure_change',
+  'origin': 'phone',
+  'sentAt': _t2,
+  'payload': {
+    'changeId': changeId,
+    'changes': [
+      {'kind': 'delete_entry', 'entryId': entryId},
     ],
   },
 };
@@ -2234,6 +2268,129 @@ void _mergeTests({
       expect(phone.failures, isEmpty);
     });
 
+    test(
+        'S-4334 after the phone deleted a middle set the wrist\'s set appends '
+        'and no logged set is filled', () async {
+      final phone = await _phone(repository);
+      await phone.router.receive(_snapshot());
+      await _plannedRows(repository);
+      // The user logged all three planned sets on the phone itself, each with
+      // its own finished rest (I-1), then deleted the middle one: `deleteEntry`
+      // re-keys the rests by POSITION — {1, 2} — while the row NUMBERS keep
+      // their hole — {0, 2} — because an id is never renumbered (G1/G4).
+      const stamps = [_t2, _t3, _t4];
+      const reps = [12, 11, 10];
+      const weights = [50.0, 51.0, 52.0];
+      for (var index = 0; index < 3; index++) {
+        await _phoneRows(
+          repository,
+          effortId: 'sl-1',
+          entryIndex: index,
+          reps: reps[index],
+          weightKg: weights[index],
+          atMs: _msOf(stamps[index]),
+        );
+      }
+      // The rows are the user's own: the phone's own state reads them before it
+      // deletes one, as it does when the user logged them on the screen.
+      await phone.state.refreshEfforts(['sl-1']);
+      for (var index = 0; index < 3; index++) {
+        await phone.state.recordRestStart('sl-1', index + 1);
+        await phone.state.recordRestEnd('sl-1', index + 1);
+      }
+      await phone.state.deleteEntry('sl-1', 1);
+      expect(
+        await _ids(repository, 'sl-1'),
+        [
+          'obs-sl-1-0-reps',
+          'obs-sl-1-0-weight',
+          'obs-sl-1-2-reps',
+          'obs-sl-1-2-weight',
+        ],
+        reason: 'S-4334 the fixture: the middle set is gone, the numbers holed',
+      );
+      expect(
+        [for (final rest in await _rests(repository, 'sl-1')) rest.entryIndex],
+        [1, 2],
+        reason:
+            'S-4334 and its rest went with it, the later rest moving down a '
+            'position — the numbers did not',
+      );
+
+      await phone.router.receive(
+        observationsUp('s-w1', [
+          _set(
+            'sx-1',
+            slot: 'sl-1',
+            exerciseId: 'ex-1',
+            reps: 8,
+            loadKg: 42.5,
+            loggedAt: _t1,
+          ),
+        ], messageId: 'msg-fill-4334'),
+      );
+
+      final rows = await sortedObservations(repository, 'sl-1');
+      expect(
+        rows[0].valueInt,
+        12,
+        reason: 'S-4334 the user\'s first set keeps what they logged',
+      );
+      expect(
+        rows[0].createdAtMs,
+        _msOf(_t2),
+        reason: 'S-4334 and the stamp they logged it at',
+      );
+      expect(
+        rows[2].valueInt,
+        10,
+        reason:
+            'S-4334 the set right after the hole is the user\'s own, not one '
+            'the wrist\'s set took',
+      );
+      expect(
+        rows[2].createdAtMs,
+        _msOf(_t4),
+        reason: 'S-4334 with its own stamp',
+      );
+      expect(
+        rows[3].valueReal,
+        52.0,
+        reason: 'S-4334 and its load',
+      );
+      expect(
+        await _ids(repository, 'sl-1'),
+        [
+          'obs-sl-1-0-reps',
+          'obs-sl-1-0-weight',
+          'obs-sl-1-2-reps',
+          'obs-sl-1-2-weight',
+          'obs-sl-1-3-reps',
+          'obs-sl-1-3-weight',
+        ],
+        reason:
+            'S-4334 the phone reads every remaining set as logged, so the '
+            'wrist\'s set appends the number after the last row — it fills none '
+            'of the user\'s',
+      );
+      expect(
+        rows[4].valueInt,
+        8,
+        reason: 'S-4334 the wrist\'s set is the row the phone appended',
+      );
+      expect(
+        rows[4].createdAtMs,
+        _msOf(_t1),
+        reason: 'S-4334 with the wrist\'s stamp',
+      );
+      expect(
+        rows[5].valueReal,
+        42.5,
+        reason: 'S-4334 and its load',
+      );
+      expect(phone.failures, isEmpty);
+    });
+
     test('S-3608 the wrist\'s rest closes the rest the fill opened', () async {
       final phone = await _phone(repository);
       await phone.router.receive(_snapshot());
@@ -2477,5 +2634,742 @@ void _mergeTests({
       );
       expect(phone.failures, isEmpty);
     });
+  });
+
+  group('S-4501..S-4507 a rest is keyed on the POSITION', () {
+    // ─── S-4501..S-4507: rests are positional, the numbers are not ──────────
+    //
+    // D-1..D-3. The importer has to read a placed entry by POSITION when it
+    // writes the rest a set leaves behind, and it has to re-key the effort's
+    // rests after it deletes a wrist set, exactly as the phone's own
+    // `deleteEntry` does.
+
+    /// The fixture S-4334 and S-4501/4502 share: three sets the user logged on
+    /// the phone, each with its own finished rest (I-1), then the middle one
+    /// deleted — the rest positions close up to {1, 2} while the row numbers
+    /// keep their hole, {0, 2} (G1/G4).
+    Future<void> holedEffort(_Phone phone) async {
+      await _plannedRows(repository);
+      const stamps = [_t2, _t3, _t4];
+      const reps = [12, 11, 10];
+      const weights = [50.0, 51.0, 52.0];
+      for (var index = 0; index < 3; index++) {
+        await _phoneRows(
+          repository,
+          effortId: 'sl-1',
+          entryIndex: index,
+          reps: reps[index],
+          weightKg: weights[index],
+          atMs: _msOf(stamps[index]),
+        );
+      }
+      // The rows are the user's own: the phone's own state reads them before it
+      // deletes one, as it does when the user logged them on the screen.
+      await phone.state.refreshEfforts(['sl-1']);
+      for (var index = 0; index < 3; index++) {
+        await phone.state.recordRestStart('sl-1', index + 1);
+        await phone.state.recordRestEnd('sl-1', index + 1);
+      }
+      await phone.state.deleteEntry('sl-1', 1);
+    }
+
+    /// A wrist set stamped before every row the phone holds, so it lands after
+    /// the hole: on the shared fixture the last row's NUMBER is 2 and its
+    /// POSITION is 1.
+    Map<String, Object?> wristSet(
+      String entryId,
+      int reps, {
+      String loggedAt = _t1,
+    }) => _set(
+      entryId,
+      slot: 'sl-1',
+      exerciseId: 'ex-1',
+      reps: reps,
+      loadKg: 42.5,
+      loggedAt: loggedAt,
+    );
+
+    test(
+      'S-4501 after the phone deleted a middle set the wrist\'s set opens its '
+      'rest at its POSITION + 1, not the row number + 1',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await holedEffort(phone);
+        expect(
+          [for (final rest in await _rests(repository, 'sl-1')) rest.entryIndex],
+          [1, 2],
+          reason:
+              'S-4501 the fixture: the rest positions closed up, the row '
+              'numbers did not',
+        );
+
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [wristSet('sx-1', 8)],
+            messageId: 'msg-4501-append',
+          ),
+        );
+
+        expect(
+          await _ids(repository, 'sl-1'),
+          [
+            'obs-sl-1-0-reps',
+            'obs-sl-1-0-weight',
+            'obs-sl-1-2-reps',
+            'obs-sl-1-2-weight',
+            'obs-sl-1-3-reps',
+            'obs-sl-1-3-weight',
+          ],
+          reason: 'S-4501 the wrist\'s set appends the number after the last row',
+        );
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [1, 2, 3],
+          reason:
+              'S-4501 the appended set is the effort\'s third POSITION (the '
+              'numbered rows are 0, 2 and 3), so its rest sits at 3 — keyed on '
+              'the row number it carries, 3, the importer writes 4 instead',
+        );
+        expect(rests.last.id, 'rest-sl-1-3');
+        expect(rests.last.restStartMs, _msOf(_t1));
+        expect(rests.last.restEndMs, isNull, reason: 'S-4501 the rest runs');
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4502a the wrist\'s late rest report closes the rest the appended set '
+      'opened', () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await holedEffort(phone);
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [wristSet('sx-1', 8)],
+            messageId: 'msg-4502a-append',
+          ),
+        );
+
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [
+              _rest(
+                'rx-1',
+                slot: 'sl-1',
+                exerciseId: 'ex-1',
+                startedAt: _restStart,
+                endedAt: _restEnd,
+                afterEntryId: 'sx-1',
+              ),
+            ],
+            messageId: 'msg-4502a-rest',
+          ),
+        );
+
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [1, 2, 3],
+          reason:
+              'S-4502a the report lands on the rest the appended set opened — '
+              'at its position + 1 — and opens no second one at the row number '
+              '+ 1',
+        );
+        expect(rests.last.id, 'rest-sl-1-3');
+        expect(rests.last.restStartMs, _msOf(_restStart));
+        expect(rests.last.restEndMs, _msOf(_restEnd));
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4502b the same, with the set and its report in one message',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await holedEffort(phone);
+
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [
+              wristSet('sx-1', 8),
+              _rest(
+                'rx-1',
+                slot: 'sl-1',
+                exerciseId: 'ex-1',
+                startedAt: _restStart,
+                endedAt: _restEnd,
+                afterEntryId: 'sx-1',
+              ),
+            ],
+            messageId: 'msg-4502b',
+          ),
+        );
+
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [1, 2, 3],
+          reason:
+              'S-4502b the report closes the rest the same pass opened, not a '
+              'rest at the row number + 1',
+        );
+        expect(rests.last.id, 'rest-sl-1-3');
+        expect(rests.last.restStartMs, _msOf(_restStart));
+        expect(rests.last.restEndMs, _msOf(_restEnd));
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4503 a wrist set after the phone\'s delete fills the first unlogged '
+      'POSITION and opens its rest there',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await _plannedRows(repository, count: 4);
+        await phone.state.refreshEfforts(['sl-1']);
+        await phone.state.recordRestStart('sl-1', 1);
+        await phone.state.recordRestEnd('sl-1', 1);
+        await phone.state.deleteEntry('sl-1', 1);
+        expect(
+          await _ids(repository, 'sl-1'),
+          [
+            'obs-sl-1-0-reps',
+            'obs-sl-1-0-weight',
+            'obs-sl-1-2-reps',
+            'obs-sl-1-2-weight',
+            'obs-sl-1-3-reps',
+            'obs-sl-1-3-weight',
+          ],
+          reason: 'S-4503 the fixture: number 1 is the hole, the rest sits at 1',
+        );
+
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [wristSet('sx-1', 8)],
+            messageId: 'msg-4503-fill',
+          ),
+        );
+
+        final rows = await sortedObservations(repository, 'sl-1');
+        expect(rows[2].id, 'obs-sl-1-2-reps');
+        expect(
+          rows[2].valueInt,
+          8,
+          reason:
+              'S-4503 the wrist\'s set takes the first POSITION no rest marks '
+              'logged — position 1, the row numbered 2',
+        );
+        expect(rows[2].createdAtMs, _msOf(_t1));
+        expect(rows[4].id, 'obs-sl-1-3-reps');
+        expect(
+          rows[4].valueInt,
+          10,
+          reason: 'S-4503 the row past it is still the routine\'s preset',
+        );
+        expect(rows[4].createdAtMs, _msOf(_plannedAt));
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [1, 2],
+          reason:
+              'S-4503 the filled position is 1, so its rest sits at 2 — keyed '
+              'on the filled row\'s number, 2, the importer writes 3',
+        );
+        expect(rests.last.id, 'rest-sl-1-2');
+        expect(rests.last.restStartMs, _msOf(_t1));
+        expect(rests.last.restEndMs, isNull);
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4504 a fill below an open rest leaves that rest running',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await _plannedRows(repository, count: 5);
+        await phone.state.refreshEfforts(['sl-1']);
+        await phone.state.recordRestStart('sl-1', 1);
+        await phone.state.recordRestEnd('sl-1', 1);
+        await phone.state.recordRestStart('sl-1', 5);
+        await phone.state.deleteEntry('sl-1', 1);
+        await phone.state.deleteEntry('sl-1', 1);
+        expect(
+          [for (final rest in await _rests(repository, 'sl-1')) rest.entryIndex],
+          [1, 3],
+          reason:
+              'S-4504 the fixture: two deletes leave the finished rest at 1 '
+              'and the running one at 3',
+        );
+        final runningBefore = (
+          await _rests(repository, 'sl-1')
+        ).firstWhere((rest) => rest.entryIndex == 3).toMap();
+
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [wristSet('sx-1', 8)],
+            messageId: 'msg-4504-fill',
+          ),
+        );
+
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [1, 2, 3],
+          reason:
+              'S-4504 the wrist\'s set fills position 1 (the row numbered 3) '
+              'and its rest sits at 2 — keyed on the row number, the importer '
+              'writes 4 instead and closes the running rest beside it',
+        );
+        expect(
+          rests.first.restEndMs,
+          isNotNull,
+          reason: 'S-4504 the finished rest below the fill is untouched',
+        );
+        expect(rests[1].id, 'rest-sl-1-2');
+        expect(rests[1].restStartMs, _msOf(_t1));
+        expect(rests[1].restEndMs, isNull, reason: 'S-4504 it is running');
+        expect(
+          rests.last.toMap(),
+          runningBefore,
+          reason:
+              'S-4504 the running rest two POSITIONS above the fill is not the '
+              'one that ends: the set landed below it',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4505 the phone\'s delete of a wrist set re-keys the rests the merge '
+      'wrote',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await _plannedRows(repository);
+        const stamps = [_t1, _t2, _t3];
+        for (var index = 0; index < 3; index++) {
+          await phone.router.receive(
+            observationsUp(
+              's-w1',
+              [wristSet('sx-${index + 1}', 8 + index, loggedAt: stamps[index])],
+              messageId: 'msg-4505-set-${index + 1}',
+            ),
+          );
+        }
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [
+              _rest(
+                'rx-1',
+                slot: 'sl-1',
+                exerciseId: 'ex-1',
+                startedAt: _restStart,
+                endedAt: _restEnd,
+                afterEntryId: 'sx-1',
+              ),
+            ],
+            messageId: 'msg-4505-rest-1',
+          ),
+        );
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [
+              _rest(
+                'rx-2',
+                slot: 'sl-1',
+                exerciseId: 'ex-1',
+                startedAt: '2026-10-05T10:21:00Z',
+                endedAt: '2026-10-05T10:22:00Z',
+                afterEntryId: 'sx-2',
+              ),
+            ],
+            messageId: 'msg-4505-rest-2',
+          ),
+        );
+        final before = [
+          for (final rest in await _rests(repository, 'sl-1')) rest.toMap(),
+        ];
+        expect(
+          [for (final rest in before) rest['entry_index']],
+          [1, 2, 3],
+          reason: 'S-4505 the fixture: each filled set left its own rest',
+        );
+
+        await phone.inbox.stagePhoneChanges(
+          _deleteEnvelope('del-4505', 'sx-2'),
+        );
+
+        expect(
+          await _ids(repository, 'sl-1'),
+          [
+            'obs-sl-1-0-reps',
+            'obs-sl-1-0-weight',
+            'obs-sl-1-2-reps',
+            'obs-sl-1-2-weight',
+          ],
+          reason: 'S-4505 the deleted set\'s rows go and no other row moves',
+        );
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [1, 2],
+          reason:
+              'S-4505 the deleted set\'s rest goes and the later one moves '
+              'down a POSITION — the importer leaves the rests where they were',
+        );
+        expect(
+          rests.first.toMap(),
+          before.first,
+          reason: 'S-4505 the rest below the delete does not change',
+        );
+        expect(rests.last.id, 'rest-sl-1-2');
+        expect(rests.last.restStartMs, _msOf(_t3));
+        expect(
+          rests.last.restEndMs,
+          isNull,
+          reason: 'S-4505 the later rest keeps the stamps it had, running',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4506 the delete re-keys by position where the numbers and the '
+      'positions disagree',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await _plannedRows(repository);
+        await _phoneRest(
+          repository,
+          effortId: 'sl-1',
+          entryIndex: 3,
+          startedAtMs: _msOf(_t3),
+          endedAtMs: _msOf(_t4),
+        );
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [wristSet('sx-1', 8)],
+            messageId: 'msg-4506-set',
+          ),
+        );
+        expect(
+          [for (final rest in await _rests(repository, 'sl-1')) rest.entryIndex],
+          [1, 3],
+          reason: 'S-4506 the fixture: the fill\'s rest at 1, the user\'s at 3',
+        );
+
+        await phone.inbox.stagePhoneChanges(
+          _deleteEnvelope('del-4506', 'sx-1'),
+        );
+
+        final rows = await sortedObservations(repository, 'sl-1');
+        expect(
+          [for (final row in rows) row.id],
+          [
+            'obs-sl-1-1-reps',
+            'obs-sl-1-1-weight',
+            'obs-sl-1-2-reps',
+            'obs-sl-1-2-weight',
+          ],
+          reason:
+              'S-4506 the deleted set\'s rows go and the user\'s own rows keep '
+              'their numbers',
+        );
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [2],
+          reason:
+              'S-4506 the user\'s rest marked the set at POSITION 2 (the row '
+              'numbered 3); with the set below it gone it marks POSITION 1 (the '
+              'row numbered 2) — the importer leaves it at 3',
+        );
+        expect(rests.single.id, 'rest-sl-1-2');
+        expect(rests.single.restStartMs, _msOf(_t3));
+        expect(
+          EntryRows.loggedSetNumbersOf(EntryRows.setGroups(rows), rests),
+          {2},
+          reason:
+              'S-4506 position 0 (the row numbered 1) reads unlogged and '
+              'position 1 (the row numbered 2) logged',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4507 the delete of the only wrist set takes its rest with it, once '
+      'per change',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await _plannedRows(repository, count: 1);
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [wristSet('sx-1', 8)],
+            messageId: 'msg-4507-set',
+          ),
+        );
+        expect(
+          [for (final rest in await _rests(repository, 'sl-1')) rest.entryIndex],
+          [1],
+          reason: 'S-4507 the fixture: the fill is position 0, so its rest is 1',
+        );
+
+        await phone.inbox.stagePhoneChanges(
+          _deleteEnvelope('del-4507', 'sx-1'),
+        );
+
+        expect(
+          [
+            for (final row in await sortedObservations(repository, 'sl-1'))
+              row.createdAtMs,
+          ],
+          isNot(contains(_msOf(_t1))),
+          reason: 'S-4507 no row the deleted set wrote is left',
+        );
+        expect(
+          await _rests(repository, 'sl-1'),
+          isEmpty,
+          reason:
+              'S-4507 the only rest on the effort was the deleted set\'s own '
+              'mark — the delete takes it with it',
+        );
+
+        await phone.inbox.stagePhoneChanges(
+          _deleteEnvelope('del-4507', 'sx-1'),
+        );
+
+        expect(
+          await _rests(repository, 'sl-1'),
+          isEmpty,
+          reason: 'S-4507 a redelivered change changes nothing',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4509 a retry of the pass that wrote the appended set opens no second '
+      'rest, and leaves the one it left closed',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await holedEffort(phone);
+        // What the pass that placed the wrist's set wrote before it stopped,
+        // short of marking the row applied: the set's rows at the number after
+        // the last one the phone holds, and the rest that marked it — already
+        // closed by the wrist's own report. The set comes back, so the pass
+        // runs again over a spot that already holds everything it would write.
+        await _phoneRows(
+          repository,
+          effortId: 'sl-1',
+          entryIndex: 3,
+          reps: 8,
+          weightKg: 42.5,
+          atMs: _msOf(_t1),
+        );
+        await repository.createEntryRest(
+          EntryRest(
+            id: 'rest-sl-1-3',
+            effortId: 'sl-1',
+            entryIndex: 3,
+            restStartMs: _msOf(_restStart),
+            restEndMs: _msOf(_restEnd),
+            createdAtMs: _msOf(_t1),
+            updatedAtMs: _msOf(_restEnd),
+          ),
+        );
+
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [wristSet('sx-1', 8)],
+            messageId: 'msg-4509-retry',
+          ),
+        );
+
+        expect(
+          await _ids(repository, 'sl-1'),
+          [
+            'obs-sl-1-0-reps',
+            'obs-sl-1-0-weight',
+            'obs-sl-1-2-reps',
+            'obs-sl-1-2-weight',
+            'obs-sl-1-3-reps',
+            'obs-sl-1-3-weight',
+          ],
+          reason:
+              'S-4509 the retry rewrites the set\'s own rows where the first '
+              'pass put them and appends nothing after them',
+        );
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [1, 2, 3],
+          reason:
+              'S-4509 the rest at 3 is the one the first pass left: a set whose '
+              'spot the effort\'s rests already mark opens no second one',
+        );
+        expect(rests.last.id, 'rest-sl-1-3');
+        expect(rests.last.restStartMs, _msOf(_restStart));
+        expect(
+          rests.last.restEndMs,
+          _msOf(_restEnd),
+          reason:
+              'S-4509 the rest the wrist\'s report closed stays closed — the '
+              'retry does not write an open one over it',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4510 the delete of a wrist set appended after a hole re-keys the '
+      'effort\'s rests by POSITION',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await holedEffort(phone);
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [wristSet('sx-1', 8)],
+            messageId: 'msg-4510-append',
+          ),
+        );
+        final before = [
+          for (final rest in await _rests(repository, 'sl-1')) rest.toMap(),
+        ];
+        expect(
+          [for (final rest in before) rest['entry_index']],
+          [1, 2, 3],
+          reason:
+              'S-4510 the fixture: the wrist\'s set carries number 3, its rest '
+              'sits at POSITION 2 + 1',
+        );
+
+        await phone.inbox.stagePhoneChanges(
+          _deleteEnvelope('del-4510', 'sx-1'),
+        );
+
+        expect(
+          await _ids(repository, 'sl-1'),
+          [
+            'obs-sl-1-0-reps',
+            'obs-sl-1-0-weight',
+            'obs-sl-1-2-reps',
+            'obs-sl-1-2-weight',
+          ],
+          reason: 'S-4510 the deleted set\'s rows go and no other row moves',
+        );
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [1, 2],
+          reason:
+              'S-4510 the set sits at POSITION 2, so the rest at 3 goes with '
+              'it — reading the POSITION off the row number (3) finds no rest '
+              'at 4 and leaves all three',
+        );
+        expect(
+          [for (final rest in rests) rest.toMap()],
+          [before[0], before[1]],
+          reason:
+              'S-4510 the rests the phone finished itself are the ones the '
+              'delete keeps, each exactly as it was',
+        );
+        expect(phone.failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-4511 two wrist sets in one message fill two POSITIONS, not the same '
+      'one twice',
+      () async {
+        final phone = await _phone(repository);
+        await phone.router.receive(_snapshot());
+        await _plannedRows(repository, count: 4);
+        await phone.state.refreshEfforts(['sl-1']);
+        await phone.state.recordRestStart('sl-1', 1);
+        await phone.state.recordRestEnd('sl-1', 1);
+        await phone.state.deleteEntry('sl-1', 1);
+
+        await phone.router.receive(
+          observationsUp(
+            's-w1',
+            [wristSet('sx-1', 8), wristSet('sx-2', 9, loggedAt: _t2)],
+            messageId: 'msg-4511-two',
+          ),
+        );
+
+        expect(
+          await _ids(repository, 'sl-1'),
+          [
+            'obs-sl-1-0-reps',
+            'obs-sl-1-0-weight',
+            'obs-sl-1-2-reps',
+            'obs-sl-1-2-weight',
+            'obs-sl-1-3-reps',
+            'obs-sl-1-3-weight',
+          ],
+          reason:
+              'S-4511 the two sets take the two POSITIONS the phone reads as '
+              'unlogged, 1 and 2, and the numbers stay holed at 1',
+        );
+        final rows = await sortedObservations(repository, 'sl-1');
+        expect(
+          rows[2].valueInt,
+          8,
+          reason: 'S-4511 the first set is the one at number 2',
+        );
+        expect(rows[2].createdAtMs, _msOf(_t1));
+        expect(
+          rows[4].valueInt,
+          9,
+          reason:
+              'S-4511 the second set takes the next POSITION, not the first '
+              'one a second time',
+        );
+        expect(rows[4].createdAtMs, _msOf(_t2));
+        final rests = await _rests(repository, 'sl-1');
+        expect(
+          [for (final rest in rests) rest.entryIndex],
+          [1, 2, 3],
+          reason:
+              'S-4511 each fill opens its own rest: the pass has to remember, '
+              'as it places, that the spot it just filled is taken',
+        );
+        expect(rests[1].id, 'rest-sl-1-2');
+        expect(rests[1].restStartMs, _msOf(_t1));
+        expect(
+          rests[1].restEndMs,
+          _msOf(_t2),
+          reason:
+              'S-4511 one rest runs at a time: the set that landed above the '
+              'running one ends it',
+        );
+        expect(rests[2].id, 'rest-sl-1-3');
+        expect(rests[2].restStartMs, _msOf(_t2));
+        expect(rests[2].restEndMs, isNull, reason: 'S-4511 the last one runs');
+        expect(phone.failures, isEmpty);
+      },
+    );
   });
 }

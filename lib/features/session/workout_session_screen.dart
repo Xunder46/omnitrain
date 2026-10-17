@@ -10,6 +10,8 @@ import '../../state/settings/settings_state.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../../core/utils/metric_stepping.dart';
+import '../../core/utils/date_utils.dart';
 import '../../core/utils/rest_ping_utils.dart';
 import '../../state/workout/workout_state.dart';
 import '../exercise/exercise_picker_screen.dart';
@@ -20,6 +22,10 @@ import '../../core/services/stats_progress_service.dart';
 import '../../data/models/models.dart';
 import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/session/inline_metric_editor.dart';
+import '../../widgets/session/value_stepper_row.dart';
+import '../../widgets/session/timer_ring.dart';
+import '../../widgets/session/set_segment_bar.dart';
+import '../../widgets/session/set_count_stepper.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import '../../widgets/session/pr_toast.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
@@ -119,9 +125,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // when returning from exercise detail so the user lands near 'Add Exercise'.
   final ScrollController _listScrollController = ScrollController();
 
-  // Track skipped sets per effort (UI-only state)
-  final Map<String, Set<int>> _skippedSets = {};
-
   // Track which set keys have been logged this session (effortId-entryIndex).
   // Prevents the rest timer from restarting when navigating back/forward
   // through already-logged sets.
@@ -188,9 +191,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // Key: 'effortId-entryIndex', Value: map of metricKey -> value.
   // Changes are flushed to the repository only when Save is clicked.
   final Map<String, Map<String, dynamic>> _editBuffer = {};
-
-  // Per-entry expand/collapse state for the optional weight adjustment editor.
-  final Map<String, bool> _weightAdjustExpanded = {};
 
   // Prevent duplicate finish flows from double taps.
   bool _isFinishingSession = false;
@@ -590,6 +590,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           final entries =
               exercise['entries'] as List<Map<String, dynamic>>? ?? [];
 
+          // D-2: the keys are re-derived, not carried over. A set that was
+          // deleted must stop reading as logged here — `_logSet` returns early
+          // on this set and drops the screen's scheduled rest pings with it.
+          _loggedSetKeys.removeWhere((k) => k.startsWith('$effortId-'));
           for (int i = 0; i < entries.length; i++) {
             final logKey = '$effortId-$i';
             if (_isSetLogged(effortId, i, effortKind)) {
@@ -791,6 +795,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     return entries.length;
   }
 
+  /// First set after the focused one that is not logged yet, as a 1-based set
+  /// number; null when every later set is logged (or there is none).
+  int? _nextUnloggedSetAfter(
+    String effortId,
+    String effortKind,
+    int entryCount,
+  ) {
+    for (var i = _currentSet; i < entryCount; i++) {
+      if (!_isSetLogged(effortId, i, effortKind)) return i + 1;
+    }
+    return null;
+  }
+
   Future<void> _logSet() async {
     if (_exercises.isEmpty) return;
 
@@ -963,11 +980,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       );
     }
 
-    // Advance to next set or next exercise
+    // Advance to the first set after this one that is not logged yet; when
+    // every later set is logged, move to the next exercise (D-6).
+    final nextSet = _nextUnloggedSetAfter(effortId, effortKind, entries.length);
     int? nextExerciseIndex;
     setState(() {
-      if (_currentSet < entries.length) {
-        _currentSet++;
+      if (nextSet != null) {
+        _currentSet = nextSet;
       } else {
         // Move to next exercise
         if (_currentExerciseIndex < _exercises.length - 1) {
@@ -1292,7 +1311,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     return values.isEmpty ? null : values;
   }
 
-  Future<void> _deleteCurrentSet() async {
+  Future<void> _deleteSetAt(int index) async {
     if (_isStructuralOp || _exercises.isEmpty) return;
     _isStructuralOp = true;
 
@@ -1302,7 +1321,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       final exerciseName = exercise['name'] as String;
       final entries = exercise['entries'] as List<Map<String, dynamic>>;
       final effortKind = exercise['effortKind'] as String? ?? 'set';
-      final currentIndex = _currentSet - 1;
 
       if (entries.isEmpty) return;
 
@@ -1312,7 +1330,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
                 ? 'Interval'
                 : (effortKind == 'drill' ? 'Hold' : 'Set'));
 
-      final isLogged = _isSetLogged(effortId, currentIndex, effortKind);
+      final isLogged = _isSetLogged(effortId, index, effortKind);
+
+      // D-2: a rest that is still running is deleted with its set (D-1), so the
+      // pings it scheduled have to go too — the chip is about to disappear.
+      final deletedRestWasOpen = widget.workoutState
+          .getEntryRests(effortId)
+          .any((rest) => rest.entryIndex == index + 1 && rest.restEndMs == null);
 
       // If this is the last entry, always warn since it removes the entire exercise
       if (entries.length == 1) {
@@ -1335,8 +1359,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         // Delete the entry and remove the exercise
         if (widget.editMode) _hasStructuralChanges = true;
         _inProgressKeys.removeWhere((k) => k.startsWith('$effortId-'));
-        await widget.workoutState.deleteEntry(effortId, currentIndex);
+        _loggedSetKeys.removeWhere((k) => k.startsWith('$effortId-'));
+        await widget.workoutState.deleteEntry(effortId, index);
         await widget.workoutState.removeExerciseFromSession(effortId);
+        if (deletedRestWasOpen) {
+          unawaited(widget.restNotificationService.cancelRestNotifications());
+          _lastRestPingFiredAt.remove(effortId);
+        }
         await _loadExercises();
 
         // Navigate back to list view
@@ -1367,12 +1396,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       }
 
       if (widget.editMode) _hasStructuralChanges = true;
-      await widget.workoutState.deleteEntry(effortId, currentIndex);
+      _inProgressKeys.removeWhere((k) => k.startsWith('$effortId-'));
+      await widget.workoutState.deleteEntry(effortId, index);
+      if (deletedRestWasOpen) {
+        unawaited(widget.restNotificationService.cancelRestNotifications());
+        _lastRestPingFiredAt.remove(effortId);
+      }
       await _loadExercises();
 
       // Adjust current set if it now exceeds new entries length
       setState(() {
         final newCount = entries.length - 1;
+        if (index < _currentSet - 1) {
+          _currentSet--;
+        }
         if (_currentSet > newCount) {
           _currentSet = newCount.clamp(1, newCount);
         }
@@ -1380,6 +1417,29 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     } finally {
       _isStructuralOp = false;
     }
+  }
+
+  /// `−` on the set count: drops the last set that is not logged yet, or the
+  /// last set when every set is logged (D-7). Same confirmations as the
+  /// in-session delete; the focused set is only removed when nothing else is
+  /// left unlogged.
+  Future<void> _deleteLastUnloggedSet() async {
+    if (_isStructuralOp || _exercises.isEmpty) return;
+
+    final exercise = _exercises[_currentExerciseIndex];
+    final effortId = exercise['id'] as String;
+    final entries = exercise['entries'] as List<Map<String, dynamic>>;
+    final effortKind = exercise['effortKind'] as String? ?? 'set';
+
+    var target = entries.length - 1;
+    for (var i = entries.length - 1; i >= 0; i--) {
+      if (!_isSetLogged(effortId, i, effortKind)) {
+        target = i;
+        break;
+      }
+    }
+
+    await _deleteSetAt(target);
   }
 
   Future<void> _updateMetricValue(
@@ -1417,13 +1477,24 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       return;
     }
 
-    // Normal mode: persist immediately
-    await widget.workoutState.updateEntryValue(
-      effortId,
-      entryIndex,
-      metricKey,
-      value,
-    );
+    // Normal mode: persist immediately. A live round-length change is not a
+    // single-round write: it moves every later round that has not started
+    // (O-6), so the state returns the rounds it touched.
+    List<int> touchedRounds = const [];
+    if (metricKey == 'round-duration') {
+      touchedRounds = await widget.workoutState.updatePlannedDurationFrom(
+        effortId,
+        entryIndex,
+        value as int,
+      );
+    } else {
+      await widget.workoutState.updateEntryValue(
+        effortId,
+        entryIndex,
+        metricKey,
+        value,
+      );
+    }
 
     // Reload exercises to reflect updated values
     await _loadExercises();
@@ -1445,9 +1516,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           _effortAlerted[timerKey] = false;
         }
         if (metricKey == 'round-duration') {
-          _effortTargetDuration[timerKey] =
-              entry['round-duration'] as int? ?? 0;
-          _effortAlerted[timerKey] = false;
+          // Refresh every round the state wrote; the running and finished
+          // rounds keep the values they had. Nothing written (no rounds
+          // loaded) still refreshes the entry the user edited.
+          final refreshed = touchedRounds.isEmpty
+              ? <int>[entryIndex]
+              : touchedRounds;
+          for (final index in refreshed) {
+            if (index < 0 || index >= entries.length) continue;
+            final roundKey = '$effortId-$index';
+            _effortTargetDuration[roundKey] =
+                entries[index]['round-duration'] as int? ?? 0;
+            _effortAlerted[roundKey] = false;
+          }
         }
       }
     }

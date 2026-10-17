@@ -286,7 +286,90 @@ Lists the routine's segments and their exercises, supports reordering, and opens
 
 #### Detail View (per-exercise)
 
-Edits per-set target values for one exercise using the same `InlineMetricEditor` primitive the live session uses, so routine editing and live execution share one mental model. Which editors appear depends on effort kind: routine setup exposes no duration target for `timed` and no hold-time target for `drill`. Weight labels respect the active `SettingsState` unit preference. Remove-set is enabled only on the final entry when more than one set exists; add-set is capped by `WorkoutConstants.maxEntriesPerEffort`.
+Edits per-set target values for one exercise with the same shared pieces the
+live session editor uses — a pinned `SetSegmentBar`, boxed `ValueStepperRow`s
+and the shared `SetCountStepper` — so routine editing and live execution
+share one mental model. The live session editor (`WorkoutSessionScreen` with
+`editMode: true`) already used those pieces and is unchanged by the routine
+rewrite. Verified by `test/routine_detail_screen_test.dart` (group
+`S-4501 session editor guard` · `the live session editor still uses the
+shared pieces`).
+
+**Header**: the shared `OmniBackHeader`; the title is the exercise name and
+the one subtitle line reads `Exercise N / M · <block name>`. The old body
+block-name and exercise-name lines are gone. Verified by
+`test/header_standardization_test.dart` (group `OmniBackHeader presence –
+RoutineSetupScreen (detail view)` · `uses OmniBackHeader in detail view`) and
+`test/routine_detail_screen_test.dart` (group `S-4502 header (A1)` ·
+`the subtitle carries the exercise index and the block name`).
+
+**Set bar**: a `SetSegmentBar` is pinned directly under the header, outside
+the scroll view. The focused set is the dimmer accent and the others grey —
+the bar never shows a logged state — and tapping a segment jumps to that set;
+a one-set effort still shows one segment. It replaced the pre-38e dots row.
+Verified by `test/routine_detail_screen_test.dart` (group `S-4503 set bar
+(A2)` · `the focused segment is the faint accent, the others neutral`,
+`a one-set effort still shows one segment`).
+
+Which rows the body shows depends on effort kind:
+
+- **`set` (resistance)**: reps and weight as two boxed full-width
+  `ValueStepperRow`s. Targets are read and written as before — reps as
+  `targetInt`, weight in canonical kg as `targetMin` — and the weight step
+  follows the unit preference: 2.5 kg, or 5 lb for a `lbs` lifter, whose
+  weight label reads `LBS`. Verified by `test/routine_detail_screen_test.dart`
+  (group `S-4504 resistance rows (A3)` · `the reps and weight rows read and
+  write the shown set`; group `S-4505 user unit (A3)` · `a lbs lifter steps
+  5 lb and the kg target follows`) and `test/screen_widget_test.dart` (group
+  `RoutineSetupScreen` · `uses preferred lbs label for routine load editors`).
+- **`timed` (cardio interval)**: no editable value (owner rule O-11: weight
+  only on resistance sets and isometric holds). Stored interval
+  `extraWeight` targets of old routines stay in the data and are ignored by
+  the screen. Verified by `test/routine_detail_screen_test.dart` (group
+  `S-4507 interval (A5)` · `no editable value, and a stored target stays
+  untouched`) and `test/screen_widget_test.dart` (group `RoutineSetupScreen`
+  · `timed effort detail shows no editor and leaves the stored extra-weight
+  target untouched`).
+- **`drill` (isometric hold)**: one boxed weight row writing the
+  `extraWeight` target — no reps row and no hold-time target. Verified by
+  `test/routine_detail_screen_test.dart` (group `S-4506 hold rows (A4)` ·
+  `a hold has a weight row and no reps row`) and `test/screen_widget_test.dart`
+  (group `RoutineSetupScreen` · `drill effort detail view shows no hold-time
+  editor`).
+- **`round` / `period`**: one boxed `ROUND LENGTH` `ValueStepperRow` in its
+  duration mode — 15 s per step, floored at 15 s, and tapping the number
+  opens `showDurationEntryDialog` (`Edit Round Duration`). Both the stepper
+  and the dialog write the same target pair: `roundDuration` and
+  `rounds: 1`. The old `ROUND n` / `PERIOD n` heading is gone. Verified by
+  `test/routine_detail_screen_test.dart` (group `S-4508 round length (A6)` ·
+  `the round row reads 03:00 and writes duration plus one round`; group
+  `S-4509 round floor and the duration dialog (A6)` · `15 s is the floor and
+  the number opens the h/m/s dialog`), `test/screen_widget_test.dart` (group
+  `RoutineSetupScreen` · `round effort detail view still renders
+  round-duration editor`) and `test/sports_emphasis_redesign_test.dart`
+  (group `Sports effort emphasis redesign` · `S-005 theme parity across
+  free, routine-backed, and routine-setup` — the routine-setup leg reads
+  `Period 1 of 1` with no `PERIOD 1` heading).
+
+**Sets control**: the shared `SetCountStepper` with the count line in the
+middle — `Set 2 of 3`, `Interval 2 of 3`, `Round`/`Period 2 of 3`,
+`Hold 2 of 3` — replaced the old `−  Set X of Y  +` row. `+` adds a set and
+focuses it, capped at 12 (`WorkoutConstants.maxEntriesPerEffort`; at the cap
+the button is disabled with the `Max 12 entries` tooltip). `−` removes the
+last set only when more than one set exists and the focused set is the last;
+otherwise it is disabled — never a dialog. The buttons carry the keys
+`routine-add-set` and `routine-remove-set`. Verified by
+`test/routine_detail_screen_test.dart` (groups `S-4510 add set (A7)` ·
+`a new set takes the focus and is the only focused segment`,
+`at the cap the add button is disabled with its tooltip`; `S-4511 remove set
+(A7)` · `only the focused last set can be removed`, `a one-set effort cannot
+lose its set`) and `test/screen_widget_test.dart` (group
+`RoutineSetupScreen` · `sets can be added in detail view`,
+`tapping exercise card opens detail view`).
+
+**Set arrows**: the Previous Set / Next Set arrow row is unchanged. Verified
+by `test/routine_detail_screen_test.dart` (group `S-4512 set arrows (A8)` ·
+`Previous and Next Set walk the sets and stop at the ends`).
 
 #### Smart Defaults for Targets
 When adding a set, targets auto-fill from the previous set:
@@ -297,7 +380,7 @@ When adding a set, targets auto-fill from the previous set:
 
 When adding a new exercise, default targets depend on effort kind:
 - `set`: 10 reps, 0 weight
-- `timed`: no visible metric editor unless an extra-weight target is present
+- `timed`: no editable value in the detail — a stored extra-weight target stays in the data and is ignored (owner rule O-11)
 - `round`: 180 seconds (3 min), 1 round
 - `drill`: 0.0 extra weight
 

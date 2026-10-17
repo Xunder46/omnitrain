@@ -652,13 +652,21 @@ extension SessionCoreEntryMethods on SessionCore {
       final effort = _findEffort(effortId);
       if (effort == null) return;
 
+      // D-1: whichever kind the entry was, the rest that marked it goes with it
+      // and every rest above it moves down one, or the deleted entry comes back
+      // as logged on the next load. A delete that found no such entry leaves the
+      // rests alone.
       if (effort.effortKind == 'round') {
-        await _timerManager.deleteRound(effortId, entryIndex);
+        if (await _timerManager.deleteRound(effortId, entryIndex)) {
+          await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
+        }
         return;
       }
 
       if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
-        await _timerManager.deleteTimedEntry(effortId, entryIndex);
+        if (await _timerManager.deleteTimedEntry(effortId, entryIndex)) {
+          await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
+        }
         return;
       }
 
@@ -677,6 +685,7 @@ extension SessionCoreEntryMethods on SessionCore {
         await _repository.deleteObservation(id);
       }
       observations.removeWhere((row) => doomed.contains(row.id));
+      await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
       _notify();
     } catch (e) {
       _setError('Failed to delete entry: $e');

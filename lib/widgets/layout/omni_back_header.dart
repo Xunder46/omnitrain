@@ -57,6 +57,8 @@ class OmniBackHeader extends StatelessWidget implements PreferredSizeWidget {
                 Text(title),
                 Text(
                   subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: OmniTheme.colors.textSecondary,
                   ),

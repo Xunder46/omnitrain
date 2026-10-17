@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/app.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
+import 'package:omnitrain/core/constants/workout_constants.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -161,27 +162,6 @@ Future<void> _openSessionDetail(
   await tester.pumpAndSettle();
 }
 
-List<Color> _progressDotColors(WidgetTester tester) {
-  final dotContainers = tester.widgetList<Container>(
-    find.byWidgetPredicate((widget) {
-      if (widget is! Container) return false;
-      final width = widget.constraints?.minWidth;
-      final height = widget.constraints?.minHeight;
-      if ((width != 10 && width != 14) || (height != 10 && height != 14)) {
-        return false;
-      }
-      final decoration = widget.decoration;
-      return decoration is BoxDecoration &&
-          decoration.shape == BoxShape.circle &&
-          decoration.color != null;
-    }),
-  );
-
-  return dotContainers
-      .map((container) => (container.decoration as BoxDecoration).color!)
-      .toList();
-}
-
 typedef _RoutineDeps = ({
   RoutineState routineState,
   WorkoutState workoutState,
@@ -260,11 +240,13 @@ Future<void> _openRoutineDetail(
 }
 
 Future<void> _triggerRoutineAddSet(WidgetTester tester) async {
-  final addSetInkWell = tester.widget<InkWell>(
+  // The routine add control is the shared `SetCountStepper`'s `IconButton`
+  // (key `routine-add-set`), not the deleted `InkWell`.
+  final addSetButton = tester.widget<IconButton>(
     find.byKey(const Key('routine-add-set')),
   );
-  expect(addSetInkWell.onTap, isNotNull);
-  addSetInkWell.onTap!.call();
+  expect(addSetButton.onPressed, isNotNull);
+  addSetButton.onPressed!.call();
   await tester.pumpAndSettle();
 }
 
@@ -277,31 +259,43 @@ Future<void> _triggerLogSet(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-void _expectDotColors(
+/// Fill colours of the session's set segments, in order (`set-segment-$i`).
+/// The bar replaced the per-set dots in the logger shell: focused unlogged
+/// segments are the faint accent, logged ones the solid primary.
+List<Color> _segmentColors(WidgetTester tester) {
+  final colors = <Color>[];
+  for (var i = 0; i < WorkoutConstants.maxEntriesPerEffort; i++) {
+    final segment = find.byKey(Key('set-segment-$i'));
+    if (segment.evaluate().isEmpty) break;
+    final container = tester.widget<Container>(
+      find.descendant(of: segment, matching: find.byType(Container)),
+    );
+    colors.add((container.decoration! as BoxDecoration).color!);
+  }
+  return colors;
+}
+
+int _loggedSegmentCount(WidgetTester tester, ThemeData theme) => _segmentColors(
+  tester,
+).where((c) => c == theme.colorScheme.primary).length;
+
+void _expectSegmentColors(
   WidgetTester tester,
   ThemeData theme, {
-  required int primaryCount,
+  required int loggedCount,
   int minNeutralCount = 1,
 }) {
-  final dotColors = _progressDotColors(tester);
+  final segmentColors = _segmentColors(tester);
   expect(
-    dotColors.where((c) => c == theme.colorScheme.primary).length,
-    primaryCount,
+    segmentColors.where((c) => c == theme.colorScheme.primary).length,
+    loggedCount,
   );
   expect(
-    dotColors
-        .where(
-          (c) =>
-              c == theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
-        )
+    segmentColors
+        .where((c) => c == theme.colorScheme.onSurface.withAlpha(51))
         .length,
     greaterThanOrEqualTo(minNeutralCount),
   );
-}
-
-int _primaryDotCount(WidgetTester tester, ThemeData theme) {
-  final dotColors = _progressDotColors(tester);
-  return dotColors.where((c) => c == theme.colorScheme.primary).length;
 }
 
 void main() {
@@ -333,32 +327,31 @@ void main() {
           tester.element(find.byType(WorkoutSessionScreen)),
         );
 
-        final addSetIcon = tester.widget<Icon>(
-          find.descendant(
-            of: find.byTooltip('Add set'),
-            matching: find.byIcon(Icons.add),
-          ),
+        final addSetButton = tester.widget<IconButton>(
+          find.byKey(const Key('set-count-add')),
         );
         expect(
-          addSetIcon.color,
-          theme.colorScheme.onSurface.withAlpha((0.35 * 255).round()),
+          addSetButton.style!.foregroundColor!.resolve(const <WidgetState>{}),
+          theme.colorScheme.onSurface.withAlpha(115),
         );
 
         expect(find.widgetWithText(FilledButton, 'Log Set'), findsOneWidget);
-        _expectDotColors(tester, theme, primaryCount: 0, minNeutralCount: 2);
+        _expectSegmentColors(tester, theme, loggedCount: 0, minNeutralCount: 1);
 
-        await tester.tap(find.byTooltip('Add set'));
+        await tester.ensureVisible(find.byKey(const Key('set-count-add')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('set-count-add')));
         await tester.pumpAndSettle();
         expect(find.textContaining('of 3'), findsOneWidget);
 
-        // Log the first set; logged dots should switch to primary while
-        // unlogged dots remain neutral.
+        // Log the first set; logged segments switch to primary while
+        // unlogged segments remain neutral.
         await _triggerLogSet(tester);
-        _expectDotColors(tester, theme, primaryCount: 1);
+        _expectSegmentColors(tester, theme, loggedCount: 1);
       },
     );
 
-    testWidgets('skipped set dot is treated as completed and rendered primary', (
+    testWidgets('logging a set marks its segment logged', (
       tester,
     ) async {
       final deps = await _buildSessionDeps(
@@ -383,9 +376,10 @@ void main() {
       await _openSessionDetail(tester, deps.exercise.name);
       final theme = Theme.of(tester.element(find.byType(WorkoutSessionScreen)));
 
-      // Skip first set by logging with zero reps; dot 1 should become primary.
+      // Log the first set; segment 1 becomes primary and the screen advances
+      // to the next unlogged set, which stays the accent.
       await _triggerLogSet(tester);
-      _expectDotColors(tester, theme, primaryCount: 1);
+      _expectSegmentColors(tester, theme, loggedCount: 1, minNeutralCount: 0);
     });
 
     testWidgets('reps and weight both render dominant in session detail', (
@@ -513,24 +507,26 @@ void main() {
           final freeTheme = Theme.of(
             tester.element(find.byType(WorkoutSessionScreen)),
           );
-          final freeAddSet = tester.widget<Icon>(
-            find.descendant(
-              of: find.byTooltip('Add set'),
-              matching: find.byIcon(Icons.add),
-            ),
+          final freeAddSet = tester.widget<IconButton>(
+            find.byKey(const Key('set-count-add')),
           );
           expect(
-            freeAddSet.color,
-            freeTheme.colorScheme.onSurface.withAlpha((0.35 * 255).round()),
+            freeAddSet.style!.foregroundColor!.resolve(const <WidgetState>{}),
+            freeTheme.colorScheme.onSurface.withAlpha(115),
           );
-          _expectDotColors(
+          _expectSegmentColors(
             tester,
             freeTheme,
-            primaryCount: 0,
-            minNeutralCount: 2,
+            loggedCount: 0,
+            minNeutralCount: 1,
           );
           await _triggerLogSet(tester);
-          _expectDotColors(tester, freeTheme, primaryCount: 1);
+          _expectSegmentColors(
+            tester,
+            freeTheme,
+            loggedCount: 1,
+            minNeutralCount: 0,
+          );
 
           final routineSessionDeps = await _buildSessionDeps(
             theme: themeValue,
@@ -553,21 +549,21 @@ void main() {
           final routineTheme = Theme.of(
             tester.element(find.byType(WorkoutSessionScreen)),
           );
-          final routinePrimaryBeforeLog = _primaryDotCount(
+          final routineLoggedBeforeLog = _loggedSegmentCount(
             tester,
             routineTheme,
           );
-          _expectDotColors(
+          _expectSegmentColors(
             tester,
             routineTheme,
-            primaryCount: routinePrimaryBeforeLog,
+            loggedCount: routineLoggedBeforeLog,
             minNeutralCount: 1,
           );
           await _triggerLogSet(tester);
-          _expectDotColors(
+          _expectSegmentColors(
             tester,
             routineTheme,
-            primaryCount: routinePrimaryBeforeLog + 1,
+            loggedCount: routineLoggedBeforeLog + 1,
             minNeutralCount: 0,
           );
 
@@ -587,28 +583,32 @@ void main() {
             ),
           );
           await _openRoutineDetail(tester, routineSetupDeps.exercise.name);
-          await _triggerRoutineAddSet(tester);
-          expect(find.textContaining('of 2'), findsOneWidget);
-
           final setupTheme = Theme.of(
             tester.element(find.byType(RoutineSetupScreen)),
           );
-          final setupAddSet = tester.widget<Icon>(
-            find.descendant(
-              of: find.byKey(const Key('routine-add-set')),
-              matching: find.byIcon(Icons.add),
-            ),
+          // The routine detail bar is the shared `SetSegmentBar` (the dots row
+          // is gone): the focused entry carries the dim accent, the others a
+          // neutral fill. Adding a set advances the focus to the new one.
+          final beforeAdd = _segmentColors(tester);
+          expect(beforeAdd, hasLength(1));
+          expect(beforeAdd[0], setupTheme.colorScheme.primary.withAlpha(115));
+          await _triggerRoutineAddSet(tester);
+          expect(find.textContaining('of 2'), findsOneWidget);
+
+          final setupAddSet = tester.widget<IconButton>(
+            find.byKey(const Key('routine-add-set')),
           );
           expect(
-            setupAddSet.color,
-            setupTheme.colorScheme.onSurface.withAlpha((0.35 * 255).round()),
+            setupAddSet.style!.foregroundColor!.resolve(const <WidgetState>{}),
+            setupTheme.colorScheme.onSurface.withAlpha(115),
           );
-          _expectDotColors(
-            tester,
-            setupTheme,
-            primaryCount: 0,
-            minNeutralCount: 2,
+          final afterAdd = _segmentColors(tester);
+          expect(afterAdd, hasLength(2));
+          expect(
+            afterAdd[0],
+            setupTheme.colorScheme.onSurface.withAlpha(51),
           );
+          expect(afterAdd[1], setupTheme.colorScheme.primary.withAlpha(115));
 
           // Tracking chip was removed from routine detail view.
           expect(find.text('Track by Reps & Sets'), findsNothing);

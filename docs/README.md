@@ -158,7 +158,7 @@ lib/
 │   ├── logo/             # AnimatedZenHalo, ZenHaloPainter
 │   ├── models/           # UiSetData (presentation model)
 │   ├── pickers/          # MetricChooserDialog, ModalityPickerDialog
-│   └── session/          # InlineMetricEditor, DominantMetricWidget
+│   └── session/          # InlineMetricEditor, DominantMetricWidget, ValueStepperRow
 ├── app.dart              # MyApp, theme construction
 └── main.dart             # Entry point, DI setup
 ```

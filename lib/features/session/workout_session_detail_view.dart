@@ -2,12 +2,9 @@ part of 'workout_session_screen.dart';
 
 /// Bottom inset for the big duration readout in the timed/drill detail views.
 ///
-/// Trimmed from the editor's default 32 px so the STOPPED / RUNNING status row
-/// sits closer to the number it describes. The difference is added back below
-/// the status row as [_kTimedStatusRowBottomGap], so nothing further down the
-/// column shifts.
+/// Trimmed from the editor's default 32 px so the digits sit closer to the
+/// controls below them, matching the reps screen's proportions.
 const EdgeInsets _kTimedValuePadding = EdgeInsets.fromLTRB(32, 32, 32, 25);
-const double _kTimedStatusRowBottomGap = 20;
 
 /// Detail-view builders for [WorkoutSessionScreen].
 ///
@@ -98,60 +95,68 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     );
   }
 
-  // ── Weight unit label + weight adjustment section ─────────────────────────
+  // ── Weight unit label + hold weight row ───────────────────────────────────
 
   String get _preferredWeightUnitLabel =>
       UnitFormatter.weightLabelUpper(widget.settingsState);
 
-  Widget _buildWeightAdjustmentSection({
-    required ThemeData theme,
-    required String effortId,
-    required int entryIndex,
-    required double currentValue,
-    required ValueChanged<double> onValueChanged,
-  }) {
-    final key = '$effortId-$entryIndex';
-    final isExpanded = _weightAdjustExpanded[key] ?? (currentValue > 0);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const SizedBox(height: 24),
-        OutlinedButton.icon(
-          onPressed: () => _updateUi(() {
-            _weightAdjustExpanded[key] = !isExpanded;
-          }),
-          icon: Icon(isExpanded ? Icons.expand_less : Icons.expand_more),
-          label: const Text('Weight adjustment'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: theme.colorScheme.onSurface.withAlpha(
-              (0.6 * 255).round(),
-            ),
-            side: BorderSide(
-              color: theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                OmniTheme.buttonUtilityRadius,
-              ),
-            ),
-          ),
-        ),
-        if (isExpanded)
-          InlineMetricEditor(
-            metricType: 'extra-weight',
-            currentValue: currentValue,
-            unitLabel: _preferredWeightUnitLabel,
-            showUnitInline: true,
-            emphasisTier: MetricEmphasisTier.dominant,
-            onValueChanged: (value) =>
-                onValueChanged((value as num).toDouble()),
-          ),
-      ],
+  /// The hold's only input (D-2): one full-width weight row in the user's
+  /// unit, underneath the digits. Always visible, never locked in the session
+  /// editor, locked once a live hold is logged — a drill entry is logged
+  /// exactly when its [TimedInstance] finished.
+  Widget _buildHoldWeightRow(
+    String effortId,
+    int entryIndex,
+    double currentValue,
+  ) {
+    return ValueStepperRow(
+      key: ValueKey('$effortId-$entryIndex-weight'),
+      metricType: 'weight',
+      currentValue: currentValue,
+      unitLabel: _preferredWeightUnitLabel,
+      step: MetricStepping.weightStepFor(
+        widget.settingsState.preferredWeightUnit,
+      ),
+      isReadOnly:
+          !widget.editMode && _isSetLogged(effortId, entryIndex, 'drill'),
+      onValueChanged: (value) =>
+          _updateMetricValue(effortId, entryIndex, 'extra-weight', value),
     );
+  }
+
+  /// The caption value for one entry, or null when it is not logged.
+  ///
+  /// Resistance sets read `reps×weight` in the user's unit — a zero or a
+  /// negative weight still reads, because the caption records what was carried;
+  /// timed, drill and round entries read the locked time as `m:ss`.
+  String? _loggedValueText(
+    String effortId,
+    int index,
+    String effortKind,
+    Map<String, dynamic> entry,
+  ) {
+    if (!_isSetLogged(effortId, index, effortKind)) return null;
+
+    switch (effortKind) {
+      case 'set':
+        final reps = entry['reps'] as int? ?? 0;
+        final weightKg = (entry['weight'] as num?)?.toDouble() ?? 0.0;
+        final weightText = UnitFormatter.formatWeightValue(
+          weightKg,
+          widget.settingsState,
+        );
+        return '$reps×$weightText';
+      case 'timed':
+      case 'drill':
+        final secs =
+            _getTimedInstance(effortId, index)?.actualDurationSecs ?? 0;
+        return OmniDateUtils.formatClock(secs * 1000);
+      case 'round':
+        final secs =
+            _getRoundInstance(effortId, index)?.actualDurationSecs ?? 0;
+        return OmniDateUtils.formatClock(secs * 1000);
+    }
+    return null;
   }
 
   // ── Metric widget (main per-effort-kind display) ──────────────────────────
@@ -173,24 +178,37 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           entryData['weight'] as double? ?? 0.0,
           widget.settingsState,
         );
+        // O-2/D-5: in a live session a logged set is locked; the session
+        // editor (widget.editMode) stays fully editable.
+        final isLoggedNow =
+            !widget.editMode &&
+            _isSetLogged(effortId, entryIndex, effortKind);
 
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 20),
-            InlineMetricEditor(
+            const SizedBox(height: 8),
+            // The keys include the set, so navigating to another set throws the
+            // row away — and with it any hold still running (S-4257).
+            ValueStepperRow(
+              key: ValueKey('$effortId-$entryIndex-reps'),
               metricType: 'reps',
               currentValue: reps,
               unitLabel: 'REPS',
-              emphasisTier: MetricEmphasisTier.dominant,
+              step: MetricStepping.repsPerStep.toDouble(),
+              isReadOnly: isLoggedNow,
               onValueChanged: (value) =>
                   _updateMetricValue(effortId, entryIndex, 'reps', value),
             ),
-            InlineMetricEditor(
+            ValueStepperRow(
+              key: ValueKey('$effortId-$entryIndex-weight'),
               metricType: 'weight',
               currentValue: weight,
               unitLabel: _preferredWeightUnitLabel,
-              emphasisTier: MetricEmphasisTier.dominant,
+              step: MetricStepping.weightStepFor(
+                widget.settingsState.preferredWeightUnit,
+              ),
+              isReadOnly: isLoggedNow,
               onValueChanged: (value) =>
                   _updateMetricValue(effortId, entryIndex, 'weight', value),
             ),
@@ -200,24 +218,18 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       case 'timed':
         final timedTimerKey = '$effortId-$entryIndex';
         final timedElapsed = _effortElapsed[timedTimerKey] ?? 0;
-        final timedIsRunning = _effortRunning[timedTimerKey] ?? false;
         final timedInstance = _getTimedInstance(effortId, entryIndex);
-        final timedEntryState = timedInstance?.state ?? TimedState.notStarted;
-        final isTimedFinished = timedEntryState == TimedState.finished;
-        final isTimedStarted = timedEntryState != TimedState.notStarted;
+        final isTimedFinished =
+            (timedInstance?.state ?? TimedState.notStarted) ==
+            TimedState.finished;
 
-        final int timedDisplayValue;
-        final String timedUnitLabel;
-        final Color? timedUnitLabelColor;
-        if (isTimedFinished) {
-          timedDisplayValue = timedInstance?.actualDurationSecs ?? timedElapsed;
-          timedUnitLabel = 'COMPLETED';
-          timedUnitLabelColor = theme.colorScheme.primary;
-        } else {
-          timedDisplayValue = timedElapsed;
-          timedUnitLabel = 'ELAPSED';
-          timedUnitLabelColor = null;
-        }
+        // Q-1 (owner O-13) restores the caption D-4 dropped: plain digits
+        // above `ELAPSED`, or `COMPLETED` once the interval is finished. A
+        // finished interval reads its locked logged time, which is also what
+        // the logged line shows.
+        final timedDisplayValue = isTimedFinished
+            ? (timedInstance?.actualDurationSecs ?? timedElapsed)
+            : timedElapsed;
 
         if (widget.editMode) {
           // Prefer buffered value so the editor reflects pending edits immediately.
@@ -258,100 +270,25 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                   value,
                 ),
               ),
-              if (entryData['extra-weight'] != null)
-                _buildWeightAdjustmentSection(
-                  theme: theme,
-                  effortId: effortId,
-                  entryIndex: entryIndex,
-                  currentValue: UnitFormatter.convertWeight(
-                    (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
-                    widget.settingsState,
-                  ),
-                  onValueChanged: (value) => _updateMetricValue(
-                    effortId,
-                    entryIndex,
-                    'extra-weight',
-                    value,
-                  ),
-                ),
             ],
           );
         }
 
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Column(
-              children: [
-                InlineMetricEditor(
-                  metricType: 'duration',
-                  currentValue: timedDisplayValue,
-                  unitLabel: timedUnitLabel,
-                  unitLabelColor: timedUnitLabelColor,
-                  emphasisTier: MetricEmphasisTier.dominant,
-                  isReadOnly: true,
-                  onTap: null,
-                  padding: _kTimedValuePadding,
-                  onValueChanged: (_) {},
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (!isTimedFinished) ...[
-                      Icon(
-                        timedIsRunning
-                            ? Icons.pause_circle_outline
-                            : Icons.play_circle_outline,
-                        size: 30,
-                        color: OmniTheme.colors.textMuted,
-                      ),
-                      const SizedBox(width: 6),
-                    ] else
-                      const SizedBox(
-                        height: 30,
-                      ), // keep space even when finished
-                    Text(
-                      isTimedFinished
-                          ? ''
-                          : (timedIsRunning
-                                ? 'RUNNING'
-                                : (isTimedStarted ? 'PAUSED' : 'STOPPED')),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: OmniTheme.colors.textMuted,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: _kTimedStatusRowBottomGap),
-              ],
-            ),
-            if (entryData['extra-weight'] != null)
-              _buildWeightAdjustmentSection(
-                theme: theme,
-                effortId: effortId,
-                entryIndex: entryIndex,
-                currentValue: UnitFormatter.convertWeight(
-                  (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
-                  widget.settingsState,
-                ),
-                onValueChanged: (value) => _updateMetricValue(
-                  effortId,
-                  entryIndex,
-                  'extra-weight',
-                  value,
-                ),
-              ),
-          ],
+        return InlineMetricEditor(
+          metricType: 'duration',
+          currentValue: timedDisplayValue,
+          unitLabel: isTimedFinished ? 'COMPLETED' : 'ELAPSED',
+          emphasisTier: MetricEmphasisTier.dominant,
+          isReadOnly: true,
+          onTap: null,
+          padding: _kTimedValuePadding,
+          onValueChanged: (_) {},
         );
 
       case 'round':
-        final rounds = entryData['rounds'] as int? ?? 1;
         final roundDuration =
             entryData['round-duration'] as int? ??
             WorkoutConstants.defaultRoundDurationSecs;
-        final modality = widget.workoutState.currentSession?.modality;
-        final roundLabel = modality == 'sports' ? 'PERIOD' : 'ROUND';
         final timerKey = '$effortId-$entryIndex';
         final elapsed = _effortElapsed[timerKey] ?? 0;
         final targetSeconds = _getEffortTargetDuration(
@@ -388,9 +325,32 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           stoppedDisplayValue = roundDuration;
         }
 
-        final String stoppedUnitLabel = isFinished
-            ? 'COMPLETED'
-            : (isMidRound ? 'REMAINING' : 'DURATION');
+        final bool roundRunning = _effortRunning[timerKey] ?? false;
+        final int shownSeconds = (roundRunning ? remaining : stoppedDisplayValue)
+            .toInt();
+        // D-2: the ring is full before Start, follows the digits while the round
+        // runs, freezes at its fraction when restored paused, and is empty once
+        // the round is finished (expired or logged early).
+        final double ringProgress = isFinished
+            ? 0.0
+            : (!roundRunning && !isMidRound)
+            ? 1.0
+            : (effectiveTarget <= 0 ? 1.0 : remaining / effectiveTarget);
+        final int lengthSeconds = (roundRunning || isMidRound || isFinished)
+            ? effectiveTarget
+            : roundDuration;
+        Future<void> editRoundLength() async {
+          final result = await showDurationEntryDialog(
+            context,
+            title: 'Edit Round Duration',
+            initialSecs: lengthSeconds,
+          );
+          if (result != null && mounted) {
+            unawaited(
+              _updateMetricValue(effortId, entryIndex, 'round-duration', result),
+            );
+          }
+        }
 
         if (widget.editMode) {
           // Prefer buffered value so the editor reflects pending edits immediately.
@@ -405,22 +365,13 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             mainAxisSize: MainAxisSize.min,
             children: [
               SizedBox(height: 24 + _kSessionScrollBottomExtra),
-              Text(
-                '$roundLabel $rounds',
-                style: theme.textTheme.displayLarge?.copyWith(
-                  fontWeight: FontWeight.w300,
-                  letterSpacing: -2,
-                  fontSize: theme.textTheme.displayMedium?.fontSize,
-                  color: OmniTheme.colors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 15),
-              InlineMetricEditor(
+              ValueStepperRow(
+                key: ValueKey('$effortId-$entryIndex-round-length'),
                 metricType: 'duration',
                 currentValue: editRoundDuration,
-                unitLabel: 'DURATION',
-                emphasisTier: MetricEmphasisTier.dominant,
-                onTap: () async {
+                unitLabel: 'ROUND LENGTH',
+                min: 15,
+                onEditorTap: () async {
                   final result = await showDurationEntryDialog(
                     context,
                     title: 'Edit Round Duration',
@@ -441,7 +392,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                   effortId,
                   entryIndex,
                   'round-duration',
-                  value,
+                  (value as num).toInt(),
                 ),
               ),
             ],
@@ -451,81 +402,43 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(height: 24 + _kSessionScrollBottomExtra),
-            Text(
-              '$roundLabel $rounds',
-              style: theme.textTheme.displayLarge?.copyWith(
-                fontWeight: FontWeight.w300,
-                letterSpacing: -2,
-                fontSize: theme.textTheme.displayMedium?.fontSize,
-                color: OmniTheme.colors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 15),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                InlineMetricEditor(
+            const SizedBox(height: 8),
+            TimerRing(
+              progress: ringProgress,
+              running: roundRunning,
+              size: 232,
+              // Scale the digits down rather than let them overflow the ring
+              // when the ambient text theme is larger than the app's own.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: InlineMetricEditor(
                   metricType: 'duration',
-                  currentValue: _effortRunning[timerKey] ?? false
-                      ? remaining
-                      : stoppedDisplayValue,
-                  unitLabel: _effortRunning[timerKey] ?? false
-                      ? 'RUNNING'
-                      : stoppedUnitLabel,
-                  emphasisTier: MetricEmphasisTier.dominant,
+                  currentValue: shownSeconds,
+                  unitLabel: isFinished ? 'COMPLETED' : 'REMAINING',
                   unitLabelColor: isExpired ? theme.colorScheme.error : null,
-                  isReadOnly: isFinished,
-                  onTap: isFinished
-                      ? null
-                      : () async {
-                          final result = await showDurationEntryDialog(
-                            context,
-                            title: 'Edit Round Duration',
-                            initialSecs: stoppedDisplayValue,
-                          );
-                          if (result != null && mounted) {
-                            unawaited(
-                              _updateMetricValue(
-                                effortId,
-                                entryIndex,
-                                'round-duration',
-                                result,
-                              ),
-                            );
-                          }
-                        },
+                  emphasisTier: MetricEmphasisTier.dominant,
+                  isReadOnly: true,
+                  onTap: null,
+                  padding: EdgeInsets.zero,
                   onValueChanged: (_) {},
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (!isFinished) ...[
-                      Icon(
-                        (_effortRunning[timerKey] ?? false)
-                            ? Icons.pause_circle_outline
-                            : Icons.play_circle_outline,
-                        size: 30,
-                        color: OmniTheme.colors.textMuted,
-                      ),
-                      const SizedBox(width: 6),
-                    ] else
-                      const SizedBox(height: 30),
-                    Text(
-                      isFinished
-                          ? ''
-                          : ((_effortRunning[timerKey] ?? false)
-                                ? 'RUNNING'
-                                : (isMidRound ? 'PAUSED' : 'STOPPED')),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: OmniTheme.colors.textMuted,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            ValueStepperRow(
+              key: ValueKey('$effortId-$entryIndex-round-length'),
+              metricType: 'duration',
+              currentValue: lengthSeconds,
+              unitLabel: 'ROUND LENGTH',
+              min: 15,
+              isReadOnly: roundRunning || isMidRound || isFinished,
+              onEditorTap: editRoundLength,
+              onValueChanged: (value) => _updateMetricValue(
+                effortId,
+                entryIndex,
+                'round-duration',
+                (value as num).toInt(),
+              ),
             ),
           ],
         );
@@ -533,29 +446,20 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       case 'drill':
         final drillTimerKey = '$effortId-$entryIndex';
         final drillElapsed = _effortElapsed[drillTimerKey] ?? 0;
-        final drillIsRunning = _effortRunning[drillTimerKey] ?? false;
         final drillInstance = _getTimedInstance(effortId, entryIndex);
-        final drillEntryState = drillInstance?.state ?? TimedState.notStarted;
-        final isDrillFinished = drillEntryState == TimedState.finished;
-        final isDrillStarted = drillEntryState != TimedState.notStarted;
+        final isDrillFinished =
+            (drillInstance?.state ?? TimedState.notStarted) ==
+            TimedState.finished;
         // Stored in canonical kg; convert to the user's preferred display unit.
         final drillExtraWeight = UnitFormatter.convertWeight(
-          entryData['extra-weight'] as double? ?? 0.0,
+          (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
           widget.settingsState,
         );
 
-        final int drillDisplayValue;
-        final String drillUnitLabel;
-        final Color? drillUnitLabelColor;
-        if (isDrillFinished) {
-          drillDisplayValue = drillInstance?.actualDurationSecs ?? drillElapsed;
-          drillUnitLabel = 'COMPLETED';
-          drillUnitLabelColor = theme.colorScheme.primary;
-        } else {
-          drillDisplayValue = drillElapsed;
-          drillUnitLabel = 'ELAPSED';
-          drillUnitLabelColor = null;
-        }
+        // Q-1 (owner O-13) restores the caption (see the timed branch).
+        final drillDisplayValue = isDrillFinished
+            ? (drillInstance?.actualDurationSecs ?? drillElapsed)
+            : drillElapsed;
 
         if (widget.editMode) {
           // Prefer buffered value so the editor reflects pending edits immediately.
@@ -596,18 +500,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                   value,
                 ),
               ),
-              _buildWeightAdjustmentSection(
-                theme: theme,
-                effortId: effortId,
-                entryIndex: entryIndex,
-                currentValue: drillExtraWeight,
-                onValueChanged: (value) => _updateMetricValue(
-                  effortId,
-                  entryIndex,
-                  'extra-weight',
-                  value,
-                ),
-              ),
+              _buildHoldWeightRow(effortId, entryIndex, drillExtraWeight),
             ],
           );
         }
@@ -615,64 +508,17 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                InlineMetricEditor(
-                  metricType: 'duration',
-                  currentValue: drillDisplayValue,
-                  unitLabel: drillUnitLabel,
-                  unitLabelColor: drillUnitLabelColor,
-                  emphasisTier: MetricEmphasisTier.dominant,
-                  isReadOnly: true,
-                  onTap: null,
-                  padding: _kTimedValuePadding,
-                  onValueChanged: (_) {},
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (!isDrillFinished) ...[
-                      Icon(
-                        drillIsRunning
-                            ? Icons.pause_circle_outline
-                            : Icons.play_circle_outline,
-                        size: 30,
-                        color: OmniTheme.colors.textMuted,
-                      ),
-                      const SizedBox(width: 6),
-                    ] else
-                      const SizedBox(
-                        height: 30,
-                      ), // keep space even when finished
-                    Text(
-                      isDrillFinished
-                          ? ''
-                          : (drillIsRunning
-                                ? 'RUNNING'
-                                : (isDrillStarted ? 'PAUSED' : 'STOPPED')),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: OmniTheme.colors.textMuted,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: _kTimedStatusRowBottomGap),
-              ],
+            InlineMetricEditor(
+              metricType: 'duration',
+              currentValue: drillDisplayValue,
+              unitLabel: isDrillFinished ? 'COMPLETED' : 'ELAPSED',
+              emphasisTier: MetricEmphasisTier.dominant,
+              isReadOnly: true,
+              onTap: null,
+              padding: _kTimedValuePadding,
+              onValueChanged: (_) {},
             ),
-            _buildWeightAdjustmentSection(
-              theme: theme,
-              effortId: effortId,
-              entryIndex: entryIndex,
-              currentValue: drillExtraWeight,
-              onValueChanged: (value) => _updateMetricValue(
-                effortId,
-                entryIndex,
-                'extra-weight',
-                value,
-              ),
-            ),
+            _buildHoldWeightRow(effortId, entryIndex, drillExtraWeight),
           ],
         );
 
@@ -681,154 +527,44 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     }
   }
 
-  // ── Set progress / previous stats / indicator / controls / buttons ────────
+  // ── Set bar / set controls / buttons ──────────────────────────────────────
 
-  Widget _buildSetProgress(
-    int totalEntries,
-    String effortKind,
-    ThemeData theme,
-  ) {
-    final canAddEntry = totalEntries < WorkoutConstants.maxEntriesPerEffort;
-
-    String label;
+  /// The count line the sets control shows, worded per effort kind.
+  String _setCountText(int totalEntries, String effortKind) {
     switch (effortKind) {
-      case 'set':
-        label = 'Set $_currentSet of $totalEntries';
       case 'timed':
-        label = 'Interval $_currentSet of $totalEntries';
+        return 'Interval $_currentSet of $totalEntries';
       case 'round':
         final modality = widget.workoutState.currentSession?.modality;
-        final isWorkoutLabel = modality == 'sports' ? 'Period' : 'Round';
-        label = '$isWorkoutLabel $_currentSet of $totalEntries';
+        final noun = modality == 'sports' ? 'Period' : 'Round';
+        return '$noun $_currentSet of $totalEntries';
       case 'drill':
-        label = 'Hold $_currentSet of $totalEntries';
+        return 'Hold $_currentSet of $totalEntries';
       default:
-        label = 'Set $_currentSet of $totalEntries';
+        return 'Set $_currentSet of $totalEntries';
     }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compactSpacing = constraints.maxWidth < 320 ? 2.0 : 4.0;
-        final compactLetterSpacing = constraints.maxWidth < 320 ? 1.0 : 2.0;
-
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Minus / trash — remove-set or remove-exercise (secondary, lower prominence)
-            Tooltip(
-              message: totalEntries == 1 ? 'Remove exercise' : 'Remove set',
-              child: InkWell(
-                onTap: _deleteCurrentSet,
-                customBorder: const CircleBorder(),
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minWidth: 50,
-                    minHeight: 50,
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    totalEntries == 1 ? Icons.delete_outline : Icons.remove,
-                    size: 24,
-                    color: theme.colorScheme.onSurface.withAlpha(
-                      (0.35 * 255).round(),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: compactSpacing),
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  letterSpacing: compactLetterSpacing,
-                  color: OmniTheme.colors.textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            SizedBox(width: compactSpacing),
-            // Plus — add-set (primary, higher prominence)
-            Tooltip(
-              message: canAddEntry
-                  ? 'Add set'
-                  : 'Max ${WorkoutConstants.maxEntriesPerEffort} entries',
-              child: InkWell(
-                onTap: canAddEntry ? _addSet : null,
-                customBorder: const CircleBorder(),
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minWidth: 50,
-                    minHeight: 50,
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.add,
-                    size: 24,
-                    color: canAddEntry
-                        ? theme.colorScheme.onSurface.withAlpha(
-                            (0.35 * 255).round(),
-                          )
-                        : theme.colorScheme.onSurface.withAlpha(
-                            (0.2 * 255).round(),
-                          ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
   }
 
-  Widget _buildSetIndicator(int totalSets, String effortKind, ThemeData theme) {
-    final effortId = _exercises[_currentExerciseIndex]['id'] as String;
+  /// The bar block pinned under the header (D-8): one segment per entry, each
+  /// carrying the logged value of its entry as a caption. The count line lives
+  /// in the sets control below the exercise's controls.
+  Widget _buildSetBar(int totalEntries, String effortKind) {
+    final exercise = _exercises[_currentExerciseIndex];
+    final effortId = exercise['id'] as String;
+    final entries = exercise['entries'] as List<Map<String, dynamic>>;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(totalSets, (index) {
-            final isCurrent = index == _currentSet - 1;
-            final isLogged = _isSetLogged(effortId, index, effortKind);
-            final isSkipped =
-                _skippedSets[_exercises[_currentExerciseIndex]['id']]?.contains(
-                  index,
-                ) ??
-                false;
-
-            return GestureDetector(
-              onTap: () => _jumpToSet(index + 1),
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 6),
-                width: isCurrent ? 14 : 10,
-                height: isCurrent ? 14 : 10,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: effortKind == 'round'
-                      ? (isCurrent
-                            ? theme.colorScheme.primary
-                            : (isLogged
-                                  ? OmniTheme.colors.textMuted
-                                  : theme.colorScheme.onSurface.withAlpha(
-                                      (0.2 * 255).round(),
-                                    )))
-                      : ((isLogged || isSkipped)
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurface.withAlpha(
-                                (0.2 * 255).round(),
-                              )),
-                ),
-              ),
-            );
-          }),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: SetSegmentBar(
+        count: totalEntries,
+        focusedIndex: _currentSet - 1,
+        isLogged: (index) => _isSetLogged(effortId, index, effortKind),
+        onTap: (index) => _jumpToSet(index + 1),
+        captions: [
+          for (var i = 0; i < totalEntries; i++)
+            _loggedValueText(effortId, i, effortKind, entries[i]),
+        ],
+      ),
     );
   }
 

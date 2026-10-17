@@ -481,6 +481,10 @@ pattern.
 | Small bottom message | `OmniMessage` | `lib/widgets/feedback/omni_message.dart` |
 | Empty state | `OmniEmptyState` | `lib/widgets/common/omni_empty_state.dart` |
 | Trend chart | `ScrollableTrendChart` | `lib/widgets/chart/scrollable_trend_chart.dart` |
+| Set progress bar | `SetSegmentBar` | `lib/widgets/session/set_segment_bar.dart` |
+| Add/remove entry stepper | `SetCountStepper` | `lib/widgets/session/set_count_stepper.dart` |
+| Value stepper row | `ValueStepperRow` | `lib/widgets/session/value_stepper_row.dart` |
+| Countdown ring | `TimerRing` | `lib/widgets/session/timer_ring.dart` |
 | Text-entry dialog | none yet — hand-built `AlertDialog`s | — |
 | Bottom sheet | none yet — hand-built | — |
 
@@ -493,6 +497,32 @@ than the ratchet allows" counts every raw `AlertDialog` outside
 `lib/widgets/dialogs` and `lib/widgets/pickers`). The maxima live in
 `test/helpers/ui_standards_allowlist.dart` (`handBuiltSheetRatchet`,
 `handBuiltDialogRatchet`) and may fall, never rise.
+
+A screen that shows per-set progress draws it with `SetSegmentBar` — one
+segment per set / interval / round / hold — rather than a second hand-built
+progress row; the session detail view's old dot builders are gone and a source
+scan keeps them out (`test/logger_shell_screen_test.dart`, group `Logger shell
+— layout (S-4221/S-4223)` · `S-4223: the dot builders are gone from the session
+detail view`). The bar also carries the per-set logged values: a screen that
+shows what a logged set read draws it as the segment's caption
+(`SetSegmentBar`'s `captions`), not as a second line under the bar — the old
+`LoggedValuesLine` piece is gone. A screen that offers an add/remove-entry
+control uses `SetCountStepper` rather than a copy of the `−  <count text>  +`
+row — unguarded (no scan counts hand-built entry steppers). A screen that shows
+a minus / number / plus control for a reps, weight or duration metric uses
+`ValueStepperRow` rather than a hand-built row — unguarded (no scan counts
+hand-built value steppers). A screen that shows time running out against a
+set length draws it with `TimerRing` rather than a hand-built ring —
+unguarded (no scan counts hand-built rings). Both boxed controls — `ValueStepperRow` and
+`SetCountStepper` — wrap their content in `OmniSurface(showShadow: false)`
+rather than a hand-built box: `ValueStepperRow` owns its 20/4 outer margin and
+12/8 inner padding (`test/value_stepper_row_test.dart`, group `S-4326 boxed
+row` · `one shadowless OmniSurface, 20/4 outside, 12/8 inside`), and
+`SetCountStepper` boxes its count text the same way
+(`test/logger_shell_screen_test.dart`, group `Logger polish — header,
+captions, boxes, layout (S-4311..S-4317, S-4322..S-4324)` · `S-4315: the sets
+control boxes the count text`; `S-4316: the reps and weight rows sit in an
+OmniSurface`).
 
 ### Messages
 

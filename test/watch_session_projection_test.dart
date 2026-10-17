@@ -1992,7 +1992,7 @@ void main() {
       // Two sets logged in the same millisecond whose entry numbers sort the
       // other way round byte-wise ("…-10" is below "…-9"), so the order the
       // answer carries them in can only come from the tie-break.
-      for (final number in [9, 10]) {
+      for (final (position, number) in [9, 10].indexed) {
         for (final row in LoggedEntryRows.setObservations(
           effortId: 'slot-bench',
           entryIndex: number,
@@ -2003,12 +2003,13 @@ void main() {
         )) {
           await repository.createObservation(row);
         }
-        // The rest at the next index is what makes that set a logged set
-        // (D-1, I-1).
+        // The rest at the next POSITION is what makes that set a logged set
+        // (D-1, I-1): rests are positional, so the first row of the effort
+        // takes the rest at index 1 whatever number its ids carry (D-11).
         await _SessionFixture.restAfter(
           repository,
           'slot-bench',
-          number + 1,
+          position + 1,
           startMs: _at(2),
         );
       }

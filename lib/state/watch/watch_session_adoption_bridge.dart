@@ -303,14 +303,16 @@ class WatchSessionAdoptionBridge {
 
     switch (_wireKind(slot)) {
       case PhoneEntries.setKind:
+        final groups = EntryRows.setGroups(
+          await _repository.getEffortObservations(effort.id),
+        );
         return PhoneEntries.project(
           sessionExerciseId: effort.id,
           exerciseId: exerciseId,
-          groups: EntryRows.setGroups(
-            await _repository.getEffortObservations(effort.id),
-          ),
+          groups: groups,
           wristLoggedAtMs: _stampsOf(rows, PhoneEntries.setKind),
-          loggedNumbers: EntryRows.loggedSetNumbers(
+          loggedNumbers: EntryRows.loggedSetNumbersOf(
+            groups,
             await _repository.getEntryRests(effort.id),
           ),
         );

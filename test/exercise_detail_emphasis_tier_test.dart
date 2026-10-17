@@ -6,12 +6,15 @@
 // D-1, D-2, D-3, D-4, D-5, D-6) by pumping the two affected screens
 // and asserting on the rendered widget tree:
 //
-//   - The big "ROUND 1" / "PERIOD 1" header renders in
-//     `OmniTheme.colors.textSecondary` on every surface and every mode
-//     where it appears (S-101, S-103, S-108).
-//   - Weight and extra-weight `InlineMetricEditor` widgets are built
-//     with `emphasisTier: MetricEmphasisTier.dominant` on every
-//     call site (S-105, S-106, S-110).
+//   - The round effort's live screen shows the countdown ring: the digits
+//     centred in it render in `OmniTheme.colors.textDominant` with the
+//     `REMAINING` caption, and the old "ROUND 1" / "PERIOD 1" heading is
+//     gone (38d; S-101, S-103; S-108 keeps the routine surface).
+//   - Weight `InlineMetricEditor` widgets are built with
+//     `emphasisTier: MetricEmphasisTier.dominant` on every call site
+//     that still shows one: resistance sets (S-105, S-110) and the
+//     hold's weight row (S-106). The interval screen has no weight
+//     control at all (S-106b, O-11).
 //
 // Out of scope (per the plan): reps, duration, RPE, status text, the
 // "Weight adjustment" button label, the small "Round X of Y"
@@ -28,6 +31,7 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
+import 'package:omnitrain/widgets/session/timer_ring.dart';
 
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
@@ -119,9 +123,32 @@ InlineMetricEditor _editorFor(WidgetTester tester, String metricType) {
       .firstWhere((e) => e.metricType == metricType);
 }
 
-void _expectRoundHeaderColor(WidgetTester tester, String expectedLabel) {
-  final textWidget = tester.widget<Text>(find.text(expectedLabel));
-  expect(textWidget.style?.color, OmniTheme.colors.textSecondary);
+/// The live round screen after 38d: the ring centres the `mm:ss` digits at the
+/// dominant colour, captioned `REMAINING` — the import of the round's time.
+///
+/// Scoped to the ring, because the round-length row below repeats the number.
+void _expectRoundRing(WidgetTester tester) {
+  final ring = find.byType(TimerRing);
+  expect(ring, findsOneWidget);
+
+  final digits = find.descendant(
+    of: ring,
+    matching: find.textContaining(':'),
+  );
+  expect(digits, findsOneWidget);
+  expect(
+    tester.widget<Text>(digits).style?.color,
+    OmniTheme.colors.textDominant,
+  );
+
+  final caption = find.descendant(of: ring, matching: find.text('REMAINING'));
+  expect(caption, findsOneWidget);
+}
+
+/// The round heading the ring replaced (38d, A1): gone from the live screen.
+void _expectNoRoundHeading(WidgetTester tester) {
+  expect(find.text('ROUND 1'), findsNothing);
+  expect(find.text('PERIOD 1'), findsNothing);
 }
 
 void _expectEmphasisTierDominant(WidgetTester tester, String metricType) {
@@ -213,7 +240,7 @@ Future<_SessionDeps> _buildSessionDeps({
     await workoutState.updateEntryValue(effortId, 0, 'reps', 10);
     await workoutState.updateEntryValue(effortId, 0, 'weight', 80.0);
   }
-  if (effortKind == 'timed' && seedExtraWeight) {
+  if ((effortKind == 'timed' || effortKind == 'drill') && seedExtraWeight) {
     await workoutState.updateEntryValue(
       effortId,
       0,
@@ -317,12 +344,12 @@ Future<_RoutineDeps> _buildRoutineSetupDeps({
 
 void main() {
   group('Exercise-detail emphasis-tier rebalance', () {
-    // ── S-101: Free session round-effort header at textSecondary (live) ───
+    // ── S-101: Free session round-effort ring at dominant tier (live) ─────
     //
-    // Non-sports modality (free training) so the label reads "ROUND",
-    // not "PERIOD". Verifies the live-mode round header.
+    // Non-sports modality (free training): the old "ROUND" heading is gone,
+    // so the live screen's round time is asserted through the ring.
     testWidgets(
-      'S-101 free session round header renders textSecondary (live, non-sports)',
+      'S-101 free session round shows the ring with a dominant caption (live, non-sports)',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(400, 1000));
         final deps = await _buildSessionDeps(
@@ -346,22 +373,22 @@ void main() {
 
         await _openSessionDetail(tester, deps.exerciseName);
 
-        _expectRoundHeaderColor(tester, 'ROUND 1');
+        _expectRoundRing(tester);
+        _expectNoRoundHeading(tester);
       },
     );
 
-    // ── S-103: Free session sports modality → "PERIOD 1" at textSecondary ─
+    // ── S-103: Free session sports modality → same ring, caption unchanged ─
     //
-    // sports modality → "PERIOD" label. Verifies the same call site
-    // is correct under the discriminator branch.
+    // sports modality: the same call site, no "PERIOD 1" heading any more.
     testWidgets(
-      'S-103 free session sports round header reads PERIOD at textSecondary',
+      'S-103 free session sports round shows the ring with a dominant caption',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(400, 1000));
         final deps = await _buildSessionDeps(
           theme: AppTheme.abyssalNeon,
           effortKind: 'round',
-          modality: 'sports', // → "PERIOD" label
+          modality: 'sports', // → "PERIOD" label in the sets control
         );
 
         await tester.pumpWidget(
@@ -379,7 +406,8 @@ void main() {
 
         await _openSessionDetail(tester, deps.exerciseName);
 
-        _expectRoundHeaderColor(tester, 'PERIOD 1');
+        _expectRoundRing(tester);
+        _expectNoRoundHeading(tester);
       },
     );
 
@@ -416,12 +444,47 @@ void main() {
       },
     );
 
-    // ── S-106: Cardio effort — extra-weight at dominant tier ──────────────
+    // ── S-106: Hold effort — weight row at dominant tier ──────────────────
     //
-    // The "Weight adjustment" chip is expanded by default because
-    // `currentValue > 0` (seeded at 5.0 kg), so the extra-weight
-    // InlineMetricEditor is present in the widget tree.
-    testWidgets('S-106 cardio effort extra-weight renders dominant tier', (
+    // The hold (drill) screen's only input is a full-width weight
+    // `ValueStepperRow`, whose inner `InlineMetricEditor` carries
+    // `metricType: 'weight'`. The row is always rendered, whether or not
+    // a weight was logged (the fixture seeds one at 5.0 kg).
+    testWidgets('S-106 hold effort weight row renders dominant tier', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final deps = await _buildSessionDeps(
+        theme: AppTheme.abyssalNeon,
+        effortKind: 'drill',
+        seedExtraWeight: true,
+      );
+
+      await tester.pumpWidget(
+        _themeWrappedApp(
+          theme: AppTheme.abyssalNeon,
+          home: WorkoutSessionScreen(
+            workoutState: deps.workoutState,
+            routineState: deps.routineState,
+            sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: deps.settingsState,
+          ),
+        ),
+      );
+
+      await _openSessionDetail(tester, deps.exerciseName);
+
+      _expectEmphasisTierDominant(tester, 'weight');
+    });
+
+    // ── S-106b: Interval effort — no weight control at all (O-11) ─────────
+    //
+    // Interval (`timed`) work carries no weight: the screen offers no
+    // weight input, so no `InlineMetricEditor` with a weight metric
+    // (`extra-weight` or `weight`) is built — even with a value seeded on
+    // the entry.
+    testWidgets('S-106b interval effort renders no weight editor', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
@@ -446,7 +509,16 @@ void main() {
 
       await _openSessionDetail(tester, deps.exerciseName);
 
-      _expectEmphasisTierDominant(tester, 'extra-weight');
+      final weightEditors = tester
+          .widgetList<InlineMetricEditor>(find.byType(InlineMetricEditor))
+          .where(
+            (e) => e.metricType == 'weight' || e.metricType == 'extra-weight',
+          );
+      expect(
+        weightEditors,
+        isEmpty,
+        reason: 'the interval screen has no weight control (O-11)',
+      );
     });
 
     // ── S-108: Routine creation — resistance weight at dominant tier ──────

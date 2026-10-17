@@ -101,7 +101,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Add a set
-    final addSetButton = find.byIcon(Icons.add);
+    final addSetButton = find.byKey(const Key('set-count-add'));
     await tester.ensureVisible(addSetButton);
     await tester.tap(addSetButton);
     await tester.pumpAndSettle();

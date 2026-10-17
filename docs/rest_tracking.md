@@ -73,6 +73,56 @@ Future<void>            deleteEntryRestsForEffort(String effortId);
 
 `deleteEntryRestsForEffort` is called inside `deleteEffort()` in both `HiveWorkoutRepository` and `MockWorkoutRepository` so cleanup is automatic.
 
+### Rests are positional, and a delete moves them
+
+A rest's `entryIndex` is a **position**, not a set number: a rest at index *k*
+marks the set at position *k* − 1 logged. The session screen's `_isSetLogged`,
+the `recordRestStart` a log fires, the watch importer and the delete re-key all
+read it that way.
+
+Deleting an entry takes its rest with it: `WorkoutState.deleteEntry` calls
+`TimerManager.rekeyEntryRestsAfterDelete(effortId, deletedIndex)`
+(`lib/state/workout/timer_manager.dart`), which removes the rest at
+`deletedIndex + 1` — the mark that the deleted set was logged — and moves every
+rest above it down one, keeping the id shape `rest-<effortId>-<index>` and each
+rest's times and open/paused state. A set added afterwards is therefore a new
+unlogged set, and the rest history of the deleted set disappears with it.
+
+The watch importer writes under the same rule. Every rest it writes — the one
+a wrist set's arrival opens and the one the wrist's `rest` report closes — is
+keyed on the set's position + 1, never on the number the set's rows carry, so
+a hole a phone delete left in the row numbers does not displace it. When the
+phone user deletes a watch-logged set and its rows are still in the store when
+the import pass runs, the importer re-keys the effort's rests with the same pure
+rule the phone's own delete uses (when the phone's own delete already removed
+the rows and re-keyed, the importer finds no rows and leaves the rests alone), `EntryRows.restsAfterDelete` (`lib/core/utils/entry_rows.dart`), which
+`TimerManager.rekeyEntryRestsAfterDelete` also calls.
+
+Verified by `test/entry_delete_rests_test.dart` (group
+`${harness.name} — deleteEntry takes the rest with the entry` ·
+`S-4301 deleting the last set takes its rest, so a new set reads unlogged`,
+`S-4302 deleting the first set moves every rest down with the sets it keeps`,
+`S-4303 deleting a middle set drops its own rest and moves the rest above it
+down`, `S-4304 timed: the rest of the deleted interval closes over it`,
+`S-4304 round: the rest of the deleted round closes over it`).
+
+The importer's side is verified by `test/watch_session_merge_test.dart`
+(group `S-4501..S-4507 a rest is keyed on the POSITION`, run under Mock and
+Hive · `S-4501 after the phone deleted a middle set the wrist's set opens its
+rest at its POSITION + 1, not the row number + 1`, `S-4502a the wrist's late
+rest report closes the rest the appended set opened`, `S-4502b the same, with
+the set and its report in one message`, `S-4503 a wrist set after the phone's
+delete fills the first unlogged POSITION and opens its rest there`,
+`S-4504 a fill below an open rest leaves that rest running`, `S-4505 the
+phone's delete of a wrist set re-keys the rests the merge wrote`, `S-4506 the
+delete re-keys by position where the numbers and the positions disagree`,
+`S-4507 the delete of the only wrist set takes its rest with it, once per
+change`, `S-4509 a retry of the pass that wrote the appended set opens no second
+rest, and leaves the one it left closed`, `S-4510 the delete of a wrist set
+appended after a hole re-keys the effort's rests by POSITION`, `S-4511 two wrist
+sets in one message fill two POSITIONS, not the same one twice`), and the shared
+rule itself by `test/entry_rows_test.dart` (group `S-4508 restsAfterDelete`).
+
 ### Hive Implementation
 
 - Box name: `'entry_rests'`
@@ -276,7 +326,21 @@ As part of the full rest tracking implementation, the `_isSetLogged()` method wa
 
 ## Edit Mode Behavior
 
-Rest records are **never created or mutated during edit mode** (`WorkoutSessionScreen.editMode == true`). The `session_edit_snapshot.dart` does not snapshot rest records because edit mode does not trigger new set logging.
+Rest records follow the same delete and snapshot rules in edit mode as in a
+live session. Deleting an entry re-keys the later rests, and an edit-mode
+delete that is Saved keeps the re-key
+(`test/logger_shell_screen_test.dart`, group `Logger polish — deleting a logged
+set (S-4310, S-4319..S-4321)` · `S-4319: an edit-mode delete that is Saved
+keeps the new rest indexes`).
+
+The edit snapshot carries the rests: `SessionEditSnapshot.entryRests`
+(`lib/core/models/session_edit_snapshot.dart`) is filled by
+`snapshotSessionState` and put back by `restoreSessionSnapshot`
+(`lib/state/workout/session_core_lifecycle.dart`), so cancelling an edit
+session restores the rests a delete changed
+(`test/entry_delete_rests_test.dart`, group
+`${harness.name} — deleteEntry takes the rest with the entry` ·
+`S-4318 an edit-mode delete that is cancelled puts the rests back`).
 
 ---
 

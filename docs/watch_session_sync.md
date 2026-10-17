@@ -76,7 +76,9 @@ a `set` slot's row groups, and a `timed`, `hold` or `round` slot's instances
 (D-130) — and emits one entry per record the phone logged, named
 `entry-<slotId>-<n>` with `eventId` equal to `entryId` (D-33). A `set` record
 counts as logged exactly when a rest sits at its index + 1
-(`EntryRows.loggedSetNumbers`, the rule the session screen reads), so a
+(`EntryRows.loggedSetNumbersOf(groups, rests)`, which maps each rest's
+position to the set number the wire uses — the rule the session screen reads),
+so a
 routine's planned rows, and the default row a new exercise gets, are planned
 values and are sent as nothing in `entries` — the wrist's menu shows no
 "N logged" for them (`test/watch_session_projection_test.dart`,
@@ -391,10 +393,11 @@ in place, resending the structure as a snapshot and no new started lifecycle
   session`, `S-12 a slot the session does not have`).
 - **A wrist set fills the phone's next unlogged planned row, in the held merge
   only.** While the phone holds the session, a wrist `set` fills the first row
-  the phone reads as unlogged — no rest at its index + 1 — replacing that row's
-  values and stamping them with the wrist's `loggedAt`, so the row count does
-  not change; when every row is logged it appends after the last row, and a
-  history import always appends after the last row
+  the phone reads as unlogged — no rest at its position + 1, which differs from
+  the row's number once the phone has deleted a middle set — replacing that
+  row's values and stamping them with the wrist's `loggedAt`, so the row count
+  does not change; when every row is logged it appends after the last row, and
+  a history import always appends after the last row
   (`test/watch_session_import_test.dart`,
   `A-51 a late wrist set is placed after the user’s own set`; and, for the live
   merge, `test/watch_session_merge_test.dart`,
@@ -404,12 +407,21 @@ in place, resending the structure as a snapshot and no new started lifecycle
   `S-3607 the phone's own logged set is never filled`,
   `S-3616 a skipped planned row is not logged, so the wrist fills it`,
   `S-11 the phone's own rows are the user's`). The fill opens the rest at that
-  spot + 1, run from the wrist's `loggedAt`, and ends the phone's older open
+  set's position + 1, run from the wrist's `loggedAt`, and ends the phone's
+  older open
   rest — one rest runs at a time; the wrist's own `rest` report later closes
   that same rest in place with the wrist's window, and a rest the phone already
   finished stands
   (`S-3608 the wrist's rest closes the rest the fill opened`,
-  `S-3618 the wrist's set ends the phone's older open rest`). On the screen the
+  `S-3618 the wrist's set ends the phone's older open rest`).
+  Every rest the importer writes is keyed on that position + 1, and a mirror
+  delete of a watch-logged set re-keys the effort's rests by the same rule
+  (`EntryRows.restsAfterDelete`, shared with
+  `TimerManager.rekeyEntryRestsAfterDelete`;
+  `test/watch_session_merge_test.dart`, group
+  `S-4501..S-4507 a rest is keyed on the POSITION`, under Mock and Hive;
+  `test/entry_rows_test.dart`, group `S-4508 restsAfterDelete`).
+  On the screen the
   filled row reads LOGGED at once and is offered no second log
   (`test/watch_live_refresh_screen_test.dart`,
   `S-3514 a wrist merge fills the planned row in place`,
@@ -734,7 +746,9 @@ remains out is listed below.
   deletes only that set's observation rows; the rest the wrist's set opened at
   its spot + 1 stays, open, until something else closes it
   (`test/watch_session_merge_test.dart`, `S-337 a rest whose after-entry is
-  gone is dropped and consumed` asserts today's behaviour).
+  gone is dropped and consumed` asserts today's behaviour; a mirror delete of
+  a watch-logged set instead re-keys the rests — group
+  `S-4501..S-4507 a rest is keyed on the POSITION`).
 - **The routine's plan travels for `set` efforts; the other kinds carry no
   planned rows.** A `set` slot's planned rows ride the slot as `plannedSets`
   and the wrist dials each set from them (above). A timed or hold slot carries
