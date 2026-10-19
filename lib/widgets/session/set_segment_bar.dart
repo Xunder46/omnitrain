@@ -6,12 +6,22 @@ import '../../core/constants/omni_theme.dart';
 /// so they are dropped entirely (no reserved space either).
 const int kSetBarCaptionMaxSets = 5;
 
+/// Cell height when the bar carries captions: 6 dp bar + 4 + 20 caption + 4.
+const double kSetBarCaptionedHeight = 34;
+
+/// Cell height without captions: 6 dp bar + 12 dp tap room.
+const double kSetBarPlainHeight = 18;
+
 /// Thin set-progress bar for the session exercise screen.
 ///
 /// One segment per entry of the effort — set, interval, round or hold — so the
 /// bar is identical across every modality. Tapping a segment jumps to that
 /// entry; the focused segment shows its [captions] entry in the dominant text
 /// colour, and every segment is 6 dp tall with no outline.
+///
+/// The cell is [kSetBarCaptionedHeight] tall with captions and
+/// [kSetBarPlainHeight] without them, the bar pinned to its top (plan 39, D-8);
+/// no dead space is left under the bar.
 ///
 /// Colours come from `Theme.of(context).colorScheme` only — no literals.
 class SetSegmentBar extends StatelessWidget {
@@ -77,7 +87,9 @@ class SetSegmentBar extends StatelessWidget {
                   behavior: HitTestBehavior.opaque,
                   onTap: () => onTap(i),
                   child: SizedBox(
-                    height: 48,
+                    height: showCaptions
+                        ? kSetBarCaptionedHeight
+                        : kSetBarPlainHeight,
                     child: Align(
                       alignment: Alignment.topCenter,
                       child: Column(

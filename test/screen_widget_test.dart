@@ -1686,8 +1686,8 @@ void main() {
     });
 
     testWidgets(
-      'timed effort detail shows no editor and leaves the stored '
-      'extra-weight target untouched',
+      'timed effort detail shows the weight row and leaves the stored '
+      'extra-weight target untouched (plan 39, D-5)',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final repo = await _freshRepo();
@@ -1705,8 +1705,7 @@ void main() {
           'timed',
         );
 
-        // Seed an extra-weight target: A5/O-11 keep it in the data while the
-        // interval shows no editor, so nothing may read or rewrite it.
+        // Seed an extra-weight target: the interval's row reads it back.
         await routineState.setTargetValue(
           effortId,
           MetricIds.extraWeight,
@@ -1733,9 +1732,12 @@ void main() {
         await tester.tap(find.text(timedExercise.name).first);
         await tester.pumpAndSettle();
 
-        // A5: an interval's body holds no editable value at all.
-        expect(find.byType(ValueStepperRow), findsNothing);
-        expect(find.byType(InlineMetricEditor), findsNothing);
+        // Plan 39 (D-5): the interval's body holds the same weight row a hold
+        // shows, reading the stored target in the user's unit.
+        expect(find.byType(ValueStepperRow), findsOneWidget);
+        expect(find.byType(InlineMetricEditor), findsOneWidget);
+        expect(find.text('12.5'), findsOneWidget);
+        expect(find.text('KG'), findsOneWidget);
         expect(find.text('EXTRA KG'), findsNothing);
 
         // The seeded target survives the render unchanged.
@@ -1880,7 +1882,7 @@ void main() {
     );
 
     testWidgets(
-      'timed effort with no extra-weight target shows no metric editor',
+      'timed effort with no extra-weight target still shows its weight row',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final repo = await _freshRepo();
@@ -1888,7 +1890,7 @@ void main() {
         final routineState = RoutineState(repo);
         routineState.setAutosaveEnabled(false);
 
-        // No extra-weight target seeded — _buildMetricWidget returns SizedBox.shrink().
+        // No extra-weight target seeded — the row still shows, at 0.0.
         final exercises = await repo.getExercises();
         await routineState.createNewRoutine('Timed No Extra');
         await routineState.addExerciseToRoutine(exercises.first, 'timed');
@@ -1909,10 +1911,11 @@ void main() {
         await tester.tap(find.text(exercises.first.name).first);
         await tester.pumpAndSettle();
 
-        // A5: an interval renders no editor whether or not a stale
-        // extraWeight target exists (_buildMetricWidget returns a shrink).
-        expect(find.byType(ValueStepperRow), findsNothing);
-        expect(find.byType(InlineMetricEditor), findsNothing);
+        // Plan 39 (D-5): an interval renders the weight row whether or not a
+        // stored extraWeight target exists.
+        expect(find.byType(ValueStepperRow), findsOneWidget);
+        expect(find.byType(InlineMetricEditor), findsOneWidget);
+        expect(find.text('0.0'), findsOneWidget);
         expect(find.text('EXTRA KG'), findsNothing);
         // Set count row is still visible.
         expect(find.text('Interval 1 of 1'), findsOneWidget);
@@ -8132,7 +8135,7 @@ void main() {
     );
 
     testWidgets(
-      'timed effort shows neither extra-weight value nor stepper',
+      'timed effort shows its extra-weight value and stepper (plan 39, D-5)',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(800, 1200));
         final repo = await _freshRepo();
@@ -8155,8 +8158,8 @@ void main() {
           effortKindOverride: 'timed',
         );
 
-        // Canonical storage is kg; an interval has no weight control any more,
-        // so 22.6796 kg (50.0 lbs) is never shown.
+        // Canonical storage is kg; the interval's row shows the stored value in
+        // the user's unit.
         await workoutState.updateEntryValue(
           effortId,
           0,
@@ -8180,11 +8183,11 @@ void main() {
         await tester.tap(find.text(timedExercise.name).first);
         await tester.pumpAndSettle();
 
-        expect(find.text('+50.0'), findsNothing);
-        expect(find.text('LBS'), findsNothing);
+        expect(find.text('50.0'), findsOneWidget);
+        expect(find.text('LBS'), findsOneWidget);
         expect(
           find.byKey(const Key('value-stepper-plus-weight')),
-          findsNothing,
+          findsOneWidget,
         );
       },
     );

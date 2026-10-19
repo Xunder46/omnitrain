@@ -15,7 +15,13 @@
 //   S-4326 the row sits in a 20/4-margined, shadowless `OmniSurface`
 //   S-4413 duration mode: the value stays an int through the editor (`03:00`),
 //          one tap is 15 s, `min: 15` floors the step, `MetricStepCalc` keeps
-//          the 3600 s ceiling, `onEditorTap` replaces the generic popup
+//          the ten-hour ceiling, `onEditorTap` replaces the generic popup
+//   S-4704 the ceiling is 10 h (36000 s): `+` at 3600 writes 3615, `+` at
+//          36000 writes nothing
+//   S-4705 a duration past an hour is drawn h:mm:ss, below it mm:ss, and the
+//          widest form (`10:00:00`) still fits a 320 x 568 phone
+//   S-4707 the label sits centred directly under the number, the `tap to type`
+//          hint under the label, and a locked row hides the hint
 //
 // FakeAsync only: the repeat timer runs on `tester.pump(Duration)`, never on a
 // real delay.
@@ -128,6 +134,62 @@ String _shownNumber(WidgetTester tester) {
         .first,
   );
   return text.data!;
+}
+
+/// The number [Text] as drawn (the first inside the editor).
+Finder _numberText() => find
+    .descendant(of: find.byType(InlineMetricEditor), matching: find.byType(Text))
+    .first;
+
+/// The `tap to type` hint line, keyed by the editor.
+Finder _tapHint() => find.byKey(const Key('tap-hint'));
+
+/// S-4707 shape: the label centred directly under the number, the hint under
+/// the label. Relations only — the test font is wider than the real one.
+void _expectLabelUnderNumber(
+  WidgetTester tester,
+  String label, {
+  bool withHint = true,
+}) {
+  final number = tester.getRect(_numberText());
+  final unit = tester.getRect(find.text(label));
+  expect(
+    unit.center.dx,
+    closeTo(number.center.dx, 1),
+    reason: 'the label is centred under the number',
+  );
+  expect(
+    unit.top,
+    greaterThanOrEqualTo(number.bottom - 0.01),
+    reason: 'the label is not beside the number',
+  );
+  expect(
+    unit.top,
+    lessThanOrEqualTo(number.bottom + 4),
+    reason: 'the label sits directly under the number',
+  );
+
+  if (!withHint) {
+    expect(_tapHint(), findsNothing);
+    return;
+  }
+  expect(tester.widget<Text>(_tapHint()).data, 'tap to type');
+  final hint = tester.getRect(_tapHint());
+  expect(
+    hint.top,
+    greaterThanOrEqualTo(unit.bottom - 0.01),
+    reason: 'the hint is under the label',
+  );
+  expect(
+    hint.top,
+    lessThanOrEqualTo(unit.bottom + 4),
+    reason: 'the hint sits directly under the label',
+  );
+  expect(
+    hint.center.dx,
+    closeTo(unit.center.dx, 1),
+    reason: 'the hint is centred with the label',
+  );
 }
 
 /// How many ticks have fired [elapsedMs] after the pointer went down, derived
@@ -725,18 +787,89 @@ void main() {
       expect(_shownNumber(tester), '00:15');
     });
 
-    testWidgets('plus at 3600 s calls nothing', (tester) async {
+    testWidgets('S-4704: plus at 3600 s steps to 3615 and reads 1:00:15', (
+      tester,
+    ) async {
       final calls = <dynamic>[];
       await _pumpDurationRow(
         tester,
         currentValue: 3600,
         onValueChanged: calls.add,
       );
+      expect(_shownNumber(tester), '1:00:00');
+
+      await tester.tap(_plus('duration'));
+      await tester.pump();
+      expect(calls, <dynamic>[3615]);
+      expect(_shownNumber(tester), '1:00:15');
+    });
+
+    testWidgets('S-4704: minus at 3615 s steps back to 3600', (tester) async {
+      final calls = <dynamic>[];
+      await _pumpDurationRow(
+        tester,
+        currentValue: 3615,
+        onValueChanged: calls.add,
+      );
+
+      await tester.tap(_minus('duration'));
+      await tester.pump();
+      expect(calls, <dynamic>[3600]);
+      expect(_shownNumber(tester), '1:00:00');
+    });
+
+    testWidgets('S-4704: plus at the 10-hour ceiling calls nothing', (
+      tester,
+    ) async {
+      final calls = <dynamic>[];
+      await _pumpDurationRow(
+        tester,
+        currentValue: 36000,
+        onValueChanged: calls.add,
+      );
+      expect(_shownNumber(tester), '10:00:00');
 
       await tester.tap(_plus('duration'));
       await tester.pump();
       expect(calls, isEmpty);
-      expect(_shownNumber(tester), '60:00');
+      expect(_shownNumber(tester), '10:00:00');
+    });
+
+    testWidgets('S-4705: 8130 s reads 2:15:30 and 135 s reads 02:15', (
+      tester,
+    ) async {
+      final calls = <dynamic>[];
+      await _pumpDurationRow(
+        tester,
+        currentValue: 8130,
+        onValueChanged: calls.add,
+      );
+      expect(_shownNumber(tester), '2:15:30');
+
+      // A fresh row, so the second shape is read off its own value.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+      await _pumpDurationRow(
+        tester,
+        currentValue: 135,
+        onValueChanged: calls.add,
+      );
+      expect(_shownNumber(tester), '02:15');
+    });
+
+    testWidgets('S-4705: 10:00:00 still fits a 320 x 568 phone', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await _pumpDurationRow(
+        tester,
+        currentValue: 36000,
+        onValueChanged: (_) {},
+      );
+      expect(_shownNumber(tester), '10:00:00');
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('onEditorTap takes the number tap and no popup opens', (
@@ -823,6 +956,92 @@ void main() {
       expect(taps, 0);
       expect(find.byType(AlertDialog), findsNothing);
       expect(_shownNumber(tester), '03:00');
+    });
+  });
+
+  group('S-4707 anatomy', () {
+    testWidgets('a reps row centres its label and hint under the number', (
+      tester,
+    ) async {
+      await _pumpRow(tester, currentValue: 10, onValueChanged: (_) {});
+
+      _expectLabelUnderNumber(tester, 'REPS');
+    });
+
+    testWidgets('a weight row centres its label and hint under the number', (
+      tester,
+    ) async {
+      await _pumpRow(
+        tester,
+        metricType: 'weight',
+        currentValue: 60.0,
+        unitLabel: 'KG',
+        step: 2.5,
+        onValueChanged: (_) {},
+      );
+
+      _expectLabelUnderNumber(tester, 'KG');
+    });
+
+    testWidgets('a duration row centres its label and hint under the number', (
+      tester,
+    ) async {
+      await _pumpDurationRow(tester, currentValue: 180, onValueChanged: (_) {});
+
+      _expectLabelUnderNumber(tester, 'ROUND LENGTH');
+    });
+
+    testWidgets('a locked row hides the hint and keeps the label under the '
+        'number', (tester) async {
+      await _pumpRow(
+        tester,
+        currentValue: 10,
+        isReadOnly: true,
+        onValueChanged: (_) {},
+      );
+
+      _expectLabelUnderNumber(tester, 'REPS', withHint: false);
+    });
+
+    testWidgets('S-4707/S-4704: the widest weight and duration values do not '
+        'overflow 390 x 844', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await _pumpRow(
+        tester,
+        metricType: 'weight',
+        currentValue: -200.0,
+        unitLabel: 'KG',
+        step: 2.5,
+        onValueChanged: (_) {},
+      );
+      expect(_shownNumber(tester), '-200.0');
+      expect(tester.takeException(), isNull);
+      _expectLabelUnderNumber(tester, 'KG');
+
+      await _pumpDurationRow(
+        tester,
+        currentValue: 36000,
+        onValueChanged: (_) {},
+      );
+      expect(_shownNumber(tester), '10:00:00');
+      expect(tester.takeException(), isNull);
+      _expectLabelUnderNumber(tester, 'ROUND LENGTH');
+    });
+
+    testWidgets('a locked duration row keeps the label and hides the hint', (
+      tester,
+    ) async {
+      await _pumpDurationRow(
+        tester,
+        currentValue: 36000,
+        isReadOnly: true,
+        onValueChanged: (_) {},
+      );
+
+      _expectLabelUnderNumber(tester, 'ROUND LENGTH', withHint: false);
     });
   });
 }

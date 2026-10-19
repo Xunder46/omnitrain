@@ -10,6 +10,15 @@
   "gpsCapability": "distance",
   "gpsModalities": ["cardio_endurance", "sports"],
   "paceMinDistanceMeters": 50,
+  "exerciseGpsCases": [
+    { "capabilities": ["time", "distance"], "gps": true },
+    { "capabilities": ["distance"], "gps": true },
+    { "capabilities": ["time", "distance", "rounds"], "gps": true },
+    { "capabilities": ["reps", "sets", "load"], "gps": false },
+    { "capabilities": ["time", "rounds"], "gps": false },
+    { "capabilities": ["hold", "time"], "gps": false },
+    { "capabilities": [], "gps": false }
+  ],
   "modalityCapabilities": [
     {
       "modality": "cardio_endurance",

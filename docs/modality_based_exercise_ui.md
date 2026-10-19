@@ -130,29 +130,51 @@ caption sits under the digits — `ELAPSED` while the entry is unfinished,
 running is conveyed by the digits ticking and the centre button label
 (`Start`, then `Log Interval` / `Log Hold`). The only way to produce a value is Start → run → log, which
 locks the elapsed time; there is no Pause control, and an entry restored from
-storage in the paused state shows `Resume` in the centre slot. An interval
-has no weight control anywhere, live or in the session editor, whatever the
-exercise carries (O-11): stored `extra-weight` rows of old intervals stay in
-the data, untouched by summaries, and the screen neither shows nor edits
-them. A hold shows one full-width `ValueStepperRow` weight row under the
+storage in the paused state shows `Resume` in the centre slot. The live
+digits render at the `MetricEmphasisTier.hero` emphasis — the size constant
+`kCountUpDigitsFontSize` in `lib/widgets/session/inline_metric_editor.dart` —
+inside a scale-down `FittedBox`, so a count past an hour still fits; the
+digits read `mm:ss` below an hour and `h:mm:ss` from it
+(`OmniDateUtils.formatTimerDigits` in `lib/core/utils/date_utils.dart`).
+Both kinds show one full-width `ValueStepperRow` weight row under the
 digits, always visible (the old collapsible `Weight adjustment` button is
-gone): it steps 2.5 kg or 5 lb (`MetricStepping.weightStepFor`), tapping the
-number opens the existing `Edit Weight` popup (limits −200..999 in the shown
-unit, and the number carries no `+` sign), and the row is editable before
-Start and while the hold runs; once the hold is logged in a live session its
-buttons dim and do nothing, and it is never locked in the session editor.
-The row's key is per set, so moving to another set discards a hold in
-progress. In the session editor an interval keeps only its duration editor
-(dialog `Edit Interval Duration`) and a hold its duration editor (`Edit Hold
-Duration`) plus the weight row.
+gone; plan 39 D-5 gave the interval its row back, superseding the O-11 rule
+for the interval — a hold's row is unchanged): it steps 2.5 kg or 5 lb
+(`MetricStepping.weightStepFor`), stores the `extra-weight` metric, tapping
+the number opens the existing `Edit Weight` popup (limits −200..999 in the
+shown unit, and the number carries no `+` sign), and the row is editable
+before Start and while the effort runs; once the effort is logged in a live
+session its buttons dim and do nothing, and it is never locked in the session
+editor. The row's key is per set, so moving to another set discards an effort
+in progress. In the session editor a count-up keeps its duration editor
+(dialog `Edit Interval Duration` / `Edit Hold Duration`) plus the weight row.
+
+The stepper rows and the session-editor duration editors share the
+`InlineMetricEditor` anatomy: the unit label sits directly under the number,
+centred, and when the editor is editable a `tap to type` hint (key
+`tap-hint`) sits under the label; a read-only editor shows no hint. On the
+sports screen the body is tightened: the `SetSegmentBar` cell is
+`kSetBarCaptionedHeight` tall with captions and `kSetBarPlainHeight` without
+(constants in `lib/widgets/session/set_segment_bar.dart`), and the scroll
+area's top padding is smaller, so the ring starts within a dozen dp of the
+bar.
 
 Verified by `test/count_up_screen_test.dart` (group `Count-up — timed
 intervals (S-4260..S-4263)` · `S-4260: an interval with no load shows digits
-and no chrome`, `S-4260: a stored extra weight changes nothing on an
-interval`, `S-4261: Start leaves the digits plain and the button logs`,
-`S-4262: the interval editor keeps its duration dialog only`, `S-4263:
-logging an interval leaves its data untouched`, `S-4277: a live interval's
-digits open nothing on a tap`; group `Count-up — holds (S-4264..S-4270)` ·
+and no chrome`, `S-4260: a stored extra weight shows again on an interval
+(plan 39, D-5)`, `S-4260: an exercise that carries load shows the interval
+weight row too (plan 39, was O-11)`, `S-4261: Start leaves the digits plain
+and the button logs`, `S-4262: the interval editor keeps its duration dialog
+and gains the weight row (S-4709)`, `S-4263: logging an interval leaves its
+data untouched`, `S-4277: a live interval's digits open nothing on a tap`;
+group `Cardio weight — live (S-4708)` · `S-4708: an interval carries a 0.0 KG
+row under its digits`, `S-4708: + steps the interval 2.5 kg and stores
+kilograms`, `S-4708: a pounds interval steps 5 lb and stores 2.27 kg`,
+`S-4708: logging the interval locks its weight row`, `S-4708: the logged
+interval caption stays the time only`, `S-4708: a hold still shows its weight
+row`; group `Cardio weight — editor (S-4709)` · `S-4709: the session editor
+keeps a finished interval editable and Save stores the kilograms`;
+group `Count-up — holds (S-4264..S-4270)` ·
 `S-4264: a hold shows digits plus one weight row`, `S-4265: the hold weight
 steps 2.5 kg at a time`, `S-4265: a pounds preference steps 5 lb and stores
 kg`, `S-4266: a weight step does not stop a running hold`, `S-4267: a logged
@@ -172,12 +194,32 @@ the elapsed time and the timer`; group `Count-up — layout guard (S-4271)` ·
 interval swaps ELAPSED for COMPLETED`, `S-4402: a finished hold swaps ELAPSED
 for COMPLETED`),
 `test/exercise_detail_emphasis_tier_test.dart` (`S-106 hold effort weight row
-renders dominant tier`, `S-106b interval effort renders no weight editor`),
+renders dominant tier`, `S-106b interval effort renders a weight editor`),
+`test/count_up_hero_layout_test.dart` (group `S-4710 hero count-up digits` ·
+`the live interval digits are 112 sp inside a scaleDown FittedBox, captioned
+ELAPSED`, `the live hold digits are 112 sp inside a scaleDown FittedBox,
+captioned ELAPSED`, `an interval past an hour reads 1:15:35`, `the sports
+ring digits are 48 sp inside the ring chord`; group `S-4711 tightened body` ·
+`the set bar cell is 34 dp with captions on a 3-period sports screen`,
+`the set bar cell is 18 dp without captions on a 6-period sports screen`,
+`the ring starts within 12 dp of the set bar`; group `plan 39 constants` ·
+`the digit and set bar sizes are pinned at the plan 39 values`),
+`test/cardio_interval_weight_storage_test.dart` (groups `Mock` and `Hive` ·
+`S-4708 a logged interval weight is stored as kilograms`, `S-4708 a pounds
+step is stored as its kilogram value`, `S-4709 the editor Save rewrites the
+interval row in place`),
+`test/value_stepper_row_test.dart` (group `S-4707 anatomy` · `a reps row
+centres its label and hint under the number`, `a weight row centres its label
+and hint under the number`, `a duration row centres its label and hint under
+the number`, `a locked row hides the hint and keeps the label under the
+number`),
 `test/timed_emphasis_redesign_test.dart` (group `Timed emphasis redesign` ·
 `free-session timed and drill stopped states show dominant digits only: no
-status chrome, no weight row on an interval, one on a hold, across all
+status chrome, one weight row on an interval and on a hold, across all
 themes`, `free-session timed and drill running states keep dominant digits
-and show no status chrome across all themes`, `routine-backed timed and drill
+and show no status chrome across all themes`, `routine setup shows one weight
+row for a timed effort and a drill effort across all themes`,
+`routine-backed timed and drill
 session details show dominant digits with no status chrome across all
 themes`), `test/logger_shell_screen_test.dart` (group `Logger shell — logged
 sets are locked live (S-4216/S-4217)` · `S-4217: a logged hold's weight is

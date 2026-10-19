@@ -617,27 +617,36 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     (`WatchSensorCoordinatorTests.testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected`).
 24. **The wrist measures distance and pace — (owner).** Nothing in this step
     has run on a wrist; it is verified in code and builds only. Install on a
-    real watch and start a run (a cardio session) outdoors: the Health question
-    comes first, then the Location question — Allow While Using. The order is
-    the host's: the workout is refreshed before the sensors
+    real watch and start a **Free workout**: add Walking (or any exercise with
+    Distance ticked, including a custom one). The Health question comes first,
+    then the Location question — Allow While Using — and it appears once. The
+    order is the host's: the workout is refreshed before the sensors
     (`WatchSensorSourceSourceTests.testS3110TheHostWiresTheSensorsAndRefreshesTheWorkoutFirst`),
     and the question's text is the watch target's
     `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription`
     (`…testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways`).
-    Run or walk a few hundred metres: the exercise screen's grey line shows
-    distance and pace (the line is `WatchLoggingView.sensorLine`). Start and
-    Log an effort, sync, and check the phone: the effort's distance arrives
+    Walk a few hundred metres: the exercise screen's grey line shows distance
+    and pace (the line is `WatchLoggingView.sensorLine`). Start and Log an
+    effort, sync, and check the phone: the Session Summary's DISTANCE card
+    shows the metres with no "est." mark — the effort's distance arrives
     measured, `distanceSource: "gps"`
     (`WatchEffortDistanceTests.testS3210TheSourceTravelsAndOnlyBesideADistance`),
     and the import stores that source
     (`test/distance_source_import_test.dart`, S-876, S-877). Compare with a
     known distance and note the error — the tracker's gates are tuning values,
     so the number is yours to judge. Start a lift: no Location question
-    (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`).
+    (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
+    `WatchGpsByExerciseTests.testS4801ALiftNeverStartsGpsAndNeverAsks`).
     Refuse Location once (Settings → Privacy, or a reinstall) and check that
-    logging still works: a denied or unavailable answer skips the location
-    subscription and nothing else changes
-    (`WatchDistanceTrackerTests.testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`).
+    logging still works and the wrist does not ask again for the rest of that
+    session: a denied or unavailable answer skips the location subscription
+    and nothing else changes
+    (`WatchDistanceTrackerTests.testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`,
+    `WatchGpsByExerciseTests.testS4804ARefusedSessionIsAskedAboutOnceAndANewOneAgain`).
+    Apple Health lists the free workout as a generic workout, not an outdoor
+    walk — the workout is registered once, at the session's start, and is
+    never re-registered when a walk is added later
+    (`WatchGpsByExerciseTests.testS4807TheWorkoutIsRegisteredOutdoorsByTheExerciseTheUserIsOn`).
 
 ### The wrist's own logging (PR 2b)
 

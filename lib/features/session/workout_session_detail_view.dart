@@ -1,10 +1,11 @@
 part of 'workout_session_screen.dart';
 
-/// Bottom inset for the big duration readout in the timed/drill detail views.
+/// Padding for the big count-up readout in the timed/drill detail views.
 ///
-/// Trimmed from the editor's default 32 px so the digits sit closer to the
-/// controls below them, matching the reps screen's proportions.
-const EdgeInsets _kTimedValuePadding = EdgeInsets.fromLTRB(32, 32, 32, 25);
+/// Trimmed (plan 39, D-6) so the 112 sp digits sit close to the screen edges
+/// and the weight row stays on screen under them; the horizontal inset is the
+/// extra margin the outer 20 dp `Padding` does not cover.
+const EdgeInsets _kTimedValuePadding = EdgeInsets.fromLTRB(8, 16, 8, 12);
 
 /// Detail-view builders for [WorkoutSessionScreen].
 ///
@@ -95,19 +96,21 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     );
   }
 
-  // ── Weight unit label + hold weight row ───────────────────────────────────
+  // ── Weight unit label + weight row ────────────────────────────────────────
 
   String get _preferredWeightUnitLabel =>
       UnitFormatter.weightLabelUpper(widget.settingsState);
 
-  /// The hold's only input (D-2): one full-width weight row in the user's
-  /// unit, underneath the digits. Always visible, never locked in the session
-  /// editor, locked once a live hold is logged — a drill entry is logged
-  /// exactly when its [TimedInstance] finished.
-  Widget _buildHoldWeightRow(
+  /// The load input a hold (D-2) and an interval (plan 39, D-5) share: one
+  /// full-width weight row in the user's unit, underneath the digits, storing
+  /// `extra-weight` in canonical kg. Always visible, never locked in the
+  /// session editor, locked once a live entry is logged — a timed or drill
+  /// entry is logged exactly when its [TimedInstance] finished.
+  Widget _buildWeightRow(
     String effortId,
     int entryIndex,
     double currentValue,
+    String effortKind,
   ) {
     return ValueStepperRow(
       key: ValueKey('$effortId-$entryIndex-weight'),
@@ -118,7 +121,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         widget.settingsState.preferredWeightUnit,
       ),
       isReadOnly:
-          !widget.editMode && _isSetLogged(effortId, entryIndex, 'drill'),
+          !widget.editMode && _isSetLogged(effortId, entryIndex, effortKind),
       onValueChanged: (value) =>
           _updateMetricValue(effortId, entryIndex, 'extra-weight', value),
     );
@@ -230,6 +233,12 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         final timedDisplayValue = isTimedFinished
             ? (timedInstance?.actualDurationSecs ?? timedElapsed)
             : timedElapsed;
+        // Plan 39 (D-5): an interval carries the same load row as a hold, with
+        // the value stored in canonical kg and shown in the user's unit.
+        final timedExtraWeight = UnitFormatter.convertWeight(
+          (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
+          widget.settingsState,
+        );
 
         if (widget.editMode) {
           // Prefer buffered value so the editor reflects pending edits immediately.
@@ -246,6 +255,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 metricType: 'duration',
                 currentValue: editDuration,
                 unitLabel: 'ELAPSED',
+                showTapHint: true,
                 onTap: () async {
                   final result = await showDurationEntryDialog(
                     context,
@@ -270,19 +280,34 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                   value,
                 ),
               ),
+              _buildWeightRow(effortId, entryIndex, timedExtraWeight, 'timed'),
             ],
           );
         }
 
-        return InlineMetricEditor(
-          metricType: 'duration',
-          currentValue: timedDisplayValue,
-          unitLabel: isTimedFinished ? 'COMPLETED' : 'ELAPSED',
-          emphasisTier: MetricEmphasisTier.dominant,
-          isReadOnly: true,
-          onTap: null,
-          padding: _kTimedValuePadding,
-          onValueChanged: (_) {},
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: InlineMetricEditor(
+                  key: const Key('count-up-digits'),
+                  metricType: 'duration',
+                  currentValue: timedDisplayValue,
+                  unitLabel: isTimedFinished ? 'COMPLETED' : 'ELAPSED',
+                  emphasisTier: MetricEmphasisTier.hero,
+                  unitGap: 8,
+                  isReadOnly: true,
+                  onTap: null,
+                  padding: _kTimedValuePadding,
+                  onValueChanged: (_) {},
+                ),
+              ),
+            ),
+            _buildWeightRow(effortId, entryIndex, timedExtraWeight, 'timed'),
+          ],
         );
 
       case 'round':
@@ -344,6 +369,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             context,
             title: 'Edit Round Duration',
             initialSecs: lengthSeconds,
+            maxSecs: MetricStepCalc.maxDurationSeconds,
           );
           if (result != null && mounted) {
             unawaited(
@@ -376,6 +402,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     context,
                     title: 'Edit Round Duration',
                     initialSecs: editRoundDuration,
+                    maxSecs: MetricStepCalc.maxDurationSeconds,
                   );
                   if (result != null && mounted) {
                     unawaited(
@@ -402,7 +429,6 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
             TimerRing(
               progress: ringProgress,
               running: roundRunning,
@@ -412,11 +438,13 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: InlineMetricEditor(
+                  key: const Key('ring-digits'),
                   metricType: 'duration',
                   currentValue: shownSeconds,
                   unitLabel: isFinished ? 'COMPLETED' : 'REMAINING',
                   unitLabelColor: isExpired ? theme.colorScheme.error : null,
                   emphasisTier: MetricEmphasisTier.dominant,
+                  valueFontSize: kRingDigitsFontSize,
                   isReadOnly: true,
                   onTap: null,
                   padding: EdgeInsets.zero,
@@ -476,6 +504,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 metricType: 'duration',
                 currentValue: editDrillDuration,
                 unitLabel: 'ELAPSED',
+                showTapHint: true,
                 onTap: () async {
                   final result = await showDurationEntryDialog(
                     context,
@@ -500,7 +529,12 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                   value,
                 ),
               ),
-              _buildHoldWeightRow(effortId, entryIndex, drillExtraWeight),
+              _buildWeightRow(
+                effortId,
+                entryIndex,
+                drillExtraWeight,
+                'drill',
+              ),
             ],
           );
         }
@@ -508,17 +542,25 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            InlineMetricEditor(
-              metricType: 'duration',
-              currentValue: drillDisplayValue,
-              unitLabel: isDrillFinished ? 'COMPLETED' : 'ELAPSED',
-              emphasisTier: MetricEmphasisTier.dominant,
-              isReadOnly: true,
-              onTap: null,
-              padding: _kTimedValuePadding,
-              onValueChanged: (_) {},
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: InlineMetricEditor(
+                  key: const Key('count-up-digits'),
+                  metricType: 'duration',
+                  currentValue: drillDisplayValue,
+                  unitLabel: isDrillFinished ? 'COMPLETED' : 'ELAPSED',
+                  emphasisTier: MetricEmphasisTier.hero,
+                  unitGap: 8,
+                  isReadOnly: true,
+                  onTap: null,
+                  padding: _kTimedValuePadding,
+                  onValueChanged: (_) {},
+                ),
+              ),
             ),
-            _buildHoldWeightRow(effortId, entryIndex, drillExtraWeight),
+            _buildWeightRow(effortId, entryIndex, drillExtraWeight, 'drill'),
           ],
         );
 

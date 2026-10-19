@@ -33,7 +33,8 @@ and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
 | Starting and stopping both together | `WatchSessionSensors` |
 | Starting and stopping the sensors with the session | `WatchSensorCoordinator` |
 | The real sensor source on the wrist | `HealthKitSensorFeed` (`HealthKitWorkoutStore.sensorSource`) |
-| Whether a session records GPS | `WatchGpsPolicy`, reading the modality's capability profile |
+| Whether a session records GPS | `WatchGpsPolicy`, reading the modality's capability profile and the current exercise's capabilities |
+| Following the exercise the user is on | `WatchSensorRecorder.sessionChanged`, called by `WatchSensorCoordinator.apply` |
 | Modality → platform workout type | `WatchActivityTypes` |
 | What is computed from the readings before they may go | `WatchSensorSummaries`, pure functions over stored rows, called by `WatchLoggingState.log` for an entry and by `WatchSessionEngine` for a `session_end` |
 
@@ -97,14 +98,20 @@ The wrist now feeds fixes: the host builds the store over a
 (`WatchSensorSourceSourceTests.testS3313TheHostBuildsTheSourceAndTheAdapterOnce`,
 `…testS3310TheRawSourceAsksWhenInUseAndNeverAlways`), and the feed hands its
 two location members straight to that adapter
-(`…testS3311TheFeedDelegatesItsLocationToTheAdapter`). The first time a cardio
-or sports session starts, the wrist asks for Location while in use — after the
+(`…testS3311TheFeedDelegatesItsLocationToTheAdapter`). The first time a session reaches distance work — a cardio or sports
+modality, or the exercise the user is on carrying the `distance` capability —
+the wrist asks for Location while in use — after the
 Health question, with the sentence the watch target's
 `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription` carries
 (`…testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways`) — and
 the HealthKit workout of such a session is registered as outdoor
 (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
 `WatchSensorSourceSourceTests.testS3312TheStoreTakesTheAdapterAndRegistersOutdoors`).
+The workout is registered once, at the session's start (D-4803 of plan 40):
+nothing re-registers it mid-session, so a walk added later to a generic free
+workout still records distance, and Apple Health lists the workout as the
+generic type it began as
+(`WatchGpsByExerciseTests.testS4807TheWorkoutIsRegisteredOutdoorsByTheExerciseTheUserIsOn`).
 The ask is never latched — every parked waiter dispatches its own
 `requestWhenInUseAuthorization()`, so an expired "Allow Once" is asked again,
 and an answered status ends the pending ask without a prompt
@@ -124,8 +131,13 @@ and sends no distance
 (`WatchDistanceTrackerTests.testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`,
 `WatchSensorSourceSourceTests.testS3315LocationOffAnswersUnavailableBeforeAnyStatusIsRead`,
 `WatchSensorRecordingTests.testS006HardwareThatIsNotThereIsNotAFailure`);
-lifts, holds and free training never ask and never use location
-(`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`). No
+lifts and holds never ask and never use location
+(`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
+`WatchGpsByExerciseTests.testS4801ALiftNeverStartsGpsAndNeverAsks`); free
+training and routines ask and use location only once the user is on an
+exercise that carries the `distance` capability
+(`WatchGpsByExerciseTests.testS4800AWalkInAFreeWorkoutStartsGps`,
+`…testS4802GpsStartsWhenTheUserReachesTheWalk`). No
 route or map is stored. All of this is verified in code and builds only:
 nothing here is proven on a wrist. And a logged
 timed effort's `distanceMeters` is the metres covered between its Start and its
@@ -182,11 +194,26 @@ are in storage either way. Verified by
 end per session however often the surface refreshes, and a launch ends what a previous
 process left open before a session can open another. Verified by watchOS
 `WatchWorkoutCoordinatorTests` (S-1500...S-1505, S-1507, S-1508, S-1510).
-- **GPS activation derives from the modality's capability profile, never from its
-name.** A modality added later is handled without touching the policy, and one
-that merely sounds like distance work does not wake the radio. Verified by
+- **GPS activation derives from the modality's capability profile and the current
+exercise's capabilities, never from a name.** A modality added later is handled
+without touching the policy, and one that merely sounds like distance work does
+not wake the radio; an exercise decides the same way, by its `capabilities`
+list, not by what it is called. Verified by
 `test/watch_sensor_recording_test.dart` (`S-008`) and by watchOS
 `WatchSensorRecordingTests.testS008TheGpsDecisionFollowsTheCapabilityProfile`.
+- **GPS is a latch for the session.** Once the feed starts it runs until the
+session stops: moving back to an exercise without distance neither stops it nor
+resets the cumulative total, and however often the sensors refresh, a granted
+session subscribes once. Verified by watchOS
+`WatchGpsByExerciseTests.testS4803TheFeedStaysOnWhenTheUserMovesBackToALift`
+and `…testS4805AGrantedWalkSubscribesOnceHoweverOftenTheSensorsRefresh`.
+- **A refusal is asked once per session.** A permission read that comes back
+denied or unavailable ends the asking for that session — logging carries on
+with no `gps` samples — and only `stop()` restores the question for the next
+one. Verified by watchOS
+`WatchGpsByExerciseTests.testS4804ARefusedSessionIsAskedAboutOnceAndANewOneAgain`,
+`…testS4815UnavailableIsAnsweredOnceLikeDenied` and
+`…testS4814ASecondSessionMeasuresAgain`.
 - **A denied permission or absent hardware never blocks logging.** The
 subscription is skipped and nothing else changes; sensor fields are simply
 absent. Verified by `S-006` in both sensor suites.
@@ -291,4 +318,4 @@ sends for the import.
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-10-10. This page is one part of [State Management & Services](../state_management.md); see that index for the full class list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+> **Doc freshness** — Last reconciled against source: 2026-10-18. This page is one part of [State Management & Services](../state_management.md); see that index for the full class list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.

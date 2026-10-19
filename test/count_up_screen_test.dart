@@ -1,5 +1,6 @@
 // Count-up screens (plan 38c): plain elapsed digits on timed and drill
-// entries, and the weight stepper row on holds only.
+// entries, and the weight stepper row on holds and on cardio intervals
+// (plan 39, D-5).
 //
 // Covers the core scenarios S-4260..S-4270, the architect's edge scenarios
 // S-4273..S-4275 and the interaction-containment scenarios S-4276..S-4279 of
@@ -217,8 +218,13 @@ Future<({_Deps deps, String effortId})> _timedScreenSetup({
   double? extraWeightKg,
   int entries = 1,
   String exerciseId = 'exercise-easy-run',
+  String? weightUnit,
 }) async {
-  final deps = await _buildDeps(modality: 'cardio_endurance', repo: repo);
+  final deps = await _buildDeps(
+    modality: 'cardio_endurance',
+    repo: repo,
+    weightUnit: weightUnit,
+  );
   final exercise = await _getExerciseById(deps.repo, exerciseId);
   final effortId = await deps.workoutState.addExerciseToSession(
     exercise,
@@ -238,9 +244,10 @@ Future<({_Deps deps, String effortId})> _timedScreenSetup({
   return (deps: deps, effortId: effortId);
 }
 
-/// Every trace of the removed status row and weight section, plus the
-/// restored caption: an unfinished live screen carries `ELAPSED`, never
-/// `COMPLETED` (Q-1, owner O-13).
+/// Every trace of the removed status row and weight *adjustment* section, plus
+/// the restored caption: an unfinished live screen carries `ELAPSED`, never
+/// `COMPLETED` (Q-1, owner O-13), and one weight row under the digits
+/// (plan 39, D-5).
 void _expectNoTimedChrome(WidgetTester tester) {
   expect(find.text('STOPPED'), findsNothing);
   expect(find.text('ELAPSED'), findsOneWidget);
@@ -251,7 +258,7 @@ void _expectNoTimedChrome(WidgetTester tester) {
   expect(find.byIcon(Icons.pause_circle_outline), findsNothing);
   expect(find.text('Weight adjustment'), findsNothing);
   expect(_editorOf('extra-weight'), findsNothing);
-  expect(_weightRow(), findsNothing);
+  expect(_weightRow(), findsOneWidget);
 }
 
 // ── Layout guard (S-4271) ───────────────────────────────────────────────────
@@ -340,8 +347,8 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
     });
 
-    testWidgets('S-4260: a stored extra weight changes nothing on an '
-        'interval', (tester) async {
+    testWidgets('S-4260: a stored extra weight shows again on an interval '
+        '(plan 39, D-5)', (tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final setup = await _timedScreenSetup(extraWeightKg: 5.0);
 
@@ -350,11 +357,12 @@ void main() {
 
       expect(_digits(tester), '00:00');
       _expectNoTimedChrome(tester);
-      expect(find.text('5.0'), findsNothing);
+      expect(_weightNumber(tester), '5.0');
+      expect(find.text('KG'), findsOneWidget);
     });
 
-    testWidgets('S-4260: an exercise that carries load still shows no weight '
-        'on an interval (O-11)', (tester) async {
+    testWidgets('S-4260: an exercise that carries load shows the interval '
+        'weight row too (plan 39, was O-11)', (tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final setup = await _timedScreenSetup(
         exerciseId: 'exercise-barbell-squat',
@@ -366,7 +374,7 @@ void main() {
 
       expect(_digits(tester), '00:00');
       _expectNoTimedChrome(tester);
-      expect(find.text('5.0'), findsNothing);
+      expect(_weightNumber(tester), '5.0');
     });
 
     testWidgets('S-4261: Start leaves the digits plain and the button logs', (
@@ -402,7 +410,8 @@ void main() {
       expect(setCaptionText(tester, 0), '0:00');
     });
 
-    testWidgets('S-4262: the interval editor keeps its duration dialog only', (
+    testWidgets('S-4262: the interval editor keeps its duration dialog and '
+        'gains the weight row (S-4709)', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -412,9 +421,23 @@ void main() {
       await _openDetailView(tester, 'Easy Run');
 
       expect(_editor(tester, 'duration').isReadOnly, isFalse);
+      expect(
+        find.descendant(
+          of: _editorOf('duration'),
+          matching: find.byKey(const Key('tap-hint')),
+        ),
+        findsOneWidget,
+        reason: 'S-4707: the interval ELAPSED editor carries the hint',
+      );
       expect(find.text('Weight adjustment'), findsNothing);
       expect(_editorOf('extra-weight'), findsNothing);
-      expect(_weightRow(), findsNothing);
+      expect(_weightRow(), findsOneWidget);
+      expect(
+        _editor(tester, 'weight').isReadOnly,
+        isFalse,
+        reason: 'S-4709: the session editor keeps the row editable',
+      );
+      expect(_weightNumber(tester), '5.0');
 
       await tester.tap(find.byType(InlineMetricEditor).first);
       await tester.pumpAndSettle();
@@ -466,6 +489,187 @@ void main() {
     });
   });
 
+  // ── Cardio weight (S-4708, S-4709) ────────────────────────────────────────
+
+  group('Cardio weight — live (S-4708)', () {
+    testWidgets('S-4708: an interval carries a 0.0 KG row under its digits', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final setup = await _timedScreenSetup();
+
+      await tester.pumpWidget(_buildSessionScreen(setup.deps));
+      await _openDetailView(tester, 'Easy Run');
+
+      expect(
+        find.byKey(ValueKey('${setup.effortId}-0-weight')),
+        findsOneWidget,
+      );
+      expect(_plusWeight, findsOneWidget);
+      expect(_minusWeight, findsOneWidget);
+      expect(_weightNumber(tester), '0.0');
+      expect(find.text('KG'), findsOneWidget);
+    });
+
+    testWidgets('S-4708: + steps the interval 2.5 kg and stores kilograms', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final setup = await _timedScreenSetup();
+
+      await tester.pumpWidget(_buildSessionScreen(setup.deps));
+      await _openDetailView(tester, 'Easy Run');
+
+      await tester.tap(_plusWeight);
+      await tester.pumpAndSettle();
+
+      expect(_weightNumber(tester), '2.5');
+      expect(
+        await _storedExtraWeight(setup.deps.repo, setup.effortId),
+        2.5,
+        reason: 'the row hands kilograms to the screen, which stores kg',
+      );
+    });
+
+    testWidgets('S-4708: a pounds interval steps 5 lb and stores 2.27 kg', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final setup = await _timedScreenSetup(weightUnit: 'lbs');
+
+      await tester.pumpWidget(_buildSessionScreen(setup.deps));
+      await _openDetailView(tester, 'Easy Run');
+
+      expect(find.text('LBS'), findsOneWidget);
+      expect(_weightNumber(tester), '0.0');
+
+      await tester.tap(_plusWeight);
+      await tester.pumpAndSettle();
+
+      expect(_weightNumber(tester), '5.0');
+      expect(
+        await _storedExtraWeight(setup.deps.repo, setup.effortId),
+        closeTo(2.27, 0.01),
+      );
+    });
+
+    testWidgets('S-4708: logging the interval locks its weight row', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final setup = await _timedScreenSetup();
+
+      await tester.pumpWidget(_buildSessionScreen(setup.deps));
+      await _openDetailView(tester, 'Easy Run');
+
+      await tester.tap(_plusWeight);
+      await tester.pumpAndSettle();
+      expect(_weightNumber(tester), '2.5');
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.tap(find.widgetWithText(FilledButton, 'Log Interval'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('LOGGED'), findsOneWidget);
+      expect(_editor(tester, 'weight').isReadOnly, isTrue);
+      expect(
+        find.byKey(const Key('tap-hint')),
+        findsNothing,
+        reason: 'a locked row carries no hint',
+      );
+
+      await tester.tap(_plusWeight, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(_weightNumber(tester), '2.5');
+      expect(await _storedExtraWeight(setup.deps.repo, setup.effortId), 2.5);
+    });
+
+    testWidgets('S-4708: the logged interval caption stays the time only', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final setup = await _timedScreenSetup();
+
+      await tester.pumpWidget(_buildSessionScreen(setup.deps));
+      await _openDetailView(tester, 'Easy Run');
+
+      await tester.tap(_plusWeight);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.tap(find.widgetWithText(FilledButton, 'Log Interval'));
+      await tester.pumpAndSettle();
+
+      expect(setCaptionText(tester, 0), '0:00');
+      expect(
+        captionTexts(tester).where((text) => text.contains('KG')),
+        isEmpty,
+        reason: 'A1: the caption records the time, never the weight',
+      );
+    });
+
+    testWidgets('S-4708: a hold still shows its weight row', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'isometric_stretching');
+      final exercise = await _getExerciseById(deps.repo, 'exercise-plank-hold');
+      await deps.workoutState.addExerciseToSession(
+        exercise,
+        effortKindOverride: 'drill',
+      );
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Plank Hold');
+
+      expect(_weightRow(), findsOneWidget);
+      expect(_weightNumber(tester), '0.0');
+    });
+  });
+
+  group('Cardio weight — editor (S-4709)', () {
+    testWidgets('S-4709: the session editor keeps a finished interval '
+        'editable and Save stores the kilograms', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final setup = await _timedScreenSetup(editMode: true);
+      await _seedInstance(
+        setup.deps,
+        setup.effortId,
+        state: TimedState.finished,
+        elapsedMs: 42000,
+        actualDurationSecs: 42,
+      );
+
+      await tester.pumpWidget(_buildSessionScreen(setup.deps, editMode: true));
+      await _openDetailView(tester, 'Easy Run');
+
+      expect(
+        _editor(tester, 'weight').isReadOnly,
+        isFalse,
+        reason: 'a finished interval stays editable in the session editor',
+      );
+      expect(_weightNumber(tester), '0.0');
+
+      await tester.tap(_plusWeight);
+      await tester.pumpAndSettle();
+      expect(_weightNumber(tester), '2.5');
+
+      // The Save CTA lives on the list view.
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save Changes').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        await _storedExtraWeight(setup.deps.repo, setup.effortId),
+        2.5,
+        reason: 'Save flushes the buffered extra-weight as kg',
+      );
+    });
+  });
+
   // ── Holds (S-4264..S-4270) ────────────────────────────────────────────────
 
   group('Count-up — holds (S-4264..S-4270)', () {
@@ -494,6 +698,11 @@ void main() {
       expect(_minusWeight, findsOneWidget);
       expect(_weightNumber(tester), '0.0');
       expect(find.text('KG'), findsOneWidget);
+      expect(
+        find.byKey(const Key('tap-hint')),
+        findsOneWidget,
+        reason: 'S-4712: the live hold weight row carries the hint',
+      );
       expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
     });
 
@@ -1116,8 +1325,8 @@ void main() {
       await _openDetailView(tester, 'Easy Run');
 
       expect(find.byKey(const Key('rest-overlay-chip')), findsOneWidget);
-      expect(_weightRow(), findsNothing);
-      expect(_plusWeight, findsNothing);
+      expect(_weightRow(), findsOneWidget);
+      expect(_plusWeight, findsOneWidget);
 
       expect(
         find.byKey(const Key('set-count-add')).hitTestable(),

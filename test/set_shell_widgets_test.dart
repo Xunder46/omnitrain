@@ -38,9 +38,8 @@ void main() {
   // S-4201 / S-4202 — SetSegmentBar
   // ══════════════════════════════════════════════════════════════════════════
   group('Mock S-4201 SetSegmentBar', () {
-    testWidgets('one segment per set, 48 dp tall, tap reports its index', (
-      tester,
-    ) async {
+    testWidgets('one segment per set, 18 dp tall without captions, tap '
+        'reports its index', (tester) async {
       var tapped = -1;
       await tester.pumpWidget(
         _host(
@@ -57,7 +56,7 @@ void main() {
       expect(_segment(1), findsOneWidget);
       expect(_segment(2), findsOneWidget);
 
-      expect(tester.getSize(_segment(2)).height, greaterThanOrEqualTo(48));
+      expect(tester.getSize(_segment(2)).height, 18.0);
 
       await tester.tap(_segment(2));
       expect(tapped, 2);
@@ -207,7 +206,7 @@ void main() {
         final bar = tester.getRect(_segmentBar(i));
         final caption = tester.getRect(_caption(i));
 
-        expect(cell.height, greaterThanOrEqualTo(48));
+        expect(cell.height, 34.0);
         expect(bar.height, 6);
         expect(bar.top, cell.top, reason: 'the bar sits at the top of cell $i');
         expect(

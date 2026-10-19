@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/navigation/navigation.dart';
+import '../../core/utils/date_utils.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../exercise/exercise_picker_screen.dart';
@@ -202,10 +203,8 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                 (sum, e) =>
                                     sum + ((e['duration'] as int?) ?? 0),
                               );
-                              final minutes = totalDuration ~/ 60;
-                              final seconds = totalDuration % 60;
                               subtitle =
-                                  '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+                                  '${OmniDateUtils.formatTimerDigits(totalDuration)} total';
                               break;
                             case 'round':
                               final effortId = exercise['id'] as String;

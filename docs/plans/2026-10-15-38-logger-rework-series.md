@@ -14,6 +14,7 @@ Why a series: the shell touches every modality and 15 widget-test files; the rep
 | 38d | Countdown (rounds): shared timer ring with remaining digits, round-length row (15 s step + tap popup), locked while running, a change applies to this and the later unstarted rounds, Start → Log Round records time done | 38b | Plan: `2026-10-16-38d-countdown-plan/` (seeded 2026-10-16, runs after 38f).
 | 38f | Polish from the owner's side-by-side look: header one line, bar pinned under it with captions (5 sets or fewer), no border, boxed rows and sets control with `Set X of Y` inside, weight 0/negative shown, and the bug that a deleted logged set came back. Plan `2026-10-15-38f-logger-polish-plan/` (seeded, runs after 38c lands) | 38c |
 | 38e | Routine create/edit screens and session-edit controls use the same shared rows where the same control exists (reps, weight, round length, set count) | 38b, 38d |
+| 39 | Round-2 polish of the same screens from the owner's second look: one digits formatter with hours (`OmniDateUtils.formatTimerDigits`), a 10 h duration ceiling (`MetricStepCalc.maxDurationSeconds`), the unit label under the number plus a `tap to type` hint, the cardio interval weight row back (supersedes O-11 for the interval), hero count-up digits, ring digits, tightened sports body. Plan: `2026-10-17-39-logger-polish-2-plan/` | 38a–38e |
 
 Plan each later PR when its turn comes, against the code as it is by then.
 
@@ -29,7 +30,7 @@ Plan each later PR when its turn comes, against the code as it is by then.
 - O-8 The rest chip is untouched (appears after a log, hides while a timer runs, tap pauses/resumes).
 - O-9 The logged-values line shows logged sets only; an unlogged set is blank, never `—`.
 - O-10 Weight step follows the unit setting: 2.5 kg or 5 lb (the watch's steps); long-press accelerates.
-- O-11 Hard product rule: the modality's effort kind decides the screen, not the exercise's flags. Weight control: resistance (`set`) and isometric holds (`drill`) only; never on cardio intervals (`timed`) or rounds, whatever the exercise carries.
+- O-11 Hard product rule: the modality's effort kind decides the screen, not the exercise's flags. Weight control: resistance (`set`) and isometric holds (`drill`) only; never on cardio intervals (`timed`) or rounds, whatever the exercise carries. (Superseded for the interval by plan 39 D-5: the interval carries a weight row again; rounds still never do.)
 - O-12 Tap-to-type keeps the existing popup (`showMetricEditPopup`, `showDurationEntryDialog`).
 - O-13 (owner, 2026-10-16) Captions under the timer digits stay: `REMAINING` / `COMPLETED` on rounds, `ELAPSED` / `COMPLETED` on count-up (restored by 38d, 38c had removed them). The old heading and status row are not captions and stay removed.
 - O-14 (owner, 2026-10-16) No approval needed between series PRs: the lead starts the next one when the previous has landed and is verified.

@@ -322,14 +322,17 @@ Which rows the body shows depends on effort kind:
   write the shown set`; group `S-4505 user unit (A3)` · `a lbs lifter steps
   5 lb and the kg target follows`) and `test/screen_widget_test.dart` (group
   `RoutineSetupScreen` · `uses preferred lbs label for routine load editors`).
-- **`timed` (cardio interval)**: no editable value (owner rule O-11: weight
-  only on resistance sets and isometric holds). Stored interval
-  `extraWeight` targets of old routines stay in the data and are ignored by
-  the screen. Verified by `test/routine_detail_screen_test.dart` (group
-  `S-4507 interval (A5)` · `no editable value, and a stored target stays
-  untouched`) and `test/screen_widget_test.dart` (group `RoutineSetupScreen`
-  · `timed effort detail shows no editor and leaves the stored extra-weight
-  target untouched`).
+- **`timed` (cardio interval)**: one boxed weight row writing the
+  `extraWeight` target — no reps row and no duration target (plan 39 D-5
+  restored the row, superseding the O-11 rule for the interval). Stored
+  `extraWeight` targets of old routines come back and are editable. Verified
+  by `test/routine_detail_screen_test.dart` (group `S-4507 interval (A5,
+  restored by plan 39 D-5)` · `the interval row reads the stored target and
+  steps it`) and `test/screen_widget_test.dart` (group `RoutineSetupScreen`
+  · `timed effort detail shows the weight row and leaves the stored
+  extra-weight target untouched (plan 39, D-5)`, `timed effort with no
+  extra-weight target still shows its weight row`,
+  `timed effort detail view shows no duration editor`).
 - **`drill` (isometric hold)**: one boxed weight row writing the
   `extraWeight` target — no reps row and no hold-time target. Verified by
   `test/routine_detail_screen_test.dart` (group `S-4506 hold rows (A4)` ·
@@ -380,7 +383,7 @@ When adding a set, targets auto-fill from the previous set:
 
 When adding a new exercise, default targets depend on effort kind:
 - `set`: 10 reps, 0 weight
-- `timed`: no editable value in the detail — a stored extra-weight target stays in the data and is ignored (owner rule O-11)
+- `timed`: the detail shows the weight row (plan 39 D-5 restored it, superseding the O-11 rule for the interval)
 - `round`: 180 seconds (3 min), 1 round
 - `drill`: 0.0 extra weight
 

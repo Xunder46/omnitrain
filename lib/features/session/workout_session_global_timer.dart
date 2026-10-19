@@ -23,10 +23,8 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
     final elapsedMs =
         DateTime.now().millisecondsSinceEpoch - session.startedAtMs;
     final elapsedSeconds = (elapsedMs / 1000).toInt();
-    final mm = (elapsedSeconds ~/ 60).remainder(60).toString().padLeft(2, '0');
-    final ss = (elapsedSeconds % 60).toString().padLeft(2, '0');
     _updateUi(() {
-      _elapsedFormatted = '$mm:$ss';
+      _elapsedFormatted = OmniDateUtils.formatTimerDigits(elapsedSeconds);
     });
     _checkRestPings();
   }
@@ -67,9 +65,7 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
       effortId,
       entryIndex,
     );
-    final mm = (secs ~/ 60).toString().padLeft(2, '0');
-    final ss = (secs % 60).toString().padLeft(2, '0');
-    return '$mm:$ss';
+    return OmniDateUtils.formatTimerDigits(secs);
   }
 
   ({String effortId, int entryIndex})? _getMostRecentOpenRestKey() {

@@ -12,9 +12,7 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
     final endMs = session.endedAtMs ?? DateTime.now().millisecondsSinceEpoch;
     final elapsedMs = endMs - session.startedAtMs;
     final elapsedSeconds = (elapsedMs / 1000).toInt();
-    final mm = (elapsedSeconds ~/ 60).remainder(60).toString().padLeft(2, '0');
-    final ss = (elapsedSeconds % 60).toString().padLeft(2, '0');
-    _elapsedFormatted = '$mm:$ss';
+    _elapsedFormatted = OmniDateUtils.formatTimerDigits(elapsedSeconds);
     // Capture original so dirty detection and discard work correctly.
     _pendingDurationSecs = elapsedSeconds;
     _originalDurationSecs = elapsedSeconds;
@@ -52,16 +50,7 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
       _pendingDurationSecs != _originalDurationSecs;
 
   void _reformatElapsed(int durationSecs) {
-    final h = durationSecs ~/ 3600;
-    final m = (durationSecs % 3600) ~/ 60;
-    final s = durationSecs % 60;
-    if (h > 0) {
-      _elapsedFormatted =
-          '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-    } else {
-      _elapsedFormatted =
-          '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-    }
+    _elapsedFormatted = OmniDateUtils.formatTimerDigits(durationSecs);
   }
 
   /// Opens a dialog letting the user correct the total session duration.

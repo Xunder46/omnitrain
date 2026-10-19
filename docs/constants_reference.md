@@ -209,6 +209,49 @@ Default target values when creating new sets/entries:
 
 ---
 
+## Session Widget Constants
+
+Plan 39 pinned these sizes as named constants so tests and docs can name them
+instead of literals.
+
+**File**: `lib/widgets/session/inline_metric_editor.dart`
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `kCountUpDigitsFontSize` | `112` | Font size of the live count-up readout (interval and hold elapsed digits, `MetricEmphasisTier.hero`) |
+| `kRingDigitsFontSize` | `48` | Font size of the ring digits; the session detail view passes it as `valueFontSize` |
+
+**File**: `lib/widgets/session/set_segment_bar.dart`
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `kSetBarCaptionedHeight` | `34` | Set-bar tap-cell height when captions are shown |
+| `kSetBarPlainHeight` | `18` | Set-bar tap-cell height without captions |
+| `kSetBarCaptionMaxSets` | `5` | Above this many entries captions are dropped entirely |
+
+**File**: `lib/widgets/session/metric_crown_widget.dart`
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `MetricStepCalc.maxDurationSeconds` | `36000` | Duration ceiling of the steppers and the typed popup; the round-length `showDurationEntryDialog` callers pass it as `maxSecs` |
+
+---
+
+## Timer Digit Formatting
+
+**File**: `lib/core/utils/date_utils.dart`
+
+- `OmniDateUtils.formatTimerDigits(int seconds)` — the digits a timer is read
+  in: `mm:ss` (both padded) below an hour, `h:mm:ss` (hour unpadded) from it,
+  negative → `00:00`. Used by the count-up digits, the session header timer
+  (live and edit), the rest chip, the round-length row and the `… total`
+  lines.
+- `OmniDateUtils.formatClock` — the caption shape (`m:ss`), unchanged.
+
+Verified by `test/utils_test.dart` (group `OmniDateUtils.formatTimerDigits`).
+
+---
+
 ## Health Sync Constants
 
 **File**: `lib/core/constants/health_constants.dart`

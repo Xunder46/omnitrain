@@ -131,14 +131,27 @@ public enum WatchGpsPolicy {
     ]
 
     /// True when `modality` can cover distance — as a capability it carries, not
-    /// as one it rules out. Free training has no profile, so it never records
-    /// GPS: the user picks the exercise after the session starts, too late to
-    /// decide, and the distance row stays theirs to fill.
+    /// as one it rules out. A modality alone never decides for free training: the
+    /// user picks the exercise after the session starts, so the exercise decides
+    /// instead, through `isRequired(_ session:)` (D-4800).
     public static func isRequired(_ modality: String?) -> Bool {
         guard let modality, let capabilities = capabilitiesByModality[modality] else {
             return false
         }
         return capabilities.contains(distanceCapability)
+    }
+
+    /// True when an exercise's capabilities include distance — the exercise, not
+    /// the name.
+    public static func coversDistance(_ capabilities: [String]) -> Bool {
+        capabilities.contains(distanceCapability)
+    }
+
+    /// True when the session's modality covers distance, or the exercise the user
+    /// is on does.
+    public static func isRequired(_ session: WatchSessionRecord) -> Bool {
+        if isRequired(session.modality) { return true }
+        return coversDistance((session.currentExercise?["capabilities"] as? [String]) ?? [])
     }
 }
 
@@ -203,7 +216,7 @@ public final class WatchPlatformWorkout {
         let activityType = WatchActivityTypes.forModality(session.modality)
         await store.begin(
             activityType.watchOs,
-            outdoors: WatchGpsPolicy.isRequired(session.modality)
+            outdoors: WatchGpsPolicy.isRequired(session)
         )
         running = activityType
         return activityType

@@ -13,8 +13,9 @@ import 'inline_metric_editor.dart';
 /// by [step] in the shown unit.
 ///
 /// A `duration` row keeps the value an `int` number of seconds (the editor
-/// shows `mm:ss`), steps 15 s by default and can be floored by [min] — the
-/// 3600 s ceiling comes from `MetricStepCalc`. [onEditorTap] lets a caller
+/// shows `mm:ss`, or `h:mm:ss` past an hour), steps 15 s by default and can be
+/// floored by [min] — the 10-hour (36000 s) ceiling comes from
+/// `MetricStepCalc`. [onEditorTap] lets a caller
 /// replace the generic popup, which is how the round-length row opens the
 /// duration dialog.
 ///
@@ -25,6 +26,9 @@ import 'inline_metric_editor.dart';
 ///
 /// The row owns its outer margin and is boxed in the shared [OmniSurface]
 /// (plan 38f, L-6): 20 dp left and right, 4 dp above and below.
+///
+/// The unit label and the `tap to type` hint sit centred directly under the
+/// number, not beside it (plan 39, D-3).
 ///
 /// Plan: `docs/plans/2026-10-15-38b-reps-screen-plan/2026-10-15-38b-reps-screen-plan.md`
 /// (decisions D-2..D-6); duration mode:
@@ -233,7 +237,9 @@ class _ValueStepperRowState extends State<ValueStepperRow> {
                     metricType: widget.metricType,
                     currentValue: _shownValue,
                     unitLabel: widget.unitLabel,
-                    showUnitInline: true,
+                    showUnitInline: false,
+                    unitGap: 0,
+                    showTapHint: true,
                     emphasisTier: MetricEmphasisTier.dominant,
                     isReadOnly: widget.isReadOnly,
                     // The editor's outer GestureDetector fires `onTap` even when
@@ -241,7 +247,7 @@ class _ValueStepperRowState extends State<ValueStepperRow> {
                     onTap: widget.isReadOnly ? null : widget.onEditorTap,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
-                      vertical: 12,
+                      vertical: 4,
                     ),
                     onValueChanged: _handleEditorValue,
                   ),

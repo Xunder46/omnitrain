@@ -69,6 +69,8 @@ public final class WatchSensorCoordinator {
             if recordingSessionId == nil {
                 recordingSessionId = session?.sessionId
                 if let session { await recorder.start(session) }
+            } else if let session {
+                await recorder.sessionChanged(session)
             }
             return
         }

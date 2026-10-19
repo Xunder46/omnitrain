@@ -37,8 +37,11 @@ Touch-optimized value input for workout environments. Tap the number to open a n
 |------|------|-------------|
 | `metricType` | `String` | `reps`, `weight`, `duration`, `rpe`, `extra-weight` |
 | `currentValue` | `dynamic` | Value to display |
-| `unitLabel` | `String` | Label below value (e.g., "REPS", "LBS") |
-| `emphasisTier` | `MetricEmphasisTier?` | Optional value emphasis: `dominant`, `secondary`, `muted`; default keeps legacy displayLarge styling |
+| `unitLabel` | `String` | Label under the value (e.g., "REPS", "LBS") |
+| `emphasisTier` | `MetricEmphasisTier?` | Optional value emphasis: `hero`, `dominant`, `secondary`, `muted`; default keeps legacy displayLarge styling |
+| `unitGap` | `double` | Gap between the number and the unit label in the column layout; the default is the historical spacing, and `ValueStepperRow` passes 0 so the label hugs the number |
+| `showTapHint` | `bool` | When true — and the editor is not read-only — a dim `tap to type` line (key `tap-hint`) sits under the unit label; default false |
+| `valueFontSize` | `double?` | Overrides the tier's font size; the ring passes `kRingDigitsFontSize` |
 | `isReadOnly` | `bool` | When true: disables tap-to-edit popup. Used for live timer displays. |
 | `onTap` | `VoidCallback?` | When provided, tapping the number calls this instead of opening the generic popup (e.g. timer toggle, duration dialog). |
 | `onValueChanged` | `Function(dynamic)` | Immediate callback on value change |
@@ -50,20 +53,26 @@ Touch-optimized value input for workout environments. Tap the number to open a n
   - `isReadOnly: true` → no interactive affordance.
 - The crown scrub control (`MetricCrownWidget`) is dormant — it remains in the codebase at `lib/widgets/session/metric_crown_widget.dart` and can be re-enabled in the row without rebuilding the widget.
 
-**Visual**: Value size and styling unchanged. The crown is not rendered. When `isReadOnly` and `emphasisTier` are both set, the emphasis tier wins and the value is not dimmed.
+**Visual**: the value renders at the tier's size — `hero` (the count-up
+readout, `kCountUpDigitsFontSize` in `lib/widgets/session/inline_metric_editor.dart`),
+`dominant`, `secondary`, `muted` — and `valueFontSize` overrides the tier's
+size. The crown is not rendered. When `isReadOnly` and `emphasisTier` are
+both set, the emphasis tier wins and the value is not dimmed.
 
 **Session context (live timed/round/drill)**: In `WorkoutSessionScreen`
 detail view the live `timed` and `drill` editors render the elapsed time as
-plain large digits at the dominant tier with the unit label as the caption —
-`ELAPSED` while the entry is unfinished, `COMPLETED` once it is finished; they
-are read-only and tapping the digits opens nothing — corrections happen in
-the session editor, whose duration dialogs are `Edit Interval Duration` and
-`Edit Hold Duration`. The live `round` editor sits inside a `TimerRing`
-(below) with the caption `REMAINING` under the digits and `COMPLETED` once
-the round is finished; the old status label (`RUNNING` / `STOPPED` / …) is
-gone. The centre button carries the timer control (`Start`, then `Log
-Interval` / `Log Hold` / `Log Round`; `Resume` for an entry restored paused)
-— never a tap on the value display.
+plain large digits at the `hero` tier inside a scale-down `FittedBox`, with
+the unit label as the caption — `ELAPSED` while the entry is unfinished,
+`COMPLETED` once it is finished; the digits read `mm:ss` below an hour and
+`h:mm:ss` from it (`OmniDateUtils.formatTimerDigits`). They are read-only and
+tapping the digits opens nothing — corrections happen in the session editor,
+whose duration dialogs are `Edit Interval Duration` and `Edit Hold Duration`.
+The live `round` editor sits inside a `TimerRing` (below) with the caption
+`REMAINING` under the digits and `COMPLETED` once the round is finished; the
+ring passes `valueFontSize: kRingDigitsFontSize`, and the old status label
+(`RUNNING` / `STOPPED` / …) is gone. The centre button carries the timer
+control (`Start`, then `Log Interval` / `Log Hold` / `Log Round`; `Resume`
+for an entry restored paused) — never a tap on the value display.
 
 Verified by `test/count_up_screen_test.dart` (group `Count-up — timed
 intervals (S-4260..S-4263)` · `S-4260: an interval with no load shows digits
@@ -78,7 +87,12 @@ finished interval swaps ELAPSED for COMPLETED`, `S-4402: a finished hold
 swaps ELAPSED for COMPLETED`),
 `test/round_countdown_screen_test.dart` (group `Round countdown — digits and
 caption (S-4402)` · `S-4402: martial arts reads 03:00 + REMAINING with no old
-chrome`, `S-4402: sports reads 03:00 + REMAINING with no old chrome`) and
+chrome`, `S-4402: sports reads 03:00 + REMAINING with no old chrome`),
+`test/count_up_hero_layout_test.dart` (group `S-4710 hero count-up digits` ·
+`the live interval digits are 112 sp inside a scaleDown FittedBox, captioned
+ELAPSED`, `the live hold digits are 112 sp inside a scaleDown FittedBox,
+captioned ELAPSED`, `an interval past an hour reads 1:15:35`, `the sports
+ring digits are 48 sp inside the ring chord`) and
 `test/sports_emphasis_redesign_test.dart` (group `Sports effort emphasis
 redesign` · `S-001 free session stopped hierarchy is correct`, `S-002 free
 session running hierarchy is correct` — the ring and its caption).
@@ -107,7 +121,10 @@ state owns the sweep between the screen's 1 Hz ticks.
 one second between the ticks, so the ring and the digits move together; a
 stopped ring and a progress that rises (the round length was just edited)
 apply at once. The ring carries a `Time remaining` semantics label; the
-digits are scaled down by a `FittedBox` rather than overflowing the ring.
+digits are scaled down by a `FittedBox` rather than overflowing the ring, and
+the box is bounded to the ring's usable chord — the kept-clear inset is
+`_kRingDigitsInset` in `lib/widgets/session/timer_ring.dart`. The session
+detail view passes `valueFontSize: kRingDigitsFontSize` for the digits.
 
 Verified by `test/timer_ring_test.dart` (group `S-4401 ring progress` ·
 `a full ring reads progress 1.0 with scheme colours`, `0.75 and 0.0 read back
@@ -135,9 +152,12 @@ in `lib/`. The session editor shows the round-length row without the ring.
 
 Thin set-progress bar for the session exercise screen: one tappable segment per
 entry of the effort — set, interval, round or hold — so the bar is identical
-across every modality. Tapping a segment jumps to that entry. The bar sits at
-the top of a tap cell that meets the platform minimum touch target, so a
-caption under a segment lives in the same cell.
+across every modality. Tapping a segment jumps to that entry. Each segment is
+a tap cell whose height is `kSetBarCaptionedHeight` with captions and
+`kSetBarPlainHeight` without them (constants in
+`lib/widgets/session/set_segment_bar.dart`), the painted bar pinned to the
+cell's top, so a caption under a segment lives in the same cell and no dead
+space is left under the bar.
 
 | Prop | Type | Description |
 |------|------|-------------|
@@ -147,9 +167,9 @@ caption under a segment lives in the same cell.
 | `captions` | `List<String?>?` | Optional caption under each segment — the logged value, or `null` for a blank one. Rendered only when the list has exactly `count` entries and `count <= kSetBarCaptionMaxSets` (5); with 6 or more sets there are no captions and no reserved space |
 | `onTap` | `ValueChanged<int>` | Called with the tapped segment's index |
 
-**Visual**: a `Row` of `Expanded` segments; each segment's tap area meets the
-platform minimum touch target and its painted bar is a thin strip with a small
-corner radius and no border, the same thickness on every segment. Three looks:
+**Visual**: a `Row` of `Expanded` segments; each segment's painted bar is a
+thin strip with a small corner radius and no border, the same thickness on
+every segment, pinned to the top of its tap cell. Three looks:
 not logged (`onSurface` at alpha 51), focused and not logged (`primary` at
 alpha 115), logged (full `primary`); a segment that is both logged and focused
 shows the logged fill. Colours come from `Theme.of(context).colorScheme` only.
@@ -177,7 +197,10 @@ segment jumps to that set`; group `Logger polish — header, captions, boxes,
 layout (S-4311..S-4317, S-4322..S-4324)` · `S-4312: six sets drop the captions
 and their space`, `S-4323: the captions row is there, blank, before a log`,
 `S-4324: a logged, focused set reads dominant`, and `S-4314`, which pins the
-absent border and the uniform bar height on the screen).
+absent border and the uniform bar height on the screen) and
+`test/count_up_hero_layout_test.dart` (group `S-4711 tightened body` — the
+two cell-height tests, captioned and plain, and the ring-gap test; their
+names spell the cell heights, which the docs value scan may not quote).
 
 ### `SetCountStepper`
 
@@ -236,13 +259,16 @@ on the right. The row is boxed in the shared `OmniSurface(showShadow: false)`
 inside it has its own inner padding — and the number is the
 existing `InlineMetricEditor`, so tapping it opens `showMetricEditPopup`
 unless the caller replaces the tap with `onEditorTap`; the two buttons step
-the value by `step` in the shown unit.
+the value by `step` in the shown unit. The unit label sits directly under the
+number, centred (the inner editor gets `unitGap: 0`), and when the row is
+editable a `tap to type` hint (`showTapHint`, key `tap-hint`) sits under the
+label; a locked row keeps the label and hides the hint.
 
 | Prop | Type | Description |
 |------|------|-------------|
 | `metricType` | `String` | `reps`, `weight` or `duration` |
 | `currentValue` | `num` | The value to show, in the unit the screen displays (`int` for reps and duration, `double` for weight) |
-| `unitLabel` | `String` | The unit beside the number (`REPS`, `KG`, `LBS`, `ROUND LENGTH`) |
+| `unitLabel` | `String` | The unit under the number (`REPS`, `KG`, `LBS`, `ROUND LENGTH`) |
 | `step` | `double?` | One step, in the shown unit (`MetricStepping.weightStepFor` for weight); optional — defaults to 15 s for `duration` and 1 otherwise |
 | `isReadOnly` | `bool` | When true the buttons are dimmed and do nothing and the number is not tappable (a logged set is locked) |
 | `min` | `num?` | Optional floor for the stepped value: a step that would land below it lands on it, and a row at the floor steps no further down; the ceiling stays `MetricStepCalc`'s |
@@ -274,17 +300,25 @@ the hold-to-repeat.
 **Duration mode**: a `duration` row keeps the value an `int` number of
 seconds (the editor renders it as clock text), steps 15 s at a time by
 default (`ValueStepperRow.durationStepSeconds`) unless the caller gives
-`step`, is floored by `min` (the 3600 s ceiling comes from `MetricStepCalc`),
-and hands `onEditorTap` to the inner editor's `onTap` — `null` keeps the
-generic popup. The step-button noun reads `duration`.
+`step`, is floored by `min`, and is capped by `MetricStepCalc.maxDurationSeconds`
+(in `lib/widgets/session/metric_crown_widget.dart`); it hands `onEditorTap`
+to the inner editor's `onTap` — `null` keeps the generic popup. The
+step-button noun reads `duration`.
 
 Verified by `test/value_stepper_row_test.dart` (group `S-4413 duration mode`
 · `an int duration renders as clock text with its label`, `plus and minus
 step 15 s and report an int`, `the duration step is 15 s when the caller
 gives none`, `a step that would cross the 15 s floor lands on it`, `minus at
-15 s calls nothing`, `plus at 3600 s calls nothing`, `onEditorTap takes the
-number tap and no popup opens`, `without onEditorTap the number keeps the
-generic popup`, `a read-only duration row steps nothing and taps nothing`).
+15 s calls nothing`, `S-4704: plus at 3600 s steps to 3615 and reads
+1:00:15`, `S-4704: minus at 3615 s steps back to 3600`, `S-4704: plus at the
+10-hour ceiling calls nothing`, `S-4705: 8130 s reads 2:15:30 and 135 s reads
+02:15`, `S-4705: 10:00:00 still fits a 320 x 568 phone`, `onEditorTap takes
+the number tap and no popup opens`, `without onEditorTap the number keeps the
+generic popup`, `a read-only duration row steps nothing and taps nothing`;
+group `S-4707 anatomy` · `a duration row centres its label and hint under the
+number`, `a locked row hides the hint and keeps the label under the number`,
+`S-4707/S-4704: the widest weight and duration values do not overflow 390 x 844`,
+`a locked duration row keeps the label and hides the hint`).
 
 Verified by `test/value_stepper_row_test.dart` (groups `S-4241 reps row`,
 `S-4242 weight row`, `S-4243 pending`, `S-4244/S-4245 hold`, `S-4246
@@ -396,16 +430,25 @@ Future<int?> showDurationEntryDialog(
   String title = 'Edit Duration',
   String subtitle = '',
   required int initialSecs,
+  int? maxSecs,
 })
 ```
 
 - Returns confirmed duration in whole seconds (`h*3600 + m*60 + s`), or `null` if dismissed.
 - Three `TextField` instances for hours, minutes, seconds. Pre-filled from `initialSecs`.
+- `maxSecs`: when given, the confirmed duration is clamped to it; the three
+  round-length callers (live, session editor, routine editor) pass
+  `MetricStepCalc.maxDurationSeconds`, the others pass nothing.
 - Single "Ok" `FilledButton`. No Cancel button. Barrier tap dismisses without applying.
 - `TextEditingController`s are deferred-disposed shortly after the
   dialog closes (inline delay in
   `lib/widgets/session/duration_entry_dialog.dart`) to avoid
   use-after-dispose errors.
+
+Verified by `test/tap_to_edit_unification_test.dart` (group `Duration dialog
+ceiling (maxSecs)` · `U-19: over-ceiling input is clamped to maxSecs`,
+`U-20: no maxSecs leaves the value unchanged`, `U-21: value under maxSecs is
+returned unchanged`).
 
 **Usage**: Wire to `onTap` on `InlineMetricEditor` when `metricType == 'duration'`.
 
@@ -419,6 +462,8 @@ Shared utility for value-adjustment math and popup parsing. Used by both `Metric
 
 - `MetricStepCalc.apply(metricType, currentValue, deltaY)` — drag step math (identical to previous `InlineMetricEditor._calculateNewValue`).
 - `MetricStepCalc.parseAndClamp(metricType, text)` — parse popup input, clamp to metric range, return typed result (`int` for reps, `double` for others). Returns `null` if unparseable.
+- `MetricStepCalc.maxDurationSeconds` — the duration ceiling for the steppers
+  and the typed popup; `showDurationEntryDialog` callers pass it as `maxSecs`.
 
 ### `SessionDistanceCard`
 

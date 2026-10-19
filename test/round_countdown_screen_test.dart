@@ -327,19 +327,36 @@ void main() {
       expect(_plannedSecs(deps, seeded.effortId), 15);
     });
 
-    testWidgets('S-4413: + at 60:00 stays at 60:00', (tester) async {
+    testWidgets('S-4413/S-4704: + at 1:00:00 steps to 1:00:15', (tester) async {
       final deps = await _buildDeps(modality: 'cardio_endurance');
       final seeded = await _seedRounds(deps, durationSecs: 3600);
       await _pumpDetail(tester, deps, seeded.name);
 
       final row = _lengthRow(seeded.effortId);
-      expect(_inRow(row, '60:00'), findsOneWidget);
+      expect(_inRow(row, '1:00:00'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('value-stepper-plus-duration')));
       await tester.pumpAndSettle();
 
-      expect(_inRow(row, '60:00'), findsOneWidget);
-      expect(_plannedSecs(deps, seeded.effortId), 3600);
+      expect(_inRow(row, '1:00:15'), findsOneWidget);
+      expect(_plannedSecs(deps, seeded.effortId), 3615);
+    });
+
+    testWidgets('S-4704: + at the 10-hour ceiling stays at 10:00:00', (
+      tester,
+    ) async {
+      final deps = await _buildDeps(modality: 'cardio_endurance');
+      final seeded = await _seedRounds(deps, durationSecs: 36000);
+      await _pumpDetail(tester, deps, seeded.name);
+
+      final row = _lengthRow(seeded.effortId);
+      expect(_inRow(row, '10:00:00'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('value-stepper-plus-duration')));
+      await tester.pumpAndSettle();
+
+      expect(_inRow(row, '10:00:00'), findsOneWidget);
+      expect(_plannedSecs(deps, seeded.effortId), 36000);
     });
 
     testWidgets('S-4403: the row number opens the duration dialog', (
@@ -348,6 +365,12 @@ void main() {
       final deps = await _buildDeps(modality: 'cardio_endurance');
       final seeded = await _seedRounds(deps);
       await _pumpDetail(tester, deps, seeded.name);
+
+      expect(
+        find.byKey(const Key('tap-hint')),
+        findsOneWidget,
+        reason: 'S-4712: the editable round length row carries the hint',
+      );
 
       await tester.tap(
         find.descendant(

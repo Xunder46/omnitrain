@@ -258,6 +258,11 @@ void main() {
         containsAll(<String>['reps', 'weight']),
         reason: 'the session editor keeps its reps and weight rows',
       );
+      expect(
+        find.byKey(const Key('tap-hint')),
+        findsNWidgets(2),
+        reason: 'S-4712: both editable rows carry the hint',
+      );
 
       expect(find.byType(SetCountStepper), findsOneWidget);
       final stepper = tester.widget<SetCountStepper>(
@@ -516,8 +521,8 @@ void main() {
     });
   });
 
-  group('S-4507 interval (A5)', () {
-    testWidgets('no editable value, and a stored target stays untouched', (
+  group('S-4507 interval (A5, restored by plan 39 D-5)', () {
+    testWidgets('the interval row reads the stored target and steps it', (
       tester,
     ) async {
       final routine = await _newRoutine('Interval Routine');
@@ -536,22 +541,28 @@ void main() {
 
       await _openDetail(tester, routine, exerciseName: exercise.name);
 
-      expect(find.byType(ValueStepperRow), findsNothing);
-      expect(find.byType(InlineMetricEditor), findsNothing);
+      final weightRow = find.byKey(ValueKey('$effortId-0-weight'));
+      expect(find.byType(ValueStepperRow), findsOneWidget);
+      expect(weightRow, findsOneWidget);
       expect(find.text('Interval 1 of 1'), findsOneWidget);
+      expect(
+        _shownNumber(tester, weightRow),
+        '10.0',
+        reason: 'an old routine\'s stored extraWeight target comes back',
+      );
+
+      await tester.tap(find.byKey(const Key('value-stepper-plus-weight')));
+      await tester.pumpAndSettle();
+
+      expect(_shownNumber(tester, weightRow), '12.5');
+      final inState = _target(routine, effortId, MetricIds.extraWeight, 0);
+      expect(inState, isNotNull);
+      expect(inState!.targetMin, 12.5);
 
       await tester.tap(find.byKey(const Key('routine-add-set')));
       await tester.pumpAndSettle();
 
-      final inState = _target(routine, effortId, MetricIds.extraWeight, 0);
-      expect(inState, isNotNull);
-      expect(inState!.targetMin, 10.0);
-      expect(find.text('Interval 1 of 2'), findsNothing);
-      expect(
-        find.text('Interval 2 of 2'),
-        findsOneWidget,
-        reason: 'adding a set focuses the new one',
-      );
+      expect(find.text('Interval 2 of 2'), findsOneWidget);
 
       await routine.routineState.saveRoutine();
       final stored = await _storedTarget(
@@ -561,7 +572,7 @@ void main() {
         0,
       );
       expect(stored, isNotNull);
-      expect(stored!.targetMin, 10.0);
+      expect(stored!.targetMin, 12.5);
     });
   });
 

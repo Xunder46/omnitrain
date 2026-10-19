@@ -247,12 +247,17 @@ Verified by:
   stability`, `… cross-surface parity`, `… viewport overflow
   sweep`) — the docked placement satisfies the no-overlap,
   scroll-stability, and cross-surface-parity invariants.
+- `test/timer_digits_hours_test.dart` (group `Timer digits past an
+  hour — rest chip (S-4703)` · `S-4703: a rest open 4535 s reads
+  1:15:35`, `S-4703: a rest open 75 s reads 01:15`) — the chip's
+  digit format.
 
 The chip itself is unchanged from the previous floating
 implementation: it is tappable across its whole tile, distinguishes
 its states without requiring the user to read the number, and
 keeps an identical bounding rect across running and paused
-states. The strip's empty area around the chip absorbs taps via
+states. Its elapsed count reads `mm:ss` below an hour and `h:mm:ss`
+from it (`OmniDateUtils.formatTimerDigits`). The strip's empty area around the chip absorbs taps via
 a transparent `GestureDetector`, so a tap that lands on the
 padding around the chip does not reach the scrollable beneath;
 the chip's own tap-to-pause/resume handler is unaffected.

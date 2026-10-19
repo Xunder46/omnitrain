@@ -10,6 +10,7 @@ import '../../core/constants/workout_constants.dart';
 import '../../widgets/session/set_count_stepper.dart';
 import '../../widgets/session/set_segment_bar.dart';
 import '../../widgets/session/value_stepper_row.dart';
+import '../../widgets/session/metric_crown_widget.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -1302,6 +1303,7 @@ extension on _RoutineSetupScreenState {
       context,
       title: 'Edit Round Duration',
       initialSecs: secs,
+      maxSecs: MetricStepCalc.maxDurationSeconds,
     );
     if (result != null && mounted) await _setRoundLength(effort, setIndex, result);
   }
@@ -1357,9 +1359,9 @@ extension on _RoutineSetupScreenState {
           ],
         );
       case 'timed':
-        // O-11: an interval has no editable target; stored extraWeight rows of
-        // old routines stay in the data, untouched and ignored here.
-        return const SizedBox.shrink();
+        // Plan 39 (D-5): an interval carries the same load target as a hold;
+        // an extraWeight target an older routine stored reads back in the row.
+        return _buildExtraWeightRow(effort, targets, setIndex, weightStep);
       case 'round':
         final roundDuration =
             _getTargetInt(targets, MetricIds.roundDuration, setIndex) ?? 180;
@@ -1374,28 +1376,39 @@ extension on _RoutineSetupScreenState {
               _setRoundLength(effort, setIndex, value as int),
         );
       case 'drill':
-        // Target stored in canonical kg; convert to display unit for the row.
-        final extraWeight = _fromCanonicalWeight(
-          _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
-        );
-        return ValueStepperRow(
-          key: ValueKey('${effort.id}-$setIndex-weight'),
-          metricType: 'weight',
-          currentValue: extraWeight,
-          unitLabel: _preferredWeightUnitLabel,
-          step: weightStep,
-          onValueChanged: (value) => widget.routineState.setTargetValue(
-            effort.id,
-            MetricIds.extraWeight,
-            MetricIds.unitKg,
-            setIndex: setIndex,
-            // Convert display-unit value to canonical kg before persisting.
-            targetMin: _toCanonicalWeight(value as double),
-          ),
-        );
+        return _buildExtraWeightRow(effort, targets, setIndex, weightStep);
       default:
         return Text('—', style: theme.textTheme.displayLarge);
     }
+  }
+
+  /// The `−  <value>  +` load target a hold and an interval share (plan 39,
+  /// D-5): stored as canonical kg, shown in the user's preferred unit.
+  Widget _buildExtraWeightRow(
+    TemplateEffort effort,
+    List<TemplateTarget> targets,
+    int setIndex,
+    double weightStep,
+  ) {
+    // Target stored in canonical kg; convert to display unit for the row.
+    final extraWeight = _fromCanonicalWeight(
+      _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
+    );
+    return ValueStepperRow(
+      key: ValueKey('${effort.id}-$setIndex-weight'),
+      metricType: 'weight',
+      currentValue: extraWeight,
+      unitLabel: _preferredWeightUnitLabel,
+      step: weightStep,
+      onValueChanged: (value) => widget.routineState.setTargetValue(
+        effort.id,
+        MetricIds.extraWeight,
+        MetricIds.unitKg,
+        setIndex: setIndex,
+        // Convert display-unit value to canonical kg before persisting.
+        targetMin: _toCanonicalWeight(value as double),
+      ),
+    );
   }
 
   Widget _buildSetControls(int totalEntries, TemplateEffort effort) {

@@ -9,6 +9,10 @@ const double _kRingHorizontalInset = 64;
 /// together instead of the ring lagging a second behind.
 const Duration _kSweepDuration = Duration(milliseconds: 1000);
 
+/// The digits keep this much of the ring's width free, so they stay inside the
+/// circle (the chord at the text's height is narrower than the box).
+const double _kRingDigitsInset = 40;
+
 /// Countdown ring for the round effort: a track circle, an arc that empties as
 /// the time runs out, and the digits centred inside it.
 ///
@@ -18,7 +22,9 @@ const Duration _kSweepDuration = Duration(milliseconds: 1000);
 /// because the round length was just edited, which must not read as time left.
 ///
 /// The ring is at most [size] across and never wider than the screen minus
-/// 64 dp. Colours come from `Theme.of(context).colorScheme` only.
+/// 64 dp. The child is bounded to the ring's usable chord, the side minus 40 dp,
+/// so it stays inside the circle. Colours come from
+/// `Theme.of(context).colorScheme` only.
 ///
 /// Plan: `docs/plans/2026-10-16-38d-countdown-plan/2026-10-16-38d-countdown-plan.md`
 /// (D-1). Covered by `test/timer_ring_test.dart`.
@@ -107,7 +113,10 @@ class _TimerRingState extends State<TimerRing> {
                     ),
                   ),
                 ),
-                widget.child,
+                SizedBox(
+                  width: side - _kRingDigitsInset,
+                  child: widget.child,
+                ),
               ],
             ),
           ),

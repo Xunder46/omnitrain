@@ -281,7 +281,7 @@ Text _metricValueText(WidgetTester tester, {int editorIndex = 0}) {
 void main() {
   group('Timed emphasis redesign', () {
     testWidgets(
-      'free-session timed and drill stopped states show dominant digits only: no status chrome, no weight row on an interval, one on a hold, across all themes',
+      'free-session timed and drill stopped states show dominant digits only: no status chrome, one weight row on an interval and on a hold, across all themes',
       (tester) async {
         for (final themeValue in AppTheme.values) {
           for (final effortKind in const ['timed', 'drill']) {
@@ -313,8 +313,8 @@ void main() {
             final timerValue = _metricValueText(tester);
 
             expect(timerValue.style?.color, OmniTheme.colors.textDominant);
-            // D-3/D-4/D-1/D-2: no status chrome at all, an interval has no
-            // weight control, a hold's weight row is its only input.
+            // D-3/D-4/D-1/D-2, plan 39 D-5: no status chrome at all, and an
+            // interval and a hold each show their weight row as the load input.
             expect(find.text('STOPPED'), findsNothing);
             expect(find.byIcon(Icons.play_circle_outline), findsNothing);
             expect(
@@ -323,7 +323,7 @@ void main() {
             );
             expect(
               find.byKey(const Key('value-stepper-plus-weight')),
-              effortKind == 'drill' ? findsOneWidget : findsNothing,
+              findsOneWidget,
             );
             expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
           }
@@ -410,7 +410,8 @@ void main() {
             expect(find.byIcon(Icons.play_circle_outline), findsNothing);
             expect(
               find.byKey(const Key('value-stepper-plus-weight')),
-              effortKind == 'drill' ? findsOneWidget : findsNothing,
+              findsOneWidget,
+              reason: 'plan 39, D-5: an interval shows the row too',
             );
           }
         }
@@ -418,8 +419,8 @@ void main() {
     );
 
     testWidgets(
-      'routine setup shows no editor for a timed effort and one weight row for '
-      'a drill across all themes',
+      'routine setup shows one weight row for a timed effort and a drill '
+      'across all themes',
       (tester) async {
         for (final themeValue in AppTheme.values) {
           for (final effortKind in const ['timed', 'drill']) {
@@ -442,21 +443,14 @@ void main() {
 
             await _openRoutineDetail(tester, deps.exercise.name);
 
-            if (effortKind == 'timed') {
-              // A5/O-11: an interval has no editable target in the routine
-              // editor either — the body holds the bar and the sets control.
-              expect(find.byType(ValueStepperRow), findsNothing);
-              expect(find.byType(InlineMetricEditor), findsNothing);
-            } else {
-              // A4: a hold's only input is its single boxed weight row, still
-              // dominant.
-              expect(find.byType(ValueStepperRow), findsOneWidget);
-              expect(find.byType(InlineMetricEditor), findsOneWidget);
-              expect(
-                _metricValueText(tester).style?.color,
-                OmniTheme.colors.textDominant,
-              );
-            }
+            // Plan 39 (D-5): a hold and an interval each show their single
+            // boxed weight row, still dominant.
+            expect(find.byType(ValueStepperRow), findsOneWidget);
+            expect(find.byType(InlineMetricEditor), findsOneWidget);
+            expect(
+              _metricValueText(tester).style?.color,
+              OmniTheme.colors.textDominant,
+            );
           }
         }
       },

@@ -1573,4 +1573,32 @@ void main() {
       },
     );
   });
+
+  group('OmniDateUtils.formatTimerDigits', () {
+    // S-4701: the digits a timer is read in — `mm:ss`, both padded, until the
+    // count passes an hour, then `h:mm:ss` with the hour unpadded.
+    test('reads mm:ss, both padded, below an hour', () {
+      expect(OmniDateUtils.formatTimerDigits(0), '00:00');
+      expect(OmniDateUtils.formatTimerDigits(59), '00:59');
+      expect(OmniDateUtils.formatTimerDigits(600), '10:00');
+      expect(OmniDateUtils.formatTimerDigits(3599), '59:59');
+    });
+
+    test('reads h:mm:ss from an hour, minutes and seconds padded', () {
+      expect(OmniDateUtils.formatTimerDigits(3600), '1:00:00');
+      expect(OmniDateUtils.formatTimerDigits(4535), '1:15:35');
+      expect(OmniDateUtils.formatTimerDigits(8130), '2:15:30');
+    });
+
+    test('holds the ten-hour ceiling', () {
+      expect(OmniDateUtils.formatTimerDigits(36000), '10:00:00');
+    });
+
+    test(
+      'a timer before its start reads zero rather than a negative clock',
+      () {
+        expect(OmniDateUtils.formatTimerDigits(-5), '00:00');
+      },
+    );
+  });
 }

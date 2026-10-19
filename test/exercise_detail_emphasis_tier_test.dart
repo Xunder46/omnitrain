@@ -478,13 +478,12 @@ void main() {
       _expectEmphasisTierDominant(tester, 'weight');
     });
 
-    // ── S-106b: Interval effort — no weight control at all (O-11) ─────────
+    // ── S-106b: Interval effort — the weight row is back (plan 39, A1) ────
     //
-    // Interval (`timed`) work carries no weight: the screen offers no
-    // weight input, so no `InlineMetricEditor` with a weight metric
-    // (`extra-weight` or `weight`) is built — even with a value seeded on
-    // the entry.
-    testWidgets('S-106b interval effort renders no weight editor', (
+    // Interval (`timed`) work carries a weight row again, like the hold: an
+    // `InlineMetricEditor` with a weight metric is built, from the value
+    // seeded on the entry.
+    testWidgets('S-106b interval effort renders a weight editor', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
@@ -516,8 +515,8 @@ void main() {
           );
       expect(
         weightEditors,
-        isEmpty,
-        reason: 'the interval screen has no weight control (O-11)',
+        isNotEmpty,
+        reason: 'the interval screen has a weight row again (plan 39)',
       );
     });
 

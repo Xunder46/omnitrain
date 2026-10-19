@@ -1,10 +1,24 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/utils/date_utils.dart';
 import 'metric_crown_widget.dart';
 
 export 'metric_crown_widget.dart' show MetricStepCalc, showMetricEditPopup;
 
-enum MetricEmphasisTier { dominant, secondary, muted }
+/// Font size of the live count-up readout (interval and hold elapsed digits).
+const double kCountUpDigitsFontSize = 112;
+
+/// Font size of the ring digits: the `dominant` tier (40 sp) 20% larger.
+const double kRingDigitsFontSize = 48;
+
+enum MetricEmphasisTier {
+  dominant,
+  secondary,
+  muted,
+
+  /// The count-up readout, 112 sp ([kCountUpDigitsFontSize]).
+  hero,
+}
 
 /// Metric editor with tap-to-edit popup as the sole value-change mechanism.
 ///
@@ -41,6 +55,16 @@ class InlineMetricEditor extends StatefulWidget {
   /// When true, the unit is shown inline beside the value instead of below it.
   final bool showUnitInline;
 
+  /// Gap between the number and the unit label in the column layout.
+  ///
+  /// Defaults to 16, the historical spacing, so callers that do not name one
+  /// are unchanged; [ValueStepperRow] passes 0 so the label hugs the number.
+  final double unitGap;
+
+  /// When true — and the editor is not [isReadOnly] — a dim `tap to type`
+  /// line (key `tap-hint`) sits under the unit label.
+  final bool showTapHint;
+
   /// Optional tap handler.
   ///
   /// When provided, tapping the number value delegates to this callback
@@ -57,6 +81,9 @@ class InlineMetricEditor extends StatefulWidget {
   /// When omitted, rendering stays backward-compatible with the previous
   /// displayLarge-based styling.
   final MetricEmphasisTier? emphasisTier;
+
+  /// Overrides the tier's font size; the ring passes [kRingDigitsFontSize].
+  final double? valueFontSize;
 
   /// Called when value changes, passes new value
   final Function(dynamic) onValueChanged;
@@ -76,8 +103,11 @@ class InlineMetricEditor extends StatefulWidget {
     this.isReadOnly = false,
     this.unitLabelColor,
     this.showUnitInline = false,
+    this.unitGap = 16,
+    this.showTapHint = false,
     this.onTap,
     this.emphasisTier,
+    this.valueFontSize,
     this.padding,
     required this.onValueChanged,
   });
@@ -97,9 +127,7 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
         return (widget.currentValue as double?)?.toStringAsFixed(1) ?? '0.0';
       case 'duration':
         final seconds = widget.currentValue as int? ?? 0;
-        final minutes = seconds ~/ 60;
-        final secs = seconds % 60;
-        return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+        return OmniDateUtils.formatTimerDigits(seconds);
       case 'rpe':
         return (widget.currentValue as int?)?.toString() ?? '5';
       case 'extra-weight':
@@ -156,12 +184,24 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
           letterSpacing: -1,
           color: OmniTheme.colors.textMuted,
         );
+      case MetricEmphasisTier.hero:
+        valueStyle = baseLarge?.copyWith(
+          fontSize: kCountUpDigitsFontSize,
+          fontWeight: FontWeight.w300,
+          letterSpacing: -4,
+          height: 1.0,
+          color: OmniTheme.colors.textDominant,
+        );
       case null:
         valueStyle = baseLarge?.copyWith(
           fontWeight: FontWeight.w300,
           letterSpacing: -2,
           color: null,
         );
+    }
+
+    if (widget.valueFontSize != null) {
+      valueStyle = valueStyle?.copyWith(fontSize: widget.valueFontSize);
     }
 
     if (widget.isReadOnly && widget.emphasisTier == null) {
@@ -202,11 +242,27 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
     } else {
       valueAndUnit = Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(displayText, textAlign: TextAlign.center, style: valueStyle),
           if (widget.unitLabel.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(widget.unitLabel.toUpperCase(), style: unitStyle),
+            SizedBox(height: widget.unitGap),
+            Text(
+              widget.unitLabel.toUpperCase(),
+              textAlign: TextAlign.center,
+              style: unitStyle,
+            ),
+          ],
+          if (widget.showTapHint && !widget.isReadOnly) ...[
+            const SizedBox(height: 2),
+            Text(
+              'tap to type',
+              key: const Key('tap-hint'),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: OmniTheme.colors.textMuted,
+              ),
+            ),
           ],
         ],
       );

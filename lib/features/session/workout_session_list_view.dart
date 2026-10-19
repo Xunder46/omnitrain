@@ -92,9 +92,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             totalDuration += (elapsed > 0 ? elapsed : target);
           }
         }
-        final minutes = totalDuration ~/ 60;
-        final seconds = totalDuration % 60;
-        return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+        return '${OmniDateUtils.formatTimerDigits(totalDuration)} total';
       case 'round':
         final totalRounds = widget.workoutState
             .getRoundsForEffort(effortId)
@@ -821,7 +819,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                         // bottom of the screen whenever a rest was up.
                         child: SingleChildScrollView(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            padding: const EdgeInsets.only(top: 8, bottom: 16),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.start,
                               children: [

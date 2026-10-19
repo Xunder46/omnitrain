@@ -200,6 +200,11 @@ void main() {
       expect(_plusRow('reps'), findsOneWidget);
       expect(_plusRow('weight'), findsOneWidget);
       expect(_editorNumber('reps', '10'), findsOneWidget);
+      expect(
+        find.byKey(const Key('tap-hint')),
+        findsNWidgets(2),
+        reason: 'S-4712: both editable rows carry the hint',
+      );
 
       await tester.tap(_plusRow('reps'));
       await tester.pumpAndSettle();
