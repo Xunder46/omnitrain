@@ -520,7 +520,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   ///
   /// It does not call `loadSessionData`, `_restoreTimerStateFromPersisted` or
   /// [_loadExercises], and it changes neither [_currentSet] nor the detail
-  /// index, the timers or [_isLoading].
+  /// index, the timers still running or [_isLoading]; it starts the ticker of
+  /// an interval the watch started, and drops the state of one it finished.
   void _resyncExercisesFromState() {
     if (_exercises.isEmpty) return;
 
@@ -535,6 +536,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           : null;
       setState(() {
         _exercises = ordered;
+        _dropFinishedTimerState();
+        _adoptRunningTimerState();
 
         // A rolling session's list is re-ordered by block, so the index the
         // user is on follows the effort they had open rather than its slot.

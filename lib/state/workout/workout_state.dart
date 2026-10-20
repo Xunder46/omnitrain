@@ -90,6 +90,15 @@ class WorkoutState extends ChangeNotifier {
       _timerManager.getTimedInstancesForEffort(effortId);
   List<EntryRest> getEntryRests(String effortId) =>
       _timerManager.getEntryRests(effortId);
+
+  /// The held session's in-progress work timers, one per wire kind (43b3
+  /// D-1). Empty when no session is active.
+  List<InProgressWorkTimer> inProgressWorkTimers() {
+    if (!hasActiveSession) return const <InProgressWorkTimer>[];
+    return _timerManager.inProgressWorkTimers([
+      for (final segment in segments) ...getEffortsForSegment(segment.id),
+    ]);
+  }
   Exercise? getExercise(String? exerciseId) =>
       _sessionCore.getExercise(exerciseId);
   List<SessionBlock> getSessionBlocks() => _sessionCore.getSessionBlocks();
@@ -143,6 +152,14 @@ class WorkoutState extends ChangeNotifier {
   /// clears both timer managers; this does not).
   Future<void> refreshEfforts(Iterable<String> effortIds) =>
       _sessionCore.refreshEfforts(effortIds);
+
+  /// Adopts a running timer the watch sent into the target interval of
+  /// [effortId], bumping the watch refresh revision and notifying once when
+  /// something was written (43b2 D-1, D-2). Returns whether anything was
+  /// written.
+  Future<bool> adoptRemoteWorkTimer(String effortId, RemoteWorkTimer remote) =>
+      _sessionCore.adoptRemoteWorkTimer(effortId, remote);
+
   Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) =>
       _sessionCore.populateSessionFromManifest(manifest);
   Future<void> endSession() => _sessionCore.endSession();

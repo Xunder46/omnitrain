@@ -38,6 +38,8 @@ import 'watch_session_adoption_bridge.dart';
 import 'watch_session_auto_push.dart';
 import 'watch_session_inbox.dart';
 import 'watch_sync_request_handler.dart';
+import 'watch_timer_adoption.dart';
+import 'watch_timer_push.dart';
 
 /// A phone with no session running: no ladder, nothing logged, nobody waiting.
 ///
@@ -68,6 +70,8 @@ class WatchSyncGraph {
     required this.lateEntryRecovery,
     required this.adoption,
     required this.autoPush,
+    required this.timerPush,
+    required this.timerAdoption,
   });
 
   /// The session running on the wrist, as the phone mirrors it.
@@ -90,6 +94,15 @@ class WatchSyncGraph {
   /// The one object that pushes the phone's own session to the watch: the app
   /// binds the same `WorkoutState` to it (D-75).
   final WatchSessionAutoPush autoPush;
+
+  /// The push that keeps the wrist's work timers in step with the phone's
+  /// in-progress intervals, pauses and resumes (plan 43b3 D-2). The app binds
+  /// the same `WorkoutState` to it.
+  final WatchTimerPush timerPush;
+
+  /// The adoption that applies a timer the wrist started to the phone's own
+  /// interval (plan 43b2 D-3). The app binds the same `WorkoutState` to it.
+  final WatchTimerAdoption timerAdoption;
 
   /// Asks the wrist for its session once — the phone's half of catching up
   /// after being out of reach (D-96).
@@ -259,6 +272,14 @@ Future<WatchSyncGraph?> createWatchSync({
     clock: clock,
     onFailure: onFailure,
   );
+  // The timers ride the same mirror and transport: a phone that starts, pauses
+  // or ends an interval tells the wrist as soon as the window closes (43b3).
+  final timerPush = WatchTimerPush(mirror: mirror, onFailure: onFailure);
+  // And the other direction: a timer the wrist starts becomes the phone's.
+  final timerAdoption = WatchTimerAdoption(
+    mirror: mirror,
+    onFailure: onFailure,
+  );
 
   resolved.onIncoming((frame) async {
     final request = WatchTransportRequest.nameOf(frame);
@@ -291,5 +312,7 @@ Future<WatchSyncGraph?> createWatchSync({
     lateEntryRecovery: inbox,
     adoption: adoption,
     autoPush: push,
+    timerPush: timerPush,
+    timerAdoption: timerAdoption,
   );
 }

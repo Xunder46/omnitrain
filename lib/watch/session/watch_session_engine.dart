@@ -734,6 +734,9 @@ class WatchSessionEngine {
 
   /// A timer the phone told the watch about. It is not news back to the phone,
   /// so nothing is emitted: the phone already decided this.
+  ///
+  /// The owner's rule is that the earlier start wins (D-4/D-5), for the work
+  /// kinds only (see below).
   Future<bool> _adoptTimer(
     Map<String, Object?> timer,
     String sessionId, {
@@ -742,17 +745,38 @@ class WatchSessionEngine {
   }) async {
     if (_timers.any((row) => row.recordId == recordId)) return false;
 
+    final kind = timer['kind']! as String;
+    final slotId = timer['sessionExerciseId'] as String?;
+    final startedAt = parseUtcIso(timer['startedAt']);
+    final stoppedAt = parseOptionalUtcIso(timer['stoppedAt']);
+
+    // D-5: the owner's rule, the earlier start wins — for the work kinds only.
+    // A rest is exempt (D-4's second half): the phone's newer rest still
+    // supersedes the wrist's own, because a rest has no owner slot to tie the
+    // earlier copy to (S-336).
+    if (kind != WatchTimerKind.rest && stoppedAt == null) {
+      final held = _newestTimer(kind: kind);
+      if (held != null &&
+          held.sessionId == sessionId &&
+          held.state != WatchTimerState.stopped &&
+          held.sessionExerciseId == slotId &&
+          held.startedAt.isBefore(startedAt)) {
+        return false;
+      }
+    }
+
     final stored = await _store.append(
       WatchTimerRecord(
         recordId: recordId,
         sessionId: sessionId,
         recordedAt: recordedAt,
-        kind: timer['kind']! as String,
-        startedAt: parseUtcIso(timer['startedAt']),
+        kind: kind,
+        startedAt: startedAt,
         pausedAt: parseOptionalUtcIso(timer['pausedAt']),
-        stoppedAt: parseOptionalUtcIso(timer['stoppedAt']),
+        stoppedAt: stoppedAt,
         accumulatedPauseMs: (timer['accumulatedPauseMs'] as int?) ?? 0,
         plannedDurationMs: timer['plannedDurationMs'] as int?,
+        sessionExerciseId: slotId,
       ),
     );
     _timers.add(stored);
@@ -1399,9 +1423,13 @@ class WatchSessionEngine {
   // ---------------------------------------------------------------------------
 
   /// Starts [kind], replacing any timer of that kind that was already running.
+  ///
+  /// [sessionExerciseId] is the slot the work belongs to (D-2/D-5); a rest is
+  /// started with none.
   Future<WatchTimerRecord> startTimer(
     String kind, {
     int? plannedDurationMs,
+    String? sessionExerciseId,
   }) async {
     _requireTimerKind(kind);
     final now = _clock();
@@ -1413,6 +1441,7 @@ class WatchSessionEngine {
         kind: kind,
         startedAt: now,
         plannedDurationMs: plannedDurationMs,
+        sessionExerciseId: sessionExerciseId,
       ),
     );
     return stored;
@@ -1551,6 +1580,7 @@ class WatchSessionEngine {
     stoppedAt: stoppedAt ?? timer.stoppedAt,
     accumulatedPauseMs: accumulatedPauseMs ?? timer.accumulatedPauseMs,
     plannedDurationMs: timer.plannedDurationMs,
+    sessionExerciseId: timer.sessionExerciseId,
   );
 
   Future<WatchTimerRecord> _appendTimer(WatchTimerRecord row) async {

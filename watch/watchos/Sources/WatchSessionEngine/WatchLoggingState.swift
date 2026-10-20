@@ -384,17 +384,30 @@ public final class WatchLoggingState {
         }
     }
 
-    /// The running work clock, or nil when none is running or the session is no
-    /// longer one to log into (D-1302).
+    /// The running work clock, or nil when none is running, a message put it on
+    /// another slot, or the session is no longer one to log into (D-1302, D-3).
+    ///
+    /// Only a timer that came from a message is hidden by its slot: the phone's
+    /// clock for another exercise is not this exercise's clock, but a clock the
+    /// wrist started stays the running one across a jump (S-1403, S-6004).
     ///
     /// Derived from storage rather than counted here, so a state built after a
     /// relaunch reads the same clock the screen that started it did (S-1306,
     /// S-1312).
+    ///
+    /// Known limit: the wire holds one timer per kind, so a newer timer of a
+    /// kind for another slot supersedes the older one in `newestTimer`, whoever
+    /// started either.
     public var workTimer: WatchTimerRecord? {
         guard canLog, let kind = workTimerKind,
               let timer = engine.timerFor(kind),
               timer.state != WatchTimerState.stopped
         else { return nil }
+        if engine.isTimerFromMessage(timer),
+           let slotId = timer.sessionExerciseId,
+           slotId != (slot?["sessionExerciseId"] as? String) {
+            return nil
+        }
         return timer
     }
 
@@ -430,7 +443,8 @@ public final class WatchLoggingState {
         if isResting { await endRest(at: startedAt) }
         _ = try? await engine.startTimer(
             kind,
-            plannedDurationMs: kind == WatchTimerKind.round ? plannedRoundMs : nil
+            plannedDurationMs: kind == WatchTimerKind.round ? plannedRoundMs : nil,
+            sessionExerciseId: slot?["sessionExerciseId"] as? String
         )
     }
 

@@ -219,6 +219,110 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     _inProgressKeys.remove(timerKey);
   }
 
+  /// Drops the timer UI state of every interval the persisted data now holds
+  /// as finished (plan 43a D-4): a watch-logged interval fills the phone's
+  /// unfinished one, so a ticker the phone had running for that position has
+  /// nothing left to count. Intervals still running stay untouched; a key whose
+  /// instance is gone is left alone (a reload may be in flight).
+  void _dropFinishedTimerState() {
+    final keys = {..._effortTimers.keys, ..._effortRunning.keys, ..._inProgressKeys};
+    for (final key in keys) {
+      final sep = key.lastIndexOf('-');
+      if (sep <= 0 || sep >= key.length - 1) continue;
+      final effortId = key.substring(0, sep);
+      final entryIndex = int.tryParse(key.substring(sep + 1));
+      if (entryIndex == null) continue;
+      final kind = _getEffortKind(effortId);
+      final finished = switch (kind) {
+        'round' => _getRoundInstance(effortId, entryIndex)?.state == RoundState.finished,
+        'timed' || 'drill' => _getTimedInstance(effortId, entryIndex)?.state == TimedState.finished,
+        _ => false,
+      };
+      if (finished) _resetTimerState(effortId, entryIndex);
+    }
+  }
+
+  /// Starts the timer UI state of every displayed interval the persisted data
+  /// now holds as running or paused (plan 43b2 D-4): the watch started it, so
+  /// no tap on this screen created its ticker, its running flag or its place in
+  /// the in-progress lock. An interval that already has a live ticker, and every
+  /// interval that is not running or paused, is left alone.
+  void _adoptRunningTimerState() {
+    for (final exercise in _exercises) {
+      final effortId = exercise['id'] as String;
+      final effortKind = _getEffortKind(effortId);
+      if (effortKind != 'timed' &&
+          effortKind != 'drill' &&
+          effortKind != 'round') {
+        continue;
+      }
+      final count = effortKind == 'round'
+          ? widget.workoutState.getRoundsForEffort(effortId).length
+          : widget.workoutState.getTimedInstancesForEffort(effortId).length;
+      for (var i = 0; i < count; i++) {
+        final key = '$effortId-$i';
+        final bool active;
+        final bool paused;
+        final int elapsedMs;
+        final int targetSecs;
+        if (effortKind == 'round') {
+          final round = _getRoundInstance(effortId, i);
+          if (round == null) continue;
+          active = round.state == RoundState.active;
+          paused = round.state == RoundState.paused;
+          elapsedMs = round.elapsedMs;
+          targetSecs = round.plannedDurationSecs;
+        } else {
+          final instance = _getTimedInstance(effortId, i);
+          if (instance == null) continue;
+          active = instance.state == TimedState.active;
+          paused = instance.state == TimedState.paused;
+          elapsedMs = instance.elapsedMs;
+          targetSecs = instance.targetDurationSecs;
+        }
+        if (active || paused) {
+          // A round counts from the length its persisted instance holds now (the
+          // watch's, once adopted). A timed or hold interval's persisted target
+          // is wiped when it starts, so one the watch started drops the cache
+          // entry and the entry data governs. One the phone started itself
+          // (already in the in-progress lock) keeps the target dialled before
+          // the start, which no persisted record holds any more.
+          if (effortKind == 'round') {
+            _effortTargetDuration[key] = targetSecs;
+          } else if (!_inProgressKeys.contains(key)) {
+            _effortTargetDuration.remove(key);
+          }
+        }
+        if (active) {
+          if (_effortTimers[key]?.isActive == true) continue;
+          _effortElapsed[key] = (elapsedMs / 1000).round();
+          _effortRunning[key] = true;
+          _inProgressKeys.add(key);
+          _effortTimers[key]?.cancel();
+          _effortTimers[key] = Timer.periodic(
+            _kTimerUpdateInterval,
+            (_) => _onEffortTick(effortId, i),
+          );
+          // An open-ended interval has nothing to schedule, and scheduling with a
+          // zero target would cancel another interval's notification.
+          if (_getEffortTargetDuration(effortId, i, effortKind) > 0) {
+            _scheduleEffortExpiryNotification(
+              effortId,
+              i,
+              effortKind,
+              playSound: !_isAppInForeground,
+            );
+          }
+        } else if (paused) {
+          _effortTimers[key]?.cancel();
+          _effortElapsed[key] = (elapsedMs / 1000).round();
+          _effortRunning[key] = false;
+          _inProgressKeys.add(key);
+        }
+      }
+    }
+  }
+
   /// Entry [deletedIndex] of [effortId] was deleted. Timer UI state is keyed by
   /// position, so drop that entry's state (and its ticker) and move every later
   /// entry's state, and its live ticker, down one place, the way the persisted
@@ -647,15 +751,11 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
 
         unawaited(widget.restNotificationService.cancelRestNotifications());
         _lastRestPingFiredAt.remove(effortId);
-        widget.workoutState.startTimedEntry(effortId, entryIndex).whenComplete(
-          () {
-            _pendingTimedTransitions.remove(timerKey);
-            if (!mounted) return;
-            setState(() {
-              _effortTargetDuration.remove(timerKey);
-            });
-          },
-        );
+        // The dialled target stays cached: the started instance persists a zero
+        // target, so a resync after a watch write could not recover it.
+        widget.workoutState
+            .startTimedEntry(effortId, entryIndex)
+            .whenComplete(() => _pendingTimedTransitions.remove(timerKey));
     }
   }
 

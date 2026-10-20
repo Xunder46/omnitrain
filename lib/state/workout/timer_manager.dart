@@ -7,6 +7,93 @@ import '../../core/utils/entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 
+/// One in-progress work timer, in the shape the watch's `timer_state` frame
+/// carries (43b3 D-1).
+///
+/// [wireKind] is `elapsed` (a `timed` effort), `hold` (a `drill` effort) or
+/// `round`; [effortId] is the wire's `sessionExerciseId`.
+class InProgressWorkTimer {
+  final String effortId;
+  final String wireKind;
+  final int startedAtMs;
+  final int? pausedAtMs;
+  final int accumulatedPauseMs;
+  final int? plannedDurationMs;
+
+  const InProgressWorkTimer({
+    required this.effortId,
+    required this.wireKind,
+    required this.startedAtMs,
+    this.pausedAtMs,
+    this.accumulatedPauseMs = 0,
+    this.plannedDurationMs,
+  });
+
+  bool get paused => pausedAtMs != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is InProgressWorkTimer &&
+      other.effortId == effortId &&
+      other.wireKind == wireKind &&
+      other.startedAtMs == startedAtMs &&
+      other.pausedAtMs == pausedAtMs &&
+      other.accumulatedPauseMs == accumulatedPauseMs &&
+      other.plannedDurationMs == plannedDurationMs;
+
+  @override
+  int get hashCode => Object.hash(
+    effortId,
+    wireKind,
+    startedAtMs,
+    pausedAtMs,
+    accumulatedPauseMs,
+    plannedDurationMs,
+  );
+}
+
+/// A running work timer the watch sent, before it is written into an effort's
+/// interval (43b2 D-2).
+///
+/// [wireKind] is `elapsed` (a `timed` effort), `hold` (a `drill` effort) or
+/// `round`; [startedAtMs] is the watch's wall clock, so the phone counts from
+/// the moment the work actually began.
+class RemoteWorkTimer {
+  final String wireKind;
+  final int startedAtMs;
+  final int? pausedAtMs;
+  final int accumulatedPauseMs;
+  final int? plannedDurationMs;
+
+  const RemoteWorkTimer({
+    required this.wireKind,
+    required this.startedAtMs,
+    this.pausedAtMs,
+    this.accumulatedPauseMs = 0,
+    this.plannedDurationMs,
+  });
+
+  bool get paused => pausedAtMs != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RemoteWorkTimer &&
+      other.wireKind == wireKind &&
+      other.startedAtMs == startedAtMs &&
+      other.pausedAtMs == pausedAtMs &&
+      other.accumulatedPauseMs == accumulatedPauseMs &&
+      other.plannedDurationMs == plannedDurationMs;
+
+  @override
+  int get hashCode => Object.hash(
+    wireKind,
+    startedAtMs,
+    pausedAtMs,
+    accumulatedPauseMs,
+    plannedDurationMs,
+  );
+}
+
 class TimerManager {
   final WorkoutRepository _repository;
   final void Function() _notify;
@@ -48,6 +135,223 @@ class TimerManager {
 
   List<EntryRest> getEntryRests(String effortId) {
     return List.unmodifiable(_entryRests[effortId] ?? []);
+  }
+
+  /// The in-progress work timers of [efforts], one per wire kind (43b3 D-1).
+  ///
+  /// A `timed` effort contributes its active or paused `TimedInstance`s as
+  /// `elapsed`, a `drill` effort as `hold`, and a `round` effort its active or
+  /// paused `RoundInstance`s as `round`. Not-started and finished instances,
+  /// and a `set` effort, contribute nothing. When more than one instance is in
+  /// progress for a kind the newest [InProgressWorkTimer.startedAtMs] is kept
+  /// (ties: the later one in [efforts]); the result is ordered by wire kind.
+  List<InProgressWorkTimer> inProgressWorkTimers(
+    Iterable<SegmentEffort> efforts,
+  ) {
+    final byKind = <String, InProgressWorkTimer>{};
+
+    for (final effort in efforts) {
+      final wireKind = switch (effort.effortKind) {
+        'timed' => 'elapsed',
+        'drill' => 'hold',
+        'round' => 'round',
+        _ => null,
+      };
+      if (wireKind == null) continue;
+
+      if (effort.effortKind == 'round') {
+        for (final round in getRoundsForEffort(effort.id)) {
+          if (round.state != RoundState.active &&
+              round.state != RoundState.paused) {
+            continue;
+          }
+          _keepNewestWorkTimer(
+            byKind,
+            InProgressWorkTimer(
+              effortId: effort.id,
+              wireKind: wireKind,
+              startedAtMs: round.startedAtMs,
+              pausedAtMs: round.state == RoundState.paused
+                  ? round.pausedAtMs
+                  : null,
+              accumulatedPauseMs: round.totalPausedDurationMs,
+              plannedDurationMs: round.plannedDurationSecs * 1000,
+            ),
+          );
+        }
+        continue;
+      }
+
+      for (final timed in getTimedInstancesForEffort(effort.id)) {
+        if (timed.state != TimedState.active &&
+            timed.state != TimedState.paused) {
+          continue;
+        }
+        _keepNewestWorkTimer(
+          byKind,
+          InProgressWorkTimer(
+            effortId: effort.id,
+            wireKind: wireKind,
+            startedAtMs: timed.startedAtMs,
+            pausedAtMs: timed.state == TimedState.paused
+                ? timed.pausedAtMs
+                : null,
+            accumulatedPauseMs: timed.totalPausedDurationMs,
+          ),
+        );
+      }
+    }
+
+    final kinds = byKind.keys.toList()..sort();
+    return [for (final kind in kinds) byKind[kind]!];
+  }
+
+  static void _keepNewestWorkTimer(
+    Map<String, InProgressWorkTimer> byKind,
+    InProgressWorkTimer candidate,
+  ) {
+    final held = byKind[candidate.wireKind];
+    if (held == null || candidate.startedAtMs >= held.startedAtMs) {
+      byKind[candidate.wireKind] = candidate;
+    }
+  }
+
+  /// Adopts a running timer the watch sent into [effortId]'s target interval
+  /// (43b2 D-1, D-2). Returns whether anything was written.
+  ///
+  /// [effortKind] is the effort's own kind; only `timed`↔`elapsed`,
+  /// `drill`↔`hold` and `round`↔`round` pair, and any other pairing is
+  /// ignored. The target is the effort's in-progress interval when it has one,
+  /// else its first not-finished one; an effort with neither is ignored. A
+  /// not-started target takes the remote's start and pause bookkeeping; an
+  /// in-progress target is replaced only when the remote started earlier (the
+  /// earlier start wins). The effort's open rests are closed in memory and
+  /// persisted as [startTimedEntry] does. No notification is sent here: the
+  /// session core bumps the refresh revision and notifies once.
+  Future<bool> adoptRemoteTimer(
+    String effortId,
+    String effortKind,
+    RemoteWorkTimer remote,
+  ) async {
+    _clearError();
+
+    try {
+      final wireKind = switch (effortKind) {
+        'timed' => 'elapsed',
+        'drill' => 'hold',
+        'round' => 'round',
+        _ => null,
+      };
+      if (wireKind == null || wireKind != remote.wireKind) return false;
+
+      return effortKind == 'round'
+          ? await _adoptRemoteRound(effortId, remote)
+          : await _adoptRemoteTimed(effortId, remote);
+    } catch (e) {
+      _setError('Failed to adopt the remote timer: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _adoptRemoteTimed(
+    String effortId,
+    RemoteWorkTimer remote,
+  ) async {
+    final list = _timedInstances[effortId];
+    if (list == null) return false;
+
+    final index = _targetIndex(
+      list,
+      inProgress: (i) =>
+          i.state == TimedState.active || i.state == TimedState.paused,
+      finished: (i) => i.state == TimedState.finished,
+    );
+    if (index < 0) return false;
+
+    final old = list[index];
+    if (old.state != TimedState.notStarted &&
+        remote.startedAtMs >= old.startedAtMs) {
+      return false;
+    }
+
+    final closedRests = closeAllOpenRestsInMemory(effortId);
+    final updated = old.copyWith(
+      state: remote.pausedAtMs != null ? TimedState.paused : TimedState.active,
+      startedAtMs: remote.startedAtMs,
+      pausedAtMs: remote.pausedAtMs,
+      totalPausedDurationMs: remote.accumulatedPauseMs,
+      targetDurationSecs: 0,
+      updatedAtMs: _clock().millisecondsSinceEpoch,
+    );
+    await _repository.updateTimedInstance(updated);
+    list[index] = updated;
+    _persistClosedRests(closedRests);
+    return true;
+  }
+
+  Future<bool> _adoptRemoteRound(
+    String effortId,
+    RemoteWorkTimer remote,
+  ) async {
+    final list = _roundInstances[effortId];
+    if (list == null) return false;
+
+    final index = _targetIndex(
+      list,
+      inProgress: (i) =>
+          i.state == RoundState.active || i.state == RoundState.paused,
+      finished: (i) => i.state == RoundState.finished,
+    );
+    if (index < 0) return false;
+
+    final old = list[index];
+    if (old.state != RoundState.notStarted &&
+        remote.startedAtMs >= old.startedAtMs) {
+      return false;
+    }
+
+    final plannedMs = remote.plannedDurationMs;
+    final closedRests = closeAllOpenRestsInMemory(effortId);
+    final updated = old.copyWith(
+      state: remote.pausedAtMs != null ? RoundState.paused : RoundState.active,
+      startedAtMs: remote.startedAtMs,
+      pausedAtMs: remote.pausedAtMs,
+      totalPausedDurationMs: remote.accumulatedPauseMs,
+      plannedDurationSecs: plannedMs != null && plannedMs > 0
+          ? plannedMs ~/ 1000
+          : null,
+      updatedAtMs: _clock().millisecondsSinceEpoch,
+    );
+    await _repository.updateRoundInstance(updated);
+    list[index] = updated;
+    _persistClosedRests(closedRests);
+    return true;
+  }
+
+  /// D-1: the in-progress instance when the effort has one, else the first
+  /// that is not finished; -1 when there is none.
+  static int _targetIndex<T>(
+    List<T> list, {
+    required bool Function(T) inProgress,
+    required bool Function(T) finished,
+  }) {
+    for (var i = 0; i < list.length; i++) {
+      if (inProgress(list[i])) return i;
+    }
+    for (var i = 0; i < list.length; i++) {
+      if (!finished(list[i])) return i;
+    }
+    return -1;
+  }
+
+  void _persistClosedRests(Iterable<EntryRest> rests) {
+    for (final rest in rests) {
+      unawaited(
+        _repository.updateEntryRest(rest).catchError((e) {
+          _setError('Failed to persist closed rest: $e');
+        }),
+      );
+    }
   }
 
   Map<String, List<RoundInstance>> get roundInstancesSnapshot =>

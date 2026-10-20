@@ -219,6 +219,26 @@ Handles all round, timed-entry, and rest state machines (Cluster B of the origin
 | `deleteTimedEntry(effortId, entryIndex)` | — | Removes the instance and its own rows — the *k*-th row of each companion metric, found before the instance goes (D-326) — and re-indexes subsequent entries. Verified by `test/entry_identity_test.dart` (`S-855`, `S-860`) |
 | `getTimedInstancesForEffort(effortId)` | — | Returns unmodifiable list of timed instances for an effort |
 
+The facade read `WorkoutState.inProgressWorkTimers()` (over
+`TimerManager.inProgressWorkTimers(efforts)`) lists the held session's active or
+paused work intervals, one per wire kind (`elapsed` for a `timed` effort, `hold`
+for a `drill`, `round` for a round), keeping the newest `startedAtMs` when
+several are in progress for one kind; not-started and finished instances, rests
+and `set` efforts contribute nothing, and a session that is not active lists
+nothing. Verified by `test/in_progress_work_timers_test.dart` (group
+`WorkoutState.inProgressWorkTimers (Mock)`, `S-6201 an active timed interval
+lists one elapsed timer` and its eight sibling tests).
+
+The facade write `WorkoutState.adoptRemoteWorkTimer(effortId, remote)`
+(`SessionCore.adoptRemoteWorkTimer` in `session_core_io.dart`, over
+`TimerManager.adoptRemoteTimer`) applies a work timer the wrist sent
+(`RemoteWorkTimer` in `lib/state/workout/timer_manager.dart`, built by
+`WatchTimerAdoption` from the mirror):
+
+| Method | Rule |
+|--------|------|
+| `adoptRemoteWorkTimer(effortId, remote)` | The target is the effort's in-progress (active or paused) interval, else its first not-finished interval in stored order (the order plan 43a's fill uses); the wire kind must pair with the effort kind (`elapsed`→`timed`, `hold`→`drill`, `round`→`round`), and an unknown effort id, an effort with no unfinished interval or a wrong pairing writes nothing and returns false. A not-started target becomes active — or paused when the remote carries a pause stamp — with the remote's `startedAtMs`, `pausedAtMs` and `accumulatedPauseMs` (a timed target is open-ended, `targetDurationSecs: 0`, as `startTimedEntry` writes it; a round takes the remote's planned length when the frame carries one and keeps its own otherwise); an in-progress target is replaced only when the remote started strictly earlier — an equal or later start changes nothing. The effort's open rests are closed and persisted as a phone start does; a stopped timer is not applied (the wrist's logged entry fills and finishes the interval, plan 43a). The write bumps `_watchRefreshRevision` once and notifies once. Verified by `test/remote_work_timer_state_test.dart` (groups `Mock` and `Hive`, `S-6101`–`S-6106`) |
+
 #### Rest Tracking Methods
 
 | Method | Signature | Purpose |

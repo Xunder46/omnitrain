@@ -425,6 +425,7 @@ public struct WatchTimerRecord {
     public let stoppedAt: Date?
     public let accumulatedPauseMs: Int
     public let plannedDurationMs: Int?
+    public let sessionExerciseId: String?
 
     public init(
         recordId: String,
@@ -436,6 +437,7 @@ public struct WatchTimerRecord {
         stoppedAt: Date? = nil,
         accumulatedPauseMs: Int = 0,
         plannedDurationMs: Int? = nil,
+        sessionExerciseId: String? = nil,
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -448,6 +450,7 @@ public struct WatchTimerRecord {
         self.stoppedAt = stoppedAt
         self.accumulatedPauseMs = accumulatedPauseMs
         self.plannedDurationMs = plannedDurationMs
+        self.sessionExerciseId = sessionExerciseId
     }
 
     /// Derived from which timestamps are present.
@@ -468,6 +471,7 @@ public struct WatchTimerRecord {
             stoppedAt: stoppedAt,
             accumulatedPauseMs: accumulatedPauseMs,
             plannedDurationMs: plannedDurationMs,
+            sessionExerciseId: sessionExerciseId,
             sequence: sequence
         )
     }
@@ -488,6 +492,11 @@ public struct WatchTimerRecord {
         if kind != "rest", let plannedDurationMs {
             json["plannedDurationMs"] = plannedDurationMs
         }
+        // A rest belongs to no slot, and the wire's timer allows the field on
+        // every kind but carries it only where it means something.
+        if kind != "rest", let sessionExerciseId {
+            json["sessionExerciseId"] = sessionExerciseId
+        }
         return json
     }
 
@@ -504,6 +513,7 @@ public struct WatchTimerRecord {
             "stoppedAt": stoppedAt.map(utcIso) ?? NSNull(),
             "accumulatedPauseMs": accumulatedPauseMs,
             "plannedDurationMs": plannedDurationMs ?? NSNull(),
+            "sessionExerciseId": sessionExerciseId ?? NSNull(),
         ]
     }
 
@@ -518,6 +528,7 @@ public struct WatchTimerRecord {
             stoppedAt: try parseOptionalUtcIso(json["stoppedAt"]),
             accumulatedPauseMs: (json["accumulatedPauseMs"] as? NSNumber)?.intValue ?? 0,
             plannedDurationMs: (json["plannedDurationMs"] as? NSNumber)?.intValue,
+            sessionExerciseId: json["sessionExerciseId"] as? String,
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }

@@ -284,6 +284,47 @@ it started, and MUST NOT stop one the receiver started itself. A kind carrying
 countdown running and stops the phone's own`, `S-79 a kind named null is still
 cleared`).
 
+A timer MAY name the exercise slot it is for with `sessionExerciseId` — a
+non-empty string, the slot's id — which is optional and changes no version. A
+work timer (`round`, `hold`, `elapsed`) that a device starts names the slot it
+was started on; a rest names none, and a rest never carries it. A receiver
+keeps a timer for another slot and shows it only for that slot: the watch
+hides a timer that came from a message for another slot, but a clock it
+started itself keeps running across an exercise change. For the work kinds the
+earlier start wins: a receiver that already holds a running or paused timer of
+the same kind and the same slot with an EARLIER `startedAt` ignores an
+incoming running or paused timer with a later one; an incoming stopped timer
+always applies; and a rest keeps last-write behaviour, a newer rest
+superseding the older one. The earlier-start rule applies to a snapshot's
+`timers` too. The map holds one timer per kind, so a newer timer
+of a kind for another slot supersedes the older one. Verified by
+`watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift`
+(`testS6005AnEarlierPhoneStartReplacesTheWristsRunningTimer`,
+`testS6005ALaterPhoneStartLeavesTheWristsTimerAlone`,
+`testS6005AStoppedPhoneRowWithALaterStartStillStopsTheTimer`,
+`testS6005AnEarlierPhoneStartForAnotherSlotIsStored`,
+`testS6005ALaterTimerForAnotherSlotIsStoredNotIgnored`,
+`testS6005AStartAfterThePreviousTimerStoppedIsStored`,
+`testS6005RestIsNotAnEarlierStartWinsKind`), by
+`watch/watchos/Tests/WatchSessionEngineTests/WatchTimedWorkTests.swift`
+(`testS6002AStartOfATimedSlotNamesTheSlotOnTheWire`,
+`testS6002AStartOfAHoldSlotNamesTheSlotOnTheWire`,
+`testS6002AStartOfARoundsSlotNamesTheSlotAndKeepsItsLength`,
+`testS6002TheRestTheFollowingLogStartsCarriesNoSlot`,
+`testS6004APhoneTimerForAnotherSlotIsNotTheWristsWorkClock`,
+`testS6004AClockTheWristStartedSurvivesTheJump`,
+`testS6004APhoneTimerWithNoSlotIsShownForTheCurrentSlot`) and, for the Dart
+twin, by `test/watch_logging_timers_test.dart` (`S-6006 the earlier start wins
+at adoption` → `an earlier phone start replaces the wrist start`, `a later
+phone start leaves the wrist start alone`, `a stopped phone row with a later
+start still stops it`, `a timer for another slot is stored beside`, `a phone
+rest with a later start still supersedes`) and
+`test/watch_session_engine_test.dart` (`S-6006 a work timer says which
+exercise it is for` → `a work timer started with a slot names it on its own
+frame`, `a rest names none, whatever it was started with`, `a timer row keeps
+its slot across the store`, `a row written without the slot restores with
+none`, `a stopped row keeps the slot of the row it copies`).
+
 ## Session capture (normative)
 
 A wrist that ends a session reports two session-scoped events and the
@@ -652,3 +693,4 @@ one pull request — never edit a fixture to match an implementation.
 | 1 (amended) | 2026-10-14 | The phone's units: `preferences_down.payload` MAY carry `weightUnit` (`"kg"` or `"lbs"`) and `distanceUnit` (`"km"` or `"miles"`), the units the phone's Settings hold. The payload is closed, so the fields are refused until the schema declares them; `required` is unchanged, a copy that omits a unit leaves the wrist on kilograms or kilometres, and the wrist stores the absence rather than the earlier copy's unit. Any other spelling is refused as `invalid_enum_value`. No new message family, no new rejection code and no version change; additive for the same reason as the 2026-10-11 accent amendment, and no existing fixture changed. `fixtures/valid/preferences_down_units.json` is the shape and `fixtures/invalid/preferences_down_units_bad.json` (`"stone"`) the refusal, walked by `test/sync_protocol_fixtures_test.dart` and by `watch/watchos/Tests/WatchSessionEngineTests/SyncProtocolFixturesTests.swift`; the phone's half is `test/watch_sync_request_handler_test.dart` (`S-3903`) and the wrist's is `WatchUnitsTests.swift` (`testS3903…`, `testS3904…`, `testS3905…`) |
 | 1 (amended) | 2026-10-15 | The phone's planned sets: a `sessionExercise` MAY carry `plannedSets` — an array of `{reps?, loadKg?}` rows, the phone's set rows for that slot in set order, logged rows included, the row at index `k` being set `k+1`, the numbering of `entry-<slot>-<k>`. `reps` is an integer of at least 1 and is omitted for a row with fewer than 1 rep (a skipped row the phone does not send); `loadKg` is in kilograms, omitted when the load is 0 as an entry omits it and negative for a band or partner assist down to the -200 kg floor an entry already carries. The key is sent only for a `set` effort, and a slot with no set rows, a non-`set` slot and a phone that predates the field all omit it, so the wrist starts each set from its own defaults exactly as before. The slot object stays closed (`$defs.sessionExercise` keeps `additionalProperties: false`), so the field is refused until the schema declares it: a wrist that does not know the field refuses the whole snapshot as it refuses anything it cannot read — an older wrist and a newer phone are not a supported pair, both clients shipping from this repository in one release. No new message family, no new rejection code and no version change; additive for the same reason as the 2026-10-11 accent amendment, and no existing fixture changed. `fixtures/valid/session_snapshot_planned_sets.json` is the shape and `fixtures/invalid/session_snapshot_planned_sets_bad.json` (a row of 0 reps) and `fixtures/invalid/session_snapshot_planned_sets_unknown_key.json` (a `setNumber` key on a row) are the refusals, walked by `test/sync_protocol_fixtures_test.dart` (`S-001 fixtures`) and by `watch/watchos/Tests/WatchSessionEngineTests/SyncProtocolFixturesTests.swift` (`testEveryValidFixtureConforms`, `testEveryInvalidFixtureIsRejectedAsStated`), which walk the same register. Its consumers are `WatchLoggingState` on the wrist and `WatchSessionAdoptionBridge.projectSession` on the phone, pinned by `test/watch_session_projection_test.dart` (`S-3621`) |
 | 1 (amended) | 2026-10-19 | The phone answers first: the phone MAY carry a session's `effort_rating` in a `session_snapshot` — `entryId` and `eventId` both `rating-<sessionId>`, `rating` 1..5 and `loggedAt` — once per session and only when it answered the effort question first, never when the converged session already holds an `effort_rating` entry. The wrist stores a snapshot entry under its own `entryId`, so a wrist that owed the question holds a rating for that session and stops asking, while one that already holds `rating-<sessionId>` keeps its own record. No wire change; phone `effort_rating` in a snapshot closes the wrist's owed question. Both validators already accept `effort_rating` in a snapshot's `entries`, so no schema and no version change, and no existing fixture changed. Pinned by `test/rating_first_answer_push_test.dart` (`S-4306`) and by `watch/watchos/Tests/WatchSessionEngineTests/WatchEffortRatingTests.swift` (`testS4310ThePhonesRatingInASnapshotClosesTheOwedQuestion`); plan `docs/plans/2026-10-19-42b-rating-phone-answers-first-plan/`. Additive for the same reason as the 2026-09-25 amendment |
+| 1 (amended) | 2026-10-20 | A timer names the slot it is for: `$defs.timer` MAY carry `sessionExerciseId` — a non-empty string, the id of the exercise slot the timer belongs to — optional, so no version change. A work timer (`round`, `hold`, `elapsed`) a device starts names the slot it was started on; a rest names none and never carries it. A receiver keeps a timer for another slot and shows it only for that slot, so the watch hides a timer that came from a message for another slot while a clock it started itself keeps running across an exercise change. For the work kinds the earlier start wins: a receiver that already holds a running or paused timer of the same kind and the same slot with an earlier `startedAt` ignores an incoming running or paused timer with a later one, an incoming stopped timer always applies, and a rest keeps last-write behaviour, a newer rest superseding. The map holds one timer per kind, so a newer timer of a kind for another slot supersedes the older one. The timer object stays closed, so a key the schema does not declare is refused (`unexpected_field`), an empty slot is a `constraint_violation`, and a non-string slot an `invalid_type`. Additive: no new message family, no new rejection code and no version change, and no existing fixture changed. `watch/sync_protocol/schemas/envelope.schema.json` (`$defs.timer`) is the shape, `fixtures/valid/timer_state_with_slot.json` the carrying timer and `fixtures/invalid/timer_state_slot_empty.json`, `fixtures/invalid/timer_state_slot_number.json`, `fixtures/invalid/timer_state_slot_unknown_field.json` the refusals, walked by `test/sync_protocol_fixtures_test.dart` (`S-001 fixtures`) and by `watch/watchos/Tests/WatchSessionEngineTests/SyncProtocolFixturesTests.swift` (`testEveryValidFixtureConforms`, `testEveryInvalidFixtureIsRejectedAsStated`), which walk the same register. The wrist's engines are `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift` (`adoptTimer`, `isTimerFromMessage`) and `WatchLoggingState.swift` (`workTimer`), with the Dart twin `lib/watch/session/watch_session_engine.dart` (`_adoptTimer`); pinned by `watch/watchos/Tests/WatchSessionEngineTests/WatchLoggingTimersTests.swift` (`testS6005…`), `WatchTimedWorkTests.swift` (`testS6002…`, `testS6004…`), `test/watch_logging_timers_test.dart` (`S-6006`) and `test/watch_session_engine_test.dart` (`S-6006`); plan `docs/plans/2026-10-20-43b1-shared-timer-wire-and-wrist-plan/`. Additive for the same reason as the 2026-09-25 amendment |

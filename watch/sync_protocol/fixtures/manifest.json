@@ -13,6 +13,11 @@
     { "path": "valid/session_snapshot.json", "type": "session_snapshot" },
     { "path": "valid/timer_state.json", "type": "timer_state" },
     {
+      "path": "valid/timer_state_with_slot.json",
+      "type": "timer_state",
+      "scenario": "S-6001"
+    },
+    {
       "path": "valid/preferences_down.json",
       "type": "preferences_down",
       "scenario": "S-246"
@@ -245,6 +250,27 @@
       "expectedCode": "unexpected_field",
       "expectedReasonContains": "remainingSeconds",
       "note": "The only fixture that carries a remaining-time field, on purpose: the field is the defect. Every fixture that represents timer state must be free of one — see test/sync_protocol_fixtures_test.dart (S-003)."
+    },
+    {
+      "path": "invalid/timer_state_slot_empty.json",
+      "type": "timer_state",
+      "scenario": "S-6001",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1 characters, found 0"
+    },
+    {
+      "path": "invalid/timer_state_slot_number.json",
+      "type": "timer_state",
+      "scenario": "S-6001",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected string, found 7"
+    },
+    {
+      "path": "invalid/timer_state_slot_unknown_field.json",
+      "type": "timer_state",
+      "scenario": "S-6001",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "intervalIndex"
     },
     {
       "path": "invalid/timer_state_rest_with_planned_duration.json",

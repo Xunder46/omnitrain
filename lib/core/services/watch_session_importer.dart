@@ -827,17 +827,41 @@ class _Pass {
         : <int>{};
 
     // New to history: the phone's next planned set when the merge may fill one
-    // (D-4), else after the effort's last row, in logged order — or where a
-    // pass that did not finish already put it.
+    // (D-4), the interval the wrist logged a timed, hold or round entry for
+    // (D-1): the in-progress one that started with the entry, else the first
+    // in-progress one, else the first not-finished one, else after the
+    // effort's last row, in logged order — or where a pass that did not finish
+    // already put it.
     var next = rows.lastIndex + 1;
     for (final entry in now) {
       if (placed.contains(entry.entryId)) continue;
       final unfinished = rows.unfinishedPlaceOf(entry);
       final fills = fillPlanned && entry.wireKind == WatchInboxEntry.kindSet;
+      final isInterval =
+          entry.wireKind == WatchInboxEntry.kindTimed ||
+          entry.wireKind == WatchInboxEntry.kindHold ||
+          entry.wireKind == WatchInboxEntry.kindRound;
+      if (unfinished == null && fillPlanned && isInterval) {
+        // A second report of an interval the phone already logged (plan 43c
+        // D-2): nothing is written and the phone's numbers stand, but a rest
+        // that follows the entry still finds the phone's interval.
+        final logged = await _loggedIntervalIndex(effortId, entry);
+        if (logged != null) {
+          _placed[entry.entryId] = (
+            effortId: effortId,
+            index: logged,
+            position: logged,
+          );
+          continue;
+        }
+      }
       final fill = unfinished == null && fills
           ? await _plannedSetToFill(effortId, rested)
           : null;
-      final index = unfinished ?? fill?.number ?? next++;
+      final interval = unfinished == null && fillPlanned && isInterval
+          ? await _unfinishedInstanceToFill(effortId, entry)
+          : null;
+      final index = unfinished ?? fill?.number ?? interval?.index ?? next++;
       if (fill != null) {
         // The planned row's own rows go: what the wrist logged fills the spot
         // they held, and nothing the routine preset survives beside it.
@@ -846,7 +870,26 @@ class _Pass {
         }
         changed = true;
       }
-      await _createEntry(key, entry, effortId, index);
+      if (interval != null) {
+        // The unfinished interval and its rows go the same way: the wrist's
+        // record takes the spot they held (D-2).
+        if (entry.wireKind == WatchInboxEntry.kindRound) {
+          await _repository.deleteRoundInstance(interval.instanceId);
+        } else {
+          await _repository.deleteTimedInstance(interval.instanceId);
+        }
+        for (final row in interval.rows) {
+          await _repository.deleteObservation(row.id);
+        }
+        changed = true;
+      }
+      await _createEntry(
+        key,
+        entry,
+        effortId,
+        index,
+        rowNumber: interval?.rowNumber,
+      );
       // The entry's rows are in, so its POSITION is readable — the rest that
       // follows it is keyed on that, not on the number its rows carry (D-2).
       final position = await _positionOf(entry, effortId, index);
@@ -959,6 +1002,163 @@ class _Pass {
     // the rest is compared against.
     for (var i = 0; i < groups.length; i++) {
       if (!rested.contains(i + 1)) return groups[i];
+    }
+    return null;
+  }
+
+  /// The interval a live merge fills (D-1, D-2): among [effortId]'s intervals
+  /// whose state is not finished — its `TimedInstance`s for a `timed` or
+  /// `hold` entry, its `RoundInstance`s for a `round` entry — the in-progress
+  /// one whose start equals the entry's start (the shared start, within
+  /// [_sameStartToleranceMs]), else the first in-progress one, else the first
+  /// not-finished one. Null when every interval is finished, and then the
+  /// wrist's entry appends after the effort's last one instead.
+  ///
+  /// The rows the target is paired with are the ones the phone pairs to it by
+  /// position (`EntryRows.companions`): its distance and extra-weight rows.
+  /// [rowNumber] is the number the doomed distance row's id carries — the
+  /// extra-weight row's when there is no distance row — so the rows written in
+  /// its place keep the pairing order (D-2).
+  Future<
+    ({
+      String instanceId,
+      int index,
+      int? rowNumber,
+      List<EffortObservation> rows,
+    })?
+  >
+  _unfinishedInstanceToFill(String effortId, _Entry entry) async {
+    if (entry.wireKind == WatchInboxEntry.kindRound) {
+      final round = _intervalToFill<RoundInstance>(
+        [
+          for (final round in await _repository.getRoundInstances(effortId))
+            if (round.state != RoundState.finished) round,
+        ],
+        entry.startedAtMs,
+        inProgress: (round) =>
+            round.state == RoundState.active ||
+            round.state == RoundState.paused,
+        startOf: (round) => round.startedAtMs,
+      );
+      if (round == null) return null;
+      return (
+        instanceId: round.id,
+        index: round.roundIndex,
+        rowNumber: null,
+        rows: const <EffortObservation>[],
+      );
+    }
+
+    final instances = await _repository.getTimedInstances(effortId);
+    final rows = await _repository.getEffortObservations(effortId);
+    final distances = EntryRows.companions(
+      rows: rows,
+      metricId: MetricIds.distance,
+      entryCount: instances.length,
+    );
+    final extraWeights = EntryRows.companions(
+      rows: rows,
+      metricId: MetricIds.extraWeight,
+      entryCount: instances.length,
+    );
+    final position = _intervalToFill<int>(
+      [
+        for (var at = 0; at < instances.length; at++)
+          if (instances[at].state != TimedState.finished) at,
+      ],
+      entry.startedAtMs,
+      inProgress: (at) =>
+          instances[at].state == TimedState.active ||
+          instances[at].state == TimedState.paused,
+      startOf: (at) => instances[at].startedAtMs,
+    );
+    if (position == null) return null;
+    final instance = instances[position];
+    final distance = distances[position];
+    final extraWeight = extraWeights[position];
+    return (
+      instanceId: instance.id,
+      index: instance.entryIndex,
+      rowNumber: distance != null
+          ? EntryRows.numberInId(distance.id)
+          : extraWeight == null
+          ? null
+          : EntryRows.numberInId(extraWeight.id),
+      rows: [?distance, ?extraWeight],
+    );
+  }
+
+  /// How far apart two starts may be and still be one start (plan 43c D-1): the
+  /// start crosses the wire as an ISO string, and a Swift Date round trip can
+  /// move the last millisecond.
+  static const int _sameStartToleranceMs = 1000;
+
+  static bool _sameStart(int phoneStartMs, int? entryStartMs) =>
+      entryStartMs != null &&
+      phoneStartMs > 0 &&
+      entryStartMs > 0 &&
+      (phoneStartMs - entryStartMs).abs() <= _sameStartToleranceMs;
+
+  /// The interval a wrist entry fills among [unfinished] (plan 43c D-1): the
+  /// in-progress one that started with the entry, else the first in-progress
+  /// one, else the first of them. Null when there is none.
+  static T? _intervalToFill<T>(
+    List<T> unfinished,
+    int? entryStartMs, {
+    required bool Function(T) inProgress,
+    required int Function(T) startOf,
+  }) {
+    for (final candidate in unfinished) {
+      if (inProgress(candidate) && _sameStart(startOf(candidate), entryStartMs)) {
+        return candidate;
+      }
+    }
+    for (final candidate in unfinished) {
+      if (inProgress(candidate)) return candidate;
+    }
+    return unfinished.isEmpty ? null : unfinished.first;
+  }
+
+  /// The index of the FINISHED interval of [effortId] that started with
+  /// [entry] and is not the entry's own instance (plan 43c D-2): the phone
+  /// already logged what the wrist reports. Null when there is none, and
+  /// always for an entry with no start.
+  Future<int?> _loggedIntervalIndex(String effortId, _Entry entry) async {
+    final startMs = entry.startedAtMs;
+    if (startMs == null || startMs <= 0) return null;
+    if (entry.wireKind == WatchInboxEntry.kindRound) {
+      final ownId = WatchSessionImporter.roundInstanceIdFor(
+        sessionId,
+        entry.entryId,
+      );
+      for (final round in await _repository.getRoundInstances(effortId)) {
+        if (round.state == RoundState.finished &&
+            round.id != ownId &&
+            _sameStart(round.startedAtMs, startMs)) {
+          return round.roundIndex;
+        }
+      }
+      return null;
+    }
+    final ownId = WatchSessionImporter.timedInstanceIdFor(
+      sessionId,
+      entry.entryId,
+    );
+    final instances = await _repository.getTimedInstances(effortId);
+    // An earlier pass left THIS entry's own instance unfinished: the entry is
+    // not a second report of anything, it finishes what it began.
+    if (instances.any(
+      (instance) =>
+          instance.id == ownId && instance.state != TimedState.finished,
+    )) {
+      return null;
+    }
+    for (final instance in instances) {
+      if (instance.state == TimedState.finished &&
+          instance.id != ownId &&
+          _sameStart(instance.startedAtMs, startMs)) {
+        return instance.entryIndex;
+      }
     }
     return null;
   }
@@ -1113,13 +1313,20 @@ class _Pass {
 
   /// One entry's rows, exactly as the phone's own logging builds them
   /// (`LoggedEntryRows`), with the wrist's values in them.
+  ///
+  /// [rowNumber] is the number the row ids carry when it differs from [index]:
+  /// a fill of an unfinished interval keeps the doomed rows' number so the
+  /// pairing order the phone projects by stays right (D-2). The instance keeps
+  /// [index] either way — it is the interval's own position.
   Future<void> _createEntry(
     _Key key,
     _Entry entry,
     String effortId,
-    int index,
-  ) async {
+    int index, {
+    int? rowNumber,
+  }) async {
     final at = entry.loggedAtMs;
+    final entryIndex = rowNumber ?? index;
     final List<EffortObservation> observations;
     switch (entry.wireKind) {
       case WatchInboxEntry.kindSet:
@@ -1136,7 +1343,7 @@ class _Pass {
         await _createTimedInstance(entry, effortId, index);
         observations = LoggedEntryRows.timedObservations(
           effortId: effortId,
-          entryIndex: index,
+          entryIndex: entryIndex,
           distanceMeters: entry.distanceMeters ?? 0.0,
           // A distance that arrives without a source was dialled by hand: an
           // older or hand-entering wrist names none. A wrist that measured it
@@ -1151,7 +1358,7 @@ class _Pass {
         await _createTimedInstance(entry, effortId, index);
         observations = LoggedEntryRows.drillObservations(
           effortId: effortId,
-          entryIndex: index,
+          entryIndex: entryIndex,
           extraWeightKg: entry.extraLoadKg ?? 0.0,
           atMs: at,
         );

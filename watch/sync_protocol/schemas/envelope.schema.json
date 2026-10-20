@@ -382,6 +382,10 @@
         "plannedDurationMs": {
           "type": "integer",
           "minimum": 1
+        },
+        "sessionExerciseId": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "if": {

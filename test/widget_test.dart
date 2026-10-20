@@ -5,6 +5,7 @@ import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/state/workout/timer_manager.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
@@ -594,6 +595,109 @@ void main() {
 
       expect(timerAlertService.effortAlertSoundIds.length, 1);
       expect(restService.effortCancelCallCount, greaterThan(0));
+    },
+  );
+
+  testWidgets(
+    'S-6126 a watch-driven resync does not kill the phone\'s own dialled expiry',
+    (WidgetTester tester) async {
+      final deps = await _setupSession(modality: 'cardio_endurance');
+      final restService = FakeRestNotificationService();
+      final timerAlertService = FakeTimerAlertService();
+
+      final timedExercise = (await deps.repository.getExercises()).firstWhere(
+        (e) => e.capabilities.contains('time'),
+      );
+      final effortId = await deps.workoutState.addExerciseToSession(
+        timedExercise,
+        effortKindOverride: 'timed',
+      );
+      await deps.workoutState.updateEntryValue(effortId, 0, 'duration', 1);
+
+      await _pumpSession(
+        tester,
+        workoutState: deps.workoutState,
+        routineState: deps.routineState,
+        sessionSummaryService: deps.sessionSummaryService,
+        timerAlertService: timerAlertService,
+        restNotificationService: restService,
+      );
+
+      await tester.tap(find.text(timedExercise.name));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
+      await tester.pump();
+
+      // The watch's write reaches the phone before the dialled second expires:
+      // the resync must not replace the phone's own dialled target.
+      await deps.workoutState.refreshEfforts([effortId]);
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+
+      expect(timerAlertService.effortAlertSoundIds.length, 1);
+    },
+  );
+
+  testWidgets(
+    'S-6126 adopting an open-ended wrist timer into another effort leaves the running effort\'s notification alone',
+    (WidgetTester tester) async {
+      final deps = await _setupSession(modality: 'cardio_endurance');
+      final restService = FakeRestNotificationService();
+
+      final timedExercises = (await deps.repository.getExercises())
+          .where((e) => e.capabilities.contains('time'))
+          .take(2)
+          .toList();
+      expect(timedExercises.length, 2);
+
+      final effortA = await deps.workoutState.addExerciseToSession(
+        timedExercises[0],
+        effortKindOverride: 'timed',
+      );
+      final effortB = await deps.workoutState.addExerciseToSession(
+        timedExercises[1],
+        effortKindOverride: 'timed',
+      );
+      await deps.workoutState.addEntry(effortA);
+      await deps.workoutState.addEntry(effortB);
+      await deps.workoutState.updateEntryValue(effortA, 0, 'duration', 600);
+
+      await _pumpSession(
+        tester,
+        workoutState: deps.workoutState,
+        routineState: deps.routineState,
+        sessionSummaryService: deps.sessionSummaryService,
+        restNotificationService: restService,
+      );
+
+      await tester.tap(find.text(timedExercises[0].name));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
+      await tester.pump();
+
+      final schedulesBefore = restService.effortSchedules.length;
+      final cancelsBefore = restService.effortCancelCallCount;
+      expect(schedulesBefore, greaterThan(0));
+
+      // The wrist starts an open-ended timer in ANOTHER effort. It has nothing
+      // to schedule, and adopting it must not cancel A's pending notification.
+      await deps.workoutState.adoptRemoteWorkTimer(
+        effortB,
+        RemoteWorkTimer(
+          wireKind: 'elapsed',
+          startedAtMs: DateTime.now().millisecondsSinceEpoch - 30000,
+          accumulatedPauseMs: 0,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(restService.effortCancelCallCount, cancelsBefore);
+      expect(restService.effortSchedules.length, schedulesBefore);
     },
   );
 

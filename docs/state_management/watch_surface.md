@@ -219,6 +219,24 @@ wrist re-offers what is owed, never itself`, `S-205 (S-209) the wrist's own set
 arrives while a deletion is owed: it is applied, never echoed, and the deletion
 leaves after it`).
 
+`WatchTimerPush` (`lib/state/watch/watch_timer_push.dart`) is the work-timer
+sibling of the auto push: the same bound `WorkoutState`, trailing debounce and
+one-drain shape, but each pass composes the session's in-progress work timers
+and sends only what the wrist does not already hold, as one `timer_state` frame
+through `LiveSessionMirrorState.sendTimers` — the wrist's earlier start wins, a
+finished interval is cleared once, and a replacement clears first. Built in
+`createWatchSync` and returned as `WatchSyncGraph.timerPush`. Verified by
+`test/watch_timer_push_test.dart` (the `S-6211` to `S-6217` groups).
+
+`WatchTimerAdoption` (`lib/state/watch/watch_timer_adoption.dart`) is the
+receiving sibling: built in `createWatchSync` as `WatchSyncGraph.timerAdoption`,
+it listens to the mirror and the bound `WorkoutState` and hands each wrist
+timer to `WorkoutState.adoptRemoteWorkTimer`; the open screen's
+`_adoptRunningTimerState` then runs it. Verified by
+`test/watch_timer_adoption_test.dart` and
+`test/watch_timer_adoption_screen_test.dart` (`S-6111` to `S-6125`
+tests).
+
 ### `WatchSyncOrchestrator`
 
 **Files**: `lib/watch/start/watch_sync_orchestrator.dart`,
@@ -491,6 +509,38 @@ down from the phone's number, or the wrist's preset with none
 while an effort runs (`WatchMenuTests.testS1307TheMenuDoesNotJumpWhileAWorkClockRuns`,
 `…testS3615AddExerciseWorksWhileAWorkClockRuns`).
 
+**The work clock names its exercise.** The clock is the engine's timer row of
+the effort's kind, read through `WatchLoggingState.workTimer`; a work timer the
+wrist starts (`elapsed`, `hold`, `round`) stamps the current slot's
+`sessionExerciseId` on the row and on the `timer_state` frame it emits, and the
+follow-on rest a log starts carries none
+(`WatchTimedWorkTests.testS6002AStartOfATimedSlotNamesTheSlotOnTheWire`,
+`…testS6002AStartOfAHoldSlotNamesTheSlotOnTheWire`,
+`…testS6002AStartOfARoundsSlotNamesTheSlotAndKeepsItsLength`,
+`…testS6002TheRestTheFollowingLogStartsCarriesNoSlot`; the row keeps the slot
+across pause, resume, stop and the store round trip —
+`WatchLoggingTimersTests.testS6003ATimerRowWithItsSlotSurvivesTheStoreRoundTrip`,
+`…testS6003PauseResumeAndStopKeepTheSlot`; Dart twin,
+`test/watch_session_engine_test.dart`, group
+`S-6006 a work timer says which exercise it is for`). At adoption the owner's
+rule is the earlier start wins, for the work kinds only: an incoming running or
+paused timer of the same kind and the same slot with a later `startedAt` than
+the held, not-stopped timer is ignored, a stopped row always applies, a timer
+for another slot is stored beside, and a rest keeps last-write
+(`WatchLoggingTimersTests.testS6005AnEarlierPhoneStartReplacesTheWristsRunningTimer`,
+`…testS6005ALaterPhoneStartLeavesTheWristsTimerAlone`,
+`…testS6005AStoppedPhoneRowWithALaterStartStillStopsTheTimer`,
+`…testS6005AnEarlierPhoneStartForAnotherSlotIsStored`,
+`…testS6005RestIsNotAnEarlierStartWinsKind`; Dart twin,
+`test/watch_logging_timers_test.dart`, group
+`S-6006 the earlier start wins at adoption`). A timer that came from a message
+for another slot is not shown as the current exercise's clock, while a clock
+the wrist started itself keeps running across an exercise jump
+(`WatchTimedWorkTests.testS6004APhoneTimerForAnotherSlotIsNotTheWristsWorkClock`,
+`…testS6004AClockTheWristStartedSurvivesTheJump`); the wire holds one timer per
+kind, so a newer timer of that kind for another slot supersedes the wrist's own
+row.
+
 **The live label follows the sensor.** The grey "bpm" and distance lines of that
 surface are derived on every read from the sensors' newest recorded sample, so
 while the logging screen is up they move with the wrist's own beats and never
@@ -681,6 +731,26 @@ session's `completed` lifecycle instead of being adopted back. See
 `test/watch_session_finish_test.dart` (`S-4`, `S-5`, `G1`, and the wrist's set
 merging into the session the phone holds — `a set logged on the watch lands in
 the session the phone holds` — and the lifecycle-naming-another-session case).
+
+The held merge also fills intervals (plan 43a): a wrist `timed`, `hold` or
+`round` entry lands in the first interval of the effort the phone has not
+finished — a running or paused one included — replacing that instance and the
+rows paired with it by position, stamped with the wrist's `loggedAt` so the
+projection never sends it back, and opening no rest; when every interval is
+finished, or in a history import, it appends as before. Verified by
+`test/watch_timed_fill_test.dart` (groups `Mock` and `Hive`:
+`S-5001 a wrist timed entry fills the unfinished interval`,
+`S-5002a a running interval is filled`,
+`S-5002b a paused interval is filled`,
+`S-5003 every interval finished: the entry appends`,
+`S-5007b the filled interval is the wrist's own`). The open session screen
+drops the timer UI state of an interval whose persisted instance the merge
+finished (`_dropFinishedTimerState` in
+`lib/features/session/workout_session_timer_mixin.dart`, called from
+`_resyncExercisesFromState`), so the phone's own running timer for a filled
+interval stops. Verified by `test/watch_timed_fill_screen_test.dart`
+(`S-5008 a watch interval fills the open timed effort and the phone's running
+timer stops`, `S-5009 the same for a round effort`).
 
 ### `WatchNutritionLogBridge`
 

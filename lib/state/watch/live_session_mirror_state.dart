@@ -380,6 +380,14 @@ class LiveSessionMirrorState extends ChangeNotifier {
     });
   }
 
+  /// Hands the watch the phone's work timers for [sessionId] as one
+  /// `timer_state` frame (plan 43b3 D-2). A kind mapped to null clears that
+  /// timer. Nothing is applied to this mirror: its timers are the wrist's.
+  Future<WatchDelivery> sendTimers(
+    String sessionId,
+    Map<String, Object?> timers,
+  ) => _transport.send(_envelopeFor(sessionId, 'timer_state', {'timers': timers}));
+
   /// Asks the watch for its snapshot — the phone's half of joining a session
   /// that was started on the wrist.
   Future<void> requestSnapshot() => _transport.requestSnapshot();
