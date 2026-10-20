@@ -55,10 +55,14 @@ public enum WatchTransportRequest {
     public static let snapshot = "snapshot"
 
     /// Watch → phone: send the routines. `since` is omitted, never nulled, when
-    /// the wrist has never synced.
-    public static func routinesFrame(since: Date?) -> [String: Any] {
+    /// the wrist has never synced. `exercisesVersion` says which exercise-list
+    /// version the wrist holds, and is likewise omitted, never nulled, when it
+    /// holds none — so the frames the contract pins while the wrist holds no
+    /// list are unchanged (D-3818, S-3820).
+    public static func routinesFrame(since: Date?, exercisesVersion: String? = nil) -> [String: Any] {
         var frame: [String: Any] = ["request": routines]
         if let since { frame["since"] = utcIso(since) }
+        if let exercisesVersion { frame["exercisesVersion"] = exercisesVersion }
         return frame
     }
 
@@ -115,8 +119,10 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
         reachabilityHandler = handler
     }
 
-    public func requestRoutines(since: Date?) async {
-        await send(WatchTransportRequest.routinesFrame(since: since))
+    public func requestRoutines(since: Date?, exercisesVersion: String?) async {
+        await send(
+            WatchTransportRequest.routinesFrame(since: since, exercisesVersion: exercisesVersion)
+        )
     }
 
     public func requestSnapshot() async {

@@ -7,6 +7,7 @@ import '../../../core/utils/chart_axis_helper.dart';
 import '../../../widgets/chart/chart_primitives.dart';
 import '../../../widgets/chart/edge_aware_date_label.dart';
 import '../../../widgets/chart/scrollable_trend_chart.dart';
+import '../../../widgets/common/omni_empty_state.dart';
 import '../../../widgets/layout/omni_surface.dart';
 
 /// Segmented toggle state for the NUTRITION card. Local widget
@@ -16,7 +17,8 @@ import '../../../widgets/layout/omni_surface.dart';
 enum _NutritionView { calories, macros }
 
 /// The NUTRITION trend card: a Calories / Macros toggle over a
-/// scrollable trend chart, plus the legend row.
+/// scrollable trend chart, plus the legend row. With no logged day the chart
+/// area is the shared `OmniEmptyState` instead of a flat line at zero (S-2803).
 ///
 /// Rendered by two hosts — the Stats screen's NUTRITION section and
 /// `NutritionTrendScreen` — so both show the same card over the same
@@ -65,7 +67,11 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
           _buildNutritionToggle(theme, themeColors),
           const SizedBox(height: 12),
           if (trend.isEmpty) ...[
-            _buildEmptyNutritionChart(theme, themeColors),
+            const OmniEmptyState(
+              compact: true,
+              title: 'No data yet',
+              hint: 'Log food to see your trend.',
+            ),
             const SizedBox(height: _kNutritionLegendGap),
             SizedBox(
               height: _kNutritionLegendRowHeight,
@@ -335,157 +341,6 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
           belowBarData: BarAreaData(show: false),
         ),
     ];
-  }
-
-  /// Builds an empty chart showing zero values when there's no
-  /// nutrition data logged. This maintains the same visual structure
-  /// as the regular charts.
-  Widget _buildEmptyNutritionChart(
-    ThemeData theme,
-    OmniThemeColors themeColors,
-  ) {
-    final macroColors = themeColors.macroChart;
-    const emptyPointCount = 7;
-    final bounds = const ChartAxisBounds(min: 0, max: 1, interval: 1);
-
-    return ScrollableTrendChart(
-      themeColors: themeColors,
-      bounds: bounds,
-      unitLabel: '',
-      pointCount: emptyPointCount,
-      chartBuilder: (plotWidth) {
-        return LineChart(
-          LineChartData(
-            minX: 0,
-            maxX: (emptyPointCount - 1).toDouble(),
-            minY: bounds.min,
-            maxY: bounds.max,
-            lineTouchData: const LineTouchData(enabled: false),
-            titlesData: FlTitlesData(
-              topTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
-              ),
-              rightTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: kChartBottomAxisReservedSize,
-                  interval: 1,
-                  getTitlesWidget: (value, meta) {
-                    if (value == 0 ||
-                        value == (emptyPointCount - 1).toDouble()) {
-                      return buildEdgeAwareDateLabel(
-                        meta: meta,
-                        // Calendar arithmetic, not `subtract(Duration(...))`
-                        // — across a DST transition a Duration lands on the
-                        // wrong wall-clock day. Cosmetic here (empty-state
-                        // axis) but kept consistent with the service so the
-                        // pattern does not get copied back out.
-                        text: ChartAxisHelper.formatDateLabel(() {
-                          final now = DateTime.now();
-                          return DateTime(
-                            now.year,
-                            now.month,
-                            now.day - ((emptyPointCount - 1) - value).toInt(),
-                          );
-                        }()),
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: themeColors.textMuted,
-                        ),
-                        isFirst: value == 0,
-                        isLast: value == (emptyPointCount - 1).toDouble(),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ),
-            ),
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              getDrawingHorizontalLine: (_) =>
-                  FlLine(color: themeColors.divider, strokeWidth: 1),
-            ),
-            borderData: FlBorderData(show: false),
-            lineBarsData: [
-              if (_nutritionView == _NutritionView.calories)
-                LineChartBarData(
-                  spots: List.generate(
-                    emptyPointCount,
-                    (i) => FlSpot(i.toDouble(), 0),
-                  ),
-                  color: themeColors.primary,
-                  isCurved: true,
-                  curveSmoothness: 0.3,
-                  barWidth: 2,
-                  isStrokeCapRound: true,
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                      radius: 3,
-                      color: themeColors.primary,
-                      strokeWidth: 1.5,
-                      strokeColor: themeColors.surface,
-                    ),
-                  ),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    color: themeColors.primary.withAlpha(25),
-                  ),
-                )
-              else ...[
-                LineChartBarData(
-                  spots: List.generate(
-                    emptyPointCount,
-                    (i) => FlSpot(i.toDouble(), 0),
-                  ),
-                  color: macroColors.protein,
-                  isCurved: true,
-                  curveSmoothness: 0.3,
-                  barWidth: 2,
-                  isStrokeCapRound: true,
-                  dotData: FlDotData(show: false),
-                  belowBarData: BarAreaData(show: false),
-                ),
-                LineChartBarData(
-                  spots: List.generate(
-                    emptyPointCount,
-                    (i) => FlSpot(i.toDouble(), 0),
-                  ),
-                  color: macroColors.carbs,
-                  isCurved: true,
-                  curveSmoothness: 0.3,
-                  barWidth: 2,
-                  isStrokeCapRound: true,
-                  dotData: FlDotData(show: false),
-                  belowBarData: BarAreaData(show: false),
-                ),
-                LineChartBarData(
-                  spots: List.generate(
-                    emptyPointCount,
-                    (i) => FlSpot(i.toDouble(), 0),
-                  ),
-                  color: macroColors.fat,
-                  isCurved: true,
-                  curveSmoothness: 0.3,
-                  barWidth: 2,
-                  isStrokeCapRound: true,
-                  dotData: FlDotData(show: false),
-                  belowBarData: BarAreaData(show: false),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
-    );
   }
 
   // ── Nutrition: macros chart (3 lines + legend) ───────────────────────────

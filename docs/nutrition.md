@@ -71,23 +71,53 @@ The primer is a first-run overlay. Its help affordance reopens the primer
 **without** marking it seen, so a dismissed primer stays dismissed on the next
 visit — reopening is inspection, not a reset.
 
+An empty Foods I Eat list is the shared empty state (`OmniEmptyState`, title
+`Your Foods I Eat list is empty.`, hint `Tap the pencil to add foods.`).
+Verified by `test/nutrition_test.dart` (group `FoodLibraryBrowse – empty`:
+`empty Foods I Eat list renders the shared OmniEmptyState (S-2802)`).
+
 Verified by `test/nutrition_test.dart`, `test/nutrition_primer_test.dart`,
 `test/home_nutrition_summary_card_test.dart`.
 
 ### `AddFoodScreen`
 
-The library's editor, in three modes: the library itself, creating a new item, and
-managing groups.
+Three tabs — Library, My Foods, Categories. Creating a new item is not a mode of
+this screen: the My Foods tab's "+ New Food" action pushes a separate full-screen
+New Food form (`_NewFoodFormScreen` in `lib/features/nutrition/add_food_screen.dart`).
 
 The catalog is read-only. Adding a catalog row **copies** it into the library; it
 does not log it. Removing a library food that is already logged today removes
 today's entry first, so the library and the day's log cannot disagree about a food
 that no longer exists.
 
+Removing a library row asks first: the remove control opens a two-choice
+confirmation (`Remove ${food.name} from your library?`), and Cancel keeps the
+food in the library. Verified by `test/nutrition_test.dart` (group
+`ManageFoodLibrary – add/remove toggle`: `tapping Remove asks first, and Cancel
+keeps the food in the library (S-2903)`).
+
 Group deletion refuses to strand a shipped food: moving a group's foods to the
 ungrouped bucket would silently orphan a bundled catalog food, so that case raises
 `FoodGroupHasBundledFoodsError` instead. Cancel and "move to uncategorised" are
-distinct outcomes of the group dialog.
+distinct outcomes of the group dialog. Deleting an **empty** category asks
+first too: the trash control on an empty category opens a two-choice
+confirmation (`Delete category ${group.name}?`), and confirming it archives
+the category; a category that still holds foods keeps the bespoke group
+dialog. On a non-empty category, Cancel on that dialog closes it without
+throwing and leaves the category and its foods unchanged. Verified by
+`test/nutrition_test.dart` (group `AddFoodScreen — Groups
+tab`: `trash on an empty category asks first, and Cancel keeps it (S-2904)`,
+`confirming the delete archives an empty category (S-2904)`, `Cancel on a
+non-empty category closes the dialog without throwing and keeps the category
+and its foods (S-2910)`).
+
+The New Food form and the legacy edit shim warn about unsaved changes: leaving
+with edits open a two-button dialog (keep editing / discard), so typed
+values cannot be lost silently; saving is the form's own Save button. Verified by `test/nutrition_test.dart` (group
+`AddFoodScreen — New Food form unsaved guard (S-2902)`: `Discard pops without
+creating the food`; group
+`AddFoodScreen — legacy edit shim unsaved guard (S-2902)`: `Discard pops and
+leaves the stored food unchanged`).
 
 Verified by `test/food_library_test.dart`, `test/food_library_edit_test.dart`,
 `test/food_library_state_delete_guard_test.dart`, `test/food_group_membership_test.dart`,
@@ -111,6 +141,12 @@ the calorie target and nothing else: stored protein, carbs and fat are ignored o
 load and written back as zero. A target that is unset or not positive shows an
 empty field rather than a zero, so "no target" and "a target of zero" cannot be
 confused.
+
+Leaving the form with unsaved edits warns first: a two-button dialog (keep
+editing / discard) guards the back path, so a typed target cannot be
+lost silently. Verified by `test/nutrition_test.dart` (group
+`NutritionTargetScreen — unsaved changes guard (S-2902)`: `Discard pops and
+leaves the stored target unchanged`).
 
 Verified by `test/nutrition_test.dart` (the calories-only group) and
 `test/nutrition_target_button_test.dart`.
@@ -139,9 +175,11 @@ database, and all writes go through the state owners; the trend card's behaviour
 owned by this document.
 
 Two widgets are platform-shaped rather than feature-shaped and are worth naming
+Two widgets are platform-shaped rather than feature-shaped and are worth naming
 here: `FoodThumbnail` has a conditional implementation behind a stub/IO split, so
 the same call site works on web and native, and `NutritionTrendCard` is the trend
-screen's entire body (its toggle, both charts, its empty chart and its legend).
+screen's entire body (its toggle, both charts, the shared empty state that
+replaces the charts when no day is logged, and its legend).
 
 ---
 

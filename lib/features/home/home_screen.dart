@@ -555,7 +555,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       title: tile.label,
                                       icon: tile.iconData,
                                       artworkBuilder: tile.artworkBuilder,
-                                      accentColor: tile.accentColor,
+                                      accentColor: tile.accentFor(
+                                        OmniTheme.colors,
+                                      ),
                                       isSecondary: tile.isSecondary,
                                       isActive: isActive,
                                       onTap: () => _handleTileTap(

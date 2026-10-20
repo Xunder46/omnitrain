@@ -11,8 +11,8 @@
 /// explicit that a request "is a transport concern and carries no message of its
 /// own".
 ///
-/// The routines are built here, on demand, and nowhere else: nothing on the
-/// phone answers a request the wrist has not made (D-7).
+/// The routines and the exercise list are built here, on demand, and nowhere
+/// else: nothing on the phone answers a request the wrist has not made (D-7).
 ///
 /// The same request is how the phone's settings reach the wrist: the phone
 /// never pushes, so every sync is answered with `preferences_down` first —
@@ -21,6 +21,8 @@
 /// S-253).
 library;
 
+import '../../core/constants/omni_theme.dart';
+import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/utils/watch_reference_sync.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -51,13 +53,18 @@ class WatchSyncRequestHandler {
 
   /// Answers [request], and reports whether it had an answer to give.
   ///
+  /// [exercisesVersion] is the version of the exercise list the wrist holds,
+  /// as it named it in the request frame; a wrist holding nothing — or naming
+  /// nothing readable — is sent the whole list (D-3834).
+  ///
   /// False is not a failure: a phone holding no session has nothing to send
   /// and says nothing — the wrist's own copy is what it keeps. A request for
-  /// routines is always answered, because the preferences travel with it.
-  Future<bool> handle(String request) {
+  /// routines is always answered: the preferences, the routines and the
+  /// exercise list (unless the wrist already holds it) travel with it.
+  Future<bool> handle(String request, {String? exercisesVersion}) {
     switch (request) {
       case WatchTransportRequest.routines:
-        return _sendRoutines();
+        return _sendRoutines(exercisesVersion: exercisesVersion);
       case WatchTransportRequest.snapshot:
         return _sendSnapshot();
       default:
@@ -66,24 +73,52 @@ class WatchSyncRequestHandler {
   }
 
   /// The answer to the wrist's "sync routines": the preferences, always and
-  /// first, then the routines when the phone holds any.
+  /// first — the settings the wrist honours and the accent of the theme the
+  /// phone is wearing — then the routines, then the phone's exercise list as
+  /// [WatchReferenceSync.buildExercisesDown] batches, unless the wrist already
+  /// holds the version it named (D-3834).
+  ///
+  /// The batches go one at a time, in index order, and stop at the first the
+  /// radio did not carry: the wrist assembles a complete list or keeps the one
+  /// it has, so a half-arrived list is worse than none and the next sync sends
+  /// the whole list again (PROTOCOL.md, "Idempotency and reconciliation").
   ///
   /// The settings are `SettingsState`'s own — the one owner of them (D-115) —
-  /// so nothing here reads or parses a stored preference.
-  Future<bool> _sendRoutines() async {
+  /// so nothing here reads or parses a stored preference; the accent is read
+  /// the same way, from the theme that state holds rather than from a copy.
+  Future<bool> _sendRoutines({String? exercisesVersion}) async {
     await _transport.send(
       WatchReferenceSync.buildPreferencesDown(
         effortRatingPrompt: _settings.showFeelingSurvey,
         restPingSeconds: _settings.restPingInterval,
+        accentColorHex: WatchReferenceSync.accentHexOf(
+          OmniTheme.colorsForTheme(_settings.appTheme).primary,
+        ),
+        weightUnit: _settings.preferredWeightUnit,
+        distanceUnit: _settings.preferredDistanceUnit,
         generatedAt: _clock(),
       ),
     );
 
-    final message = await WatchReferenceSync.buildRoutinesDown(
+    await _transport.send(
+      await WatchReferenceSync.buildRoutinesDown(
+        repository: _repository,
+        generatedAt: _clock(),
+      ),
+    );
+
+    final batches = await WatchReferenceSync.buildExercisesDown(
       repository: _repository,
       generatedAt: _clock(),
     );
-    if (message != null) await _transport.send(message);
+    if (batches.isEmpty) return true;
+
+    final version = (batches.first['payload']! as Map)['catalogVersion'];
+    if (exercisesVersion == version) return true;
+
+    for (final batch in batches) {
+      if (await _transport.send(batch) == WatchDelivery.undelivered) break;
+    }
     return true;
   }
 

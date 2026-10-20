@@ -57,18 +57,22 @@ abstract final class PhoneEntries {
   /// `loggedAt` of every live watch-inbox row staged for that slot — the wrist's
   /// own entries this phone imported — read in ascending order. A row claims one
   /// group (the first unclaimed group stamped the same); a claimed group is the
-  /// wrist's and is left out. The rest are the phone's own, in ascending entry
-  /// number.
+  /// wrist's and is left out. [loggedNumbers] are the sets this phone logged
+  /// (`EntryRows.loggedSetNumbers`); a group the phone did not log is a planned
+  /// value — a routine's row, or the default row of a new exercise — and is left
+  /// out too. The rest are the phone's own, in ascending entry number.
   static List<Map<String, Object?>> project({
     required String sessionExerciseId,
     required String exerciseId,
     required List<SetRows> groups,
     required List<int> wristLoggedAtMs,
+    required Set<int> loggedNumbers,
   }) {
     final claimed = claimedBy(groups: groups, wristLoggedAtMs: wristLoggedAtMs);
     final entries = <Map<String, Object?>>[];
     for (final group in groups) {
       if (claimed.contains(group.number)) continue;
+      if (!loggedNumbers.contains(group.number)) continue;
       final entry = _entry(
         sessionExerciseId: sessionExerciseId,
         exerciseId: exerciseId,

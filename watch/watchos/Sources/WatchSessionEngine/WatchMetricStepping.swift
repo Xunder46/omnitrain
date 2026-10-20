@@ -140,6 +140,10 @@ public enum WatchMetricStepping {
     /// start at one, load is floored at the wire's own `-200 kg` (band assist,
     /// D-58/D-62), distance never goes negative, and extra load is signed
     /// because negative is band assist.
+    ///
+    /// A period's length floors at one second rather than zero: the schema
+    /// accepts no shorter period, and a wrist that dialled one would hold a
+    /// length it cannot send (D-3405).
     public static func clamp(_ value: Double, metricKey: String) -> Double {
         switch metricKey {
         case WatchMetricKey.reps, WatchMetricKey.rounds:
@@ -148,8 +152,9 @@ public enum WatchMetricStepping {
             return value
         case WatchMetricKey.weight:
             return value < minimumLoadKg ? minimumLoadKg : value
-        case WatchMetricKey.duration, WatchMetricKey.distance,
-             WatchMetricKey.roundDuration:
+        case WatchMetricKey.roundDuration:
+            return value < 1 ? 1 : value
+        case WatchMetricKey.duration, WatchMetricKey.distance:
             return value < 0 ? 0 : value
         default:
             return value

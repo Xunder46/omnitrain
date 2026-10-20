@@ -101,7 +101,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Add a set
-    final addSetButton = find.byIcon(Icons.add);
+    final addSetButton = find.byKey(const Key('set-count-add'));
     await tester.ensureVisible(addSetButton);
     await tester.tap(addSetButton);
     await tester.pumpAndSettle();
@@ -117,7 +117,7 @@ void main() {
     expect(find.text('Unsaved changes'), findsOneWidget);
   }
 
-  testWidgets('Unsaved dialog close icon dismisses and keeps editing', (
+  testWidgets('Unsaved dialog Keep editing dismisses and keeps editing', (
     WidgetTester tester,
   ) async {
     final deps = await setupEditSession();
@@ -134,10 +134,9 @@ void main() {
       exerciseName: deps.exercise.name,
     );
 
-    expect(find.text('Keep editing'), findsNothing);
-    expect(find.byTooltip('Keep editing'), findsOneWidget);
+    expect(find.text('Keep editing'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Keep editing'));
+    await tester.tap(find.text('Keep editing'));
     await tester.pumpAndSettle();
 
     expect(find.text('Unsaved changes'), findsNothing);
@@ -171,7 +170,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byType(AlertDialog),
-        matching: find.widgetWithText(OutlinedButton, 'Discard'),
+        matching: find.widgetWithText(FilledButton, 'Discard'),
       ),
     );
     await tester.pumpAndSettle();
@@ -179,35 +178,6 @@ void main() {
     expect(find.byType(WorkoutSessionScreen), findsNothing);
     expect(find.text('Open Edit Session'), findsOneWidget);
     expect(entryCount(deps.workoutState), 1);
-  });
-
-  testWidgets('Unsaved dialog save keeps structural changes', (
-    WidgetTester tester,
-  ) async {
-    final deps = await setupEditSession();
-
-    await openEditScreen(
-      tester,
-      workoutState: deps.workoutState,
-      routineState: deps.routineState,
-      sessionSummaryService: deps.sessionSummaryService,
-    );
-
-    expect(entryCount(deps.workoutState), 1);
-
-    await createUnsavedStructuralChange(
-      tester,
-      exerciseName: deps.exercise.name,
-    );
-
-    expect(entryCount(deps.workoutState), 2);
-
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(WorkoutSessionScreen), findsNothing);
-    expect(find.text('Open Edit Session'), findsOneWidget);
-    expect(entryCount(deps.workoutState), 2);
   });
 
   testWidgets('Unsaved dialog renders without overflow in constrained width', (
@@ -241,11 +211,25 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(AlertDialog),
-        matching: find.widgetWithText(OutlinedButton, 'Discard'),
+        matching: find.widgetWithText(FilledButton, 'Discard'),
       ),
       findsOneWidget,
     );
-    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextButton, 'Keep editing'),
+      ),
+      findsOneWidget,
+    );
+    // The dialog offers no Save action; the screen's own Save does that.
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Save'),
+      ),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 }

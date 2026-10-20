@@ -13,9 +13,24 @@
     { "path": "valid/session_snapshot.json", "type": "session_snapshot" },
     { "path": "valid/timer_state.json", "type": "timer_state" },
     {
+      "path": "valid/timer_state_with_slot.json",
+      "type": "timer_state",
+      "scenario": "S-6001"
+    },
+    {
       "path": "valid/preferences_down.json",
       "type": "preferences_down",
       "scenario": "S-246"
+    },
+    {
+      "path": "valid/preferences_down_accent.json",
+      "type": "preferences_down",
+      "scenario": "S-3701"
+    },
+    {
+      "path": "valid/preferences_down_units.json",
+      "type": "preferences_down",
+      "scenario": "S-3901"
     },
     {
       "path": "valid/observations_up_session_capture.json",
@@ -78,10 +93,40 @@
       "note": "A slot MAY carry the phone's period length: `sx-soccer` is a round slot at 2400 s and `sx-soccer-plain` the same slot with the field omitted. `sx-marathon` carries 86400 s — the schema declares `minimum: 1` and no maximum, so this slot is the top of the range the walker accepts (S-1412)."
     },
     {
+      "path": "valid/session_snapshot_planned_sets.json",
+      "type": "session_snapshot",
+      "scenario": "S-3620",
+      "note": "A `set` slot MAY carry the phone's planned sets: `sx-bench` holds three rows in set order — 10 reps at 40 kg twice, then 8 reps at 42.5 kg — and holds no entries, so all three rows are still to come. A slot with no set rows, a non-set slot, or an older phone omits the key."
+    },
+    {
       "path": "valid/routines_down_round_length.json",
       "type": "routines_down",
       "scenario": "S-1404",
       "note": "The routine's round effort keeps the phone's target: `eff-soccer-half` carries `durationMs: 600000` (600 s) while `eff-soccer-extra` has no length target and `eff-plank` is a `timed` effort."
+    },
+    {
+      "path": "valid/routines_down_catalog_only.json",
+      "type": "routines_down",
+      "scenario": "S-3601",
+      "note": "A phone with exercises and no routine still sends: `routines` is empty and `fallbackExercises` carries every exercise the phone offers the wrist — a set, a hold, and a round with its own period length."
+    },
+    {
+      "path": "valid/routines_down_empty.json",
+      "type": "routines_down",
+      "scenario": "S-3803",
+      "note": "An empty catalog is valid: the phone has no routines and nothing extra to offer, so `routines` and `fallbackExercises` are both empty. The fallback list is not required to hold anything."
+    },
+    {
+      "path": "valid/exercises_down.json",
+      "type": "exercises_down",
+      "scenario": "S-3801",
+      "note": "The first batch of a two-batch list: `catalogVersion` `v1-4-a1b2c3d4`, `batchIndex` 0 of `batchCount` 2, `totalCount` 4, carrying two exercises — a set and a round with its own period length."
+    },
+    {
+      "path": "valid/exercises_down_single_batch.json",
+      "type": "exercises_down",
+      "scenario": "S-3802",
+      "note": "A list that fits in one batch: `batchCount` 1, `batchIndex` 0, `totalCount` 3, three exercises."
     }
   ],
   "invalid": [
@@ -96,6 +141,54 @@
       "type": "routines_down",
       "expectedCode": "semantic_violation",
       "expectedReasonContains": "fallbackExercises"
+    },
+    {
+      "path": "invalid/exercises_down_batch_index_out_of_range.json",
+      "type": "exercises_down",
+      "scenario": "S-3804",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "batchIndex",
+      "note": "A batch is one of `batchCount` slices, so its 0-based `batchIndex` is always below `batchCount`: index 2 of 2 names a slice the list does not have."
+    },
+    {
+      "path": "invalid/exercises_down_total_below_batch.json",
+      "type": "exercises_down",
+      "scenario": "S-3805",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "totalCount",
+      "note": "`totalCount` is the whole list's size, so it cannot be smaller than the exercises one batch already carries: 1 total against two exercises is impossible."
+    },
+    {
+      "path": "invalid/exercises_down_total_above_capacity.json",
+      "type": "exercises_down",
+      "scenario": "S-3805",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "totalCount",
+      "note": "The batches must be able to carry the whole list: one batch of at most 100 cannot hold 101 exercises."
+    },
+    {
+      "path": "invalid/exercises_down_duplicate_exercise.json",
+      "type": "exercises_down",
+      "scenario": "S-3806",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "exerciseId",
+      "note": "An exercise appears once in the list, so the same `exerciseId` twice in one batch is a defect."
+    },
+    {
+      "path": "invalid/exercises_down_empty_batch.json",
+      "type": "exercises_down",
+      "scenario": "S-3807",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1 items, found 0",
+      "note": "Every batch carries at least one exercise: a list that needs no batches carries no `exercises_down` at all."
+    },
+    {
+      "path": "invalid/exercises_down_missing_version.json",
+      "type": "exercises_down",
+      "scenario": "S-3807",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "catalogVersion",
+      "note": "A batch names the version of the whole list it belongs to; without `catalogVersion` the wrist cannot tell which list it is assembling."
     },
     {
       "path": "invalid/foods_down_missing_food_id.json",
@@ -157,6 +250,27 @@
       "expectedCode": "unexpected_field",
       "expectedReasonContains": "remainingSeconds",
       "note": "The only fixture that carries a remaining-time field, on purpose: the field is the defect. Every fixture that represents timer state must be free of one — see test/sync_protocol_fixtures_test.dart (S-003)."
+    },
+    {
+      "path": "invalid/timer_state_slot_empty.json",
+      "type": "timer_state",
+      "scenario": "S-6001",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1 characters, found 0"
+    },
+    {
+      "path": "invalid/timer_state_slot_number.json",
+      "type": "timer_state",
+      "scenario": "S-6001",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected string, found 7"
+    },
+    {
+      "path": "invalid/timer_state_slot_unknown_field.json",
+      "type": "timer_state",
+      "scenario": "S-6001",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "intervalIndex"
     },
     {
       "path": "invalid/timer_state_rest_with_planned_duration.json",
@@ -264,6 +378,20 @@
       "scenario": "S-246",
       "expectedCode": "missing_required_field",
       "expectedReasonContains": "restPingSeconds"
+    },
+    {
+      "path": "invalid/preferences_down_accent_bad.json",
+      "type": "preferences_down",
+      "scenario": "S-3702",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "does not match the required pattern"
+    },
+    {
+      "path": "invalid/preferences_down_units_bad.json",
+      "type": "preferences_down",
+      "scenario": "S-3902",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "stone"
     },
     {
       "path": "invalid/session_snapshot_set_without_slot.json",
@@ -420,6 +548,22 @@
       "expectedCode": "invalid_type",
       "expectedReasonContains": "expected integer",
       "note": "The length is a number, never a string: `\"2400\"` is refused as the wrong type."
+    },
+    {
+      "path": "invalid/session_snapshot_planned_sets_bad.json",
+      "type": "session_snapshot",
+      "scenario": "S-3620",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at least 1",
+      "note": "A planned row of 0 reps is not a row the wrist can dial in: `reps` declares `minimum: 1`, and a row with fewer than 1 rep is a skipped row the phone omits rather than sends."
+    },
+    {
+      "path": "invalid/session_snapshot_planned_sets_unknown_key.json",
+      "type": "session_snapshot",
+      "scenario": "S-3620",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "setNumber",
+      "note": "A planned row is a closed object: its position in the array IS the set number, so a `setNumber` key is a field the schema does not define and the snapshot is refused."
     }
   ],
   "scenarios": [

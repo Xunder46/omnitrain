@@ -79,6 +79,7 @@
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		925AE7F4E14A37772E8882B0 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* WatchVersion.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = WatchVersion.xcconfig; path = Flutter/WatchVersion.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
 		97C146EE1CF9000F007C117D /* Runner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		97C146FB1CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -169,6 +170,7 @@
 				9740EEB21CF90195004384FC /* Debug.xcconfig */,
 				7AFA3C8E1D35360C0083082E /* Release.xcconfig */,
 				9740EEB31CF90195004384FC /* Generated.xcconfig */,
+				A1B2C3D4E5F60718293A4B5C /* WatchVersion.xcconfig */,
 			);
 			name = Flutter;
 			sourceTree = "<group>";
@@ -250,6 +252,9 @@
 				46AC7A173061FCBF00924AC9 /* OmniTrain Watch App */,
 			);
 			name = "OmniTrain Watch App";
+			packageProductDependencies = (
+				4680609A30622A4300CB4DCB /* WatchSessionEngine */,
+			);
 			productName = "OmniTrain Watch App";
 			productReference = 46AC7A163061FCBF00924AC9 /* OmniTrain Watch App.app */;
 			productType = "com.apple.product-type.application";
@@ -636,6 +641,7 @@
 		};
 		46AC7A223061FCC100924AC9 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1B2C3D4E5F60718293A4B5C /* WatchVersion.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -648,16 +654,16 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_ENTITLEMENTS = OmniTrainWatchApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S3976AA7K8;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;
+				INFOPLIST_FILE = "OmniTrainWatchApp-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain reads your heart rate and steps during a workout and saves the workouts you finish to Health.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OmniTrain uses your location during runs and sports to measure distance and pace.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
@@ -666,7 +672,6 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.sasha.omnitrain.watchkitapp;
@@ -688,6 +693,7 @@
 		};
 		46AC7A233061FCC100924AC9 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1B2C3D4E5F60718293A4B5C /* WatchVersion.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -700,16 +706,16 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_ENTITLEMENTS = OmniTrainWatchApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S3976AA7K8;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;
+				INFOPLIST_FILE = "OmniTrainWatchApp-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain reads your heart rate and steps during a workout and saves the workouts you finish to Health.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OmniTrain uses your location during runs and sports to measure distance and pace.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
@@ -718,11 +724,11 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.sasha.omnitrain.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -737,6 +743,7 @@
 		};
 		46AC7A243061FCC100924AC9 /* Profile */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1B2C3D4E5F60718293A4B5C /* WatchVersion.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -749,16 +756,16 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_ENTITLEMENTS = OmniTrainWatchApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S3976AA7K8;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = OmniTrainWatchApp-Info.plist;
+				INFOPLIST_FILE = "OmniTrainWatchApp-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain reads your heart rate and steps during a workout and saves the workouts you finish to Health.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OmniTrain uses your location during runs and sports to measure distance and pace.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
@@ -767,11 +774,11 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.sasha.omnitrain.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

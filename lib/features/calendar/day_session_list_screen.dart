@@ -18,7 +18,10 @@ import '../session/workout_session_screen.dart';
 import '../session/session_summary_screen.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
+import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
+import '../../widgets/common/omni_empty_state.dart';
 
 /// Shows all sessions (planned + completed TrainingSessions) for a single day.
 ///
@@ -110,7 +113,19 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
               children: [
                 Expanded(
                   child: isEmpty
-                      ? _EmptyState(isPast: _isPast)
+                      // A past day has no bottom button, so it gets no hint
+                      // pointing at one (D-28.2).
+                      ? OmniEmptyState(
+                          icon: _isPast
+                              ? Icons.event_busy
+                              : Icons.event_available,
+                          title: _isPast
+                              ? 'No sessions on this day.'
+                              : 'No sessions planned yet.',
+                          hint: _isPast
+                              ? null
+                              : 'Add one with the button below.',
+                        )
                       : ListView(
                           // Bottom padding clears the host's shared
                           // bottom CTA when `_isTodayOrFuture` is
@@ -127,7 +142,10 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                           ),
                           children: [
                             if (completed.isNotEmpty) ...[
-                              const _SectionHeader(title: 'Completed'),
+                              const OmniCardHeader(
+                                title: 'COMPLETED',
+                                padding: EdgeInsets.only(bottom: 8, top: 4),
+                              ),
                               ...completed.map(
                                 (e) => Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
@@ -144,7 +162,10 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                                 const SizedBox(height: 12),
                             ],
                             if (planned.isNotEmpty) ...[
-                              const _SectionHeader(title: 'Planned'),
+                              const OmniCardHeader(
+                                title: 'PLANNED',
+                                padding: EdgeInsets.only(bottom: 8, top: 4),
+                              ),
                               ...planned.map((e) {
                                 final isEditable = _isTodayOrFuture;
                                 return Padding(
@@ -170,7 +191,10 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                             ],
                             if (inProgress.isNotEmpty) ...[
                               const SizedBox(height: 12),
-                              const _SectionHeader(title: 'In Progress'),
+                              const OmniCardHeader(
+                                title: 'IN PROGRESS',
+                                padding: EdgeInsets.only(bottom: 8, top: 4),
+                              ),
                               ...inProgress.map(
                                 (e) => Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
@@ -284,12 +308,11 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                 );
               } catch (e) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Session saved, but failed to link planned session: $e',
-                    ),
-                  ),
+                debugPrint('Link planned session: $e');
+                OmniMessage.error(
+                  context,
+                  'Session saved, but could not link the planned session. '
+                  'Try again.',
                 );
               }
             },
@@ -301,9 +324,8 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error starting session: $e')));
+        debugPrint('Start session: $e');
+        OmniMessage.error(context, 'Could not start the session. Try again.');
       }
     }
   }
@@ -385,43 +407,6 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
 }
 
 // ─── Sub-widgets ──────────────────────────────────────────────────────────────
-
-class _EmptyState extends StatelessWidget {
-  final bool isPast;
-  const _EmptyState({required this.isPast});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        isPast ? 'No sessions on this day.' : 'No sessions planned yet.',
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-          color: OmniTheme.colors.textSecondary.withOpacity(0.6),
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  const _SectionHeader({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 4),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: OmniTheme.colors.textSecondary,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-}
 
 class _SessionRow extends StatelessWidget {
   final CalendarEntry entry;
@@ -514,12 +499,14 @@ class _SessionRow extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.edit_outlined, size: 18),
                           color: OmniTheme.colors.textSecondary,
+                          tooltip: 'Edit session',
                           onPressed: onEdit,
                         ),
                       if (onDelete != null)
                         IconButton(
                           icon: const Icon(Icons.delete_outline, size: 18),
-                          color: Colors.redAccent,
+                          color: Theme.of(context).colorScheme.error,
+                          tooltip: 'Delete session',
                           onPressed: onDelete,
                         ),
                     ],
@@ -713,6 +700,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
+                  tooltip: 'Close',
                   onPressed: () => Navigator.pop(context),
                   color: themeColors.textMuted,
                 ),
@@ -735,7 +723,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 Expanded(
                   child: (_mode == 'free')
                       ? FilledButton(
-                          style: _selectedModeButtonStyle(theme),
+                          style: _selectedModeButtonStyle(
+                            theme,
+                          ).copyWith(shape: _modeButtonShape),
                           onPressed: () => setState(() => _mode = 'free'),
                           child: const Text(
                             'Free Training',
@@ -744,7 +734,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                           ),
                         )
                       : OutlinedButton(
-                          style: _unselectedModeButtonStyle(theme),
+                          style: _unselectedModeButtonStyle(
+                            theme,
+                          ).copyWith(shape: _modeButtonShape),
                           onPressed: () => setState(() => _mode = 'free'),
                           child: const Text(
                             'Free Training',
@@ -757,7 +749,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 Expanded(
                   child: (_mode == 'routine')
                       ? FilledButton(
-                          style: _selectedModeButtonStyle(theme),
+                          style: _selectedModeButtonStyle(
+                            theme,
+                          ).copyWith(shape: _modeButtonShape),
                           onPressed: () => setState(() => _mode = 'routine'),
                           child: const Text(
                             'Routine',
@@ -766,7 +760,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                           ),
                         )
                       : OutlinedButton(
-                          style: _unselectedModeButtonStyle(theme),
+                          style: _unselectedModeButtonStyle(
+                            theme,
+                          ).copyWith(shape: _modeButtonShape),
                           onPressed: () => setState(() => _mode = 'routine'),
                           child: const Text(
                             'Routine',
@@ -855,6 +851,13 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
     );
   }
 
+  static final WidgetStateProperty<OutlinedBorder?> _modeButtonShape =
+      WidgetStateProperty.all(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+        ),
+      );
+
   ButtonStyle _selectedModeButtonStyle(ThemeData theme) {
     return ButtonStyle(
       minimumSize: WidgetStateProperty.all(const Size.fromHeight(52)),
@@ -871,11 +874,6 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
           width: 1.2,
         ),
       ),
-      shape: WidgetStateProperty.all(
-        RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
-        ),
-      ),
     );
   }
 
@@ -890,11 +888,6 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
         BorderSide(
           color: theme.colorScheme.outline.withValues(alpha: 0.55),
           width: 1.2,
-        ),
-      ),
-      shape: WidgetStateProperty.all(
-        RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
         ),
       ),
     );

@@ -53,10 +53,15 @@ import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
+import 'package:omnitrain/core/constants/home_tiles.dart';
+import 'package:omnitrain/core/constants/modality_colors.dart';
+import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/widgets/pickers/metric_chooser_dialog.dart';
 import 'package:omnitrain/widgets/pickers/modality_picker_dialog.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
+import 'package:omnitrain/widgets/session/value_stepper_row.dart';
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/test_nutrition_primer_state.dart';
 import 'helpers/fake_preferences_service.dart';
@@ -71,6 +76,16 @@ Future<MockWorkoutRepository> _freshRepo() async {
   await repo.initialize();
   return repo;
 }
+
+/// The six training-tile labels, in `HomeTiles.all` order.
+const List<String> _homeTileLabels = <String>[
+  'Cardio',
+  'Resistance',
+  'Sports',
+  'Isometric',
+  'Free',
+  'Routines',
+];
 
 /// The vertically-scrolling list on a screen.
 ///
@@ -366,6 +381,29 @@ void main() {
       expect(find.text('No training periods yet.'), findsOneWidget);
     });
 
+    testWidgets('empty list renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final periodState = PeriodState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(home: PeriodListScreen(periodState: periodState)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No training periods yet.'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Add one with the button below.'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('shows period when data exists', (WidgetTester tester) async {
       final repo = await _freshRepo();
       await repo.createPeriod(
@@ -563,6 +601,219 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // CreatePeriodScreen — unsaved-changes guard (S-2901)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('CreatePeriodScreen unsaved changes guard (S-2901)', () {
+    final Finder nameField = find.byType(TextField).first;
+
+    Finder dialog() => find.byType(AlertDialog);
+
+    Finder inDialog(String text) =>
+        find.descendant(of: dialog(), matching: find.text(text));
+
+    Future<({MockWorkoutRepository repo, PeriodState periodState})> pumpScreen(
+      WidgetTester tester, {
+      TrainingPeriod? existing,
+      bool pushed = false,
+    }) async {
+      final repo = await _freshRepo();
+      final periodState = PeriodState(repo);
+      final screen = CreatePeriodScreen(
+        periodState: periodState,
+        existingPeriod: existing,
+      );
+      await tester.pumpWidget(
+        pushed
+            // Pushed behind a route: system back then has somewhere to pop
+            // to, which is what the guard decides about.
+            ? MaterialApp(
+                home: Builder(
+                  builder: (context) => Scaffold(
+                    body: TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => screen),
+                      ),
+                      child: const Text('open period form'),
+                    ),
+                  ),
+                ),
+              )
+            : MaterialApp(home: screen),
+      );
+      if (pushed) {
+        await tester.tap(find.text('open period form'));
+      }
+      await tester.pumpAndSettle();
+      return (repo: repo, periodState: periodState);
+    }
+
+    TrainingPeriod storedPeriod() => TrainingPeriod(
+      id: 'p-guard',
+      ownerUserId: 'u-1',
+      name: 'Base Period',
+      startDateMs: DateTime(2025, 1, 1).millisecondsSinceEpoch,
+      endDateMs: DateTime(2025, 3, 31, 23, 59, 59, 999).millisecondsSinceEpoch,
+      createdAtMs: 100,
+      updatedAtMs: 100,
+    );
+
+    Future<void> keepEditing(WidgetTester tester) async {
+      await tester.tap(
+        find.descendant(of: dialog(), matching: find.text('Keep editing')),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// Taps the header's back control. `tester.pageBack()` needs the 'Back'
+    /// tooltip, which older OmniBackHeader revisions did not set; the icon is
+    /// stable across them.
+    Future<void> tapHeaderBack(WidgetTester tester) async {
+      final back = find.widgetWithIcon(IconButton, Icons.arrow_back);
+      expect(back, findsOneWidget);
+      await tester.tap(back);
+      await tester.pumpAndSettle();
+    }
+
+    /// Taps a date field and confirms the picker's pre-selected date.
+    Future<void> pickDate(WidgetTester tester, String label) async {
+      await tester.tap(
+        find
+            .ancestor(
+              of: find.text(label),
+              matching: find.byType(GestureDetector),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsNothing);
+    }
+
+    testWidgets('typed name + system back shows the Unsaved changes dialog', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await tester.enterText(nameField, 'Spring Bulk');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsOneWidget);
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+      expect(inDialog('Discard'), findsOneWidget);
+      expect(inDialog('Save'), findsNothing);
+
+      // Keep editing stays on the screen with the typed value intact.
+      await keepEditing(tester);
+      expect(dialog(), findsNothing);
+      expect(find.byType(CreatePeriodScreen), findsOneWidget);
+      expect(find.text('Spring Bulk'), findsOneWidget);
+    });
+
+    testWidgets('header back on a dirty form shows the same dialog', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await tester.enterText(nameField, 'Spring Bulk');
+      await tester.pumpAndSettle();
+
+      await tapHeaderBack(tester);
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('a typed note alone marks the form dirty', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Notes (optional)'),
+        'Deload week',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('a picked date alone marks the form dirty', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester);
+      await pickDate(tester, 'Start Date');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('untouched form: back pops with no dialog', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester, pushed: true);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+    });
+
+    testWidgets('Discard pops and persists nothing', (
+      WidgetTester tester,
+    ) async {
+      final deps = await pumpScreen(tester);
+      await tester.enterText(nameField, 'Spring Bulk');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(inDialog('Discard'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+      expect(await deps.repo.getPeriods(), isEmpty);
+    });
+
+    testWidgets('edit mode: an untouched stored period pops with no dialog', (
+      WidgetTester tester,
+    ) async {
+      await pumpScreen(tester, existing: storedPeriod());
+
+      await tapHeaderBack(tester);
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+    });
+
+    testWidgets('edit mode: Discard leaves the stored period unchanged', (
+      WidgetTester tester,
+    ) async {
+      final existing = storedPeriod();
+      final deps = await pumpScreen(tester, existing: existing);
+      await tester.enterText(nameField, 'Renamed Period');
+      await tester.pumpAndSettle();
+
+      await tapHeaderBack(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(inDialog('Discard'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CreatePeriodScreen), findsNothing);
+      expect(await deps.repo.getPeriodById(existing.id), isNull);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // CalendarScreen
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -715,6 +966,39 @@ void main() {
       expect(find.text('No Routines Yet'), findsOneWidget);
     });
 
+    testWidgets('empty list renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MyRoutinesScreen(
+            routineState: RoutineState(repo),
+            routineSessionService: RoutineSessionService(repo),
+            sessionSummaryService: SessionSummaryService(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No Routines Yet'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Create your first routine to get started',
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('shows unified "+ New Routine" bottom CTA', (
       WidgetTester tester,
     ) async {
@@ -854,6 +1138,33 @@ void main() {
       expect(find.text('Create Routine'), findsOneWidget);
       // Back arrow
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    });
+
+    testWidgets('empty block renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      await tester.pumpWidget(
+        MaterialApp(home: RoutineSetupScreen(routineState: routineState)),
+      );
+      await tester.pumpAndSettle();
+
+      // A new routine has one empty "Main Block" — and no hint, because the
+      // block's own add button sits in the card header.
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No exercises in this block yet.'),
+        findsOneWidget,
+      );
+      final emptyState = tester.widget<OmniEmptyState>(
+        find.byType(OmniEmptyState),
+      );
+      expect(emptyState.hint, isNull);
+      expect(emptyState.compact, isTrue);
     });
 
     testWidgets('shows loading state then settles', (
@@ -1008,6 +1319,78 @@ void main() {
       expect(find.byKey(const Key('routine-add-set')), findsOneWidget);
       expect(find.byKey(const Key('routine-remove-set')), findsOneWidget);
       expect(find.text('Set 1 of 1'), findsOneWidget);
+    });
+
+    testWidgets('exercise row ink well paints on a Material inside the card', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await routineState.createNewRoutine('Ink Layer');
+      await routineState.addExerciseToRoutine(exercises.first, 'set');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final cardFinder = find.byType(ExerciseCard).first;
+      final surfaceFinder = find.descendant(
+        of: cardFinder,
+        matching: find.byType(OmniSurface),
+      );
+      // The row's own ink well is the outer one — the popup menu button
+      // nests a second one below it.
+      final inkFinder = find
+          .descendant(of: cardFinder, matching: find.byType(InkWell))
+          .first;
+      expect(surfaceFinder, findsOneWidget);
+      expect(inkFinder, findsOneWidget);
+
+      // The splash paints on the nearest Material *ancestor* of the ink well.
+      // With none inside the card it would paint on the scaffold's Material,
+      // underneath the surface's opaque fill.
+      Element? material;
+      tester.element(inkFinder).visitAncestorElements((ancestor) {
+        if (ancestor.widget is Material) {
+          material = ancestor;
+          return false;
+        }
+        return true;
+      });
+      expect(
+        material,
+        isNotNull,
+        reason: 'the row ink well needs a Material of its own',
+      );
+
+      final surfaceElement = tester.element(surfaceFinder);
+      var materialIsInsideSurface = false;
+      material!.visitAncestorElements((ancestor) {
+        if (identical(ancestor, surfaceElement)) {
+          materialIsInsideSurface = true;
+          return false;
+        }
+        return true;
+      });
+      expect(
+        materialIsInsideSurface,
+        isTrue,
+        reason: 'the Material the splash paints on must be inside the card',
+      );
     });
 
     testWidgets('tracking selection shows ModalityPickerDialog', (
@@ -1242,7 +1625,8 @@ void main() {
     });
 
     testWidgets(
-      'timed effort with extra-weight target renders InlineMetricEditor',
+      'timed effort detail shows the weight row and leaves the stored '
+      'extra-weight target untouched (plan 39, D-5)',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final repo = await _freshRepo();
@@ -1260,13 +1644,13 @@ void main() {
           'timed',
         );
 
-        // Seed an extra-weight target so the UI guard shows the editor.
+        // Seed an extra-weight target: the interval's row reads it back.
         await routineState.setTargetValue(
           effortId,
           MetricIds.extraWeight,
           MetricIds.unitKg,
           setIndex: 0,
-          targetMin: 0.0,
+          targetMin: 12.5,
         );
 
         await routineState.saveRoutine();
@@ -1287,9 +1671,24 @@ void main() {
         await tester.tap(find.text(timedExercise.name).first);
         await tester.pumpAndSettle();
 
-        // The extra-weight InlineMetricEditor should be visible.
-        expect(find.byType(InlineMetricEditor), findsWidgets);
-        expect(find.text('EXTRA KG'), findsOneWidget);
+        // Plan 39 (D-5): the interval's body holds the same weight row a hold
+        // shows, reading the stored target in the user's unit.
+        expect(find.byType(ValueStepperRow), findsOneWidget);
+        expect(find.byType(InlineMetricEditor), findsOneWidget);
+        expect(find.text('12.5'), findsOneWidget);
+        expect(find.text('KG'), findsOneWidget);
+        expect(find.text('EXTRA KG'), findsNothing);
+
+        // The seeded target survives the render unchanged.
+        final storedExtraWeight = routineState
+            .getEffortTargets(effortId)
+            .where((target) => target.metricId == MetricIds.extraWeight)
+            .toList();
+        expect(storedExtraWeight, hasLength(1));
+        expect(storedExtraWeight.single.targetMin, 12.5);
+
+        // The sets control is the only body control an interval shows.
+        expect(find.text('Interval 1 of 1'), findsOneWidget);
       },
     );
 
@@ -1359,8 +1758,11 @@ void main() {
 
       // The hold-time unit label 'HOLD TIME' must be absent.
       expect(find.text('HOLD TIME'), findsNothing);
-      // Drill efforts still expose the extra-weight editor.
-      expect(find.text('EXTRA KG'), findsOneWidget);
+      // A4: a hold shows exactly one boxed weight row — the extraWeight
+      // target — with the plain unit label and no EXTRA prefix.
+      expect(find.byType(ValueStepperRow), findsOneWidget);
+      expect(find.text('KG'), findsOneWidget);
+      expect(find.text('EXTRA KG'), findsNothing);
       // The set-count label for a drill effort is still visible.
       expect(find.text('Hold 1 of 1'), findsOneWidget);
     });
@@ -1376,7 +1778,18 @@ void main() {
 
         final exercises = await repo.getExercises();
         await routineState.createNewRoutine('Round Duration');
-        await routineState.addExerciseToRoutine(exercises.first, 'round');
+        final roundEffortId = await routineState.addExerciseToRoutine(
+          exercises.first,
+          'round',
+        );
+        // Seed a stored round length so the row reads a target, not a default.
+        await routineState.setTargetValue(
+          roundEffortId,
+          MetricIds.roundDuration,
+          MetricIds.unitSeconds,
+          setIndex: 0,
+          targetInt: 180,
+        );
         await routineState.saveRoutine();
         final templateId = routineState.currentTemplate!.id;
 
@@ -1394,14 +1807,21 @@ void main() {
         await tester.tap(find.text(exercises.first.name).first);
         await tester.pumpAndSettle();
 
-        // Round-duration editor must still be present.
-        expect(find.text('DURATION'), findsOneWidget);
-        expect(find.text('ROUND 1'), findsOneWidget);
+        // A6: one round-length row captioned ROUND LENGTH, showing the stored
+        // 180 s as mm:ss; the big ROUND n heading is gone.
+        expect(
+          find.byKey(ValueKey('$roundEffortId-0-round-length')),
+          findsOneWidget,
+        );
+        expect(find.byType(ValueStepperRow), findsOneWidget);
+        expect(find.text('ROUND LENGTH'), findsOneWidget);
+        expect(find.text('03:00'), findsOneWidget);
+        expect(find.text('ROUND 1'), findsNothing);
       },
     );
 
     testWidgets(
-      'timed effort with no extra-weight target shows no metric editor',
+      'timed effort with no extra-weight target still shows its weight row',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         final repo = await _freshRepo();
@@ -1409,7 +1829,7 @@ void main() {
         final routineState = RoutineState(repo);
         routineState.setAutosaveEnabled(false);
 
-        // No extra-weight target seeded — _buildMetricWidget returns SizedBox.shrink().
+        // No extra-weight target seeded — the row still shows, at 0.0.
         final exercises = await repo.getExercises();
         await routineState.createNewRoutine('Timed No Extra');
         await routineState.addExerciseToRoutine(exercises.first, 'timed');
@@ -1430,8 +1850,12 @@ void main() {
         await tester.tap(find.text(exercises.first.name).first);
         await tester.pumpAndSettle();
 
+        // Plan 39 (D-5): an interval renders the weight row whether or not a
+        // stored extraWeight target exists.
+        expect(find.byType(ValueStepperRow), findsOneWidget);
         expect(find.byType(InlineMetricEditor), findsOneWidget);
-        expect(find.text('EXTRA KG'), findsOneWidget);
+        expect(find.text('0.0'), findsOneWidget);
+        expect(find.text('EXTRA KG'), findsNothing);
         // Set count row is still visible.
         expect(find.text('Interval 1 of 1'), findsOneWidget);
       },
@@ -1945,6 +2369,43 @@ void main() {
       // Exercise name should be visible
       expect(find.text(exercises.first.name), findsOneWidget);
     });
+
+    testWidgets('empty session renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionOverviewScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No exercises yet'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Add your first exercise to get started',
+        ),
+        findsOneWidget,
+      );
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2020,6 +2481,77 @@ void main() {
       // Should have multiple EnergyTile cards in a grid
       expect(find.byType(CustomScrollView), findsWidgets);
     });
+
+    testWidgets(
+      'Routines tile accent is sourced from the active theme, modality tiles are not',
+      (WidgetTester tester) async {
+        addTearDown(() => OmniTheme.activeTheme = AppTheme.abyssalNeon);
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final screen = await buildHomeScreen(repo);
+
+        Color accentOf(String title) => tester
+            .widget<EnergyTile>(
+              find.byWidgetPredicate(
+                (widget) => widget is EnergyTile && widget.title == title,
+              ),
+            )
+            .accentColor;
+
+        // The Routines tile declares no accent of its own, so nothing in the
+        // config can carry a colour a theme cannot change.
+        expect(
+          HomeTiles.all
+              .firstWhere((tile) => tile.key == 'my_routines')
+              .accentColor,
+          isNull,
+        );
+
+        final accents = <AppTheme, Map<String, Color>>{};
+        for (final theme in <AppTheme>[
+          AppTheme.abyssalNeon,
+          AppTheme.voidPulse,
+        ]) {
+          OmniTheme.activeTheme = theme;
+          await tester.pumpWidget(MaterialApp(home: screen));
+          await tester.pumpAndSettle();
+          accents[theme] = <String, Color>{
+            for (final label in _homeTileLabels) label: accentOf(label),
+          };
+        }
+
+        // The tile's accent is the active theme's neutral secondary role.
+        // Every theme defines that role as the same white today, so the value
+        // is equal across themes — what this pins is the source: a theme that
+        // changes the role moves the tile with it.
+        for (final theme in accents.keys) {
+          expect(
+            accents[theme]!['Routines'],
+            OmniTheme.colorsForTheme(theme).textSecondary,
+            reason: "Routines takes $theme's neutral secondary role",
+          );
+        }
+
+        // The five modality tiles keep their fixed modality identity, in
+        // every theme.
+        const modalityAccents = <String, Color>{
+          'Cardio': ModalityColors.cardioEndurance,
+          'Resistance': ModalityColors.resistanceLifting,
+          'Sports': ModalityColors.sports,
+          'Isometric': ModalityColors.isometricStretching,
+          'Free': ModalityColors.freeTraining,
+        };
+        for (final entry in modalityAccents.entries) {
+          for (final theme in accents.keys) {
+            expect(
+              accents[theme]![entry.key],
+              entry.value,
+              reason: '${entry.key} keeps its modality accent in $theme',
+            );
+          }
+        }
+      },
+    );
 
     testWidgets('free training flow shows rolling toggle and inline guidance', (
       WidgetTester tester,
@@ -2980,7 +3512,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Capabilities'), findsOneWidget);
+      expect(find.text('CAPABILITIES'), findsOneWidget);
     });
 
     testWidgets('shows Save exercise button', (WidgetTester tester) async {
@@ -3702,6 +4234,53 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No sessions planned yet.'), findsOneWidget);
+    });
+
+    testWidgets('empty day renders the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final routineState = RoutineState(repo);
+      final workoutState = WorkoutState(repo);
+
+      Widget screen(DateTime date) => MaterialApp(
+        home: DaySessionListScreen(
+          date: date,
+          calendarState: calendarState,
+          routineState: routineState,
+          workoutState: workoutState,
+          routineSessionService: RoutineSessionService(repo),
+          sessionSummaryService: SessionSummaryService(repo),
+          settingsState: SettingsState(repo, fakePreferencesService()),
+          timerAlertService: FakeTimerAlertService(),
+        ),
+      );
+
+      // A past day is read-only — no bottom button, so no hint naming one.
+      await tester.pumpWidget(screen(DateTime(2020, 1, 15)));
+      await tester.pumpAndSettle();
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No sessions on this day.'),
+        findsOneWidget,
+      );
+      expect(find.text('Add one with the button below.'), findsNothing);
+
+      // A future day has the "+ New Planned Session" CTA to point at.
+      await tester.pumpWidget(screen(DateTime(2099, 12, 31)));
+      await tester.pumpAndSettle();
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No sessions planned yet.'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Add one with the button below.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows formatted date in AppBar title', (
@@ -6796,7 +7375,9 @@ void main() {
       expect(find.text('Search exercises...'), findsOneWidget);
     });
 
-    testWidgets('shows New Exercise button', (WidgetTester tester) async {
+    testWidgets('S-4101: no New Exercise button; search field comes first', (
+      WidgetTester tester,
+    ) async {
       await tester.binding.setSurfaceSize(const Size(800, 1200));
       final repo = await _freshRepo();
       final workoutState = WorkoutState(repo);
@@ -6806,7 +7387,38 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('New Exercise'), findsOneWidget);
+      // The search field is the first child of the body column: the
+      // full-width `New Exercise` button and its 16 dp gap are gone, and
+      // creating an exercise now lives on the library header (S-4102).
+      final searchField = find.byType(TextField).first;
+      final searchWidget = tester.widget<TextField>(searchField);
+      final bodyColumn = find
+          .ancestor(of: searchField, matching: find.byType(Column))
+          .evaluate()
+          .map((element) => element.widget)
+          .whereType<Column>()
+          .firstWhere(
+            (column) => column.children.contains(searchWidget),
+            orElse: () => throw StateError(
+              'No Column directly holds the picker search field',
+            ),
+          );
+      expect(bodyColumn.children.first, same(searchWidget));
+
+      // …and it sits just under the header rather than below the removed
+      // button and its 16 dp gap.
+      final searchTop = tester.getTopLeft(searchField).dy;
+      final headerBottom = tester.getBottomLeft(find.byType(OmniBackHeader)).dy;
+      expect(
+        searchTop - headerBottom,
+        lessThanOrEqualTo(24.0),
+        reason:
+            'search field top $searchTop must sit within 24 px of the header '
+            'bottom $headerBottom',
+      );
+
+      expect(find.text('New Exercise'), findsNothing);
+      expect(find.byIcon(Icons.add), findsNothing);
     });
 
     testWidgets(
@@ -6902,6 +7514,169 @@ void main() {
       expect(find.text('No exercises found'), findsOneWidget);
     });
 
+    testWidgets('empty results render the shared OmniEmptyState (S-2802)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
+      );
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField).first, 'zzzznotanexercise');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No exercises found'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Try adjusting your filters'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'S-4108: empty results offer New Exercise; a populated list does not',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
+        );
+        await tester.pumpAndSettle();
+
+        // With the seeded catalog listed there is no empty state, so the
+        // create button is absent (S-4101 stays green).
+        expect(
+          find.byKey(const Key('exercise_picker_new_button')),
+          findsNothing,
+        );
+
+        await tester.enterText(
+          find.byType(TextField).first,
+          'zzzznotanexercise',
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        expect(find.text('No exercises found'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(OmniEmptyState),
+            matching: find.byKey(const Key('exercise_picker_new_button')),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'S-4109: the button opens the editor with the session modality',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ExercisePickerScreen(
+              workoutState: workoutState,
+              sessionModality: Modality.sports,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(
+          find.byType(TextField).first,
+          'zzzznotanexercise',
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('exercise_picker_new_button')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExerciseEditorScreen), findsOneWidget);
+        expect(
+          tester
+              .widget<ExerciseEditorScreen>(find.byType(ExerciseEditorScreen))
+              .contextModality,
+          Modality.sports,
+        );
+      },
+    );
+
+    testWidgets(
+      'S-4110: a saved exercise lands in the picker search field and list',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ExercisePickerScreen(
+              workoutState: workoutState,
+              sessionModality: Modality.sports,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(
+          find.byType(TextField).first,
+          'zzzznotanexercise',
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('exercise_picker_new_button')));
+        await tester.pumpAndSettle();
+
+        // Sports is prefilled from the session: one of its required
+        // capabilities plus a name make the form valid.
+        await tester.tap(find.widgetWithText(FilterChip, 'Time'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.widgetWithText(TextField, 'Exercise name'),
+          'Zercher Squat 4110',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Save exercise'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExerciseEditorScreen), findsNothing);
+        expect(
+          tester
+              .widget<TextField>(find.byType(TextField).first)
+              .controller!
+              .text,
+          'Zercher Squat 4110',
+        );
+
+        // The controller write debounces into a fresh search (300 ms).
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.descendant(
+            of: find.byType(ListView),
+            matching: find.text('Zercher Squat 4110'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
     testWidgets('does not overflow when keyboard is open with empty results', (
       WidgetTester tester,
     ) async {
@@ -6928,7 +7703,7 @@ void main() {
     });
 
     testWidgets(
-      'New Exercise label is not wrapped in shrink-to-fit FittedBox',
+      'dropdown value text uses a smaller, explicit type role',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(800, 1200));
         final repo = await _freshRepo();
@@ -6939,38 +7714,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(
-          find.ancestor(
-            of: find.text('New Exercise'),
-            matching: find.byType(FittedBox),
-          ),
-          findsNothing,
-        );
-      },
-    );
-
-    testWidgets(
-      'New Exercise label type role is more prominent than dropdown value text',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(800, 1200));
-        final repo = await _freshRepo();
-        final workoutState = WorkoutState(repo);
-
-        await tester.pumpWidget(
-          MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
-        );
-        await tester.pumpAndSettle();
-
-        // After Fix 1, 'New Exercise' Text has no explicit downscaled style
-        final newExerciseText = tester.widget<Text>(find.text('New Exercise'));
-        expect(
-          newExerciseText.style?.fontSize,
-          isNull,
-          reason:
-              'New Exercise label must not have an explicit downscaled fontSize',
-        );
-
-        // After Fix 2, dropdown 'All' Text has an explicitly small style (bodySmall)
+        // Dropdown 'All' Text has an explicitly small style (bodySmall)
         final allTextWidgets = tester
             .widgetList<Text>(find.text('All'))
             .toList();
@@ -6985,11 +7729,14 @@ void main() {
             isNotNull,
             reason: 'Dropdown value text must have an explicit muted style',
           );
+          // Pinned to the bodySmall type role, not merely "smaller than 14":
+          // the picker builds these texts with
+          // `theme.textTheme.bodySmall?.copyWith(...)`.
+          final theme = Theme.of(tester.element(find.text('All').first));
           expect(
-            w.style!.fontSize!,
-            lessThan(14.0),
-            reason:
-                'Dropdown value text must be smaller than standard body text',
+            w.style!.fontSize,
+            theme.textTheme.bodySmall!.fontSize,
+            reason: 'Dropdown value text must use the bodySmall type role',
           );
         }
       },
@@ -7271,10 +8018,10 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // WorkoutSessionScreen – weight adjustment toggle
+  // WorkoutSessionScreen – extra weight display
   // ══════════════════════════════════════════════════════════════════════════
 
-  group('WorkoutSessionScreen – weight adjustment toggle', () {
+  group('WorkoutSessionScreen – extra weight display', () {
     testWidgets(
       'set weight editor displays canonical kg value converted to lbs',
       (WidgetTester tester) async {
@@ -7327,7 +8074,7 @@ void main() {
     );
 
     testWidgets(
-      'timed extra-weight displays canonical kg value converted to lbs',
+      'timed effort shows its extra-weight value and stepper (plan 39, D-5)',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(800, 1200));
         final repo = await _freshRepo();
@@ -7350,7 +8097,8 @@ void main() {
           effortKindOverride: 'timed',
         );
 
-        // Canonical storage is kg; 22.6796 kg should render as +50.0 lbs.
+        // Canonical storage is kg; the interval's row shows the stored value in
+        // the user's unit.
         await workoutState.updateEntryValue(
           effortId,
           0,
@@ -7374,8 +8122,12 @@ void main() {
         await tester.tap(find.text(timedExercise.name).first);
         await tester.pumpAndSettle();
 
-        expect(find.text('+50.0'), findsOneWidget);
+        expect(find.text('50.0'), findsOneWidget);
         expect(find.text('LBS'), findsOneWidget);
+        expect(
+          find.byKey(const Key('value-stepper-plus-weight')),
+          findsOneWidget,
+        );
       },
     );
 
@@ -7403,7 +8155,7 @@ void main() {
           effortKindOverride: 'drill',
         );
 
-        // Canonical storage is kg; 22.6796 kg should render as +50.0 lbs.
+        // Canonical storage is kg; 22.6796 kg should render as 50.0 lbs.
         await workoutState.updateEntryValue(
           effortId,
           0,
@@ -7427,69 +8179,8 @@ void main() {
         await tester.tap(find.text(drillExercise.name).first);
         await tester.pumpAndSettle();
 
-        expect(find.text('+50.0'), findsOneWidget);
+        expect(find.text('50.0'), findsOneWidget);
         expect(find.text('LBS'), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'timed exercise reveals extra weight only after tapping the link',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(800, 1200));
-        final repo = await _freshRepo();
-        await repo.setPreferenceString('preferred_weight_unit', 'lbs');
-        final workoutState = WorkoutState(repo);
-        final routineState = RoutineState(repo);
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
-        await workoutState.markExerciseInfoHintSeen();
-        await workoutState.markExerciseNotesHintSeen();
-        await workoutState.createNewSession(modality: 'cardio_endurance');
-
-        final exercises = await repo.getExercises();
-        final timedExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-          orElse: () => exercises.first,
-        );
-        await workoutState.addExerciseToSession(
-          timedExercise,
-          effortKindOverride: 'timed',
-        );
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: WorkoutSessionScreen(
-              workoutState: workoutState,
-              routineState: routineState,
-              sessionSummaryService: SessionSummaryService(repo),
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: settingsState,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text(timedExercise.name).first);
-        await tester.pumpAndSettle();
-
-        final linkFinder = find.widgetWithText(
-          OutlinedButton,
-          'Weight adjustment',
-        );
-        await tester.ensureVisible(linkFinder);
-
-        expect(linkFinder, findsOneWidget);
-        expect(find.text('EXTRA KG'), findsNothing);
-
-        await tester.tap(linkFinder);
-        await tester.pumpAndSettle();
-        expect(find.text('EXTRA KG'), findsNothing);
-        expect(find.text('LBS'), findsOneWidget);
-
-        await tester.ensureVisible(linkFinder);
-        await tester.tap(linkFinder);
-        await tester.pumpAndSettle();
-        expect(find.text('EXTRA KG'), findsNothing);
       },
     );
 
@@ -7579,96 +8270,6 @@ void main() {
       // the exercise's load capability.
       expect(find.text('Weight adjustment'), findsNothing);
     });
-
-    testWidgets(
-      'weight adjustment renders as OutlinedButton with expand icon, not plain TextButton',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(800, 1200));
-        final repo = await _freshRepo();
-        await repo.setPreferenceString('preferred_weight_unit', 'kg');
-        final workoutState = WorkoutState(repo);
-        final routineState = RoutineState(repo);
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
-        await workoutState.markExerciseInfoHintSeen();
-        await workoutState.markExerciseNotesHintSeen();
-        await workoutState.createNewSession(modality: 'cardio_endurance');
-
-        final exercises = await repo.getExercises();
-        final timedExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-          orElse: () => exercises.first,
-        );
-        await workoutState.addExerciseToSession(
-          timedExercise,
-          effortKindOverride: 'timed',
-        );
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: WorkoutSessionScreen(
-              workoutState: workoutState,
-              routineState: routineState,
-              sessionSummaryService: SessionSummaryService(repo),
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: settingsState,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text(timedExercise.name).first);
-        await tester.pumpAndSettle();
-
-        final outlinedFinder = find.widgetWithText(
-          OutlinedButton,
-          'Weight adjustment',
-        );
-        await tester.ensureVisible(outlinedFinder);
-        final outlinedButton = tester.widget<OutlinedButton>(outlinedFinder);
-        final theme = Theme.of(tester.element(outlinedFinder));
-        final resolvedForeground = outlinedButton.style?.foregroundColor
-            ?.resolve(<WidgetState>{});
-        final resolvedSide = outlinedButton.style?.side?.resolve(
-          <WidgetState>{},
-        );
-
-        // Must render as OutlinedButton, not plain TextButton
-        expect(outlinedFinder, findsOneWidget);
-        expect(
-          find.widgetWithText(TextButton, 'Weight adjustment'),
-          findsNothing,
-        );
-        expect(
-          resolvedForeground,
-          theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
-        );
-        expect(
-          resolvedSide?.color,
-          theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
-        );
-
-        // Must show expand icon when collapsed
-        expect(
-          find.descendant(
-            of: outlinedFinder,
-            matching: find.byIcon(Icons.expand_more),
-          ),
-          findsOneWidget,
-        );
-
-        // Tap to expand — icon must flip to expand_less
-        await tester.tap(outlinedFinder);
-        await tester.pumpAndSettle();
-        expect(
-          find.descendant(
-            of: outlinedFinder,
-            matching: find.byIcon(Icons.expand_less),
-          ),
-          findsOneWidget,
-        );
-      },
-    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -7878,6 +8479,36 @@ void main() {
 
       // Block name (h:mm a) should exist and the empty-state body should show.
       expect(find.text('No exercises in this block yet.'), findsOneWidget);
+    });
+
+    testWidgets('empty block renders the shared compact OmniEmptyState '
+        '(S-2802)', (WidgetTester tester) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.addSessionBlock();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: SettingsState(repo, fakePreferencesService()),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      final emptyState = tester.widget<OmniEmptyState>(
+        find.byType(OmniEmptyState),
+      );
+      expect(emptyState.title, 'No exercises in this block yet.');
+      expect(emptyState.hint, isNull);
+      expect(emptyState.compact, isTrue);
     });
 
     testWidgets('rolling session shows block header overflow menu', (
@@ -8478,7 +9109,7 @@ void main() {
         await tester.tap(find.text(blockALateEx.name).first);
         await tester.pumpAndSettle();
 
-        expect(find.text('Exercise 3 / 4'), findsOneWidget);
+        expect(find.text('Exercise 3 / 4 · Main Workout'), findsOneWidget);
       },
     );
 

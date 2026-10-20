@@ -11,6 +11,9 @@ class MetricStepCalc {
   /// The largest distance the dialog accepts, in display units.
   static const double maxDistanceUnits = 999.99;
 
+  /// The longest duration the dialog and the steppers accept, in seconds.
+  static const int maxDurationSeconds = 36000;
+
   /// Parse a string as a double and clamp to the metric's valid range.
   /// Returns `null` if the text is empty or cannot be parsed.
   /// For 'reps' returns an [int]; for others returns a [double].
@@ -35,7 +38,7 @@ class MetricStepCalc {
       case 'weight':
         return double.parse(parsed.clamp(-200.0, 999.0).toStringAsFixed(1));
       case 'duration':
-        return parsed.round().clamp(0, 3600);
+        return parsed.round().clamp(0, maxDurationSeconds);
       case 'rpe':
         return parsed.round().clamp(1, 10);
       case 'extra-weight':

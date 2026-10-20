@@ -103,9 +103,8 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to finish workout: $e')));
+      debugPrint('Finish workout: $e');
+      OmniMessage.error(context, 'Could not finish the workout. Try again.');
     } finally {
       if (mounted) {
         _updateUi(() => _isFinishingSession = false);

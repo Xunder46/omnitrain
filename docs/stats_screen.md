@@ -48,7 +48,8 @@ Trends`).
 
 ## First-Use Empty State
 
-With no completed session the body is the empty-state card. Its title
+With no completed session the body is the shared empty state — an
+`OmniEmptyState` (compact) in an `OmniSurface`. Its title
 `No sessions yet` and body `Complete your first session to see stats here.` are
 kept verbatim; when `showPrimerHelp` is true the card adds three short lines
 about what will appear and a `How Stats works` button that opens the
@@ -58,7 +59,9 @@ will appear` › `the empty state keeps its title and body and adds the
 explanation and the button`; `the empty-state button opens the sheet without
 marking it seen`), and the taller card is asserted to fit a small viewport by
 `S-2714: the taller first-use card fits a small viewport` › `the card lays out
-at 320x568 without an overflow`.
+at 320x568 without an overflow`. Both tests also assert the composition with
+`find.byType(OmniEmptyState)`, so the shared piece itself is pinned, not just
+the copy.
 
 ---
 
@@ -99,17 +102,18 @@ Stats screen holds no StatsPrimerState`).
 
 ## What the Screen Displays
 
-With no completed session in the repository the body is the empty-state card
+With no completed session in the repository the body is the shared empty state
 alone — no Mix layer, no Signals layer, no ALL TIME card, no Instruments list
 and no Fuel row, whatever the food log holds. Otherwise it is five blocks in a
 fixed order: the [Mix layer](#mix-layer) when the window holds measurable time,
-the [Signals layer](#signals-layer) when its gate is met, the
+the [Signals layer](#signals-layer) when its gate is met — or, when the gate is
+unmet but the Mix layer exists, the locked Signals line in its slot — the
 [ALL TIME card](#all-time-card), the [Instruments list](#instruments-list)
 when the window holds work, and the [Fuel row](#fuel-row) when recent food
 exists. Verified by `test/stats_legacy_removal_test.dart` (`S-1208`),
 `test/fuel_row_screen_test.dart` (`S-1112`),
 `test/mix_layer_screen_test.dart` (`S-1601`, `S-1610`) and
-`test/signals_layer_screen_test.dart` (`S-1701`, `S-1702`).
+`test/signals_layer_screen_test.dart` (`S-1701`, `S-1702`, `S-4002`).
 
 Nothing else is rendered. The screen holds no chart section, no segmented
 control and no block beyond those five: `test/stats_legacy_removal_test.dart`
@@ -128,42 +132,76 @@ measure into a share of the bar, and the tallest week that sets one scale for
 all eight strip columns. Verified by `test/mix_layer_screen_test.dart`
 (`S-1601`, `S-1602`, `S-1609`).
 
-**The bar.** One horizontal bar split by modality, largest share first, with a
-legend reading each modality's rounded share. The shares are the window's own
-measure by modality — its measured time in the time measure, its load in the
-load measure. Verified by the same file (`S-1602`, `S-1609`).
+**The explainer.** One sentence under the card's title says what the bars are:
+`Your training split by how hard each session felt.` under the load measure,
+`Your training split by time spent.` under the time measure — the only place
+the measure is named in words, and the old `by load` / `by time` labels are
+gone. Verified by the same file (`S-3201 one sentence says what the split is`,
+`S-3201 the twin: the time measure reads in its own words`).
+
+**The bar.** One horizontal bar split by modality, largest share first. The
+shares are the window's own measure by modality — its measured time in the time
+measure, its load in the load measure. Verified by the same file (`S-1602`,
+`S-1609`).
+
+**The legend.** Under the bar, one coloured dot and the modality's rounded
+share for each modality that has a share. A 0% modality is left out of the
+legend, while the bar still draws its sliver and still names it in its
+semantics. Verified by the same file (`S-3203 the legend drops the 0% entries
+and gives each one a dot`).
 
 **The measure.** The layer reports either the window's training load or its
-time, and labels which one it is reporting. Load is shown only when the rated
+time. Load is shown only when the rated
 baseline behind the window is at least `kTrainingLoadMinRatedWeeks` weeks and
 the window's unrated share of time is at most `kTrainingLoadMaxUnratedShare`;
 otherwise the layer reports time. Verified by the same file (`S-1603`,
 `S-1605`, `S-1611`).
 
 **The usual bar.** When the measure is load, a second bar shows the usual mix
-the rated baseline establishes, labelled `usual`. Verified by the same file
-(`S-1606`, `S-1611`).
+the rated baseline establishes: the first bar is labelled `In this window` and
+the second `Your usual`, and neither label renders when there is no usual bar.
+Verified by the same file (`S-3202 the two bars are labelled`, `S-3202 the
+twin: no usual bar, no bar labels`, `S-1606`, `S-1611`).
 
-**The note and the unrated line.** A note states the baseline the measure rests
-on, and an unrated line states how much of the window carried no rating. Both
-are absent when they have nothing to report. Verified by the same file
-(`S-1605`, `S-1606`, `S-1607`).
+**The note and the unrated line.** Under the time measure, while fewer than
+`kTrainingLoadMinRatedWeeks` weeks are rated, a note says that time is showing
+for now and counts the rated weeks so far; under the load measure no note
+renders. An unrated line says what the missing ratings do to the figures: under
+the load measure the unrated sessions are not counted, under the time measure
+they are counted but carry no rating yet. Both lines are absent when they have
+nothing to report. Verified by the same file (`S-3204 the baseline note says
+what happens and when`, `S-3204 the twin: no rated week at all`, `S-3204 the
+load measure explains nothing`, `S-3205 the unrated line says which measure
+leaves sessions out`, `S-3205 the load measure says the session is not
+counted`, `S-3205 the twin: every session rated`).
 
-**The strip.** Eight weeks of modality-stacked columns, oldest first, with the
-current week marked. A week with no work draws its column with no stack segment
-in it. Verified by the same file (`S-1608`, `S-1609`).
+**The strip.** Titled `Week by week · last 8 weeks`: eight weeks of
+modality-stacked columns, oldest first, with the current week marked. A week
+with no work draws a 2 dp stub at the bottom of its column instead of a stack
+segment, so all eight columns stay visible. A caption under the columns reads
+`7 weeks ago` on the left and `This week so far` on the right, and each end
+shrinks to fit large text instead of overflowing the card. When none of the
+eight weeks has any training, the strip is replaced by one line:
+`No training in the last 8 weeks.` with `Last session: <date>.` when the
+payload knows the last completed session's day. Verified by the same file
+(`S-3206 the strip is titled, captioned and shows eight columns`, `S-3206 the
+twin: an all-empty strip keeps its one line`, `S-1608`, `S-4005`, `S-4006`,
+`S-4015`, `S-4014`, and `Guard — the caption fits 390x844 dp and 2.0 text
+scale`).
 
 **The window.** The layer reads the same resolved window as the Instruments
 list, and carries its own `StatsWindowChip` naming it — the second of the
 screen's two chips. Verified by the same file (`S-1612`, `S-1613`).
 
-**Copy.** The layer renders figures and modality names only: no chart
-primitive, no legacy section title, and no estimating or coaching copy.
+**Copy.** The layer's words are the explainer, the bar labels, the notes and
+the strip's title and caption: no chart primitive, no legacy section title, and
+no estimating or coaching copy.
 Verified by the same file (`S-1614`).
 
 **Fit.** The layer fits the narrowest viewport at the largest
 non-accessibility text scale and the tallest at the default, with nothing it
-draws wider than the card that holds it. Verified by the same file (`S-1615`).
+draws wider than the card that holds it. Verified by the same file (`S-1615`,
+`S-3208 the whole card fits every viewport and text scale`).
 
 **Freshness.** The layer is refreshed by the screen's one load pass, so it is
 never stale relative to the other blocks. Verified by the same file (`S-1616`).
@@ -173,10 +211,13 @@ never stale relative to the other blocks. Verified by the same file (`S-1616`).
 The Signals layer is the second block in the body, directly under the Mix layer
 and above the ALL TIME card, and there is exactly one of it. It renders only
 when its gate is met — `signalsGateMet(mix)`, the Mix layer's rated baseline
-(`ratedBaselineWeeks`) against `kTrainingLoadMinRatedWeeks` — so a user without
-a rated baseline sees the screen without it, and when the gate is unmet the
-screen evaluates no signal at all. Verified by `test/signals_layer_screen_test.dart`
-(`S-1701`, `S-1702`) and `test/signals_framework_test.dart`
+(`ratedBaselineWeeks`) against `kTrainingLoadMinRatedWeeks`. When the gate is
+unmet but the Mix layer exists, the screen shows the locked Signals section in
+the layer's slot instead: the `SIGNALS` header and one line,
+`Unlocks after 4 weeks of rating your workouts — N of 4 so far.`, where N is
+the rated baseline's weeks and no signal is evaluated at all. Verified by
+`test/signals_layer_screen_test.dart` (`S-1701`, `S-1702`, `S-4001`, `S-4002`,
+`S-4013`, `S-4003`, `S-4004`) and `test/signals_framework_test.dart`
 (`D-1006 the quiet-line gate`).
 
 **The cards.** A load shows at most `kSignalMaxCards` cards: one caution above
@@ -350,7 +391,23 @@ value moved against the previous window of the same length, and the trend line
 behind it. The row's own composition — the value strings, the secondary line and
 what it carries — belongs to the widget catalog
 ([Widget Catalog](widget_catalog.md)); verified by
-`test/instrument_list_screen_test.dart` (`S-1001`).
+`test/instrument_list_screen_test.dart`
+(`S-1001`).
+
+One muted caption sits under the first section header and nowhere else, and
+says what the numbers mean: the line is each training day in the window, and
+the change is against the days before it — the window's own calendar span, not
+the training-day count the window chip shows, so a chip reading 14 training
+days can sit under a caption naming 15 days. Verified by
+`test/instrument_list_screen_test.dart` (`S-4010`, `S-4017`, `S-4018`) and
+`test/stats_window_day_count_test.dart` (`S-4011`).
+
+Each row's secondary line names what its figure is: `Est. 1RM` for the
+estimated one-rep-max row, `Best set` for the reps row, `Total time` for the
+cardio duration row and `Best pace` for the pace row; isometric and sports rows
+keep their own wording. Verified by `test/instrument_list_screen_test.dart`
+(`S-4012`, `S-4019`) and `test/instrument_change_format_test.dart`
+(`nativePrimaryLabel`).
 
 The change readout compares the window's value with the previous window of the
 same length. With nothing comparable it reads the no-change dash rather than a
@@ -525,15 +582,23 @@ resolved window — verified by `test/mix_layer_screen_test.dart` (`S-1613`,
 
 The [Signals layer](#signals-layer) is evaluated in the same pass, against the
 same window and the same `now` and over the same `StatsProgressService`
-instance, so opening Stats adds no second walk of history. The screen holds the
+instance, so opening Stats adds no second walk of history; a gate-unmet screen
+evaluates nothing and shows the locked line instead. The screen holds the
 load's candidates and its dismissal store, so a dismissal re-resolves the held
 candidates in memory instead of reloading — verified by
-`test/signals_layer_screen_test.dart` (`S-1702`, `S-1709`) and
+`test/signals_layer_screen_test.dart` (`S-1702`, `S-4002`, `S-1709`) and
 `test/signals_service_test.dart` (`S-1702 an unmet gate returns nothing and
 evaluates nothing`).
 
 `StatsProgressService` is a pure-Dart service — it depends on the
 `WorkoutRepository` interface only, not on any concrete implementation.
+
+When that one load read throws, the body is `LoadFailureView` — the failure
+line `Could not load your stats.` and a full-width `Try again` button that
+re-runs `_loadData()` — instead of the empty state, so a failed load never
+reads as "no data". Verified by `test/stats_load_failure_test.dart` (group
+`S-2704: a failed load is not an empty state`: `Stats: the failure text and
+Try again replace the empty state`).
 
 ---
 
@@ -563,22 +628,22 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 | `lib/features/stats/widgets/stats_primer_sheet.dart` | `StatsPrimerSheet` — the one-shot explanation sheet: three labelled blocks and a `Got it` CTA; presentation only, the host owns the seen flag |
 | `lib/state/stats/stats_primer_state.dart` | `StatsPrimerState` — the `primer_seen_stats` seen flag over the repository preference API, hydrated before `runApp` |
 | `lib/features/stats/widgets/stats_pill.dart` | The ALL TIME stat pill, shared with Records & Trends |
-| `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the modality bar, the measure and its label, the usual bar, the note, the unrated line and the week strip |
-| `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards and the quiet line |
+| `lib/features/stats/widgets/mix_layer.dart` | `MixLayerSection` — the Mix layer: the explainer sentence, the modality bar and its legend, the usual bar and its two labels, the note, the unrated line, the week strip, the strip's title and caption and the empty-strip line |
+| `lib/features/stats/widgets/signals_layer.dart` | `SignalsLayerSection` — the Signals layer: the header, the signal cards and the quiet line; `SignalsLockedSection` — the locked line a gate-unmet screen shows in the layer's slot |
 | `lib/core/models/signals.dart` | The Signals value types (`SignalKind`, `SignalCard`, `SignalsData`), the selection, the gate and the dismissal maths; declares `kSignalMaxCards` and `kSignalDismissalDays` |
 | `lib/core/services/signals_service.dart` | `SignalsService` — loads the dismissal store, evaluates the registered signals for one load and writes a dismissal back |
 | `lib/features/stats/widgets/instrument_list.dart` | The Instruments list: one section per kind of work, capped rows, the expand control; declares `kInstrumentRowCap` |
 | `lib/features/stats/widgets/instrument_row.dart` | One Instruments row (name, figure, change chip, trend line) and `InstrumentChangeChip` |
 | `lib/features/stats/widgets/instrument_sparkline.dart` | The row's trend line, drawn only when the window holds at least two points |
-| `lib/features/stats/widgets/native_value_format.dart` | `formatNativeValue`, `formatNativeChange` and `nativeSecondaryLabel` — the strings a row reads |
+| `lib/features/stats/widgets/native_value_format.dart` | `formatNativeValue`, `formatNativeChange`, `nativeSecondaryLabel` and `nativePrimaryLabel` — the strings a row reads |
 | `lib/features/stats/widgets/fuel_section.dart` | `FuelSection` — the Fuel row: the logged-days indicator, the calories and protein figures with their comparison readouts, and the training / rest split |
 | `lib/features/stats/widgets/window_chip.dart` | `StatsWindowChip` — the header chip naming the resolved window |
 | `lib/features/nutrition/nutrition_trend_screen.dart` | The full-history nutrition trend screen, which the Fuel row opens |
-| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `StatsWindow`, the per-section progress types (`LiftProgress`, `StatsPR`, `TrendPoint`) and the nutrition trend / adherence types (`NutritionTrendPoint`, `NutritionAdherenceTargetPoint`, `NutritionAdherence`) |
+| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `StatsWindow` (with `dayCount`, the window's calendar span), the per-section progress types (`LiftProgress`, `StatsPR`, `TrendPoint`) and the nutrition trend / adherence types (`NutritionTrendPoint`, `NutritionAdherenceTargetPoint`, `NutritionAdherence`) |
 | `lib/core/models/exercise_metric.dart` | `ExerciseSection` and the native-value types a row's figure is built from: `NativeMetric`, `NativeValue`, `ExerciseMetricPoint`, `ExerciseMetricSummary`, `StatsTotals` |
 | `lib/core/models/instrument_list.dart` | Value types behind the Instruments list: `InstrumentRow`, `InstrumentSectionData` |
 | `lib/core/models/fuel_summary.dart` | `FuelSummary` — the Fuel row's value type: the window's logged-day averages, the previous range's, the training / rest split and the targets |
-| `lib/core/models/training_load.dart` | `MixLayerData` — the Mix layer's value type: the modality shares, the measure and its label, the usual mix, the baseline note, the unrated line and the strip's weeks; declares `kMixStripWeeks`, `kTrainingLoadMinRatedWeeks` and `kTrainingLoadMaxUnratedShare` |
+| `lib/core/models/training_load.dart` | `MixLayerData` — the Mix layer's value type: the modality shares, the measure, the usual mix, the baseline note, the unrated line, the strip's weeks and the last completed session's day (`lastSessionDay`); declares `kMixStripWeeks`, `kTrainingLoadMinRatedWeeks` and `kTrainingLoadMaxUnratedShare` |
 | `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service: `computeTotals()`, `computeProgressData()` (and the `resolveWindow()` it calls), `computeFuelSummary()`, `computeMixLayer()` and `computeInstrumentSections({required StatsWindow window})` |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
@@ -602,4 +667,4 @@ Values live in `lib/core/services/stats_progress_service.dart` unless the row na
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-10-01. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-10-13. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

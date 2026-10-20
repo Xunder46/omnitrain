@@ -7,6 +7,93 @@ import '../../core/utils/entry_rows.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 
+/// One in-progress work timer, in the shape the watch's `timer_state` frame
+/// carries (43b3 D-1).
+///
+/// [wireKind] is `elapsed` (a `timed` effort), `hold` (a `drill` effort) or
+/// `round`; [effortId] is the wire's `sessionExerciseId`.
+class InProgressWorkTimer {
+  final String effortId;
+  final String wireKind;
+  final int startedAtMs;
+  final int? pausedAtMs;
+  final int accumulatedPauseMs;
+  final int? plannedDurationMs;
+
+  const InProgressWorkTimer({
+    required this.effortId,
+    required this.wireKind,
+    required this.startedAtMs,
+    this.pausedAtMs,
+    this.accumulatedPauseMs = 0,
+    this.plannedDurationMs,
+  });
+
+  bool get paused => pausedAtMs != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is InProgressWorkTimer &&
+      other.effortId == effortId &&
+      other.wireKind == wireKind &&
+      other.startedAtMs == startedAtMs &&
+      other.pausedAtMs == pausedAtMs &&
+      other.accumulatedPauseMs == accumulatedPauseMs &&
+      other.plannedDurationMs == plannedDurationMs;
+
+  @override
+  int get hashCode => Object.hash(
+    effortId,
+    wireKind,
+    startedAtMs,
+    pausedAtMs,
+    accumulatedPauseMs,
+    plannedDurationMs,
+  );
+}
+
+/// A running work timer the watch sent, before it is written into an effort's
+/// interval (43b2 D-2).
+///
+/// [wireKind] is `elapsed` (a `timed` effort), `hold` (a `drill` effort) or
+/// `round`; [startedAtMs] is the watch's wall clock, so the phone counts from
+/// the moment the work actually began.
+class RemoteWorkTimer {
+  final String wireKind;
+  final int startedAtMs;
+  final int? pausedAtMs;
+  final int accumulatedPauseMs;
+  final int? plannedDurationMs;
+
+  const RemoteWorkTimer({
+    required this.wireKind,
+    required this.startedAtMs,
+    this.pausedAtMs,
+    this.accumulatedPauseMs = 0,
+    this.plannedDurationMs,
+  });
+
+  bool get paused => pausedAtMs != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RemoteWorkTimer &&
+      other.wireKind == wireKind &&
+      other.startedAtMs == startedAtMs &&
+      other.pausedAtMs == pausedAtMs &&
+      other.accumulatedPauseMs == accumulatedPauseMs &&
+      other.plannedDurationMs == plannedDurationMs;
+
+  @override
+  int get hashCode => Object.hash(
+    wireKind,
+    startedAtMs,
+    pausedAtMs,
+    accumulatedPauseMs,
+    plannedDurationMs,
+  );
+}
+
 class TimerManager {
   final WorkoutRepository _repository;
   final void Function() _notify;
@@ -50,8 +137,228 @@ class TimerManager {
     return List.unmodifiable(_entryRests[effortId] ?? []);
   }
 
+  /// The in-progress work timers of [efforts], one per wire kind (43b3 D-1).
+  ///
+  /// A `timed` effort contributes its active or paused `TimedInstance`s as
+  /// `elapsed`, a `drill` effort as `hold`, and a `round` effort its active or
+  /// paused `RoundInstance`s as `round`. Not-started and finished instances,
+  /// and a `set` effort, contribute nothing. When more than one instance is in
+  /// progress for a kind the newest [InProgressWorkTimer.startedAtMs] is kept
+  /// (ties: the later one in [efforts]); the result is ordered by wire kind.
+  List<InProgressWorkTimer> inProgressWorkTimers(
+    Iterable<SegmentEffort> efforts,
+  ) {
+    final byKind = <String, InProgressWorkTimer>{};
+
+    for (final effort in efforts) {
+      final wireKind = switch (effort.effortKind) {
+        'timed' => 'elapsed',
+        'drill' => 'hold',
+        'round' => 'round',
+        _ => null,
+      };
+      if (wireKind == null) continue;
+
+      if (effort.effortKind == 'round') {
+        for (final round in getRoundsForEffort(effort.id)) {
+          if (round.state != RoundState.active &&
+              round.state != RoundState.paused) {
+            continue;
+          }
+          _keepNewestWorkTimer(
+            byKind,
+            InProgressWorkTimer(
+              effortId: effort.id,
+              wireKind: wireKind,
+              startedAtMs: round.startedAtMs,
+              pausedAtMs: round.state == RoundState.paused
+                  ? round.pausedAtMs
+                  : null,
+              accumulatedPauseMs: round.totalPausedDurationMs,
+              plannedDurationMs: round.plannedDurationSecs * 1000,
+            ),
+          );
+        }
+        continue;
+      }
+
+      for (final timed in getTimedInstancesForEffort(effort.id)) {
+        if (timed.state != TimedState.active &&
+            timed.state != TimedState.paused) {
+          continue;
+        }
+        _keepNewestWorkTimer(
+          byKind,
+          InProgressWorkTimer(
+            effortId: effort.id,
+            wireKind: wireKind,
+            startedAtMs: timed.startedAtMs,
+            pausedAtMs: timed.state == TimedState.paused
+                ? timed.pausedAtMs
+                : null,
+            accumulatedPauseMs: timed.totalPausedDurationMs,
+          ),
+        );
+      }
+    }
+
+    final kinds = byKind.keys.toList()..sort();
+    return [for (final kind in kinds) byKind[kind]!];
+  }
+
+  static void _keepNewestWorkTimer(
+    Map<String, InProgressWorkTimer> byKind,
+    InProgressWorkTimer candidate,
+  ) {
+    final held = byKind[candidate.wireKind];
+    if (held == null || candidate.startedAtMs >= held.startedAtMs) {
+      byKind[candidate.wireKind] = candidate;
+    }
+  }
+
+  /// Adopts a running timer the watch sent into [effortId]'s target interval
+  /// (43b2 D-1, D-2). Returns whether anything was written.
+  ///
+  /// [effortKind] is the effort's own kind; only `timed`↔`elapsed`,
+  /// `drill`↔`hold` and `round`↔`round` pair, and any other pairing is
+  /// ignored. The target is the effort's in-progress interval when it has one,
+  /// else its first not-finished one; an effort with neither is ignored. A
+  /// not-started target takes the remote's start and pause bookkeeping; an
+  /// in-progress target is replaced only when the remote started earlier (the
+  /// earlier start wins). The effort's open rests are closed in memory and
+  /// persisted as [startTimedEntry] does. No notification is sent here: the
+  /// session core bumps the refresh revision and notifies once.
+  Future<bool> adoptRemoteTimer(
+    String effortId,
+    String effortKind,
+    RemoteWorkTimer remote,
+  ) async {
+    _clearError();
+
+    try {
+      final wireKind = switch (effortKind) {
+        'timed' => 'elapsed',
+        'drill' => 'hold',
+        'round' => 'round',
+        _ => null,
+      };
+      if (wireKind == null || wireKind != remote.wireKind) return false;
+
+      return effortKind == 'round'
+          ? await _adoptRemoteRound(effortId, remote)
+          : await _adoptRemoteTimed(effortId, remote);
+    } catch (e) {
+      _setError('Failed to adopt the remote timer: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _adoptRemoteTimed(
+    String effortId,
+    RemoteWorkTimer remote,
+  ) async {
+    final list = _timedInstances[effortId];
+    if (list == null) return false;
+
+    final index = _targetIndex(
+      list,
+      inProgress: (i) =>
+          i.state == TimedState.active || i.state == TimedState.paused,
+      finished: (i) => i.state == TimedState.finished,
+    );
+    if (index < 0) return false;
+
+    final old = list[index];
+    if (old.state != TimedState.notStarted &&
+        remote.startedAtMs >= old.startedAtMs) {
+      return false;
+    }
+
+    final closedRests = closeAllOpenRestsInMemory(effortId);
+    final updated = old.copyWith(
+      state: remote.pausedAtMs != null ? TimedState.paused : TimedState.active,
+      startedAtMs: remote.startedAtMs,
+      pausedAtMs: remote.pausedAtMs,
+      totalPausedDurationMs: remote.accumulatedPauseMs,
+      targetDurationSecs: 0,
+      updatedAtMs: _clock().millisecondsSinceEpoch,
+    );
+    await _repository.updateTimedInstance(updated);
+    list[index] = updated;
+    _persistClosedRests(closedRests);
+    return true;
+  }
+
+  Future<bool> _adoptRemoteRound(
+    String effortId,
+    RemoteWorkTimer remote,
+  ) async {
+    final list = _roundInstances[effortId];
+    if (list == null) return false;
+
+    final index = _targetIndex(
+      list,
+      inProgress: (i) =>
+          i.state == RoundState.active || i.state == RoundState.paused,
+      finished: (i) => i.state == RoundState.finished,
+    );
+    if (index < 0) return false;
+
+    final old = list[index];
+    if (old.state != RoundState.notStarted &&
+        remote.startedAtMs >= old.startedAtMs) {
+      return false;
+    }
+
+    final plannedMs = remote.plannedDurationMs;
+    final closedRests = closeAllOpenRestsInMemory(effortId);
+    final updated = old.copyWith(
+      state: remote.pausedAtMs != null ? RoundState.paused : RoundState.active,
+      startedAtMs: remote.startedAtMs,
+      pausedAtMs: remote.pausedAtMs,
+      totalPausedDurationMs: remote.accumulatedPauseMs,
+      plannedDurationSecs: plannedMs != null && plannedMs > 0
+          ? plannedMs ~/ 1000
+          : null,
+      updatedAtMs: _clock().millisecondsSinceEpoch,
+    );
+    await _repository.updateRoundInstance(updated);
+    list[index] = updated;
+    _persistClosedRests(closedRests);
+    return true;
+  }
+
+  /// D-1: the in-progress instance when the effort has one, else the first
+  /// that is not finished; -1 when there is none.
+  static int _targetIndex<T>(
+    List<T> list, {
+    required bool Function(T) inProgress,
+    required bool Function(T) finished,
+  }) {
+    for (var i = 0; i < list.length; i++) {
+      if (inProgress(list[i])) return i;
+    }
+    for (var i = 0; i < list.length; i++) {
+      if (!finished(list[i])) return i;
+    }
+    return -1;
+  }
+
+  void _persistClosedRests(Iterable<EntryRest> rests) {
+    for (final rest in rests) {
+      unawaited(
+        _repository.updateEntryRest(rest).catchError((e) {
+          _setError('Failed to persist closed rest: $e');
+        }),
+      );
+    }
+  }
+
   Map<String, List<RoundInstance>> get roundInstancesSnapshot =>
       Map.unmodifiable(_roundInstances);
+
+  Map<String, List<EntryRest>> get entryRestsSnapshot =>
+      Map.unmodifiable(_entryRests);
 
   Map<String, List<TimedInstance>> get timedInstancesSnapshot =>
       Map.unmodifiable(_timedInstances);
@@ -305,11 +612,13 @@ class TimerManager {
     }
   }
 
-  Future<void> deleteRound(String effortId, int roundIndex) async {
+  /// Deletes the round at [roundIndex]. Returns `false` when the effort holds
+  /// no such round — nothing was deleted.
+  Future<bool> deleteRound(String effortId, int roundIndex) async {
     _clearError();
     try {
       final list = _roundInstances[effortId];
-      if (list == null || roundIndex >= list.length) return;
+      if (list == null || roundIndex >= list.length) return false;
       await _repository.deleteRoundInstance(list[roundIndex].id);
       list.removeAt(roundIndex);
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -320,8 +629,10 @@ class TimerManager {
         await _repository.updateRoundInstance(reindexed);
       }
       _notify();
+      return true;
     } catch (e) {
       _setError('Failed to delete round: $e');
+      return false;
     }
   }
 
@@ -351,6 +662,57 @@ class TimerManager {
       _notify();
     } catch (e) {
       _setError('Failed to update round duration: $e');
+    }
+  }
+
+  /// Applies [newDurationSecs] to the round at [fromIndex] and to every later
+  /// round that has not started yet — a length change before Start moves the
+  /// whole remaining set (O-6).
+  ///
+  /// The round at [fromIndex] is written unless it is already finished. Every
+  /// LATER round is written only when it has not started; a later round that is
+  /// running, paused or finished keeps its length. Each touched round is
+  /// written to the cache before its `updateRoundInstance` (rows below read the
+  /// same list). Returns the written indexes, ascending.
+  Future<List<int>> updatePlannedDurationFrom(
+    String effortId,
+    int fromIndex,
+    int newDurationSecs,
+  ) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || fromIndex < 0 || fromIndex >= list.length) {
+        return <int>[];
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final touched = <int>[];
+      for (int i = fromIndex; i < list.length; i++) {
+        final old = list[i];
+        if (i == fromIndex) {
+          if (old.state == RoundState.finished) {
+            debugPrint('Cannot update planned duration for finished round');
+            continue;
+          }
+        } else if (old.state != RoundState.notStarted) {
+          continue;
+        }
+
+        final updated = old.copyWith(
+          plannedDurationSecs: newDurationSecs,
+          updatedAtMs: now,
+        );
+        list[i] = updated;
+        await _repository.updateRoundInstance(updated);
+        touched.add(i);
+      }
+
+      _notify();
+      return touched;
+    } catch (e) {
+      _setError('Failed to update round duration: $e');
+      return <int>[];
     }
   }
 
@@ -581,12 +943,13 @@ class TimerManager {
     }
   }
 
-  Future<void> deleteTimedEntry(String effortId, int entryIndex) async {
+  /// Deletes the timed entry at [entryIndex] and its rows. Returns `false`
+  /// when the effort holds no such entry — nothing was deleted.
+  Future<bool> deleteTimedEntry(String effortId, int entryIndex) async {
     _clearError();
     try {
       final list = _timedInstances[effortId];
-      if (list == null || entryIndex < 0 || entryIndex >= list.length) return;
-
+      if (list == null || entryIndex < 0 || entryIndex >= list.length) return false;
       // D-326: the entry's own rows are found before the instance goes, since
       // the rule pairs them against the positions the instances hold now.
       final doomed = _rowsOfTimedEntry(effortId, entryIndex, list.length);
@@ -611,8 +974,45 @@ class TimerManager {
       }
 
       _notify();
+      return true;
     } catch (e) {
       _setError('Failed to delete timed entry: $e');
+      return false;
+    }
+  }
+
+  /// Moves every rest of [effortId] down with the entries a delete kept (D-1).
+  ///
+  /// A `set` entry counts as logged exactly when a rest sits at its index + 1,
+  /// so the rest at `deletedIndex + 1` — the mark of the entry that just went —
+  /// is removed, every rest above it is re-keyed one down (same stamps, same
+  /// open/paused state, id `rest-<effortId>-<newIndex>`) and every rest at
+  /// [deletedIndex] or below stays. The in-memory cache is replaced first, then
+  /// the store: Hive keys rests by id, so a re-key is a delete-and-re-create
+  /// rather than an update.
+  ///
+  /// No-op when no rest sits at or above the deleted entry's mark. Never
+  /// notifies — the caller's own delete already does.
+  Future<void> rekeyEntryRestsAfterDelete(
+    String effortId,
+    int deletedIndex,
+  ) async {
+    _clearError();
+
+    try {
+      final list = _entryRests[effortId];
+      if (list == null || list.isEmpty) return;
+      final kept = EntryRows.restsAfterDelete(list, effortId, deletedIndex);
+      if (kept == null) return;
+
+      _entryRests[effortId] = kept;
+
+      await _repository.deleteEntryRestsForEffort(effortId);
+      for (final rest in kept) {
+        await _repository.createEntryRest(rest);
+      }
+    } catch (e) {
+      _setError('Failed to delete entry rests: $e');
     }
   }
 

@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.2+16
+version: 1.0.3+19
 
 environment:
   sdk: ^3.10.7
@@ -91,6 +91,17 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   test: ^1.26.3
+
+# `sqflite_common_ffi` (dev only, used by test/db_seed_test.dart to check the
+# schema SQL) pulls in `sqlite3`, whose build hook would otherwise bundle its
+# own SQLite library into every app build as `sqlite3.framework`. The app
+# never opens a SQLite database, and an unsigned copy of that framework made
+# a device install fail ("invalid signature"). `system` makes the hook use the
+# operating system's SQLite and bundle nothing.
+hooks:
+  user_defines:
+    sqlite3:
+      source: system
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -59,6 +59,9 @@ public struct WatchRestView: View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             let _ = pingIfOwed()
             VStack(spacing: Self.surfaceInset) {
+                Text(WatchRestSurfaceCopy.restCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text(state.exerciseName ?? "No exercise")
                     .font(.caption2)
                     .lineLimit(1)
@@ -101,7 +104,7 @@ public struct WatchRestView: View {
         } label: {
             Text("Next").frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .watchProminent()
     }
 }
 

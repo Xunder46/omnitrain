@@ -18,6 +18,7 @@
 //     dropped only through `pruneConfirmed()`, gated on the phone's receipt.
 //
 
+import Combine
 import Foundation
 
 /// Where the engine hands the messages the watch owes the phone.
@@ -32,7 +33,7 @@ public struct WatchEmissionRejected: Error, CustomStringConvertible {
     public var description: String { message }
 }
 
-public final class WatchSessionEngine {
+public final class WatchSessionEngine: ObservableObject {
     private let store: WatchSessionStore
     private let onEmit: WatchMessageSink?
     private let validator: SyncProtocolValidator?
@@ -46,7 +47,7 @@ public final class WatchSessionEngine {
     /// rebuild "already applied" from storage instead of from memory.
     private static let changePrefix = "chg-"
     private static let snapshotPrefix = "snap-"
-    private static let timerPrefix = "tms-"
+    static let timerPrefix = "tms-"
     private static let lifecyclePrefix = "life-"
 
     private var sessionRows: [WatchSessionRecord] = []
@@ -544,6 +545,9 @@ public final class WatchSessionEngine {
             recordedAt: sentAt,
             authoritative: true
         )
+        // The phone's snapshot can close what the rating prompt asks about (42b):
+        // the state forward in `WatchEffortRatingState` redraws an open prompt.
+        objectWillChange.send()
         return true
     }
 
@@ -723,18 +727,38 @@ public final class WatchSessionEngine {
             return false
         }
 
+        let kind = timer["kind"] as? String ?? ""
+        let slotId = timer["sessionExerciseId"] as? String
+        let startedAt = (try? parseUtcIso(timer["startedAt"])) ?? recordedAt
+        let stoppedAt = try? parseOptionalUtcIso(timer["stoppedAt"])
+
+        // D-4: the owner's rule, the earlier start wins — for the work kinds
+        // only. A rest is exempt (D-4's second half): the phone's newer rest
+        // still supersedes the wrist's own, because a rest has no owner slot to
+        // tie the earlier copy to (S-336).
+        if kind != WatchTimerKind.rest,
+           stoppedAt == nil,
+           let held = newestTimer(kind: kind),
+           held.sessionId == sessionId,
+           held.state != WatchTimerState.stopped,
+           held.sessionExerciseId == slotId,
+           held.startedAt < startedAt {
+            return false
+        }
+
         let stored = await store.append(
             .timer(
                 WatchTimerRecord(
                     recordId: recordId,
                     sessionId: sessionId,
                     recordedAt: recordedAt,
-                    kind: timer["kind"] as? String ?? "",
-                    startedAt: (try? parseUtcIso(timer["startedAt"])) ?? recordedAt,
+                    kind: kind,
+                    startedAt: startedAt,
                     pausedAt: try? parseOptionalUtcIso(timer["pausedAt"]),
-                    stoppedAt: try? parseOptionalUtcIso(timer["stoppedAt"]),
+                    stoppedAt: stoppedAt,
                     accumulatedPauseMs: (timer["accumulatedPauseMs"] as? NSNumber)?.intValue ?? 0,
-                    plannedDurationMs: (timer["plannedDurationMs"] as? NSNumber)?.intValue
+                    plannedDurationMs: (timer["plannedDurationMs"] as? NSNumber)?.intValue,
+                    sessionExerciseId: slotId
                 )
             )
         )
@@ -1523,7 +1547,8 @@ public final class WatchSessionEngine {
     @discardableResult
     public func startTimer(
         _ kind: String,
-        plannedDurationMs: Int? = nil
+        plannedDurationMs: Int? = nil,
+        sessionExerciseId: String? = nil
     ) async throws -> WatchTimerRecord {
         try requireTimerKind(kind)
         let now = clock()
@@ -1534,7 +1559,8 @@ public final class WatchSessionEngine {
                 recordedAt: now,
                 kind: kind,
                 startedAt: now,
-                plannedDurationMs: plannedDurationMs
+                plannedDurationMs: plannedDurationMs,
+                sessionExerciseId: sessionExerciseId
             )
         )
     }
@@ -1665,7 +1691,8 @@ public final class WatchSessionEngine {
             pausedAt: clearPause ? nil : (pausedAt ?? timer.pausedAt),
             stoppedAt: stoppedAt ?? timer.stoppedAt,
             accumulatedPauseMs: accumulatedPauseMs ?? timer.accumulatedPauseMs,
-            plannedDurationMs: timer.plannedDurationMs
+            plannedDurationMs: timer.plannedDurationMs,
+            sessionExerciseId: timer.sessionExerciseId
         )
     }
 
@@ -1715,7 +1742,15 @@ public final class WatchSessionEngine {
     /// Whether the newest row of `kind` is one a phone message wrote — the rows
     /// whose id is derived from the message that named them (D-80).
     private func senderWroteTimer(_ kind: String) -> Bool {
-        newestTimer(kind: kind)?.recordId.hasPrefix(Self.timerPrefix) ?? false
+        newestTimer(kind: kind).map(isTimerFromMessage) ?? false
+    }
+
+    /// Whether `timer` came from a message the phone sent rather than from this
+    /// watch's own Start (D-3). Only the former carries a slot the wrist can be
+    /// on the wrong side of; a clock the wrist started keeps running across a
+    /// jump (S-1403).
+    public func isTimerFromMessage(_ timer: WatchTimerRecord) -> Bool {
+        timer.recordId.hasPrefix(Self.timerPrefix)
     }
 
     private func requireTimerKind(_ kind: String) throws {

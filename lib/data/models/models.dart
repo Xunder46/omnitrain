@@ -921,26 +921,83 @@ class Tag {
   };
 }
 
+/// The role a muscle group plays on an exercise.
+///
+/// Persisted as the enum name, `'primary'` or `'secondary'`.
+enum MuscleRole { primary, secondary }
+
+/// One muscle group an exercise loads, together with the role it plays.
+///
+/// Stored as a map (`muscle_group_id`, `role`) in the exercise's muscle link
+/// list. Only [MuscleRole.primary] links match a muscle filter.
+class ExerciseMuscleLink {
+  final String muscleGroupId;
+  final MuscleRole role;
+
+  const ExerciseMuscleLink({required this.muscleGroupId, required this.role});
+
+  factory ExerciseMuscleLink.fromMap(Map<String, dynamic> m) {
+    final rawRole = m['role'];
+    if (rawRole == MuscleRole.primary.name) {
+      return ExerciseMuscleLink(
+        muscleGroupId: m['muscle_group_id'] as String,
+        role: MuscleRole.primary,
+      );
+    }
+    if (rawRole == MuscleRole.secondary.name) {
+      return ExerciseMuscleLink(
+        muscleGroupId: m['muscle_group_id'] as String,
+        role: MuscleRole.secondary,
+      );
+    }
+    throw ArgumentError.value(rawRole, 'role', 'Unknown muscle role');
+  }
+
+  Map<String, dynamic> toMap() => {
+    'muscle_group_id': muscleGroupId,
+    'role': role.name,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ExerciseMuscleLink &&
+      other.muscleGroupId == muscleGroupId &&
+      other.role == role;
+
+  @override
+  int get hashCode => Object.hash(muscleGroupId, role);
+
+  @override
+  String toString() => 'ExerciseMuscleLink($muscleGroupId, ${role.name})';
+}
+
 class MuscleGroup {
   final String id;
   final String name;
+
+  /// The id of the parent entry: a region for a muscle, `null` for a region
+  /// and for a standalone entry (Chest, Neck).
+  final String? parentId;
   final int createdAtMs;
 
   MuscleGroup({
     required this.id,
     required this.name,
+    this.parentId,
     required this.createdAtMs,
   });
 
   factory MuscleGroup.fromMap(Map<String, dynamic> m) => MuscleGroup(
     id: m['id'] as String,
     name: m['name'] as String,
+    parentId: m['parent_id'] as String?,
     createdAtMs: m['created_at_ms'] as int,
   );
 
   Map<String, dynamic> toMap() => {
     'id': id,
     'name': name,
+    'parent_id': parentId,
     'created_at_ms': createdAtMs,
   };
 }

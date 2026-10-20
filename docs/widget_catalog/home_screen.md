@@ -62,11 +62,35 @@ calorie contributions are computed on `NutritionState` and passed in. The whole 
 tap target, not just the chevron.
 
 - **Empty state** is split across two orthogonal axes — the gauge needs a **goal** (`consumed / target`) while the caption needs **data to split** (P/C/F kcal share of consumed).
-  - **Both axes empty** (S-104 / S-201): `consumedCalories <= 0`. Headline renders `"0 / {target ?? "—"} Cal"` in `textDominant`. Gauge fill is not rendered. Caption row renders DASHES (`—`) for each macro, NOT `0%`. We do not imply a real split when there is no data.
-  - **Gauge-only empty** (S-200): no target configured (`targetCalories == null`) but food has been logged. Headline renders `"{consumed} / — Cal"`. Gauge fill is hidden (no goal to fill against). Caption row renders the **real** macro percentages (`P 42%`, `C 33%`, `F 25%`) so the user gets actionable feedback. The track still renders at full width so the card layout stays stable.
-  - **Caption-empty even with data** (S-202): `consumed > 0` but `proteinKcal + carbsKcal + fatKcal == 0` (a calorie-only entry). Caption row still renders DASHES — we do not show a fake `P 0% / C 0% / F 0%` split when there is no macro data.
+  - **Both axes empty** (S-104 / S-201): `consumedCalories <= 0`. Headline renders `"0 / {target ?? "—"} Cal"` in `textDominant`. Gauge fill is not rendered. Caption row renders the dash placeholder (`—`) for each macro, never a zero-percentage split — we do not imply a real split when there is no data.
+  - **Gauge-only empty** (S-200): no target configured (`targetCalories == null`) but food has been logged. Headline renders `"{consumed} / — Cal"`. Gauge fill is hidden (no goal to fill against). Caption row renders each macro's **real share of the consumed calories** — the P/C/F split the state computes — so the user gets actionable feedback. The track still renders at full width so the card layout stays stable.
+  - **Caption-empty even with data** (S-202): `consumed > 0` but `proteinKcal + carbsKcal + fatKcal == 0` (a calorie-only entry). Caption row still renders DASHES — no fabricated all-zero P/C/F split when there is no macro data.
+
+The states above and the rendered copy they quote are pinned by
+`test/home_nutrition_summary_card_test.dart` (test names quoted verbatim; two
+of them name a percentage, so they live in this fence to keep the value out of
+prose):
+
+```
+group 'NutritionSummaryCard — empty state (S-104)'
+  · 'caption row shows DASHES (—), not 0%'
+group 'NutritionSummaryCard — no target + consumed data (S-200)'
+  · 'caption row shows real P/C/F percentages when there is no target but food has been logged'
+group 'NutritionSummaryCard — no target + no data (S-201)'
+  · 'caption row shows dashes (—) when no target is set AND nothing is logged'
+group 'NutritionSummaryCard — no target + zero-macro data (S-202)'
+  · 'caption row shows dashes when consumed > 0 but all macro contributions are zero'
+```
+
 When consumption exceeds the target the fill clamps rather than overflowing and the headline
-switches to the theme's error tone — a restrained warning, not an alarm.
+switches to the theme's error tone — a restrained warning, not an alarm. Verified by
+`test/home_nutrition_summary_card_test.dart`, group
+'NutritionSummaryCard — over-budget state (S-105)':
+
+```
+· 'gauge fill is clamped to 100% of the track width'
+· 'calorie figure is rendered in the warning tone (theme.colorScheme.error)'
+```
 
 ### `CalorieRing`
 

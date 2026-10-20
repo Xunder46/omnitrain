@@ -161,6 +161,16 @@ that keeps the app alive (plan 19c):
   (team `S3976AA7K8`) in the Apple developer portal so provisioning signs the
   entitlement. A device build fails to sign until then; the simulator build is
   unaffected.
+- **Location (plan 19f) is a build setting, not a capability.** The watch
+  target asks the user through
+  `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription` = "OmniTrain uses your
+  location during runs and sports to measure distance and pace." in its
+  Debug/Release/Profile configurations of
+  `ios/Runner.xcodeproj/project.pbxproj`, next to the three
+  `NSHealthShareUsageDescription` lines. WhenInUse only: no Always key exists,
+  and no location entitlement is needed
+  (`WatchSensorSourceSourceTests.testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways`,
+  `…testS3310TheRawSourceAsksWhenInUseAndNeverAlways`).
 
 ### 3.5 Link the engine
 
@@ -180,7 +190,11 @@ Written, by Phases 1–4 of the shell-bridge plan:
   exercise picker). The logging surface logs the current exercise's own effort —
   a set, a timed hold, a round or a drill, chosen from the exercise's
   capabilities — and hosts the session menu: the ladder's exercises with their
-  logged counts to jump to, then Finish. Exercises are added on the phone. An
+  logged counts to jump to, then Add Exercise (which opens an A to Z list of
+  every exercise the phone has sent; a pick is appended to the end of the
+  session; back returns), then End Session below a divider (which asks first).
+  The exercise list reaches the wrist only at Sync: the phone sends its whole
+  list with the routines, and a user with no routine now gets the list too. An
   ended session can no longer be logged into
   (`WatchLoggingSurfacesTests.testS029AnEndedSessionCannotBeLoggedInto`).
   Logged rows leave through `WatchEmitForwarder` over the connectivity bridge —
@@ -403,8 +417,8 @@ finish is answered to it at its next sync, when the wrist itself asks
 `S-5 the phone's own finish is reported, and the wrist is answered at its next
 sync`).
 **(f) Finishing on the watch.** Answering the wrist's own Finish — the menu's
-**Finish**, reached from the list button — closes the session on the phone as
-well, with one history entry and the rating the wrist gave. A Finish the phone
+**End Session**, reached from the list button — closes the session on the phone
+as well, with one history entry and the rating the wrist gave. A Finish the phone
 was not there to hear — the session ended while the pair was apart — is
 re-announced by the wrist at its next catch-up, behind whatever the wrist still
 owes, and the phone's copy and its session screen end then, with the wrist's
@@ -512,14 +526,18 @@ enforced in code, so a failure points at the transport, not the logic:
     and a redelivery must not double it.
 13. **Sensor path** (after HealthKit is configured): heart rate appears during a
     session; a finished session closes its `HKWorkoutSession`. A workout left
-    "in progress" after you force-quit is the specific bug to hunt.
+    "in progress" after you force-quit is the specific bug to hunt. The capture
+    rules are plan 19d's
+    (`docs/plans/2026-10-10-19d-watch-heart-rate-and-steps-plan/2026-10-10-19d-watch-heart-rate-and-steps-plan.md`):
+    the sensors start and stop with the session
+    (`WatchSensorCoordinatorTests.testS3100StartSubscribesAndTheFirstBeatIsStored`,
+    `…testS3101EndStopsAndClearsTheRecordingSessionId`).
 14. **Check Apple Health.** The session should appear there once, not twice.
 
 Steps 15–18 check the session effort rating and all run on the shipped shell.
-Steps 19–20 check the heart-rate and step capture and stay with the shipping
-plan's Phase 8 (the HealthKit bindings) — see that plan's O-2
-(`docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). Steps 21–22 are
-the keep-alive checks plan 19c added and need a real watch.
+Steps 19–20 check the heart-rate and step capture plan 19d shipped
+(`docs/plans/2026-10-10-19d-watch-heart-rate-and-steps-plan/2026-10-10-19d-watch-heart-rate-and-steps-plan.md`).
+Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
 
 15. **The wrist asks how hard it was.** Turn Settings →
     Effort Rating on, on the phone, then sync from the wrist. Log a set on the
@@ -534,8 +552,9 @@ the keep-alive checks plan 19c added and need a real watch.
     phone's Summary offers Add rating. A wrist that has never synced does not
     ask either. A session with nothing logged is never asked about.
 17. **The question survives a kill** **(owner)**. Finish the session on the wrist
-    (the menu's **Finish**, from the list button) and force-quit the watch app
-    while the question shows. Relaunch: the question comes back before anything
+    (the menu's **End Session**, from the list button) and force-quit the watch
+    app while the question shows. Relaunch: the question comes back before
+    anything
     else, and one answer records one rating. The engine restores it from the
     store that outlives the process
     (`WatchEffortRatingTests.testS215AKillDuringThePromptAsksAgainAndRecordsOneAnswer`);
@@ -554,18 +573,20 @@ the keep-alive checks plan 19c added and need a real watch.
     with the wrist's rating (`test/pr4_session_controls_test.dart`,
     `S-213 the end the wrist re-announces at its next catch-up leaves the screen
     for one summary carrying the wrist's rating`).
-19. **Heart rate and steps reach the phone** *(needs Phase 8)*. With heart-rate
-    and motion permission granted, run a session with a run, three rounds of a
+19. **Heart rate and steps reach the phone**. With the Health permission granted
+    (workout share, heart rate, steps), run a session with a run, three rounds of a
     sports exercise and a block of sets. After sync the phone holds an average
     and maximum heart rate for the session, the run, each round and the set
-    block, and a step total for the run only. The phone has no screen for
-    these yet: inspect them with a debug build that lists
-    `getSensorSummariesForSession`. With heart-rate permission denied the
-    session still syncs, with no heart-rate values and no zeros.
-20. **Samples arrive in time** *(Phase 8)*. Compare when heart-rate and step
+    block, and a step total for the run only. The session's average heart rate
+    shows in the phone's Stats; inspect the per-entry values with a debug build
+    that lists `getSensorSummariesForSession`. With heart-rate permission denied
+    the session still syncs, with no heart-rate values and no zeros
+    (`WatchSensorCoordinatorTests.testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected`).
+20. **Samples arrive in time**. Compare when heart-rate and step
     samples arrive with when each entry is logged. An entry's values are
     computed as it is logged, so a sample that arrives after that is missing
-    from them — the shipping plan's Phase 8 item 4 decides whether to wait.
+    from them
+    (`WatchSensorSummaryTests.testS238ALateReadingNeverRewritesWhatWasSent`).
 21. **The app stays alive with the wrist down — (owner).** The entitlement, the
     usage strings and the background mode are in the built product and the watch
     app compiles, but nothing has run on a device. Enable the HealthKit
@@ -579,6 +600,53 @@ the keep-alive checks plan 19c added and need a real watch.
     working, and a session still begins and ends on the wrist: a refused begin
     is recorded, never retried while the same session is live
     (`WatchWorkoutCoordinatorTests.testS1505DenialIsNotFailure`).
+23. **The wrist measures heart rate and steps — (owner).** Install on a real
+    watch and accept the new Health prompt (workout share, heart rate, steps).
+    Run a session and watch the exercise screen's grey "bpm" line change at
+    least every ~5 s, also after lowering and raising the wrist; if it freezes,
+    note the last value and after how many seconds
+    (`WatchSensorCoordinatorTests.testS3108TheLiveLabelShowsTheNewestBeat` pins
+    the label; the line itself is `WatchLoggingView.sensorLine`). It moves
+    because the feed re-reads the workout's newest beat on a tick of its own and
+    once more when the wrist comes back up
+    (`WatchSensorSourceSourceTests.testS3110ATheFeedPullsTheNewestBeatWhileAListenerWaits`,
+    `WatchSensorSourceSourceTests.testS3112ATheStoreAndTheHostRefreshTheHeartRateOnActivation`).
+    End the session and sync, then check the phone's Stats for an average heart rate.
+    Decline the prompt once instead: logging, rest, the menu and sync keep
+    working and no number appears
+    (`WatchSensorCoordinatorTests.testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected`).
+24. **The wrist measures distance and pace — (owner).** Nothing in this step
+    has run on a wrist; it is verified in code and builds only. Install on a
+    real watch and start a **Free workout**: add Walking (or any exercise with
+    Distance ticked, including a custom one). The Health question comes first,
+    then the Location question — Allow While Using — and it appears once. The
+    order is the host's: the workout is refreshed before the sensors
+    (`WatchSensorSourceSourceTests.testS3110TheHostWiresTheSensorsAndRefreshesTheWorkoutFirst`),
+    and the question's text is the watch target's
+    `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription`
+    (`…testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways`).
+    Walk a few hundred metres: the exercise screen's grey line shows distance
+    and pace (the line is `WatchLoggingView.sensorLine`). Start and Log an
+    effort, sync, and check the phone: the Session Summary's DISTANCE card
+    shows the metres with no "est." mark — the effort's distance arrives
+    measured, `distanceSource: "gps"`
+    (`WatchEffortDistanceTests.testS3210TheSourceTravelsAndOnlyBesideADistance`),
+    and the import stores that source
+    (`test/distance_source_import_test.dart`, S-876, S-877). Compare with a
+    known distance and note the error — the tracker's gates are tuning values,
+    so the number is yours to judge. Start a lift: no Location question
+    (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
+    `WatchGpsByExerciseTests.testS4801ALiftNeverStartsGpsAndNeverAsks`).
+    Refuse Location once (Settings → Privacy, or a reinstall) and check that
+    logging still works and the wrist does not ask again for the rest of that
+    session: a denied or unavailable answer skips the location subscription
+    and nothing else changes
+    (`WatchDistanceTrackerTests.testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`,
+    `WatchGpsByExerciseTests.testS4804ARefusedSessionIsAskedAboutOnceAndANewOneAgain`).
+    Apple Health lists the free workout as a generic workout, not an outdoor
+    walk — the workout is registered once, at the session's start, and is
+    never re-registered when a walk is added later
+    (`WatchGpsByExerciseTests.testS4807TheWorkoutIsRegisteredOutdoorsByTheExerciseTheUserIsOn`).
 
 ### The wrist's own logging (PR 2b)
 
@@ -596,9 +664,10 @@ hardware yet.
    this wrist session shows the set. The phone must show it before any Sync —
    only an untouched wrist proves the set is handed over as it is logged.
    Nothing is sent on a timer.
-3. **Finish and answer once.** Turn Settings → Effort Rating on, on the phone, and
-   sync from the wrist. On the wrist tap the list button, then **Finish**; the
-   question appears alone — no skip, back or swipe. Answer 4. The phone's
+3. **End Session and answer once.** Turn Settings → Effort Rating on, on the
+   phone, and sync from the wrist. On the wrist tap the list button, then
+   **End Session**, then **Finish** in the prompt; the question appears alone —
+   no skip, back or swipe. Answer 4. The phone's
    calendar holds one entry for the session and its Summary shows 4 / 5.
 4. **A workout logged with the phone out of reach catches up by itself — (owner).**
    Start another wrist workout and log a set with the phone in Airplane Mode.
@@ -633,9 +702,121 @@ hardware yet.
    soccer half
    (`WatchLoggingTimersTests.testS1401TheWristCountsDownFromTheSlotsOwnLength`),
    while one whose slot carries no number keeps the wrist's preset at 3:00
-   (`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`). **Finish** still ends the
-   session
+   (`…testS1402ASlotWithNoNumberKeepsTheWristsPreset`). **End Session** still ends
+   the session
    (`…testS1311FinishLeavesTheWorkClockRunningAndTakesTheReadout`).
+7. **End Session asks first — (owner).** On the menu tap **End Session**: the
+   prompt reads **Finish Workout?** with the phone's own words — "This action
+   will save and close the workout session." — and **Cancel** / **Finish**
+   (`WatchMenuTests.testS3401TheMenuCopyIsTheOwnersWords`). Tap **Cancel**: the
+   menu is still there and the session is still running. Tap **End Session**,
+   then **Finish** in the prompt: the session ends and the effort-rating question
+   follows as in step 3. Also on this pass: a rest screen names itself, with a
+   **Rest** caption above the clock
+   (`WatchTimedWorkTests.testS3409TheRestSurfaceNamesItself`).
+8. **A sports period's length is dialled before Start — (owner).** Pick a sports
+   (round) exercise: logging shows a length row of minus, a value and plus. Its
+   start value is the phone's number for that slot, or 3:00 with none; turn the
+   row down to 1:00 with the minus or the crown
+   (`WatchTimedWorkTests.testS3405TurningTheLengthChangesWhatStartCountsDownFrom`).
+   Tap **Start**: the countdown begins at 1:00 and the length row is gone, so the
+   length cannot be changed while the period runs
+   (`…testS3406ARunningPeriodHasNoLengthRowAndKeepsTheDialledLength`). Tap
+   **Log**: the next period of the same exercise opens at 1:00, while a different
+   exercise's period opens at its own number.
+9. **Every effort ends on the rest screen — (owner).** Log a **Plank** hold, a
+   cardio interval and a sports period on the wrist: each one leaves the rest
+   screen counting up with **Next** as its one control
+   (`WatchTimedWorkTests.testS3502ATimedEntryStartAndLogLeavesTheRestRunning`;
+   the hold and the period,
+   `…testS3503AHoldStartsARestAfterItsLog` and
+   `…testS3503BAPeriodStartsARestAfterItsLog`). Tap **Next**: the wrist is back
+   to logging the same exercise, and the phone's session for this wrist session
+   shows the rest time that just ended
+   (`…testS3505EndingTheRestAfterATimedEntryReportsThatEntry`). Start the next
+   interval instead of tapping Next: the rest ends at the Start instant and only
+   then does the new window open
+   (`…testS3504StartOfTheNextTimedEffortEndsTheRestItWalksInto`).
+10. **End Session sits apart from the exercises — (owner).** Open the list on the
+    wrist: the session's exercises are one group, and **Add Exercise** and
+    **End Session** sit below a divider, so neither reads as one more exercise
+    row. The extra space sits between the line and **Add Exercise**; **Add
+    Exercise** and **End Session** keep the normal row spacing.
+11. **Add an exercise from the watch — (owner).** Sync, open the list, tap
+    **Add Exercise**, pick one: it is the last row, it has no count, the
+    exercise being logged did not change, and the phone's open session shows
+    the new exercise; tap the same one again: a second slot. The list is the
+    phone's whole exercise list, so it only reaches the wrist at **Sync**
+    (`WatchMenuTests.testS3611TheAddListSortsCaseInsensitivelyByName`,
+    `…testS3612AddExerciseAppendsAtTheEndAndKeepsThePosition`,
+    `…testS3613TheSameExerciseTwiceGetsTwoSlots`,
+    `…testS3614TheAddAnnouncesTheLadderChangeToThePhone`), and a phone holding
+    no routine sends it too (D-3601).
+12. **The wrist wears the phone's theme accent — (owner).** On the phone
+    (Settings) pick each of the six themes in turn and **Sync** from the wrist.
+    On the wrist's prominent buttons — **Start** / **Log** on the logging
+    surface, **Next** on the rest surface, the current row of the menu, a
+    routine row on Start — the fill is that theme's accent and the label reads:
+    the accent's own contrast decides whether the label is dark or light, and
+    every theme today takes dark labels
+    (`WatchAccentTests.testS3710EveryRowOfTheSharedTableParsesWithTheTablesLabel`
+    holds every row of `watch/contract/watch_accent_contract.json` to the label
+    it names). The accent arrives with the Sync, like every other phone setting,
+    and picking a new theme shows at the next one. Before any Sync — a fresh
+    install — the buttons keep the default look, and a copy that carries no
+    accent, or one too dark to read on, is worn as no accent rather than as the
+    last one seen
+    (`WatchAccentTests.testS3712ANearBlackAccentIsRefusedRatherThanWorn`).
+    Nothing else changes color; the wrist's black stays black.
+13. **The exercise list arrives in batches, and only when it changed —
+    (owner).** On a real pair, tap **Sync** and open **Add Exercise**: the full
+    list is there, custom exercises included, A to Z. Tap **Sync** again with
+    nothing changed on the phone: the list is unchanged — the phone sends the
+    preferences and the routines and no exercise list the second time, which
+    you can only see in the phone's logs. Add a custom exercise on the phone,
+    tap **Sync**: it appears in **Add Exercise** in its A-to-Z place. Turning
+    the phone's Bluetooth off mid-way is not part of this step. The behaviour
+    behind it is pinned off-device by `test/watch_reference_sync_test.dart`
+    (`S-3843 250 exercises arrive as three batches in name order`),
+    `test/watch_sync_request_handler_test.dart` (`S-3850 the wrist names the
+    current version: no batch travels`, `S-3854 a sync with the sent version
+    sends no batch, and a custom exercise stales it`) and
+    `WatchMenuTests.testS3611TheAddListSortsCaseInsensitivelyByName`.
+14. **Jump to a letter in a long exercise list — (owner).** Sync so the wrist
+    holds the full list, then open **Add Exercise**: above the rows sits a grid
+    of the letters the list actually has, four per row — not the whole alphabet
+    — and a name the list put under a digit or a symbol sits under `#`, which is
+    first, while an accented initial like **Élan** has its own letter at the
+    end. Tap a letter: the list moves so that letter's first exercise is at the
+    top, nothing is added and the screen does not close; a letter jump is a
+    scroll, not a pick. Far letters land too: the list measures every row it
+    holds, so a tap on **T** brings T's own exercise to the top instead of
+    estimating and missing it (D-3106). Tap an exercise as before: it is still
+    added at the end of the session's list and the screen returns to the menu.
+    With a short list — a fresh install with 20 exercises or fewer at **Sync**
+    — there is no grid at all. The Free workout picker is the other entry point
+    and draws the same list in the same order: the grid is its first row, then
+    the exercises the session already holds, then the one section per letter.
+    The one component both render is pinned by
+    `WatchMenuTests.testS3106AOneListServesBothEntryPoints`. The letters and
+    their order are pinned off-device by
+    `WatchMenuTests.testS3900TheLettersFollowTheListsOwnOrder`,
+    `…testS3901DigitsAndSymbolsShareOneHashEntryFirst`,
+    `…testS3902TheGridNeedsMoreThanTheThreshold`,
+    `…testS3904AnAccentedInitialIsItsOwnLetterAndSortsLast` and
+    `…testS3905EveryLetterEntryCoversAContiguousRun`; the grid itself is drawn
+    by the watch app target, which `swift test` does not compile.
+15. **The menu is one tap away during a rest — (owner).** Log a set so the rest
+    screen is up: it carries the same top-right list button the logging screen
+    does, and tapping it opens the same menu over the rest. Tap **Add
+    Exercise**, pick one and go back: the wrist is on the rest screen again with
+    the timer still counting and the new exercise last in the ladder. A jump
+    from that menu returns to the rest screen too, and the rest ends only
+    through **Next** or by logging the next set
+    (`WatchMenuTests.testS3103ATheRestScreenCarriesTheMenuButton`,
+    `…testS3101AJumpDuringARestKeepsTheRestRunning`,
+    `…testS3102AAddingAnExerciseDuringARestKeepsTheRestRunning`,
+    `…testS3111ALogClosesTheRunningRestAndStartsTheNext`).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and
@@ -650,8 +831,9 @@ holds the kilogram payload underneath).
 ### What "QA passed" means
 
 Levels 1 and 2 green, plus every step at Level 3 on real paired hardware —
-steps 15–18 now, steps 19–20 once shipping-plan Phase 8 makes them runnable, and
-steps 21–22 on a real watch with the HealthKit capability enabled.
+steps 15–18 now, steps 19–20 and 23 on a real watch with the Health permission
+accepted (23 also with it declined once), and steps 21–22 on a real watch with
+the HealthKit capability enabled.
 Anything less and the integration is still a test-suite reality.
 
 ---

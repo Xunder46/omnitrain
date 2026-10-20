@@ -128,6 +128,11 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The session's identity, as both devices know it.
   String? get sessionId => state['sessionId'] as String?;
 
+  /// Whether the converged session already holds a session effort rating: the
+  /// wrist's own answer, which the phone must not echo back (plan 42b D-3).
+  bool get holdsEffortRating =>
+      entries.any((entry) => entry['kind'] == 'effort_rating');
+
   /// The protocol's status for the session — `active`, `completed`, or
   /// `abandoned`.
   String? get status => state['status'] as String?;
@@ -349,6 +354,39 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// handed over, not the frame (D-196, D-197).
   Future<WatchDelivery> sendState(Map<String, Object?> state) =>
       _transport.send(snapshotEnvelope(state: state));
+
+  /// Tells the wrist the phone answered the effort question for [sessionId]
+  /// first (plan 42b D-1): this mirror's converged state plus one
+  /// `effort_rating` entry under the wrist's own id, `rating-<sessionId>`, so
+  /// the wrist's open question closes and cannot be answered late. Sends
+  /// nothing and answers undelivered when the mirror holds another session.
+  Future<WatchDelivery> sendRatingFor(String sessionId, int rating) {
+    if (this.sessionId != sessionId) {
+      return Future.value(WatchDelivery.undelivered);
+    }
+    final id = 'rating-$sessionId';
+    return sendState({
+      ...state,
+      'entries': [
+        ...entries,
+        {
+          'entryId': id,
+          'eventId': id,
+          'kind': 'effort_rating',
+          'loggedAt': utcIso(_clock()),
+          'rating': rating,
+        },
+      ],
+    });
+  }
+
+  /// Hands the watch the phone's work timers for [sessionId] as one
+  /// `timer_state` frame (plan 43b3 D-2). A kind mapped to null clears that
+  /// timer. Nothing is applied to this mirror: its timers are the wrist's.
+  Future<WatchDelivery> sendTimers(
+    String sessionId,
+    Map<String, Object?> timers,
+  ) => _transport.send(_envelopeFor(sessionId, 'timer_state', {'timers': timers}));
 
   /// Asks the watch for its snapshot — the phone's half of joining a session
   /// that was started on the wrist.

@@ -35,6 +35,12 @@ final class WatchAppHost: ObservableObject {
     /// session.
     let workout: WatchWorkoutCoordinator
 
+    /// The sensors follow the session (D-2106): one coordinator for the life of
+    /// the app, over the recorder reading the store's own feed. It runs a
+    /// subscription exactly while a session is active, so the readings the
+    /// logging surface shows belong to the session on screen.
+    let sensors: WatchSensorCoordinator
+
     /// Bumped whenever `paths` changes underneath us. `WatchSessionStartPaths` is
     /// a plain class that publishes nothing, so without this SwiftUI would never
     /// re-read it — and a restore that loaded routines would leave the surface
@@ -75,15 +81,27 @@ final class WatchAppHost: ObservableObject {
             engine: engine,
             preferences: preferences
         )
-        let logging = WatchLoggingState(engine: engine)
+        // The health store is built once and shared (D-2106): it owns the
+        // workout builder and the sensor feed, so the workout coordinator and
+        // the sensors read one authorization outcome, not two. Its location
+        // adapter is built here, on the main actor, over a `CLLocationManager`
+        // that only calls back on the thread that created it (D-2303, D-2305).
+        let healthStore = HealthKitWorkoutStore(
+            location: WatchTrackedLocation(source: CoreLocationRawSource())
+        )
+        let recorder = WatchSensorRecorder(engine: engine, source: healthStore.sensorSource)
+        // The units are read from the phone's preferences at every use, so a
+        // sync that changes them reaches the logging screens without a relaunch.
+        let logging = WatchLoggingState(engine: engine, sensors: recorder, unitsSource: { preferences.units })
         let rating = WatchEffortRatingState(
             engine: engine,
             store: store,
             preferences: preferences
         )
         let workout = WatchWorkoutCoordinator(
-            platform: WatchPlatformWorkout(store: HealthKitWorkoutStore())
+            platform: WatchPlatformWorkout(store: healthStore)
         )
+        let sensors = WatchSensorCoordinator(recorder: recorder)
 
         self.engine = engine
         self.paths = paths
@@ -91,8 +109,10 @@ final class WatchAppHost: ObservableObject {
         self.logging = logging
         self.rating = rating
         self.workout = workout
+        self.sensors = sensors
         self.orchestrator = orchestrator
         self.forwarder = forwarder
+        self.healthStore = healthStore
 
         // Every arrival is routed by the orchestrator, then the surface re-reads.
         // A message the wrist refuses is reported through the bridge's failure
@@ -127,7 +147,9 @@ final class WatchAppHost: ObservableObject {
             .store(in: &cancellables)
 
         // Every session change the surfaces see also settles the platform
-        // workout (D-1504). The subscription's first emission is the empty
+        // workout (D-1504) and then the sensors (D-2106): the workout first, so
+        // by the time a subscription starts the builder, the permission outcome
+        // and the feed exist. The subscription's first emission is the empty
         // session before `restore()`, which the lifecycle rule answers with
         // `.none`, so it is left as it is.
         $revision
@@ -135,10 +157,19 @@ final class WatchAppHost: ObservableObject {
                 Task { @MainActor in
                     guard let self else { return }
                     await self.workout.refresh(self.engine.session)
+                    await self.sensors.refresh(self.engine.session)
                 }
             }
             .store(in: &cancellables)
     }
+
+    /// The one health store, made in `init` and kept: the sensors, the workout
+    /// coordinator and the activation refresh all read this one object, so the
+    /// wrist has one authorization outcome and one builder (D-2106, D-3108).
+    /// Declared after `init` so the construction inside it stays the first
+    /// `HealthKitWorkoutStore(` in this file, which is what the source scan
+    /// `testS3110TheHostWiresTheSensorsAndRefreshesTheWorkoutFirst` reads.
+    private let healthStore: HealthKitWorkoutStore
 
     /// Reads whatever the wrist already holds, in the order the surfaces need it:
     /// the engine first (its session, the rows it logged and their timers) so a
@@ -186,6 +217,14 @@ final class WatchAppHost: ObservableObject {
     func catchUpOnActivation() {
         Task { await orchestrator.catchUp(reachable: phoneReachability == .reachable) }
     }
+
+    /// Reads the workout's newest beat when the app becomes active (D-3108,
+    /// D-3113). HealthKit delivers a beat through the builder's callback, which
+    /// a suspended app can miss while the wrist is down; the raise that makes
+    /// the app active again is therefore also the moment to re-read.
+    func refreshHeartRate() {
+        healthStore.refreshHeartRate()
+    }
 }
 
 struct ContentView: View {
@@ -195,9 +234,8 @@ struct ContentView: View {
     /// without the user pressing Sync (D-183).
     @Environment(\.scenePhase) private var scenePhase
 
-    /// The session menu on the logging surface (D-1100). The start surface keeps
-    /// its own sheet for the empty Free workout; this one hosts the menu the
-    /// list button opens.
+    /// Whether the session menu sheet is up (D-1100, D-3114). Either surface's
+    /// list button opens it — the root hosts the one sheet both share.
     @State private var showingMenu = false
 
     var body: some View {
@@ -208,11 +246,26 @@ struct ContentView: View {
                 // D-161: while a rest runs, the rest surface replaces logging —
                 // an owed rating still wins above, and the rest is ended by
                 // Next (or by logging the next set) below.
-                WatchRestView(
-                    state: host.logging,
-                    restPingSeconds: { host.preferences.restPingSeconds },
-                    onNext: { host.noteSurfaceChange() }
-                )
+                //
+                // D-3102: the rest screen carries the same list button, so the
+                // menu is one tap away mid-rest; the sheet it opens is the one
+                // the root hosts, so a rest ending under it does not close it.
+                NavigationStack {
+                    WatchRestView(
+                        state: host.logging,
+                        restPingSeconds: { host.preferences.restPingSeconds },
+                        onNext: { host.noteSurfaceChange() }
+                    )
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button {
+                                    showingMenu = true
+                                } label: {
+                                    Image(systemName: "list.bullet")
+                                }
+                            }
+                        }
+                }
             } else if let session = host.engine.session,
                       session.status == WatchSessionStatus.active,
                       !session.exercises.isEmpty {
@@ -227,11 +280,36 @@ struct ContentView: View {
                 )
             }
         }
+        // D-3704: the accent rides the preferences the root already observes, so
+        // a Sync that changes the theme re-runs this body and the environment
+        // value with it. Read here, at render, like `restPingSeconds`.
+        .environment(\.watchAccent, WatchAccent.usable(hex: host.preferences.accentColorHex))
+        // D-3114: one sheet, on the root, so the rest↔logging switch and a rest
+        // ending underneath it both leave it alone.
+        .menuSheet(host, isPresented: $showingMenu)
         .task {
             await host.restore()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { host.catchUpOnActivation() }
+            if phase == .active {
+                host.catchUpOnActivation()
+                // D-3108: the wrist coming back up is also a read of the
+                // builder, since the callback it missed cannot be replayed.
+                host.refreshHeartRate()
+            }
+        }
+        // D-3114: with no session behind it the menu has nothing to show, so the
+        // sheet closes itself rather than being pulled down by the logging
+        // surface going away (an ended session).
+        .onChange(of: host.engine.session?.status) { _, status in
+            if status != WatchSessionStatus.active { showingMenu = false }
+        }
+        // D-3114: the owed question outranks every surface, so the sheet closes
+        // rather than sitting over it. The host bumps `revision` when the rating
+        // changes (`rating.objectWillChange` above), so the body re-runs and this
+        // comparison sees the new value.
+        .onChange(of: host.rating.isPromptOwed) { _, owed in
+            if owed { showingMenu = false }
         }
     }
 
@@ -243,7 +321,9 @@ struct ContentView: View {
 
     /// D-24's second surface: logging, with the session menu one tap away behind
     /// its list button — the ladder's exercises with their logged counts to jump
-    /// to, then Finish (D-25, D-1100, D-1200). Exercises are added on the phone.
+    /// to, then Add Exercise — the phone's whole list, A to Z, whose pick is
+    /// appended at the end (D-3607, D-3608) — then Finish (D-25, D-1100,
+    /// D-1200).
     ///
     /// The branch only shows this while the session is active and holds an
     /// exercise. A Free workout starts with none, so the start surface and its
@@ -264,27 +344,33 @@ struct ContentView: View {
                         }
                     }
                 }
-                .sheet(isPresented: $showingMenu) {
-                    WatchMenuView(
-                        state: WatchMenuState(
-                            engine: host.engine,
-                            paths: host.paths,
-                            rating: host.rating
-                        ),
-                        revision: host.revision,
-                        onClose: {
-                            showingMenu = false
-                            host.noteSurfaceChange()
-                        },
-                        onFinish: {
-                            showingMenu = false
-                            host.noteSurfaceChange()
-                        }
-                    )
-                }
         }
-        // The menu is a presentation, not the screen: a session that ends
-        // underneath it must not leave it owed when the surface comes back.
-        .onDisappear { showingMenu = false }
+    }
+}
+
+/// D-3114's one sheet, applied to the root: neither the rest↔logging switch nor
+/// a rest ending underneath it can tear the menu down, and `WatchMenuState(` is
+/// built once for the life of the surface rather than once per host.
+private extension View {
+    /// The session menu, opened by the list button either surface carries.
+    func menuSheet(_ host: WatchAppHost, isPresented: Binding<Bool>) -> some View {
+        sheet(isPresented: isPresented) {
+            WatchMenuView(
+                state: WatchMenuState(
+                    engine: host.engine,
+                    paths: host.paths,
+                    rating: host.rating
+                ),
+                revision: host.revision,
+                onClose: {
+                    isPresented.wrappedValue = false
+                    host.noteSurfaceChange()
+                },
+                onFinish: {
+                    isPresented.wrappedValue = false
+                    host.noteSurfaceChange()
+                }
+            )
+        }
     }
 }

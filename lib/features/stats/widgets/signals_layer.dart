@@ -4,7 +4,8 @@
 // they say is decided by `resolveSignals` and the registered signals, never
 // here. The only arithmetic in this file is presentation — the gap between two
 // cards and the size of the dismiss target — and every string it draws is
-// either a card's own copy, the header, or the quiet line (D-1001, D-1007).
+// either a card's own copy, the header, the quiet line (D-1001, D-1007) or the
+// locked line (D-4001, D-4002).
 //
 // The layer is presentation-only: no repository, no service, no clock and no
 // state. A card is read, and only its dismiss control is interactive (D-1018).
@@ -24,6 +25,44 @@ const double _kCardGap = 12;
 
 /// The tooltip and semantic label the dismiss control carries (D-1018).
 const String _kDismissLabel = 'Dismiss signal';
+
+/// The Signals slot while the gate is unmet (D-4001, D-4002).
+///
+/// The section the layer will occupy, saying what it is waiting for. Like the
+/// layer it is presentation-only: the line is a function of [ratedWeeks] alone
+/// — no clock, no repository, no dismissal store.
+class SignalsLockedSection extends StatelessWidget {
+  final int ratedWeeks;
+  final OmniThemeColors themeColors;
+
+  const SignalsLockedSection({
+    super.key,
+    required this.ratedWeeks,
+    required this.themeColors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      key: const Key('signals_locked'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const OmniCardHeader(title: 'SIGNALS'),
+        const SizedBox(height: 8),
+        Text(
+          signalsLockedLine(ratedWeeks),
+          key: const Key('signals_locked_line'),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: themeColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 /// The window's signals: a header, up to [kSignalMaxCards] cards, or the quiet
 /// line when nothing qualifies.

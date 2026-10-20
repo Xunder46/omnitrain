@@ -92,14 +92,15 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             totalDuration += (elapsed > 0 ? elapsed : target);
           }
         }
-        final minutes = totalDuration ~/ 60;
-        final seconds = totalDuration % 60;
-        return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+        return '${OmniDateUtils.formatTimerDigits(totalDuration)} total';
       case 'round':
         final totalRounds = widget.workoutState
             .getRoundsForEffort(effortId)
             .length;
-        return '$totalRounds round${totalRounds != 1 ? 's' : ''}';
+        return ModalityDisplay.roundCount(
+          widget.workoutState.currentSession?.modality,
+          totalRounds,
+        );
       case 'drill':
         return '${entries.length} hold${entries.length != 1 ? 's' : ''}';
       default:
@@ -153,17 +154,13 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     final blockExercises = _sortExercisesForBlock(
       _exercises.where((e) => e['blockId'] == block.id).toList(),
     );
-    final tileColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
     final segmentId = widget.workoutState.segments.isNotEmpty
         ? widget.workoutState.segments.first.id
         : null;
 
-    return Card(
-      color: tileColors.surface.withOpacity(0.7),
-      elevation: 2,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: OmniSurface(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,7 +228,11 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                       value: 'delete',
                       child: Row(
                         children: [
-                          const Icon(Icons.delete, size: 18, color: Colors.red),
+                          Icon(
+                            Icons.delete,
+                            size: 18,
+                            color: theme.colorScheme.error,
+                          ),
                           const SizedBox(width: 8),
                           const Text('Delete'),
                         ],
@@ -243,13 +244,12 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             ),
             const SizedBox(height: 8),
             if (blockExercises.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'No exercises in this block yet.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: OmniTheme.colors.textSecondary,
-                  ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: OmniEmptyState(
+                  compact: true,
+                  icon: Icons.fitness_center_outlined,
+                  title: 'No exercises in this block yet.',
                 ),
               )
             else
@@ -596,11 +596,10 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
   /// visually distinct without reading the number"):
   ///   - **not started** — no chip shown (handled by
   ///     [_shouldShowRestOverlay], not the chip builder).
-  ///   - **running** — primary-tinted background, meditation icon,
-  ///     primary foreground.
-  ///   - **stopped** — muted-tinted background, *pause* icon (or a
-  ///     play-arrow icon when transitionable) so the user can read
-  ///     the state at a glance.
+  ///   - **running** — the theme's tonal container, *pause* icon (tap
+  ///     pauses), primary icon and digits.
+  ///   - **paused** — muted surface, *play-arrow* icon (tap resumes),
+  ///     primary icon and digits.
   ///
   /// Tap behaviour: whole-tile Material + InkWell, no visual chrome
   /// outside the chip's own padding. Tap toggles the persisted
@@ -612,15 +611,15 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         : widget.workoutState.isRestPaused(key.effortId, key.entryIndex);
     final tileColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
 
-    // Running state: prominent primary tint, meditation icon.
-    // Stopped state: muted surface tint, a different (pause) icon.
+    // Plan 44 D-2: the chip is a tonal button that never competes with the
+    // solid primary action below it. Running: pause icon (tap pauses) on the
+    // theme's tonal container. Paused: play icon (tap resumes) on the muted
+    // surface. Icon and digits are the theme's primary in both states.
     final baseColor = isPaused
         ? tileColors.surface.withOpacity(0.85)
-        : theme.colorScheme.primary.withOpacity(0.8);
-    final foregroundColor = isPaused
-        ? tileColors.textDominant
-        : theme.colorScheme.onPrimary;
-    final iconData = isPaused ? Icons.pause : Icons.self_improvement;
+        : theme.colorScheme.primaryContainer;
+    final foregroundColor = theme.colorScheme.primary;
+    final iconData = isPaused ? Icons.play_arrow : Icons.pause;
     // No box shadow and no border in either state — both would
     // add spread/stroke padding to the bounding rect and make the
     // two states different sizes. Visual distinction between
@@ -630,42 +629,46 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     final boxShadow = null;
     final border = null;
 
-    return Material(
-      key: const Key('rest-overlay-chip'),
-      color: Colors.transparent,
-      // No MaterialTappability constraints — the whole chip is tappable
-      // (PR 4 spec: "whole-tile tap"), but stays inside the natural
-      // chip area thanks to the InkWell boundary below.
-      child: InkWell(
-        onTap: _toggleRestChip,
-        borderRadius: BorderRadius.circular(12),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: baseColor,
-            borderRadius: BorderRadius.circular(12),
-            border: border,
-            boxShadow: boxShadow,
-          ),
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12, // taller than before so the chip hits the
-              // 48-dp touch-target floor (vertical: 24 + 24 = 48)
+    return Semantics(
+      button: true,
+      label: isPaused ? 'Resume rest' : 'Pause rest',
+      child: Material(
+        key: const Key('rest-overlay-chip'),
+        color: Colors.transparent,
+        // No MaterialTappability constraints — the whole chip is tappable
+        // (PR 4 spec: "whole-tile tap"), but stays inside the natural
+        // chip area thanks to the InkWell boundary below.
+        child: InkWell(
+          onTap: _toggleRestChip,
+          borderRadius: BorderRadius.circular(12),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: baseColor,
+              borderRadius: BorderRadius.circular(12),
+              border: border,
+              boxShadow: boxShadow,
             ),
-            constraints: const BoxConstraints(minHeight: 48),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(iconData, size: 24, color: foregroundColor),
-                const SizedBox(width: 12),
-                Text(
-                  elapsedText,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: foregroundColor,
-                    fontWeight: FontWeight.w600,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12, // taller than before so the chip hits the
+                // 48-dp touch-target floor (vertical: 24 + 24 = 48)
+              ),
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(iconData, size: 24, color: foregroundColor),
+                  const SizedBox(width: 12),
+                  Text(
+                    elapsedText,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      color: foregroundColor,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -709,7 +712,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: Text(
-                    _errorMessage,
+                    'Could not load your workout. Try again.',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: OmniTheme.colors.textSecondary,
@@ -785,6 +788,19 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         : (effortKind == 'set' ? {'reps': 0, 'weight': 0.0} : {'duration': 0});
 
     final showRestStrip = _shouldShowRestOverlay();
+    final metricBody = _buildMetricWidget(
+      exercise,
+      currentEntry,
+      effortKind,
+      theme,
+    );
+    final setCountStepper = SetCountStepper(
+      text: _setCountText(entries.length, effortKind),
+      canAdd: entries.length < WorkoutConstants.maxEntriesPerEffort,
+      removeIsExercise: entries.length == 1,
+      onAdd: _addSet,
+      onRemove: () => _deleteSetAt(_currentSet - 1),
+    );
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
@@ -805,52 +821,68 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               children: [
                 _buildHeader(theme),
 
-                const SizedBox(height: 0),
+                // D-8: the set bar is pinned under the header, outside the
+                // scroll view, so it neither scrolls away nor sits in a 48 dp
+                // cell below the header.
+                _buildSetBar(entries.length, effortKind),
 
                 Expanded(
                   child: Column(
                     children: [
                       Expanded(
-                        child: AnimatedPadding(
-                          duration: _kRestStripAnimationDuration,
-                          curve: Curves.easeOut,
-                          padding: EdgeInsets.only(
-                            bottom: showRestStrip
-                                ? OmniTheme.restStripHeight
-                                : 0,
-                          ),
-                          child: SingleChildScrollView(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _buildMetricWidget(
-                                    exercise,
-                                    currentEntry,
-                                    effortKind,
-                                    theme,
+                        // The docked RestTimerStrip below already reserves
+                        // OmniTheme.restStripHeight in this Column, so the
+                        // scroll area must not reserve it a second time: the
+                        // second reservation (a leftover from the earlier
+                        // Stack-overlay strip) pushed the sets control off the
+                        // bottom of the screen whenever a rest was up.
+                        child: effortKind == 'set'
+                            // Plan 44 D-7: the reps controls (from the REPS row
+                            // to the sets stepper) sit slightly below the
+                            // centre of the free area: 60 % of the spare space
+                            // above them, 40 % below. When they do not fit
+                            // (small phone, rest strip up) the group is
+                            // top-anchored and the area scrolls.
+                            ? LayoutBuilder(
+                                builder: (context, constraints) =>
+                                    SingleChildScrollView(
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          minHeight: constraints.maxHeight,
+                                        ),
+                                        child: Align(
+                                          alignment: const Alignment(0, 0.2),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              metricBody,
+                                              const SizedBox(height: 24),
+                                              setCountStepper,
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                              )
+                            : SingleChildScrollView(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: 8,
+                                    bottom: 16,
                                   ),
-                                  const SizedBox(height: 10),
-                                  _buildSetProgress(
-                                    entries.length,
-                                    effortKind,
-                                    theme,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    children: [
+                                      metricBody,
+                                      const SizedBox(height: 24),
+                                      setCountStepper,
+                                      SizedBox(
+                                        height: 24 + _kSessionScrollBottomExtra,
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 16),
-                                  _buildSetIndicator(
-                                    entries.length,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  SizedBox(
-                                    height: 24 + _kSessionScrollBottomExtra,
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
                       ),
 
                       // Docked rest-timer strip directly above the
@@ -858,11 +890,9 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                       // shared _shouldShowRestOverlay() helper
                       // (covers edit-mode, running effort, and
                       // cross-effort rest scenarios in one rule).
-                      // The strip's height animates in sync with
-                      // the scrollable's bottom padding so the
-                      // content can scroll clear of it and the
-                      // strip collapses to zero when no rest is
-                      // open.
+                      // The strip's height is reserved once, here in the
+                      // flow; it collapses to zero when no rest is open, so
+                      // the scroll area above it takes the room back.
                       RestTimerStrip(
                         visible: showRestStrip,
                         child: _buildRestOverlayChip(
@@ -980,11 +1010,13 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         : null;
 
     return Padding(
+      key: const Key('session-detail-header'),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Row(
         children: [
           IconButton(
             icon: Icon(Icons.arrow_back, color: OmniTheme.colors.textDominant),
+            tooltip: 'Back',
             onPressed: () {
               // Detail view → back to list view
               // List view   → exit (with unsaved-changes check in edit mode)
@@ -1016,7 +1048,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     fontWeight: FontWeight.w600,
                     color: OmniTheme.colors.textDominant,
                   ),
-                  maxLines: 1,
+                  maxLines: _showListView ? 1 : 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
@@ -1025,6 +1057,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                       ? '${widget.editMode ? '$_sessionDisplayName · ' : ''}${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}'
                       : (_exercises.isNotEmpty
                             ? 'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}'
+                                  '${currentSegmentName?.isNotEmpty ?? false ? ' · $currentSegmentName' : ''}'
                             : ''),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: widget.editMode
@@ -1034,18 +1067,6 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (!_showListView && (currentSegmentName?.isNotEmpty ?? false))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      currentSegmentName!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.colors.textSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
               ],
             ),
           ),

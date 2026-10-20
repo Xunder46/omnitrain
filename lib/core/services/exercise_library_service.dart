@@ -249,13 +249,12 @@ class ExerciseLibraryService {
       imageAssetPath: source.imageAssetPath,
     );
     await _repository.createExercise(copy);
-    // Carry capability + muscle-group links forward so the copy is
-    // immediately selectable in the same contexts as the source.
+    // Carry capability + muscle links (ids and roles) forward so the copy
+    // is immediately selectable in the same contexts as the source.
     await _repository.setExerciseCapabilities(copy.id, source.capabilities);
-    final sourceMuscles = await _repository.getExerciseMuscleGroups(source.id);
-    await _repository.setExerciseMuscleGroups(
+    await _repository.setExerciseMuscleLinks(
       copy.id,
-      sourceMuscles.map((m) => m.id).toList(),
+      await _repository.getExerciseMuscleLinks(source.id),
     );
     return copy.copyWith(capabilities: source.capabilities);
   }
@@ -288,7 +287,7 @@ class ExerciseLibraryService {
     String? description,
     String? disciplineId,
     List<String> capabilities = const [],
-    List<String> muscleGroupIds = const [],
+    List<ExerciseMuscleLink> muscleLinks = const [],
   }) async {
     if (!exercise.isCustomExercise) {
       throw BuiltInExerciseImmutableError(exercise.id);
@@ -302,7 +301,7 @@ class ExerciseLibraryService {
     );
     await _repository.updateExercise(updated);
     await _repository.setExerciseCapabilities(updated.id, capabilities);
-    await _repository.setExerciseMuscleGroups(updated.id, muscleGroupIds);
+    await _repository.setExerciseMuscleLinks(updated.id, muscleLinks);
     return updated.copyWith(capabilities: capabilities);
   }
 }

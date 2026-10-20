@@ -113,6 +113,9 @@ public final class WatchSensorRecorder {
     /// distance, and false when the user refused permission.
     public private(set) var isMeasuringDistance = false
 
+    /// True once the permission has been read and was not granted, for this session.
+    private var locationAnswered = false
+
     public init(
         engine: WatchSessionEngine,
         source: WatchSensorSource,
@@ -133,18 +136,34 @@ public final class WatchSensorRecorder {
         )
     }
 
-    /// Starts listening to whatever `session`'s modality calls for.
+    /// Starts listening to whatever `session` calls for.
     ///
     /// Heart rate is recorded for every session that has a sensor to record it
-    /// with, and so are steps. Location is recorded only where the modality can
-    /// cover distance, so a lift does not drain the battery warming up a radio
-    /// it will never use (S-001, S-002).
+    /// with, and so are steps. Location is recorded only where the modality, or
+    /// the exercise the user is on, can cover distance, so a lift does not drain
+    /// the battery warming up a radio it will never use (S-001, S-002, S-4800).
     public func start(_ session: WatchSessionRecord) async {
         await startHeartRate()
         await startSteps()
+        await startLocationIfNeeded(for: session)
+    }
 
-        guard WatchGpsPolicy.isRequired(session.modality) else { return }
-        guard await source.locationPermission() == .granted else { return }
+    /// Called when the session changes under the sensors (the user reached
+    /// another exercise).
+    ///
+    /// The subscription is a latch: once the distance is being measured, a later
+    /// exercise that cannot cover it changes nothing (S-4803).
+    public func sessionChanged(_ session: WatchSessionRecord) async {
+        await startLocationIfNeeded(for: session)
+    }
+
+    private func startLocationIfNeeded(for session: WatchSessionRecord) async {
+        guard !isMeasuringDistance, !locationAnswered else { return }
+        guard WatchGpsPolicy.isRequired(session) else { return }
+        guard await source.locationPermission() == .granted else {
+            locationAnswered = true
+            return
+        }
 
         isMeasuringDistance = true
         fixTask = consume(source.location()) { [weak self] fix in
@@ -165,6 +184,7 @@ public final class WatchSensorRecorder {
         beatTask = nil
         fixTask = nil
         stepsTask = nil
+        locationAnswered = false
 
         guard isMeasuringDistance else { return }
         isMeasuringDistance = false

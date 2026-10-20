@@ -126,10 +126,11 @@ described here.
 ```
 HomeScreen
   ├── modality tiles / Free Training  → WorkoutSessionScreen → SessionSummaryScreen
-  │                                       ├── SessionOverviewScreen  (edit session)
+  │                                       ├── SessionOverviewScreen  (edit session; not reachable from the app — see Screen Inventory)
   │                                       └── CalendarScreen
   ├── My Routines tile                → MyRoutinesScreen → RoutineSetupScreen
   │                                       └── ExercisePickerScreen
+  │                                             └── ExerciseEditorScreen (create, empty state)
   ├── NutritionSummaryCard            → NutritionScreen
   │                                       ├── NutritionTargetScreen
   │                                       └── AddFoodScreen → EditFoodScreen
@@ -139,14 +140,17 @@ HomeScreen
         │                             → SessionSummaryScreen
         ├── StatsScreen
         ├── ExerciseLibraryScreen     → ExerciseLibraryDetailScreen
+        │                               └── ExerciseEditorScreen (Edit, custom exercises)
+        │                             → ExerciseEditorScreen (create, header `+`)
         │                             → ExerciseDetailViewScreen
         ├── ProfileScreen             → AvatarCropSheet
         └── SettingsScreen
 ```
 
-`ExercisePickerScreen` is pushed from `SessionOverviewScreen`, `WorkoutSessionScreen`,
+`ExercisePickerScreen` is pushed from `WorkoutSessionScreen`,
 `RoutineSetupScreen`, and the save-as-routine sheet on `SessionSummaryScreen`; it returns the
-selected `Exercise` on pop. `ModalityPickerDialog` and `MetricChooserDialog` are the null-modality
+selected `Exercise` on pop. (`SessionOverviewScreen` also pushes it, but that screen is not
+reachable from the app.) `ModalityPickerDialog` and `MetricChooserDialog` are the null-modality
 resolution path — see [Modality Tracking](modality_tracking.md).
 
 The maintenance sheet is rendered by `_buildMaintenanceGrid` in
@@ -156,10 +160,10 @@ confirmed unused. Nutrition is **not** a maintenance-sheet destination — it is
 reached from the `NutritionSummaryCard` below the tile grid.
 
 Nutrition is entered from the `NutritionSummaryCard` on the home screen, which
-lands on `NutritionScreen` (daily summary); the small edit icon on the
-`CalorieRingCard` at the top of that screen pushes `NutritionTargetScreen`. The
-legacy bottom "Edit Targets" button is gone. The legacy placeholder no longer
-exists.
+lands on `NutritionScreen` (daily summary); the labelled target button in the
+`TODAY` card header at the top of that screen pushes `NutritionTargetScreen`. The
+legacy bottom "Edit Targets" button is gone. The legacy placeholder still exists
+as unreachable dead code (see Non-Production Screens below).
 
 Day rollover:
 - `HomeScreen` calls `NutritionState.rolloverToDate(todayMs)` from
@@ -180,23 +184,24 @@ Day rollover:
 | `EditFoodScreen` | `lib/features/nutrition/edit_food_screen.dart` | Edit a single catalog food. Edits propagate to personal library rows through the durable `catalogId` linkage; past `ConsumedFood` snapshots are unaffected. |
 | `NutritionTargetScreen` | `lib/features/nutrition/nutrition_target_screen.dart` | Set today's calorie target. Persists through `NutritionState` with forward-propagation to future dates that still hold the old value. |
 | `NutritionTrendScreen` | `lib/features/nutrition/nutrition_trend_screen.dart` | Full-history nutrition trend under a back header. Loads through `StatsProgressService` (`computeNutritionTrend(days: null)`, `computeNutritionAdherence()`) from the repository. Reached from the Stats screen's Fuel row (`test/fuel_row_screen_test.dart`, `S-1109`). |
-| `SessionOverviewScreen` | `lib/features/session/session_overview_screen.dart` | Exercise list for current session, add/remove exercises |
+| `SessionOverviewScreen` | `lib/features/session/session_overview_screen.dart` | Exercise list for current session, add/remove exercises. **Not reachable from the app**: no code in `lib/` pushes or builds it; it is exercised only by tests (`test/session_screen_build_phase_notify_test.dart`, `test/interaction_flow_test.dart`, `test/screen_widget_test.dart`, `test/header_standardization_test.dart`). |
 | `WorkoutSessionScreen` | `lib/features/session/workout_session_screen.dart` | Core workout tracking (list view + detail view), split across part files: main coordinator, timer mixin, list-view builders, detail-view builders. Also hosts the session discard action and the rest overlay. |
 | `SessionSummaryScreen` | `lib/features/session/session_summary_screen.dart` | Post-workout summary, PRs, save-as-routine, distance entry. Also reused for **historical** sessions reached from the calendar (tap a past day with one entry → `SessionSummaryScreen`). Accepts an optional `openedFromCalendar: true` + `originatingCalendarState` to differentiate the two flows: when set, the embedded calendar card renders the **historical session's month** (not today), the "Open Calendar" button **pops back** instead of pushing a fresh `CalendarScreen`, and "Discard" deletes the historical record and returns to the originating calendar / day list. When omitted (post-workout flow), the calendar card renders the current month, "Open Calendar" pushes a fresh calendar, and "Discard" returns to the home hub via `popUntil(isFirst)`. |
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
 | `RoutineSetupScreen` | `lib/features/routine/routine_setup_screen.dart` | Create/edit routines (dual view) |
-| `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create/edit custom exercises with modality-aware capability/discipline filtering; accepts optional `contextModality` for session-prefill |
-| `ExercisePickerScreen` | `lib/features/exercise/exercise_picker_screen.dart` | Full-screen exercise search and selection with modality ranking and discipline/muscle filters; opened via `OmniNavigator.push<Exercise>` and returns the selected `Exercise` on pop. Custom exercises are marked as such. |
-| `ExerciseLibraryScreen` | `lib/features/exercise/exercise_library_screen.dart` | Read-only management surface for the user's exercise catalog, reachable from the maintenance sheet. Never offers an add-to-workout action — the library is for management, not selection. |
-| `ExerciseLibraryDetailScreen` | `lib/features/exercise/exercise_library_detail_screen.dart` | Management surface for one exercise. Built-in rows offer copy; custom rows offer edit and remove. Removal is reference-aware: zero references hard-delete, any reference retires (`isArchived = true`). |
-| `ExerciseDetailViewScreen` | `lib/features/exercise/exercise_detail_view_screen.dart` | Read-only exercise details: description, discipline, capabilities split into tracking methods and movement properties, and muscles. Sections collapse when empty. Reused in management contexts with the add action suppressed. |
+| `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create/edit custom exercises with modality-aware capability/discipline filtering; accepts optional `contextModality` for session-prefill. Entry points: the Exercise Library header `+` (create, no `contextModality` — verified by `test/pr8_exercise_library_test.dart`, group `ExerciseLibraryScreen` · `S-4103: the action opens the editor in create mode`, `S-4106: the editor is opened without a session modality`), the picker's empty-state `New Exercise` button (create with the session modality — verified by `test/screen_widget_test.dart`, group `ExercisePickerScreen` · `S-4109: the button opens the editor with the session modality`), and `Edit` on a custom exercise's `ExerciseLibraryDetailScreen` (verified by `test/pr8_exercise_library_test.dart`, group `ExerciseLibraryDetailScreen` · `S-9: Edit opens the full editor and saves through it`). |
+| `ExercisePickerScreen` | `lib/features/exercise/exercise_picker_screen.dart` | Full-screen exercise search and selection with modality ranking and discipline/muscle filters; the muscle filter is one list grouped by region (`muscleFilterEntries` in `lib/core/utils/muscle_display.dart`), and each row shows the exercise's main (primary) muscles as chips. Opened via `OmniNavigator.push<Exercise>` and returns the selected `Exercise` on pop. Custom exercises are marked as such. Verified by `test/muscle_filter_picker_test.dart` (groups `S-2: Muscle filter grouped by region`, `S-3 / S-9: rows show main muscles only`). |
+| `ExerciseLibraryScreen` | `lib/features/exercise/exercise_library_screen.dart` | Management surface for the user's exercise catalog, reachable from the maintenance sheet. Its header carries a `+` action (`exercise_library_new_button`, tooltip `New Exercise`) that opens the editor in create mode (verified by `test/pr8_exercise_library_test.dart`, group `ExerciseLibraryScreen` · `S-4102: header carries the create action`). Never offers an add-to-workout action — the library is for management, not selection. |
+| `ExerciseLibraryDetailScreen` | `lib/features/exercise/exercise_library_detail_screen.dart` | Management surface for one exercise. Built-in rows offer copy; custom rows offer edit and remove. Its muscle section lists Primary and Secondary as separate rows. `Edit` pushes `ExerciseEditorScreen` in edit mode (see `docs/create_new_exercise.md`). Removal is reference-aware: zero references hard-delete, any reference retires (`isArchived = true`). Verified by `test/exercise_detail_muscle_groups_test.dart` (group `ExerciseLibraryDetailScreen — seeded muscles (S-4)`). |
+| `ExerciseDetailViewScreen` | `lib/features/exercise/exercise_detail_view_screen.dart` | Read-only exercise details: description, discipline, capabilities split into tracking methods and movement properties, and muscles split into Primary and Secondary rows (`ExerciseDetailViewBody` takes `primaryMuscles` / `secondaryMuscles`). Sections collapse when empty. Reused in management contexts with the add action suppressed. Verified by `test/exercise_detail_muscle_groups_test.dart` (groups `ExerciseDetailViewBody — Primary / Secondary rows (S-4)`, `ExerciseDetailViewScreen — seeded muscles (S-4)`). |
 | `ProfileScreen` | `lib/features/profile/profile_screen.dart` | Identity, avatar, and body measurement tracking |
 | `SettingsScreen` | `lib/features/settings/settings_screen.dart` | Calendar start-of-week, weight/distance units, timer alert preferences, notification-permission row for rest and effort alerts, effort rating toggle, platform-health toggles (`Write workouts`, `Read body weight`) with denied-state pointer to system settings, appearance theme selector, and a low-emphasis version footer |
-| `StatsScreen` | `lib/features/stats/stats_screen.dart` | Read-only stats: a Mix layer describing the window's training mix (see [Stats screen doc](stats_screen.md#mix-layer)), a Signals layer of up to two cards between the Mix layer and the ALL TIME card, rendered only when the Mix load baseline is ready (see [Signals](signals.md)), all-time sessions, total training time and current streak in the ALL TIME card, an Instruments list of the window's work (see [Stats screen doc](stats_screen.md#instruments-list)), and a Fuel row on its own logged-days window (see [Stats screen doc](stats_screen.md#fuel-row)). The Mix layer and the Instruments list are selected from a current-state window (active training period or the most recent training days — see [Stats screen doc](stats_screen.md#selection-window-current-state-window)). Its header carries one action — a chart icon that pushes `RecordsAndTrendsScreen` and is the only entry point to it. |
+| `StatsScreen` | `lib/features/stats/stats_screen.dart` | Read-only stats: a Mix layer describing the window's training mix (see [Stats screen doc](stats_screen.md#mix-layer)), a Signals layer of up to two cards between the Mix layer and the ALL TIME card, rendered only when the Mix load baseline is ready — while fewer than four weeks are rated, a locked Signals line takes its slot instead (see [Signals](signals.md)), all-time sessions, total training time and current streak in the ALL TIME card, an Instruments list of the window's work (see [Stats screen doc](stats_screen.md#instruments-list)), and a Fuel row on its own logged-days window (see [Stats screen doc](stats_screen.md#fuel-row)). The Mix layer and the Instruments list are selected from a current-state window (active training period or the most recent training days — see [Stats screen doc](stats_screen.md#selection-window-current-state-window)). Its header carries one action — a chart icon that pushes `RecordsAndTrendsScreen` and is the only entry point to it. |
 | `RecordsAndTrendsScreen` | `lib/features/stats/records_and_trends_screen.dart` | Per-exercise all-time bests for every exercise in a completed session, grouped into Resistance / Cardio / Isometric / Sports sections, with a fuzzy search field over exercise names. Reached only from the Stats header's chart icon. Pushes `ExerciseProgressScreen` when an entry is tapped. See [Records & Trends](records_and_trends.md). |
 | `ExerciseProgressScreen` | `lib/features/stats/exercise_progress_screen.dart` | One exercise's all-time best, its per-training-day series, and its recent training days newest first. Reached from a `RecordsAndTrendsScreen` entry or from a row of the Stats screen's Instruments list; named exactly `Exercise Progress`. See [Records & Trends](records_and_trends.md). |
 | `OnboardingScreen` | `lib/features/onboarding/onboarding_screen.dart` | First-launch 3-page swipeable intro. Page 1: app pitch. Page 2: modality tiles with accent colors and one-liners. Page 3: calendar features + Get Started button. Completion sets `onboarding_complete` preference key via `repository.setPreferenceBool` and calls `pushReplacement` to `HomeScreen`. |
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
+| `StartupPreparingScreen` | `lib/features/startup/startup_preparing_screen.dart` | Neutral preparation surface mounted while the startup sequence runs (see App Entry Point above). |
 | `StartupFailureScreen` | `lib/features/startup/startup_failure_screen.dart` | End-user startup-failure surface. Shows when `_runStartup` throws inside `StartupRoot`. Plain-language headline ("Something went wrong while starting OmniTrain."), a short secondary line inviting a retry, and a full-width `FilledButton` labeled "Retry" that calls back into `StartupRoot` to re-run the entire startup sequence. No developer terminology is rendered — no "console", "log", "error", or raw exception text. The Retry button is disabled (with `onPressed: null`) while a retry attempt is in flight, to prevent concurrent startups. The screen uses the canonical Abyssal Neon theme tokens via the default failure theme passed in by `StartupRoot`; the user's saved theme is unavailable at this point in the lifecycle because `SettingsState` has not yet been constructed. |
 
 ### Calendar & Period Screens
@@ -284,14 +289,16 @@ Resuming an active session is driven by matching, not by navigation history: a m
 resumes when the active session's modality matches it, and the My Routines tile resumes when the
 active session has `intent == 'routine'`.
 
-Cold-start resume reads in-progress sessions from storage on the home screen's first frame. Two
-invariants govern it:
+Cold-start resume reads in-progress sessions from storage on the home screen's first frame and
+restores the most recent dangling session silently — no prompt or dialog is shown; the matching
+tile is already active when the screen settles.
 
-- **Dismissing the resume prompt is not a delete.** System back-dismiss must preserve the stored
-  session; only an explicit confirmed discard deletes it.
+- **There is no resume prompt.** A dangling session is restored silently on Home; only an explicit
+  confirmed discard deletes it.
 - **Only the most recent dangling session is surfaced**; older ones are cleaned up by state.
 
-Verified by `test/interaction_flow_test.dart`.
+Verified by `test/interaction_flow_test.dart`, group `HomeScreen active-session affordance`, test
+`cold-start loaded session shows active tile without launch modal and tap resumes`.
 
 ---
 
@@ -309,4 +316,4 @@ Verified by `test/interaction_flow_test.dart`.
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-09-20. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-10-15. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

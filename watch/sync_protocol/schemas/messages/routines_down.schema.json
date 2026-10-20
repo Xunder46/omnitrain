@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/routines_down.schema.json",
   "title": "routines_down",
-  "description": "Phone → watch. The user's routines (full template chain) plus the fallback exercise list the watch may log without reaching the phone.",
+  "description": "Phone → watch. The user's routines (full template chain, possibly empty) plus the fallback exercise list the watch may log without reaching the phone. The fallback list is every exercise the phone offers the wrist, always including every exercise a routine references.",
   "allOf": [
     { "$ref": "envelope.schema.json" },
     {
@@ -19,12 +19,14 @@
             },
             "routines": {
               "type": "array",
-              "minItems": 1,
+              "minItems": 0,
+              "description": "May be empty: a phone with exercises and no routine still sends its exercise list.",
               "items": { "$ref": "#/$defs/routine" }
             },
             "fallbackExercises": {
               "type": "array",
-              "minItems": 1,
+              "minItems": 0,
+              "description": "Every exercise the phone offers the wrist, always including every routine's own; may be empty when the phone holds nothing to offer, and the whole list may arrive separately as `exercises_down`.",
               "items": { "$ref": "envelope.schema.json#/$defs/catalogExercise" }
             }
           }

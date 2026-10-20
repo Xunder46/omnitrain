@@ -8,6 +8,10 @@
 //  Plan: `docs/plans/2026-07-13-11-d-watch-sensor-recording-plan.md`,
 //  scenarios S-001, S-002, S-005, S-007 and S-008.
 //
+//  `docs/plans/2026-10-10-19f-watch-gps-feed-plan/2026-10-10-19f-watch-gps-feed-plan.md`
+//  adds the outdoor answer to the store seam: D-2301 and D-2309, scenarios
+//  S-3300 and S-3301.
+//
 //  Registering the session with the platform's health service is what unlocks
 //  the rest: live heart rate, correct calorie and activity attribution in the
 //  store, and — most importantly — the runtime priority that keeps a workout app
@@ -127,32 +131,65 @@ public enum WatchGpsPolicy {
     ]
 
     /// True when `modality` can cover distance — as a capability it carries, not
-    /// as one it rules out. Free training has no profile, so it never records
-    /// GPS: the user picks the exercise after the session starts, too late to
-    /// decide, and the distance row stays theirs to fill.
+    /// as one it rules out. A modality alone never decides for free training: the
+    /// user picks the exercise after the session starts, so the exercise decides
+    /// instead, through `isRequired(_ session:)` (D-4800).
     public static func isRequired(_ modality: String?) -> Bool {
         guard let modality, let capabilities = capabilitiesByModality[modality] else {
             return false
         }
         return capabilities.contains(distanceCapability)
     }
+
+    /// True when an exercise's capabilities include distance — the exercise, not
+    /// the name.
+    public static func coversDistance(_ capabilities: [String]) -> Bool {
+        capabilities.contains(distanceCapability)
+    }
+
+    /// True when the session's modality covers distance, or the exercise the user
+    /// is on does.
+    public static func isRequired(_ session: WatchSessionRecord) -> Bool {
+        if isRequired(session.modality) { return true }
+        return coversDistance((session.currentExercise?["capabilities"] as? [String]) ?? [])
+    }
 }
 
 /// The health service's own view of workouts: the OS-level surface, which is the
 /// part that cannot be tested off-device.
 ///
-/// Deliberately three calls and no state. The watch holds one workout at a time —
+/// Deliberately four calls and no state. The watch holds one workout at a time —
 /// that is what the platform grants — so `end` needs no identifier, and
 /// `inProgressActivityTypes` exists for exactly one purpose: finding out what a
 /// previous process left running.
 public protocol WatchPlatformWorkoutStore {
     func begin(_ activityType: String) async
 
+    /// The same registration, carrying the one thing the platform cannot infer
+    /// from the activity name: whether the user is outdoors, where the workout
+    /// may follow a route, or indoors, where it must not.
+    func begin(_ activityType: String, outdoors: Bool) async
+
     func end() async
 
     /// The activity types the health store still reports as in progress, oldest
     /// first. Anything here belongs to a process that is gone.
     func inProgressActivityTypes() async -> [String]
+}
+
+/// Each `begin` shape has a default, so a store implements whichever one its
+/// platform speaks and conforms either way: each statement forwards to the
+/// other's half, and a store that implements one of them is always the one that
+/// answers (the call inside an extension still dispatches to the conformer's own
+/// witness, so there is no recursion).
+extension WatchPlatformWorkoutStore {
+    public func begin(_ activityType: String, outdoors: Bool) async {
+        await begin(activityType)
+    }
+
+    public func begin(_ activityType: String) async {
+        await begin(activityType, outdoors: false)
+    }
 }
 
 /// The watch's platform workout, over whatever store the platform provides.
@@ -177,7 +214,10 @@ public final class WatchPlatformWorkout {
         if running != nil { await end() }
 
         let activityType = WatchActivityTypes.forModality(session.modality)
-        await store.begin(activityType.watchOs)
+        await store.begin(
+            activityType.watchOs,
+            outdoors: WatchGpsPolicy.isRequired(session)
+        )
         running = activityType
         return activityType
     }

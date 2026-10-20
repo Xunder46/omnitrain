@@ -24,6 +24,14 @@ public enum WatchLoggingDefaults {
     public static let roundDurationSeconds = 180
 }
 
+/// What the rest screen's own chrome says (D-3401).
+///
+/// The caption lives here rather than on `WatchRestView`, which compiles only
+/// into a watch target: this is the half the suite can read.
+public enum WatchRestSurfaceCopy {
+    public static let restCaption = "Rest"
+}
+
 /// The effort kinds a value screen can be, in the protocol's vocabulary. A hold
 /// is a `drill` to the data layer and a `hold` on the wire.
 public enum WatchEffortKind {
@@ -152,8 +160,11 @@ public struct WatchSensorLabels {
 public final class WatchLoggingState {
     public let engine: WatchSessionEngine
 
-    /// The saved unit preferences the wrist reads in.
-    public let units: WatchUnitPreferences
+    /// The unit preferences the wrist reads in, read at every use: the phone's
+    /// settings arrive at a sync, which can land while the state is alive.
+    public var units: WatchUnitPreferences { unitsSource() }
+
+    private let unitsSource: () -> WatchUnitPreferences
 
     /// The session's live sensors, when the view is wired to them. A view with
     /// none behaves exactly as before: every value is the user's to dial.
@@ -172,16 +183,26 @@ public final class WatchLoggingState {
     /// default (D-1303).
     private let presetRoundMs: Int
 
+    /// The period lengths the user has dialled on this wrist, by
+    /// `sessionExerciseId`, in whole seconds.
+    ///
+    /// A period's length is the user's while it has not started, and the row
+    /// that sets it is gone once it has — so the dialled length cannot live in
+    /// `dialled`, which a Log clears. Kept per slot, so a length carries to the
+    /// next period of the same slot and never to another (D-3404).
+    private var roundLengthOverrideSecs: [String: Int] = [:]
+
     /// The metrics each effort kind calls for, in the order the wrist reads
     /// them. Mirrors `EffortDefaults`' primary and secondary metrics.
     ///
     /// Timed work has no row at all: its length is its own clock, not a number
-    /// the user dials, so the clock replaces the rows (D-1305). A drill keeps
-    /// only its extra load, which is assistance rather than load.
+    /// the user dials, so the clock replaces the rows (D-1305). A period's one
+    /// row is its length, and `fields` drops it once the period runs (D-3404). A
+    /// drill keeps only its extra load, which is assistance rather than load.
     private static let metricKeysByKind: [String: [String]] = [
         WatchEffortKind.set: [WatchMetricKey.reps, WatchMetricKey.weight],
         WatchEffortKind.timed: [],
-        WatchEffortKind.round: [],
+        WatchEffortKind.round: [WatchMetricKey.roundDuration],
         WatchEffortKind.drill: [WatchMetricKey.extraWeight],
     ]
 
@@ -199,23 +220,29 @@ public final class WatchLoggingState {
         idFactory: @escaping () -> String = { UUID().uuidString },
         units: WatchUnitPreferences = WatchUnitPreferences(),
         sensors: WatchSensorRecorder? = nil,
-        roundPresetMs: Int? = nil
+        roundPresetMs: Int? = nil,
+        unitsSource: (() -> WatchUnitPreferences)? = nil
     ) {
         self.engine = engine
         self.clock = clock
         self.newId = idFactory
-        self.units = units
+        self.unitsSource = unitsSource ?? { units }
         self.sensors = sensors
         self.presetRoundMs = roundPresetMs
             ?? WatchLoggingDefaults.roundDurationSeconds * 1000
     }
 
     /// How long the current period is prescribed to run, in milliseconds: the
-    /// phone's number when the slot carries one, this wrist's preset otherwise
-    /// (D-1314, D-1402). A wrist slot's number is never smaller than a second —
-    /// `toSlot` floors it there — so anything under that is a value the wrist
-    /// did not write and does not read.
+    /// length the user dialled for this slot, else the phone's number when the
+    /// slot carries one, this wrist's preset otherwise (D-1314, D-1402, D-3404).
+    /// A wrist slot's number is never smaller than a second — `toSlot` floors it
+    /// there — so anything under that is a value the wrist did not write and
+    /// does not read.
     private var plannedRoundMs: Int {
+        if let slotId = slot?["sessionExerciseId"] as? String,
+           let dialled = roundLengthOverrideSecs[slotId] {
+            return dialled * 1000
+        }
         if let seconds = WatchCatalogExercise.roundSeconds(
             slot?[WatchCatalogExercise.roundDurationKey]
         ) {
@@ -238,6 +265,18 @@ public final class WatchLoggingState {
 
     /// The name of the exercise being logged, when there is one.
     public var exerciseName: String? { slot?["name"] as? String }
+
+    /// The header's "Set k of N" line, for an effort the phone planned the sets
+    /// of, or nil for every other effort — a free workout, a timed effort, a
+    /// hold, a period, or a slot the phone sent no rows for (A3).
+    ///
+    /// k is the set about to be logged and N the sets the slot holds: the
+    /// planned rows, or k itself once the user is past them, so an extra set
+    /// reads as its own last number rather than a set that does not exist.
+    public var setCaption: String? {
+        guard let planned = plannedSets else { return nil }
+        return "Set \(setsHeld + 1) of \(max(planned.count, setsHeld + 1))"
+    }
 
     /// The current instant, read through this state's clock, so the view and
     /// the events it logs agree on the time.
@@ -345,17 +384,30 @@ public final class WatchLoggingState {
         }
     }
 
-    /// The running work clock, or nil when none is running or the session is no
-    /// longer one to log into (D-1302).
+    /// The running work clock, or nil when none is running, a message put it on
+    /// another slot, or the session is no longer one to log into (D-1302, D-3).
+    ///
+    /// Only a timer that came from a message is hidden by its slot: the phone's
+    /// clock for another exercise is not this exercise's clock, but a clock the
+    /// wrist started stays the running one across a jump (S-1403, S-6004).
     ///
     /// Derived from storage rather than counted here, so a state built after a
     /// relaunch reads the same clock the screen that started it did (S-1306,
     /// S-1312).
+    ///
+    /// Known limit: the wire holds one timer per kind, so a newer timer of a
+    /// kind for another slot supersedes the older one in `newestTimer`, whoever
+    /// started either.
     public var workTimer: WatchTimerRecord? {
         guard canLog, let kind = workTimerKind,
               let timer = engine.timerFor(kind),
               timer.state != WatchTimerState.stopped
         else { return nil }
+        if engine.isTimerFromMessage(timer),
+           let slotId = timer.sessionExerciseId,
+           slotId != (slot?["sessionExerciseId"] as? String) {
+            return nil
+        }
         return timer
     }
 
@@ -391,7 +443,8 @@ public final class WatchLoggingState {
         if isResting { await endRest(at: startedAt) }
         _ = try? await engine.startTimer(
             kind,
-            plannedDurationMs: kind == WatchTimerKind.round ? plannedRoundMs : nil
+            plannedDurationMs: kind == WatchTimerKind.round ? plannedRoundMs : nil,
+            sessionExerciseId: slot?["sessionExerciseId"] as? String
         )
     }
 
@@ -436,6 +489,10 @@ public final class WatchLoggingState {
     /// reads them. Empty when there is no exercise to log against.
     public var fields: [WatchMetricField] {
         guard canLog else { return [] }
+        // A period's length row exists only before its countdown runs: once
+        // Start is tapped the length is what the clock is already counting, so
+        // there is nothing left to change and no row to change it with (D-3404).
+        if effortKind == WatchEffortKind.round, isWorkRunning { return [] }
         return metricKeys.map(field(for:))
     }
 
@@ -447,6 +504,29 @@ public final class WatchLoggingState {
         return engine.entries.filter {
             $0.payload["sessionExerciseId"] as? String == slotId
         }
+    }
+
+    /// The set rows the phone planned for the current slot, in set order — nil
+    /// unless the effort is a set and the slot carries rows at all.
+    ///
+    /// The kind gate sits before every read of this: a slot that declares
+    /// another kind keeps the key unread, so a routine's timed or held effort
+    /// never starts from a numbered set's values (I-5).
+    private var plannedSets: [[String: Any]]? {
+        guard effortKind == WatchEffortKind.set,
+              let planned = slot?["plannedSets"] as? [[String: Any]],
+              !planned.isEmpty
+        else { return nil }
+        return planned
+    }
+
+    /// How many of this slot's sets are already logged: the phone's entries and
+    /// the wrist's own unconfirmed ones alike, which is what makes the next set
+    /// the one whose index equals this count (I-4).
+    private var setsHeld: Int {
+        observations
+            .filter { $0.payload["kind"] as? String == WatchObservationKind.set }
+            .count
     }
 
     private var slot: [String: Any]? { engine.currentExercise }
@@ -516,9 +596,13 @@ public final class WatchLoggingState {
         case WatchMetricKey.rounds:
             return Double(nextRoundNumber)
         case WatchMetricKey.roundDuration:
-            guard let planned = engine.timerFor(WatchTimerKind.round)?.plannedDurationMs else {
-                return target(for: metricKey)
-            }
+            // A period's length is the planned one: there is no "last logged"
+            // number to read (a round's event carries a window, not a length)
+            // and the target is zero, which would print 0:00.
+            guard let countdown = engine.timerFor(WatchTimerKind.round),
+                  countdown.state != WatchTimerState.stopped,
+                  let planned = countdown.plannedDurationMs
+            else { return Double(plannedRoundMs) / 1000 }
             return Double(planned) / 1000
         case WatchMetricKey.duration, WatchMetricKey.distance:
             // Measured work starts empty: the next run or ride is timed from
@@ -528,6 +612,23 @@ public final class WatchLoggingState {
             if effortKind == WatchEffortKind.timed { return 0 }
             return lastLogged(metricKey) ?? target(for: metricKey)
         default:
+            // A set the phone planned the rows of starts from the row that set
+            // number holds, not from what the last set logged: the prescription
+            // is the phone's, and the wrist dials from it (A2). Past the planned
+            // rows, or for a row with no `reps`, the chain below still stands; a
+            // row with no `loadKg` is a planned load of 0 — never the last
+            // logged load.
+            if let planned = plannedSets, setsHeld < planned.count {
+                let row = planned[setsHeld]
+                switch metricKey {
+                case WatchMetricKey.reps:
+                    if let reps = (row["reps"] as? NSNumber)?.doubleValue { return reps }
+                case WatchMetricKey.weight:
+                    return (row["loadKg"] as? NSNumber)?.doubleValue ?? 0
+                default:
+                    break
+                }
+            }
             return lastLogged(metricKey) ?? target(for: metricKey)
         }
     }
@@ -588,8 +689,9 @@ public final class WatchLoggingState {
             return effortKind == WatchEffortKind.drill ? "Hold Time" : "Duration"
         case WatchMetricKey.distance: return "Distance"
         case WatchMetricKey.rounds: return roundsLabel
-        case WatchMetricKey.roundDuration: return "Round length"
-        case WatchMetricKey.extraWeight: return "Extra load"
+        case WatchMetricKey.roundDuration:
+            return engine.session?.modality == "sports" ? "Period length" : "Round length"
+        case WatchMetricKey.extraWeight: return "Load"
         default: return metricKey
         }
     }
@@ -649,12 +751,19 @@ public final class WatchLoggingState {
               !field.isMeasured
         else { return }
 
-        dialled[metricKey] = WatchMetricStepping.adjust(
+        let adjusted = WatchMetricStepping.adjust(
             field.value,
             metricKey: metricKey,
             detents: detents,
             units: units
         )
+        dialled[metricKey] = adjusted
+        // D-3404: a period's length outlives the Log that clears `dialled`, so
+        // the next period of this slot starts where this one was set.
+        if metricKey == WatchMetricKey.roundDuration,
+           let slotId = slot?["sessionExerciseId"] as? String {
+            roundLengthOverrideSecs[slotId] = max(1, Int(adjusted.rounded()))
+        }
     }
 
     // MARK: - Logging
@@ -755,16 +864,75 @@ public final class WatchLoggingState {
 
     /// The window timed work or a hold was logged over: the work clock's own
     /// start to the log instant (D-1304). A distance is saved only when the
-    /// wrist's sensors were keeping it and read something (S-1300, S-006).
+    /// wrist's sensors were keeping it and the effort's own window covered
+    /// something (D-2205); the number always travels with the source it came
+    /// from, and never alone (D-2206).
     private func windowPayload(loggedAt: Date, coversDistance: Bool) -> [String: Any] {
+        let startedAt = workTimer?.startedAt ?? loggedAt
         var payload: [String: Any] = [
-            "startedAt": utcIso(workTimer?.startedAt ?? loggedAt),
+            "startedAt": utcIso(startedAt),
             "endedAt": utcIso(loggedAt),
         ]
-        if coversDistance, isMeasuringDistance, let covered = readings.distanceMeters, covered > 0 {
-            payload["distanceMeters"] = covered
+        if coversDistance, isMeasuringDistance {
+            let covered = windowMeters(from: startedAt, through: loggedAt)
+            if covered > 0 {
+                payload["distanceMeters"] = covered
+                payload["distanceSource"] = "gps"
+            }
         }
         return payload
+    }
+
+    /// The metres the wrist covered inside `(start, end]`, added up from the
+    /// stored `gps` samples (D-2215).
+    ///
+    /// The chain begins at the baseline `cumulativeMeters(at: start)` — the
+    /// newest sample at or before the window (D-2205, S-3214/S-3217) — and adds
+    /// each sample forward in ascending sequence order: the sample AT the start
+    /// instant is the baseline, the one AT the log instant is inside. A total
+    /// smaller than the one before it means the location subscription restarted
+    /// and the new total is the metres since the restart — the steps rule
+    /// (D-125), which keeps an effort's distance when the counter resets
+    /// mid-window instead of reading the drop as no movement.
+    private func windowMeters(from start: Date, through end: Date) -> Double {
+        var previous = cumulativeMeters(at: start)
+        var total = 0.0
+        for sample in engine.sensorSamples
+            .filter({
+                $0.kind == WatchSensorKind.gps
+                    && $0.value.isFinite
+                    && $0.recordedAt > start
+                    && $0.recordedAt <= end
+            })
+            .sorted(by: { $0.sequence < $1.sequence })
+        {
+            total += sample.value >= previous ? sample.value - previous : sample.value
+            previous = sample.value
+        }
+        return total
+    }
+
+    /// The baseline the distance chain starts from: the value of the newest
+    /// stored `gps` sample at or before `instant`, or 0 when there is none
+    /// (D-2205).
+    ///
+    /// Read back from the session's stored samples rather than from memory, so
+    /// a relaunch between Start and Log changes nothing. The settled `distance`
+    /// sample is not read: it is the session's total for the live readout, not
+    /// any one effort's window.
+    private func cumulativeMeters(at instant: Date) -> Double {
+        var newest: WatchSensorSampleRecord?
+        for sample in engine.sensorSamples
+            where sample.kind == WatchSensorKind.gps
+            && sample.value.isFinite
+            && sample.recordedAt <= instant
+        {
+            // Two samples on one instant are resolved the way the engine
+            // resolves them: the later stored row wins.
+            if let existing = newest, existing.sequence >= sample.sequence { continue }
+            newest = sample
+        }
+        return newest?.value ?? 0
     }
 
     /// A round's window. The countdown is the round's clock: while one is
@@ -838,11 +1006,12 @@ public final class WatchLoggingState {
         return summary
     }
 
-    /// The timer the effort kind runs next: a rest after a set is a count-up
-    /// with no length (D-160), and nothing else — timed work leaves the screen on
-    /// Start, because the next effort is the user's own (D-1306).
+    /// The timer the effort kind runs next: every effort — a set, a timed
+    /// entry, a hold or a period — starts a count-up rest with no length
+    /// (D-160, D-3501), and the screen returns to logging only through the
+    /// user's own Next, because the next effort is the user's own Start
+    /// (D-1306: nothing here opens a next effort's clock).
     private func startFollowOnTimer() async {
-        guard effortKind == WatchEffortKind.set else { return }
         _ = try? await engine.startTimer(WatchTimerKind.rest)
     }
 

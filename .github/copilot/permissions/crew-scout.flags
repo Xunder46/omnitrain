@@ -1,0 +1,2 @@
+# crew-scout: reads everything, writes only its pointer sheets. Ceiling = default scope.
+--allow-tool=write(.work/crew/**)

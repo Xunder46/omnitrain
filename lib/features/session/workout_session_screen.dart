@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/workout_constants.dart';
@@ -9,6 +10,8 @@ import '../../state/settings/settings_state.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../../core/utils/metric_stepping.dart';
+import '../../core/utils/date_utils.dart';
 import '../../core/utils/rest_ping_utils.dart';
 import '../../state/workout/workout_state.dart';
 import '../exercise/exercise_picker_screen.dart';
@@ -17,10 +20,16 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../data/models/models.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/session/inline_metric_editor.dart';
+import '../../widgets/session/value_stepper_row.dart';
+import '../../widgets/session/timer_ring.dart';
+import '../../widgets/session/set_segment_bar.dart';
+import '../../widgets/session/set_count_stepper.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import '../../widgets/session/pr_toast.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
+import '../../widgets/layout/omni_surface.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/navigation/navigation.dart';
@@ -28,6 +37,7 @@ import '../../core/models/session_edit_snapshot.dart';
 import 'rest_timer_strip.dart';
 import 'session_summary_screen.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 part 'workout_session_timer_mixin.dart';
 part 'workout_session_list_view.dart';
@@ -110,19 +120,21 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   bool _showListView =
       true; // Toggle between list view and detail view - default to list
   bool _hasError = false;
-  String _errorMessage = '';
 
   // Scroll controller for the exercise list view. Scrolled to the bottom
   // when returning from exercise detail so the user lands near 'Add Exercise'.
   final ScrollController _listScrollController = ScrollController();
 
-  // Track skipped sets per effort (UI-only state)
-  final Map<String, Set<int>> _skippedSets = {};
-
   // Track which set keys have been logged this session (effortId-entryIndex).
   // Prevents the rest timer from restarting when navigating back/forward
   // through already-logged sets.
   final Set<String> _loggedSetKeys = {};
+
+  // D-3505/D-3506: the watch-driven revision of the exercise list this screen
+  // has applied. When the state's revision moves while the session is still
+  // the mounted one and active, the list is re-read without disturbing what
+  // the user is doing.
+  int _seenWatchRevision = 0;
 
   // D-8 throttle for the in-session PR toast. Tracks the session's running best
   // e1RM per exercise (keyed by exerciseId). The toast fires only when:
@@ -179,9 +191,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // Key: 'effortId-entryIndex', Value: map of metricKey -> value.
   // Changes are flushed to the repository only when Save is clicked.
   final Map<String, Map<String, dynamic>> _editBuffer = {};
-
-  // Per-entry expand/collapse state for the optional weight adjustment editor.
-  final Map<String, bool> _weightAdjustExpanded = {};
 
   // Prevent duplicate finish flows from double taps.
   bool _isFinishingSession = false;
@@ -317,6 +326,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           ),
         );
       });
+      return;
+    }
+
+    // D-3506: a watch-driven write moved the revision while the mounted
+    // session is still running — re-read the list, without leaving the screen.
+    if (session != null &&
+        session.id == expectedSessionId &&
+        session.endedAtMs == null &&
+        widget.workoutState.watchRefreshRevision != _seenWatchRevision) {
+      _seenWatchRevision = widget.workoutState.watchRefreshRevision;
+      _resyncExercisesFromState();
     }
   }
 
@@ -471,6 +491,74 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     return ordered;
   }
 
+  /// The display order of the session's exercises: a rolling session shows
+  /// only the block's own efforts, in block order; every other session keeps
+  /// detail navigation in the exact same sequence as the list view. Shared by
+  /// [_loadExercises] and [_resyncExercisesFromState] so both agree (D-3506).
+  List<Map<String, dynamic>> _orderedExercises(
+    List<Map<String, dynamic>> raw,
+  ) {
+    if (!widget.workoutState.isRollingSession) {
+      return _buildNonRollingDisplayOrderedExercises(raw);
+    }
+
+    final exercises = raw.where((e) => e['blockId'] != null).toList();
+    final blocks = widget.workoutState.getSessionBlocks();
+    final reordered = <Map<String, dynamic>>[];
+    for (final block in blocks) {
+      reordered.addAll(exercises.where((e) => e['blockId'] == block.id));
+    }
+    return reordered;
+  }
+
+  /// D-3506: re-reads the exercise list a watch-driven write changed and shows
+  /// it without disturbing what the user is doing. It replaces [_exercises]
+  /// (in the same display order [_loadExercises] uses). It does not fill
+  /// [_loggedSetKeys]: a set the watch logged arrives with its rest, and a set
+  /// counts as logged exactly when a rest covers it, so the screen already
+  /// shows it as LOGGED and offers no Log button there (S-3515).
+  ///
+  /// It does not call `loadSessionData`, `_restoreTimerStateFromPersisted` or
+  /// [_loadExercises], and it changes neither [_currentSet] nor the detail
+  /// index, the timers still running or [_isLoading]; it starts the ticker of
+  /// an interval the watch started, and drops the state of one it finished.
+  void _resyncExercisesFromState() {
+    if (_exercises.isEmpty) return;
+
+    final ordered = _orderedExercises(
+      widget.workoutState.getExercisesWithEntries(),
+    );
+
+    void apply() {
+      if (!mounted) return;
+      final focusedId = _currentExerciseIndex < _exercises.length
+          ? _exercises[_currentExerciseIndex]['id'] as String?
+          : null;
+      setState(() {
+        _exercises = ordered;
+        _dropFinishedTimerState();
+        _adoptRunningTimerState();
+
+        // A rolling session's list is re-ordered by block, so the index the
+        // user is on follows the effort they had open rather than its slot.
+        if (focusedId != null) {
+          final moved = _exercises.indexWhere((e) => e['id'] == focusedId);
+          if (moved != -1) _currentExerciseIndex = moved;
+        }
+      });
+    }
+
+    // A notification can reach the listener from inside the frame's build
+    // phase (the merge runs there); `setState` then is an error, so the resync
+    // waits for the frame it belongs to.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+      return;
+    }
+    apply();
+  }
+
   Future<void> _loadExercises() async {
     setState(() => _isLoading = true);
     try {
@@ -492,19 +580,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       _mountedSessionId ??= widget.workoutState.currentSession?.id;
       final exercises = widget.workoutState.getExercisesWithEntries();
       setState(() {
-        _exercises = exercises;
-        if (widget.workoutState.isRollingSession) {
-          _exercises = _exercises.where((e) => e['blockId'] != null).toList();
-          final blocks = widget.workoutState.getSessionBlocks();
-          final reordered = <Map<String, dynamic>>[];
-          for (final block in blocks) {
-            reordered.addAll(_exercises.where((e) => e['blockId'] == block.id));
-          }
-          _exercises = reordered;
-        } else {
-          // Keep detail navigation in the exact same sequence as the list view.
-          _exercises = _buildNonRollingDisplayOrderedExercises(_exercises);
-        }
+        _exercises = _orderedExercises(exercises);
 
         // Pre-populate timer state from persisted entries for all timer-based exercises
         _restoreTimerStateFromPersisted(_exercises);
@@ -517,6 +593,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           final entries =
               exercise['entries'] as List<Map<String, dynamic>>? ?? [];
 
+          // D-2: the keys are re-derived, not carried over. A set that was
+          // deleted must stop reading as logged here — `_logSet` returns early
+          // on this set and drops the screen's scheduled rest pings with it.
+          _loggedSetKeys.removeWhere((k) => k.startsWith('$effortId-'));
           for (int i = 0; i < entries.length; i++) {
             final logKey = '$effortId-$i';
             if (_isSetLogged(effortId, i, effortKind)) {
@@ -524,6 +604,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
             }
           }
         }
+
+        // D-3506: this load just read the state, so the revision it carries is
+        // the one the screen has applied.
+        _seenWatchRevision = widget.workoutState.watchRefreshRevision;
 
         // Restore focus to the exercise and set number if requested
         final initialId = widget.initialFocusId;
@@ -565,11 +649,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         _scheduleAutoOpenPicker();
       }
     } catch (e) {
+      // D-27.2: the exception text is logged, never rendered — the error
+      // state below says the load failed in plain words.
       debugPrint('Error loading exercises: $e');
       if (mounted) {
         setState(() {
           _hasError = true;
-          _errorMessage = e.toString();
           _isLoading = false;
         });
       }
@@ -713,6 +798,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     return entries.length;
   }
 
+  /// First set after the focused one that is not logged yet, as a 1-based set
+  /// number; null when every later set is logged (or there is none).
+  int? _nextUnloggedSetAfter(
+    String effortId,
+    String effortKind,
+    int entryCount,
+  ) {
+    for (var i = _currentSet; i < entryCount; i++) {
+      if (!_isSetLogged(effortId, i, effortKind)) return i + 1;
+    }
+    return null;
+  }
+
   Future<void> _logSet() async {
     if (_exercises.isEmpty) return;
 
@@ -832,6 +930,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       );
     }
 
+    // Plan 44 D-14: the next set starts from this set's weight when it has
+    // none of its own yet (sets added before this one's weight was entered).
+    if (effortKind == 'set' && !isSkippedSetKindEntry) {
+      await _carryWeightToNextSet(
+        effortId,
+        _currentSet - 1,
+        (currentEntry['weight'] as num?)?.toDouble() ?? 0.0,
+      );
+    }
+
     // In-session personal-record check. Fires the brief, non-blocking
     // "Congrats! New PR" toast when the just-logged strength set's Epley
     // e1RM strictly exceeds the user's all-time best for the exercise
@@ -885,11 +993,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       );
     }
 
-    // Advance to next set or next exercise
+    // Advance to the first set after this one that is not logged yet; when
+    // every later set is logged, move to the next exercise (D-6).
+    final nextSet = _nextUnloggedSetAfter(effortId, effortKind, entries.length);
     int? nextExerciseIndex;
     setState(() {
-      if (_currentSet < entries.length) {
-        _currentSet++;
+      if (nextSet != null) {
+        _currentSet = nextSet;
       } else {
         // Move to next exercise
         if (_currentExerciseIndex < _exercises.length - 1) {
@@ -1030,6 +1140,34 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     if (previousExerciseIndex != null) {
       unawaited(_loadExerciseNoteForIndex(previousExerciseIndex!));
     }
+  }
+
+  /// Plan 44 D-14: gives the set after [loggedIndex] the logged set's weight
+  /// when that set is unlogged and its stored weight is exactly 0.0. Reps are
+  /// never touched and a non-zero weight is never overwritten.
+  Future<void> _carryWeightToNextSet(
+    String effortId,
+    int loggedIndex,
+    double weightKg,
+  ) async {
+    if (weightKg <= 0) return;
+    final nextIndex = loggedIndex + 1;
+    if (_isSetLogged(effortId, nextIndex, 'set')) return;
+    final live = widget.workoutState
+        .getExercisesWithEntries()
+        .where((e) => e['id'] == effortId);
+    if (live.isEmpty) return;
+    final liveEntries = (live.first['entries'] as List?) ?? const [];
+    if (nextIndex >= liveEntries.length) return;
+    final next = liveEntries[nextIndex] as Map<String, dynamic>;
+    if (((next['weight'] as num?)?.toDouble() ?? 0.0) != 0.0) return;
+    await widget.workoutState.updateEntryValue(
+      effortId,
+      nextIndex,
+      'weight',
+      weightKg,
+    );
+    await _loadExercises();
   }
 
   /// Pre-fill the next set entry with values from the previous set
@@ -1214,7 +1352,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     return values.isEmpty ? null : values;
   }
 
-  Future<void> _deleteCurrentSet() async {
+  Future<void> _deleteSetAt(int index) async {
     if (_isStructuralOp || _exercises.isEmpty) return;
     _isStructuralOp = true;
 
@@ -1224,17 +1362,22 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       final exerciseName = exercise['name'] as String;
       final entries = exercise['entries'] as List<Map<String, dynamic>>;
       final effortKind = exercise['effortKind'] as String? ?? 'set';
-      final currentIndex = _currentSet - 1;
 
       if (entries.isEmpty) return;
 
       final setLabel = effortKind == 'round'
-          ? 'Round'
+          ? _roundNoun
           : (effortKind == 'timed'
                 ? 'Interval'
                 : (effortKind == 'drill' ? 'Hold' : 'Set'));
 
-      final isLogged = _isSetLogged(effortId, currentIndex, effortKind);
+      final isLogged = _isSetLogged(effortId, index, effortKind);
+
+      // D-2: a rest that is still running is deleted with its set (D-1), so the
+      // pings it scheduled have to go too — the chip is about to disappear.
+      final deletedRestWasOpen = widget.workoutState
+          .getEntryRests(effortId)
+          .any((rest) => rest.entryIndex == index + 1 && rest.restEndMs == null);
 
       // If this is the last entry, always warn since it removes the entire exercise
       if (entries.length == 1) {
@@ -1257,8 +1400,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         // Delete the entry and remove the exercise
         if (widget.editMode) _hasStructuralChanges = true;
         _inProgressKeys.removeWhere((k) => k.startsWith('$effortId-'));
-        await widget.workoutState.deleteEntry(effortId, currentIndex);
+        _loggedSetKeys.removeWhere((k) => k.startsWith('$effortId-'));
+        await widget.workoutState.deleteEntry(effortId, index);
+        _rekeyTimerStateAfterDelete(effortId, index);
+        _rekeyEditBufferAfterDelete(effortId, index);
         await widget.workoutState.removeExerciseFromSession(effortId);
+        if (deletedRestWasOpen) {
+          unawaited(widget.restNotificationService.cancelRestNotifications());
+          _lastRestPingFiredAt.remove(effortId);
+        }
         await _loadExercises();
 
         // Navigate back to list view
@@ -1288,13 +1438,42 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         if (!confirmed) return;
       }
 
+      // A set that was started but not logged holds live progress (a running
+      // or paused timer, interval or round): ask before throwing it away.
+      if (!isLogged && _inProgressKeys.contains('$effortId-$index')) {
+        if (!mounted) return;
+        final confirmed = await ConfirmationDialog.showTwoChoice(
+          context: context,
+          title: 'Delete running $setLabel?',
+          body: const Text(
+            'The timer is running. Deleting it loses this progress.',
+          ),
+          dismissLabel: 'Cancel',
+          confirmLabel: 'Delete',
+          dismissKey: const Key('workout-delete-running-entry-cancel'),
+          confirmKey: const Key('workout-delete-running-entry-confirm'),
+          isDestructive: true,
+        );
+
+        if (!confirmed) return;
+      }
+
       if (widget.editMode) _hasStructuralChanges = true;
-      await widget.workoutState.deleteEntry(effortId, currentIndex);
+      await widget.workoutState.deleteEntry(effortId, index);
+      _rekeyTimerStateAfterDelete(effortId, index);
+      _rekeyEditBufferAfterDelete(effortId, index);
+      if (deletedRestWasOpen) {
+        unawaited(widget.restNotificationService.cancelRestNotifications());
+        _lastRestPingFiredAt.remove(effortId);
+      }
       await _loadExercises();
 
       // Adjust current set if it now exceeds new entries length
       setState(() {
         final newCount = entries.length - 1;
+        if (index < _currentSet - 1) {
+          _currentSet--;
+        }
         if (_currentSet > newCount) {
           _currentSet = newCount.clamp(1, newCount);
         }
@@ -1339,13 +1518,24 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       return;
     }
 
-    // Normal mode: persist immediately
-    await widget.workoutState.updateEntryValue(
-      effortId,
-      entryIndex,
-      metricKey,
-      value,
-    );
+    // Normal mode: persist immediately. A live round-length change is not a
+    // single-round write: it moves every later round that has not started
+    // (O-6), so the state returns the rounds it touched.
+    List<int> touchedRounds = const [];
+    if (metricKey == 'round-duration') {
+      touchedRounds = await widget.workoutState.updatePlannedDurationFrom(
+        effortId,
+        entryIndex,
+        value as int,
+      );
+    } else {
+      await widget.workoutState.updateEntryValue(
+        effortId,
+        entryIndex,
+        metricKey,
+        value,
+      );
+    }
 
     // Reload exercises to reflect updated values
     await _loadExercises();
@@ -1367,9 +1557,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           _effortAlerted[timerKey] = false;
         }
         if (metricKey == 'round-duration') {
-          _effortTargetDuration[timerKey] =
-              entry['round-duration'] as int? ?? 0;
-          _effortAlerted[timerKey] = false;
+          // Refresh every round the state wrote; the running and finished
+          // rounds keep the values they had. Nothing written (no rounds
+          // loaded) still refreshes the entry the user edited.
+          final refreshed = touchedRounds.isEmpty
+              ? <int>[entryIndex]
+              : touchedRounds;
+          for (final index in refreshed) {
+            if (index < 0 || index >= entries.length) continue;
+            final roundKey = '$effortId-$index';
+            _effortTargetDuration[roundKey] =
+                entries[index]['round-duration'] as int? ?? 0;
+            _effortAlerted[roundKey] = false;
+          }
         }
       }
     }
@@ -1470,9 +1670,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         );
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to add exercise: $e')));
+          debugPrint('Add exercise: $e');
+          OmniMessage.error(context, 'Could not add the exercise. Try again.');
         }
       }
 
@@ -1482,8 +1681,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           await widget.workoutState.assignEffortToBlock(effortId, blockId);
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to assign exercise to block: $e')),
+            debugPrint('Assign exercise to block: $e');
+            OmniMessage.error(
+              context,
+              'Could not assign the exercise to the block. Try again.',
             );
           }
         }
@@ -1505,8 +1706,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           }
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to assign exercise to block: $e')),
+            debugPrint('Assign exercise to block: $e');
+            OmniMessage.error(
+              context,
+              'Could not assign the exercise to the block. Try again.',
             );
           }
         }

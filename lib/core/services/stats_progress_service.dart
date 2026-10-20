@@ -728,9 +728,16 @@ class StatsProgressService {
     final weekTime = <int, Map<ExerciseSection, double>>{};
     final weekLoad = <int, Map<ExerciseSection, double>>{};
 
+    // The latest completed session in all history, for the empty strip's line
+    // (D-4005). Rolling sessions count: they are completed sessions.
+    int? latestStartMs;
+
     for (final session in history.sessions) {
       if (session.endedAtMs == null) continue;
       final startMs = session.startedAtMs;
+      if (latestStartMs == null || startMs > latestStartMs) {
+        latestStartMs = startMs;
+      }
 
       final split = _sessionSplit(history, session);
 
@@ -788,6 +795,11 @@ class StatsProgressService {
           : const [],
       unratedSessionCount: unratedSessionCount,
       ratedBaselineWeeks: ratedBaselineWeeks,
+      lastSessionDay: latestStartMs == null
+          ? null
+          : localMidnightDay(
+              DateTime.fromMillisecondsSinceEpoch(latestStartMs),
+            ),
       weeks: [
         for (var i = 0; i < weekStarts.length; i++)
           _mixWeek(

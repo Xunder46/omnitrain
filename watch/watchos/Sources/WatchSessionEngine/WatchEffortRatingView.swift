@@ -71,13 +71,13 @@ public struct WatchEffortRatingView: View {
         .interactiveDismissDisabled(true)
     }
 
-    /// One number of the scale. `.borderedProminent` and `.bordered` are
+    /// One number of the scale. `.watchProminent()` and `.bordered` are
     /// distinct types, so the picked and unpicked branches are separate views.
     @ViewBuilder
     private func scaleButton(_ value: Int) -> some View {
         let button = Button("\(value)") { state.select(value) }
         if value == state.selected {
-            button.buttonStyle(.borderedProminent)
+            button.watchProminent()
         } else {
             button.buttonStyle(.bordered)
         }
@@ -89,7 +89,7 @@ public struct WatchEffortRatingView: View {
         } label: {
             Text("Confirm").frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .watchProminent()
         .disabled(!state.canConfirm)
     }
 }

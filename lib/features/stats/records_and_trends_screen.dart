@@ -10,10 +10,12 @@ import '../../core/utils/fuzzy_search.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
 import 'exercise_progress_screen.dart';
+import 'widgets/load_failure_view.dart';
 import 'widgets/native_value_format.dart';
 import 'widgets/recent_pr_list.dart';
 import 'widgets/stats_pill.dart';
@@ -40,6 +42,7 @@ class RecordsAndTrendsScreen extends StatefulWidget {
 
 class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
   bool _isLoading = true;
+  bool _loadFailed = false;
   int _totalSessions = 0;
   int _totalDurationMs = 0;
   int _streakDays = 0;
@@ -62,6 +65,11 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() {
+      _loadFailed = false;
+      _isLoading = true;
+    });
     try {
       // Reuse CalendarState streak logic — the calendar keeps owning that
       // rule; this screen only displays it.
@@ -89,7 +97,10 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
     }
   }
 
@@ -110,6 +121,11 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
           body: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loadFailed
+                ? LoadFailureView(
+                    message: 'Could not load your records.',
+                    onRetry: _loadData,
+                  )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     children: _summaries.isEmpty
@@ -153,6 +169,7 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
           suffixIcon: _query.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear),
+                  tooltip: 'Clear search',
                   onPressed: () {
                     _searchController.clear();
                     setState(() => _query = '');
@@ -338,35 +355,12 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
   }
 
   Widget _buildEmptyState(BuildContext context, OmniThemeColors themeColors) {
-    final theme = Theme.of(context);
-
     return OmniSurface(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 16),
-          Icon(
-            Icons.show_chart,
-            size: 48,
-            color: themeColors.textMuted.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No sessions yet',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: OmniTheme.colors.textDominant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Complete your first session to see stats here.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: themeColors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
+      child: OmniEmptyState(
+        compact: true,
+        icon: Icons.show_chart,
+        title: 'No sessions yet',
+        hint: 'Complete your first session to see stats here.',
       ),
     );
   }

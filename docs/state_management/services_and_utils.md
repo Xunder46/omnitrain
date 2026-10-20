@@ -5,7 +5,9 @@ nor app state: `lib/core/services/`, `lib/core/utils/`, and the cross-cutting
 pieces those classes own, including the shared Stats formatters
 (`lib/features/stats/widgets/native_value_format.dart`). The watch↔phone live
 mirroring surface, the platform transport it rides on and the watch's own runtime
-and sensor layer are in [The Watch Surface](watch_surface.md).
+layer are in [The Watch Surface](watch_surface.md); the watch's sensor layer and
+platform workout are in
+[The Watch Sensors and the Platform Workout](watch_sensors.md).
 
 > Part of [State Management & Services](../state_management.md). Return to the
 > index for the full class list and dependency graph.
@@ -131,8 +133,9 @@ Groups flat observation lists by effort kind into structured per-set maps. Used 
 
 **Key behaviors**:
 - `_restoreTimerStateFromPersisted`: populates `_inProgressKeys` for any persisted `active`/`paused` state on session restore.
-- `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows SnackBar `"Another set is still in progress. Pause or finish it before starting a new timer."` and returns early.
+- `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows a message through the shared `OmniMessage` (info look, no error icon), copy verbatim: `"Another set is still in progress. Pause or finish it before starting a new timer."` — and returns early. Verified by `test/session_message_test.dart` ("S-2702: the in-progress lock message keeps its copy on the shared look"); the same copy is asserted on the lock-clearing paths in `test/round_auto_expiry_test.dart`, group `Round Auto-Expiry Active-Round Lock Fix` · "S-BUG-001: auto-expired round clears active-round lock so next round can start" and "S-BUG-001b: round lock cleared by drain when user navigates before tick fires".
 - `_resetTimerState`: removes key from `_inProgressKeys` (called after manual set log/finish flows).
+- `_rekeyTimerStateAfterDelete`: after an entry delete, drops the deleted entry's timer UI state (and its ticker, and the effort-expiry notification if it was running) and moves every later entry's state and live ticker down one place, matching the re-indexing the state layer already applied to the persisted timed/round instances and rests. Verified by `test/delete_focused_timer_test.dart` (group `Delete the focused set — timers (plan 41)` · `S-4904: deleting a running interval asks first; cancel keeps it running; delete drops it and its timer; the next set is idle`; the stale started-marker guard is the end of S-4904; `S-4905: a running later interval keeps running and keeps its own time after a middle delete` checks the moved interval's own time only).
 - `_handleEffortTimerExpired` (round flow): removes the current round key from `_inProgressKeys` before calling `completeRound`, so the next round is immediately startable after auto-expiry.
 
 **Navigation and running timers** (in `workout_session_screen.dart`):
@@ -317,8 +320,9 @@ S-1009, S-1010) and `test/instrument_change_format_test.dart`.
 
 `computeMixLayer({required StatsWindow window, required DateTime now, required
 String startOfWeek})` returns the Mix layer's whole payload — the measure, the
-window's bar, the baseline's segments, the two counts and the weekly strip — or
-`null` when the window holds no time at all. It is the only history walk behind
+window's bar, the baseline's segments, the two counts, the weekly strip and the
+last completed session's day (`lastSessionDay`, the day the empty-strip line
+names) — or `null` when the window holds no time at all. It is the only history walk behind
 those figures: the window, the baseline and the strip are all served from the
 one cached snapshot, so the surface pays for no extra repository read.
 
@@ -495,8 +499,10 @@ Verified by `test/signals_service_test.dart`.
 ## The Watch Surface
 
 The watch↔phone live mirroring surface, the platform transport it rides on and
-the watch's own runtime and sensor layer are documented in
-[The Watch Surface](watch_surface.md).
+the watch's own runtime layer are documented in
+[The Watch Surface](watch_surface.md); the watch's sensor layer and platform
+workout are documented in
+[The Watch Sensors and the Platform Workout](watch_sensors.md).
 
 ---
 

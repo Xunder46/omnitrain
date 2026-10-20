@@ -91,8 +91,21 @@ extension SessionCoreEntryMethods on SessionCore {
       for (final effort in efforts) {
         await _repository.createEffort(effort);
         _efforts.putIfAbsent(effort.segmentId, () => []).add(effort);
+
+        // A slot the wrist added names an exercise this state has never read:
+        // without the cache entry the session screens render the slot's title
+        // as the summary builder's fallback until the session is reopened
+        // (the same fill `loadSessionData` and `refreshEfforts` do).
+        if (effort.exerciseId != null &&
+            !_exerciseCache.containsKey(effort.exerciseId)) {
+          final exercise = await _repository.getExerciseById(
+            effort.exerciseId!,
+          );
+          if (exercise != null) _exerciseCache[effort.exerciseId!] = exercise;
+        }
       }
 
+      _watchRefreshRevision++;
       _notify();
     } catch (e) {
       _setError('Failed to append session slots: $e');
@@ -639,13 +652,21 @@ extension SessionCoreEntryMethods on SessionCore {
       final effort = _findEffort(effortId);
       if (effort == null) return;
 
+      // D-1: whichever kind the entry was, the rest that marked it goes with it
+      // and every rest above it moves down one, or the deleted entry comes back
+      // as logged on the next load. A delete that found no such entry leaves the
+      // rests alone.
       if (effort.effortKind == 'round') {
-        await _timerManager.deleteRound(effortId, entryIndex);
+        if (await _timerManager.deleteRound(effortId, entryIndex)) {
+          await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
+        }
         return;
       }
 
       if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
-        await _timerManager.deleteTimedEntry(effortId, entryIndex);
+        if (await _timerManager.deleteTimedEntry(effortId, entryIndex)) {
+          await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
+        }
         return;
       }
 
@@ -664,6 +685,7 @@ extension SessionCoreEntryMethods on SessionCore {
         await _repository.deleteObservation(id);
       }
       observations.removeWhere((row) => doomed.contains(row.id));
+      await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
       _notify();
     } catch (e) {
       _setError('Failed to delete entry: $e');

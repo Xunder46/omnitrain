@@ -7,17 +7,24 @@ import '../../core/constants/modality_display.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/workout_constants.dart';
-import '../../widgets/session/inline_metric_editor.dart';
+import '../../widgets/session/set_count_stepper.dart';
+import '../../widgets/session/set_segment_bar.dart';
+import '../../widgets/session/value_stepper_row.dart';
+import '../../widgets/session/metric_crown_widget.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
+import '../../core/utils/metric_stepping.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import 'my_routines_screen.dart' show showDeleteRoutineDialog;
 import '../../widgets/dialogs/confirmation_dialog.dart'
-    show ConfirmationDialog, UnsavedChangesAction;
+    show ConfirmationDialog;
+import '../../widgets/feedback/omni_message.dart';
+import '../../widgets/common/omni_empty_state.dart';
 
 /// Screen for creating or editing a workout routine (template)
 class RoutineSetupScreen extends StatefulWidget {
@@ -351,12 +358,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   ) {
     final efforts = widget.routineState.getEffortsForSegment(segment.id);
 
-    return Card(
-      color: theme.colorScheme.surface.withOpacity(0.7),
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: OmniSurface(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,6 +393,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                 IconButton(
                   icon: const Icon(Icons.arrow_upward, size: 18),
                   color: theme.colorScheme.primary,
+                  tooltip: 'Move block up',
                   onPressed: index > 0
                       ? () => widget.routineState.reorderSegments(
                           index,
@@ -399,6 +404,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                 IconButton(
                   icon: const Icon(Icons.arrow_downward, size: 18),
                   color: theme.colorScheme.primary,
+                  tooltip: 'Move block down',
                   onPressed:
                       index < widget.routineState.currentSegments.length - 1
                       ? () => widget.routineState.reorderSegments(
@@ -463,13 +469,12 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             ),
             const SizedBox(height: 12),
             if (efforts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'No exercises in this block yet.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: OmniEmptyState(
+                  compact: true,
+                  icon: Icons.fitness_center_outlined,
+                  title: 'No exercises in this block yet.',
                 ),
               )
             else
@@ -625,7 +630,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       extendBodyBehindAppBar: true,
       appBar: OmniBackHeader(
         title: exerciseName,
-        subtitle: 'Exercise ${_currentExerciseIndex + 1} / ${efforts.length}',
+        subtitle:
+            'Exercise ${_currentExerciseIndex + 1} / ${efforts.length}'
+            ' · ${segment?.name ?? 'Block'}',
         onBack: () {
           setState(() => _showListView = true);
           _scrollListToBottom();
@@ -636,47 +643,34 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
           children: [
             Column(
               children: [
+                // A2: pinned under the header, outside the scroll view — same
+                // structure as workout_session_list_view.dart.
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: SetSegmentBar(
+                    count: setCount,
+                    focusedIndex: _currentSet - 1,
+                    isLogged: (_) => false,
+                    onTap: (index) => _jumpToSet(index + 1),
+                  ),
+                ),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 8,
-                    ),
+                    padding: const EdgeInsets.only(top: 8, bottom: 80),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          segment?.name ?? 'Block',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color:
-                                theme.textTheme.bodyMedium?.color ??
-                                theme.colorScheme.onSurface.withOpacity(0.7),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          exercise?.name ?? 'Unknown Exercise',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: theme.colorScheme.onSurface,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Center(
-                          child: _buildMetricWidget(effort, targets, theme),
-                        ),
+                        _buildMetricWidget(effort, targets, theme),
                         const SizedBox(height: 16),
-                        Center(
-                          child: _buildSetProgress(
-                            setCount,
-                            effort,
-                            canAddSet,
-                            theme,
-                          ),
+                        SetCountStepper(
+                          text: _setCountText(setCount, effort),
+                          canAdd: canAddSet,
+                          removeIsExercise: false,
+                          canRemove: setCount > 1 && _currentSet == setCount,
+                          addKey: const Key('routine-add-set'),
+                          removeKey: const Key('routine-remove-set'),
+                          onAdd: () => _addSet(effort),
+                          onRemove: () => _deleteLastSet(effort),
                         ),
-                        const SizedBox(height: 12),
-                        Center(child: _buildSetIndicator(setCount, theme)),
-                        const SizedBox(height: 80),
                       ],
                     ),
                   ),
@@ -954,18 +948,14 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
   Future<void> _saveRoutine() async {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a routine name')));
+      OmniMessage.show(context, 'Please enter a routine name');
       return;
     }
 
     await widget.routineState.saveRoutine();
 
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Routine saved successfully')));
+    OmniMessage.show(context, 'Routine saved successfully');
 
     // Reset is internal to saveRoutine(); pop without re-prompting.
     Navigator.pop(context);
@@ -995,9 +985,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     await widget.routineState.deleteRoutine(templateId);
     if (!mounted) return;
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Deleted "$routineName"')));
+    OmniMessage.show(context, 'Deleted "$routineName"');
 
     // Cancel any pending autosave draft for this routine and pop without
     // re-prompting — the routine is gone, so the dirty baseline is moot.
@@ -1020,44 +1008,23 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       return;
     }
 
-    final action = await _showUnsavedChangesDialog();
-    if (!mounted) return;
+    final discard = await _showUnsavedChangesDialog();
+    if (!mounted || !discard) return;
 
-    switch (action) {
-      case UnsavedChangesAction.discard:
-        // Discard: tear down the in-flight draft and pop.
-        await widget.routineState.discardCurrentRoutineAndClearDraft();
-        if (!mounted) return;
-        Navigator.of(context).pop();
-      case UnsavedChangesAction.save:
-        if (_nameController.text.trim().isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please enter a routine name')),
-          );
-          return;
-        }
-        await widget.routineState.saveRoutine();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Routine saved successfully')),
-        );
-        Navigator.of(context).pop();
-      case UnsavedChangesAction.keepEditing:
-      case null:
-        // Stay on the screen.
-        break;
-    }
+    // Discard: tear down the in-flight draft and pop.
+    await widget.routineState.discardCurrentRoutineAndClearDraft();
+    if (!mounted) return;
+    Navigator.of(context).pop();
   }
 
-  Future<UnsavedChangesAction> _showUnsavedChangesDialog() {
+  Future<bool> _showUnsavedChangesDialog() {
     return ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
       body:
-          'You have unsaved edits. Save them or discard to return to the routines list.',
+          'You have unsaved edits. Discard them to return to the routines list.',
       keepEditingKey: const Key('routine-edit-unsaved-keep'),
       discardKey: const Key('routine-edit-unsaved-discard'),
-      saveKey: const Key('routine-edit-unsaved-save'),
     );
   }
 
@@ -1111,100 +1078,104 @@ class ExerciseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      color: theme.colorScheme.surface.withOpacity(0.7),
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              ReorderableDragStartListener(
-                index: index,
-                child: Icon(
-                  Icons.drag_indicator,
-                  color: theme.colorScheme.onSurface.withOpacity(0.55),
-                  size: 20,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OmniSurface(
+        padding: const EdgeInsets.all(12),
+        // `OmniSurface` is a plain coloured `Container`, so an `InkWell` under
+        // it would paint its splash on the scaffold's Material *beneath* the
+        // opaque fill — an invisible ripple. This transparency Material gives
+        // the ink a surface to paint on, inside the card.
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
+            child: Row(
+              children: [
+                ReorderableDragStartListener(
+                  index: index,
+                  child: Icon(
+                    Icons.drag_indicator,
+                    color: theme.colorScheme.onSurface.withOpacity(0.55),
+                    size: 20,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      exercise?.name ?? 'Unknown Exercise',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exercise?.name ?? 'Unknown Exercise',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: theme.colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _getTrackingLabel(effort.effortKind),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color:
-                            theme.textTheme.bodyMedium?.color ??
-                            theme.colorScheme.onSurface.withOpacity(0.7),
-                      ),
-                    ),
-                    if (restLabel != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        restLabel!,
+                        _getTrackingLabel(effort.effortKind),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary.withOpacity(0.8),
+                          color:
+                              theme.textTheme.bodyMedium?.color ??
+                              theme.colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                      ),
+                      if (restLabel != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          restLabel!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.primary.withOpacity(0.8),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        '$setCount set${setCount == 1 ? '' : 's'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Text(
-                      '$setCount set${setCount == 1 ? '' : 's'}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+                PopupMenuButton(
+                  color: theme.colorScheme.surface,
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      onTap: onChangeTracking,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.tune,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('Change Tracking'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      onTap: onDelete,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete,
+                            size: 18,
+                            color: theme.colorScheme.error,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('Remove'),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
-              PopupMenuButton(
-                color: theme.colorScheme.surface,
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    onTap: onChangeTracking,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.tune,
-                          size: 18,
-                          color: theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text('Change Tracking'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    onTap: onDelete,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.delete,
-                          size: 18,
-                          color: theme.colorScheme.error,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text('Remove'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1266,29 +1237,88 @@ extension on _RoutineSetupScreenState {
     return 0.0;
   }
 
+  /// "Period" for a sports effort, "Round" otherwise.
+  String _roundNounFor(TemplateEffort effort) => ModalityDisplay.roundNoun(
+    effort.modality ??
+        _exerciseCache[effort.exerciseId]?.modality ??
+        widget.routineState.currentTemplate?.focusModality,
+  );
+
+  /// The count line the shared `SetCountStepper` shows, per effort kind.
+  String _setCountText(int totalEntries, TemplateEffort effort) {
+    switch (effort.effortKind) {
+      case 'timed':
+        return 'Interval $_currentSet of $totalEntries';
+      case 'round':
+        return '${_roundNounFor(effort)} $_currentSet of $totalEntries';
+      case 'drill':
+        return 'Hold $_currentSet of $totalEntries';
+      default:
+        return 'Set $_currentSet of $totalEntries';
+    }
+  }
+
+  Future<void> _setRoundLength(
+    TemplateEffort effort,
+    int setIndex,
+    int secs,
+  ) async {
+    await widget.routineState.setTargetValue(
+      effort.id,
+      MetricIds.roundDuration,
+      MetricIds.unitSeconds,
+      setIndex: setIndex,
+      targetInt: secs,
+    );
+    // Same pair of writes as today: a round template holds exactly one round.
+    await widget.routineState.setTargetValue(
+      effort.id,
+      MetricIds.rounds,
+      MetricIds.unitRounds,
+      setIndex: setIndex,
+      targetInt: 1,
+    );
+  }
+
+  Future<void> _editRoundLength(
+    TemplateEffort effort,
+    int setIndex,
+    int secs,
+  ) async {
+    final result = await showDurationEntryDialog(
+      context,
+      title: 'Edit ${_roundNounFor(effort)} Duration',
+      initialSecs: secs,
+      maxSecs: MetricStepCalc.maxDurationSeconds,
+    );
+    if (result != null && mounted) await _setRoundLength(effort, setIndex, result);
+  }
+
   Widget _buildMetricWidget(
     TemplateEffort effort,
     List<TemplateTarget> targets,
     ThemeData theme,
   ) {
     final setIndex = _currentSet - 1;
+    final weightStep = MetricStepping.weightStepFor(
+      widget.settingsState?.preferredWeightUnit,
+    );
 
     switch (effort.effortKind) {
       case 'set':
         final reps = _getTargetInt(targets, MetricIds.reps, setIndex) ?? 10;
-        // Target stored in canonical kg; convert to display unit for editor.
+        // Target stored in canonical kg; convert to display unit for the row.
         final weight = _fromCanonicalWeight(
           _getTargetDouble(targets, MetricIds.weight, setIndex),
         );
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 12),
-            InlineMetricEditor(
+            ValueStepperRow(
+              key: ValueKey('${effort.id}-$setIndex-reps'),
               metricType: 'reps',
               currentValue: reps,
               unitLabel: 'REPS',
-              emphasisTier: MetricEmphasisTier.dominant,
               onValueChanged: (value) => widget.routineState.setTargetValue(
                 effort.id,
                 MetricIds.reps,
@@ -1297,11 +1327,12 @@ extension on _RoutineSetupScreenState {
                 targetInt: value as int,
               ),
             ),
-            InlineMetricEditor(
+            ValueStepperRow(
+              key: ValueKey('${effort.id}-$setIndex-weight'),
               metricType: 'weight',
               currentValue: weight,
               unitLabel: _preferredWeightUnitLabel,
-              emphasisTier: MetricEmphasisTier.dominant,
+              step: weightStep,
               onValueChanged: (value) => widget.routineState.setTargetValue(
                 effort.id,
                 MetricIds.weight,
@@ -1314,265 +1345,55 @@ extension on _RoutineSetupScreenState {
           ],
         );
       case 'timed':
-        // Target stored in canonical kg; convert to display unit for editor.
-        final timedExtraWeight = _fromCanonicalWeight(
-          _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
-        );
-        return InlineMetricEditor(
-          metricType: 'extra-weight',
-          currentValue: timedExtraWeight,
-          unitLabel: 'EXTRA $_preferredWeightUnitLabel',
-          emphasisTier: MetricEmphasisTier.dominant,
-          onValueChanged: (value) => widget.routineState.setTargetValue(
-            effort.id,
-            MetricIds.extraWeight,
-            MetricIds.unitKg,
-            setIndex: setIndex,
-            // Convert display-unit value to canonical kg before persisting.
-            targetMin: _toCanonicalWeight(value as double),
-          ),
-        );
+        // Plan 39 (D-5): an interval carries the same load target as a hold;
+        // an extraWeight target an older routine stored reads back in the row.
+        return _buildExtraWeightRow(effort, targets, setIndex, weightStep);
       case 'round':
         final roundDuration =
             _getTargetInt(targets, MetricIds.roundDuration, setIndex) ?? 180;
-        final effectiveModality =
-            effort.modality ??
-            _exerciseCache[effort.exerciseId]?.modality ??
-            widget.routineState.currentTemplate?.focusModality;
-        final isSportsModality = effectiveModality == 'sports';
-        final roundLabel = isSportsModality ? 'PERIOD' : 'ROUND';
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$roundLabel $_currentSet',
-              style: theme.textTheme.displayLarge?.copyWith(
-                fontWeight: FontWeight.w300,
-                letterSpacing: -2,
-                fontSize: theme.textTheme.displayMedium?.fontSize,
-                color: OmniTheme.colors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            InlineMetricEditor(
-              metricType: 'duration',
-              currentValue: roundDuration,
-              unitLabel: 'DURATION',
-              emphasisTier: MetricEmphasisTier.dominant,
-              onTap: () async {
-                final result = await showDurationEntryDialog(
-                  context,
-                  title: 'Edit Round Duration',
-                  initialSecs: roundDuration,
-                );
-                if (result != null && mounted) {
-                  await widget.routineState.setTargetValue(
-                    effort.id,
-                    MetricIds.roundDuration,
-                    MetricIds.unitSeconds,
-                    setIndex: setIndex,
-                    targetInt: result,
-                  );
-                  await widget.routineState.setTargetValue(
-                    effort.id,
-                    MetricIds.rounds,
-                    MetricIds.unitRounds,
-                    setIndex: setIndex,
-                    targetInt: 1,
-                  );
-                }
-              },
-              onValueChanged: (_) {},
-            ),
-          ],
+        return ValueStepperRow(
+          key: ValueKey('${effort.id}-$setIndex-round-length'),
+          metricType: 'duration',
+          currentValue: roundDuration,
+          unitLabel: 'ROUND LENGTH',
+          min: 15,
+          onEditorTap: () => _editRoundLength(effort, setIndex, roundDuration),
+          onValueChanged: (value) =>
+              _setRoundLength(effort, setIndex, value as int),
         );
       case 'drill':
-        // Target stored in canonical kg; convert to display unit for editor.
-        final extraWeight = _fromCanonicalWeight(
-          _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
-        );
-        return InlineMetricEditor(
-          metricType: 'extra-weight',
-          currentValue: extraWeight,
-          unitLabel: 'EXTRA $_preferredWeightUnitLabel',
-          emphasisTier: MetricEmphasisTier.dominant,
-          onValueChanged: (value) => widget.routineState.setTargetValue(
-            effort.id,
-            MetricIds.extraWeight,
-            MetricIds.unitKg,
-            setIndex: setIndex,
-            // Convert display-unit value to canonical kg before persisting.
-            targetMin: _toCanonicalWeight(value as double),
-          ),
-        );
+        return _buildExtraWeightRow(effort, targets, setIndex, weightStep);
       default:
         return Text('—', style: theme.textTheme.displayLarge);
     }
   }
 
-  Widget _buildSetProgress(
-    int totalEntries,
+  /// The `−  <value>  +` load target a hold and an interval share (plan 39,
+  /// D-5): stored as canonical kg, shown in the user's preferred unit.
+  Widget _buildExtraWeightRow(
     TemplateEffort effort,
-    bool canAddSet,
-    ThemeData theme,
+    List<TemplateTarget> targets,
+    int setIndex,
+    double weightStep,
   ) {
-    String label;
-    switch (effort.effortKind) {
-      case 'set':
-        label = 'Set $_currentSet of $totalEntries';
-        break;
-      case 'timed':
-        label = 'Interval $_currentSet of $totalEntries';
-        break;
-      case 'round':
-        final effectiveModality =
-            effort.modality ??
-            _exerciseCache[effort.exerciseId]?.modality ??
-            widget.routineState.currentTemplate?.focusModality;
-        final setLabel = effectiveModality == 'sports' ? 'Period' : 'Round';
-        label = '$setLabel $_currentSet of $totalEntries';
-        break;
-      case 'drill':
-        label = 'Hold $_currentSet of $totalEntries';
-        break;
-      default:
-        label = 'Set $_currentSet of $totalEntries';
-    }
-
-    // Only allow removing the last set to prevent mid-sequence deletion.
-    final canRemove = totalEntries > 1 && _currentSet == totalEntries;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compactSpacing = constraints.maxWidth < 320 ? 2.0 : 4.0;
-        final compactLetterSpacing = constraints.maxWidth < 320 ? 1.0 : 2.0;
-
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Tooltip(
-              message: 'Remove set',
-              child: InkWell(
-                key: const Key('routine-remove-set'),
-                onTap: canRemove ? () => _deleteLastSet(effort) : null,
-                customBorder: const CircleBorder(),
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minWidth: 50,
-                    minHeight: 50,
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.remove,
-                    size: 24,
-                    color: canRemove
-                        ? theme.colorScheme.onSurface.withAlpha(
-                            (0.35 * 255).round(),
-                          )
-                        : theme.colorScheme.onSurface.withAlpha(
-                            (0.15 * 255).round(),
-                          ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: compactSpacing),
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  letterSpacing: compactLetterSpacing,
-                  color: OmniTheme.colors.textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            SizedBox(width: compactSpacing),
-            Tooltip(
-              message: canAddSet
-                  ? 'Add set'
-                  : 'Max ${WorkoutConstants.maxEntriesPerEffort} entries',
-              child: InkWell(
-                key: const Key('routine-add-set'),
-                onTap: canAddSet ? () => _addSet(effort) : null,
-                customBorder: const CircleBorder(),
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minWidth: 50,
-                    minHeight: 50,
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.add,
-                    size: 24,
-                    color: canAddSet
-                        ? theme.colorScheme.onSurface.withAlpha(
-                            (0.35 * 255).round(),
-                          )
-                        : theme.colorScheme.onSurface.withAlpha(
-                            (0.2 * 255).round(),
-                          ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+    // Target stored in canonical kg; convert to display unit for the row.
+    final extraWeight = _fromCanonicalWeight(
+      _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
     );
-  }
-
-  Widget _buildSetIndicator(int totalEntries, ThemeData theme) {
-    if (totalEntries <= 1) {
-      return const SizedBox.shrink();
-    }
-
-    final efforts = widget.routineState.currentEfforts;
-    final currentEffort =
-        (_currentExerciseIndex >= 0 && _currentExerciseIndex < efforts.length)
-        ? efforts[_currentExerciseIndex]
-        : null;
-    final currentEffortModality = currentEffort == null
-        ? null
-        : (currentEffort.modality ??
-              _exerciseCache[currentEffort.exerciseId]?.modality ??
-              widget.routineState.currentTemplate?.focusModality);
-    final accentCurrentDot =
-        currentEffort?.effortKind == 'round' &&
-        currentEffortModality == 'sports';
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(totalEntries, (index) {
-        final dotSize = index == _currentSet - 1 ? 14.0 : 10.0;
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: GestureDetector(
-            onTap: () => _jumpToSet(index + 1),
-            child: SizedBox(
-              width: 14,
-              height: 14,
-              child: Center(
-                child: Container(
-                  width: dotSize,
-                  height: dotSize,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: accentCurrentDot && index == _currentSet - 1
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withAlpha(
-                            (0.2 * 255).round(),
-                          ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }),
+    return ValueStepperRow(
+      key: ValueKey('${effort.id}-$setIndex-weight'),
+      metricType: 'weight',
+      currentValue: extraWeight,
+      unitLabel: _preferredWeightUnitLabel,
+      step: weightStep,
+      onValueChanged: (value) => widget.routineState.setTargetValue(
+        effort.id,
+        MetricIds.extraWeight,
+        MetricIds.unitKg,
+        setIndex: setIndex,
+        // Convert display-unit value to canonical kg before persisting.
+        targetMin: _toCanonicalWeight(value as double),
+      ),
     );
   }
 

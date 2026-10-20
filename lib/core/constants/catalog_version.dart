@@ -40,9 +40,13 @@
 ///   `_refreshDemoRoutines` to rewrite an *untouched* demo's segments /
 ///   efforts / targets; before it, the refresh patched the template row
 ///   alone, so no version bump could ever deliver a change below it.
+///   When the muscle hierarchy shipped (regions with child muscles via
+///   `parentId`, primary / secondary roles, the approved re-tagging and the
+///   Trapezius → Traps rename) we bumped to `11`, so existing installs
+///   receive the new groups, parent links, roles and renames on next launch.
 library;
 
-const int bundledCatalogVersion = 10;
+const int bundledCatalogVersion = 11;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

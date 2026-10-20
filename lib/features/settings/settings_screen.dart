@@ -524,6 +524,7 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -619,6 +620,7 @@ class _IntervalPickerSheet extends StatelessWidget {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],

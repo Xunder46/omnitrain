@@ -22,6 +22,8 @@
 
 library;
 
+import 'dart:ui' show Color;
+
 import '../constants/block_types.dart';
 import '../constants/metric_ids.dart';
 import '../sync_protocol/phone_envelope.dart';
@@ -82,7 +84,8 @@ class _ExerciseResolver {
 }
 
 abstract final class WatchReferenceSync {
-  /// The phone's routines, as the `routines_down` message the wrist reads.
+  /// The phone's routines and the exercises they reference, as the
+  /// `routines_down` message the wrist reads.
   ///
   /// Assembled from storage when the wrist asks for them, not on a schedule of
   /// the phone's own: the watch is the one that knows when its user wants the
@@ -95,11 +98,14 @@ abstract final class WatchReferenceSync {
   /// only thing the payload's identity rests on, which is why the message id is
   /// derived from it.
   ///
-  /// Returns null when there is nothing the wrist could start: no routine, or
-  /// none whose exercises the phone still holds. An empty `routines` array is
-  /// not an option — the schema requires at least one — and a message the watch
-  /// must reject is worse than no message at all.
-  static Future<Map<String, Object?>?> buildRoutinesDown({
+  /// The message is built even by a phone holding no routine and nothing the
+  /// wrist could log: `routines: []` with `fallbackExercises: []` is what such a
+  /// phone sends, so a wrist whose user deleted the last routine is told the
+  /// list is empty instead of keeping the routines it had (D-3830). The
+  /// fallback list is the exercises the routines reference and nothing else —
+  /// the whole catalog travels separately, as [buildExercisesDown] batches
+  /// (D-3831).
+  static Future<Map<String, Object?>> buildRoutinesDown({
     required WorkoutRepository repository,
     required DateTime generatedAt,
   }) async {
@@ -129,8 +135,6 @@ abstract final class WatchReferenceSync {
       });
     }
 
-    if (routines.isEmpty) return null;
-
     return phoneEnvelope(
       type: 'routines_down',
       messageId: 'msg-routines-${generatedAt.toUtc().millisecondsSinceEpoch}',
@@ -143,19 +147,38 @@ abstract final class WatchReferenceSync {
     );
   }
 
-  /// Every exercise the routines reference, in routine order.
+  /// The exercises the routines reference, in the phone's name order.
   ///
-  /// The fallback list is what lets the wrist run a routine with the phone
-  /// unreachable, so a routine this list does not cover is a routine the watch
-  /// must not hold (PROTOCOL.md, "Message families").
+  /// The fallback list is what lets the wrist log a routine's effort with the
+  /// phone unreachable, so it carries exactly what the routines use and nothing
+  /// else: the whole catalog travels as [buildExercisesDown] batches instead
+  /// (D-3830). The order is the phone's own, sorted by name case-insensitively
+  /// with ties by id, so the same routines are the same message whichever order
+  /// they were met in.
+  static List<Map<String, Object?>> _fallbackJson(
+    Map<String, _SyncedExercise> referenced,
+  ) => [
+    for (final exercise in _catalogOrder(referenced.values))
+      _catalogExerciseJson(exercise),
+  ];
+
+  /// The catalog's own order: by name case-insensitively, ties by id.
+  ///
+  /// Shared by both lists the phone sends, so the batch order and the fallback
+  /// order cannot drift apart.
+  static List<_SyncedExercise> _catalogOrder(
+    Iterable<_SyncedExercise> exercises,
+  ) => [...exercises]..sort((left, right) {
+    final byName = compareFoodNames(left.name, right.name);
+    return byName != 0 ? byName : left.id.compareTo(right.id);
+  });
+
+  /// One exercise in the shape the schema pins as `catalogExercise`.
   ///
   /// The exercise's own period length travels with it (D-1411) whenever it holds
   /// one: a catalog entry declares no effort kind, so the wrist decides at pick
   /// time whether the length applies (D-1404).
-  static List<Map<String, Object?>> _fallbackJson(
-    Map<String, _SyncedExercise> referenced,
-  ) => [
-    for (final exercise in referenced.values)
+  static Map<String, Object?> _catalogExerciseJson(_SyncedExercise exercise) =>
       {
         'exerciseId': exercise.id,
         'name': exercise.name,
@@ -163,8 +186,104 @@ abstract final class WatchReferenceSync {
         if (exercise.defaultRoundDurationSecs != null &&
             exercise.defaultRoundDurationSecs! >= 1)
           'roundDurationSecs': exercise.defaultRoundDurationSecs!,
-      },
-  ];
+      };
+
+  /// The phone's whole exercise list, as the `exercises_down` batches the wrist
+  /// assembles into its catalog (D-3831).
+  ///
+  /// Every exercise the phone can log travels — the ones with a capability, in
+  /// the same name order [_fallbackJson] uses — so a wrist can offer an exercise
+  /// no routine mentions (D-3601). An exercise with no capability is left out:
+  /// the wrist renders an effort from its capabilities, and an entry it cannot
+  /// render would make the batch non-conformant.
+  ///
+  /// The list is split into batches of at most [batchSize] and each batch names
+  /// the version of the whole list, so the wrist can tell "I already hold this"
+  /// from "this changed" and can tell a complete list from a half-arrived one.
+  /// A phone with nothing to send answers `[]` rather than an empty batch: the
+  /// schema wants at least one exercise in a batch, and nothing is what such a
+  /// phone has to say.
+  static Future<List<Map<String, Object?>>> buildExercisesDown({
+    required WorkoutRepository repository,
+    required DateTime generatedAt,
+    int batchSize = 100,
+  }) async {
+    if (batchSize < 1 || batchSize > 100) {
+      throw ArgumentError.value(
+        batchSize,
+        'batchSize',
+        'must be between 1 and 100, the most a batch may carry',
+      );
+    }
+
+    final resolver = _ExerciseResolver(repository);
+    final capable = <String, _SyncedExercise>{};
+    for (final exercise in await repository.getExercises()) {
+      final resolved = await resolver.resolve(exercise.id);
+      if (resolved != null) capable[resolved.id] = resolved;
+    }
+
+    final ordered = _catalogOrder(capable.values);
+    if (ordered.isEmpty) return const [];
+
+    final encoded = [
+      for (final exercise in ordered) _catalogExerciseJson(exercise),
+    ];
+    final version = exercisesVersionOf(encoded);
+    final batchCount = (ordered.length + batchSize - 1) ~/ batchSize;
+
+    return [
+      for (var index = 0; index < batchCount; index++)
+        phoneEnvelope(
+          type: 'exercises_down',
+          messageId: 'msg-exercises-$version-$index',
+          sentAt: generatedAt,
+          payload: {
+            'generatedAt': utcIso(generatedAt),
+            'catalogVersion': version,
+            'batchIndex': index,
+            'batchCount': batchCount,
+            'totalCount': ordered.length,
+            'exercises': encoded.sublist(
+              index * batchSize,
+              (index + 1) * batchSize < ordered.length
+                  ? (index + 1) * batchSize
+                  : ordered.length,
+            ),
+          },
+        ),
+    ];
+  }
+
+  /// The version of an exercise list: `v1-<count>-<h1><h2>`, a function of the
+  /// list's content only (D-3832).
+  ///
+  /// The canonical text is the wire objects in wire order, each as
+  /// `exerciseId|name|cap1,cap2|roundDurationSecs-or-empty`, joined by newlines.
+  /// Two hashes run over its UTF-16 code units, each kept below 2^32 after every
+  /// step, so the arithmetic also stays below 2^53 and the web build derives the
+  /// same version the phone does. The count leads the version so a longer list
+  /// cannot pass for a shorter one; a rename, an added or removed exercise, a
+  /// changed capability or a changed period length is another version, while the
+  /// same content in another order is not.
+  static String exercisesVersionOf(List<Map<String, Object?>> exercises) {
+    final canonical = [
+      for (final exercise in exercises)
+        '${exercise['exerciseId']}|${exercise['name']}|'
+            '${(exercise['capabilities']! as List).join(',')}|'
+            '${exercise['roundDurationSecs'] ?? ''}',
+    ].join('\n');
+
+    var first = 5381;
+    var second = 52711;
+    for (final unit in canonical.codeUnits) {
+      first = (first * 33 + unit) & 0xFFFFFFFF;
+      second = (second * 65599 + unit) & 0xFFFFFFFF;
+    }
+
+    String word(int value) => value.toRadixString(16).padLeft(8, '0');
+    return 'v1-${exercises.length}-${word(first)}${word(second)}';
+  }
 
   /// The routine's segments, with the efforts the wrist can actually log.
   ///
@@ -309,34 +428,70 @@ abstract final class WatchReferenceSync {
 
   /// The phone's settings the wrist honours, as the `preferences_down` message
   /// it reads — today, whether a session ended on the wrist asks for the
-  /// session effort rating ([effortRatingPrompt]) and how often the wrist pings
-  /// while a rest of its own is open ([restPingSeconds], 0 for Off).
+  /// session effort rating ([effortRatingPrompt]), how often the wrist pings
+  /// while a rest of its own is open ([restPingSeconds], 0 for Off), and the
+  /// accent of the theme the phone is wearing ([accentColorHex], `#RRGGBB` from
+  /// [accentHexOf]), and the units the phone reads weight and distance in
+  /// ([weightUnit] `kg` or `lbs`, [distanceUnit] `km` or `miles`).
   ///
-  /// Its own message rather than a field on `routines_down`, because
-  /// [buildRoutinesDown] answers null for a phone with no routines, and a
-  /// setting riding on it would then never reach the wrist (D-113).
+  /// Its own message rather than a field on `routines_down`: the wrist is
+  /// answered with its settings at every sync, including one by a phone that
+  /// holds nothing else to send, and a setting riding on the reference data
+  /// would share the reference data's lifetime (D-113).
   ///
   /// The wrist keeps the copy with the latest [generatedAt], and on a tie the
   /// one it received later. The message id follows the content for that
   /// reason: a rebuild of the same setting is the same message, while a
   /// different setting stamped in the same millisecond is a different one
-  /// that must not be dropped as a redelivery.
+  /// that must not be dropped as a redelivery — a changed accent included.
+  ///
+  /// [accentColorHex] is optional: null leaves the field out, and the wrist
+  /// reads an absent accent as no accent (its default look) rather than as the
+  /// last accent it saw. The units are optional the same way: null leaves the
+  /// field out, and the wrist then reads kilograms and kilometres.
   static Map<String, Object?> buildPreferencesDown({
     required bool effortRatingPrompt,
     required int restPingSeconds,
     required DateTime generatedAt,
+    String? accentColorHex,
+    String? weightUnit,
+    String? distanceUnit,
   }) => phoneEnvelope(
     type: 'preferences_down',
     messageId:
         'msg-preferences-${generatedAt.toUtc().millisecondsSinceEpoch}-'
-        '${effortRatingPrompt ? 'on' : 'off'}-$restPingSeconds',
+        '${effortRatingPrompt ? 'on' : 'off'}-$restPingSeconds'
+        '${accentColorHex == null ? '' : '-${accentColorHex.replaceFirst('#', '')}'}'
+        '${weightUnit == null ? '' : '-$weightUnit'}'
+        '${distanceUnit == null ? '' : '-$distanceUnit'}',
     sentAt: generatedAt,
     payload: {
       'generatedAt': utcIso(generatedAt),
       'effortRatingPrompt': effortRatingPrompt,
       'restPingSeconds': restPingSeconds,
+      'accentColorHex': ?accentColorHex,
+      'weightUnit': ?weightUnit,
+      'distanceUnit': ?distanceUnit,
     },
   );
+
+  /// [color] as the wire spells a theme accent: `#RRGGBB`, upper-case, no alpha.
+  ///
+  /// The channels are read the way the theme reads them (its own 8-bit
+  /// conversion), so what travels is the color the phone paints. The alpha is
+  /// dropped rather than carried: the wire's pattern is six hex digits, and a
+  /// blended or translucent primary would otherwise arrive as `#AARRGGBB` the
+  /// wrist cannot parse.
+  static String accentHexOf(Color color) {
+    String channel(double component) => (component * 255.0)
+        .round()
+        .clamp(0, 255)
+        .toRadixString(16)
+        .padLeft(2, '0');
+
+    final hex = '${channel(color.r)}${channel(color.g)}${channel(color.b)}';
+    return '#${hex.toUpperCase()}';
+  }
 
   /// The phone's foods, as the `foods_down` message the wrist reads.
   ///

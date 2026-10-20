@@ -182,6 +182,8 @@ real plan defects:
   ran 61 minutes; an 11-step phase was sent back).
 - **A new entry in a shared registry lists the existing tests it could also satisfy** (they go red
   when two results appear where one was expected).
+- **A change to a shared fixture or contract file lists every reader** (grep for it): an unlisted reader
+  cost a fix round in the crew's 23a-c.
 
 - Sound → run `pr-scope-guard` (you measure the plan), then continue.
 - Fixable → write `brief-plan-rev<N>.md` with specific corrections and the plan path, re-run the planner.
@@ -201,7 +203,10 @@ with an approximate line, collected while you validated the plan. For an item th
 logic, paste the current lines it changes (up to about 20) into the brief: every run stopped for not
 writing (three so far) had pointers by file and line only, and each re-brief with the code written out
 wrote files within minutes. Never paste standing rules into a
-brief: the runner appends `.github/copilot/agent-rules.md` (see Standing agent rules). After the run,
+brief: the runner appends `.github/copilot/agent-rules.md` (see Standing agent rules). Never ask an
+agent for a computation the gateway cannot run (contrast ratios, scripts): measure it yourself and put the
+number in the brief (a reviewer was stopped after 43 denied `python3` calls). Never brief a run to change
+files outside its permissions. After the run,
 carry out the "Governor actions" the agent listed (deletions, directories) when they are in the
 plan's scope; log the rest as friction.
 
@@ -214,7 +219,8 @@ also names the base commit (the commit before this unit), which agents pass to `
 Run the verify commands yourself, each through the timeout wrapper; do not trust the agent's claim. Also
 run the invariant checks. Read the code of the one or two files where the plan's core invariant lives.
 Check `git diff --stat`: an existing file with a far bigger diff than its edit is formatter damage. Look
-for mutation residue (read the lines the evidence says were mutated) and for stray scratch files.
+for mutation residue (read the lines the evidence says were mutated; after any run the runner stopped,
+`grep -rn "MUTANT" lib watch test`) and for stray scratch files.
 Read the `prove-red` verdicts in the evidence: every new or changed guard must be RED AT the base (or,
 where it cannot compile there, proven by a mutation). A GREEN AT verdict, or none, is a failed verify:
 that is how a test that passed on the old code reached review three times on one PR.
@@ -233,6 +239,11 @@ filler): plan path, base commit, "review `git diff <base>` against the plan", "c
 exactly one line: VERDICT: APPROVE or VERDICT: CHANGES_REQUESTED". Run the reviewer and read the
 verdict from the log tail.
 
+Before the reviewer runs in an uncommitted tree: `git ls-files --others --exclude-standard -- lib test watch |
+xargs -r git add -N --` so new files show in `git-diff` (intent-to-add only, no commit; a reviewer that
+could not see them looped 40 times on `git-diff --stat`). Run it after the docs phase, or say in the brief
+that docs are still in flight (a reviewer beside an unfinished docs phase reported them as a blocker).
+
 **Standing review focus** (each item is a class of defect that has shipped behind a green suite):
 - A figure or rule shown on two surfaces is computed in one place, and both surfaces agree on the same
   fixture (a test asserts it).
@@ -241,6 +252,8 @@ verdict from the log tail.
 - Injected seams (clock, gateway, repository) are used everywhere, not half-applied.
 - Docs and plan status touched by the change are still true; every test, type or file a doc names
   exists, and docs name nothing unshipped.
+- UI standards: no new allowlist entry or raised ratchet, no raw `Card`/`SnackBar`/bare `IconButton`/
+  shapeless button/colour literal; copy changes are listed for the owner.
 
 Then do your own review: `git diff --stat <base>` (plus untracked files), then read the files that
 matter. Check that the change matches the plan, touches nothing unrelated, has tests that exercise the

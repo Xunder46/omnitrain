@@ -141,6 +141,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `_restPingInterval` | `int` | `0` |
 | `_restPingSound` | `String` | `'soft_chime'` |
 | `_notificationPermissionAsked` | `bool` | `false` |
+| `_learnedTapHints` | `Set<TapHintControl>` | empty — every `tap to type` hint shown. One flag per logger number control (`TapHintControl.reps`, `.weight`, `.roundLength`, `.elapsed`), persisted under `hint_seen_tap_to_type_reps`, `hint_seen_tap_to_type_weight`, `hint_seen_tap_to_type_round_length`, `hint_seen_tap_to_type_elapsed` (plan 44 D-6) |
 
 | Method | Purpose |
 |--------|--------|
@@ -166,6 +167,8 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `setNotificationPermissionAsked()` | Persists that notification permission has already been requested in-context |
 | `setHealthWriteWorkoutsEnabled(bool)` | Resolves the OS write permission via the injected `HealthPlatformService` and persists `off` / `on` / `permissionDenied` |
 | `setHealthReadBodyWeightEnabled(bool)` | Same contract for the body-weight read permission |
+| `isTapHintLearned(TapHintControl)` | Whether the logger control kind's `tap to type` hint has been learned (dismissed) |
+| `markTapHintLearned(TapHintControl)` | Marks the control kind learned, notifies once and persists `true` under the control's `hint_seen_tap_to_type_*` key |
 | `_loadFromPrefs()` | Private — restores theme and unit preferences from repository-backed preference keys on init |
 
 ---

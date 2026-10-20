@@ -70,9 +70,31 @@ abstract final class WatchTransportRequest {
     return request is String ? request : null;
   }
 
-  static Map<String, Object?> routinesFrame({DateTime? since}) {
+  /// The wrist's sync request frame.
+  ///
+  /// [exercisesVersion] is the version of the exercise list the wrist holds, and
+  /// is added only when it says one — a wrist holding nothing omits the key
+  /// rather than naming an empty version, the same way a first sync omits
+  /// `since` (D-3833).
+  static Map<String, Object?> routinesFrame({
+    DateTime? since,
+    String? exercisesVersion,
+  }) {
     final stamp = since == null ? null : utcIso(since);
-    return {'request': routines, 'since': ?stamp};
+    final version = exercisesVersion == null || exercisesVersion.isEmpty
+        ? null
+        : exercisesVersion;
+    return {'request': routines, 'since': ?stamp, 'exercisesVersion': ?version};
+  }
+
+  /// The exercise-list version [frame] names, or null when it names none.
+  ///
+  /// A request from a wrist that holds no list — or one whose key is not a
+  /// non-empty string — names no version, and the phone answers with the whole
+  /// list (D-3833, D-3834).
+  static String? exercisesVersionOf(Map<String, Object?> frame) {
+    final version = frame['exercisesVersion'];
+    return version is String && version.isNotEmpty ? version : null;
   }
 
   static Map<String, Object?> snapshotFrame() => const {'request': snapshot};

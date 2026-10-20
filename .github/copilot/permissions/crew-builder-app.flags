@@ -1,0 +1,10 @@
+# crew-builder-app: state, features, widgets, core, tests; docs and plan evidence. Narrow per run with --scope.
+--allow-tool=write(lib/state/**)
+--allow-tool=write(lib/features/**)
+--allow-tool=write(lib/widgets/**)
+--allow-tool=write(lib/core/**)
+--allow-tool=write(lib/app.dart)
+--allow-tool=write(lib/main.dart)
+--allow-tool=write(test/**)
+--allow-tool=write(docs/**)
+--allow-tool=write(.work/crew/**)

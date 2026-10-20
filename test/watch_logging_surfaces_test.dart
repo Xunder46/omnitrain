@@ -428,6 +428,26 @@ void main() {
       expect(surface.roundsLabel, ModalityDisplay.getRoundsLabel('sports'));
     });
 
+    test('sports names the round length a period, others a round', () async {
+      final sports = await surfaceFor(
+        'sports',
+        _slot('sx-period', ['time', 'rounds']),
+      );
+      final lifting = await surfaceFor(
+        'resistance_lifting',
+        _slot('sx-bag', ['time', 'rounds']),
+      );
+
+      expect(
+        fieldOf(sports, WatchMetricKey.roundDuration).label,
+        'Period length',
+      );
+      expect(
+        fieldOf(lifting, WatchMetricKey.roundDuration).label,
+        'Round length',
+      );
+    });
+
     test(
       'S-003 logging a round numbers it and starts the next countdown',
       () async {

@@ -64,10 +64,16 @@ class SessionEditSnapshot {
   /// over-recovery is idempotent (D-806).
   final Set<String>? watchEntryIdsAppliedAtSnapshot;
 
-  // NOTE: EntryRest records are intentionally NOT included in the snapshot.
-  // Rest records are never structurally mutated during edit mode — no new rests
-  // are created, and add/remove set operations do not touch them. There is
-  // therefore nothing to roll back, and omitting them keeps the snapshot lean.
+  /// EntryRests keyed by effortId, copied at snapshot time (D-9).
+  ///
+  /// A rest is stored at the index of the entry it follows (D-1), so an edit
+  /// that deletes a set re-keys the rests of the sets that stay. The predecessor
+  /// note here claimed rests were never structurally mutated during editing;
+  /// that stopped being true when deletes started taking their rest with them,
+  /// and a cancelled delete would otherwise leave the surviving sets' rests one
+  /// index short of their entries. Records are immutable, only the lists and
+  /// the map are copies.
+  final Map<String, List<EntryRest>> entryRests;
 
   const SessionEditSnapshot({
     required this.sessionId,
@@ -76,6 +82,7 @@ class SessionEditSnapshot {
     required this.observations,
     required this.roundInstances,
     required this.timedInstances,
+    this.entryRests = const {},
     required this.exerciseCache,
     required this.sensorSummaries,
     this.watchEntryIdsAppliedAtSnapshot,

@@ -76,6 +76,10 @@ public final class FileWatchSessionStore: WatchSessionStore {
         locked { pruneSensorSamplesLocked(sessionIds) }
     }
 
+    public func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        locked { pruneExerciseBatchesLocked(keepingVersion) }
+    }
+
     // MARK: - The four operations
 
     private func appendLocked(_ record: StoredWatchRecord) -> StoredWatchRecord {
@@ -113,6 +117,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
         var foodCatalogs: [WatchFoodCatalogRecord] = []
         var preferences: [WatchPreferencesRecord] = []
         var ratingPrompts: [WatchRatingPromptRecord] = []
+        var exerciseBatches: [WatchExerciseBatchRecord] = []
 
         for row in loaded {
             switch row {
@@ -125,6 +130,7 @@ public final class FileWatchSessionStore: WatchSessionStore {
             case .foodCatalog(let value): foodCatalogs.append(value)
             case .preferences(let value): preferences.append(value)
             case .ratingPrompt(let value): ratingPrompts.append(value)
+            case .exerciseBatch(let value): exerciseBatches.append(value)
             }
         }
 
@@ -137,7 +143,8 @@ public final class FileWatchSessionStore: WatchSessionStore {
             routineCatalogs: routineCatalogs,
             foodCatalogs: foodCatalogs,
             preferences: preferences,
-            ratingPrompts: ratingPrompts
+            ratingPrompts: ratingPrompts,
+            exerciseBatches: exerciseBatches
         )
     }
 
@@ -185,6 +192,29 @@ public final class FileWatchSessionStore: WatchSessionStore {
             return !named.contains(value.sessionId)
         }
 
+        guard compact(survivors) else { return [] }
+        rows = survivors
+        return dropped
+    }
+
+    private func pruneExerciseBatchesLocked(_ keepingVersion: String) -> [String] {
+        let loaded = loadRows()
+        guard !unsupported else { return [] }
+
+        let dropped = loaded.compactMap { row -> String? in
+            guard case .exerciseBatch(let value) = row,
+                  value.catalogVersion != keepingVersion else { return nil }
+            return value.recordId
+        }
+        let kept = Set(dropped)
+        let survivors = loaded.filter { row in
+            guard case .exerciseBatch(let value) = row else { return true }
+            return !kept.contains(value.recordId)
+        }
+
+        // A prune that finds nothing is not a write (D-3821): the file keeps
+        // every byte it had, marker and torn tail included.
+        guard !dropped.isEmpty else { return [] }
         guard compact(survivors) else { return [] }
         rows = survivors
         return dropped

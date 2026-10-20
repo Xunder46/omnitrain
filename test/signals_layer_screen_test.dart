@@ -10,9 +10,10 @@
 // gate's "no work when the gate is unmet" claim (D-1006) is checked rather than
 // assumed.
 //
-// The gate is the load baseline: Fixture U carries no ratings and renders no
-// layer at all, Fixture R carries four rated weeks and renders one. Both are
-// built in the shape `test/mix_layer_screen_test.dart` already uses.
+// The gate is the load baseline: Fixture U carries no ratings and shows the
+// locked line in the layer's place, Fixture R carries four rated weeks and
+// renders the layer. Both are built in the shape `test/mix_layer_screen_test.dart`
+// already uses.
 //
 // The harness is opened and seeded in `setUp`, never inside a `testWidgets`
 // body: a widget test body runs under `FakeAsync`, where Hive's real file I/O
@@ -387,8 +388,9 @@ Future<void> _seedFood(
 
 /// Fixture U (gate unmet): three completed unrated sessions, no period, so
 /// `ratedBaselineWeeks` is below `kTrainingLoadMinRatedWeeks` and the layer must
-/// not exist (S-1702). The Instruments list and the Fuel row are seeded anyway,
-/// so their presence is asserted on the same load.
+/// not exist — the locked section takes its slot instead (S-1702, D-4001). The
+/// Instruments list and the Fuel row are seeded anyway, so their presence is
+/// asserted on the same load.
 Future<void> _seedGateUnmet(WorkoutRepository repo) async {
   await _seedLifting(repo, sessionId: 's-u1', daysAgo: 1);
   await _seedLifting(repo, sessionId: 's-u2', daysAgo: 2);
@@ -397,6 +399,24 @@ Future<void> _seedGateUnmet(WorkoutRepository repo) async {
   await _clearConsumedFoods(repo);
   await _seedFood(repo, id: 'food-u1', daysAgo: 1);
   await _seedFood(repo, id: 'food-u2', daysAgo: 2);
+}
+
+/// Fixture U's window with three rated baseline weeks (S-4013): one unrated
+/// session per day inside the window, so the Mix layer exists, and three rated
+/// baseline sessions 30, 50 and 70 days back — three of the twelve 7-day blocks
+/// `baselineBlockStarts` tiles, so `ratedBaselineWeeks == 3` and the gate is
+/// unmet while the layer's slot is occupied.
+Future<void> _seedGateUnmetThreeRatedWeeks(WorkoutRepository repo) async {
+  await _seedPeriod(repo, name: 'Test Block', daysAgo: 10);
+  await _seedGateUnmet(repo);
+  await _seedRatedBaseline(repo, fromDay: 10, offsets: const [20, 40, 60]);
+}
+
+/// A window holding no measurable time (S-4004): one completed session with no
+/// duration and nothing logged, so `computeMixLayer` returns null while the
+/// profile still has a session (the empty state is not the branch under test).
+Future<void> _seedWindowWithoutTime(WorkoutRepository repo) async {
+  await _seedLifting(repo, sessionId: 's-empty', daysAgo: 1, minutes: 0);
 }
 
 /// Fixture R (gate met): a period-scoped window holding one rated 60-minute
@@ -562,11 +582,11 @@ void main() {
 
       // ─── S-1702 ────────────────────────────────────────────────────────────
 
-      group('S-1702 gate unmet renders nothing', () {
+      group('S-1702 gate unmet locks the signals', () {
         setUp(() => _seedGateUnmet(repo));
 
-        testWidgets('no layer, no card, no quiet line, no SIGNALS text, and no '
-            'signal is evaluated', (tester) async {
+        testWidgets('no layer, no card, no quiet line, the locked line in '
+            "SIGNALS' place, and no signal is evaluated", (tester) async {
           final caution = _StubSignal(
             id: 'c-1',
             kind: SignalKind.caution,
@@ -581,7 +601,12 @@ void main() {
 
           expect(find.byKey(const Key('signals_layer')), findsNothing);
           expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
-          expect(find.text('SIGNALS'), findsNothing);
+          expect(find.text('SIGNALS'), findsOneWidget);
+          expect(find.byKey(const Key('signals_locked')), findsOneWidget);
+          expect(
+            find.byKey(const Key('signals_locked_line')),
+            findsOneWidget,
+          );
           expect(_cardKeys(), isEmpty);
 
           // The rest of the screen is unchanged and unmoved.
@@ -596,6 +621,108 @@ void main() {
           );
 
           expect(caution.evaluations, 0);
+          expect(positive.evaluations, 0);
+        });
+      });
+
+      // ─── S-4013 (carries S-4001's numbers) ─────────────────────────────────
+
+      group('S-4013 the locked section takes the layer slot', () {
+        setUp(() => _seedGateUnmetThreeRatedWeeks(repo));
+
+        testWidgets('three rated weeks read 3 of 4, between the Mix layer and '
+            'ALL TIME, and no signal is evaluated', (tester) async {
+          final positive = _StubSignal(
+            id: 'p-1',
+            kind: SignalKind.positive,
+            priority: 10,
+          );
+          await pumpStats(tester, signals: [positive]);
+
+          final locked = find.byKey(const Key('signals_locked'));
+          expect(locked, findsOneWidget);
+          expect(find.text('SIGNALS'), findsOneWidget);
+          expect(
+            tester
+                .widget<Text>(find.byKey(const Key('signals_locked_line')))
+                .data,
+            'Unlocks after 4 weeks of rating your workouts — 3 of 4 so far.',
+          );
+
+          expect(find.byKey(const Key('signals_layer')), findsNothing);
+          expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
+          expect(_cardKeys(), isEmpty);
+          expect(positive.evaluations, 0);
+
+          final lockedTop = tester.getTopLeft(locked).dy;
+          expect(
+            tester.getTopLeft(find.byKey(const Key('mix_layer'))).dy,
+            lessThan(lockedTop),
+          );
+          expect(lockedTop, lessThan(tester.getTopLeft(find.text('ALL TIME')).dy));
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      // ─── S-4002 ────────────────────────────────────────────────────────────
+
+      group('S-4002 the locked line counts rated weeks', () {
+        setUp(() => _seedGateUnmet(repo));
+
+        testWidgets('zero rated weeks reads 0 of 4, and the count never leaves '
+            'the gate', (tester) async {
+          await pumpStats(tester);
+
+          expect(
+            tester
+                .widget<Text>(find.byKey(const Key('signals_locked_line')))
+                .data,
+            'Unlocks after 4 weeks of rating your workouts — 0 of 4 so far.',
+          );
+
+          expect(signalsLockedLine(9), endsWith('4 of 4 so far.'));
+          expect(signalsLockedLine(-3), endsWith('0 of 4 so far.'));
+        });
+      });
+
+      // ─── S-4003 ────────────────────────────────────────────────────────────
+
+      group('S-4003 gate met renders the layer, not the locked line', () {
+        setUp(() => _seedGateMet(repo));
+
+        testWidgets('four rated weeks show SIGNALS as the layer', (tester) async {
+          await pumpStats(
+            tester,
+            signals: [
+              _StubSignal(id: 'p-1', kind: SignalKind.positive, priority: 10),
+            ],
+          );
+
+          expect(find.byKey(const Key('signals_layer')), findsOneWidget);
+          expect(find.text('SIGNALS'), findsOneWidget);
+          expect(find.byKey(const Key('signals_locked')), findsNothing);
+          expect(find.byKey(const Key('signals_locked_line')), findsNothing);
+        });
+      });
+
+      // ─── S-4004 ────────────────────────────────────────────────────────────
+
+      group('S-4004 a window with no time locks nothing', () {
+        setUp(() => _seedWindowWithoutTime(repo));
+
+        testWidgets('no Mix layer means no section to lock, and nothing is '
+            'evaluated', (tester) async {
+          final positive = _StubSignal(
+            id: 'p-1',
+            kind: SignalKind.positive,
+            priority: 10,
+          );
+          await pumpStats(tester, signals: [positive]);
+
+          expect(find.byKey(const Key('mix_layer')), findsNothing);
+          expect(find.byKey(const Key('signals_locked')), findsNothing);
+          expect(find.text('SIGNALS'), findsNothing);
+          expect(find.text('ALL TIME'), findsOneWidget);
           expect(positive.evaluations, 0);
         });
       });
@@ -1261,7 +1388,7 @@ void main() {
       // breaks it. They are permanent: a change that reintroduces the defect
       // fails here, not in review.
 
-      group('Structural guard — a gate-unmet screen renders no SIGNALS and '
+      group('Structural guard — a gate-unmet screen locks the signals and '
           'evaluates nothing', () {
         setUp(() => _seedGateUnmet(repo));
 
@@ -1277,7 +1404,8 @@ void main() {
           );
           await pumpStats(tester, signals: [positive]);
 
-          expect(find.text('SIGNALS'), findsNothing);
+          expect(find.byKey(const Key('signals_locked')), findsOneWidget);
+          expect(find.text('SIGNALS'), findsOneWidget);
           expect(find.byKey(const Key('signals_layer')), findsNothing);
           expect(find.byKey(const Key('signals_quiet_line')), findsNothing);
           expect(_cardKeys(), isEmpty);

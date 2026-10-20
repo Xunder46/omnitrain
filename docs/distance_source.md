@@ -17,7 +17,10 @@ The Session Summary's DISTANCE section writes through these rules and
 
 This document does not cover how a distance is measured. The watch's own
 recording and the phone's import of it are described in
-[Watch Session Capture](watch_session_capture.md).
+[Watch Session Capture](watch_session_capture.md); the wrist's distance model —
+the tracker that turns raw fixes into metres and the rule that scopes a
+measured distance to one effort — is in
+[Watch Sensors](state_management/watch_sensors.md).
 
 ---
 
@@ -99,7 +102,9 @@ accepts it, it is their number — so a confirmation records the same metres
 under `entered` rather than leaving the value claiming a provenance it no
 longer has. The metres themselves do not move: a confirm is not a conversion,
 and re-deriving the stored value from a rounded display value would quietly
-change it.
+change it. A wrist-measured `gps` value is machine-produced in the same sense:
+the wrist's distance model computed it for the effort's own Start→Log window
+(watchOS `WatchEffortDistanceTests.testS3208AnEffortCarriesItsOwnWindowsMetres`).
 
 **Why pairing is computed and not stored.** A distance row and its entry are
 written by different code paths, and an entry's duration lives on its
@@ -164,9 +169,18 @@ zero distance is absence, not a value. Verified by `test/distance_source_test.da
 ## Vocabulary
 
 - **Distance source** — where a stored distance's value came from. One of
-  `gps` (the watch's GPS measured it), `entered` (a person typed or dialled it)
+  `gps` (measured, not typed: on the wrist, the metres the wrist's own tracker
+  accumulated for that effort's Start→Log window, sent with
+  `distanceSource: "gps"`), `entered` (a person typed or dialled it)
   or `estimated` (the watch platform estimated it). Only `estimated` is marked
-  where a distance is displayed.
+  where a distance is displayed. The model that produces a wrist `gps` value is
+  [Watch Sensors](state_management/watch_sensors.md); the feed that gives it
+  fixes to consume is built: a CoreLocation source on the wrist feeds raw fixes
+  through the tracker when the session's modality or the exercise the user is
+  on is allowed to use Location
+  (`WatchSensorSourceSourceTests.testS3311TheFeedDelegatesItsLocationToTheAdapter`,
+`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
+`WatchGpsByExerciseTests.testS4800AWalkInAFreeWorkoutStartsGps`).
 - **Paired row** — the distance row an entry owns, as `DistancePairing`
   computes it. An entry with no distance has no paired row and reads as
   absence, never as zero.

@@ -5,8 +5,12 @@
 //  The wrist's real workout registration: `HKWorkoutSession` +
 //  `HKLiveWorkoutBuilder` behind the package's `WatchPlatformWorkoutStore` seam.
 //
-//  Plan: `docs/plans/2026-10-10-19c-watch-keep-alive-plan/2026-10-10-19c-watch-keep-alive-plan.md`,
-//  D-1502, D-1503 and D-1509. Every rule about *when* a workout opens or closes
+//  Plans: `docs/plans/2026-10-10-19c-watch-keep-alive-plan/2026-10-10-19c-watch-keep-alive-plan.md`
+//  (D-1502, D-1503 and D-1509), and
+//  `docs/plans/2026-10-10-19d-watch-heart-rate-and-steps-plan/2026-10-10-19d-watch-heart-rate-and-steps-plan.md`
+//  (D-2103 to D-2105: this store now reads heart rate and steps, turns its
+//  builder into a collecting one, and owns the `HealthKitSensorFeed` that hands
+//  those readings to the package). Every rule about *when* a workout opens or closes
 //  lives in the package, where `swift test` exercises it on macOS
 //  (`WatchWorkoutCoordinatorTests`). What is left here is the platform call
 //  itself, so this file is the one part of the keep-alive no desktop test can
@@ -48,18 +52,45 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     private var session: HKWorkoutSession?
     private var builder: HKLiveWorkoutBuilder?
 
-    /// Whether the one authorization request this process is allowed has already
-    /// happened, and what it decided. The prompt is asked for on the first
+    /// The one authorization request this process is allowed, from the moment it
+    /// starts until the process ends. The prompt is asked for on the first
     /// session that is about to open a workout and never at launch, so a user
-    /// who never trains is never asked (D-1503).
-    private var authorizationResolved = false
-    private var authorizationGranted = false
+    /// who never trains is never asked (D-1503). Concurrent callers — `begin`
+    /// and the feed's closure — await the same task rather than reading a
+    /// half-settled answer.
+    private var authorization: Task<Bool, Never>?
 
-    init() {}
+    /// The location adapter the feed delegates to (D-2304): the app builds it
+    /// over the CoreLocation source and this store only hands it along, so the
+    /// permission question and the fixes never pass through here.
+    private let location: WatchTrackedLocation
+
+    /// The live readings of the workout this store opens (D-2103). Built on
+    /// first use, over a closure that asks this store for its authorization
+    /// outcome: the feed holds no reference back to the store, and the store is
+    /// the only thing holding the feed.
+    private lazy var sensorFeed = HealthKitSensorFeed(authorization: { [weak self] in
+        guard let self else { return false }
+        return await self.resolveAuthorization()
+    }, location: location)
+
+    /// The sensor seam the package sees. Permission comes from the store's own
+    /// resolution, so the feed reports it without asking anyone (D-2104, D-2105).
+    var sensorSource: WatchSensorSource { sensorFeed }
+
+    /// The location adapter arrives from the host, which builds it on the main
+    /// actor over a `CLLocationManager` that must be created there (D-2303,
+    /// D-2305).
+    init(location: WatchTrackedLocation) {
+        self.location = location
+    }
 
     // MARK: - WatchPlatformWorkoutStore
 
-    func begin(_ activityType: String) async {
+    /// Registers the session's workout, and tells HealthKit whether it is an
+    /// outdoor one: a modality that measures distance registers as `.outdoor`,
+    /// every other one as before (D-2304).
+    func begin(_ activityType: String, outdoors: Bool) async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         guard await resolveAuthorization() else { return }
 
@@ -69,15 +100,27 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
 
         let configuration = HKWorkoutConfiguration()
         configuration.activityType = Self.activityType(for: activityType)
-        configuration.locationType = .unknown
+        configuration.locationType = outdoors ? .outdoor : .unknown
 
         do {
             let opened = try HKWorkoutSession(healthStore: healthStore, configuration: configuration)
             let collection = opened.associatedWorkoutBuilder()
-            collection.dataSource = HKLiveWorkoutDataSource(
+            let dataSource = HKLiveWorkoutDataSource(
                 healthStore: healthStore,
                 workoutConfiguration: configuration
             )
+            // The data source only collects the types it was told to, and the
+            // delegate is what turns its callbacks into the package's streams
+            // (D-2103, D-2105).
+            dataSource.enableCollection(for: HKQuantityType(.heartRate), predicate: nil)
+            dataSource.enableCollection(for: HKQuantityType(.stepCount), predicate: nil)
+
+            collection.dataSource = dataSource
+            collection.delegate = sensorFeed
+            // The feed reads this builder on its own tick and on activation, so
+            // a beat whose callback was missed while the app was suspended still
+            // becomes a reading (D-3108, D-3113).
+            sensorFeed.refreshHeartRate(from: collection)
 
             session = opened
             builder = collection
@@ -93,7 +136,19 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         }
     }
 
+    /// The indoor answer, for a caller that does not know the modality: it
+    /// registers exactly as it did before, through HealthKit's own default
+    /// (D-2304).
+    func begin(_ activityType: String) async {
+        await begin(activityType, outdoors: false)
+    }
+
     func end() async {
+        // The feed stops reading the builder this store is about to finish,
+        // whatever else `end` does: a tick over a closed builder is a stranded
+        // reading (D-3113).
+        sensorFeed.refreshHeartRate(from: nil)
+
         guard let openSession = session else { return }
         let openBuilder = builder
         session = nil
@@ -109,6 +164,15 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             // The session is already closed, which is the part that matters: a
             // saved workout is a bonus, a workout left open is a lie.
         }
+    }
+
+    /// Reads the workout's newest beat now, through the feed's one gate, so a
+    /// beat whose callback arrived while the app was suspended becomes a
+    /// reading when the user raises the wrist again (D-3108, D-3113). The
+    /// builder is handed over rather than assumed: the feed reads the workout
+    /// this store currently holds, and nothing at all once `end` cleared it.
+    func refreshHeartRate() {
+        sensorFeed.refreshHeartRate(from: builder)
     }
 
     func inProgressActivityTypes() async -> [String] {
@@ -166,28 +230,33 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     // MARK: - Authorization
 
     /// Asks for permission the first time a workout is about to open, and answers
-    /// the same way for the life of the process afterwards (D-1503).
+    /// the same way for the life of the process afterwards (D-1503); concurrent
+    /// callers share that one in-flight request rather than each reading a
+    /// half-settled answer.
     ///
-    /// Share only the workout type; nothing is read. A refusal, or a request that
-    /// cannot be answered, means `begin` does nothing — the session keeps running
-    /// without a workout, exactly as it does when the phone denies a sync.
+    /// Share the workout type; read heart rate and steps. The builder's
+    /// statistics only carry the types asked for here, so a read left out is a
+    /// stream that never produces anything (D-2103). A refusal, or a request
+    /// that cannot be answered, means `begin` does nothing — the session keeps
+    /// running without a workout, exactly as it does when the phone denies a
+    /// sync.
     private func resolveAuthorization() async -> Bool {
-        if authorizationResolved { return authorizationGranted }
-        authorizationResolved = true
+        if let task = authorization { return await task.value }
 
-        do {
-            try await healthStore.requestAuthorization(
-                toShare: [HKObjectType.workoutType()],
-                read: []
-            )
-            authorizationGranted =
-                healthStore.authorizationStatus(for: HKObjectType.workoutType())
-                == .sharingAuthorized
-        } catch {
-            authorizationGranted = false
+        let task = Task<Bool, Never> {
+            do {
+                try await healthStore.requestAuthorization(
+                    toShare: [HKObjectType.workoutType()],
+                    read: [HKQuantityType(.heartRate), HKQuantityType(.stepCount)]
+                )
+                return healthStore.authorizationStatus(for: HKObjectType.workoutType())
+                    == .sharingAuthorized
+            } catch {
+                return false
+            }
         }
-
-        return authorizationGranted
+        authorization = task
+        return await task.value
     }
 }
 

@@ -30,6 +30,7 @@ import '../../watch/session/watch_records.dart' show WatchLifecycleState;
 import '../food_library_state.dart';
 import '../nutrition_state.dart';
 import '../settings/settings_state.dart';
+import '../workout/workout_state.dart';
 import 'live_session_mirror_state.dart';
 import 'watch_incoming_router.dart';
 import 'watch_nutrition_log_bridge.dart';
@@ -37,6 +38,8 @@ import 'watch_session_adoption_bridge.dart';
 import 'watch_session_auto_push.dart';
 import 'watch_session_inbox.dart';
 import 'watch_sync_request_handler.dart';
+import 'watch_timer_adoption.dart';
+import 'watch_timer_push.dart';
 
 /// A phone with no session running: no ladder, nothing logged, nobody waiting.
 ///
@@ -67,6 +70,8 @@ class WatchSyncGraph {
     required this.lateEntryRecovery,
     required this.adoption,
     required this.autoPush,
+    required this.timerPush,
+    required this.timerAdoption,
   });
 
   /// The session running on the wrist, as the phone mirrors it.
@@ -89,6 +94,15 @@ class WatchSyncGraph {
   /// The one object that pushes the phone's own session to the watch: the app
   /// binds the same `WorkoutState` to it (D-75).
   final WatchSessionAutoPush autoPush;
+
+  /// The push that keeps the wrist's work timers in step with the phone's
+  /// in-progress intervals, pauses and resumes (plan 43b3 D-2). The app binds
+  /// the same `WorkoutState` to it.
+  final WatchTimerPush timerPush;
+
+  /// The adoption that applies a timer the wrist started to the phone's own
+  /// interval (plan 43b2 D-3). The app binds the same `WorkoutState` to it.
+  final WatchTimerAdoption timerAdoption;
 
   /// Asks the wrist for its session once — the phone's half of catching up
   /// after being out of reach (D-96).
@@ -130,6 +144,32 @@ class WatchSyncGraph {
   }
 }
 
+/// The adoption bridge this graph builds: it remembers the [WorkoutState] the
+/// app binds, so a rating the import wrote can reach it (D-1).
+///
+/// The bridge keeps that reference private; this subclass is how the wiring
+/// reaches it without widening the bridge's own surface.
+class _WiringAdoptionBridge extends WatchSessionAdoptionBridge {
+  _WiringAdoptionBridge({
+    required super.repository,
+    super.clock,
+    super.onFailure,
+    super.onSkipped,
+  });
+
+  WorkoutState? _boundState;
+
+  @override
+  void bindWorkoutState(WorkoutState workoutState) {
+    _boundState = workoutState;
+    super.bindWorkoutState(workoutState);
+  }
+
+  Future<void> adoptRating(String sessionId, int rating) async {
+    await _boundState?.adoptSessionFeeling(sessionId, rating);
+  }
+}
+
 /// Builds the phone's watch graph and answers the handles the app keeps on it,
 /// or null when this platform has no watch.
 ///
@@ -167,7 +207,7 @@ Future<WatchSyncGraph?> createWatchSync({
   // Built first: the inbox asks the bridge whether a session is the phone's own
   // (G3), and the bridge answers from the `WorkoutState` the app binds once it
   // has built it.
-  final adoption = WatchSessionAdoptionBridge(
+  final adoption = _WiringAdoptionBridge(
     repository: repository,
     clock: clock,
     onFailure: onFailure,
@@ -186,6 +226,9 @@ Future<WatchSyncGraph?> createWatchSync({
     // session state, so the session screen shows the set without reloading the
     // session — a running timer survives (D-17).
     onSessionRowsChanged: adoption.refreshHeldEfforts,
+    // A rating the import wrote reaches the live session, so an open Summary
+    // shows it without reloading and cannot overwrite it (D-1).
+    onSessionRated: adoption.adoptRating,
   );
   final mirror = LiveSessionMirrorState(
     transport: WatchInboxStagingTransport(inner: resolved, inbox: inbox),
@@ -229,12 +272,25 @@ Future<WatchSyncGraph?> createWatchSync({
     clock: clock,
     onFailure: onFailure,
   );
+  // The timers ride the same mirror and transport: a phone that starts, pauses
+  // or ends an interval tells the wrist as soon as the window closes (43b3).
+  final timerPush = WatchTimerPush(mirror: mirror, onFailure: onFailure);
+  // And the other direction: a timer the wrist starts becomes the phone's.
+  final timerAdoption = WatchTimerAdoption(
+    mirror: mirror,
+    onFailure: onFailure,
+  );
 
   resolved.onIncoming((frame) async {
     final request = WatchTransportRequest.nameOf(frame);
     var answeredReset = false;
     if (request != null) {
-      await requests.handle(request);
+      // The version the wrist holds rides the request frame; a wrist that
+      // named none is sent the whole exercise list (D-3834).
+      await requests.handle(
+        request,
+        exercisesVersion: WatchTransportRequest.exercisesVersionOf(frame),
+      );
     } else {
       answeredReset = (await router.receive(frame)).answeredReset;
     }
@@ -256,5 +312,7 @@ Future<WatchSyncGraph?> createWatchSync({
     lateEntryRecovery: inbox,
     adoption: adoption,
     autoPush: push,
+    timerPush: timerPush,
+    timerAdoption: timerAdoption,
   );
 }

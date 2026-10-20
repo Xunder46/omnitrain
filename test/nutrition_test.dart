@@ -10,10 +10,12 @@
 // (sodium frozen onto the ConsumedFood snapshot at log time).
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' show CheckedState;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -22,15 +24,18 @@ import 'package:omnitrain/features/nutrition/nutrition_screen.dart';
 import 'package:omnitrain/features/nutrition/add_food_screen.dart';
 import 'package:omnitrain/features/nutrition/nutrition_target_screen.dart';
 import 'package:omnitrain/features/nutrition/widgets/calorie_ring_card.dart';
+import 'package:omnitrain/features/nutrition/widgets/food_form.dart';
 import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
 import 'package:omnitrain/features/nutrition/widgets/food_thumbnail.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
 
 import 'helpers/test_content_column.dart';
+import 'helpers/test_image_storage.dart';
 import 'helpers/test_nutrition_primer_state.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
@@ -209,6 +214,142 @@ void main() {
         expect(find.byKey(const Key('calories_field')), findsOneWidget);
       },
     );
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // S-2902 — NutritionTargetScreen unsaved-changes guard
+  // ═══════════════════════════════════════════════════════════════════════
+  group('NutritionTargetScreen — unsaved changes guard (S-2902)', () {
+    final Finder caloriesField = find.byKey(const Key('calories_field'));
+
+    Finder dialog() => find.byType(AlertDialog);
+
+    Finder inDialog(String text) =>
+        find.descendant(of: dialog(), matching: find.text(text));
+
+    Future<({MockWorkoutRepository repo, NutritionState state})> pumpScreen(
+      WidgetTester tester, {
+      double? storedCalories,
+      bool pushed = false,
+    }) async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      if (storedCalories != null) {
+        await state.saveNutritionTarget(
+          NutritionTarget(calories: storedCalories),
+        );
+      }
+      final screen = NutritionTargetScreen(nutritionState: state);
+      await tester.pumpWidget(
+        pushed
+            // Pushed behind a route, so the screen renders the AppBar's
+            // own back button — the header-back surface under test.
+            ? MaterialApp(
+                home: Builder(
+                  builder: (context) => Scaffold(
+                    body: Center(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => screen,
+                          ),
+                        ),
+                        child: const Text('open target screen'),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : MaterialApp(home: screen),
+      );
+      if (pushed) {
+        await tester.tap(find.text('open target screen'));
+      }
+      await tester.pumpAndSettle();
+      return (repo: repo, state: state);
+    }
+
+    Future<double?> storedTarget(MockWorkoutRepository repo) async {
+      final fresh = NutritionState(repo);
+      await fresh.loadNutritionTarget();
+      return fresh.nutritionTarget?.calories;
+    }
+
+    testWidgets('a changed calories value + back shows the dialog', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+      await tester.enterText(caloriesField, '2200');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsOneWidget);
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+      expect(inDialog('Discard'), findsOneWidget);
+      expect(inDialog('Save'), findsNothing);
+
+      // Keep editing keeps the screen and the typed value.
+      await tester.tap(
+        find.descendant(of: dialog(), matching: find.text('Keep editing')),
+      );
+      await tester.pumpAndSettle();
+      expect(dialog(), findsNothing);
+      expect(find.byType(NutritionTargetScreen), findsOneWidget);
+      expect(find.text('2200'), findsOneWidget);
+    });
+
+    testWidgets('the header back button routes through the same guard', (
+      tester,
+    ) async {
+      await pumpScreen(tester, pushed: true);
+      await tester.enterText(caloriesField, '2200');
+      await tester.pumpAndSettle();
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('an unchanged target pops with no dialog', (tester) async {
+      await pumpScreen(tester, storedCalories: 2000, pushed: true);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.byType(NutritionTargetScreen), findsNothing);
+    });
+
+    testWidgets('retyping the stored value is not dirty', (tester) async {
+      await pumpScreen(tester, storedCalories: 2000, pushed: true);
+      await tester.enterText(caloriesField, '2000');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.byType(NutritionTargetScreen), findsNothing);
+    });
+
+    testWidgets('Discard pops and leaves the stored target unchanged', (
+      tester,
+    ) async {
+      final deps = await pumpScreen(tester, storedCalories: 2000);
+      await tester.enterText(caloriesField, '2300');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(inDialog('Discard'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NutritionTargetScreen), findsNothing);
+      expect(await storedTarget(deps.repo), 2000.0);
+    });
   });
 
   group('NutritionScreen', () {
@@ -1162,6 +1303,40 @@ void main() {
         findsNothing,
         reason:
             'The old "No foods in library" message should be completely removed',
+      );
+    });
+
+    testWidgets('empty Foods I Eat list renders the shared OmniEmptyState '
+        '(S-2802)', (tester) async {
+      final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
+      final nutritionState = NutritionState(repo);
+      final foodLibraryState = FoodLibraryState(repo);
+      await foodLibraryState.loadFoodGroups();
+      await foodLibraryState.loadFoods();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NutritionScreen(
+            nutritionState: nutritionState,
+            foodLibraryState: foodLibraryState,
+            nutritionPrimerState: primer,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Your Foods I Eat list is empty.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Tap the pencil to add foods.'),
+        findsOneWidget,
       );
     });
   });
@@ -2619,6 +2794,349 @@ void main() {
   // user can add and remove as many foods as they want in a single
   // visit and only leaves via the system back arrow.
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // S-2902 — unsaved-work guard on the two FoodForm hosts
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // `_NewFoodFormScreen` (the `+ New Food` CTA) and the legacy library
+  // edit shim both host the shared `FoodForm` full-screen. Both used to
+  // drop the typed fields silently when the user backed out. S-2902
+  // requires the three-choice "Unsaved changes" dialog on the way out —
+  // the same guard `NutritionTargetScreen` carries.
+
+  group('AddFoodScreen — New Food form unsaved guard (S-2902)', () {
+    Finder dialog() => find.byType(AlertDialog);
+
+    Finder inDialog(String text) =>
+        find.descendant(of: dialog(), matching: find.text(text));
+
+    Finder nameField() => find.byKey(const Key('food_form_name'));
+
+    /// Pump Manage Food Library and push the New Food form off the
+    /// `+ New Food` CTA (the only production entry to that screen).
+    Future<FoodLibraryState> pumpNewFoodForm(
+      WidgetTester tester, {
+      MockWorkoutRepository? repo,
+      Size surface = const Size(800, 1800),
+      String? seedGroupName,
+      TestImageStorage? imageStorage,
+    }) async {
+      final r = repo ?? await _freshRepo();
+      final foodLib = FoodLibraryState(
+        r,
+        imageStorage: imageStorage?.service,
+      );
+      final nutrition = NutritionState(r);
+      await tester.binding.setSurfaceSize(surface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      if (seedGroupName != null) {
+        await foodLib.createFoodGroup(seedGroupName);
+      }
+      await foodLib.loadFoodGroups();
+      await foodLib.loadFoods();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AddFoodScreen(
+            foodLibraryState: foodLib,
+            nutritionState: nutrition,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('My Foods'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+ New Food'));
+      await tester.pumpAndSettle();
+      expect(find.text('New Food'), findsOneWidget);
+      return foodLib;
+    }
+
+    testWidgets('typing a name then system back shows the unsaved dialog', (
+      tester,
+    ) async {
+      await pumpNewFoodForm(tester);
+      await tester.enterText(nameField(), 'Trail Mix');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsOneWidget);
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+      expect(inDialog('Discard'), findsOneWidget);
+      expect(inDialog('Save'), findsNothing);
+
+      // Keep editing keeps the form open with the typed value.
+      await tester.tap(find.byKey(const Key('new-food-unsaved-keep')));
+      await tester.pumpAndSettle();
+      expect(dialog(), findsNothing);
+      expect(find.text('New Food'), findsOneWidget);
+      expect(find.text('Trail Mix'), findsOneWidget);
+    });
+
+    testWidgets('the header back button routes through the same guard', (
+      tester,
+    ) async {
+      await pumpNewFoodForm(tester);
+      await tester.enterText(nameField(), 'Trail Mix');
+      await tester.pumpAndSettle();
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('picking a category alone counts as unsaved work', (
+      tester,
+    ) async {
+      await pumpNewFoodForm(tester, seedGroupName: 'Guard Test Category');
+
+      await tester.tap(find.byKey(const Key('food_form_group')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guard Test Category').last);
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('an untouched form pops with no dialog', (tester) async {
+      await pumpNewFoodForm(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.text('New Food'), findsNothing);
+      expect(find.text('Manage Food Library'), findsOneWidget);
+    });
+
+    testWidgets('Discard pops without creating the food', (tester) async {
+      final repo = await _freshRepo();
+      final foodLib = await pumpNewFoodForm(tester, repo: repo);
+      await tester.enterText(nameField(), 'Trail Mix');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('new-food-unsaved-discard')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('New Food'), findsNothing);
+      await foodLib.loadCatalogFoods();
+      expect(foodLib.catalogFoods.where((f) => f.name == 'Trail Mix'), isEmpty);
+    });
+
+    testWidgets('a picked photo counts as unsaved work (S-2902)', (
+      tester,
+    ) async {
+      final imageStorage = TestImageStorage.create();
+      addTearDown(imageStorage.dispose);
+      await pumpNewFoodForm(tester, imageStorage: imageStorage);
+
+      // The picker source sits outside the managed directory.
+      final sourcePath = '${imageStorage.tempDir.path}/picked.jpg';
+      File(sourcePath).writeAsBytesSync([1, 2, 3, 4, 5]);
+      final picked = XFile(sourcePath, name: 'picked.jpg');
+
+      // Create mode keeps the photo form-local and never fires
+      // `onImageSave`, so the host reads the change through
+      // `FoodForm.onImageChanged`. `handlePickedImage` does real file I/O,
+      // which never settles in `testWidgets`'s fake async zone — drive it
+      // in `runAsync`.
+      // ignore: avoid-dynamic
+      final formState = tester.state(find.byType(FoodForm)) as dynamic;
+      await tester.runAsync(() async {
+        await formState.handlePickedImage(picked);
+      });
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+
+      // Keep editing stays on the form.
+      await tester.tap(find.byKey(const Key('new-food-unsaved-keep')));
+      await tester.pumpAndSettle();
+      expect(dialog(), findsNothing);
+      expect(find.text('New Food'), findsOneWidget);
+    });
+
+    testWidgets('picking then clearing the photo is clean again (S-2902)', (
+      tester,
+    ) async {
+      final imageStorage = TestImageStorage.create();
+      addTearDown(imageStorage.dispose);
+      await pumpNewFoodForm(tester, imageStorage: imageStorage);
+
+      final sourcePath = '${imageStorage.tempDir.path}/picked.jpg';
+      File(sourcePath).writeAsBytesSync([1, 2, 3, 4, 5]);
+      final picked = XFile(sourcePath, name: 'picked.jpg');
+
+      // ignore: avoid-dynamic
+      final formState = tester.state(find.byType(FoodForm)) as dynamic;
+      await tester.runAsync(() async {
+        await formState.handlePickedImage(picked);
+        await formState.clearImage();
+      });
+      await tester.pumpAndSettle();
+
+      // The photo is back to the create-mode default (none), so there is
+      // nothing to lose: back pops without the dialog.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.text('New Food'), findsNothing);
+    });
+
+    testWidgets('the guard dialog fits a short phone (320x568)', (
+      tester,
+    ) async {
+      await pumpNewFoodForm(tester, surface: const Size(320, 568));
+      await tester.enterText(nameField(), 'Trail Mix');
+      await tester.pumpAndSettle();
+
+      // The form underneath is a pre-existing layout at this width, so any
+      // error it raised before the dialog opened is not the guard's; clear
+      // it to keep the assertion below about the dialog's own frame.
+      tester.takeException();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+      expect(
+        tester.getSize(dialog()).width,
+        lessThanOrEqualTo(320),
+        reason: 'the guard dialog must fit a 320-wide phone',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('AddFoodScreen — legacy edit shim unsaved guard (S-2902)', () {
+    Finder dialog() => find.byType(AlertDialog);
+
+    Finder inDialog(String text) =>
+        find.descendant(of: dialog(), matching: find.text(text));
+
+    Finder nameField() => find.byKey(const Key('food_form_name'));
+
+    /// Pump Manage Food Library and open the legacy (pre-D-2,
+    /// library-only) custom on the Edit Food shim.
+    Future<void> pumpLegacyEditForm(
+      WidgetTester tester, {
+      MockWorkoutRepository? repo,
+    }) async {
+      final r = repo ?? await _freshRepo();
+      final foodLib = FoodLibraryState(r);
+      final nutrition = NutritionState(r);
+      await tester.binding.setSurfaceSize(const Size(800, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await r.createFood(
+        const Food(
+          id: 'f-guard-legacy',
+          name: 'Grandma Stew',
+          unitType: FoodUnitType.grams,
+          referenceAmount: 250,
+          referenceLabel: 'g',
+          isCatalog: false,
+          protein: 18,
+          carbs: 22,
+          fat: 12,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await foodLib.loadFoodGroups();
+      await foodLib.loadFoods();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AddFoodScreen(
+            foodLibraryState: foodLib,
+            nutritionState: nutrition,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('My Foods'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Grandma Stew'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit Food'), findsOneWidget);
+    }
+
+    testWidgets('editing the name then system back shows the unsaved dialog', (
+      tester,
+    ) async {
+      await pumpLegacyEditForm(tester);
+      await tester.enterText(nameField(), 'Grandma Stew II');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsOneWidget);
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+
+      // Keep editing keeps the shim open with the typed value.
+      await tester.tap(find.byKey(const Key('legacy-food-unsaved-keep')));
+      await tester.pumpAndSettle();
+      expect(dialog(), findsNothing);
+      expect(find.text('Edit Food'), findsOneWidget);
+      expect(find.text('Grandma Stew II'), findsOneWidget);
+    });
+
+    testWidgets('the header back button routes through the same guard', (
+      tester,
+    ) async {
+      await pumpLegacyEditForm(tester);
+      await tester.enterText(nameField(), 'Grandma Stew II');
+      await tester.pumpAndSettle();
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(inDialog('Unsaved changes'), findsOneWidget);
+    });
+
+    testWidgets('an untouched form pops with no dialog', (tester) async {
+      await pumpLegacyEditForm(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(find.text('Edit Food'), findsNothing);
+      expect(find.text('Manage Food Library'), findsOneWidget);
+    });
+
+    testWidgets('Discard pops and leaves the stored food unchanged', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      await pumpLegacyEditForm(tester, repo: repo);
+      await tester.enterText(nameField(), 'Grandma Stew II');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('legacy-food-unsaved-discard')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit Food'), findsNothing);
+      final stored = await repo.getFoodById('f-guard-legacy');
+      expect(stored?.name, 'Grandma Stew');
+    });
+  });
+
   group('ManageFoodLibrary – add/remove toggle', () {
     /// Pin a single catalog food and return the seeded id.
     Future<String> seedSingleCatalog(MockWorkoutRepository repo) async {
@@ -2718,6 +3236,70 @@ void main() {
     );
 
     testWidgets(
+      'tapping Remove asks first, and Cancel keeps the food in the library '
+      '(S-2903)',
+      (tester) async {
+        final repo = await _freshRepo();
+        final catalogId = await seedSingleCatalog(repo);
+        final states = await pumpCatalogTab(tester, repo: repo);
+
+        // Add it, and log it for today so the cancel path has to leave
+        // both the library and the day log alone.
+        await tester.tap(find.byKey(Key('add_catalog_food_$catalogId')));
+        await tester.pumpAndSettle();
+        await states.foodLib.loadFoods();
+        final libId = states.foodLib.libraryIdFor(catalogId);
+        expect(libId, isNotNull, reason: 'precondition: the food is added');
+        await states.nutrition.loadNutritionTarget();
+        await states.nutrition.logConsumedFoodAt(
+          states.foodLib.foods.firstWhere((f) => f.id == libId),
+          100.0,
+        );
+        expect(states.nutrition.isFoodLoggedToday(libId!), isTrue);
+
+        // Ask to remove it.
+        await tester.tap(find.byKey(Key('remove_catalog_food_$catalogId')));
+        await tester.pumpAndSettle();
+
+        // The dialog names the food and offers Cancel / Remove.
+        expect(
+          find.text('Remove Chicken (toggle test) from your library?'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('food-remove-cancel')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('food-remove-confirm')),
+          findsOneWidget,
+        );
+
+        // Nothing changed while the dialog is up.
+        await states.foodLib.loadFoods();
+        expect(states.foodLib.foods, hasLength(1));
+        expect(states.nutrition.isFoodLoggedToday(libId), isTrue);
+
+        // Cancel leaves the library and today's log alone.
+        await tester.tap(find.byKey(const Key('food-remove-cancel')));
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsNothing);
+        await states.foodLib.loadFoods();
+        expect(states.foodLib.foods, hasLength(1));
+        expect(
+          states.nutrition.isFoodLoggedToday(libId),
+          isTrue,
+          reason: 'a cancelled remove must not unlog the food for today',
+        );
+        expect(
+          find.byKey(Key('remove_catalog_food_$catalogId')),
+          findsOneWidget,
+          reason: 'a cancelled remove must not flip the row back to Add',
+        );
+      },
+    );
+
+    testWidgets(
       'tapping Remove takes the food out of the library and flips the row '
       'back to Add',
       (tester) async {
@@ -2733,8 +3315,10 @@ void main() {
           findsOneWidget,
         );
 
-        // Remove it.
+        // Remove it, confirming the prompt.
         await tester.tap(find.byKey(Key('remove_catalog_food_$catalogId')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('food-remove-confirm')));
         await tester.pumpAndSettle();
 
         // Library is empty again.
@@ -2760,8 +3344,10 @@ void main() {
       // First add.
       await tester.tap(find.byKey(addKey));
       await tester.pumpAndSettle();
-      // Remove.
+      // Remove (confirmed).
       await tester.tap(find.byKey(removeKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('food-remove-confirm')));
       await tester.pumpAndSettle();
       // Add again.
       await tester.tap(find.byKey(addKey));
@@ -2818,8 +3404,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Tap the Remove button.
+      // Tap the Remove button and confirm the prompt.
       await tester.tap(find.byKey(Key('remove_catalog_food_$catalogId')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('food-remove-confirm')));
       await tester.pumpAndSettle();
 
       // Library is empty AND the food is unlogged from today.
@@ -3050,6 +3638,105 @@ void main() {
     });
   });
 
+  // S-2802 (plan 28 / D-28.2): the three AddFoodScreen tabs route their
+  // "nothing here" case through the shared `OmniEmptyState` — the Library
+  // tab with no catalog, the Library tab with no search match, and the My
+  // Foods tab with no custom foods.
+  group('AddFoodScreen — empty states (S-2802)', () {
+    Future<void> pumpAddFoodScreen(
+      WidgetTester tester,
+      FoodLibraryState foodLib,
+      NutritionState nutrition,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AddFoodScreen(
+            foodLibraryState: foodLib,
+            nutritionState: nutrition,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Library tab with no catalog foods renders the shared '
+        'OmniEmptyState', (tester) async {
+      final repo = await _freshRepo();
+      for (final food in await repo.getCatalogFoods(includeArchived: true)) {
+        await repo.deleteCatalogFood(food.id);
+      }
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+
+      await pumpAddFoodScreen(tester, foodLib, nutrition);
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No catalog foods available'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Nothing is in the catalog right now.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Library tab with no search match renders the shared '
+        'OmniEmptyState', (tester) async {
+      final repo = await _freshRepo();
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+      await foodLib.loadCatalogFoods();
+
+      await pumpAddFoodScreen(tester, foodLib, nutrition);
+
+      await tester.enterText(
+        find.byKey(const Key('catalog_search_field')),
+        'zzzznotafood',
+      );
+      await tester.pump();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No matches for "zzzznotafood"'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OmniEmptyState, 'Try a different search.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('My Foods tab with no custom foods renders the shared '
+        'OmniEmptyState', (tester) async {
+      final repo = await _freshRepo();
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+      await foodLib.loadFoods();
+
+      await pumpAddFoodScreen(tester, foodLib, nutrition);
+
+      await tester.tap(find.text('My Foods'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OmniEmptyState), findsOneWidget);
+      expect(
+        find.widgetWithText(OmniEmptyState, 'No custom foods yet'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(
+          OmniEmptyState,
+          'Create your own foods to use in your nutrition tracking',
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
   // ─── Groups tab (R-2) ──────────────────────────────────────────
   // The Groups tab is reached via the third tab of the
   // AddFoodScreen. Verifies the tab renders the active groups, an
@@ -3202,6 +3889,250 @@ void main() {
       expect(afterFoods, hasLength(1));
       expect(afterFoods[0].groupId, isNull);
       expect(foodLib.activeFoodGroups.any((g) => g.id == groupId), isFalse);
+    });
+
+    testWidgets(
+      'Cancel on a non-empty category closes the dialog without throwing '
+      'and keeps the category and its foods (S-2910)',
+      (tester) async {
+        final repo = await _freshRepo();
+        final foodLib = FoodLibraryState(repo);
+        final nutrition = NutritionState(repo);
+        final groupId = await foodLib.createFoodGroup('Proteins');
+        await foodLib.createFood(
+          Food(
+            id: 'f-cancel',
+            name: 'Egg',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            isCatalog: false,
+            protein: 13,
+            carbs: 1,
+            fat: 11,
+            groupId: groupId,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AddFoodScreen(
+              foodLibraryState: foodLib,
+              nutritionState: nutrition,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await switchToGroupsTab(tester);
+
+        await tester.tap(find.byKey(Key('group_delete_$groupId')));
+        await tester.pumpAndSettle();
+        expect(find.text('Delete category?'), findsOneWidget);
+
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(
+          foodLib.activeFoodGroups.any((g) => g.id == groupId),
+          isTrue,
+          reason: 'a cancelled delete must leave the category in place',
+        );
+        final foodsAfter = foodLib.foods;
+        expect(foodsAfter, hasLength(1));
+        expect(foodsAfter[0].groupId, groupId);
+        expect(find.byKey(Key('group_name_$groupId')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Delete on a non-empty category with the destination left at '
+      'Uncategorized moves the foods there and archives it (S-2910)',
+      (tester) async {
+        final repo = await _freshRepo();
+        final foodLib = FoodLibraryState(repo);
+        final nutrition = NutritionState(repo);
+        final groupId = await foodLib.createFoodGroup('Proteins');
+        await foodLib.createFood(
+          Food(
+            id: 'f-ungrouped-dest',
+            name: 'Egg',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            isCatalog: false,
+            protein: 13,
+            carbs: 1,
+            fat: 11,
+            groupId: groupId,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AddFoodScreen(
+              foodLibraryState: foodLib,
+              nutritionState: nutrition,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await switchToGroupsTab(tester);
+
+        await tester.tap(find.byKey(Key('group_delete_$groupId')));
+        await tester.pumpAndSettle();
+        // The dropdown default is "Uncategorized" (null value): the
+        // confirm path must return null, not the cancel sentinel.
+        expect(find.text('Uncategorized'), findsWidgets);
+
+        await tester.tap(find.byKey(const Key('delete_group_confirm')));
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(foodLib.foods.single.groupId, isNull);
+        expect(foodLib.activeFoodGroups.any((g) => g.id == groupId), isFalse);
+      },
+    );
+
+    testWidgets(
+      'Delete after picking another category moves the foods there (S-2910)',
+      (tester) async {
+        final repo = await _freshRepo();
+        final foodLib = FoodLibraryState(repo);
+        final nutrition = NutritionState(repo);
+        final proteinsId = await foodLib.createFoodGroup('Proteins');
+        final vegetablesId = await foodLib.createFoodGroup('Vegetables');
+        await foodLib.createFood(
+          Food(
+            id: 'f-picked-dest',
+            name: 'Egg',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            isCatalog: false,
+            protein: 13,
+            carbs: 1,
+            fat: 11,
+            groupId: proteinsId,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AddFoodScreen(
+              foodLibraryState: foodLib,
+              nutritionState: nutrition,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await switchToGroupsTab(tester);
+
+        await tester.tap(find.byKey(Key('group_delete_$proteinsId')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('delete_group_destination')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Vegetables').last);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('delete_group_confirm')));
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(foodLib.foods.single.groupId, vegetablesId);
+        expect(
+          foodLib.activeFoodGroups.any((g) => g.id == proteinsId),
+          isFalse,
+        );
+      },
+    );
+
+    testWidgets('trash on an empty category asks first, and Cancel keeps it '
+        '(S-2904)', (tester) async {
+      final repo = await _freshRepo();
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+      final groupId = await foodLib.createFoodGroup('Snacks');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AddFoodScreen(
+            foodLibraryState: foodLib,
+            nutritionState: nutrition,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await switchToGroupsTab(tester);
+
+      await tester.tap(find.byKey(Key('group_delete_$groupId')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete category Snacks?'), findsOneWidget);
+      expect(find.byKey(const Key('category-delete-cancel')), findsOneWidget);
+      expect(find.byKey(const Key('category-delete-confirm')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('category-delete-cancel')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        foodLib.activeFoodGroups.any((g) => g.id == groupId),
+        isTrue,
+        reason: 'a cancelled delete must leave the category in place',
+      );
+      expect(find.byKey(Key('group_name_$groupId')), findsOneWidget);
+    });
+
+    testWidgets('confirming the delete archives an empty category (S-2904)', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+      final groupId = await foodLib.createFoodGroup('Snacks');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AddFoodScreen(
+            foodLibraryState: foodLib,
+            nutritionState: nutrition,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await switchToGroupsTab(tester);
+
+      await tester.tap(find.byKey(Key('group_delete_$groupId')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('category-delete-confirm')));
+      // The async chain runs through the state method which awaits
+      // several repository writes; pump the timer a few times to drain.
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.pumpAndSettle();
+
+      expect(
+        foodLib.activeFoodGroups.any((g) => g.id == groupId),
+        isFalse,
+        reason: 'confirming must archive the empty category',
+      );
+      expect(find.byKey(Key('group_name_$groupId')), findsNothing);
     });
   });
 

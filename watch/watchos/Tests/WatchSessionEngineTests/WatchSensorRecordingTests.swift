@@ -17,6 +17,12 @@
 //    S-007 unmapped modality falls back to a generic type   → `testS007...`
 //    S-008 GPS activation derives from capabilities         → `testS008...`
 //
+//  Plan: `docs/plans/2026-10-13-31-watch-qa-fixes-3-plan/2026-10-13-31-watch-qa-fixes-3-plan.md`,
+//  scenario S-3109 (decision D-3107): the live label follows every beat the
+//  source yields, over the real `FileWatchSessionStore` and over the in-memory
+//  store alike. Its colour is the diagnosis: red means the package chain loses
+//  the beat, green means the beats stop upstream, in the app target's feed.
+//
 //  Both suites read `watch/contract/watch_sensor_contract.json`: the sample
 //  kinds, the modality → platform workout type table, and the capability
 //  profile the GPS decision is derived from.
@@ -270,6 +276,71 @@ class WatchSensorRecordingTests: XCTestCase {
         XCTAssertEqual(state.paceLabel, "5:00 /km")
     }
 
+    // MARK: - S-3109 the label follows every beat, over both stores
+
+    /// The diagnosis D-3107 asks for: the same rising beats through the chain
+    /// `WatchSensorSource` → `WatchSensorRecorder` → `WatchLoggingState`, once
+    /// over the real `FileWatchSessionStore` and once over the in-memory store
+    /// the round's other tests use.
+    ///
+    /// Red here means the package chain drops a later beat and this phase fixes
+    /// it; green means the package carries every beat and the beats stop
+    /// arriving from the platform, which is what D-3108 covers.
+    func testS3109ATheLabelFollowsEveryBeat() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("watch-live-heart-rate-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+
+        try await assertTheLabelFollowsEveryBeat(
+            store: FileWatchSessionStore(directory: directory),
+            storeName: "FileWatchSessionStore"
+        )
+        try await assertTheLabelFollowsEveryBeat(
+            store: InMemoryWatchSessionStore(),
+            storeName: "InMemoryWatchSessionStore"
+        )
+    }
+
+    /// One run of the four beats over one store: each beat, in turn, read both
+    /// as the recorder's newest reading and as the label the surface prints. The
+    /// clock steps between beats as the round's own S-003 test steps it, since a
+    /// sample's stored id is its kind and instant.
+    private func assertTheLabelFollowsEveryBeat(
+        store: WatchSessionStore,
+        storeName: String
+    ) async throws {
+        let harness = Harness(store: store)
+        let engine = await harness.runningEngine()
+        let live = await session(engine, modality: "resistance_lifting")
+        let sensors = sensors(for: engine)
+        await sensors.start(live)
+
+        let state = WatchLoggingState(
+            engine: engine,
+            clock: clock.call,
+            sensors: sensors.recorder
+        )
+
+        for beat in [100.0, 104, 109, 115] {
+            clock.advance(2)
+            source.beat(beat)
+            await eventually(
+                { state.heartRateLabel == String(Int(beat)) },
+                "\(storeName): the label never followed the beat \(beat) (S-3109)"
+            )
+            XCTAssertEqual(
+                sensors.recorder.readings.heartRate,
+                beat,
+                "\(storeName): the newest stored row is the reading (S-3109)"
+            )
+            XCTAssertEqual(
+                state.heartRateLabel,
+                String(Int(beat)),
+                "\(storeName): the label follows every beat (S-3109)"
+            )
+        }
+    }
+
     // MARK: - S-004 measured distance is what leaves the watch
 
     func testS004TheLoggedEffortCarriesTheGpsTotal() async throws {
@@ -277,8 +348,6 @@ class WatchSensorRecordingTests: XCTestCase {
         _ = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
         let sensors = sensors(for: engine)
         await sensors.start(try XCTUnwrap(engine.session))
-        source.fix(3000)
-        await eventually { sensors.recorder.readings.distanceMeters == 3000 }
 
         let state = WatchLoggingState(
             engine: engine,
@@ -286,12 +355,17 @@ class WatchSensorRecordingTests: XCTestCase {
             sensors: sensors.recorder
         )
         // Timed work is its own clock: Start opens the window the log closes
-        // 1200 s later, where the old dial left it empty.
+        // 1200 s later, where the old dial left it empty. The effort's distance
+        // is what its own window covered, so the fix arrives inside it (D-2205).
         await state.startWork()
-        clock.advance(1200)
+        clock.advance(600)
+        source.fix(3000)
+        await eventually { sensors.recorder.readings.distanceMeters == 3000 }
+        clock.advance(600)
         let logged = try await state.log()
 
         XCTAssertEqual(logged.payload["distanceMeters"] as? Double, 3000)
+        XCTAssertEqual(logged.payload["distanceSource"] as? String, "gps")
     }
 
     func testS004WithoutAFixTheTimedSurfaceOffersNoDistanceRow() async throws {
@@ -606,8 +680,8 @@ class WatchSensorRecordingTests: XCTestCase {
 
         _ = await engine.confirmObservations(
             [
-                "e-run", "e-r1", "e-r2", "e-r3", "e-set1", "e-set2", "e-set3",
-                "rec-15-rest", "rec-17-rest", "rec-19-rest",
+                "e-run", "rec-6-rest", "e-r1", "e-r2", "e-r3", "rec-21-rest", "e-set1", "e-set2", "e-set3",
+                "rec-23-rest", "rec-25-rest", "rec-27-rest",
             ]
         )
         let afterEntries = await engine.pruneSettledSensorSamples()
@@ -903,8 +977,6 @@ class WatchSensorRecordingTests: XCTestCase {
         _ = await session(engine, modality: "cardio_endurance", capabilities: ["time", "distance"])
         let sensors = sensors(for: engine)
         await sensors.start(try XCTUnwrap(engine.session))
-        source.fix(3200)
-        await eventually { sensors.recorder.readings.distanceMeters == 3200 }
 
         let state = WatchLoggingState(engine: engine, clock: clock.call, sensors: sensors.recorder)
 
@@ -915,8 +987,13 @@ class WatchSensorRecordingTests: XCTestCase {
         )
         state.adjust(WatchMetricKey.distance, detents: 15)
 
+        // The effort's distance is what its own window covered, so the fix
+        // arrives after Start (D-2205).
         await state.startWork()
-        clock.advance(1200)
+        clock.advance(600)
+        source.fix(3200)
+        await eventually { sensors.recorder.readings.distanceMeters == 3200 }
+        clock.advance(600)
         let logged = try await state.log()
 
         XCTAssertEqual(
@@ -924,6 +1001,7 @@ class WatchSensorRecordingTests: XCTestCase {
             3200,
             "the phone receives the measured total, not a number the user added to it"
         )
+        XCTAssertEqual(logged.payload["distanceSource"] as? String, "gps")
     }
 }
 
@@ -960,6 +1038,10 @@ final class ContendedWatchSessionStore: WatchSessionStore {
 
     func pruneSensorSamples(_ sessionIds: [String]) async -> [String] {
         await inner.pruneSensorSamples(sessionIds)
+    }
+
+    func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        await inner.pruneExerciseBatches(keepingVersion: keepingVersion)
     }
 }
 

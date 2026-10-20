@@ -4,6 +4,9 @@
 // Opened via the wired maintenance-sheet `Exercise Library` tile
 // (NOT the home tile grid).
 //
+// This is where exercises are created: the header `+` action opens
+// ExerciseEditorScreen (plan 37 moved it off the picker).
+//
 // Differences from ExercisePickerScreen:
 //   - No "Add to workout" action (rows never pop a selected exercise).
 //   - "Custom only" toggle (key `exercise_library_custom_only_toggle`).
@@ -16,11 +19,14 @@ import 'package:flutter/material.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/navigation/navigation.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
+import 'package:omnitrain/core/utils/muscle_display.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
+import 'exercise_editor_screen.dart';
 import 'exercise_library_detail_screen.dart';
 
 class ExerciseLibraryScreen extends StatefulWidget {
@@ -42,7 +48,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
   Timer? _debounce;
 
   List<Discipline> _disciplines = const [];
-  final Map<String, List<MuscleGroup>> _exerciseMuscleGroupsCache = {};
+  final Map<String, List<ExerciseMuscleLink>> _exerciseMuscleLinksCache = {};
 
   @override
   void initState() {
@@ -99,7 +105,22 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
         return Scaffold(
           backgroundColor: Colors.transparent,
           extendBodyBehindAppBar: true,
-          appBar: const OmniBackHeader(title: 'Exercise Library'),
+          appBar: OmniBackHeader(
+            title: 'Exercise Library',
+            actions: [
+              Semantics(
+                label: 'New Exercise',
+                button: true,
+                child: IconButton(
+                  key: const Key('exercise_library_new_button'),
+                  icon: const Icon(Icons.add),
+                  tooltip: 'New Exercise',
+                  color: OmniTheme.colors.textDominant,
+                  onPressed: _openCreateExercise,
+                ),
+              ),
+            ],
+          ),
           body: SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -116,6 +137,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear),
+                              tooltip: 'Clear search',
                               onPressed: () {
                                 _searchController.clear();
                                 widget.exerciseLibraryState.setSearchText(null);
@@ -177,7 +199,11 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                     child: state.isLoading && exercises.isEmpty
                         ? const Center(child: CircularProgressIndicator())
                         : exercises.isEmpty
-                        ? const _EmptyState()
+                        ? const OmniEmptyState(
+                            icon: Icons.fitness_center_outlined,
+                            title: 'No exercises found',
+                            hint: 'Adjust your search or clear filters.',
+                          )
                         : ListView.builder(
                             itemCount: exercises.length,
                             itemBuilder: (context, index) =>
@@ -194,7 +220,11 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
   }
 
   Widget _buildRow(BuildContext context, ThemeData theme, Exercise exercise) {
-    final muscleGroups = _exerciseMuscleGroupsCache[exercise.id] ?? const [];
+    final muscleNames = muscleNamesWithRole(
+      _exerciseMuscleLinksCache[exercise.id] ?? const [],
+      widget.workoutState.muscleGroups,
+      MuscleRole.primary,
+    );
     final discipline = _disciplines.firstWhere(
       (d) => d.id == exercise.disciplineId,
       orElse: () => Discipline(
@@ -253,7 +283,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
             ),
         ],
       ),
-      subtitle: (discipline.name.isEmpty && muscleGroups.isEmpty)
+      subtitle: (discipline.name.isEmpty && muscleNames.isEmpty)
           ? null
           : SizedBox(
               // Force the chip Wrap to use the full subtitle column
@@ -267,7 +297,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                 children: [
                   if (discipline.name.isNotEmpty)
                     _TagChip(label: discipline.name),
-                  ...muscleGroups.map((mg) => _TagChip(label: mg.name)),
+                  ...muscleNames.map((name) => _TagChip(label: name)),
                 ],
               ),
             ),
@@ -290,62 +320,30 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
     }
   }
 
+  Future<void> _openCreateExercise() async {
+    final created = await OmniNavigator.push<Exercise>(
+      context,
+      (_) => ExerciseEditorScreen(workoutState: widget.workoutState),
+    );
+    if (created == null || !mounted) return;
+
+    _exerciseMuscleLinksCache.remove(created.id);
+    _searchController.text = created.name;
+    await widget.exerciseLibraryState.reload();
+    if (mounted) await _warmCache(widget.exerciseLibraryState.exercises);
+  }
+
   Future<void> _warmCache(List<Exercise> exercises) async {
     for (final exercise in exercises) {
-      if (_exerciseMuscleGroupsCache.containsKey(exercise.id)) continue;
-      final muscles = await widget.workoutState.getExerciseMuscleGroups(
+      if (_exerciseMuscleLinksCache.containsKey(exercise.id)) continue;
+      final links = await widget.workoutState.getExerciseMuscleLinks(
         exercise.id,
       );
       if (!mounted) return;
       setState(() {
-        _exerciseMuscleGroupsCache[exercise.id] = muscles;
+        _exerciseMuscleLinksCache[exercise.id] = links ?? const [];
       });
     }
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.fitness_center_outlined,
-                    size: 64,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No exercises found',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Adjust your search or clear filters.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 }
 

@@ -208,6 +208,25 @@ class StatsWindow {
     this.periodName,
     this.recentDays,
   });
+
+  /// The window's length in local calendar days, counting both bounds: the day
+  /// of [fromMs] through the day of [toMs].
+  ///
+  /// This is the arithmetic `StatsProgressService.previousRangeFor` uses to
+  /// size the range a change is compared against (D-4007), kept on the window
+  /// so the Instruments caption can state it without a second copy: a range of
+  /// `dayCount` days is exactly what the change chip compares against. It is
+  /// calendar days, never a duration — a DST transition inside the window
+  /// neither shortens nor widens it — and [recentDays] is a different number,
+  /// because the window ends at the end of today rather than on its last
+  /// training day.
+  int get dayCount =>
+      DateTime.utc(
+        toMs.year,
+        toMs.month,
+        toMs.day,
+      ).difference(DateTime.utc(fromMs.year, fromMs.month, fromMs.day)).inDays +
+      1;
 }
 
 // ── Nutrition adherence (PR 2b nutrition adherence section) ───────────────

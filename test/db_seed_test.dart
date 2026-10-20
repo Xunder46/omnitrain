@@ -412,6 +412,44 @@ void main() {
 
       await db.close();
     });
+
+    // Plan 33, Phase A part 2 (S-9): the muscle hierarchy is part of the SQL
+    // contract the schema/seed documentation defines.
+    test('S-9 app_muscle_group carries parent_id and seeds the 23 groups the '
+        'taxonomy defines', () async {
+      final db = await _openSchemaDatabase();
+
+      expect(
+        await _columnsOf(db, 'app_muscle_group'),
+        contains('parent_id'),
+        reason: 'app_muscle_group must carry the parent region column',
+      );
+
+      final seedSql = await File(
+        '${Directory.current.path}/scripts/sqlite_seed.sql',
+      ).readAsString();
+      for (final stmt in _executableStatements(seedSql)) {
+        await db.execute(stmt);
+      }
+
+      final groups = await db.query('app_muscle_group');
+      expect(groups, hasLength(23));
+
+      final legs = await db.query(
+        'app_muscle_group',
+        where: 'name = ?',
+        whereArgs: ['Legs'],
+      );
+      final quadriceps = await db.query(
+        'app_muscle_group',
+        where: 'name = ?',
+        whereArgs: ['Quadriceps'],
+      );
+      expect(legs.single['parent_id'], isNull, reason: 'Legs is a region');
+      expect(quadriceps.single['parent_id'], equals(legs.single['id']));
+
+      await db.close();
+    });
   });
 
   // Stats PR 2, Phase 2 (D-131 / D-132): the watch-capture tables belong to

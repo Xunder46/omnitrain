@@ -216,6 +216,29 @@ public struct WatchCatalogSyncResult {
     }
 }
 
+/// What happened to one `exercises_down` batch (D-3815).
+public struct WatchExerciseBatchResult {
+    /// True when the batch was stored, or was already stored. A conformant
+    /// batch older than the active list is understood and dropped, so it is
+    /// false without being a rejection.
+    public let stored: Bool
+
+    /// True only when this batch completed a version the wrist was not holding.
+    /// A batch that completes nothing is still stored; it is the next one that
+    /// activates the list.
+    public let activated: Bool
+
+    /// The receiver's verdict on the message. Empty for anything the watch
+    /// understood, including a drop.
+    public let rejections: [SyncProtocolRejection]
+
+    public init(stored: Bool, activated: Bool, rejections: [SyncProtocolRejection]) {
+        self.stored = stored
+        self.activated = activated
+        self.rejections = rejections
+    }
+}
+
 public enum WatchStartPathError: Error, CustomStringConvertible {
     case unknownRoutine(String)
 
@@ -236,7 +259,22 @@ public final class WatchSessionStartPaths {
 
     private var catalog: WatchRoutineCatalogRecord?
     private var storedRoutines: [WatchRoutine] = []
-    private var syncedFallback: [WatchCatalogExercise] = []
+
+    /// The fallback list `routines_down` brought. It follows the active exercise
+    /// list in the union the wrist offers (D-3817), and covers every routine.
+    private var catalogFallback: [WatchCatalogExercise] = []
+
+    /// The exercises of the active `exercises_down` list, in the phone's order.
+    /// Empty until one version is complete.
+    private var activeExercises: [WatchCatalogExercise] = []
+
+    /// The version of the active list, or nil when the wrist holds none.
+    private var activeExercisesVersion: String?
+
+    /// When the phone generated the active list. A batch older than this is
+    /// understood and dropped; one at the same instant is not (D-3815 rule 2).
+    private var activeExercisesGeneratedAt: Date?
+
     private var recents: [WatchCatalogExercise] = []
 
     /// Whether the phone can be reached right now — what the wrist's
@@ -267,6 +305,11 @@ public final class WatchSessionStartPaths {
     /// phone has sent one yet.
     public var syncedAt: Date? { catalog?.generatedAt }
 
+    /// The version of the exercise list the wrist is holding, or nil when it
+    /// holds none (D-3817). An opaque string the phone derived from the list's
+    /// content, echoed back on every sync so the phone can send what changed.
+    public var exercisesVersion: String? { activeExercisesVersion }
+
     /// Everything the wrist may offer offline, recents first (S-003).
     public var fallbackExercises: [WatchCatalogExercise] {
         deriveFallbackExercises(
@@ -274,6 +317,19 @@ public final class WatchSessionStartPaths {
             syncedFallback: syncedFallback,
             routines: storedRoutines
         )
+    }
+
+    /// What the phone offered alongside the routines: the active exercise list
+    /// first, then the routine catalog's own fallback exercises it does not
+    /// already name (D-3817). Deduplicated by exercise id keeping the first
+    /// mention, so an exercise both sources know appears once.
+    private var syncedFallback: [WatchCatalogExercise] {
+        var seen = Set<String>()
+        var merged: [WatchCatalogExercise] = []
+        for exercise in activeExercises + catalogFallback {
+            if seen.insert(exercise.exerciseId).inserted { merged.append(exercise) }
+        }
+        return merged
     }
 
     // MARK: - Storage
@@ -288,11 +344,13 @@ public final class WatchSessionStartPaths {
 
         if let catalog, let synced = try? WatchRoutinesDown(catalog: catalog) {
             storedRoutines = synced.routines
-            syncedFallback = synced.fallbackExercises
+            catalogFallback = synced.fallbackExercises
         } else {
             storedRoutines = []
-            syncedFallback = []
+            catalogFallback = []
         }
+
+        restoreActiveExerciseList(contents.exerciseBatches)
 
         recents = Self.recentlyUsed(contents.sessions)
     }
@@ -323,9 +381,129 @@ public final class WatchSessionStartPaths {
         )
         catalog = stored.routineCatalogRow
         storedRoutines = sent.routines
-        syncedFallback = sent.fallbackExercises
+        catalogFallback = sent.fallbackExercises
 
         return WatchCatalogSyncResult(applied: true, rejections: [])
+    }
+
+    /// Applies one `exercises_down` batch: stored as it arrives, and used only
+    /// once every batch of its version is present (D-3815).
+    ///
+    /// The rules run in order — validate; drop a batch older than the active
+    /// list; refuse a batch whose counts disagree with a row already stored for
+    /// the same version; append (idempotent, so a repeat delivery is the same
+    /// row); test completeness on a read taken after the append; and, when a
+    /// version completes that the wrist was not holding, activate it and drop
+    /// every other version's batches. A batch that completes nothing is still
+    /// stored, which is what lets the next sync finish the list.
+    public func applyExercisesDown(_ envelope: [String: Any]) async -> WatchExerciseBatchResult {
+        let rejections = SyncProtocolValidator.incomingRejections(validator, envelope)
+        if !rejections.isEmpty {
+            return WatchExerciseBatchResult(stored: false, activated: false, rejections: rejections)
+        }
+
+        guard let sent = try? WatchExerciseBatchRecord.fromEnvelope(envelope, recordedAt: clock()) else {
+            return WatchExerciseBatchResult(stored: false, activated: false, rejections: [])
+        }
+
+        if let active = activeExercisesGeneratedAt, sent.generatedAt < active {
+            // Understood and dropped: an older view of the list is not a newer
+            // truth.
+            return WatchExerciseBatchResult(stored: false, activated: false, rejections: [])
+        }
+
+        let rows = (await store.readAll()).exerciseBatches
+            .filter { $0.catalogVersion == sent.catalogVersion }
+
+        if rows.contains(where: { $0.batchCount != sent.batchCount || $0.totalCount != sent.totalCount }) {
+            // The version the wrist already holds rows for disagrees with this
+            // one: refused whole, like a copy it cannot read (D-3815 rule 3).
+            return WatchExerciseBatchResult(stored: false, activated: false, rejections: [])
+        }
+
+        _ = await store.append(.exerciseBatch(sent))
+
+        // Read again after the append: two batches of one version can interleave
+        // at the awaits, so the view taken before it may miss the other row
+        // (S-3836). Whichever task appends last sees every row.
+        let merged = (await store.readAll()).exerciseBatches
+            .filter { $0.catalogVersion == sent.catalogVersion }
+
+        // The guard and the assignments below share no await: the version that
+        // activated must not change under the two of them (S-3836), and a
+        // version older than the list that is active by now is dropped here too
+        // (S-3838). Rule 2 above was checked before the awaits — a newer version
+        // may have activated in between, and activating this one afterwards
+        // would move the wrist back to an older list.
+        let activatingGeneratedAt = merged.map(\.generatedAt).max() ?? sent.generatedAt
+        guard activeExercisesVersion != sent.catalogVersion,
+              (activeExercisesGeneratedAt ?? .distantPast) <= activatingGeneratedAt,
+              Self.isComplete(merged, batchCount: sent.batchCount, totalCount: sent.totalCount)
+        else {
+            return WatchExerciseBatchResult(stored: true, activated: false, rejections: [])
+        }
+
+        activeExercises = Self.assemble(merged)
+        activeExercisesVersion = sent.catalogVersion
+        activeExercisesGeneratedAt = activatingGeneratedAt
+
+        await store.pruneExerciseBatches(keepingVersion: sent.catalogVersion)
+
+        return WatchExerciseBatchResult(stored: true, activated: true, rejections: [])
+    }
+
+    /// Rebuilds the active list out of the stored batch rows: among the versions
+    /// that are complete, the one with the greatest `generatedAt` (ties: the
+    /// greatest max row sequence). No complete version means no active list —
+    /// not an error, and not a reason to need the prune to have run, so a kill
+    /// between an append and its prune still restores the list it had (D-3816).
+    private func restoreActiveExerciseList(_ rows: [WatchExerciseBatchRecord]) {
+        var best: (version: String, generatedAt: Date, sequence: Int, exercises: [WatchCatalogExercise])?
+
+        for (version, versionRows) in Dictionary(grouping: rows, by: \.catalogVersion) {
+            guard let first = versionRows.first,
+                  Self.isComplete(versionRows, batchCount: first.batchCount, totalCount: first.totalCount)
+            else { continue }
+
+            let generatedAt = versionRows.map(\.generatedAt).max() ?? first.generatedAt
+            let sequence = versionRows.map(\.sequence).max() ?? 0
+            let candidate = (
+                version: version,
+                generatedAt: generatedAt,
+                sequence: sequence,
+                exercises: Self.assemble(versionRows)
+            )
+
+            if let current = best {
+                let wins = generatedAt > current.generatedAt
+                    || (generatedAt == current.generatedAt && sequence > current.sequence)
+                if wins { best = candidate }
+            } else {
+                best = candidate
+            }
+        }
+
+        activeExercisesVersion = best?.version
+        activeExercisesGeneratedAt = best?.generatedAt
+        activeExercises = best?.exercises ?? []
+    }
+
+    /// Whether the stored rows for one version are all of it: every index from
+    /// 0 to `batchCount - 1` present, and the exercise counts summing to the
+    /// version's `totalCount` (D-3815 rule 5).
+    private static func isComplete(
+        _ rows: [WatchExerciseBatchRecord],
+        batchCount: Int,
+        totalCount: Int
+    ) -> Bool {
+        Set(rows.map(\.batchIndex)) == Set(0..<batchCount)
+            && rows.reduce(0) { $0 + $1.exercises.count } == totalCount
+    }
+
+    /// The exercises a complete set of batch rows holds, in batchIndex order.
+    private static func assemble(_ rows: [WatchExerciseBatchRecord]) -> [WatchCatalogExercise] {
+        rows.sorted { $0.batchIndex < $1.batchIndex }
+            .flatMap { row in row.exercises.compactMap { try? WatchCatalogExercise(json: $0) } }
     }
 
     // MARK: - Path 1 — from a routine
@@ -392,10 +570,62 @@ public final class WatchSessionStartPaths {
     /// The picker's rows for the live session: what the user is on, then what
     /// they could add. Derived on every read rather than cached, so a push that
     /// arrived while the picker was open is already in the list the user sees.
+    ///
+    /// The available rows are `addableExercises` — the same A-to-Z list the
+    /// menu's Add Exercise page shows — so the two surfaces offer one list in one
+    /// order (D-3111).
     public var pickerRows: [WatchExercisePickerRow] {
         derivePickerRows(
             sessionExercises: engine.session?.exercises ?? [],
-            fallback: fallbackExercises
+            fallback: addableExercises
+        )
+    }
+
+    /// The exercises the picker offers besides the ladder's own, in
+    /// `addableExercises` order (D-3111).
+    ///
+    /// The identity the picker is built on — its available rows are this list —
+    /// so what the grid gate counts (`deriveExerciseListLetters`) is what the
+    /// user sees, not the size of a list the ladder has already shrunk. An
+    /// exercise the ladder holds is offered once, as its in-session row.
+    public var availablePickerExercises: [WatchCatalogExercise] {
+        let onLadder = Set(
+            (engine.session?.exercises ?? []).compactMap {
+                WatchCatalogExercise(slot: $0)?.exerciseId
+            }
+        )
+
+        return addableExercises.filter { !onLadder.contains($0.exerciseId) }
+    }
+
+    /// Everything the wrist could add to the live session, A to Z: the menu's
+    /// Add Exercise list (23c, S-3611).
+    ///
+    /// Sorted here rather than at the source, so the phone's payload order never
+    /// leaks into the list the user reads. The comparison is plain lowercase
+    /// text, not a locale collation: the same order on every device, with the
+    /// exercise id breaking a tie between two names that differ only in case.
+    public var addableExercises: [WatchCatalogExercise] {
+        fallbackExercises.sorted { lhs, rhs in
+            let left = lhs.name.lowercased()
+            let right = rhs.name.lowercased()
+            if left != right { return left < right }
+            return lhs.exerciseId < rhs.exerciseId
+        }
+    }
+
+    /// Adds `exercise` at the END of the live session's ladder and leaves the
+    /// user on the exercise they were logging — the menu's Add Exercise action
+    /// (D-3605, S-3612).
+    ///
+    /// The engine's own announcement is what carries the new slot to the phone,
+    /// exactly as a pick's does; the two ends agree with nothing else added.
+    @discardableResult
+    public func addExerciseToEnd(_ exercise: WatchCatalogExercise) async -> WatchSessionRecord {
+        await engine.insertExercise(
+            exercise.toSlot(sessionExerciseId: availableSlotId(for: exercise)),
+            atIndex: nil,
+            moveTo: false
         )
     }
 
@@ -461,5 +691,27 @@ extension StoredWatchRecord {
     var foodCatalogRow: WatchFoodCatalogRecord? {
         if case .foodCatalog(let row) = self { return row }
         return nil
+    }
+}
+
+private extension WatchExerciseBatchRecord {
+    /// The row a validated `exercises_down` envelope names. The `recordId` comes
+    /// from the version and the index, never from a fresh id: a repeated
+    /// delivery is the same row (D-3813).
+    static func fromEnvelope(_ envelope: [String: Any], recordedAt: Date) throws -> WatchExerciseBatchRecord {
+        let payload = (envelope["payload"] as? [String: Any]) ?? [:]
+        let version = try requiredString(payload, "catalogVersion")
+        let index = (payload["batchIndex"] as? NSNumber)?.intValue ?? 0
+
+        return WatchExerciseBatchRecord(
+            recordId: "exb-\(version)-\(index)",
+            recordedAt: recordedAt,
+            catalogVersion: version,
+            generatedAt: try parseUtcIso(payload["generatedAt"]),
+            batchIndex: index,
+            batchCount: (payload["batchCount"] as? NSNumber)?.intValue ?? 0,
+            totalCount: (payload["totalCount"] as? NSNumber)?.intValue ?? 0,
+            exercises: (payload["exercises"] as? [[String: Any]]) ?? []
+        )
     }
 }

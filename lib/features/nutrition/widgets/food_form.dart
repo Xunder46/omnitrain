@@ -9,6 +9,7 @@ import '../../../core/models/food_draft.dart';
 import '../../../core/services/image_storage_service.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
+import '../../../widgets/feedback/omni_message.dart';
 import '../../../widgets/inputs/select_all_on_focus.dart';
 // The form's `FoodFormImageTile` now delegates its image body
 // to the shared `FoodThumbnail` widget so the editor and the
@@ -124,6 +125,16 @@ class FoodForm extends StatefulWidget {
   /// service directly.
   final Future<bool> Function(FoodDraft draft)? onImageSave;
 
+  /// Notified whenever the form-local photo changes: `true` after a pick
+  /// persisted a new path, `false` after the × overlay cleared it.
+  ///
+  /// In create mode ([initial] is null) the photo never leaves the form
+  /// ([onImageSave] is not wired), so a host that guards unsaved work has
+  /// no other way to see it; `_NewFoodFormScreen` marks its guard dirty
+  /// from here. The legacy edit shim leaves this unwired — its photos
+  /// persist immediately.
+  final ValueChanged<bool>? onImageChanged;
+
   const FoodForm({
     super.key,
     required this.initial,
@@ -135,6 +146,7 @@ class FoodForm extends StatefulWidget {
     this.controller,
     this.autoSaveOnBlur = false,
     this.onImageSave,
+    this.onImageChanged,
   });
 
   @override
@@ -353,21 +365,18 @@ class _FoodFormState extends State<FoodForm> {
         // Web has no persistent file API; mirror the avatar flow's
         // user-facing message (D-5: web persistence is intentionally
         // out of scope for this iteration).
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Photo selection works on web, but food photo persistence is not supported there yet.',
-            ),
-          ),
+        OmniMessage.show(
+          context,
+          'Photo selection works on web, but food photo persistence is not '
+          'supported there yet.',
         );
         return;
       }
       await handlePickedImage(picked);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to update photo: $e')));
+      debugPrint('Update photo: $e');
+      OmniMessage.error(context, 'Could not update the photo. Try again.');
     }
   }
 
@@ -402,6 +411,10 @@ class _FoodFormState extends State<FoodForm> {
         .persistPickedImage(picked);
     if (!mounted) return;
     setState(() => _imagePath = persistedPath);
+    // The host's unsaved-work guard reads the pick through this
+    // callback: in create mode the photo is form-local, so nothing else
+    // can see it.
+    widget.onImageChanged?.call(true);
 
     // Save on upload — edit mode only. The create flow uses the
     // existing Save button; partial-saving a half-typed new food
@@ -414,9 +427,7 @@ class _FoodFormState extends State<FoodForm> {
     final partialDraft = _partialDraftFromInitial(persistedPath);
     final ok = await onImageSave(partialDraft);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Could not save photo')));
+      OmniMessage.error(context, 'Could not save photo');
     }
   }
 
@@ -472,14 +483,13 @@ class _FoodFormState extends State<FoodForm> {
   @visibleForTesting
   Future<void> clearImage() async {
     setState(() => _imagePath = null);
+    widget.onImageChanged?.call(false);
     final onImageSave = widget.onImageSave;
     if (onImageSave == null || widget.initial == null) return;
     final partialDraft = _partialDraftFromInitial(null);
     final ok = await onImageSave(partialDraft);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Could not clear photo')));
+      OmniMessage.error(context, 'Could not clear photo');
     }
   }
 
@@ -493,6 +503,7 @@ class _FoodFormState extends State<FoodForm> {
     setState(() => _saving = true);
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     try {
       final fiberRaw = _fiber.text.trim();
       final sodiumRaw = _sodium.text.trim();
@@ -516,9 +527,7 @@ class _FoodFormState extends State<FoodForm> {
       );
       final ok = await widget.onSave(draft);
       if (!ok) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Could not save food')),
-        );
+        OmniMessage.errorOn(messenger, theme, 'Could not save food');
         return;
       }
       // Skip pop if caller wants to handle navigation (e.g., switch tabs)
@@ -526,9 +535,7 @@ class _FoodFormState extends State<FoodForm> {
       if (!navigator.mounted) return;
       navigator.pop();
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Could not save food')),
-      );
+      OmniMessage.errorOn(messenger, theme, 'Could not save food');
     } finally {
       if (mounted) setState(() => _saving = false);
     }

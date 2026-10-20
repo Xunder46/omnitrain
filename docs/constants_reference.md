@@ -209,6 +209,53 @@ Default target values when creating new sets/entries:
 
 ---
 
+## Session Widget Constants
+
+Plan 39 pinned these sizes as named constants so tests and docs can name them
+instead of literals.
+
+**File**: `lib/widgets/session/inline_metric_editor.dart`
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `kCountUpDigitsFontSize` | `112` | Font size of the live count-up readout (interval and hold elapsed digits, `MetricEmphasisTier.hero`) |
+| `kRingDigitsFontSize` | `48` | Font size of the ring digits; the session detail view passes it as `valueFontSize` |
+
+**File**: `lib/widgets/session/set_segment_bar.dart`
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `kSetBarCaptionedHeight` | `34` | Set-bar tap-cell height when captions are shown |
+| `kSetBarPlainHeight` | `18` | Set-bar tap-cell height without captions |
+| `kSetBarCaptionMaxSets` | `5` | Above this many entries captions are dropped entirely |
+
+**File**: `lib/widgets/session/metric_crown_widget.dart`
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `MetricStepCalc.maxDurationSeconds` | `36000` | Duration ceiling of the steppers and the typed popup; the round-length `showDurationEntryDialog` callers pass it as `maxSecs` |
+
+---
+
+## Timer Digit Formatting
+
+**File**: `lib/core/utils/date_utils.dart`
+
+- `OmniDateUtils.formatTimerDigits(int seconds)` — the digits a timer is read
+  in: `mm:ss` (both padded) below an hour, `h:mm:ss` (hour unpadded) from it,
+  negative → `00:00`. Used by the count-up digits, the session header timer
+  (live and edit), the rest chip, the round-length row, the `… total`
+  lines and the logger's logged captions — timed, drill and round captions
+  read the same format since plan 44 D-5 (`_loggedValueText` in
+  `lib/features/session/workout_session_detail_view.dart`; S-5108).
+- `OmniDateUtils.formatClock` — the caption shape (`m:ss`), unchanged. It
+  remains for Stats (`native_value_format.dart`) and the watch
+  (`lib/watch/logging/*`); the session detail view no longer calls it.
+
+Verified by `test/utils_test.dart` (group `OmniDateUtils.formatTimerDigits`).
+
+---
+
 ## Health Sync Constants
 
 **File**: `lib/core/constants/health_constants.dart`
@@ -522,7 +569,7 @@ so storage, unit, and widget agree.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `bundledCatalogVersion` | `3` | Content version of the bundled catalog (exercises, capability / muscle-group / equipment links, food catalog, demo routines) |
+| `bundledCatalogVersion` | `11` | Content version of the bundled catalog (exercises, capability / muscle-group / equipment links, food catalog, demo routines) |
 
 At app start the device compares its stored version against
 `bundledCatalogVersion`; when the bundled version is newer,
@@ -541,7 +588,7 @@ strings persist across app upgrades; keep them stable.
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `currentDataVersion` | `15` | Version a device reaches once the last consolidated migration step has run |
+| `currentDataVersion` | `16` | Version a device reaches once the last consolidated migration step has run |
 
 Replaces the former ~13 independent one-time `bool`-gated steps with a single
 ordered sequence tracked by the device's `data_version` integer. Steps are

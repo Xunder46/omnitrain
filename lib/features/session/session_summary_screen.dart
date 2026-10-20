@@ -33,6 +33,7 @@ import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
 import '../../core/navigation/navigation.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -85,6 +86,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Timer? _noteDebounce;
   bool _isLoading = true;
   bool _hasShownFeelingSheet = false;
+
+  /// True only while the automatic post-workout question is on screen
+  /// (plan 42a D-3). The user's own answer clears it first, so only a rating
+  /// that arrived from outside (the watch) closes the sheet.
+  bool _autoFeelingSheetOpen = false;
 
   Map<String, GroupDelta> _groupDeltas = {};
   Map<String, List<PRAchievement>> _prsByGroup = {};
@@ -159,6 +165,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   @override
   void dispose() {
+    widget.workoutState.removeListener(_closeAutoSheetOnOutsideRating);
     _noteDebounce?.cancel();
     _noteController.dispose();
     super.dispose();
@@ -187,6 +194,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       final groupMetrics = await widget.sessionSummaryService.buildGroupMetrics(
         _summary,
+        modality: currentSession.modality,
       );
       final restTimeMs = await widget.sessionSummaryService
           .computeSessionRestTimeMs(currentSession.id);
@@ -271,19 +279,56 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (session.sessionFeeling != null) return;
 
     _hasShownFeelingSheet = true;
+    _autoFeelingSheetOpen = true;
+    widget.workoutState.addListener(_closeAutoSheetOnOutsideRating);
 
-    await EffortRatingSheet.show(
-      context,
-      mustAnswer: true,
-      modality: session.modality,
-      startedAt: OmniDateUtils.fromMs(session.startedAtMs),
-      onRated: _saveEffortRating,
-    );
+    try {
+      await EffortRatingSheet.show(
+        context,
+        mustAnswer: true,
+        modality: session.modality,
+        startedAt: OmniDateUtils.fromMs(session.startedAtMs),
+        onRated: _saveAutomaticRating,
+      );
+    } finally {
+      _autoFeelingSheetOpen = false;
+      widget.workoutState.removeListener(_closeAutoSheetOnOutsideRating);
+    }
 
     // Rebuild to reflect any rating changes made in the automatic prompt
     if (mounted) {
       setState(() {});
     }
+  }
+
+  /// Closes the automatic question when the live session got a rating from
+  /// outside this sheet (the watch answered first, D-3). The pop is guarded:
+  /// it only runs while a route sits on top of this screen, so it can never
+  /// pop the Summary itself.
+  void _closeAutoSheetOnOutsideRating() {
+    if (!_autoFeelingSheetOpen || !mounted) return;
+    if (widget.workoutState.currentSession?.sessionFeeling == null) return;
+    final route = ModalRoute.of(context);
+    if (route == null || route.isCurrent) return;
+    // Cleared before the pop so a second notification during the sheet's
+    // exit animation cannot pop the Summary behind it.
+    _autoFeelingSheetOpen = false;
+    Navigator.of(context).pop();
+  }
+
+  /// Where the AUTOMATIC question's answer goes: first answer wins, so a
+  /// rating already stored (the watch's) is left alone. The Add/Change control
+  /// keeps [_saveEffortRating], which is an explicit edit.
+  Future<bool> _saveAutomaticRating(int rating) async {
+    final session = widget.workoutState.currentSession;
+    if (session == null) return false;
+    _autoFeelingSheetOpen = false;
+    await widget.workoutState.updateSessionFeeling(
+      session.id,
+      rating,
+      onlyIfUnrated: true,
+    );
+    return true;
   }
 
   /// Open the effort-rating sheet from the Summary's add/change control.
@@ -415,11 +460,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     }
 
     Navigator.of(context).popUntil((route) => route.isFirst);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Workout session saved successfully'),
-        duration: Duration(seconds: 2),
-      ),
+    OmniMessage.show(
+      context,
+      'Workout session saved successfully',
+      duration: const Duration(seconds: 2),
     );
   }
 
@@ -552,7 +596,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(24),
                   ),
-                  border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.06),
+                  ),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -600,6 +648,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                             subtitle: Text(exercise.effortKind),
                             trailing: IconButton(
                               icon: const Icon(Icons.close),
+                              tooltip: 'Remove exercise',
                               onPressed: () {
                                 setSheetState(() {
                                   exercises.removeAt(index);
@@ -772,7 +821,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// [OmniBackHeader]; the date and modality chip live in
   /// [_buildSessionInfoHeader] above this card. The card body is
   /// content-only. The EFFORT row is always shown (even if toggle is off),
-  /// with an "Add rating" or "Change" button to modify the rating. The value
+  /// with an "Add rating" or "Change rating" button to modify the rating. Its
+  /// own caption explains what the value means. The value
   /// text uses the pills' shared value color; the rating's intensity is a
   /// non-text marker in its ramp step, because low ramp steps are below the
   /// text contrast floor (D-15 in the Stats PR 1 plan).
@@ -820,6 +870,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 child: _StatPill(
                   label: 'Effort',
                   value: feeling != null ? '$feeling / 5' : '—',
+                  caption: 'How hard the session felt',
+                  captionKey: const Key('omni_session_effort_caption'),
                   leading: feeling != null
                       ? Container(
                           key: const Key('omni_session_effort_marker'),
@@ -848,7 +900,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   ),
                 ),
-                child: Text(feeling != null ? 'Change' : 'Add rating'),
+                child: Text(feeling != null ? 'Change rating' : 'Add rating'),
               ),
             ],
           ),
@@ -1099,7 +1151,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ),
           if (prs.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Divider(color: Colors.white.withOpacity(0.06), height: 1),
+            Divider(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+              height: 1,
+            ),
             const SizedBox(height: 10),
             for (final pr in prs)
               Padding(
@@ -1165,7 +1220,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         break;
       case 'rounds':
         final count = d.abs().toInt();
-        formattedValue = '$count round${count != 1 ? 's' : ''}';
+        formattedValue = ModalityDisplay.roundCount(
+          widget.workoutState.currentSession?.modality,
+          count,
+        );
         break;
       default:
         formattedValue = _formatNumber(d.abs());
@@ -1382,7 +1440,21 @@ class _StatPill extends StatelessWidget {
   /// row's intensity marker).
   final Widget? leading;
 
-  const _StatPill({required this.label, required this.value, this.leading});
+  /// Optional muted line under the value, inside the pill's own column (the
+  /// EFFORT row's "How hard the session felt").
+  final String? caption;
+
+  /// The key carried by the caption [Text], so a reader can point at just
+  /// that line.
+  final Key? captionKey;
+
+  const _StatPill({
+    required this.label,
+    required this.value,
+    this.leading,
+    this.caption,
+    this.captionKey,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1411,6 +1483,16 @@ class _StatPill extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [leading!, const SizedBox(width: 8), valueText],
           ),
+        if (caption != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            caption!,
+            key: captionKey,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+            ),
+          ),
+        ],
       ],
     );
   }

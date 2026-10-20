@@ -424,3 +424,107 @@ public struct WatchRoutineCatalogRecord {
         )
     }
 }
+
+// MARK: - The batched exercise list
+
+/// One `exercises_down` batch as the wrist stored it.
+///
+/// The phone sends the exercise list in batches of at most 100, in any order
+/// and possibly across several syncs, so the wrist keeps each batch as it
+/// arrives rather than the whole list. Like a catalog row it carries no session
+/// — its `sessionId` is empty — because a batch belongs to the watch, not to any
+/// one workout, and its `recordId` (`exb-<catalogVersion>-<batchIndex>`) makes a
+/// repeated delivery the same row (D-3813).
+///
+/// The row is append-only like every other; the one way batch rows leave is
+/// `pruneExerciseBatches(keepingVersion:)`, once a version is complete (D-3814).
+public struct WatchExerciseBatchRecord {
+    public let recordId: String
+    public let sessionId: String
+    public let recordedAt: Date
+    public let sequence: Int
+
+    /// The list version the phone derived from the list's content. The wrist
+    /// treats it as opaque and only echoes it back (D-3802).
+    public let catalogVersion: String
+
+    /// When the phone generated the list this batch belongs to. A batch older
+    /// than the active list is not a newer truth, so it is dropped (D-3815).
+    public let generatedAt: Date
+
+    /// This batch's position, its version's batch count and the version's total
+    /// exercise count — together they say when a version is complete.
+    public let batchIndex: Int
+    public let batchCount: Int
+    public let totalCount: Int
+
+    /// This batch's exercises in catalogExercise json, in the phone's order.
+    public let exercises: [[String: Any]]
+
+    public init(
+        recordId: String,
+        recordedAt: Date,
+        catalogVersion: String,
+        generatedAt: Date,
+        batchIndex: Int,
+        batchCount: Int,
+        totalCount: Int,
+        exercises: [[String: Any]] = [],
+        sequence: Int = 0
+    ) {
+        self.recordId = recordId
+        self.sessionId = ""
+        self.recordedAt = recordedAt
+        self.sequence = sequence
+        self.catalogVersion = catalogVersion
+        self.generatedAt = generatedAt
+        self.batchIndex = batchIndex
+        self.batchCount = batchCount
+        self.totalCount = totalCount
+        self.exercises = exercises
+    }
+
+    public func withSequence(_ sequence: Int) -> WatchExerciseBatchRecord {
+        WatchExerciseBatchRecord(
+            recordId: recordId,
+            recordedAt: recordedAt,
+            catalogVersion: catalogVersion,
+            generatedAt: generatedAt,
+            batchIndex: batchIndex,
+            batchCount: batchCount,
+            totalCount: totalCount,
+            exercises: exercises,
+            sequence: sequence
+        )
+    }
+
+    public func toJson() -> [String: Any] {
+        [
+            "recordType": StoredWatchRecord.exerciseBatchType,
+            "recordId": recordId,
+            "sessionId": sessionId,
+            "recordedAt": utcIso(recordedAt),
+            "sequence": sequence,
+            "catalogVersion": catalogVersion,
+            "generatedAt": utcIso(generatedAt),
+            "batchIndex": batchIndex,
+            "batchCount": batchCount,
+            "totalCount": totalCount,
+            "exercises": exercises,
+        ]
+    }
+
+    public static func fromJson(_ json: [String: Any]) throws -> WatchExerciseBatchRecord {
+        WatchExerciseBatchRecord(
+            recordId: try requiredString(json, "recordId"),
+            recordedAt: try parseUtcIso(json["recordedAt"]),
+            catalogVersion: try requiredString(json, "catalogVersion"),
+            generatedAt: try parseUtcIso(json["generatedAt"]),
+            batchIndex: (json["batchIndex"] as? NSNumber)?.intValue ?? 0,
+            batchCount: (json["batchCount"] as? NSNumber)?.intValue ?? 0,
+            totalCount: (json["totalCount"] as? NSNumber)?.intValue ?? 0,
+            exercises: (json["exercises"] as? [[String: Any]]) ?? [],
+            sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
+        )
+    }
+}

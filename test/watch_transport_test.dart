@@ -8,6 +8,8 @@
 //   S-003 the phone answers a routine request → `S-003 ...`
 //   S-006 the transport is chosen by platform → `S-006 ...`
 //   S-102 the request frames match the contract → `S-102 ...`
+//   S-3856 the routines request names the exercise list the wrist holds
+//         → `S-3856 ...` (plan 23e2, D-3833)
 //   Phase 2 item 6: phone fixtures carry no null → `Phase 2 item 6: ...`
 //   S-253 every sync is answered with preferences → `S-253 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
@@ -485,30 +487,62 @@ void main() {
       await _settle();
 
       expect(
-        [for (final frame in link.phone.sent) frame['type']],
+        [for (final frame in link.phone.sent) frame['type']].take(2),
         ['preferences_down', 'routines_down'],
         reason: 'S-253 every sync is answered with preferences first',
       );
-      final message = link.phone.sent.last;
+      final message = link.phone.sent.firstWhere(
+        (frame) => frame['type'] == 'routines_down',
+      );
       expect(message['type'], 'routines_down');
       final payload = _asObject(message['payload']);
       expect(_objects(payload['routines']).single['name'], 'Push A');
       expect(
-        _objects(payload['fallbackExercises']).single['exerciseId'],
-        'exercise-goblet-squat',
+        [
+          for (final exercise in _objects(payload['fallbackExercises']))
+            exercise['exerciseId'],
+        ],
+        contains('exercise-goblet-squat'),
+        reason: 'D-3830 the fallback list carries exactly the exercises the '
+            'routines use, and this routine uses this one',
       );
     });
 
-    test('S-003 a phone with no routines answers with its preferences only',
-        () async {
+    test(
+        'S-003 a phone with no routines answers with its preferences, an empty '
+        'routine list and the whole exercise list', () async {
       await watchTransport.requestRoutines();
       await _settle();
 
+      final types = [for (final frame in link.phone.sent) frame['type']];
       expect(
-        [for (final frame in link.phone.sent) frame['type']],
-        ['preferences_down'],
-        reason: 'S-253 no routines_down without routines, but the setting '
-            'always travels',
+        types.take(2),
+        ['preferences_down', 'routines_down'],
+        reason: 'S-253 the setting always travels, and a phone holding no '
+            'routine still says so rather than letting the wrist keep stale '
+            'ones (D-3830)',
+      );
+      expect(
+        types.skip(2),
+        everyElement('exercises_down'),
+        reason: 'D-3834 the whole exercise list travels, after the routines',
+      );
+      expect(
+        types.skip(2),
+        isNotEmpty,
+        reason: 'S-003 the wrist still needs an exercise list even when the '
+            'phone holds no routine',
+      );
+      final payload = _asObject(
+        link.phone.sent
+                .firstWhere((frame) => frame['type'] == 'routines_down')['payload'],
+      );
+      expect(payload['routines'], isEmpty);
+      expect(
+        payload['fallbackExercises'],
+        isEmpty,
+        reason: 'D-3830 the routines message carries the exercises the '
+            'routines use, and this phone has no routine',
       );
       expect(reportedFailure, isNull);
     });
@@ -561,13 +595,24 @@ void main() {
       await _settle();
 
       expect(
-        [for (final frame in link.phone.sent) frame['type']],
-        ['preferences_down'],
-        reason: 'S-253 a phone with no routines still sends its preferences',
+        [for (final frame in link.phone.sent) frame['type']].take(2),
+        ['preferences_down', 'routines_down'],
+        reason: 'S-253 the setting always travels first, and the routines '
+            'follow it even with no routines to send (the exercise batches '
+            'follow both)',
       );
       expect(
-        _asObject(link.phone.sent.single['payload']),
-        {'generatedAt': utcIso(_now), 'effortRatingPrompt': false, 'restPingSeconds': 0},
+        _asObject(link.phone.sent.first['payload']),
+        {
+          'generatedAt': utcIso(_now),
+          'effortRatingPrompt': false,
+          'restPingSeconds': 0,
+          // The default theme's accent (abyssalNeon), carried since plan 23d.
+          'accentColorHex': '#2DE2E6',
+          // The phone's Units setting (kg, km by default), carried since S-3903.
+          'weightUnit': 'kg',
+          'distanceUnit': 'km',
+        },
         reason: 'S-253 the setting as SettingsState holds it, stamped with '
             'the phone clock at send',
       );
@@ -587,13 +632,20 @@ void main() {
       await _settle();
 
       expect(
-        [for (final frame in link.phone.sent) frame['type']],
+        [for (final frame in link.phone.sent) frame['type']].take(2),
         ['preferences_down', 'routines_down'],
         reason: 'S-253 preferences first, then the routines',
       );
       expect(
         _asObject(link.phone.sent.first['payload']),
-        {'generatedAt': utcIso(phoneNow), 'effortRatingPrompt': true, 'restPingSeconds': 0},
+        {
+          'generatedAt': utcIso(phoneNow),
+          'effortRatingPrompt': true,
+          'restPingSeconds': 0,
+          'accentColorHex': '#2DE2E6',
+          'weightUnit': 'kg',
+          'distanceUnit': 'km',
+        },
         reason: 'S-253 the setting turned on reaches the wrist at its next '
             'sync',
       );
@@ -833,9 +885,15 @@ void main() {
     });
 
     test('S-102 a request frame carries no type key', () {
+      final requests = _asObject(_contract()['transportRequests']);
       final frames = [
         WatchTransportRequest.routinesFrame(),
         WatchTransportRequest.routinesFrame(since: _syncedAt),
+        WatchTransportRequest.routinesFrame(
+          exercisesVersion:
+              _asObject(requests['routinesExercises'])['exercisesVersion']!
+                  as String,
+        ),
         WatchTransportRequest.snapshotFrame(),
       ];
 
@@ -853,6 +911,80 @@ void main() {
         WatchTransportRequest.routinesFrame().containsKey('since'),
         isFalse,
         reason: 'a null would make the phone\'s send fail',
+      );
+    });
+
+    test('S-3856 a wrist that holds a list names its version the way the '
+        'contract does', () {
+      final requests = _asObject(_contract()['transportRequests']);
+      final versioned = _asObject(requests['routinesExercises']);
+      // Read from the contract, never retyped here: the version the wrist names
+      // is the one the phone's own exercise list derives to.
+      final version = versioned['exercisesVersion']! as String;
+
+      expect(
+        WatchTransportRequest.routinesFrame(exercisesVersion: version),
+        versioned,
+        reason: 'S-3856 a wrist holding no instant sends exactly the frame the '
+            'contract pins, on a first sync too',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(
+          since: _syncedAt,
+          exercisesVersion: version,
+        ),
+        {...versioned, 'since': utcIso(_syncedAt)},
+        reason: 'S-3856 a later sync says what it has and which list it holds',
+      );
+    });
+
+    test('S-3856 a request with no version holds no version key', () {
+      expect(
+        WatchTransportRequest.routinesFrame(exercisesVersion: null),
+        isNot(contains('exercisesVersion')),
+        reason: 'S-3856 a wrist holding no list names no version, so the phone '
+            'sends the whole list',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(exercisesVersion: ''),
+        isNot(contains('exercisesVersion')),
+        reason: 'S-3856 an empty version is no version at all; the key is '
+            'omitted rather than sent empty',
+      );
+    });
+
+    test('S-3856 the version a frame names is read back, and only a non-empty '
+        'string is one', () {
+      const version = 'v1-2-004dbda823a1b308';
+
+      expect(
+        WatchTransportRequest.exercisesVersionOf(
+          WatchTransportRequest.routinesFrame(exercisesVersion: version),
+        ),
+        version,
+        reason: 'S-3856 the wiring reads the version back off the frame',
+      );
+      expect(
+        WatchTransportRequest.exercisesVersionOf(
+          WatchTransportRequest.routinesFrame(),
+        ),
+        isNull,
+        reason: 'S-3856 a request naming no version names null',
+      );
+      expect(
+        WatchTransportRequest.exercisesVersionOf(
+          const {'request': 'routines', 'exercisesVersion': ''},
+        ),
+        isNull,
+        reason: 'S-3856 an empty string is not a version',
+      );
+      expect(
+        WatchTransportRequest.exercisesVersionOf(
+          const {'request': 'routines', 'exercisesVersion': 5},
+        ),
+        isNull,
+        reason: 'S-3856 a wrist that names a non-string is treated as holding '
+            'nothing, so it is sent the whole list rather than skipped',
       );
     });
   });

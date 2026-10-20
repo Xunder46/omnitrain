@@ -321,16 +321,20 @@ final class WatchSessionEngineTests: XCTestCase {
 
     func testS004NoMutatingOperationExistsAnywhereInTheModule() throws {
         // Exactly five names are deliberate. `pruneConfirmed` and
-        // `pruneSensorSamples` are the two ways anything leaves the store, and
-        // each is gated on having nothing left to lose: confirmed observations
-        // for the first, and for the second a session that is over whose numbers
-        // the phone has already recorded in full. A third prune, or a wider
-        // gate, has to be added here on purpose.
+        // `pruneSensorSamples` are two ways anything leaves the store, each
+        // gated on having nothing left to lose: confirmed observations for the
+        // first, and for the second a session that is over whose numbers the
+        // phone has already recorded in full. The third, `pruneExerciseBatches`,
+        // drops only the stored batches of list versions that are not the active
+        // one, and its caller names a version only once a complete list of it is
+        // active. A fourth prune, or a wider gate, has to be added here on
+        // purpose.
         let allowed: Set<String> = [
             "append",
             "readAll",
             "pruneConfirmed",
             "pruneSensorSamples",
+            "pruneExerciseBatches",
         ]
         let verbs = "update|delete|remove|replace|edit|overwrite|write|clear"
             + "|purge|wipe|reset|drop|truncate|erase|forget|modify|mutate|destroy|set"

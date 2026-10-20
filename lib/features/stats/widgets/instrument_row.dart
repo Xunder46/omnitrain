@@ -24,11 +24,17 @@ class InstrumentRowTile extends StatelessWidget {
     required this.onTap,
   });
 
-  /// The parts that exist, in this order: the value's own secondary figure
-  /// (`Total hold 2:30`), the mean heart rate, the cadence. Resistance rows
-  /// carry no secondary line — their added weight is inside the figure above.
+  /// The parts that exist, in this order: what the figure above measures
+  /// (`Est. 1RM`, `Best pace`, `Best set`, `Total time`) when the metric names
+  /// itself, then the value's own secondary figure (`Total hold 2:30`), the mean
+  /// heart rate, the cadence. Resistance rows carry no second figure — their
+  /// added weight is inside the figure above — so on the recency window they
+  /// read `Best set` alone.
   String? _secondaryLine(NativeValue best) {
     final parts = <String>[];
+
+    final primary = nativePrimaryLabel(best.metric);
+    if (primary != null) parts.add(primary);
 
     final label = nativeSecondaryLabel(best.secondaryMetric);
     final value = formatNativeSecondary(best, settingsState);
