@@ -87,7 +87,12 @@ no session of its own to speak from: nothing bound, no session running, or a
 snapshot naming a session this phone is not in. `projectedSession` is what a
 snapshot request is answered with, and `sendState` sends a composed answer; the
 same projection is what the automatic push sends when the phone's own session
-changes (D-75).
+changes (D-75). `sendRatingFor` sends that same converged state with one
+`effort_rating` entry appended under the wrist's own id, `rating-<sessionId>`,
+for the phone that answered the effort question first (plan 42b).
+`holdsEffortRating` reports whether the held entries already contain one — the
+echo guard that keeps the wrist's own answer from being sent back. Verified by
+`test/rating_first_answer_push_test.dart` (the `S-4306` and `S-4307` groups).
 Verified by `test/watch_session_projection_test.dart` (`S-2`, `S-8`, `S-6`,
 `S-31 the phone's own sets arrive as entries`,
 `S-35 an edit reaches the wrist and a delete is announced`,
@@ -182,7 +187,14 @@ repoints. A pending session that still runs is kept while the phone is not on
 another live session of its own, so browsing away and finishing it afterwards
 still announces its end. It adds no queue, no retry and no user-visible state.
 `bindWorkoutState` is idempotent, `rebaseline()` takes the current session as the
-baseline while sending nothing (D-82), and `dispose()` unbinds.
+baseline while sending nothing (D-82), and `dispose()` unbinds. One more step
+runs in the same pass, right after the end is announced and before the
+ended-session early return: when the phone's current session is ended and rated
+but the mirror holds no `effort_rating` entry, `_pushRating` tells the wrist the
+phone's answer through `LiveSessionMirrorState.sendRatingFor` — once per session
+id, and only a delivered send is remembered, so an undelivered frame is offered
+again at the next notification (plan 42b). Verified by
+`test/rating_first_answer_push_test.dart` (the `S-4306` to `S-4309` groups).
 
 Verified by `test/watch_session_auto_push_test.dart`
 (`S-70 the phone's own set is pushed as one snapshot, and the wrist's own set is

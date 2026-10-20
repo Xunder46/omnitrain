@@ -248,6 +248,35 @@ then would be asking about a decision the wrist did not make. Whatever the wrist
 sends, a rating the phone holds for the session wins (see "The phone's rating is
 final" above).
 
+**Why the wrist's question can close by itself.** The phone may answer first —
+the Summary's automatic prompt or its EFFORT row — and when it does, the push
+tells the wrist with one `session_snapshot`: the mirror's converged state plus
+one `effort_rating` entry under the wrist's own id, `rating-<sessionId>`
+(`LiveSessionMirrorState.sendRatingFor`, called from
+`WatchSessionAutoPush._pushRating` right after the end is announced, before the
+push's ended-session early return). No wire or schema change: the envelope
+passes the Dart validator, and the wrist stores the entry under that id — the
+record `WatchSessionEngine.hasEffortRating` looks up — so the owed prompt drops
+out, `confirm()` records nothing and `recordEffortRating` refuses; the engine
+publishes the change and the rating state forwards it on the main queue, so an
+open prompt redraws. The phone sends only for an ended session that has a rating
+and that the mirror holds, remembers the session id once the send is delivered,
+and never when the mirror already holds the wrist's own answer. Limits, stated
+not fixed: both devices answering inside the radio latency window leaves the
+phone's number standing on the phone (D-138) while the wrist keeps the answer it
+recorded; a wrist out of reach keeps its question open until the next phone
+notification after it becomes reachable; and a session the phone ended itself,
+whose wrist copy is still held, is sent the entry too — the guards ask only that
+the phone's row is ended and rated — though the wrist asks nothing for a
+completion that came from the phone and does not upload the entry back. Verified
+by `test/rating_first_answer_push_test.dart` (the `S-4306`,
+`S-4307 the first answer stands and nothing is echoed`, `S-4308` and `S-4309`
+groups) and watchOS `WatchEffortRatingTests`
+(`testS4310ThePhonesRatingInASnapshotClosesTheOwedQuestion`,
+`testS4311ThePhonesRatingIsNotUploadedBackAsAnEffortRating`,
+`testS218TheWristNeverChangesARating`,
+`testS216ThePhonesLifecycleEndingItOwesNoPrompt`).
+
 **Why the wrist decides at End, and stores the decision.** Whether a prompt is
 owed depends on the phone's deletions, which only the running process knows, and
 a kill before the answer must still ask at the next launch. So End decides once

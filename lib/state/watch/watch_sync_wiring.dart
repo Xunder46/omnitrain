@@ -30,6 +30,7 @@ import '../../watch/session/watch_records.dart' show WatchLifecycleState;
 import '../food_library_state.dart';
 import '../nutrition_state.dart';
 import '../settings/settings_state.dart';
+import '../workout/workout_state.dart';
 import 'live_session_mirror_state.dart';
 import 'watch_incoming_router.dart';
 import 'watch_nutrition_log_bridge.dart';
@@ -130,6 +131,32 @@ class WatchSyncGraph {
   }
 }
 
+/// The adoption bridge this graph builds: it remembers the [WorkoutState] the
+/// app binds, so a rating the import wrote can reach it (D-1).
+///
+/// The bridge keeps that reference private; this subclass is how the wiring
+/// reaches it without widening the bridge's own surface.
+class _WiringAdoptionBridge extends WatchSessionAdoptionBridge {
+  _WiringAdoptionBridge({
+    required super.repository,
+    super.clock,
+    super.onFailure,
+    super.onSkipped,
+  });
+
+  WorkoutState? _boundState;
+
+  @override
+  void bindWorkoutState(WorkoutState workoutState) {
+    _boundState = workoutState;
+    super.bindWorkoutState(workoutState);
+  }
+
+  Future<void> adoptRating(String sessionId, int rating) async {
+    await _boundState?.adoptSessionFeeling(sessionId, rating);
+  }
+}
+
 /// Builds the phone's watch graph and answers the handles the app keeps on it,
 /// or null when this platform has no watch.
 ///
@@ -167,7 +194,7 @@ Future<WatchSyncGraph?> createWatchSync({
   // Built first: the inbox asks the bridge whether a session is the phone's own
   // (G3), and the bridge answers from the `WorkoutState` the app binds once it
   // has built it.
-  final adoption = WatchSessionAdoptionBridge(
+  final adoption = _WiringAdoptionBridge(
     repository: repository,
     clock: clock,
     onFailure: onFailure,
@@ -186,6 +213,9 @@ Future<WatchSyncGraph?> createWatchSync({
     // session state, so the session screen shows the set without reloading the
     // session — a running timer survives (D-17).
     onSessionRowsChanged: adoption.refreshHeldEfforts,
+    // A rating the import wrote reaches the live session, so an open Summary
+    // shows it without reloading and cannot overwrite it (D-1).
+    onSessionRated: adoption.adoptRating,
   );
   final mirror = LiveSessionMirrorState(
     transport: WatchInboxStagingTransport(inner: resolved, inbox: inbox),

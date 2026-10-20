@@ -18,6 +18,7 @@
 //     dropped only through `pruneConfirmed()`, gated on the phone's receipt.
 //
 
+import Combine
 import Foundation
 
 /// Where the engine hands the messages the watch owes the phone.
@@ -32,7 +33,7 @@ public struct WatchEmissionRejected: Error, CustomStringConvertible {
     public var description: String { message }
 }
 
-public final class WatchSessionEngine {
+public final class WatchSessionEngine: ObservableObject {
     private let store: WatchSessionStore
     private let onEmit: WatchMessageSink?
     private let validator: SyncProtocolValidator?
@@ -544,6 +545,9 @@ public final class WatchSessionEngine {
             recordedAt: sentAt,
             authoritative: true
         )
+        // The phone's snapshot can close what the rating prompt asks about (42b):
+        // the state forward in `WatchEffortRatingState` redraws an open prompt.
+        objectWillChange.send()
         return true
     }
 

@@ -151,8 +151,17 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.updateSessionNote(note);
   Future<void> updateSessionEndTime(int durationSecs) =>
       _sessionCore.updateSessionEndTime(durationSecs);
-  Future<void> updateSessionFeeling(String sessionId, int feeling) =>
-      _sessionCore.updateSessionFeeling(sessionId, feeling);
+  Future<void> updateSessionFeeling(
+    String sessionId,
+    int feeling, {
+    bool onlyIfUnrated = false,
+  }) => _sessionCore.updateSessionFeeling(
+    sessionId,
+    feeling,
+    onlyIfUnrated: onlyIfUnrated,
+  );
+  Future<void> adoptSessionFeeling(String sessionId, int feeling) =>
+      _sessionCore.adoptSessionFeeling(sessionId, feeling);
   Future<void> updateSessionRpe(String sessionId, double rpe) =>
       _sessionCore.updateSessionRpe(sessionId, rpe);
   Future<void> restoreSessionSnapshot(SessionEditSnapshot snapshot) =>

@@ -35,6 +35,7 @@ class WatchSessionImport {
     this.appliedEntryIds = const [],
     this.changedEffortIds = const [],
     this.historyChanged = false,
+    this.appliedRating,
   });
 
   /// The wrist entries this pass applied — materialised or discarded. What the
@@ -49,6 +50,9 @@ class WatchSessionImport {
 
   /// Whether any history row was created, changed or removed.
   final bool historyChanged;
+
+  /// The rating this pass wrote, when it wrote one (D-1, D-138).
+  final int? appliedRating;
 }
 
 /// A wrist session's rows, applied to history.
@@ -216,6 +220,7 @@ class WatchSessionImporter {
     return WatchSessionImport(
       appliedEntryIds: _wristIds(unapplied),
       historyChanged: pass.changed,
+      appliedRating: pass.ratingWritten,
     );
   }
 
@@ -369,6 +374,7 @@ class WatchSessionImporter {
       appliedEntryIds: _wristIds(unapplied),
       changedEffortIds: changedEffortIds,
       historyChanged: pass.changed,
+      appliedRating: pass.ratingWritten,
     );
   }
 
@@ -425,6 +431,9 @@ class _Pass {
   /// flagged, because a merge has to name the efforts it wrote into (D-17) and
   /// the flag alone cannot say whether *this* effort was one of them.
   int writes = 0;
+
+  /// The rating this pass wrote, when it wrote one (D-1).
+  int? ratingWritten;
 
   /// Whether the pass created, changed or removed any history row.
   bool get changed => writes > 0;
@@ -565,6 +574,7 @@ class _Pass {
     await _repository.updateSession(
       TrainingSession.fromMap({...session.toMap(), 'session_feeling': rating}),
     );
+    ratingWritten = rating;
     changed = true;
   }
 

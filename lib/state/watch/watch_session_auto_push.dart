@@ -42,6 +42,12 @@
 ///    deletion carries a change id minted per *event* (F2) and an id whose frame
 ///    the transport threw on — or answered `undelivered` — stays owed until it
 ///    has gone (F7, D-191).
+/// 5. **The phone's own answer closes the wrist's question** (plan 42b D-3). An
+///    ended session this phone rated is told to the wrist as one snapshot
+///    carrying the rating entry under the wrist's own id, so the question the
+///    watch left open closes and cannot be answered late; a session the mirror
+///    already holds a rating entry for is the wrist's own answer, which is never
+///    echoed back (D-3).
 ///
 /// It persists nothing and writes nothing: it reads the phone's session through
 /// the projection and the mirrored session's row through [getSession], and sends.
@@ -166,6 +172,12 @@ class WatchSessionAutoPush {
   /// millisecond are still two changes (F2).
   int _deleteSerial = 0;
 
+  /// The sessions whose effort rating this push has already told the wrist
+  /// about (plan 42b D-3). A frame the radio did not carry stays owed, so its
+  /// id joins this set only once delivered, or when the mirror already holds the
+  /// wrist's own answer.
+  final Set<String> _ratingSent = {};
+
   /// The drain a running [flush] is, and whether another pass was asked for
   /// while it ran. Two flushes that overlap are one drain (F4).
   Future<void>? _draining;
@@ -255,6 +267,7 @@ class WatchSessionAutoPush {
       _remember(composedId);
 
       final ended = await _announceEnd(composedId);
+      await _pushRating();
 
       if (composed == null || composedId == null) return;
 
@@ -513,6 +526,38 @@ class WatchSessionAutoPush {
       }
     }
     return announced;
+  }
+
+  /// Tells the wrist the phone answered the effort question for the session it
+  /// just ended (plan 42b D-1, D-3).
+  ///
+  /// Runs after the end has been announced and before the pass returns for the
+  /// ended session, because [LiveSessionMirrorState.projectedSession] composes
+  /// nothing for a session that is over: without this step the answer would
+  /// never leave the phone. Nothing is sent unless the session is ended, carries
+  /// a rating on the 1..5 scale, is the session this mirror holds, and has not
+  /// been told to the wrist already. A session whose mirror already holds an
+  /// `effort_rating` entry is the wrist's own answer: the id is remembered so
+  /// the question is not offered again, and nothing is sent (D-3).
+  ///
+  /// A frame the radio did not carry is offered again at the next trigger, like
+  /// every other owed frame (D-191): only a delivered send remembers the id.
+  Future<void> _pushRating() async {
+    final session = _workoutState?.currentSession;
+    if (session == null) return;
+    if (session.endedAtMs == null) return;
+    final rating = session.sessionFeeling;
+    if (rating == null || rating < 1 || rating > 5) return;
+    if (_mirror.sessionId != session.id) return;
+    if (_ratingSent.contains(session.id)) return;
+
+    if (_mirror.holdsEffortRating) {
+      _ratingSent.add(session.id);
+      return;
+    }
+
+    final delivery = await _mirror.sendRatingFor(session.id, rating);
+    if (delivery == WatchDelivery.delivered) _ratingSent.add(session.id);
   }
 
   /// The deterministic encoding two payloads are compared by: `jsonEncode` over

@@ -111,6 +111,10 @@ public final class WatchEffortRatingState: ObservableObject {
     private var crownPosition: Double = 0
     private var crownCarry: Double = 0
 
+    /// The engine's changes, so a phone snapshot that closes the question
+    /// redraws an open prompt (S-4310).
+    private var engineCancellable: AnyCancellable?
+
     public init(
         engine: WatchSessionEngine,
         store: WatchSessionStore,
@@ -121,6 +125,11 @@ public final class WatchEffortRatingState: ObservableObject {
         self.store = store
         self.preferences = preferences
         self.clock = clock
+        engineCancellable = engine.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
     }
 
     /// Reads the owed prompts back out of storage. Call on launch, after the

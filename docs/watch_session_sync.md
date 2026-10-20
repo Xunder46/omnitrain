@@ -250,6 +250,10 @@ apart sync re-announces nothing, and the later one does`,
 its next catch-up leaves the screen for one summary carrying the wrist's
 rating`).
 
+**The wrist's rating reaches the open Summary (D-1).** Written only if the
+row has none (D-138), it closes the open prompt: first answer wins
+(`S-4301`, `S-4303`: `test/rating_first_answer_*_test.dart`).
+
 **The phone ends the session: the wrist is told (D-81).** The regular finish on
 the phone is `WorkoutState.endSession`; it writes history, and the push that
 follows reports the session's own `completed` lifecycle, read from the session's

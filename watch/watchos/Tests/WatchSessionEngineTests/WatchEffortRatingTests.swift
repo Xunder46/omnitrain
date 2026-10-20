@@ -471,6 +471,118 @@ final class WatchEffortRatingTests: XCTestCase {
         XCTAssertEqual(ends.first?["endedAt"] as? String, "2026-09-25T10:30:00.000Z", "S-217 the snapshot's sentAt")
     }
 
+    // MARK: - S-4310 / S-4311 the phone answered first
+
+    /// The phone's snapshot of the wrist's own session, carrying the wrist's
+    /// logged entry plus the phone's `effort_rating` under the wrist's id.
+    private func phoneRatingSnapshot(
+        sessionId: String,
+        entry: [String: Any],
+        sentAt: String
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-phone-snap-rating-\(sessionId)",
+            "sessionId": sessionId,
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": sentAt,
+            "payload": [
+                "sessionId": sessionId,
+                "revision": 0,
+                "status": WatchSessionStatus.completed,
+                "currentExerciseIndex": 0,
+                "exercises": [exercise("sx-bench")],
+                "entries": [
+                    entry,
+                    [
+                        "entryId": "rating-\(sessionId)",
+                        "eventId": "rating-\(sessionId)",
+                        "kind": "effort_rating",
+                        "loggedAt": "2026-09-25T10:11:30.000Z",
+                        "rating": 3,
+                    ] as [String: Any],
+                ],
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ]
+    }
+
+    func testS4310ThePhonesRatingInASnapshotClosesTheOwedQuestion() async throws {
+        let wrist = await RatingHarness(sessionIds: ["s-r-4"]).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        try await wrist.loggedSession(
+            start: "2026-09-25T10:00:00Z",
+            set: "e-1",
+            logged: "2026-09-25T10:05:00Z",
+            end: "2026-09-25T10:10:00Z"
+        )
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-4310 the wrist's End owes the question")
+
+        let logged = try XCTUnwrap(wrist.engine.entries.first?.payload)
+        let snapshot = phoneRatingSnapshot(
+            sessionId: "s-r-4",
+            entry: logged,
+            sentAt: "2026-09-25T10:12:00Z"
+        )
+
+        // The state forwards the engine's change on the main queue (42b fix 1),
+        // so the publication arrives after `applyMessage` returns.
+        let notified = expectation(description: "S-4310 the open prompt is told to redraw")
+        notified.assertForOverFulfill = false
+        var cancellables: Set<AnyCancellable> = []
+        wrist.rating.objectWillChange
+            .sink { _ in notified.fulfill() }
+            .store(in: &cancellables)
+
+        wrist.clock.now = instant("2026-09-25T10:12:30Z")
+        _ = try await wrist.engine.applyMessage(snapshot)
+        await fulfillment(of: [notified], timeout: 2)
+        withExtendedLifetime(cancellables) {}
+
+        XCTAssertFalse(wrist.rating.isPromptOwed, "S-4310 the phone's rating closes the question")
+        XCTAssertTrue(wrist.rating.owedSessionIds.isEmpty, "S-4310 nothing is owed")
+        wrist.rating.select(5)
+        XCTAssertFalse(wrist.rating.canConfirm, "S-4310 there is nothing left to confirm")
+        let late = try await wrist.rating.confirm()
+        XCTAssertNil(late, "S-4310 a late answer records nothing")
+        let direct = try await wrist.engine.recordEffortRating(5, sessionId: "s-r-4")
+        XCTAssertNil(direct, "S-4310 nor does the engine's own append path")
+        XCTAssertTrue(wrist.events("effort_rating").isEmpty, "S-4310 the wrist emitted no rating of its own")
+    }
+
+    func testS4311ThePhonesRatingIsNotUploadedBackAsAnEffortRating() async throws {
+        let wrist = await RatingHarness(sessionIds: ["s-r-4"]).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        try await wrist.loggedSession(
+            start: "2026-09-25T10:00:00Z",
+            set: "e-1",
+            logged: "2026-09-25T10:05:00Z",
+            end: "2026-09-25T10:10:00Z"
+        )
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-4311 the wrist's End owes the question")
+
+        let logged = try XCTUnwrap(wrist.engine.entries.first?.payload)
+        let snapshot = phoneRatingSnapshot(
+            sessionId: "s-r-4",
+            entry: logged,
+            sentAt: "2026-09-25T10:12:00Z"
+        )
+        wrist.clock.now = instant("2026-09-25T10:12:30Z")
+        _ = try await wrist.engine.applyMessage(snapshot)
+
+        let pendingIds = wrist.engine.pendingObservations().flatMap { envelope -> [String] in
+            let events = ((envelope["payload"] as? [String: Any])?["events"] as? [[String: Any]]) ?? []
+            return events.flatMap { event in
+                [event["entryId"] as? String, event["eventId"] as? String].compactMap { $0 }
+            }
+        }
+        XCTAssertFalse(
+            pendingIds.contains("rating-s-r-4"),
+            "S-4311 the phone's rating is not owed back up: the phone's own number stands"
+        )
+    }
+
     // MARK: - S-218 the wrist never changes a rating
 
     func testS218TheWristNeverChangesARating() async throws {

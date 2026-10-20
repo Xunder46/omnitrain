@@ -87,6 +87,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _isLoading = true;
   bool _hasShownFeelingSheet = false;
 
+  /// True only while the automatic post-workout question is on screen
+  /// (plan 42a D-3). The user's own answer clears it first, so only a rating
+  /// that arrived from outside (the watch) closes the sheet.
+  bool _autoFeelingSheetOpen = false;
+
   Map<String, GroupDelta> _groupDeltas = {};
   Map<String, List<PRAchievement>> _prsByGroup = {};
   Map<String, SessionGroupMetrics> _groupMetrics = {};
@@ -160,6 +165,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   @override
   void dispose() {
+    widget.workoutState.removeListener(_closeAutoSheetOnOutsideRating);
     _noteDebounce?.cancel();
     _noteController.dispose();
     super.dispose();
@@ -273,19 +279,56 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (session.sessionFeeling != null) return;
 
     _hasShownFeelingSheet = true;
+    _autoFeelingSheetOpen = true;
+    widget.workoutState.addListener(_closeAutoSheetOnOutsideRating);
 
-    await EffortRatingSheet.show(
-      context,
-      mustAnswer: true,
-      modality: session.modality,
-      startedAt: OmniDateUtils.fromMs(session.startedAtMs),
-      onRated: _saveEffortRating,
-    );
+    try {
+      await EffortRatingSheet.show(
+        context,
+        mustAnswer: true,
+        modality: session.modality,
+        startedAt: OmniDateUtils.fromMs(session.startedAtMs),
+        onRated: _saveAutomaticRating,
+      );
+    } finally {
+      _autoFeelingSheetOpen = false;
+      widget.workoutState.removeListener(_closeAutoSheetOnOutsideRating);
+    }
 
     // Rebuild to reflect any rating changes made in the automatic prompt
     if (mounted) {
       setState(() {});
     }
+  }
+
+  /// Closes the automatic question when the live session got a rating from
+  /// outside this sheet (the watch answered first, D-3). The pop is guarded:
+  /// it only runs while a route sits on top of this screen, so it can never
+  /// pop the Summary itself.
+  void _closeAutoSheetOnOutsideRating() {
+    if (!_autoFeelingSheetOpen || !mounted) return;
+    if (widget.workoutState.currentSession?.sessionFeeling == null) return;
+    final route = ModalRoute.of(context);
+    if (route == null || route.isCurrent) return;
+    // Cleared before the pop so a second notification during the sheet's
+    // exit animation cannot pop the Summary behind it.
+    _autoFeelingSheetOpen = false;
+    Navigator.of(context).pop();
+  }
+
+  /// Where the AUTOMATIC question's answer goes: first answer wins, so a
+  /// rating already stored (the watch's) is left alone. The Add/Change control
+  /// keeps [_saveEffortRating], which is an explicit edit.
+  Future<bool> _saveAutomaticRating(int rating) async {
+    final session = widget.workoutState.currentSession;
+    if (session == null) return false;
+    _autoFeelingSheetOpen = false;
+    await widget.workoutState.updateSessionFeeling(
+      session.id,
+      rating,
+      onlyIfUnrated: true,
+    );
+    return true;
   }
 
   /// Open the effort-rating sheet from the Summary's add/change control.
