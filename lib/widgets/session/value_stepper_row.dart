@@ -65,6 +65,15 @@ class ValueStepperRow extends StatefulWidget {
   /// `showMetricEditPopup`; `null` keeps today's popup.
   final VoidCallback? onEditorTap;
 
+  /// Whether the dim `tap to type` hint shows under the number. The routine
+  /// editor keeps the default (shown); the logger turns it off per control once
+  /// the user has tapped that kind of number.
+  final bool showTapHint;
+
+  /// Called when the number is tapped (before the popup or [onEditorTap]); the
+  /// `−`/`+` buttons never call it.
+  final VoidCallback? onNumberTap;
+
   /// Called with the stepped value (`int` for reps and duration, `double` for
   /// weight) — the same shape [InlineMetricEditor] hands the session screen
   /// today.
@@ -79,6 +88,8 @@ class ValueStepperRow extends StatefulWidget {
     this.isReadOnly = false,
     this.min,
     this.onEditorTap,
+    this.showTapHint = true,
+    this.onNumberTap,
     required this.onValueChanged,
   });
 
@@ -239,12 +250,13 @@ class _ValueStepperRowState extends State<ValueStepperRow> {
                     unitLabel: widget.unitLabel,
                     showUnitInline: false,
                     unitGap: 0,
-                    showTapHint: true,
+                    showTapHint: widget.showTapHint,
                     emphasisTier: MetricEmphasisTier.dominant,
                     isReadOnly: widget.isReadOnly,
                     // The editor's outer GestureDetector fires `onTap` even when
                     // read-only, so a locked row hands it nothing.
                     onTap: widget.isReadOnly ? null : widget.onEditorTap,
+                    onNumberTap: widget.onNumberTap,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 4,

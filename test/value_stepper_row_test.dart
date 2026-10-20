@@ -123,6 +123,32 @@ Future<void> _pumpBoxedRow(
   );
 }
 
+/// Pumps a reps row with the hint switch and the number-tap probe exposed.
+Future<void> _pumpHintRow(
+  WidgetTester tester, {
+  num currentValue = 10,
+  bool showTapHint = true,
+  bool isReadOnly = false,
+  VoidCallback? onEditorTap,
+  VoidCallback? onNumberTap,
+  required ValueChanged<dynamic> onValueChanged,
+}) {
+  return tester.pumpWidget(
+    _host(
+      ValueStepperRow(
+        metricType: 'reps',
+        currentValue: currentValue,
+        unitLabel: 'REPS',
+        isReadOnly: isReadOnly,
+        onEditorTap: onEditorTap,
+        showTapHint: showTapHint,
+        onNumberTap: onNumberTap,
+        onValueChanged: onValueChanged,
+      ),
+    ),
+  );
+}
+
 /// The number as drawn — the first [Text] inside the editor is the value.
 String _shownNumber(WidgetTester tester) {
   final text = tester.widget<Text>(
@@ -1042,6 +1068,80 @@ void main() {
       );
 
       _expectLabelUnderNumber(tester, 'ROUND LENGTH', withHint: false);
+    });
+  });
+
+  group('Plan 44 hint switch and number tap', () {
+    testWidgets('the default row shows one tap-to-type hint', (tester) async {
+      await _pumpHintRow(tester, onValueChanged: (_) {});
+
+      expect(_tapHint(), findsOneWidget);
+      expect(tester.widget<Text>(_tapHint()).data, 'tap to type');
+    });
+
+    testWidgets('showTapHint: false shows no hint', (tester) async {
+      await _pumpHintRow(
+        tester,
+        showTapHint: false,
+        onValueChanged: (_) {},
+      );
+
+      expect(_tapHint(), findsNothing);
+    });
+
+    testWidgets('tapping the number reports the tap once, with no popup', (
+      tester,
+    ) async {
+      var numberTaps = 0;
+      await _pumpHintRow(
+        tester,
+        onEditorTap: () {},
+        onNumberTap: () => numberTaps += 1,
+        onValueChanged: (_) {},
+      );
+
+      await tester.tap(_numberText());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(numberTaps, 1);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Edit Reps'), findsNothing);
+    });
+
+    testWidgets('the step buttons never report a number tap', (tester) async {
+      var numberTaps = 0;
+      final calls = <dynamic>[];
+      await _pumpHintRow(
+        tester,
+        onNumberTap: () => numberTaps += 1,
+        onValueChanged: calls.add,
+      );
+
+      await tester.tap(_plus('reps'));
+      await tester.pump();
+      await tester.tap(_minus('reps'));
+      await tester.pump();
+
+      expect(calls, isNotEmpty, reason: 'the buttons still step the row');
+      expect(numberTaps, 0);
+    });
+
+    testWidgets('a read-only row reports no number tap', (tester) async {
+      var numberTaps = 0;
+      await _pumpHintRow(
+        tester,
+        isReadOnly: true,
+        onNumberTap: () => numberTaps += 1,
+        onValueChanged: (_) {},
+      );
+
+      await tester.tap(_numberText());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(numberTaps, 0);
+      expect(tester.takeException(), isNull);
     });
   });
 }

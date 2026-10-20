@@ -245,7 +245,7 @@ void main() {
       expect(setCaptionText(tester, 0), '12×0');
     });
 
-    testWidgets('S-4213: logged intervals read as m:ss', (tester) async {
+    testWidgets('S-4213: logged intervals read as mm:ss', (tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final timed = await _buildDeps(modality: 'cardio_endurance');
       final timedRepo = await _freshRepo();
@@ -261,11 +261,11 @@ void main() {
 
       await tester.pumpWidget(_buildSessionScreen(timed));
       await _openDetailView(tester, 'Easy Run');
-      expect(setCaptionText(tester, 0), '0:42');
-      expect(setCaptionText(tester, 1), '0:38');
+      expect(setCaptionText(tester, 0), '00:42');
+      expect(setCaptionText(tester, 1), '00:38');
     });
 
-    testWidgets('S-4213: a logged round reads as m:ss', (tester) async {
+    testWidgets('S-4213: a logged round reads as mm:ss', (tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final round = await _buildDeps(modality: 'resistance_lifting');
       final roundRepo = await _freshRepo();
@@ -282,7 +282,7 @@ void main() {
 
       await tester.pumpWidget(_buildSessionScreen(round));
       await _openDetailView(tester, 'Heavy Bag Rounds');
-      expect(setCaptionText(tester, 0), '1:35');
+      expect(setCaptionText(tester, 0), '01:35');
     });
 
     testWidgets('S-4214: nothing logged keeps the line empty at its height', (
@@ -518,7 +518,13 @@ void main() {
       final barBottom = tester.getRect(find.byType(SetSegmentBar)).bottom;
       final repsRect = tester.getRect(_editorOf('reps'));
       expect(repsRect.top, greaterThanOrEqualTo(barBottom));
-      expect(repsRect.top - barBottom, lessThanOrEqualTo(40));
+      // Plan 44 D-7: the controls sit slightly below the centre of the free
+      // area, so the gap under the bar is no longer a small constant.
+      expect(
+        repsRect.bottom,
+        lessThan(tester.getRect(find.widgetWithText(FilledButton, 'Log Set')).top),
+        reason: 'the controls stay above the primary action',
+      );
 
       expect(
         tester.getRect(find.byKey(const Key('set-count-add'))).top,
@@ -1671,9 +1677,11 @@ void main() {
           emptyBar,
           reason: 'the captions row must not change the bar block',
         );
+        // Plan 44 D-7: the rest strip opening shrinks the area the controls
+        // are centred in, so they move up with it; they never move down.
         expect(
-          tester.getRect(find.byType(ValueStepperRow).first),
-          emptyReps,
+          tester.getRect(find.byType(ValueStepperRow).first).top,
+          lessThanOrEqualTo(emptyReps.top),
           reason: 'the first log must not push the body down',
         );
       });
@@ -1745,6 +1753,101 @@ void main() {
           closeTo(367.0, 0.01),
           reason: '390 dp minus the 20 dp inset and the 3 dp cell padding',
         );
+      });
+    },
+  );
+
+  // ── Plan 44 D-5 — one time format on the logger ──────────────────────────
+  group(
+    'Logged time captions read like the big timers (plan 44 S-5108)',
+    () {
+      testWidgets('S-5108: logged intervals read mm:ss and h:mm:ss', (
+        tester,
+      ) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await _buildDeps(modality: 'cardio_endurance');
+        final repo = await _freshRepo();
+        final run = await _getExerciseById(repo, 'exercise-easy-run');
+
+        final runId = await deps.workoutState.addExerciseToSession(
+          run,
+          effortKindOverride: 'timed',
+        );
+        await deps.workoutState.addEntry(runId);
+        await deps.workoutState.addEntry(runId);
+        await deps.workoutState.setTimedEntryDuration(runId, 0, 42);
+        await deps.workoutState.setTimedEntryDuration(runId, 1, 38);
+        await deps.workoutState.setTimedEntryDuration(runId, 2, 3725);
+
+        await tester.pumpWidget(_buildSessionScreen(deps));
+        await _openDetailView(tester, 'Easy Run');
+
+        expect(captionTexts(tester), ['00:42', '00:38', '1:02:05']);
+      });
+
+      testWidgets('S-5108: a hold logged at 0 s reads 00:00', (tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await _buildDeps(modality: 'isometric_stretching');
+        final repo = await _freshRepo();
+        final plank = await _getExerciseById(repo, 'exercise-plank-hold');
+
+        final plankId = await deps.workoutState.addExerciseToSession(
+          plank,
+          effortKindOverride: 'drill',
+        );
+        await deps.workoutState.setTimedEntryDuration(plankId, 0, 0);
+
+        await tester.pumpWidget(_buildSessionScreen(deps));
+        await _openDetailView(tester, 'Plank Hold');
+
+        expect(setCaptionText(tester, 0), '00:00');
+      });
+
+      testWidgets('S-5108: a round logged early reads mm:ss', (tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await _buildDeps(modality: 'resistance_lifting');
+        final repo = await _freshRepo();
+        final bag = await _getExerciseById(
+          repo,
+          'exercise-heavy-bag-rounds',
+        );
+
+        final bagId = await deps.workoutState.addExerciseToSession(
+          bag,
+          effortKindOverride: 'round',
+        );
+        await deps.workoutState.setRoundDuration(bagId, 0, 60);
+
+        await tester.pumpWidget(_buildSessionScreen(deps));
+        await _openDetailView(tester, 'Heavy Bag Rounds');
+
+        expect(setCaptionText(tester, 0), '01:00');
+      });
+
+      testWidgets('S-5108: a set caption keeps reps x weight and no units', (
+        tester,
+      ) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await _buildDeps(modality: 'resistance_lifting');
+        final repo = await _freshRepo();
+        final squat = await _getExerciseById(repo, 'exercise-barbell-squat');
+
+        final effortId = await deps.workoutState.addExerciseToSession(
+          squat,
+          chosenMetric: 'reps',
+        );
+        await deps.workoutState.updateEntryValue(effortId, 0, 'reps', 10);
+        await deps.workoutState.updateEntryValue(effortId, 0, 'weight', 15.0);
+        await deps.workoutState.recordRestStart(effortId, 1);
+
+        await tester.pumpWidget(_buildSessionScreen(deps));
+        await _openDetailView(tester, 'Barbell Back Squat');
+
+        final weightText = UnitFormatter.formatWeightValue(
+          15.0,
+          deps.settingsState,
+        );
+        expect(setCaptionText(tester, 0), '10×$weightText');
       });
     },
   );

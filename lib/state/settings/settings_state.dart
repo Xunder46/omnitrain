@@ -6,6 +6,20 @@ import '../../core/services/health_platform_service.dart';
 import '../../core/services/preferences_service.dart';
 import '../../data/repositories/workout_repository.dart';
 
+/// The number controls of the logger that carry a `tap to type` hint. Each
+/// kind is learned once, across every exercise, set and session.
+enum TapHintControl {
+  reps('hint_seen_tap_to_type_reps'),
+  weight('hint_seen_tap_to_type_weight'),
+  roundLength('hint_seen_tap_to_type_round_length'),
+  elapsed('hint_seen_tap_to_type_elapsed');
+
+  const TapHintControl(this.preferenceKey);
+
+  /// The preference key the learned flag is stored under.
+  final String preferenceKey;
+}
+
 class SettingsState extends ChangeNotifier {
   static const String _themeKey = 'app_theme';
   static const String _preferredWeightUnitKey = 'preferred_weight_unit';
@@ -74,6 +88,7 @@ class SettingsState extends ChangeNotifier {
   bool _notificationPermissionAsked = false;
   HealthToggleState _healthWriteWorkouts = HealthToggleState.off;
   HealthToggleState _healthReadBodyWeight = HealthToggleState.off;
+  final Set<TapHintControl> _learnedTapHints = {};
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
@@ -88,6 +103,17 @@ class SettingsState extends ChangeNotifier {
   HealthToggleState get healthWriteWorkouts => _healthWriteWorkouts;
   HealthToggleState get healthReadBodyWeight => _healthReadBodyWeight;
   bool get showHubLabel => _hubOpenCount < 2;
+
+  /// Whether the user has already tapped this kind of number to type.
+  bool isTapHintLearned(TapHintControl control) =>
+      _learnedTapHints.contains(control);
+
+  /// Remembers that the user tapped this kind of number; the hint stays gone.
+  Future<void> markTapHintLearned(TapHintControl control) async {
+    if (!_learnedTapHints.add(control)) return;
+    notifyListeners();
+    await _repository.setPreferenceBool(control.preferenceKey, true);
+  }
 
   Future<void> initialize() async {
     await _loadFromPrefs();
@@ -364,6 +390,13 @@ class SettingsState extends ChangeNotifier {
     _healthReadBodyWeight = parseHealthToggleState(
       await _repository.getPreferenceString(HealthPrefs.readBodyWeightKey),
     );
+
+    _learnedTapHints.clear();
+    for (final control in TapHintControl.values) {
+      if (await _repository.getPreferenceBool(control.preferenceKey)) {
+        _learnedTapHints.add(control);
+      }
+    }
 
     notifyListeners();
   }

@@ -10,6 +10,9 @@
 // from `startedAtMs = pausedAtMs - 45 s`, which the restore path reads back
 // exactly.
 
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
@@ -183,6 +186,50 @@ Finder _ringPaint() => find.descendant(
 double _ringProgress(WidgetTester tester) {
   final paint = tester.widget<CustomPaint>(_ringPaint());
   return (paint.painter! as TimerRingPainter).progress;
+}
+
+TimerRingPainter _ringPainter(WidgetTester tester) =>
+    tester.widget<CustomPaint>(_ringPaint()).painter! as TimerRingPainter;
+
+TimerRingLook _ringLook(WidgetTester tester) =>
+    tester.widget<TimerRing>(find.byType(TimerRing)).look;
+
+ColorScheme _scheme(WidgetTester tester) =>
+    Theme.of(tester.element(find.byType(TimerRing))).colorScheme;
+
+/// The fill of one set-bar segment — the shared progress colours' source.
+Color _segmentFill(WidgetTester tester, int index) {
+  final segment = tester.widget<Container>(
+    find.descendant(
+      of: find.byKey(Key('set-segment-$index')),
+      matching: find.byType(Container),
+    ),
+  );
+  return (segment.decoration! as BoxDecoration).color!;
+}
+
+/// Records a painter's canvas calls so a test can see every arc it drew.
+class _RecordingCanvas implements ui.Canvas {
+  final List<Invocation> calls = [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    calls.add(invocation);
+    return null;
+  }
+}
+
+/// The sweep angle of every arc the ring's painter draws, in call order.
+///
+/// The drained look must draw the full grey track once and no progress arc, so
+/// a drained ring reads `[2π]`.
+List<double> _arcSweeps(WidgetTester tester) {
+  final canvas = _RecordingCanvas();
+  _ringPainter(tester).paint(canvas, tester.getSize(_ringPaint()));
+  return [
+    for (final call in canvas.calls)
+      if (call.memberName == #drawArc) call.positionalArguments[2] as double,
+  ];
 }
 
 int _plannedSecs(_Deps deps, String effortId, [int roundIndex = 0]) => deps
@@ -703,7 +750,7 @@ void main() {
     });
 
     testWidgets(
-      'S-4411: a round logged early reads 01:00 + COMPLETED, ring empty',
+      'S-5105: a round logged early reads 01:00 + COMPLETED, ring at 120/180',
       (tester) async {
         final deps = await _buildDeps(modality: 'cardio_endurance');
         final seeded = await _seedRounds(deps);
@@ -730,7 +777,8 @@ void main() {
 
         expect(_inRing('01:00'), findsOneWidget);
         expect(_inRing('COMPLETED'), findsOneWidget);
-        expect(_ringProgress(tester), 0.0);
+        // Plan 44 D-4: logged early keeps what was left (180 − 60 = 120 s).
+        expect(_ringProgress(tester), closeTo(120 / 180, 0.001));
 
         final row = _lengthRow(seeded.effortId);
         expect(tester.widget<ValueStepperRow>(row).isReadOnly, isTrue);
@@ -745,5 +793,302 @@ void main() {
         expect(_inRow(row, '03:00'), findsOneWidget);
       },
     );
+  });
+
+  group('Round countdown — ring looks (plan 44)', () {
+    for (final (label, modality) in const [
+      ('martial arts', 'cardio_endurance'),
+      ('sports', 'sports'),
+    ]) {
+      testWidgets(
+        'S-5101: before Start the ring is a full dim circle with no track '
+        '($label)',
+        (tester) async {
+          final deps = await _buildDeps(modality: modality);
+          final seeded = await _seedRounds(deps);
+          await _pumpDetail(tester, deps, seeded.name);
+
+          final scheme = _scheme(tester);
+          final painter = _ringPainter(tester);
+          expect(painter.progress, 1.0);
+          expect(_ringLook(tester), TimerRingLook.ready);
+          expect(painter.arcColor, scheme.primary.withAlpha(115));
+          // D-3: the ready ring's colour is the focused, unlogged segment's.
+          expect(painter.arcColor, _segmentFill(tester, 0));
+          expect(painter.trackColor.a, 0, reason: 'no grey track before Start');
+
+          expect(_inRing('03:00'), findsOneWidget);
+          expect(_inRing('REMAINING'), findsOneWidget);
+        },
+      );
+    }
+
+    testWidgets('S-5103: Start makes the ring bright over the grey track', (
+      tester,
+    ) async {
+      final deps = await _buildDeps(modality: 'cardio_endurance');
+      final seeded = await _seedRounds(deps);
+      await _pumpDetail(tester, deps, seeded.name);
+      final scheme = _scheme(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pump();
+
+      expect(_ringLook(tester), TimerRingLook.counting);
+      expect(_ringPainter(tester).arcColor, scheme.primary);
+      expect(_ringPainter(tester).trackColor, scheme.onSurface.withAlpha(51));
+      expect(_ringProgress(tester), greaterThan(0.95));
+    });
+
+    testWidgets('S-5104: a paused round keeps its 0.75 fraction', (
+      tester,
+    ) async {
+      final deps = await _buildDeps(modality: 'cardio_endurance');
+      final seeded = await _seedRounds(deps);
+      await deps.workoutState.startRound(seeded.effortId, 0);
+      await deps.workoutState.pauseRound(seeded.effortId, 0);
+      await _backdateRound(
+        deps,
+        effortId: seeded.effortId,
+        roundIndex: 0,
+        elapsed: const Duration(seconds: 45),
+      );
+
+      await _pumpDetail(tester, deps, seeded.name);
+
+      final scheme = _scheme(tester);
+      expect(_ringProgress(tester), closeTo(0.75, 0.001));
+      expect(_ringPainter(tester).arcColor, scheme.primary);
+      expect(_ringPainter(tester).trackColor, scheme.onSurface.withAlpha(51));
+      expect(_inRing('02:15'), findsOneWidget);
+      expect(_inRing('REMAINING'), findsOneWidget);
+
+      final frozen = _ringProgress(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(_ringProgress(tester), frozen);
+      expect(_inRing('02:15'), findsOneWidget);
+    });
+
+    testWidgets('S-5105: a round logged early shows the 120 s left at 0.6667', (
+      tester,
+    ) async {
+      final deps = await _buildDeps(modality: 'cardio_endurance');
+      final seeded = await _seedRounds(deps);
+      await deps.workoutState.startRound(seeded.effortId, 0);
+      await deps.workoutState.pauseRound(seeded.effortId, 0);
+      await _backdateRound(
+        deps,
+        effortId: seeded.effortId,
+        roundIndex: 0,
+        elapsed: const Duration(seconds: 60),
+      );
+      await deps.workoutState.endRoundEarly(seeded.effortId, 0);
+      await deps.workoutState.loadSessionData();
+
+      final round = deps.workoutState
+          .getRoundsForEffort(seeded.effortId)
+          .first;
+      expect(round.state, RoundState.finished);
+      expect(round.completed, isFalse);
+      expect(round.actualDurationSecs, 60);
+
+      await _pumpDetail(tester, deps, seeded.name);
+
+      final scheme = _scheme(tester);
+      expect(_ringProgress(tester), closeTo(120 / 180, 0.001));
+      expect(_ringPainter(tester).arcColor, scheme.primary);
+      expect(_ringPainter(tester).trackColor, scheme.onSurface.withAlpha(51));
+      expect(_inRing('01:00'), findsOneWidget);
+      expect(_inRing('COMPLETED'), findsOneWidget);
+    });
+
+    testWidgets('S-5106: an expired 15 s round is the grey track only', (
+      tester,
+    ) async {
+      final deps = await _buildDeps(modality: 'cardio_endurance');
+      final seeded = await _seedRounds(deps, durationSecs: 15);
+      final alert = FakeTimerAlertService();
+      await _pumpDetail(tester, deps, seeded.name, alert: alert);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      // Real time past the 15 s, then the tick: the round expires.
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(seconds: 16));
+      });
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      final round = deps.workoutState
+          .getRoundsForEffort(seeded.effortId)
+          .first;
+      expect(round.state, RoundState.finished);
+      expect(round.completed, isTrue);
+      expect(alert.effortAlertSoundIds.length, 1);
+
+      final scheme = _scheme(tester);
+      expect(_ringProgress(tester), 0.0);
+      expect(_ringPainter(tester).trackColor, scheme.onSurface.withAlpha(51));
+      expect(
+        _arcSweeps(tester),
+        [2 * math.pi],
+        reason: 'drained draws the track and no progress arc',
+      );
+      expect(_inRing('COMPLETED'), findsOneWidget);
+    });
+
+    testWidgets('S-5106: a round logged with nothing left is the grey track '
+        'only', (tester) async {
+      final deps = await _buildDeps(modality: 'cardio_endurance');
+      final seeded = await _seedRounds(deps);
+      await deps.workoutState.startRound(seeded.effortId, 0);
+      await deps.workoutState.pauseRound(seeded.effortId, 0);
+      await _backdateRound(
+        deps,
+        effortId: seeded.effortId,
+        roundIndex: 0,
+        elapsed: const Duration(seconds: 180),
+      );
+      await deps.workoutState.endRoundEarly(seeded.effortId, 0);
+      await deps.workoutState.loadSessionData();
+
+      final round = deps.workoutState
+          .getRoundsForEffort(seeded.effortId)
+          .first;
+      expect(round.state, RoundState.finished);
+      expect(round.completed, isFalse);
+      expect(round.actualDurationSecs, 180);
+
+      await _pumpDetail(tester, deps, seeded.name);
+
+      final scheme = _scheme(tester);
+      expect(_ringProgress(tester), 0.0);
+      expect(_ringPainter(tester).trackColor, scheme.onSurface.withAlpha(51));
+      expect(
+        _arcSweeps(tester),
+        [2 * math.pi],
+        reason: 'nothing left to count draws the track and no progress arc',
+      );
+      expect(_inRing('COMPLETED'), findsOneWidget);
+    });
+
+    // Governor mutation pass: with `round.completed` dropped from the drained
+    // condition, a naturally finished round whose stored elapsed is a little
+    // short of the planned length would keep a sliver instead of draining.
+    testWidgets(
+      'S-5106c: a naturally completed round that stored 179 s of 180 s is '
+      'drained', (tester) async {
+        final deps = await _buildDeps(modality: 'cardio_endurance');
+        final seeded = await _seedRounds(deps);
+
+        final round = deps.workoutState
+            .getRoundsForEffort(seeded.effortId)[0];
+        await deps.repo.updateRoundInstance(
+          round.copyWith(
+            state: RoundState.finished,
+            completed: true,
+            actualDurationSecs: 179,
+          ),
+        );
+        await deps.workoutState.loadSessionData();
+
+        await _pumpDetail(tester, deps, seeded.name);
+
+        final scheme = _scheme(tester);
+        expect(_ringProgress(tester), 0.0);
+        expect(_ringLook(tester), TimerRingLook.counting);
+        expect(_ringPainter(tester).trackColor, scheme.onSurface.withAlpha(51));
+        expect(
+          _arcSweeps(tester),
+          [2 * math.pi],
+          reason: 'a completed round draws the track and no progress arc',
+        );
+      },
+    );
+
+    testWidgets(
+      'S-5106d: the same round NOT completed (logged early at 179 s) keeps '
+      'its sliver', (tester) async {
+        final deps = await _buildDeps(modality: 'cardio_endurance');
+        final seeded = await _seedRounds(deps);
+
+        final round = deps.workoutState
+            .getRoundsForEffort(seeded.effortId)[0];
+        await deps.repo.updateRoundInstance(
+          round.copyWith(
+            state: RoundState.finished,
+            completed: false,
+            actualDurationSecs: 179,
+          ),
+        );
+        await deps.workoutState.loadSessionData();
+
+        await _pumpDetail(tester, deps, seeded.name);
+
+        final scheme = _scheme(tester);
+        expect(_ringProgress(tester), closeTo(1 / 180, 0.001));
+        expect(_ringPainter(tester).arcColor, scheme.primary);
+      },
+    );
+
+    testWidgets('S-5107: each of three rounds shows its own look', (
+      tester,
+    ) async {
+      final deps = await _buildDeps(modality: 'cardio_endurance');
+      final seeded = await _seedRounds(deps, rounds: 3);
+
+      // Round 1: logged early at 60 s of 180.
+      await deps.workoutState.startRound(seeded.effortId, 0);
+      await deps.workoutState.pauseRound(seeded.effortId, 0);
+      await _backdateRound(
+        deps,
+        effortId: seeded.effortId,
+        roundIndex: 0,
+        elapsed: const Duration(seconds: 60),
+      );
+      await deps.workoutState.endRoundEarly(seeded.effortId, 0);
+
+      // Round 2: ran its full length.
+      await deps.workoutState.startRound(seeded.effortId, 1);
+      await deps.workoutState.completeRound(seeded.effortId, 1);
+
+      final rounds = deps.workoutState.getRoundsForEffort(seeded.effortId);
+      expect(rounds[0].completed, isFalse);
+      expect(rounds[1].completed, isTrue);
+      expect(rounds[2].state, RoundState.notStarted);
+
+      await _pumpDetail(tester, deps, seeded.name);
+      final scheme = _scheme(tester);
+
+      await tester.tap(find.byKey(const Key('set-segment-0')));
+      await tester.pumpAndSettle();
+      expect(_ringProgress(tester), closeTo(120 / 180, 0.001));
+      expect(_ringPainter(tester).arcColor, scheme.primary);
+      expect(_ringPainter(tester).trackColor, scheme.onSurface.withAlpha(51));
+      expect(_inRing('COMPLETED'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('set-segment-1')));
+      await tester.pumpAndSettle();
+      expect(_ringProgress(tester), 0.0);
+      expect(_ringPainter(tester).trackColor, scheme.onSurface.withAlpha(51));
+      expect(
+        _arcSweeps(tester),
+        [2 * math.pi],
+        reason: 'the finished round draws the track and no progress arc',
+      );
+
+      await tester.tap(find.byKey(const Key('set-segment-2')));
+      await tester.pumpAndSettle();
+      expect(_ringLook(tester), TimerRingLook.ready);
+      expect(_ringProgress(tester), 1.0);
+      expect(
+        _ringPainter(tester).arcColor,
+        scheme.primary.withAlpha(115),
+      );
+      expect(_ringPainter(tester).trackColor.a, 0);
+      expect(_inRing('REMAINING'), findsOneWidget);
+    });
   });
 }

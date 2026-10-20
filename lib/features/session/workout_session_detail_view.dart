@@ -122,16 +122,29 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       ),
       isReadOnly:
           !widget.editMode && _isSetLogged(effortId, entryIndex, effortKind),
+      showTapHint: _tapHintShown(TapHintControl.weight),
+      onNumberTap: () => _learnTapHint(TapHintControl.weight),
       onValueChanged: (value) =>
           _updateMetricValue(effortId, entryIndex, 'extra-weight', value),
     );
+  }
+
+  /// Whether a control's `tap to type` hint still shows (plan 44 D-6).
+  bool _tapHintShown(TapHintControl control) =>
+      !widget.settingsState.isTapHintLearned(control);
+
+  /// The user tapped this control's number: its hint goes and stays gone.
+  void _learnTapHint(TapHintControl control) {
+    if (widget.settingsState.isTapHintLearned(control)) return;
+    unawaited(widget.settingsState.markTapHintLearned(control));
+    _updateUi(() {});
   }
 
   /// The caption value for one entry, or null when it is not logged.
   ///
   /// Resistance sets read `reps×weight` in the user's unit — a zero or a
   /// negative weight still reads, because the caption records what was carried;
-  /// timed, drill and round entries read the locked time as `m:ss`.
+  /// timed, drill and round entries read the locked time as `mm:ss`.
   String? _loggedValueText(
     String effortId,
     int index,
@@ -153,11 +166,11 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       case 'drill':
         final secs =
             _getTimedInstance(effortId, index)?.actualDurationSecs ?? 0;
-        return OmniDateUtils.formatClock(secs * 1000);
+        return OmniDateUtils.formatTimerDigits(secs);
       case 'round':
         final secs =
             _getRoundInstance(effortId, index)?.actualDurationSecs ?? 0;
-        return OmniDateUtils.formatClock(secs * 1000);
+        return OmniDateUtils.formatTimerDigits(secs);
     }
     return null;
   }
@@ -200,6 +213,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
               unitLabel: 'REPS',
               step: MetricStepping.repsPerStep.toDouble(),
               isReadOnly: isLoggedNow,
+              showTapHint: _tapHintShown(TapHintControl.reps),
+              onNumberTap: () => _learnTapHint(TapHintControl.reps),
               onValueChanged: (value) =>
                   _updateMetricValue(effortId, entryIndex, 'reps', value),
             ),
@@ -212,6 +227,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 widget.settingsState.preferredWeightUnit,
               ),
               isReadOnly: isLoggedNow,
+              showTapHint: _tapHintShown(TapHintControl.weight),
+              onNumberTap: () => _learnTapHint(TapHintControl.weight),
               onValueChanged: (value) =>
                   _updateMetricValue(effortId, entryIndex, 'weight', value),
             ),
@@ -255,7 +272,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 metricType: 'duration',
                 currentValue: editDuration,
                 unitLabel: 'ELAPSED',
-                showTapHint: true,
+                showTapHint: _tapHintShown(TapHintControl.elapsed),
+                onNumberTap: () => _learnTapHint(TapHintControl.elapsed),
                 onTap: () async {
                   final result = await showDurationEntryDialog(
                     context,
@@ -353,14 +371,28 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         final bool roundRunning = _effortRunning[timerKey] ?? false;
         final int shownSeconds = (roundRunning ? remaining : stoppedDisplayValue)
             .toInt();
-        // D-2: the ring is full before Start, follows the digits while the round
-        // runs, freezes at its fraction when restored paused, and is empty once
-        // the round is finished (expired or logged early).
-        final double ringProgress = isFinished
-            ? 0.0
-            : (!roundRunning && !isMidRound)
-            ? 1.0
-            : (effectiveTarget <= 0 ? 1.0 : remaining / effectiveTarget);
+        // Plan 44 D-4: before Start the ring is the ready look (a full dim
+        // circle); it follows the digits while the round runs, freezes at its
+        // fraction when paused, shows what was left when the round was logged
+        // early, and is only the grey track once fully drained (expired,
+        // completed, or logged with nothing left).
+        final bool isReady = !isFinished && !roundRunning && !isMidRound;
+        final double ringProgress;
+        if (isFinished) {
+          final planned = (round != null && round.plannedDurationSecs > 0)
+              ? round.plannedDurationSecs
+              : effectiveTarget;
+          if (isExpired || round == null || round.completed || planned <= 0) {
+            ringProgress = 0.0;
+          } else {
+            ringProgress = ((planned - round.actualDurationSecs) / planned)
+                .clamp(0.0, 1.0);
+          }
+        } else if (isReady) {
+          ringProgress = 1.0;
+        } else {
+          ringProgress = effectiveTarget <= 0 ? 1.0 : remaining / effectiveTarget;
+        }
         final int lengthSeconds = (roundRunning || isMidRound || isFinished)
             ? effectiveTarget
             : roundDuration;
@@ -397,6 +429,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 currentValue: editRoundDuration,
                 unitLabel: 'ROUND LENGTH',
                 min: 15,
+                showTapHint: _tapHintShown(TapHintControl.roundLength),
+                onNumberTap: () => _learnTapHint(TapHintControl.roundLength),
                 onEditorTap: () async {
                   final result = await showDurationEntryDialog(
                     context,
@@ -431,6 +465,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           children: [
             TimerRing(
               progress: ringProgress,
+              look: isReady ? TimerRingLook.ready : TimerRingLook.counting,
               running: roundRunning,
               size: 232,
               // Scale the digits down rather than let them overflow the ring
@@ -460,6 +495,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
               unitLabel: 'ROUND LENGTH',
               min: 15,
               isReadOnly: roundRunning || isMidRound || isFinished,
+              showTapHint: _tapHintShown(TapHintControl.roundLength),
+              onNumberTap: () => _learnTapHint(TapHintControl.roundLength),
               onEditorTap: editRoundLength,
               onValueChanged: (value) => _updateMetricValue(
                 effortId,
@@ -504,7 +541,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 metricType: 'duration',
                 currentValue: editDrillDuration,
                 unitLabel: 'ELAPSED',
-                showTapHint: true,
+                showTapHint: _tapHintShown(TapHintControl.elapsed),
+                onNumberTap: () => _learnTapHint(TapHintControl.elapsed),
                 onTap: () async {
                   final result = await showDurationEntryDialog(
                     context,
@@ -630,12 +668,22 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       theme: theme,
     );
 
-    // Forward nav arrow (right side — always shown)
+    // Forward nav arrow (right side — always shown). Plan 44 D-1: it dims and
+    // stops answering taps on the last set of the last exercise, where it has
+    // nowhere to go. Adding a set or an exercise (by any path) wakes it on the
+    // next rebuild.
+    final entryCount =
+        (exercise['entries'] as List<Map<String, dynamic>>).length;
+    final atEnd =
+        _currentExerciseIndex == _exercises.length - 1 &&
+        _currentSet >= entryCount;
     final forwardArrow = _buildNavArrow(
       icon: Icons.arrow_forward,
       label: 'Next',
-      isEnabled: true,
-      onPressed: widget.editMode ? _nextSetInEditMode : _nextSet,
+      isEnabled: !atEnd,
+      onPressed: atEnd
+          ? null
+          : (widget.editMode ? _nextSetInEditMode : _nextSet),
       theme: theme,
     );
 

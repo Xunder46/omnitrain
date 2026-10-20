@@ -76,6 +76,10 @@ class InlineMetricEditor extends StatefulWidget {
   /// gesture also delegates here when [onTap] is not null.
   final VoidCallback? onTap;
 
+  /// Called when the number is tapped (not read-only), before the tap is
+  /// handed to [onTap] or the edit popup.
+  final VoidCallback? onNumberTap;
+
   /// Optional emphasis tier for the main value rendering.
   ///
   /// When omitted, rendering stays backward-compatible with the previous
@@ -106,6 +110,7 @@ class InlineMetricEditor extends StatefulWidget {
     this.unitGap = 16,
     this.showTapHint = false,
     this.onTap,
+    this.onNumberTap,
     this.emphasisTier,
     this.valueFontSize,
     this.padding,
@@ -141,6 +146,7 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
 
   void _onNumberTap() {
     if (widget.isReadOnly) return;
+    widget.onNumberTap?.call();
     if (widget.onTap != null) {
       // Delegate to caller-supplied handler (e.g. timer toggle, duration dialog).
       widget.onTap!();

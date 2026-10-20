@@ -262,6 +262,17 @@ a transparent `GestureDetector`, so a tap that lands on the
 padding around the chip does not reach the scrollable beneath;
 the chip's own tap-to-pause/resume handler is unaffected.
 
+The chip's two states (plan 44 D-2): running shows a pause icon on the
+theme's tonal container fill; paused shows a play icon on the muted surface
+fill; the icon and the digits are the theme's primary in both states, and the
+screen-reader label reads `Pause rest` while running and `Resume rest` while
+paused. Verified by `test/logger_feedback_controls_test.dart` (group
+`Forward arrow and rest chip (plan 44 T2a)` · `S-5114: the rest chip shows
+pause while running and play while paused`, `S-5114: the chip foreground
+clears 3:1 on both fills on every theme`, `S-5115: the rest chip keeps its
+running look on the standard list view`, `S-5115: the rest chip keeps its
+running look on the rolling list view`).
+
 Pause/resume behaviour:
 
 - Tap-pause captures the wall-clock instant as `restPausedAtMs` so the

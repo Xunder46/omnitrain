@@ -152,7 +152,18 @@ in progress. In the session editor a count-up keeps its duration editor
 The stepper rows and the session-editor duration editors share the
 `InlineMetricEditor` anatomy: the unit label sits directly under the number,
 centred, and when the editor is editable a `tap to type` hint (key
-`tap-hint`) sits under the label; a read-only editor shows no hint. On the
+`tap-hint`) sits under the label; a read-only editor shows no hint. The hint
+is learned per control kind, not per row (plan 44 D-6): tapping a control's
+number — its popup or duration dialog, whether or not it is confirmed — hides
+that kind's hint everywhere in the logger and remembers it across restarts
+(`SettingsState.isTapHintLearned` / `markTapHintLearned`, keys
+`hint_seen_tap_to_type_reps|weight|round_length|elapsed`); the set weight row
+and the hold/interval load row are one control kind (`weight`), the live and
+session-editor ROUND LENGTH rows are `roundLength`, the session editor's
+interval/hold `ELAPSED` editors are `elapsed`; `−`/`+` never teach, and the
+routine editor keeps showing the hint on every row. Verified by
+`test/tap_hint_learned_test.dart` (group `S-5120: a hint goes when its own
+control is tapped` and the S-5121..S-5125 groups). On the
 sports screen the body is tightened: the `SetSegmentBar` cell is
 `kSetBarCaptionedHeight` tall with captions and `kSetBarPlainHeight` without
 (constants in `lib/widgets/session/set_segment_bar.dart`), and the scroll
@@ -292,16 +303,31 @@ Transitions are validated by `_isValidRoundTransition()` in `WorkoutState`. Rapi
   `test/round_countdown_screen_test.dart` (group `Round countdown — ring
   (S-4401)` · `S-4401: a fresh 180 s round draws a full ring`, `S-4401: an
   active round 45 s in shows a 0.75 ring`).
-- Ring states: full before Start; following the digits while running (a
-  falling progress sweeps linearly over one second between the 1 Hz ticks);
-  frozen at its fraction for a round restored paused; empty once the round is
-  finished, by expiry or by logging early. Verified by `test/timer_ring_test.dart`
+- Ring states (plan 44 D-4): the *ready* look before Start — a full circle in
+  dim primary (the set bar's focused-unlogged segment colour,
+  `SessionProgressColors`), no grey track; the *counting* look from Start —
+  a primary arc over the grey track, following the digits while running (a
+  falling progress sweeps linearly over one second between the 1 Hz ticks),
+  frozen at its fraction for a round restored paused, and showing what was
+  left for a round logged early (`(planned − actual) / planned`); the
+  *drained* state — expired, completed, or logged with nothing left — is the
+  grey track alone, with no arc drawn at progress 0. Verified by
+  `test/timer_ring_test.dart`
   (group `S-4408 sweep` · `a falling progress sweeps while running`, `a
   stopped ring applies the new value at once`, `a growing progress while
   running is applied at once`) and `test/round_countdown_screen_test.dart`
-  (group `Round countdown — restored instances (S-4410, S-4411)` · `S-4410: a
-  paused round 45 s in reads 02:15, frozen at 0.75`, `S-4411: a round logged
-  early reads 01:00 + COMPLETED, ring empty`).
+  (group `Round countdown — ring looks (plan 44)` · `S-5101: before Start the
+  ring is a full dim circle with no track`, `S-5103: Start makes the ring
+  bright over the grey track`, `S-5104: a paused round keeps its 0.75
+  fraction`, `S-5105: a round logged early shows the 120 s left at 0.6667`,
+  `S-5106: an expired 15 s round is the grey track only`, `S-5106: a round
+  logged with nothing left is the grey track only`, `S-5107: each of three
+  rounds shows its own look`; group `Round countdown — restored instances
+  (S-4410, S-4411)` · `S-4410: a paused round 45 s in reads 02:15, frozen at
+  0.75`, `S-5105: a round logged early reads 01:00 + COMPLETED, ring at
+  120/180`) and `test/session_progress_colors_test.dart` (group `S-5102
+  session progress colours` — the shared fills on every theme; group
+  `S-5106 drained ring paints the track only`).
 - Captions: `REMAINING` under the digits while the round is unfinished,
   `COMPLETED` once it is finished. The old chrome is gone: no `ROUND n` /
   `PERIOD n` heading, no `DURATION` / `RUNNING` / `STOPPED` / `PAUSED`
@@ -355,7 +381,7 @@ countdown ([Global Conventions](global_conventions.md), "Rest rule: rest is a co
 - Appears automatically after logging a set (a new `EntryRest` record is written via `workoutState.recordRestStart(effortId, entryIndex)`)
 - Overlay visibility is gated on `workoutState.hasRestRecord(effortId, entryIndex)` — no record, no overlay
 - Elapsed time is read from `workoutState.getRestElapsedSeconds(effortId, entryIndex)` on each `_ticker` tick (wall-clock derived from `EntryRest.startedAtMs`)
-- Displays elapsed rest time (MM:SS format)
+- Displays elapsed rest time (`mm:ss` format)
 - Positioned in lower screen area (above controls, non-intrusive)
 - **Hides immediately when a timed/round/drill timer starts**: When `_toggleEffortTimer` is called to start a timed, round, or drill timer, all open rest records for that effort are closed **synchronously in-memory** before the timer UI begins rendering. This ensures `hasRestRecord()` returns `false` and `getRestElapsedSeconds()` returns `0` immediately, even if the async repository persist is still in-flight. Without this synchronous close, a race condition could occur where the rest overlay displays stale elapsed time (rest time + new timer time) in the millisecond window before the async persist completes. See [Rest Record Lifecycle — Synchronous Close on Effort Start](rest_tracking.md#rest-record-lifecycle--synchronous-close-on-effort-start) for details.
 - Independent of effort timers — rest records are keyed per effortId+entryIndex, not globally
@@ -369,12 +395,23 @@ no name (key `session-detail-header`).
 Directly under the header, pinned outside the scroll, sits the set bar block:
 one tappable segment per set / interval / round / hold (`SetSegmentBar`) with
 one caption per segment under it — the logged value (`reps×weight` for a set,
-`m:ss` for an interval, hold or round), blank for an unlogged set, shown only
-when the exercise has 5 sets or fewer. The entry stepper (`SetCountStepper`)
+`mm:ss` for an interval, hold or round — the big timers' format,
+`OmniDateUtils.formatTimerDigits`, plan 44 D-5), blank for an unlogged set,
+shown only when the exercise has 5 sets or fewer. The entry stepper
+(`SetCountStepper`)
 sits in the scroll body below the exercise's controls, away from the primary
 row: a boxed full-width control with `−` on the left, the count text in the
 middle (`Set 2 of 3`, `Interval 2 of 3`, `Round`/`Period 2 of 3`, `Hold 2 of 3`)
 and `+` on the right.
+
+The caption format is one rule: every logged timed, drill and round caption
+reads `mm:ss` below an hour and `h:mm:ss` from it, the same
+`OmniDateUtils.formatTimerDigits` the big timers read; set captions stay
+`reps×weight` with no units. Verified by `test/logger_shell_screen_test.dart`
+(group `Logged time captions read like the big timers (plan 44 S-5108)` ·
+`S-5108: logged intervals read mm:ss and h:mm:ss`, `S-5108: a hold logged at
+0 s reads 00:00`, `S-5108: a round logged early reads mm:ss`,
+`S-5108: a set caption keeps reps x weight and no units`).
 
 Verified by `test/logger_shell_screen_test.dart` (group `Logger shell — set bar
 and logged line (S-4210..S-4214)` · `S-4210: logging through the button fills
@@ -390,6 +427,35 @@ hugs the header and the sets control stays reachable`,
 `one segment per set, 48 dp tall, tap reports its index`; group
 `Mock S-4325 SetSegmentBar captions` · `one caption per set, in its cell,
 under a top-aligned bar`).
+
+**Forward-arrow end rule** (plan 44 D-1): the forward arrow is disabled —
+the same dim look the back arrow has at the first set — exactly on the last
+set of the last exercise, live and in the session editor, for every effort
+kind; it wakes on the next rebuild once a set or an exercise is added. The
+back arrow and the entry stepper are unchanged. Verified by
+`test/logger_feedback_controls_test.dart` (group `Forward arrow and rest chip
+(plan 44 T2a)` · `S-5109: the forward arrow dims and stops answering at the
+last set`, `S-5110: a single unlogged set keeps both arrows dead, logging
+included`, `S-5111: adding a set wakes the forward arrow`, `S-5112: the
+session editor dims its forward arrow at the end`, `S-5113: a not-started
+interval keeps the forward arrow dead and Start live`, `S-5113: a not-started
+round keeps the forward arrow dead`).
+
+**Reps anchoring** (plan 44 D-7): on a `set` effort (live and session editor)
+the visible group — the metric rows through the entry stepper — sits slightly
+below the centre of the scroll area: 60 % of the spare space above it, 40 %
+below, recomputed when the rest strip opens or closes; when the group does
+not fit (small phone, rest strip up) it is top-anchored and the area scrolls,
+with no overflow. Timer efforts keep the top anchoring. Verified by
+`test/logger_feedback_layout_test.dart` (group `Reps layout and exercise title
+(plan 44)` · `S-5116: reps controls sit slightly below centre, rest open or
+closed`, `S-5117: a short phone with the rest open never overflows`).
+
+**Two-line title** (plan 44 D-8): the detail view's exercise name wraps to
+two lines (ellipsis after the second); the list-view title and the subtitle
+line stay one line. Verified by `test/logger_feedback_layout_test.dart`
+(group `Reps layout and exercise title (plan 44)` · `S-5119: the long
+exercise name takes two lines in the detail header`).
 
 **Timer Control Rule**:
 
@@ -565,6 +631,7 @@ exception").
 - **Skip Set**: Advance without logging via forward navigation (the segment stays unlogged)
 - **Remove Entry**: The stepper's `−` deletes the set the user is looking at (the focused set; the rule since plan 41). An unlogged set that was never started goes at once; a started-but-unlogged set asks `Delete running <label>?` first; a logged set asks `Delete logged <label>?`. When the effort has **only one set**, the `−` icon is a trash-can (`Icons.delete_outline`) — confirming removes the entire exercise from the session. Tooltip text also switches from "Remove set" to "Remove exercise".
 - **A deleted logged set takes its rest with it**: the rest that marked the set logged is removed and every later rest moves down one, so a set added afterwards is a new unlogged set (pre-filled from the previous set as the carry-forward does). The rest history of the deleted set disappears with it.
+- **Carry-forward (plan 44 D-14)**: logging a phone `set` entry with a weight gives the next set of the same exercise that weight when the next set is unlogged and its stored weight is exactly 0.0 — sets added before the first set's weight was entered otherwise stay at 0.0. Reps are never touched, a non-zero weight is never overwritten, a skipped set (reps 0) carries nothing, and watch-logged sets are untouched. Verified by `test/set_weight_carry_repro_test.dart` (group `S-5127 the D-14 carry rule (fixed)` · `S-5127-a set 2 shows the carried weight on screen after Log Set`, `S-5127-b a non-zero weight on the next set is never overwritten`, `S-5127-c reps on the next set never change`, `S-5127-d a logged next set is untouched`, `S-5127-e a skipped set (reps 0) carries nothing to the next set`, `S-5127-f a routine whose weight target sits on set 1 only (H-1)`).
 - Use case: Skip = "I'm moving on without logging this effort", Remove = "This entry should not exist"
 
 Verified by `test/logger_shell_screen_test.dart` (group `Logger shell — skipped

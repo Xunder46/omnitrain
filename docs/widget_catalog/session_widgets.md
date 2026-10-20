@@ -44,6 +44,7 @@ Touch-optimized value input for workout environments. Tap the number to open a n
 | `valueFontSize` | `double?` | Overrides the tier's font size; the ring passes `kRingDigitsFontSize` |
 | `isReadOnly` | `bool` | When true: disables tap-to-edit popup. Used for live timer displays. |
 | `onTap` | `VoidCallback?` | When provided, tapping the number calls this instead of opening the generic popup (e.g. timer toggle, duration dialog). |
+| `onNumberTap` | `VoidCallback?` | Called on every tap of the number, before the tap's own action (popup, `onTap` or nothing) — the logger uses it to mark the control's `tap to type` hint learned (plan 44 D-6); `null` calls nothing |
 | `onValueChanged` | `Function(dynamic)` | Immediate callback on value change |
 
 **Interaction model**:
@@ -107,15 +108,30 @@ Countdown ring for the `round` effort: a track circle and a `primary` arc
 that empties as the time runs out, with the digits centred inside it. The arc
 sweeps clockwise from the top for `progress` of a full turn (1.0 = full ring,
 0.0 = expired), with a round cap; colours come from
-`Theme.of(context).colorScheme` only. The ring is a `StatefulWidget` — the
+`Theme.of(context).colorScheme` only — the ready look's dim primary and the
+track grey are the shared `SessionProgressColors`
+(`lib/widgets/session/session_progress_colors.dart`), the same two fills
+`SetSegmentBar` reads. The ring is a `StatefulWidget` — the
 state owns the sweep between the screen's 1 Hz ticks.
 
 | Prop | Type | Description |
 |------|------|-------------|
 | `progress` | `double` | Remaining fraction, 1.0 (nothing elapsed) down to 0.0 (expired) |
 | `running` | `bool` | Whether the ring is counting down — only then does a falling progress sweep |
+| `look` | `TimerRingLook` | `ready` (before Start) or `counting` (default) — see below |
 | `child` | `Widget` | Centred inside the ring: the remaining-time digits |
 | `size` | `double` | Largest diameter; a narrow surface shrinks it so the ring never touches the screen edges (the default size and the kept-clear inset are owned by `timer_ring.dart`) |
+
+**Looks** (plan 44 D-4): the *ready* look — the round has not started — is a
+full circle (progress 1.0) in dim primary, the set bar's focused-unlogged
+segment colour, with no grey track, so it never reads as a finished round.
+The *counting* look is the ring's normal look: a primary arc of `progress`
+over the grey track. A round logged early keeps the counting look, frozen at
+what was left (`(planned − actual) / planned`); only when the round is fully
+drained — expired, completed, or logged with nothing left — is the ring the
+grey track alone: the painter draws no arc at progress 0. The screen picks
+the look and the progress in the round branch of `_buildMetricWidget`
+(`lib/features/session/workout_session_detail_view.dart`).
 
 **Behaviour**: while `running` a falling `progress` animates linearly over
 one second between the ticks, so the ring and the digits move together; a
@@ -135,10 +151,18 @@ falling progress sweeps while running`, `a stopped ring applies the new value
 at once`, `a growing progress while running is applied at once`) and
 `test/round_countdown_screen_test.dart` (group `Round countdown — ring
 (S-4401)` · `S-4401: a fresh 180 s round draws a full ring`, `S-4401: an
-active round 45 s in shows a 0.75 ring`; group `Round countdown — restored
-instances (S-4410, S-4411)` · `S-4410: a paused round 45 s in reads 02:15,
-frozen at 0.75`, `S-4411: a round logged early reads 01:00 + COMPLETED, ring
-empty`).
+active round 45 s in shows a 0.75 ring`; group `Round countdown — ring looks
+(plan 44)` · `S-5101: before Start the ring is a full dim circle with no
+track`, `S-5103: Start makes the ring bright over the grey track`, `S-5104: a
+paused round keeps its 0.75 fraction`, `S-5105: a round logged early shows the
+120 s left at 0.6667`, `S-5106: an expired 15 s round is the grey track only`,
+`S-5106: a round logged with nothing left is the grey track only`,
+`S-5107: each of three rounds shows its own look`; group `Round countdown —
+restored instances (S-4410, S-4411)` · `S-4410: a paused round 45 s in reads
+02:15, frozen at 0.75`, `S-5105: a round logged early reads 01:00 + COMPLETED,
+ring at 120/180`) and `test/session_progress_colors_test.dart` (group
+`S-5106 drained ring paints the track only` — the painter draws no arc at
+progress 0).
 
 **Call site**: the live `round` branch of `_buildMetricWidget` in
 `lib/features/session/workout_session_detail_view.dart` — the only `TimerRing`
@@ -170,9 +194,12 @@ space is left under the bar.
 **Visual**: a `Row` of `Expanded` segments; each segment's painted bar is a
 thin strip with a small corner radius and no border, the same thickness on
 every segment, pinned to the top of its tap cell. Three looks:
-not logged (`onSurface` at alpha 51), focused and not logged (`primary` at
-alpha 115), logged (full `primary`); a segment that is both logged and focused
-shows the logged fill. Colours come from `Theme.of(context).colorScheme` only.
+not logged (track grey), focused and not logged (dim primary), logged (full
+`primary`). The first two are the shared `SessionProgressColors`
+(`lib/widgets/session/session_progress_colors.dart`) — the same two fills the
+countdown ring reads, so the bar and the ring cannot drift apart; the values
+stay pinned by the tests. A segment that is both logged and focused shows the
+logged fill. Colours come from `Theme.of(context).colorScheme` only.
 
 **Captions**: one line under their own segment, `bodySmall`, centred,
 ellipsised, in a fixed-height row that keeps its height when every caption is
@@ -201,6 +228,10 @@ absent border and the uniform bar height on the screen) and
 `test/count_up_hero_layout_test.dart` (group `S-4711 tightened body` — the
 two cell-height tests, captioned and plain, and the ring-gap test; their
 names spell the cell heights, which the docs value scan may not quote).
+The two shared fills are pinned per theme by
+`test/session_progress_colors_test.dart` (group `S-5102 session progress
+colours` · the dim-primary and track-grey assertions, which also pin the
+pixel-identical values).
 
 ### `SetCountStepper`
 
@@ -273,6 +304,8 @@ label; a locked row keeps the label and hides the hint.
 | `isReadOnly` | `bool` | When true the buttons are dimmed and do nothing and the number is not tappable (a logged set is locked) |
 | `min` | `num?` | Optional floor for the stepped value: a step that would land below it lands on it, and a row at the floor steps no further down; the ceiling stays `MetricStepCalc`'s |
 | `onEditorTap` | `VoidCallback?` | When given, handed to the inner editor as its `onTap`, so tapping the number calls it instead of opening `showMetricEditPopup` (the round-length row opens the duration dialog); `null` keeps the popup |
+| `showTapHint` | `bool` | Whether the `tap to type` hint shows at all; default true (the routine editor keeps it on every row, plan 44 D-13); the logger passes the control's learned flag |
+| `onNumberTap` | `VoidCallback?` | Called once per tap of the number, before the tap's own action and never on `−`/`+` or a read-only row — the logger marks the control's hint learned with it (plan 44 D-6, D-12); `null` calls nothing |
 | `onValueChanged` | `ValueChanged<dynamic>` | Called with the stepped value (`int` for reps and duration, `double` for weight) |
 
 **Behaviour**: a quick tap commits at once through `onValueChanged` and keeps a
@@ -319,6 +352,14 @@ group `S-4707 anatomy` · `a duration row centres its label and hint under the
 number`, `a locked row hides the hint and keeps the label under the number`,
 `S-4707/S-4704: the widest weight and duration values do not overflow 390 x 844`,
 `a locked duration row keeps the label and hides the hint`).
+
+Verified by `test/value_stepper_row_test.dart` (group `Plan 44 hint switch
+and number tap` · `the default row shows one tap-to-type hint`,
+`showTapHint: false shows no hint`, `tapping the number reports the tap once,
+with no popup`, `the step buttons never report a number tap`, `a read-only
+row reports no number tap`) and `test/tap_hint_learned_test.dart` (the
+per-control learning rule, S-5120..S-5125 — see `docs/modality_based_exercise_ui.md`,
+"Tap-to-type hint").
 
 Verified by `test/value_stepper_row_test.dart` (groups `S-4241 reps row`,
 `S-4242 weight row`, `S-4243 pending`, `S-4244/S-4245 hold`, `S-4246

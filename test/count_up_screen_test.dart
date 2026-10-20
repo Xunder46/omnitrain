@@ -407,7 +407,7 @@ void main() {
 
       expect(find.text('Interval 1 of 2'), findsOneWidget);
       expect(find.text('LOGGED'), findsOneWidget);
-      expect(setCaptionText(tester, 0), '0:00');
+      expect(setCaptionText(tester, 0), '00:00');
     });
 
     testWidgets('S-4262: the interval editor keeps its duration dialog and '
@@ -604,7 +604,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Log Interval'));
       await tester.pumpAndSettle();
 
-      expect(setCaptionText(tester, 0), '0:00');
+      expect(setCaptionText(tester, 0), '00:00');
       expect(
         captionTexts(tester).where((text) => text.contains('KG')),
         isEmpty,

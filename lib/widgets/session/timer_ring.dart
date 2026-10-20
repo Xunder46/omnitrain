@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'session_progress_colors.dart';
+
 /// How much width the ring leaves free, so it never touches the screen edges.
 const double _kRingHorizontalInset = 64;
 
@@ -13,8 +15,19 @@ const Duration _kSweepDuration = Duration(milliseconds: 1000);
 /// circle (the chord at the text's height is narrower than the box).
 const double _kRingDigitsInset = 40;
 
+/// How the ring is painted.
+///
+/// [ready]: the round has not started. A full circle in dim primary (the set
+/// bar's focused-segment colour) and no grey track, so it never reads as a
+/// finished round. [counting]: the ring's normal look, a primary arc of
+/// `progress` over the grey track; at progress 0 only the track shows (the
+/// drained look).
+enum TimerRingLook { ready, counting }
+
 /// Countdown ring for the round effort: a track circle, an arc that empties as
-/// the time runs out, and the digits centred inside it.
+/// the time runs out, and the digits centred inside it. Before Start the ready
+/// look paints a full dim-primary circle and no track; when fully drained only
+/// the track shows.
 ///
 /// The arc sweeps between the screen's ticks: while [running] a falling
 /// [progress] animates over a second, linearly. Everything else is applied at
@@ -35,6 +48,9 @@ class TimerRing extends StatefulWidget {
   /// Whether the ring is counting down — only then does it sweep.
   final bool running;
 
+  /// Ready (before Start) or counting; default is the counting look.
+  final TimerRingLook look;
+
   /// Centred inside the ring: the remaining-time digits.
   final Widget child;
 
@@ -45,6 +61,7 @@ class TimerRing extends StatefulWidget {
     super.key,
     required this.progress,
     required this.running,
+    this.look = TimerRingLook.counting,
     required this.child,
     this.size = 260,
   });
@@ -106,8 +123,12 @@ class _TimerRingState extends State<TimerRing> {
                       builder: (context, progress, _) => CustomPaint(
                         painter: TimerRingPainter(
                           progress: progress,
-                          trackColor: scheme.onSurface.withAlpha(51),
-                          arcColor: scheme.primary,
+                          trackColor: widget.look == TimerRingLook.ready
+                              ? Colors.transparent
+                              : SessionProgressColors.trackGrey(scheme),
+                          arcColor: widget.look == TimerRingLook.ready
+                              ? SessionProgressColors.dimPrimary(scheme)
+                              : scheme.primary,
                         ),
                       ),
                     ),
@@ -166,6 +187,7 @@ class TimerRingPainter extends CustomPainter {
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
       ..color = arcColor;
+    if (progress <= 0) return;
     canvas.drawArc(rect, -math.pi / 2, 2 * math.pi * progress, false, arcPaint);
   }
 

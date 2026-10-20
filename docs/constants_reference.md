@@ -244,9 +244,13 @@ instead of literals.
 - `OmniDateUtils.formatTimerDigits(int seconds)` — the digits a timer is read
   in: `mm:ss` (both padded) below an hour, `h:mm:ss` (hour unpadded) from it,
   negative → `00:00`. Used by the count-up digits, the session header timer
-  (live and edit), the rest chip, the round-length row and the `… total`
-  lines.
-- `OmniDateUtils.formatClock` — the caption shape (`m:ss`), unchanged.
+  (live and edit), the rest chip, the round-length row, the `… total`
+  lines and the logger's logged captions — timed, drill and round captions
+  read the same format since plan 44 D-5 (`_loggedValueText` in
+  `lib/features/session/workout_session_detail_view.dart`; S-5108).
+- `OmniDateUtils.formatClock` — the caption shape (`m:ss`), unchanged. It
+  remains for Stats (`native_value_format.dart`) and the watch
+  (`lib/watch/logging/*`); the session detail view no longer calls it.
 
 Verified by `test/utils_test.dart` (group `OmniDateUtils.formatTimerDigits`).
 

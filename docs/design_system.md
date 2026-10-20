@@ -524,6 +524,24 @@ captions, boxes, layout (S-4311..S-4317, S-4322..S-4324)` · `S-4315: the sets
 control boxes the count text`; `S-4316: the reps and weight rows sit in an
 OmniSurface`).
 
+**One definition of the session progress colours.** The countdown ring's
+ready look and the set bar's focused unlogged segment share one dim-primary
+definition, and the ring's track and an unlogged segment share one track-grey
+definition: `SessionProgressColors`
+(`lib/widgets/session/session_progress_colors.dart`), derived from the
+theme's `ColorScheme`. A progress indicator never carries its own copy of
+either fill, so the ring and the bar cannot drift apart. Enforced by
+`test/session_progress_colors_test.dart` (group `S-5102 session progress
+colours`).
+
+**The rest chip is tonal, never primary-filled.** The rest overlay chip's
+fill is a tonal role (`primaryContainer` while running, the muted surface
+while paused) with the theme's primary as its foreground, so the chip never
+competes with the primary filled action below it. Enforced by
+`test/logger_feedback_controls_test.dart` (group `Forward arrow and rest chip
+(plan 44 T2a)` · `S-5114: the chip foreground clears 3:1 on both fills on
+every theme`).
+
 ### Messages
 
 Every small bottom message goes through `OmniMessage`. A failure message is

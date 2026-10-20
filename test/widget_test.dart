@@ -729,8 +729,8 @@ void main() {
     await tester.tap(find.text('Log Set'));
     await tester.pumpAndSettle();
 
-    // Rest overlay should show the self_improvement icon
-    expect(find.byIcon(Icons.self_improvement), findsOneWidget);
+    // Rest overlay should show the pause icon
+    expect(find.byIcon(Icons.pause), findsOneWidget);
     final rests = deps.workoutState.getEntryRests(effortId);
     expect(rests.isNotEmpty, isTrue);
     expect(rests.where((r) => r.restEndMs == null).length, 1);
@@ -790,9 +790,9 @@ void main() {
         reason: 'Rest should be open and running',
       );
 
-      // Verify rest overlay is visible (shows self_improvement icon, not "Rest" text)
+      // Verify rest overlay is visible (shows pause icon, not "Rest" text)
       expect(
-        find.byIcon(Icons.self_improvement),
+        find.byIcon(Icons.pause),
         findsOneWidget,
         reason: 'Rest overlay should be visible on set 2',
       );

@@ -303,16 +303,21 @@ Production: `lib/widgets/session/session_progress_colors.dart` (new), `lib/widge
 
 ## Progress
 
-- [ ] P1 ring, colours, captions — not started
-- [ ] P2 arrow, chip, layout, title — not started
-- [ ] P3 tap hint — not started
-- [ ] P4 bug repro — not started
-- [ ] P5 bug fix — conditional, not started
+- [x] P1 ring, colours, captions — built: shared `SessionProgressColors` read by `SetSegmentBar` and `TimerRing`; `TimerRingLook` ready/counting with the drained rule; captions via `formatTimerDigits` (verified 2026-10-20)
+- [x] P2 arrow, chip, layout, title — built: forward arrow disabled at the last set of the last exercise (live + editor); rest chip pause/play on tonal/muted fills with primary foreground; reps group at 60/40 below centre, top-anchored when it does not fit; detail title on two lines (verified 2026-10-20)
+- [x] P3 tap hint — built: `TapHintControl` with four persisted flags in `SettingsState`; `InlineMetricEditor.onNumberTap`, `ValueStepperRow.showTapHint`/`onNumberTap`; per-control learning, `−`/`+` never teach, routine editor unchanged (verified 2026-10-20)
+- [x] P4 bug repro — built: H-4 ruled out (stored weight is a `double` in both repositories); H-5 green with the isolating fixture (the delete is not at fault); H-6 red — `_addSet` copies the previous set's values at add time (verified 2026-10-20)
+- [x] P5 bug fix — built: `_logSet` calls `_carryWeightToNextSet` (D-14): the next unlogged set at stored weight exactly 0.0 takes the logged weight; reps, non-zero weights, skipped and watch-logged sets untouched; guards S-5127-a..f (verified 2026-10-20)
 
 ## Assumption Log
 
-(executors append: decision, options considered, choice + why; at most 3 lines each)
+- Q1–Q3 (D-12, D-13, D-14 defaults): the owner's answers agreed all three defaults on 2026-10-20 — only the number tap teaches, the routine editor keeps the hint, and the D-14 carry rule stands as written.
+- H-1/H-2/H-3 were not separately reproduced: H-6 matched the owner's flow and the D-14 fix rule covers their cause (the routine path leaves sets after the first at 0.0; guard S-5127-f pins the routine path). See the evidence file's Phase 4 table.
+- The plan's Phase 2/3 test files were split as `test/logger_feedback_controls_test.dart` (S-5109..S-5115) and `test/logger_feedback_layout_test.dart` (S-5116, S-5117, S-5119) instead of one file; scenario coverage is unchanged.
 
 ## Feedback
 
-[empty]
+- Verification 2026-10-20 (governor): full suite `+5297 ~2: All tests passed!` (the 2 skips are pre-existing); `flutter analyze` 180 issues (baseline 181); invariant grep empty; 41 mutation runs over every guard, all caught after one closed fix round (7 first survivors: reps/weight-row/round-length/elapsed-drill hint wiring and the ring's `completed` arm); the app looked at on the iPhone 17 simulator (dim forward arrow at the end, tonal pause chip, reps group below centre, hint gone after one tap and still gone after a restart).
+- Review (crew-reviewer): APPROVE, 0 blockers, 0 majors, 1 minor (not fixed): the reps group branch has no bottom clearance, so on a phone too small for the controls the last scroll position leaves the sets stepper flush above the controls row. Nothing is hidden. Fix if wanted: clearance as a sibling outside the `Align`, with a test that asserts the gap.
+- (owner) Not looked at on a device: the countdown ring before Start (dim orange, same colour as the focused unlogged set bar) and after it drains (grey only): only the widget tests and the colour assertions cover it, no sports/cardio round session was available on the simulator.
+- (owner) An existing session whose set 2 is already at 0.0 stays at 0.0: the carry only happens when the earlier set is logged after this change.

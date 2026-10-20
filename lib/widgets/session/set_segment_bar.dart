@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
+import 'session_progress_colors.dart';
 
 /// Above this many entries the captions would not fit under their segments,
 /// so they are dropped entirely (no reserved space either).
@@ -134,9 +135,9 @@ class SetSegmentBar extends StatelessWidget {
     if (logged) {
       fill = scheme.primary;
     } else if (focused) {
-      fill = scheme.primary.withAlpha(115);
+      fill = SessionProgressColors.dimPrimary(scheme);
     } else {
-      fill = scheme.onSurface.withAlpha(51);
+      fill = SessionProgressColors.trackGrey(scheme);
     }
 
     return Container(

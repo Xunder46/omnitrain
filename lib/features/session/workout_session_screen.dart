@@ -930,6 +930,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       );
     }
 
+    // Plan 44 D-14: the next set starts from this set's weight when it has
+    // none of its own yet (sets added before this one's weight was entered).
+    if (effortKind == 'set' && !isSkippedSetKindEntry) {
+      await _carryWeightToNextSet(
+        effortId,
+        _currentSet - 1,
+        (currentEntry['weight'] as num?)?.toDouble() ?? 0.0,
+      );
+    }
+
     // In-session personal-record check. Fires the brief, non-blocking
     // "Congrats! New PR" toast when the just-logged strength set's Epley
     // e1RM strictly exceeds the user's all-time best for the exercise
@@ -1130,6 +1140,34 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     if (previousExerciseIndex != null) {
       unawaited(_loadExerciseNoteForIndex(previousExerciseIndex!));
     }
+  }
+
+  /// Plan 44 D-14: gives the set after [loggedIndex] the logged set's weight
+  /// when that set is unlogged and its stored weight is exactly 0.0. Reps are
+  /// never touched and a non-zero weight is never overwritten.
+  Future<void> _carryWeightToNextSet(
+    String effortId,
+    int loggedIndex,
+    double weightKg,
+  ) async {
+    if (weightKg <= 0) return;
+    final nextIndex = loggedIndex + 1;
+    if (_isSetLogged(effortId, nextIndex, 'set')) return;
+    final live = widget.workoutState
+        .getExercisesWithEntries()
+        .where((e) => e['id'] == effortId);
+    if (live.isEmpty) return;
+    final liveEntries = (live.first['entries'] as List?) ?? const [];
+    if (nextIndex >= liveEntries.length) return;
+    final next = liveEntries[nextIndex] as Map<String, dynamic>;
+    if (((next['weight'] as num?)?.toDouble() ?? 0.0) != 0.0) return;
+    await widget.workoutState.updateEntryValue(
+      effortId,
+      nextIndex,
+      'weight',
+      weightKg,
+    );
+    await _loadExercises();
   }
 
   /// Pre-fill the next set entry with values from the previous set
