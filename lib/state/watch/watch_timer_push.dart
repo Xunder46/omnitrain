@@ -103,6 +103,17 @@ class WatchTimerPush {
   Future<void>? _draining;
   bool _again = false;
 
+  /// The work timers this push has delivered to the wrist and still holds on
+  /// it, per wire kind, in the shape a snapshot's `timers` takes.
+  ///
+  /// A snapshot speaks for the wrist's timer state as a whole: it stops every
+  /// timer the phone started that the snapshot does not name. A snapshot the
+  /// phone composes therefore carries these, or the first snapshot after the
+  /// phone starts an interval would reset the wrist's clock to zero.
+  Map<String, Object?> deliveredTimers() => {
+    for (final entry in _delivered.entries) entry.key: {...entry.value},
+  };
+
   /// Binds the state whose changes are pushed. Binding the same state twice
   /// leaves one listener; [dispose] removes it.
   void bindWorkoutState(WorkoutState state) {

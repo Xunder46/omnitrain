@@ -234,7 +234,6 @@ void main() {
   /// The phone starts one interval of the slot's effort and returns the stored
   /// instance the push must compose from.
   Future<InProgressWorkTimer> startInterval() async {
-    await phoneState.addEntry(_slotId);
     await phoneState.startTimedEntry(_slotId, 0);
     final timers = phoneState.inProgressWorkTimers();
     expect(
@@ -273,7 +272,6 @@ void main() {
   /// phone runs that timer as its own — nothing was echoed to the wrist.
   Future<WatchTimerRecord> adoptedInterval() async {
     await wristStartsTimedSession();
-    await phoneState.addEntry(_slotId);
     // The app binds all three to the same state (`lib/main.dart`); the timer
     // adoption is what makes the wrist's timer the phone's interval.
     graph.timerAdoption.bindWorkoutState(phoneState);

@@ -307,7 +307,6 @@ void main() {
       // Two intervals the way the phone writes them: an instance plus its
       // distance rows each, both not started.
       await phone.state.addEntry('sl-run');
-      await phone.state.addEntry('sl-run');
 
       // Interval 1 is the phone's own: started, then logged through the state
       // (`finishTimedEntry` after `startTimedEntry`), which is what the screen's
@@ -461,7 +460,6 @@ void main() {
 
     // Two rounds the way the phone writes them; the first started and finished
     // through the state, which is what the screen's Start/Log controls do.
-    await phone.state.addEntry('sl-bag');
     await phone.state.addEntry('sl-bag');
     await phone.state.startRound('sl-bag', 0);
     await phone.state.completeRound('sl-bag', 0);

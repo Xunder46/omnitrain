@@ -277,16 +277,25 @@ extension SessionCoreIOMethods on SessionCore {
       final effort = _findEffort(effortId);
       if (effort == null) return false;
 
+      // The watch started an interval the phone has no room for (a second
+      // one): the exercise grows by one, as if the phone had added it.
+      final grew = _timerManager.needsIntervalFor(
+        effortId,
+        effort.effortKind,
+        remote,
+      );
+      if (grew) await addEntry(effortId);
+
       final changed = await _timerManager.adoptRemoteTimer(
         effortId,
         effort.effortKind,
         remote,
       );
-      if (changed) {
+      if (changed || grew) {
         _watchRefreshRevision++;
         _notify();
       }
-      return changed;
+      return changed || grew;
     } catch (e) {
       _setError('Failed to adopt the remote timer: $e');
       return false;

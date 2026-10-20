@@ -230,13 +230,24 @@ Future<WatchSyncGraph?> createWatchSync({
     // shows it without reloading and cannot overwrite it (D-1).
     onSessionRated: adoption.adoptRating,
   );
+  // Built after the mirror, but the projection below reads it.
+  WatchTimerPush? timerPushForSnapshots;
   final mirror = LiveSessionMirrorState(
     transport: WatchInboxStagingTransport(inner: resolved, inbox: inbox),
     snapshot: watchSessionPlaceholder,
     // Every ladder this phone asserts — a request answered or a wrist snapshot
     // re-asserted — is composed from the phone's own session, never from the
-    // copy this mirror converged with the wrist (D-11).
-    projection: adoption.projectSession,
+    // copy this mirror converged with the wrist (D-11). It also names the work
+    // timers the phone started: a snapshot is authoritative for the wrist's
+    // timer state, so one that named none would stop them on the wrist.
+    projection: (incoming) async {
+      final projected = await adoption.projectSession(incoming);
+      final timers = timerPushForSnapshots?.deliveredTimers();
+      if (projected != null && timers != null && timers.isNotEmpty) {
+        projected['timers'] = timers;
+      }
+      return projected;
+    },
   );
   final router = WatchIncomingRouter(
     inbox: inbox,
@@ -275,6 +286,7 @@ Future<WatchSyncGraph?> createWatchSync({
   // The timers ride the same mirror and transport: a phone that starts, pauses
   // or ends an interval tells the wrist as soon as the window closes (43b3).
   final timerPush = WatchTimerPush(mirror: mirror, onFailure: onFailure);
+  timerPushForSnapshots = timerPush;
   // And the other direction: a timer the wrist starts becomes the phone's.
   final timerAdoption = WatchTimerAdoption(
     mirror: mirror,

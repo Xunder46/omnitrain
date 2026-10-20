@@ -316,8 +316,7 @@ void main() {
       ),
     );
 
-    // Two intervals the way the phone writes them, both not started.
-    await phone.state.addEntry('sl-run');
+    // Two intervals, both not started: the adoption gave the slot its first.
     await phone.state.addEntry('sl-run');
 
     await _mount(tester, _screen(phone, initialFocusId: 'sl-run'));
@@ -406,7 +405,6 @@ void main() {
     // frame, so the screen's cached length has to be refreshed from the
     // adopted round.
     await phone.state.addEntry('sl-bag');
-    await phone.state.addEntry('sl-bag');
 
     await _mount(tester, _screen(phone, initialFocusId: 'sl-bag'));
 
@@ -489,7 +487,6 @@ void main() {
       );
 
       await phone.state.addEntry('sl-bag');
-      await phone.state.addEntry('sl-bag');
 
       await _mount(tester, _screen(phone, initialFocusId: 'sl-bag'));
 
@@ -548,7 +545,6 @@ void main() {
       ),
     );
 
-    await phone.state.addEntry('sl-run');
     await phone.state.addEntry('sl-run');
 
     await _mount(tester, _screen(phone, initialFocusId: 'sl-run'));
@@ -631,8 +627,6 @@ void main() {
       );
 
       await phone.state.addEntry('sl-run');
-      await phone.state.addEntry('sl-run');
-      await phone.state.addEntry('sl-walk');
       await phone.state.addEntry('sl-walk');
 
       await _mount(tester, _screen(phone, initialFocusId: 'sl-walk'));
@@ -745,7 +739,6 @@ void main() {
       );
 
       await phone.state.addEntry('sl-run');
-      await phone.state.addEntry('sl-run');
 
       // The wrist's timer lands before any screen exists.
       await phone.router.receive(frame);
@@ -808,7 +801,6 @@ void main() {
         ),
       );
 
-      await phone.state.addEntry('sl-bag');
       await phone.state.addEntry('sl-bag');
 
       // The wrist's round timer lands before any screen exists.

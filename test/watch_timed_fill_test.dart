@@ -285,6 +285,7 @@ Future<void> _phoneIntervals(
   TimedState secondState = TimedState.notStarted,
   bool finishBoth = false,
 }) async {
+  await _clearSeededIntervals(repository);
   final atMs = _msOf(_plannedAt);
   for (var index = 0; index < 2; index++) {
     final finished = finishBoth || index == 0;
@@ -318,6 +319,7 @@ Future<void> _phoneIntervals(
 /// middle one, so its two remaining instances sit at `entryIndex` 0 and 1 while
 /// their rows carry the numbers 0 and 2 — the hole a middle delete leaves.
 Future<void> _phoneIntervalsHoled(WorkoutRepository repository) async {
+  await _clearSeededIntervals(repository);
   final atMs = _msOf(_plannedAt);
   for (final (position, number) in [(0, 0), (1, 2)]) {
     final finished = position == 0;
@@ -349,6 +351,7 @@ Future<void> _phoneIntervalsHoled(WorkoutRepository repository) async {
 /// from an earlier pass, written without its rows; phone interval 2 unlogged
 /// with its rows numbered 2.
 Future<void> _halfWrittenWristPass(WorkoutRepository repository) async {
+  await _clearSeededIntervals(repository);
   final atMs = _msOf(_plannedAt);
   await repository.createTimedInstance(
     TimedInstance(
@@ -409,6 +412,7 @@ Future<void> _halfWrittenWristPass(WorkoutRepository repository) async {
 /// Fixture for S-5006: two drill intervals, the second unlogged, with the
 /// phone's own 5 kg added load on each row.
 Future<void> _phoneHolds(WorkoutRepository repository) async {
+  await _clearSeededIntervals(repository);
   final atMs = _msOf(_plannedAt);
   for (var index = 0; index < 2; index++) {
     final finished = index == 0;
@@ -439,6 +443,7 @@ Future<void> _phoneHolds(WorkoutRepository repository) async {
 /// Fixture for S-5007: two rounds, the second unlogged. A round effort has no
 /// observation rows.
 Future<void> _phoneRounds(WorkoutRepository repository) async {
+  await _clearSeededIntervals(repository);
   final atMs = _msOf(_plannedAt);
   for (var index = 0; index < 2; index++) {
     final finished = index == 0;
@@ -461,6 +466,23 @@ Future<void> _phoneRounds(WorkoutRepository repository) async {
 }
 
 // ─── Reading what happened ──────────────────────────────────────────────────
+
+/// The interval an adopted slot starts with: the fixtures below write the
+/// phone's own intervals, so the adoption's first one goes first.
+Future<void> _clearSeededIntervals(WorkoutRepository repository) async {
+  for (final effort in await _efforts(repository)) {
+    if (effort.effortKind == 'set') continue;
+    for (final t in await repository.getTimedInstances(effort.id)) {
+      await repository.deleteTimedInstance(t.id);
+    }
+    for (final r in await repository.getRoundInstances(effort.id)) {
+      await repository.deleteRoundInstance(r.id);
+    }
+    for (final o in await repository.getEffortObservations(effort.id)) {
+      await repository.deleteObservation(o.id);
+    }
+  }
+}
 
 Future<List<SegmentEffort>> _efforts(WorkoutRepository repository) async {
   final segments = await repository.getSessionSegments(_sessionId);

@@ -103,6 +103,7 @@ extension SessionCoreEntryMethods on SessionCore {
           );
           if (exercise != null) _exerciseCache[effort.exerciseId!] = exercise;
         }
+        await seedFirstInterval(effort.id);
       }
 
       _watchRefreshRevision++;
@@ -110,6 +111,28 @@ extension SessionCoreEntryMethods on SessionCore {
     } catch (e) {
       _setError('Failed to append session slots: $e');
     }
+  }
+
+  /// Gives a timed, hold or round effort its first interval when it holds none.
+  ///
+  /// A slot adopted off the watch arrives with no intervals, unlike an
+  /// exercise the phone adds itself; without one the session screen reads
+  /// "Interval 1 of 0" and a timer the watch starts has nothing to land on.
+  /// A set effort is left as it is. Safe to call twice: an effort that already
+  /// holds an interval is untouched.
+  Future<void> seedFirstInterval(String effortId) async {
+    final effort = _findEffort(effortId);
+    if (effort == null) return;
+
+    final held = switch (effort.effortKind) {
+      'round' => _timerManager.getRoundsForEffort(effortId).length,
+      'timed' ||
+      'drill' => _timerManager.getTimedInstancesForEffort(effortId).length,
+      _ => -1,
+    };
+    if (held != 0) return;
+
+    await addEntry(effortId);
   }
 
   Future<void> addEntry(

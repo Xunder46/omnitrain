@@ -253,6 +253,53 @@ class TimerManager {
     }
   }
 
+  /// How far apart two starts may be and still be one interval's start: the
+  /// watch's start crosses the wire as an ISO string.
+  static const int _sameStartToleranceMs = 1000;
+
+  /// Whether [remote] is an interval the effort does not hold yet: the effort
+  /// has no unfinished interval to take it, and no finished one began with it.
+  ///
+  /// A watch that starts a second interval has no phone interval waiting for
+  /// it, so the session core adds one first. A finished interval that started
+  /// with the same instant means the phone already logged this timer, so it is
+  /// not news again.
+  bool needsIntervalFor(
+    String effortId,
+    String effortKind,
+    RemoteWorkTimer remote,
+  ) {
+    final wireKind = switch (effortKind) {
+      'timed' => 'elapsed',
+      'drill' => 'hold',
+      'round' => 'round',
+      _ => null,
+    };
+    if (wireKind == null || wireKind != remote.wireKind) return false;
+
+    final bool anyUnfinished;
+    final Iterable<int> finishedStarts;
+    if (effortKind == 'round') {
+      final rounds = getRoundsForEffort(effortId);
+      anyUnfinished = rounds.any((r) => r.state != RoundState.finished);
+      finishedStarts = [
+        for (final r in rounds)
+          if (r.state == RoundState.finished) r.startedAtMs,
+      ];
+    } else {
+      final timed = getTimedInstancesForEffort(effortId);
+      anyUnfinished = timed.any((t) => t.state != TimedState.finished);
+      finishedStarts = [
+        for (final t in timed)
+          if (t.state == TimedState.finished) t.startedAtMs,
+      ];
+    }
+    if (anyUnfinished) return false;
+    return !finishedStarts.any(
+      (start) => (start - remote.startedAtMs).abs() <= _sameStartToleranceMs,
+    );
+  }
+
   Future<bool> _adoptRemoteTimed(
     String effortId,
     RemoteWorkTimer remote,

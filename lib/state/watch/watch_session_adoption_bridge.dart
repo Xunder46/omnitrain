@@ -704,6 +704,16 @@ class WatchSessionAdoptionBridge {
         await _adopt(sessionId, converged);
       }
       await target.loadHistoricalSession(sessionId);
+      if (existing == null) {
+        // A fresh adoption: an interval slot starts with its first interval,
+        // as an exercise the phone adds itself does. A reload of a session the
+        // phone already wrote is left as the user last had it.
+        for (final segment in target.segments) {
+          for (final effort in target.getEffortsForSegment(segment.id)) {
+            await target.seedFirstInterval(effort.id);
+          }
+        }
+      }
     } catch (error, stack) {
       // Adoption is the one thing here that can fail for a reason that is not
       // the rule working — a row that cannot be written. That is a failure, and

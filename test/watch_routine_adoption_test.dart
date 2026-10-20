@@ -480,6 +480,16 @@ Future<List<(int, int, double)>> _sets(
     ),
 ];
 
+/// The reps rows of [effortId] — the rows only a planned set writes. A held
+/// interval's own distance or extra-weight rows are not sets.
+Future<List<String>> _repsRows(
+  WorkoutRepository repository,
+  String effortId,
+) async => [
+  for (final row in await repository.getEffortObservations(effortId))
+    if (row.metricId == MetricIds.reps) row.id,
+];
+
 /// The today-behaviour assertions A5 describes: the session is adopted, and
 /// nothing links it to a routine and gives it no planned rows.
 Future<void> _expectFreeAdoption(
@@ -502,7 +512,7 @@ Future<void> _expectFreeAdoption(
   );
   for (final slot in slots) {
     expect(
-      await repository.getEffortObservations(slot),
+      await _repsRows(repository, slot),
       isEmpty,
       reason: 'A5 no planned row is written',
     );
@@ -628,9 +638,9 @@ void _adoptionTests({
         reason: 'A2 the planned rows are not logged sets: no rest follows one',
       );
       expect(
-        await repository.getEffortObservations(_plankSlot),
+        await _repsRows(repository, _plankSlot),
         isEmpty,
-        reason: 'A4 a timed effort of the same routine gets no planned rows',
+        reason: 'A4 a timed effort of the same routine gets no planned sets',
       );
       expect(phone.failures, isEmpty);
     },

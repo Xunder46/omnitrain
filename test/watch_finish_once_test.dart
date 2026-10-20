@@ -324,6 +324,7 @@ Future<void> _timedIntervals(
   WorkoutRepository repository,
   List<_TimedSpec> specs,
 ) async {
+  await _clearSeededIntervals(repository);
   final atMs = _msOf(_plannedAt);
   for (var index = 0; index < specs.length; index++) {
     final spec = specs[index];
@@ -361,6 +362,7 @@ Future<void> _holdIntervals(
   WorkoutRepository repository,
   List<_TimedSpec> specs,
 ) async {
+  await _clearSeededIntervals(repository);
   final atMs = _msOf(_plannedAt);
   for (var index = 0; index < specs.length; index++) {
     final spec = specs[index];
@@ -397,6 +399,7 @@ Future<void> _roundIntervals(
   WorkoutRepository repository,
   List<_RoundSpec> specs,
 ) async {
+  await _clearSeededIntervals(repository);
   final atMs = _msOf(_plannedAt);
   for (var index = 0; index < specs.length; index++) {
     final spec = specs[index];
@@ -437,6 +440,7 @@ Future<void> _ownInstanceHalfWritten(
   int? ownStartMs,
   int? phoneStartMs,
 }) async {
+  await _clearSeededIntervals(repository);
   final ownFinished = ownState == TimedState.finished;
   await _timedIntervals(repository, [
     (
@@ -469,6 +473,23 @@ Future<void> _ownInstanceHalfWritten(
 }
 
 // ─── Reading what happened ──────────────────────────────────────────────────
+
+/// The interval an adopted slot starts with: the fixtures below write the
+/// phone's own intervals, so the adoption's first one goes first.
+Future<void> _clearSeededIntervals(WorkoutRepository repository) async {
+  for (final effort in await _efforts(repository)) {
+    if (effort.effortKind == 'set') continue;
+    for (final t in await repository.getTimedInstances(effort.id)) {
+      await repository.deleteTimedInstance(t.id);
+    }
+    for (final r in await repository.getRoundInstances(effort.id)) {
+      await repository.deleteRoundInstance(r.id);
+    }
+    for (final o in await repository.getEffortObservations(effort.id)) {
+      await repository.deleteObservation(o.id);
+    }
+  }
+}
 
 Future<List<SegmentEffort>> _efforts(WorkoutRepository repository) async {
   final segments = await repository.getSessionSegments(_sessionId);

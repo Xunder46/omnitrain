@@ -192,7 +192,8 @@ void main() {
   }
 
   /// The fixture: the wrist starts [_sessionId] with one timed slot, the phone
-  /// adopts it, and the phone then holds two intervals that have not started.
+  /// adopts it (which gives the slot its first interval), and the phone then
+  /// adds a second: two intervals that have not started.
   Future<void> fixture() async {
     await engine.createSession(modality: null, exercises: [_slot()]);
     await radio.fromWrist(engine.sessionSnapshot()!);
@@ -205,7 +206,6 @@ void main() {
     );
     expect(graph.mirror.sessionId, _sessionId);
 
-    await phoneState.addEntry(_slotId);
     await phoneState.addEntry(_slotId);
     expect(
       phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
@@ -435,7 +435,6 @@ void main() {
         reason: "the fixture: the phone holds the wrist's round session",
       );
 
-      await phoneState.addEntry(_roundSlotId);
       final before = phoneState.getRoundsForEffort(_roundSlotId).single;
       expect(before.state, RoundState.notStarted);
       expect(
@@ -631,7 +630,6 @@ void main() {
       await engine.createSession(modality: null, exercises: [_slot()]);
       await radio.fromWrist(engine.sessionSnapshot()!);
       await _settle();
-      await phoneState.addEntry(_slotId);
       expect(
         phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
         [TimedState.notStarted],
@@ -841,6 +839,141 @@ void main() {
         sentOfType('timer_state'),
         hasLength(1),
         reason: "S-6115 the wrist's own earlier start is not overwritten",
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6116 a phone snapshot leaves the phone\'s timer running on the wrist',
+      () {
+    test('S-6116 the phone starts an interval, then answers a snapshot request; '
+        'the wrist\'s clock keeps running', () async {
+      await fixture();
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      await phoneState.startTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+      await applyPhoneTimers();
+      expect(
+        engine.timerFor(WatchTimerKind.elapsed)?.state,
+        WatchTimerState.running,
+        reason: "the fixture: the phone's start reached the wrist",
+      );
+
+      // The wrist asks for the phone's session; the answer is a snapshot.
+      await radio.fromWrist(WatchTransportRequest.snapshotFrame());
+      await _settle();
+      final snapshots = radio.ofType('session_snapshot');
+      expect(
+        snapshots,
+        isNotEmpty,
+        reason: 'the fixture: the phone answered with a snapshot',
+      );
+      for (final frame in snapshots) {
+        await engine.applyMessage(frame);
+      }
+
+      expect(
+        engine.timerFor(WatchTimerKind.elapsed)?.state,
+        WatchTimerState.running,
+        reason: 'S-6116 a snapshot of the phone\'s session does not stop the '
+            'timer the phone started',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-6116 once the phone ends its interval the next snapshot says '
+        'nothing about it, and the clock stops', () async {
+      await fixture();
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      await phoneState.startTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+      await applyPhoneTimers();
+
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+      await applyPhoneTimers();
+
+      expect(
+        engine.timerFor(WatchTimerKind.elapsed)?.state,
+        isNot(WatchTimerState.running),
+        reason: 'S-6116 the phone finished the interval, so the wrist stops',
+      );
+    });
+  });
+
+  group('S-6117 a second interval started on the wrist', () {
+    test('S-6117 the exercise grows by one and the new interval runs',
+        () async {
+      await fixture();
+      // The fixture's second interval is used and finished by the phone: only
+      // the first is left to the wrist.
+      final intervals = phoneState.getTimedInstancesForEffort(_slotId);
+      expect(intervals, hasLength(2));
+      await phoneState.deleteTimedEntry(_slotId, 1);
+      await phoneState.startTimedEntry(_slotId, 0);
+      await phoneState.finishTimedEntry(_slotId, 0);
+      expect(
+        phoneState
+            .getTimedInstancesForEffort(_slotId)
+            .map((i) => i.state),
+        [TimedState.finished],
+        reason: 'the fixture: the only interval is finished',
+      );
+
+      await wristStartsElapsed(_wristStart);
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+
+      final after = phoneState.getTimedInstancesForEffort(_slotId);
+      expect(
+        after.map((i) => i.state),
+        [TimedState.finished, TimedState.active],
+        reason: 'S-6117 a second interval was added and started',
+      );
+      expect(after.last.startedAtMs, _wristStart.millisecondsSinceEpoch);
+      expect(failures, isEmpty);
+    });
+
+    test('S-6117 a timer the phone already logged adds nothing', () async {
+      await fixture();
+      await phoneState.deleteTimedEntry(_slotId, 1);
+      await phoneState.startTimedEntry(_slotId, 0);
+      final started = phoneState.getTimedInstancesForEffort(_slotId).single;
+      await phoneState.finishTimedEntry(_slotId, 0);
+
+      wristClock = DateTime.fromMillisecondsSinceEpoch(
+        started.startedAtMs,
+        isUtc: true,
+      );
+      await engine.startTimer(
+        WatchTimerKind.elapsed,
+        sessionExerciseId: _slotId,
+      );
+      wristClock = _now;
+      await deliver(lastTimerFrame());
+      await graph.timerAdoption.flush();
+
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId),
+        hasLength(1),
+        reason: 'S-6117 an interval that began with this timer is not news',
+      );
+    });
+  });
+
+  group('S-6118 an adopted interval slot arrives with its first interval', () {
+    test('S-6118 a timed slot starts with one interval, not "1 of 0"',
+        () async {
+      await engine.createSession(modality: null, exercises: [_slot()]);
+      await radio.fromWrist(engine.sessionSnapshot()!);
+      await _settle();
+
+      expect(
+        phoneState.getTimedInstancesForEffort(_slotId).map((i) => i.state),
+        [TimedState.notStarted],
+        reason: 'S-6118 the phone has an interval for the wrist to start',
       );
       expect(failures, isEmpty);
     });

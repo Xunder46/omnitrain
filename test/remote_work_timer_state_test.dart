@@ -645,7 +645,7 @@ void _adoptionTests({
     },
   );
 
-  test('S-6105 every interval finished: ignored', () async {
+  test('S-6105 every interval finished: the exercise grows by one', () async {
     final (state, effortId) = await _session(repository, 'cardio_endurance');
     await state.startTimedEntry(effortId, 0);
     await state.finishTimedEntry(effortId, 0);
@@ -653,8 +653,6 @@ void _adoptionTests({
     await state.startTimedEntry(effortId, 1);
     await state.finishTimedEntry(effortId, 1);
 
-    var notifications = 0;
-    state.addListener(() => notifications++);
     final revisionBefore = state.watchRefreshRevision;
 
     final changed = await state.adoptRemoteWorkTimer(
@@ -665,13 +663,36 @@ void _adoptionTests({
     final after = state.getTimedInstancesForEffort(effortId);
     expect(
       changed,
-      isFalse,
-      reason: 'S-6105 there is no unfinished interval to adopt into',
+      isTrue,
+      reason: 'S-6105 a new interval is added for the remote timer',
     );
     expect(after.map((i) => i.state), [
       TimedState.finished,
       TimedState.finished,
+      TimedState.active,
     ]);
+    expect(after.last.startedAtMs, _tMs);
+    expect(state.watchRefreshRevision, greaterThan(revisionBefore));
+  });
+
+  test('S-6105 a remote timer that began a finished interval is ignored',
+      () async {
+    final (state, effortId) = await _session(repository, 'cardio_endurance');
+    await state.startTimedEntry(effortId, 0);
+    await state.finishTimedEntry(effortId, 0);
+    final finished = state.getTimedInstancesForEffort(effortId).single;
+
+    var notifications = 0;
+    state.addListener(() => notifications++);
+    final revisionBefore = state.watchRefreshRevision;
+
+    final changed = await state.adoptRemoteWorkTimer(
+      effortId,
+      RemoteWorkTimer(wireKind: 'elapsed', startedAtMs: finished.startedAtMs),
+    );
+
+    expect(changed, isFalse, reason: 'S-6105 the phone already logged it');
+    expect(state.getTimedInstancesForEffort(effortId), hasLength(1));
     expect(state.watchRefreshRevision, revisionBefore);
     expect(notifications, 0);
   });
