@@ -112,13 +112,12 @@ non-empty category closes the dialog without throwing and keeps the category
 and its foods (S-2910)`).
 
 The New Food form and the legacy edit shim warn about unsaved changes: leaving
-with edits open a three-choice dialog (keep editing / discard / save), so typed
-values cannot be lost silently. Verified by `test/nutrition_test.dart` (group
+with edits open a two-button dialog (keep editing / discard), so typed
+values cannot be lost silently; saving is the form's own Save button. Verified by `test/nutrition_test.dart` (group
 `AddFoodScreen — New Food form unsaved guard (S-2902)`: `Discard pops without
-creating the food`, `Save from the dialog creates the food and pops`; group
+creating the food`; group
 `AddFoodScreen — legacy edit shim unsaved guard (S-2902)`: `Discard pops and
-leaves the stored food unchanged`, `Save from the dialog persists the new name
-and pops`).
+leaves the stored food unchanged`).
 
 Verified by `test/food_library_test.dart`, `test/food_library_edit_test.dart`,
 `test/food_library_state_delete_guard_test.dart`, `test/food_group_membership_test.dart`,
@@ -143,12 +142,11 @@ load and written back as zero. A target that is unset or not positive shows an
 empty field rather than a zero, so "no target" and "a target of zero" cannot be
 confused.
 
-Leaving the form with unsaved edits warns first: a three-choice dialog (keep
-editing / discard / save) guards the back path, so a typed target cannot be
+Leaving the form with unsaved edits warns first: a two-button dialog (keep
+editing / discard) guards the back path, so a typed target cannot be
 lost silently. Verified by `test/nutrition_test.dart` (group
 `NutritionTargetScreen — unsaved changes guard (S-2902)`: `Discard pops and
-leaves the stored target unchanged`, `Save from the dialog stores the new
-target and pops`).
+leaves the stored target unchanged`).
 
 Verified by `test/nutrition_test.dart` (the calories-only group) and
 `test/nutrition_target_button_test.dart`.

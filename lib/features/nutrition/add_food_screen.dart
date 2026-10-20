@@ -417,25 +417,16 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
       return;
     }
 
-    final action = await ConfirmationDialog.showUnsavedChanges(
+    final discard = await ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
-      body: 'You have unsaved edits. Save them or discard to return to the '
+      body: 'You have unsaved edits. Discard them to return to the '
           'food library.',
       keepEditingKey: const Key('legacy-food-unsaved-keep'),
       discardKey: const Key('legacy-food-unsaved-discard'),
-      saveKey: const Key('legacy-food-unsaved-save'),
     );
-    if (!mounted) return;
-
-    switch (action) {
-      case UnsavedChangesAction.discard:
-        Navigator.of(context).pop();
-      case UnsavedChangesAction.save:
-        _formController.submit();
-      case UnsavedChangesAction.keepEditing:
-        break;
-    }
+    if (!mounted || !discard) return;
+    Navigator.of(context).pop();
   }
 
   /// Write [draft] through the state layer. Legacy rows are
@@ -948,25 +939,16 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
       return;
     }
 
-    final action = await ConfirmationDialog.showUnsavedChanges(
+    final discard = await ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
-      body: 'You have unsaved edits. Save them or discard to return to the '
+      body: 'You have unsaved edits. Discard them to return to the '
           'food library.',
       keepEditingKey: const Key('new-food-unsaved-keep'),
       discardKey: const Key('new-food-unsaved-discard'),
-      saveKey: const Key('new-food-unsaved-save'),
     );
-    if (!mounted) return;
-
-    switch (action) {
-      case UnsavedChangesAction.discard:
-        Navigator.of(context).pop();
-      case UnsavedChangesAction.save:
-        _formController.submit();
-      case UnsavedChangesAction.keepEditing:
-        break;
-    }
+    if (!mounted || !discard) return;
+    Navigator.of(context).pop();
   }
 
   @override

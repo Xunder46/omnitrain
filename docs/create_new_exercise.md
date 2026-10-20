@@ -118,7 +118,7 @@ Verified by `test/muscle_editor_screen_test.dart` (group `S-7 scroll to the firs
 ## Unsaved Changes
 
 Leaving the form with unsaved edits asks first through
-`ConfirmationDialog.showUnsavedChanges` (keep editing / discard / save); an untouched form leaves
+`ConfirmationDialog.showUnsavedChanges` (keep editing / discard); an untouched form leaves
 without asking, and a successful save pops without asking. Dirty covers name, description,
 modality, discipline, capabilities and the muscle selection. Verified by
 `test/muscle_editor_screen_test.dart` (group `S-8 unsaved guard`, and group

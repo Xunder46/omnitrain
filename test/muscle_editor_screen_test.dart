@@ -602,31 +602,6 @@ void main() {
       expect(host.popped, isNull);
     });
 
-    testWidgets('Save in the dialog stores the exercise and leaves', (
-      tester,
-    ) async {
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final countBefore = (await repo.getExercises()).length;
-      final host = await _pumpEditor(tester, workoutState: workoutState);
-
-      await _fillValidForm(tester);
-
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('exercise_editor_unsaved_save')),
-        findsOneWidget,
-      );
-
-      await tester.tap(find.byKey(const Key('exercise_editor_unsaved_save')));
-      await tester.pumpAndSettle();
-
-      expect(host.hasPopped, isTrue);
-      expect(host.popped!.name, 'Power Clean');
-      expect((await repo.getExercises()).length, countBefore + 1);
-    });
-
     testWidgets('the system back asks on a dirty form', (tester) async {
       final repo = await _freshRepo();
       final workoutState = WorkoutState(repo);

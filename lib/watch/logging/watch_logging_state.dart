@@ -526,7 +526,7 @@ class WatchLoggingState {
       case WatchMetricKey.rounds:
         return roundsLabel;
       case WatchMetricKey.roundDuration:
-        return 'Round length';
+        return '${ModalityDisplay.roundNoun(modality)} length';
       case WatchMetricKey.extraWeight:
         return 'Load';
       default:

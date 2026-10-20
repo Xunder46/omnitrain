@@ -315,7 +315,7 @@ Transitions are validated by `_isValidRoundTransition()` in `WorkoutState`. Rapi
 - Round-length row under the ring: a `ValueStepperRow` in its duration mode
   with the inline label `ROUND LENGTH` — one step is 15 s, the row is floored
   at 15 s and ceilinged by `MetricStepCalc`, tapping the number opens
-  `showDurationEntryDialog` (`Edit Round Duration`), and the row is read-only
+  `showDurationEntryDialog` (`Edit Round Duration`, `Edit Period Duration` in sports), and the row is read-only
   while the round runs, mid-round or finished. Verified by
   `test/round_countdown_screen_test.dart` (group `Round countdown — length
   row (S-4403, S-4413)` · `S-4403: + adds 15 s to the round length (03:15)`,
@@ -429,19 +429,40 @@ auto-advance (S-4215)` · `S-4215: logging set 1 moves focus to set 2`,
 `S-4215: a logged set ahead is skipped`, `S-4215: the last set moves to the
 next exercise`).
 
-**Stepper Remove Rule**:
+**Stepper Remove Rule** (rewritten by plan 41, which reversed the plan-38a
+remove rule):
 
-- the stepper's `−` removes the last unlogged set, or the last set when every
-  set is logged — not the focused set; `+` adds a set up to the 12-entry cap
-- removing a logged entry shows a confirmation dialog (`Delete logged Set?`);
-  removing the last remaining entry shows a stronger confirmation because it
-  deletes the whole exercise from the session (`Remove Exercise?`)
+- the stepper's `−` deletes the set the user is looking at (the focused set);
+  `+` adds a set up to the 12-entry cap
+- an unlogged set that was never started is deleted at once, without a dialog
+- a set that was started but not logged — a timer, interval or round still
+  running or paused — asks first (`Delete running <Set|Interval|Round|Hold>?`;
+  deleting it loses that progress)
+- a logged set asks `Delete logged <label>?`; when the effort has only one set
+  left, `−` asks `Remove Exercise?` because it deletes the whole exercise from
+  the session
+- after a delete the focus stays on the same position (the set that slid up) or
+  clamps to the new last set; a running timer on another set of the same
+  exercise keeps running and keeps its own time
+- in Edit Session, edits not yet saved on later sets move with their sets, so
+  Save writes each edit onto the set it was made on (`S-4909`)
 
-Verified by `test/logger_shell_screen_test.dart` (group `Logger shell — sets
-stepper (S-4220/S-4230/S-4231)` · `S-4220: − removes the last unlogged set
-without a dialog`, `S-4220: − on an all-logged effort asks to delete a logged
-set`, `S-4231: one logged set left asks to remove the exercise`,
-`S-4230: at the 12-set cap + is disabled`).
+Verified by `test/delete_focused_set_test.dart` (group `Delete the focused set
+(plan 41)` · `S-4901: − deletes the focused unlogged set, not the last one`,
+`S-4902: − on a logged focused set asks, cancel keeps it, delete removes it and
+re-keys the rests`, `S-4907: an open rest of a later set keeps its own set
+after a middle delete`) and `test/delete_focused_timer_test.dart` (group
+`Delete the focused set — timers (plan 41)` · `S-4904: deleting a running
+interval asks first; cancel keeps it running; delete drops it and its timer;
+the next set is idle`, `S-4905: a running later interval keeps running and
+keeps its own time after a middle delete`, `S-4906: deleting a running round
+asks first`, `S-4908: the only interval, started, asks to remove the
+exercise`); the all-logged and one-set confirmations are also covered by
+`test/logger_shell_screen_test.dart` (group `Logger shell — sets stepper
+(S-4220/S-4230/S-4231)` · `S-4220: − on an all-logged effort asks to delete a
+logged set`, `S-4220: − on an all-logged effort drops the last set`,
+`S-4231: one logged set left asks to remove the exercise`, `S-4230: at the
+12-set cap + is disabled`).
 
 ### 7. List View vs Detail View Toggle
 
@@ -542,7 +563,7 @@ exception").
 
 ### Set Skip vs Delete
 - **Skip Set**: Advance without logging via forward navigation (the segment stays unlogged)
-- **Remove Entry**: The stepper's `−` removes the last unlogged set, or the last set when every set is logged — not the focused set. When the effort has **only one set**, the `−` icon is a trash-can (`Icons.delete_outline`) — confirming removes the entire exercise from the session. Tooltip text also switches from "Remove set" to "Remove exercise".
+- **Remove Entry**: The stepper's `−` deletes the set the user is looking at (the focused set; the rule since plan 41). An unlogged set that was never started goes at once; a started-but-unlogged set asks `Delete running <label>?` first; a logged set asks `Delete logged <label>?`. When the effort has **only one set**, the `−` icon is a trash-can (`Icons.delete_outline`) — confirming removes the entire exercise from the session. Tooltip text also switches from "Remove set" to "Remove exercise".
 - **A deleted logged set takes its rest with it**: the rest that marked the set logged is removed and every later rest moves down one, so a set added afterwards is a new unlogged set (pre-filled from the previous set as the carry-forward does). The rest history of the deleted set disappears with it.
 - Use case: Skip = "I'm moving on without logging this effort", Remove = "This entry should not exist"
 
@@ -560,7 +581,8 @@ exercise with a trash icon`). The state-layer rule is
 `<harness> — deleteEntry takes the rest with the entry` · `S-4301 deleting the
 last set takes its rest, so a new set reads unlogged`, `S-4302 deleting the
 first set moves every rest down with the sets it keeps`, `S-4303 deleting a
-middle set drops its own rest and moves the rest above it down`).
+middle set drops its own rest and moves the rest above it down`). The
+focused-set rule itself is verified in **Stepper Remove Rule** above.
 
 ### Modality Change Warning
 **Trigger**: User taps different modality tile while session active
@@ -645,8 +667,8 @@ lib/features/session/
   workout_session_screen.dart
     ├── State (_WorkoutSessionScreenState)
     ├── Lifecycle (initState, dispose, _loadExercises)
-    ├── Actions (_logSet, _addSet, _deleteSetAt, _deleteLastUnloggedSet)
-    ├── Timer Management (_toggleEffortTimer — in workout_session_timer_mixin.dart)
+    ├── Actions (_logSet, _addSet, _deleteSetAt)
+    ├── Timer Management (_toggleEffortTimer, _rekeyTimerStateAfterDelete — in workout_session_timer_mixin.dart)
     ├── UI Builders (_buildHeader, _buildListView, _buildMetricWidget, _buildSetControls)
     └── Helpers (_jumpToSet, _switchExercise)
 

@@ -288,7 +288,7 @@ void main() {
       expect(dialog(), findsOneWidget);
       expect(inDialog('Unsaved changes'), findsOneWidget);
       expect(inDialog('Discard'), findsOneWidget);
-      expect(inDialog('Save'), findsOneWidget);
+      expect(inDialog('Save'), findsNothing);
 
       // Keep editing keeps the screen and the typed value.
       await tester.tap(
@@ -349,22 +349,6 @@ void main() {
 
       expect(find.byType(NutritionTargetScreen), findsNothing);
       expect(await storedTarget(deps.repo), 2000.0);
-    });
-
-    testWidgets('Save from the dialog stores the new target and pops', (
-      tester,
-    ) async {
-      final deps = await pumpScreen(tester, storedCalories: 2000);
-      await tester.enterText(caloriesField, '2400');
-      await tester.pumpAndSettle();
-
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      await tester.tap(inDialog('Save'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(NutritionTargetScreen), findsNothing);
-      expect(await storedTarget(deps.repo), 2400.0);
     });
   });
 
@@ -2881,7 +2865,7 @@ void main() {
       expect(dialog(), findsOneWidget);
       expect(inDialog('Unsaved changes'), findsOneWidget);
       expect(inDialog('Discard'), findsOneWidget);
-      expect(inDialog('Save'), findsOneWidget);
+      expect(inDialog('Save'), findsNothing);
 
       // Keep editing keeps the form open with the typed value.
       await tester.tap(find.byKey(const Key('new-food-unsaved-keep')));
@@ -2945,27 +2929,6 @@ void main() {
       expect(find.text('New Food'), findsNothing);
       await foodLib.loadCatalogFoods();
       expect(foodLib.catalogFoods.where((f) => f.name == 'Trail Mix'), isEmpty);
-    });
-
-    testWidgets('Save from the dialog creates the food and pops', (
-      tester,
-    ) async {
-      final repo = await _freshRepo();
-      final foodLib = await pumpNewFoodForm(tester, repo: repo);
-      await tester.enterText(nameField(), 'Trail Mix');
-      await tester.pumpAndSettle();
-
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('new-food-unsaved-save')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('New Food'), findsNothing);
-      await foodLib.loadCatalogFoods();
-      expect(
-        foodLib.catalogFoods.where((f) => f.name == 'Trail Mix'),
-        hasLength(1),
-      );
     });
 
     testWidgets('a picked photo counts as unsaved work (S-2902)', (
@@ -3171,24 +3134,6 @@ void main() {
       expect(find.text('Edit Food'), findsNothing);
       final stored = await repo.getFoodById('f-guard-legacy');
       expect(stored?.name, 'Grandma Stew');
-    });
-
-    testWidgets('Save from the dialog persists the new name and pops', (
-      tester,
-    ) async {
-      final repo = await _freshRepo();
-      await pumpLegacyEditForm(tester, repo: repo);
-      await tester.enterText(nameField(), 'Grandma Stew II');
-      await tester.pumpAndSettle();
-
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('legacy-food-unsaved-save')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Edit Food'), findsNothing);
-      final stored = await repo.getFoodById('f-guard-legacy');
-      expect(stored?.name, 'Grandma Stew II');
     });
   });
 

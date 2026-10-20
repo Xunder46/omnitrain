@@ -721,7 +721,7 @@ void main() {
       expect(find.byTooltip('Remove exercise'), findsNothing);
     });
 
-    testWidgets('S-4220: − removes the last unlogged set without a dialog', (
+    testWidgets('S-4220: − deletes the focused unlogged set, no dialog', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -752,45 +752,6 @@ void main() {
         find.text('Set 2 of 2'),
         findsOneWidget,
         reason: 'the unlogged set 3 goes and the focus clamps to set 2',
-      );
-    });
-
-    testWidgets('S-4220: − drops the last set when the last two are unlogged', (
-      tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _buildDeps(modality: 'resistance_lifting');
-      final repo = await _freshRepo();
-      final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
-
-      final effortId = await deps.workoutState.addExerciseToSession(
-        exercise,
-        chosenMetric: 'reps',
-      );
-      await deps.workoutState.addEntry(effortId);
-      await deps.workoutState.addEntry(effortId);
-      await deps.workoutState.updateEntryValue(effortId, 1, 'reps', 8);
-      await deps.workoutState.updateEntryValue(effortId, 2, 'reps', 6);
-      await deps.workoutState.recordRestStart(effortId, 1);
-
-      await tester.pumpWidget(_buildSessionScreen(deps));
-      await _openDetailView(tester, 'Barbell Back Squat');
-      expect(find.text('Set 2 of 3'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('set-count-remove')));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(find.text('Set 2 of 2'), findsOneWidget);
-
-      await tester.tap(_segment(1));
-      await tester.pumpAndSettle();
-
-      expect(
-        _editorNumber('reps', '8'),
-        findsOneWidget,
-        reason: 'the last unlogged set (6 reps) went, so the surviving '
-            'unlogged set still holds its own 8 reps',
       );
     });
 
@@ -944,45 +905,6 @@ void main() {
       );
       expect(find.byTooltip('Max 12 entries'), findsOneWidget);
     });
-
-    testWidgets(
-      'S-4225: − on a set below the focused one keeps the focused set',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final deps = await _buildDeps(modality: 'resistance_lifting');
-        final repo = await _freshRepo();
-        final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
-
-        final effortId = await deps.workoutState.addExerciseToSession(
-          exercise,
-          chosenMetric: 'reps',
-        );
-        await deps.workoutState.addEntry(effortId);
-        await deps.workoutState.addEntry(effortId);
-        await deps.workoutState.updateEntryValue(effortId, 1, 'reps', 8);
-        await deps.workoutState.updateEntryValue(effortId, 2, 'reps', 6);
-        await deps.workoutState.recordRestStart(effortId, 2);
-        await deps.workoutState.recordRestStart(effortId, 3);
-
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _openDetailView(tester, 'Barbell Back Squat');
-
-        await tester.tap(_segment(1));
-        await tester.pumpAndSettle();
-        expect(find.text('Set 2 of 3'), findsOneWidget);
-
-        await tester.tap(find.byKey(const Key('set-count-remove')));
-        await tester.pumpAndSettle();
-
-        expect(find.byType(AlertDialog), findsNothing);
-        expect(
-          find.text('Set 1 of 2'),
-          findsOneWidget,
-          reason: 'set 1 (below the focus) went; the focus stays on old set 2',
-        );
-        expect(find.text('8'), findsOneWidget);
-      },
-    );
   });
 
   group('Logger shell — bar and chip (S-4232/S-4222)', () {

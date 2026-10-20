@@ -224,6 +224,19 @@ class WorkoutState extends ChangeNotifier {
 }
 ```
 
+### Round vs Period wording
+
+A `round` effort is called a **Period** everywhere a sports session or sports
+routine shows it, and a **Round** in every other modality. Sports is the one
+modality that spans halves, quarters, bouts and sets, and the exercise does not
+choose the word, so custom and imported exercises read the same as built-in
+ones. The rule lives in `ModalityDisplay.roundNoun` / `roundCount`
+(`lib/core/constants/modality_display.dart`): the entry counter (`Period 2 of 4`),
+the log button (`Log Period`), the length editor (`Edit Period Duration`), the
+list and overview counts (`3 periods`), the summary group and delta, the
+exercise editor's capability chip, and the watch's `Period length`. The word
+"period" also names the calendar's training periods, which are unrelated.
+
 ### Exercise Defaults for Sports Rounds
 
 `Exercise` now supports an optional `defaultRoundDurationSecs` field (serialized as

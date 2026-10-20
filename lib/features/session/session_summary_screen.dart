@@ -188,6 +188,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       final groupMetrics = await widget.sessionSummaryService.buildGroupMetrics(
         _summary,
+        modality: currentSession.modality,
       );
       final restTimeMs = await widget.sessionSummaryService
           .computeSessionRestTimeMs(currentSession.id);
@@ -1176,7 +1177,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         break;
       case 'rounds':
         final count = d.abs().toInt();
-        formattedValue = '$count round${count != 1 ? 's' : ''}';
+        formattedValue = ModalityDisplay.roundCount(
+          widget.workoutState.currentSession?.modality,
+          count,
+        );
         break;
       default:
         formattedValue = _formatNumber(d.abs());

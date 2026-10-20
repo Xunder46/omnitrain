@@ -97,7 +97,10 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         final totalRounds = widget.workoutState
             .getRoundsForEffort(effortId)
             .length;
-        return '$totalRounds round${totalRounds != 1 ? 's' : ''}';
+        return ModalityDisplay.roundCount(
+          widget.workoutState.currentSession?.modality,
+          totalRounds,
+        );
       case 'drill':
         return '${entries.length} hold${entries.length != 1 ? 's' : ''}';
       default:
@@ -840,7 +843,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                                       WorkoutConstants.maxEntriesPerEffort,
                                   removeIsExercise: entries.length == 1,
                                   onAdd: _addSet,
-                                  onRemove: _deleteLastUnloggedSet,
+                                  onRemove: () => _deleteSetAt(_currentSet - 1),
                                 ),
                                 SizedBox(
                                   height: 24 + _kSessionScrollBottomExtra,

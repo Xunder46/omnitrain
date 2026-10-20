@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
+import '../constants/modality_display.dart';
 import '../models/session_summary.dart';
 import '../utils/observation_grouper.dart';
 import 'stats_progress_service.dart';
@@ -61,9 +62,12 @@ class SessionSummaryService {
     return totalMs;
   }
 
+  /// [modality] is the session's modality; it names the round group ("Periods"
+  /// in sports, "Rounds" otherwise).
   Future<Map<String, SessionGroupMetrics>> buildGroupMetrics(
-    SessionSummary summary,
-  ) async {
+    SessionSummary summary, {
+    String? modality,
+  }) async {
     final cardioRounds = summary.exercises
         .where((e) => e.effortKind == 'timed')
         .fold<int>(0, (sum, e) => sum + e.setsCompleted);
@@ -94,7 +98,7 @@ class SessionSummaryService {
     if (summary.totalRounds > 0 || summary.totalRoundDurationMs > 0) {
       groups['rounds'] = SessionGroupMetrics(
         groupKey: 'rounds',
-        primaryLabel: 'Rounds',
+        primaryLabel: '${ModalityDisplay.roundNoun(modality)}s',
         primaryCount: summary.totalRounds,
         effortDurationMs: summary.totalRoundDurationMs,
       );

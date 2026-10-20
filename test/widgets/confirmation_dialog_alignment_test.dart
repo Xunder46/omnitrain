@@ -1,27 +1,29 @@
 // Owner request (2026-10-13): the unsaved-changes dialog must look like the
-// destructive two-choice dialog, so the two shapes cannot drift again.
+// destructive two-choice dialog, so the two cannot drift. Owner decision
+// (2026-10-18): it offers only Keep editing / Discard (no Save), because
+// three actions did not fit one row on a phone.
 //
 // Pinned here:
-// - the three-choice dialog has no X/`IconButton`; its actions are
-//   Keep editing (TextButton) / Discard (destructive FilledButton) /
-//   Save (primary FilledButton), in that left-to-right order
+// - the dialog has no X/`IconButton`; its actions are Keep editing
+//   (TextButton) and Discard (destructive FilledButton), left to right, with
+//   no Save
 // - PARITY: Discard carries the same background, foreground and shape as a
 //   destructive two-choice confirm; Keep editing carries the same
 //   text-button shape as Cancel
-// - no overflow and every action stays tappable on a 280-wide and a
-//   320x568 view
-// - a barrier tap still coalesces to `keepEditing`
+// - no overflow and both actions stay tappable on a 280-wide and a 320x568
+//   view. Whether the two fit one row depends on the real font: flutter_test
+//   renders every glyph 14 px wide, so the row is not asserted here
+// - a barrier tap still coalesces to keep editing
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/widgets/dialogs/confirmation_dialog.dart';
 
 const String _kBody =
-    'You have unsaved edits. Save them or discard to return to the summary.';
+    'You have unsaved edits. Discard them to return to the summary.';
 
-const Key _kThreeChoiceKeep = Key('align-three-keep');
-const Key _kThreeChoiceDiscard = Key('align-three-discard');
-const Key _kThreeChoiceSave = Key('align-three-save');
+const Key _kUnsavedKeep = Key('align-unsaved-keep');
+const Key _kUnsavedDiscard = Key('align-unsaved-discard');
 
 const Key _kTwoChoiceDismiss = Key('align-two-dismiss');
 const Key _kTwoChoiceConfirm = Key('align-two-confirm');
@@ -38,12 +40,16 @@ ThemeData _theme() => ThemeData(
   ),
 );
 
-Widget _threeChoice() => ConfirmationDialog.threeChoice(
+/// The unsaved-changes prompt as a static widget (the same two-choice dialog
+/// [ConfirmationDialog.showUnsavedChanges] shows).
+Widget _unsavedPrompt() => ConfirmationDialog.twoChoice(
   title: 'Unsaved changes',
-  body: _kBody,
-  keepEditingKey: _kThreeChoiceKeep,
-  discardKey: _kThreeChoiceDiscard,
-  saveKey: _kThreeChoiceSave,
+  body: const Text(_kBody),
+  dismissLabel: 'Keep editing',
+  confirmLabel: 'Discard',
+  dismissKey: _kUnsavedKeep,
+  confirmKey: _kUnsavedDiscard,
+  isDestructive: true,
 );
 
 Widget _destructiveTwoChoice() => ConfirmationDialog.twoChoice(
@@ -78,56 +84,49 @@ Color? _foregroundOf(WidgetTester tester, Key key) =>
 
 void main() {
   group('Mock ConfirmationDialog - unsaved-changes alignment', () {
-    testWidgets(
-      'three-choice drops the X and orders Keep editing / Discard / Save',
-      (WidgetTester tester) async {
-        await _pumpStatic(tester, _threeChoice());
+    testWidgets('offers Keep editing then Discard, with no X and no Save', (
+      WidgetTester tester,
+    ) async {
+      await _pumpStatic(tester, _unsavedPrompt());
 
-        final dialog = find.byType(AlertDialog);
-        expect(dialog, findsOneWidget);
-        expect(
-          find.descendant(of: dialog, matching: find.byType(IconButton)),
-          findsNothing,
-          reason: 'the title no longer carries an X close affordance',
-        );
-        expect(
-          find.descendant(of: dialog, matching: find.text('Keep editing')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(of: dialog, matching: find.text('Discard')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(of: dialog, matching: find.text('Save')),
-          findsOneWidget,
-        );
+      final dialog = find.byType(AlertDialog);
+      expect(dialog, findsOneWidget);
+      expect(
+        find.descendant(of: dialog, matching: find.byType(IconButton)),
+        findsNothing,
+        reason: 'the title carries no X close affordance',
+      );
+      expect(
+        find.descendant(of: dialog, matching: find.text('Keep editing')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: dialog, matching: find.text('Discard')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: dialog, matching: find.text('Save')),
+        findsNothing,
+        reason: 'every guarded form has its own Save button',
+      );
 
-        final keep = tester.getRect(find.byKey(_kThreeChoiceKeep));
-        final discard = tester.getRect(find.byKey(_kThreeChoiceDiscard));
-        final save = tester.getRect(find.byKey(_kThreeChoiceSave));
-
-        expect(
-          keep.left,
-          lessThan(discard.left),
-          reason: 'Keep editing is the first (leftmost) action',
-        );
-        expect(
-          discard.left,
-          lessThan(save.left),
-          reason: 'Save is the confirming action, last on the right',
-        );
-      },
-    );
+      final keep = tester.getRect(find.byKey(_kUnsavedKeep));
+      final discard = tester.getRect(find.byKey(_kUnsavedDiscard));
+      expect(
+        keep.left,
+        lessThan(discard.left),
+        reason: 'Keep editing is the first (leftmost) action',
+      );
+    });
 
     testWidgets('PARITY: Discard matches a destructive confirm, Keep editing '
         'matches Cancel', (WidgetTester tester) async {
       final theme = _theme();
 
-      await _pumpStatic(tester, _threeChoice());
-      final threeDiscard = _buttonMaterial(tester, _kThreeChoiceDiscard);
-      final threeDiscardForeground = _foregroundOf(tester, _kThreeChoiceDiscard);
-      final threeKeepShape = _buttonMaterial(tester, _kThreeChoiceKeep).shape;
+      await _pumpStatic(tester, _unsavedPrompt());
+      final discard = _buttonMaterial(tester, _kUnsavedDiscard);
+      final discardForeground = _foregroundOf(tester, _kUnsavedDiscard);
+      final keepShape = _buttonMaterial(tester, _kUnsavedKeep).shape;
 
       await _pumpStatic(tester, _destructiveTwoChoice());
       final twoConfirm = _buttonMaterial(tester, _kTwoChoiceConfirm);
@@ -140,32 +139,16 @@ void main() {
         ),
       );
 
-      expect(
-        threeDiscard.color,
-        twoConfirm.color,
-        reason: 'Discard and a destructive confirm share one background',
-      );
-      expect(
-        threeDiscardForeground,
-        twoConfirmForeground,
-        reason: 'Discard and a destructive confirm share one foreground',
-      );
-      expect(
-        threeDiscard.shape,
-        twoConfirm.shape,
-        reason: 'Discard and a destructive confirm share one shape',
-      );
-      expect(
-        threeKeepShape,
-        twoDismissShape,
-        reason: 'Keep editing and Cancel share one text-button shape',
-      );
+      expect(discard.color, twoConfirm.color);
+      expect(discardForeground, twoConfirmForeground);
+      expect(discard.shape, twoConfirm.shape);
+      expect(keepShape, twoDismissShape);
 
       // Anchors, so both sides drifting together still fails.
-      expect(threeDiscard.color, theme.colorScheme.error);
-      expect(threeDiscardForeground, theme.colorScheme.onError);
-      expect(threeDiscard.shape, utilityShape);
-      expect(threeKeepShape, utilityShape);
+      expect(discard.color, theme.colorScheme.error);
+      expect(discardForeground, theme.colorScheme.onError);
+      expect(discard.shape, utilityShape);
+      expect(keepShape, utilityShape);
     });
 
     testWidgets('PARITY: the destructive fill is not the primary fill', (
@@ -173,9 +156,9 @@ void main() {
     ) async {
       final theme = _theme();
 
-      await _pumpStatic(tester, _threeChoice());
+      await _pumpStatic(tester, _unsavedPrompt());
       expect(
-        _buttonMaterial(tester, _kThreeChoiceDiscard).color,
+        _buttonMaterial(tester, _kUnsavedDiscard).color,
         isNot(theme.colorScheme.primary),
       );
 
@@ -188,14 +171,14 @@ void main() {
 
     for (final size in <Size>[Size(280, 700), Size(320, 568)]) {
       testWidgets(
-        'every action stays tappable without overflow at '
+        'both actions stay tappable without overflow at '
         '${size.width.toInt()}x${size.height.toInt()}',
         (WidgetTester tester) async {
           tester.view.physicalSize = size;
           tester.view.devicePixelRatio = 1.0;
           addTearDown(tester.view.reset);
 
-          UnsavedChangesAction? result;
+          bool? result;
 
           await tester.pumpWidget(
             MaterialApp(
@@ -205,10 +188,12 @@ void main() {
                   builder: (context) => Center(
                     child: ElevatedButton(
                       onPressed: () async {
-                        result = await showDialog<UnsavedChangesAction>(
+                        result = await ConfirmationDialog.showUnsavedChanges(
                           context: context,
-                          barrierDismissible: true,
-                          builder: (_) => _threeChoice(),
+                          title: 'Unsaved changes',
+                          body: _kBody,
+                          keepEditingKey: _kUnsavedKeep,
+                          discardKey: _kUnsavedDiscard,
                         );
                       },
                       child: const Text('open dialog'),
@@ -219,10 +204,9 @@ void main() {
             ),
           );
 
-          final expected = <Key, UnsavedChangesAction>{
-            _kThreeChoiceKeep: UnsavedChangesAction.keepEditing,
-            _kThreeChoiceDiscard: UnsavedChangesAction.discard,
-            _kThreeChoiceSave: UnsavedChangesAction.save,
+          final expected = <Key, bool>{
+            _kUnsavedKeep: false,
+            _kUnsavedDiscard: true,
           };
 
           for (final entry in expected.entries) {
@@ -230,16 +214,14 @@ void main() {
             await tester.pumpAndSettle();
             expect(find.byType(AlertDialog), findsOneWidget);
 
-            // Observed at both sizes: three content-width actions do not fit
-            // the dialog's row, so AlertDialog's OverflowBar stacks them
-            // vertically (Keep editing / Discard / Save) instead.
-            final keepTop = tester.getRect(find.byKey(_kThreeChoiceKeep)).top;
-            final discardTop = tester
-                .getRect(find.byKey(_kThreeChoiceDiscard))
-                .top;
-            final saveTop = tester.getRect(find.byKey(_kThreeChoiceSave)).top;
-            expect(keepTop, lessThan(discardTop));
-            expect(discardTop, lessThan(saveTop));
+            // Keep editing comes first, whether the actions share a row or
+            // stack.
+            expect(
+              tester.getRect(find.byKey(_kUnsavedKeep)).top,
+              lessThanOrEqualTo(
+                tester.getRect(find.byKey(_kUnsavedDiscard)).top,
+              ),
+            );
 
             await tester.tap(find.byKey(entry.key));
             await tester.pumpAndSettle();
@@ -257,10 +239,10 @@ void main() {
       );
     }
 
-    testWidgets('barrier tap coalesces to keepEditing', (
+    testWidgets('barrier tap coalesces to keep editing', (
       WidgetTester tester,
     ) async {
-      UnsavedChangesAction? result;
+      bool? result;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -273,9 +255,8 @@ void main() {
                     context: context,
                     title: 'Unsaved changes',
                     body: _kBody,
-                    keepEditingKey: _kThreeChoiceKeep,
-                    discardKey: _kThreeChoiceDiscard,
-                    saveKey: _kThreeChoiceSave,
+                    keepEditingKey: _kUnsavedKeep,
+                    discardKey: _kUnsavedDiscard,
                   );
                 },
                 child: const Text('open dialog'),
@@ -291,7 +272,7 @@ void main() {
       await tester.tapAt(const Offset(10, 10));
       await tester.pumpAndSettle();
 
-      expect(result, UnsavedChangesAction.keepEditing);
+      expect(result, isFalse);
       expect(find.byType(AlertDialog), findsNothing);
     });
   });

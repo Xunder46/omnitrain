@@ -705,7 +705,7 @@ void main() {
       expect(dialog(), findsOneWidget);
       expect(inDialog('Unsaved changes'), findsOneWidget);
       expect(inDialog('Discard'), findsOneWidget);
-      expect(inDialog('Save'), findsOneWidget);
+      expect(inDialog('Save'), findsNothing);
 
       // Keep editing stays on the screen with the typed value intact.
       await keepEditing(tester);
@@ -783,47 +783,6 @@ void main() {
       expect(await deps.repo.getPeriods(), isEmpty);
     });
 
-    testWidgets('Save with a valid form saves the period and pops', (
-      WidgetTester tester,
-    ) async {
-      final deps = await pumpScreen(tester);
-      await tester.enterText(nameField, 'Spring Bulk');
-      await tester.pumpAndSettle();
-      await pickDate(tester, 'Start Date');
-      await pickDate(tester, 'End Date');
-
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      await tester.tap(inDialog('Save'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(CreatePeriodScreen), findsNothing);
-      final periods = await deps.repo.getPeriods();
-      expect(periods.length, 1);
-      expect(periods.single.name, 'Spring Bulk');
-    });
-
-    testWidgets('Save with an invalid form stays and shows the inline error', (
-      WidgetTester tester,
-    ) async {
-      final deps = await pumpScreen(tester);
-      await tester.enterText(nameField, 'Spring Bulk');
-      await tester.pumpAndSettle();
-
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      await tester.tap(inDialog('Save'));
-      await tester.pumpAndSettle();
-
-      expect(dialog(), findsNothing);
-      expect(find.byType(CreatePeriodScreen), findsOneWidget);
-      expect(
-        find.text('Both start and end dates are required.'),
-        findsOneWidget,
-      );
-      expect(await deps.repo.getPeriods(), isEmpty);
-    });
-
     testWidgets('edit mode: an untouched stored period pops with no dialog', (
       WidgetTester tester,
     ) async {
@@ -834,26 +793,6 @@ void main() {
 
       expect(dialog(), findsNothing);
       expect(find.byType(CreatePeriodScreen), findsNothing);
-    });
-
-    testWidgets('edit mode: a changed name prompts, Save updates and pops', (
-      WidgetTester tester,
-    ) async {
-      final existing = storedPeriod();
-      final deps = await pumpScreen(tester, existing: existing);
-      await tester.enterText(nameField, 'Renamed Period');
-      await tester.pumpAndSettle();
-
-      await tapHeaderBack(tester);
-      await tester.pumpAndSettle();
-      expect(inDialog('Unsaved changes'), findsOneWidget);
-
-      await tester.tap(inDialog('Save'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(CreatePeriodScreen), findsNothing);
-      final stored = await deps.repo.getPeriodById(existing.id);
-      expect(stored?.name, 'Renamed Period');
     });
 
     testWidgets('edit mode: Discard leaves the stored period unchanged', (

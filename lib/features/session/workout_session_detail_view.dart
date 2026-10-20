@@ -367,7 +367,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         Future<void> editRoundLength() async {
           final result = await showDurationEntryDialog(
             context,
-            title: 'Edit Round Duration',
+            title: 'Edit $_roundNoun Duration',
             initialSecs: lengthSeconds,
             maxSecs: MetricStepCalc.maxDurationSeconds,
           );
@@ -400,7 +400,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 onEditorTap: () async {
                   final result = await showDurationEntryDialog(
                     context,
-                    title: 'Edit Round Duration',
+                    title: 'Edit $_roundNoun Duration',
                     initialSecs: editRoundDuration,
                     maxSecs: MetricStepCalc.maxDurationSeconds,
                   );
@@ -577,9 +577,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       case 'timed':
         return 'Interval $_currentSet of $totalEntries';
       case 'round':
-        final modality = widget.workoutState.currentSession?.modality;
-        final noun = modality == 'sports' ? 'Period' : 'Round';
-        return '$noun $_currentSet of $totalEntries';
+        return '$_roundNoun $_currentSet of $totalEntries';
       case 'drill':
         return 'Hold $_currentSet of $totalEntries';
       default:
@@ -770,13 +768,16 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     }
   }
 
+  /// "Period" in a sports session, "Round" everywhere else.
+  String get _roundNoun =>
+      ModalityDisplay.roundNoun(widget.workoutState.currentSession?.modality);
+
   String _logSetLabel(String effortKind) {
     switch (effortKind) {
       case 'timed':
         return 'Log Interval';
       case 'round':
-        final modality = widget.workoutState.currentSession?.modality;
-        return modality == 'sports' ? 'Log Period' : 'Log Round';
+        return 'Log $_roundNoun';
       case 'drill':
         return 'Log Hold';
       default:

@@ -1325,7 +1325,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       if (entries.isEmpty) return;
 
       final setLabel = effortKind == 'round'
-          ? 'Round'
+          ? _roundNoun
           : (effortKind == 'timed'
                 ? 'Interval'
                 : (effortKind == 'drill' ? 'Hold' : 'Set'));
@@ -1361,6 +1361,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         _inProgressKeys.removeWhere((k) => k.startsWith('$effortId-'));
         _loggedSetKeys.removeWhere((k) => k.startsWith('$effortId-'));
         await widget.workoutState.deleteEntry(effortId, index);
+        _rekeyTimerStateAfterDelete(effortId, index);
+        _rekeyEditBufferAfterDelete(effortId, index);
         await widget.workoutState.removeExerciseFromSession(effortId);
         if (deletedRestWasOpen) {
           unawaited(widget.restNotificationService.cancelRestNotifications());
@@ -1395,9 +1397,30 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         if (!confirmed) return;
       }
 
+      // A set that was started but not logged holds live progress (a running
+      // or paused timer, interval or round): ask before throwing it away.
+      if (!isLogged && _inProgressKeys.contains('$effortId-$index')) {
+        if (!mounted) return;
+        final confirmed = await ConfirmationDialog.showTwoChoice(
+          context: context,
+          title: 'Delete running $setLabel?',
+          body: const Text(
+            'The timer is running. Deleting it loses this progress.',
+          ),
+          dismissLabel: 'Cancel',
+          confirmLabel: 'Delete',
+          dismissKey: const Key('workout-delete-running-entry-cancel'),
+          confirmKey: const Key('workout-delete-running-entry-confirm'),
+          isDestructive: true,
+        );
+
+        if (!confirmed) return;
+      }
+
       if (widget.editMode) _hasStructuralChanges = true;
-      _inProgressKeys.removeWhere((k) => k.startsWith('$effortId-'));
       await widget.workoutState.deleteEntry(effortId, index);
+      _rekeyTimerStateAfterDelete(effortId, index);
+      _rekeyEditBufferAfterDelete(effortId, index);
       if (deletedRestWasOpen) {
         unawaited(widget.restNotificationService.cancelRestNotifications());
         _lastRestPingFiredAt.remove(effortId);
@@ -1417,29 +1440,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     } finally {
       _isStructuralOp = false;
     }
-  }
-
-  /// `−` on the set count: drops the last set that is not logged yet, or the
-  /// last set when every set is logged (D-7). Same confirmations as the
-  /// in-session delete; the focused set is only removed when nothing else is
-  /// left unlogged.
-  Future<void> _deleteLastUnloggedSet() async {
-    if (_isStructuralOp || _exercises.isEmpty) return;
-
-    final exercise = _exercises[_currentExerciseIndex];
-    final effortId = exercise['id'] as String;
-    final entries = exercise['entries'] as List<Map<String, dynamic>>;
-    final effortKind = exercise['effortKind'] as String? ?? 'set';
-
-    var target = entries.length - 1;
-    for (var i = entries.length - 1; i >= 0; i--) {
-      if (!_isSetLogged(effortId, i, effortKind)) {
-        target = i;
-        break;
-      }
-    }
-
-    await _deleteSetAt(target);
   }
 
   Future<void> _updateMetricValue(

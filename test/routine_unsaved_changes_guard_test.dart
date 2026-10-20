@@ -216,7 +216,7 @@ void main() {
     ) async {
       // The dialog must appear with the canonical wording. Scope the
       // assertions to the dialog subtree so the bottom Save button does
-      // not satisfy the dialog's "Save" assertion.
+      // not satisfy a "Save" assertion on the dialog.
       final dialogFinder = find.byType(AlertDialog);
       expect(dialogFinder, findsOneWidget);
       expect(
@@ -232,7 +232,7 @@ void main() {
       );
       expect(
         find.descendant(of: dialogFinder, matching: find.text('Save')),
-        findsOneWidget,
+        findsNothing,
       );
 
       // Keep editing via its own action — screen stays mounted.

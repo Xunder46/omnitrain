@@ -180,35 +180,6 @@ void main() {
     expect(entryCount(deps.workoutState), 1);
   });
 
-  testWidgets('Unsaved dialog save keeps structural changes', (
-    WidgetTester tester,
-  ) async {
-    final deps = await setupEditSession();
-
-    await openEditScreen(
-      tester,
-      workoutState: deps.workoutState,
-      routineState: deps.routineState,
-      sessionSummaryService: deps.sessionSummaryService,
-    );
-
-    expect(entryCount(deps.workoutState), 1);
-
-    await createUnsavedStructuralChange(
-      tester,
-      exerciseName: deps.exercise.name,
-    );
-
-    expect(entryCount(deps.workoutState), 2);
-
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(WorkoutSessionScreen), findsNothing);
-    expect(find.text('Open Edit Session'), findsOneWidget);
-    expect(entryCount(deps.workoutState), 2);
-  });
-
   testWidgets('Unsaved dialog renders without overflow in constrained width', (
     WidgetTester tester,
   ) async {
@@ -244,7 +215,21 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextButton, 'Keep editing'),
+      ),
+      findsOneWidget,
+    );
+    // The dialog offers no Save action; the screen's own Save does that.
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Save'),
+      ),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 }

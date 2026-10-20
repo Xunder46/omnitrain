@@ -219,6 +219,64 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     _inProgressKeys.remove(timerKey);
   }
 
+  /// Entry [deletedIndex] of [effortId] was deleted. Timer UI state is keyed by
+  /// position, so drop that entry's state (and its ticker) and move every later
+  /// entry's state, and its live ticker, down one place, the way the persisted
+  /// instances were re-indexed. Without this the next set shows the deleted
+  /// set's elapsed time and a ticker keeps writing an index that is gone.
+  void _rekeyTimerStateAfterDelete(String effortId, int deletedIndex) {
+    final prefix = '$effortId-';
+    int? indexOf(String key) => key.startsWith(prefix)
+        ? int.tryParse(key.substring(prefix.length))
+        : null;
+
+    final indexes = <int>{};
+    for (final key in [
+      ..._effortTimers.keys,
+      ..._effortRunning.keys,
+      ..._effortElapsed.keys,
+      ..._effortAlerted.keys,
+      ..._effortTargetDuration.keys,
+      ..._inProgressKeys,
+      ..._pendingRoundTransitions,
+      ..._pendingTimedTransitions,
+    ]) {
+      final index = indexOf(key);
+      if (index != null && index >= deletedIndex) indexes.add(index);
+    }
+
+    for (final index in indexes.toList()..sort()) {
+      final from = '$prefix$index';
+      final ticker = _effortTimers.remove(from);
+      final running = _effortRunning.remove(from);
+      final elapsed = _effortElapsed.remove(from);
+      final alerted = _effortAlerted.remove(from);
+      final target = _effortTargetDuration.remove(from);
+      final inProgress = _inProgressKeys.remove(from);
+      _pendingRoundTransitions.remove(from);
+      _pendingTimedTransitions.remove(from);
+      ticker?.cancel();
+
+      if (index == deletedIndex) {
+        if (running == true) _cancelEffortExpiryNotification();
+        continue;
+      }
+
+      final to = '$prefix${index - 1}';
+      if (running != null) _effortRunning[to] = running;
+      if (elapsed != null) _effortElapsed[to] = elapsed;
+      if (alerted != null) _effortAlerted[to] = alerted;
+      if (target != null) _effortTargetDuration[to] = target;
+      if (inProgress) _inProgressKeys.add(to);
+      if (running == true) {
+        _effortTimers[to] = Timer.periodic(
+          _kTimerUpdateInterval,
+          (_) => _onEffortTick(effortId, index - 1),
+        );
+      }
+    }
+  }
+
   void _scheduleEffortExpiryNotification(
     String effortId,
     int entryIndex,

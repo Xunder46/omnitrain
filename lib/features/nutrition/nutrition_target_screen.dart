@@ -111,25 +111,16 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
       return;
     }
 
-    final action = await ConfirmationDialog.showUnsavedChanges(
+    final discard = await ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
       body:
-          'You have unsaved edits. Save them or discard to return to the previous screen.',
+          'You have unsaved edits. Discard them to return to the previous screen.',
       keepEditingKey: const Key('nutrition-target-unsaved-keep'),
       discardKey: const Key('nutrition-target-unsaved-discard'),
-      saveKey: const Key('nutrition-target-unsaved-save'),
     );
-    if (!mounted) return;
-
-    switch (action) {
-      case UnsavedChangesAction.discard:
-        Navigator.of(context).pop();
-      case UnsavedChangesAction.save:
-        await _save();
-      case UnsavedChangesAction.keepEditing:
-        break;
-    }
+    if (!mounted || !discard) return;
+    Navigator.of(context).pop();
   }
 
   @override

@@ -219,7 +219,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _ModalityData(
         name: 'Sports',
         description:
-            'Round and time based training for martial arts and sports',
+            'Period and time based training for martial arts and sports',
         color: ModalityColors.sports,
       ),
       _ModalityData(

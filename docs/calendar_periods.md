@@ -123,12 +123,11 @@ by `test/screen_widget_test.dart` (group `PeriodListScreen`: `empty list
 renders the shared OmniEmptyState (S-2802)`).
 
 Create Period — in new and edit mode alike — warns about unsaved changes:
-leaving the form with edits open a three-choice dialog (keep editing / discard
-/ save), so typed values cannot be lost silently. Verified by
+leaving the form with edits open a two-button dialog (keep editing / discard),
+so typed values cannot be lost silently. Verified by
 `test/screen_widget_test.dart` (group `CreatePeriodScreen unsaved changes
 guard (S-2901)`: `typed name + system back shows the Unsaved changes dialog`,
-`Discard pops and persists nothing`, `Save with a valid form saves the period
-and pops`, `edit mode: an untouched stored period pops with no dialog`,
+`Discard pops and persists nothing`, `edit mode: an untouched stored period pops with no dialog`,
 `edit mode: Discard leaves the stored period unchanged`).
 
 ---

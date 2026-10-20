@@ -77,7 +77,7 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
   /// Handles the Back gesture / arrow-button press while in edit mode.
   ///
   /// Pops immediately when nothing has changed. Otherwise shows an unsaved
-  /// changes dialog with close, discard, and save actions.
+  /// changes dialog with keep-editing and discard actions.
   Future<void> _handleEditModeBack() async {
     final hasUnsaved =
         _editBuffer.isNotEmpty ||
@@ -88,25 +88,17 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
       return;
     }
 
-    final action = await ConfirmationDialog.showUnsavedChanges(
+    final discard = await ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
       body:
-          'You have unsaved edits. Save them or discard to return to the summary.',
+          'You have unsaved edits. Discard them to return to the summary.',
       keepEditingKey: const Key('session-edit-unsaved-keep'),
       discardKey: const Key('session-edit-unsaved-discard'),
-      saveKey: const Key('session-edit-unsaved-save'),
     );
 
-    if (!mounted) return;
-    switch (action) {
-      case UnsavedChangesAction.save:
-        await _saveEditChanges();
-      case UnsavedChangesAction.discard:
-        await _discardEditChanges();
-      case UnsavedChangesAction.keepEditing:
-        break; // stay on screen
-    }
+    if (!mounted || !discard) return;
+    await _discardEditChanges();
   }
 
   /// Rolls back all changes made during this edit session and pops to the
@@ -146,6 +138,24 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
     _hasStructuralChanges = false;
     _editSnapshot = null;
     if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Entry [deletedIndex] of [effortId] was deleted. Buffered edits are keyed
+  /// by position, so drop the deleted entry's edits and move every later
+  /// entry's edits down one place, the way the entries themselves moved.
+  void _rekeyEditBufferAfterDelete(String effortId, int deletedIndex) {
+    final prefix = '$effortId-';
+    final moved = <String, Map<String, dynamic>>{};
+    for (final key in _editBuffer.keys.toList()) {
+      if (!key.startsWith(prefix)) continue;
+      final index = int.tryParse(key.substring(prefix.length));
+      if (index == null || index < deletedIndex) continue;
+      final edits = _editBuffer.remove(key);
+      if (index > deletedIndex && edits != null) {
+        moved['$prefix${index - 1}'] = edits;
+      }
+    }
+    _editBuffer.addAll(moved);
   }
 
   /// Save all buffered metric changes from edit mode and navigate back.

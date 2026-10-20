@@ -22,7 +22,7 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 import 'my_routines_screen.dart' show showDeleteRoutineDialog;
 import '../../widgets/dialogs/confirmation_dialog.dart'
-    show ConfirmationDialog, UnsavedChangesAction;
+    show ConfirmationDialog;
 import '../../widgets/feedback/omni_message.dart';
 import '../../widgets/common/omni_empty_state.dart';
 
@@ -1008,39 +1008,23 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       return;
     }
 
-    final action = await _showUnsavedChangesDialog();
-    if (!mounted) return;
+    final discard = await _showUnsavedChangesDialog();
+    if (!mounted || !discard) return;
 
-    switch (action) {
-      case UnsavedChangesAction.discard:
-        // Discard: tear down the in-flight draft and pop.
-        await widget.routineState.discardCurrentRoutineAndClearDraft();
-        if (!mounted) return;
-        Navigator.of(context).pop();
-      case UnsavedChangesAction.save:
-        if (_nameController.text.trim().isEmpty) {
-          OmniMessage.show(context, 'Please enter a routine name');
-          return;
-        }
-        await widget.routineState.saveRoutine();
-        if (!mounted) return;
-        OmniMessage.show(context, 'Routine saved successfully');
-        Navigator.of(context).pop();
-      case UnsavedChangesAction.keepEditing:
-        // Stay on the screen.
-        break;
-    }
+    // Discard: tear down the in-flight draft and pop.
+    await widget.routineState.discardCurrentRoutineAndClearDraft();
+    if (!mounted) return;
+    Navigator.of(context).pop();
   }
 
-  Future<UnsavedChangesAction> _showUnsavedChangesDialog() {
+  Future<bool> _showUnsavedChangesDialog() {
     return ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
       body:
-          'You have unsaved edits. Save them or discard to return to the routines list.',
+          'You have unsaved edits. Discard them to return to the routines list.',
       keepEditingKey: const Key('routine-edit-unsaved-keep'),
       discardKey: const Key('routine-edit-unsaved-discard'),
-      saveKey: const Key('routine-edit-unsaved-save'),
     );
   }
 
@@ -1253,18 +1237,20 @@ extension on _RoutineSetupScreenState {
     return 0.0;
   }
 
+  /// "Period" for a sports effort, "Round" otherwise.
+  String _roundNounFor(TemplateEffort effort) => ModalityDisplay.roundNoun(
+    effort.modality ??
+        _exerciseCache[effort.exerciseId]?.modality ??
+        widget.routineState.currentTemplate?.focusModality,
+  );
+
   /// The count line the shared `SetCountStepper` shows, per effort kind.
   String _setCountText(int totalEntries, TemplateEffort effort) {
     switch (effort.effortKind) {
       case 'timed':
         return 'Interval $_currentSet of $totalEntries';
       case 'round':
-        final effectiveModality =
-            effort.modality ??
-            _exerciseCache[effort.exerciseId]?.modality ??
-            widget.routineState.currentTemplate?.focusModality;
-        return '${effectiveModality == 'sports' ? 'Period' : 'Round'} '
-            '$_currentSet of $totalEntries';
+        return '${_roundNounFor(effort)} $_currentSet of $totalEntries';
       case 'drill':
         return 'Hold $_currentSet of $totalEntries';
       default:
@@ -1301,7 +1287,7 @@ extension on _RoutineSetupScreenState {
   ) async {
     final result = await showDurationEntryDialog(
       context,
-      title: 'Edit Round Duration',
+      title: 'Edit ${_roundNounFor(effort)} Duration',
       initialSecs: secs,
       maxSecs: MetricStepCalc.maxDurationSeconds,
     );

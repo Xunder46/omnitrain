@@ -675,7 +675,8 @@ public final class WatchLoggingState {
             return effortKind == WatchEffortKind.drill ? "Hold Time" : "Duration"
         case WatchMetricKey.distance: return "Distance"
         case WatchMetricKey.rounds: return roundsLabel
-        case WatchMetricKey.roundDuration: return "Round length"
+        case WatchMetricKey.roundDuration:
+            return engine.session?.modality == "sports" ? "Period length" : "Round length"
         case WatchMetricKey.extraWeight: return "Load"
         default: return metricKey
         }

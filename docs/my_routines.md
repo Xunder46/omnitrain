@@ -38,9 +38,9 @@ without prompting.
 
 Confirmation copy, layout, and button shapes mirror the completed-session
 edit confirmation: title "Unsaved changes", body "You have unsaved
-edits. Save them or discard to return to the routines list.", and the
-`Discard` / `Save` row uses `OmniTheme.buttonUtilityRadius`. The
-header-bar close icon is the "Keep editing" affordance. When detail is
+edits. Discard them to return to the routines list.", and the
+`Keep editing` / `Discard` row uses `OmniTheme.buttonUtilityRadius`. There is
+no Save in the dialog; the screen's own Save button saves. When detail is
 open, system back first returns to the list (same as the AppBar's back
 arrow) before the guard engages.
 
@@ -341,7 +341,7 @@ Which rows the body shows depends on effort kind:
   editor`).
 - **`round` / `period`**: one boxed `ROUND LENGTH` `ValueStepperRow` in its
   duration mode — 15 s per step, floored at 15 s, and tapping the number
-  opens `showDurationEntryDialog` (`Edit Round Duration`). Both the stepper
+  opens `showDurationEntryDialog` (`Edit Round Duration`, `Edit Period Duration` in sports). Both the stepper
   and the dialog write the same target pair: `roundDuration` and
   `rounds: 1`. The old `ROUND n` / `PERIOD n` heading is gone. Verified by
   `test/routine_detail_screen_test.dart` (group `S-4508 round length (A6)` ·

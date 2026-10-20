@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/effort_defaults.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/constants/modality_config.dart';
+import 'package:omnitrain/core/constants/modality_display.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
@@ -916,6 +917,22 @@ void main() {
 
       test('unknown modality → Rounds', () {
         expect(ModalityConfig.getRoundsLabel('unknown'), 'Rounds');
+      });
+    });
+
+    group('roundNoun / roundCount', () {
+      test('sports says Period, every other modality says Round', () {
+        expect(ModalityDisplay.roundNoun('sports'), 'Period');
+        for (final m in [null, 'cardio_endurance', 'resistance_lifting', 'x']) {
+          expect(ModalityDisplay.roundNoun(m), 'Round');
+        }
+      });
+
+      test('a count agrees with the noun and pluralises', () {
+        expect(ModalityDisplay.roundCount('sports', 1), '1 period');
+        expect(ModalityDisplay.roundCount('sports', 3), '3 periods');
+        expect(ModalityDisplay.roundCount(null, 1), '1 round');
+        expect(ModalityDisplay.roundCount(null, 0), '0 rounds');
       });
     });
 

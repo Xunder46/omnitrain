@@ -313,219 +313,88 @@ void main() {
     });
   });
 
-  group('ConfirmationDialog - Three-Choice Shape (Unsaved-Changes)', () {
-    group('S-005: Barrier dismissal returns keepEditing', () {
-      testWidgets('Barrier tap returns keepEditing without state mutation', (
-        WidgetTester tester,
-      ) async {
-        dynamic result;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Builder(
-                builder: (context) => ElevatedButton(
-                  onPressed: () async {
-                    result = await ConfirmationDialog.showUnsavedChanges(
-                      context: context,
-                      title: 'Unsaved changes',
-                      body:
-                          'You have unsaved edits. Save them or discard to return to the routines list.',
-                      keepEditingKey: const Key('test-keep'),
-                      discardKey: const Key('test-discard'),
-                      saveKey: const Key('test-save'),
-                    );
-                  },
-                  child: const Text('Open Dialog'),
-                ),
-              ),
-            ),
-          ),
-        );
-
-        await tester.tap(find.text('Open Dialog'));
-        await tester.pumpAndSettle();
-
-        // Tap barrier
-        await tester.tapAt(const Offset(10, 10));
-        await tester.pumpAndSettle();
-
-        // Should return keepEditing (or equivalent enum value)
-        expect(result, isNotNull);
-      });
-    });
-
-    group('S-006: Keep editing action returns keepEditing', () {
-      testWidgets('Keep editing TextButton returns keepEditing', (
-        WidgetTester tester,
-      ) async {
-        dynamic result;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Builder(
-                builder: (context) => ElevatedButton(
-                  onPressed: () async {
-                    result = await ConfirmationDialog.showUnsavedChanges(
-                      context: context,
-                      title: 'Unsaved changes',
-                      body:
-                          'You have unsaved edits. Save them or discard to return to the routines list.',
-                      keepEditingKey: const Key('test-keep'),
-                      discardKey: const Key('test-discard'),
-                      saveKey: const Key('test-save'),
-                    );
-                  },
-                  child: const Text('Open Dialog'),
-                ),
-              ),
-            ),
-          ),
-        );
-
-        await tester.tap(find.text('Open Dialog'));
-        await tester.pumpAndSettle();
-
-        // Tap the Keep editing action
-        await tester.tap(find.widgetWithText(TextButton, 'Keep editing'));
-        await tester.pumpAndSettle();
-
-        expect(result, UnsavedChangesAction.keepEditing);
-      });
-    });
-
-    group('S-007 & S-008: Discard and Save buttons', () {
-      testWidgets(
-        'S-007: Discard button is destructive-styled and returns discard',
-        (WidgetTester tester) async {
-          dynamic result;
-
-          await tester.pumpWidget(
-            MaterialApp(
-              home: Scaffold(
-                body: Builder(
-                  builder: (context) => ElevatedButton(
-                    onPressed: () async {
-                      result = await ConfirmationDialog.showUnsavedChanges(
-                        context: context,
-                        title: 'Unsaved changes',
-                        body:
-                            'You have unsaved edits. Save them or discard to return to the summary.',
-                        keepEditingKey: const Key('test-keep'),
-                        discardKey: const Key('test-discard'),
-                        saveKey: const Key('test-save'),
-                      );
-                    },
-                    child: const Text('Open Dialog'),
-                  ),
-                ),
-              ),
-            ),
-          );
-
-          await tester.tap(find.text('Open Dialog'));
-          await tester.pumpAndSettle();
-
-          // Tap Discard button
-          final discardButton = find.byKey(const Key('test-discard'));
-          expect(discardButton, findsOneWidget);
-
-          await tester.tap(discardButton);
-          await tester.pumpAndSettle();
-
-          expect(result, isNotNull);
-        },
-      );
-
-      testWidgets('S-008: Save button is primary-styled and returns save', (
-        WidgetTester tester,
-      ) async {
-        dynamic result;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Builder(
-                builder: (context) => ElevatedButton(
-                  onPressed: () async {
-                    result = await ConfirmationDialog.showUnsavedChanges(
-                      context: context,
-                      title: 'Unsaved changes',
-                      body:
-                          'You have unsaved edits. Save them or discard to return to the summary.',
-                      keepEditingKey: const Key('test-keep'),
-                      discardKey: const Key('test-discard'),
-                      saveKey: const Key('test-save'),
-                    );
-                  },
-                  child: const Text('Open Dialog'),
-                ),
-              ),
-            ),
-          ),
-        );
-
-        await tester.tap(find.text('Open Dialog'));
-        await tester.pumpAndSettle();
-
-        // Tap Save button
-        final saveButton = find.byKey(const Key('test-save'));
-        expect(saveButton, findsOneWidget);
-
-        await tester.tap(saveButton);
-        await tester.pumpAndSettle();
-
-        expect(result, isNotNull);
-      });
-    });
-
-    group('Three-choice button ordering', () {
-      testWidgets('Discard (left) | Save (right) button order', (
-        WidgetTester tester,
-      ) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Builder(
-                builder: (context) => ElevatedButton(
-                  onPressed: () async {
+  group('ConfirmationDialog - Unsaved-Changes Prompt (Keep editing / Discard)', () {
+    /// Opens the prompt and exposes the awaited result through [result].
+    Future<void> openPrompt(
+      WidgetTester tester,
+      void Function(bool) onResult,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () async {
+                  onResult(
                     await ConfirmationDialog.showUnsavedChanges(
                       context: context,
                       title: 'Unsaved changes',
                       body:
-                          'You have unsaved edits. Save them or discard to return to the routines list.',
+                          'You have unsaved edits. Discard them to return to the routines list.',
                       keepEditingKey: const Key('test-keep'),
                       discardKey: const Key('test-discard'),
-                      saveKey: const Key('test-save'),
-                    );
-                  },
-                  child: const Text('Open Dialog'),
-                ),
+                    ),
+                  );
+                },
+                child: const Text('Open Dialog'),
               ),
             ),
           ),
-        );
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+    }
 
-        await tester.tap(find.text('Open Dialog'));
-        await tester.pumpAndSettle();
+    testWidgets('S-005: barrier tap keeps editing', (tester) async {
+      bool? result;
+      await openPrompt(tester, (v) => result = v);
 
-        final discardButton = find.byKey(const Key('test-discard'));
-        final saveButton = find.byKey(const Key('test-save'));
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
 
-        expect(discardButton, findsOneWidget);
-        expect(saveButton, findsOneWidget);
+      expect(result, isFalse);
+    });
 
-        // Discard should be to the left of Save
-        final discardRect = tester.getRect(discardButton);
-        final saveRect = tester.getRect(saveButton);
+    testWidgets('S-006: Keep editing returns false', (tester) async {
+      bool? result;
+      await openPrompt(tester, (v) => result = v);
 
-        expect(
-          discardRect.left,
-          lessThan(saveRect.left),
-          reason: 'Discard (destructive) should be left of Save (primary)',
-        );
-      });
+      await tester.tap(find.widgetWithText(TextButton, 'Keep editing'));
+      await tester.pumpAndSettle();
+
+      expect(result, isFalse);
+    });
+
+    testWidgets('S-007: Discard is destructive-styled and returns true', (
+      tester,
+    ) async {
+      bool? result;
+      await openPrompt(tester, (v) => result = v);
+
+      final discard = find.byKey(const Key('test-discard'));
+      expect(discard, findsOneWidget);
+      final style = tester.widget<FilledButton>(discard).style!;
+      final scheme = Theme.of(tester.element(discard)).colorScheme;
+      expect(style.backgroundColor!.resolve({}), scheme.error);
+
+      await tester.tap(discard);
+      await tester.pumpAndSettle();
+
+      expect(result, isTrue);
+    });
+
+    testWidgets('offers exactly Keep editing then Discard, no Save', (
+      tester,
+    ) async {
+      await openPrompt(tester, (_) {});
+
+      expect(find.text('Save'), findsNothing);
+      final keep = tester.getRect(find.byKey(const Key('test-keep')));
+      final discard = tester.getRect(find.byKey(const Key('test-discard')));
+      expect(keep.left, lessThan(discard.left));
+      // Both actions share one row.
+      expect(keep.top, discard.top);
     });
   });
 
@@ -643,10 +512,9 @@ void main() {
                       context: context,
                       title: 'Unsaved changes',
                       body:
-                          'You have unsaved edits. Save them or discard to return to the routines list.',
+                          'You have unsaved edits. Discard them to return to the routines list.',
                       keepEditingKey: const Key('routine-edit-unsaved-keep'),
                       discardKey: const Key('routine-edit-unsaved-discard'),
-                      saveKey: const Key('routine-edit-unsaved-save'),
                     );
                   },
                   child: const Text('Site 19'),
@@ -662,7 +530,7 @@ void main() {
         // Verify body text
         expect(
           find.text(
-            'You have unsaved edits. Save them or discard to return to the routines list.',
+            'You have unsaved edits. Discard them to return to the routines list.',
           ),
           findsOneWidget,
         );

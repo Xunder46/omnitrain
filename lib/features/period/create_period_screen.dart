@@ -304,25 +304,16 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
       return;
     }
 
-    final action = await ConfirmationDialog.showUnsavedChanges(
+    final discard = await ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
       body:
-          'You have unsaved edits. Save them or discard to return to the periods list.',
+          'You have unsaved edits. Discard them to return to the periods list.',
       keepEditingKey: const Key('period-edit-unsaved-keep'),
       discardKey: const Key('period-edit-unsaved-discard'),
-      saveKey: const Key('period-edit-unsaved-save'),
     );
-    if (!mounted) return;
-
-    switch (action) {
-      case UnsavedChangesAction.discard:
-        Navigator.of(context).pop();
-      case UnsavedChangesAction.save:
-        await _submit();
-      case UnsavedChangesAction.keepEditing:
-        break;
-    }
+    if (!mounted || !discard) return;
+    Navigator.of(context).pop();
   }
 
   Future<void> _pickDate({required bool isStart}) async {

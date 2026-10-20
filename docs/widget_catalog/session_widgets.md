@@ -363,7 +363,7 @@ Verified by `test/metric_stepping_test.dart` (group `S-4240 MetricStepping`).
 **Round-length call site**: the live `round` branch of the session detail
 view uses the row for the round length — `metricType: 'duration'`, inline
 label `ROUND LENGTH`, `min: 15`, `onEditorTap` opening
-`showDurationEntryDialog` (`Edit Round Duration`) — and locks it
+`showDurationEntryDialog` (`Edit Round Duration`, `Edit Period Duration` in sports) — and locks it
 (`isReadOnly`) while the round runs, mid-round or finished. A live change
 writes the edited round and every later round that has not started
 (`WorkoutState.updatePlannedDurationFrom`); the session editor shows the same

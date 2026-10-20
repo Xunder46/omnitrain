@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/constants/modality_display.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../core/utils/muscle_selection.dart';
 import '../../data/models/models.dart';
@@ -365,24 +366,15 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       return;
     }
 
-    final action = await ConfirmationDialog.showUnsavedChanges(
+    final discard = await ConfirmationDialog.showUnsavedChanges(
       context: context,
       title: 'Unsaved changes',
-      body: 'You have unsaved edits. Save them or discard to return.',
+      body: 'You have unsaved edits. Discard them to return.',
       keepEditingKey: const Key('exercise_editor_unsaved_keep'),
       discardKey: const Key('exercise_editor_unsaved_discard'),
-      saveKey: const Key('exercise_editor_unsaved_save'),
     );
-    if (!mounted) return;
-
-    switch (action) {
-      case UnsavedChangesAction.discard:
-        Navigator.of(context).pop();
-      case UnsavedChangesAction.save:
-        await _validateAndSave();
-      case UnsavedChangesAction.keepEditing:
-        break;
-    }
+    if (!mounted || !discard) return;
+    Navigator.of(context).pop();
   }
 
   @override
@@ -544,7 +536,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                         capabilityId,
                       );
                       return FilterChip(
-                        label: Text(_capabilityLabel(capabilityId)),
+                        label: Text(_capabilityLabel(capabilityId, _selectedModality)),
                         selected: isSelected,
                         onSelected: (selected) {
                           setState(() {
@@ -571,7 +563,9 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                       capabilityId,
                     );
                     return FilterChip(
-                      label: Text('${_capabilityLabel(capabilityId)} (Legacy)'),
+                      label: Text(
+                        '${_capabilityLabel(capabilityId, _selectedModality)} (Legacy)',
+                      ),
                       selected: isSelected,
                       disabledColor: theme.colorScheme.surfaceContainerHighest,
                       onSelected: isSelected
@@ -742,14 +736,14 @@ class _ModalityTile extends StatelessWidget {
   }
 }
 
-String _capabilityLabel(String capabilityId) {
+String _capabilityLabel(String capabilityId, String? modality) {
   switch (capabilityId) {
     case 'time':
       return 'Time';
     case 'distance':
       return 'Distance';
     case 'rounds':
-      return 'Rounds';
+      return '${ModalityDisplay.roundNoun(modality)}s';
     case 'reps':
       return 'Reps';
     case 'sets':

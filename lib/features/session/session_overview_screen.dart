@@ -217,8 +217,10 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                         round.finishedAtMs != null,
                                   )
                                   .length;
-                              subtitle =
-                                  '$completedRounds round${completedRounds != 1 ? 's' : ''}';
+                              subtitle = ModalityDisplay.roundCount(
+                                modality,
+                                completedRounds,
+                              );
                               break;
                             case 'drill':
                               subtitle =
