@@ -817,6 +817,19 @@ hardware yet.
     `…testS3101AJumpDuringARestKeepsTheRestRunning`,
     `…testS3102AAddingAnExerciseDuringARestKeepsTheRestRunning`,
     `…testS3111ALogClosesTheRunningRestAndStartsTheNext`).
+16. **The Crown turns the armed row — (owner).** Open a set exercise and turn
+    the Crown without touching the screen: Reps changes with each tick — the
+    first row is armed by itself. Tap the Load row (or its − / +): the outline
+    moves to Load and the Crown now steps the load. If the Crown still does
+    nothing, the cause is not focus and plan 46a reopens. The model side is
+    pinned by `WatchCrownArmingTests.swift` (S-6401..S-6406, S-6408).
+17. **Each exercise keeps its own numbers — (owner).** Dial the load to 60 kg
+    (or its equivalent in the phone's unit) on a set exercise, then open
+    another exercise from the menu: it shows its own starting load, not the 60
+    you dialled, and coming back shows the 60 again
+    (`WatchDialledPerExerciseTests.swift` S-6410..S-6412; Dart twin
+    `test/watch_dialled_per_exercise_test.dart`). Log on the second exercise:
+    only its numbers clear; the first exercise keeps its dialled ones (S-6411).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

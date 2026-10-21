@@ -147,10 +147,15 @@ class WatchLoggingState {
     ExerciseCapability.distance,
   ];
 
-  /// Values the user has dialled in but not confirmed, by metric key. Cleared
-  /// on confirm, at which point the values come back from the logged
-  /// observation (for a set) or start fresh (for measured work).
-  final Map<String, double> _dialled = {};
+  /// Values the user has dialled in but not confirmed, by exercise slot and
+  /// then metric key. Cleared on confirm, at which point the values come back
+  /// from the logged observation (for a set) or start fresh (for measured
+  /// work).
+  ///
+  /// The slot is part of the key so an unconfirmed value belongs to the
+  /// exercise it was dialled on, not to whichever exercise the session moves to
+  /// next (D-5).
+  final Map<String, Map<String, double>> _dialled = {};
 
   final WatchSessionEngine _engine;
   final DateTime Function() _clock;
@@ -343,6 +348,9 @@ class WatchLoggingState {
 
   Map<String, Object?>? get _slot => _engine.currentExercise;
 
+  /// The slot the dialled values belong to; `""` when there is no exercise.
+  String get _dialledKey => _slot?['sessionExerciseId'] as String? ?? '';
+
   List<String> get _capabilities =>
       ((_slot?['capabilities'] as List?) ?? const [])
           .whereType<String>()
@@ -399,7 +407,7 @@ class WatchLoggingState {
     final measured = _isMeasured(metricKey);
     final value = measured
         ? _measuredValue(metricKey)
-        : _dialled[metricKey] ?? _initialValue(metricKey);
+        : _dialled[_dialledKey]?[metricKey] ?? _initialValue(metricKey);
     return WatchMetricField(
       metricKey: metricKey,
       label: _labelFor(metricKey),
@@ -583,7 +591,7 @@ class WatchLoggingState {
     final field = _fieldOrNull(metricKey);
     if (field == null || field.isMeasured) return;
 
-    _dialled[metricKey] = WatchMetricStepping.adjust(
+    (_dialled[_dialledKey] ??= {})[metricKey] = WatchMetricStepping.adjust(
       field.value,
       metricKey: metricKey,
       detents: detents,
@@ -617,6 +625,9 @@ class WatchLoggingState {
 
     final loggedAt = now ?? _clock();
     final id = _newId();
+    // The slot being confirmed, read once: the awaits below can move the
+    // session on, and the clear must reach the exercise this entry belongs to.
+    final loggedKey = _dialledKey;
     final event = <String, Object?>{
       'entryId': id,
       'eventId': id,
@@ -633,7 +644,7 @@ class WatchLoggingState {
 
 
     final stored = await _engine.appendObservation(event);
-    _dialled.clear();
+    _dialled.remove(loggedKey);
     await _startFollowOnTimer();
     return stored;
   }

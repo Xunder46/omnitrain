@@ -173,10 +173,11 @@ public final class WatchLoggingState {
     private let clock: () -> Date
     private let newId: () -> String
 
-    /// Values the user has dialled in but not confirmed, by metric key. Cleared
-    /// on confirm, at which point the values come back from the logged
-    /// observation (for a set) or start fresh (for measured work).
-    private var dialled: [String: Double] = [:]
+    /// Values the user has dialled in but not confirmed, by exercise slot and
+    /// then metric key. Cleared on confirm, at which point the values come back
+    /// from the logged observation (for a set) or start fresh (for measured
+    /// work) — and only for the slot the user confirmed.
+    private var dialled: [String: [String: Double]] = [:]
 
     /// The period length this wrist falls back to when the phone's number is
     /// not in the slot: a caller's preset (the plan-21 seam), else the shared
@@ -531,6 +532,10 @@ public final class WatchLoggingState {
 
     private var slot: [String: Any]? { engine.currentExercise }
 
+    /// The slot the dialled numbers belong to; a session with no exercise yet
+    /// keeps them under the empty key until the first pick.
+    private var dialledKey: String { slot?["sessionExerciseId"] as? String ?? "" }
+
     private var capabilities: [String] {
         (slot?["capabilities"] as? [String]) ?? []
     }
@@ -565,7 +570,7 @@ public final class WatchLoggingState {
         let measured = isMeasured(metricKey)
         let value = measured
             ? measuredValue(for: metricKey)
-            : dialled[metricKey] ?? initialValue(for: metricKey)
+            : dialled[dialledKey]?[metricKey] ?? initialValue(for: metricKey)
         return WatchMetricField(
             metricKey: metricKey,
             label: label(for: metricKey),
@@ -757,7 +762,7 @@ public final class WatchLoggingState {
             detents: detents,
             units: units
         )
-        dialled[metricKey] = adjusted
+        dialled[dialledKey, default: [:]][metricKey] = adjusted
         // D-3404: a period's length outlives the Log that clears `dialled`, so
         // the next period of this slot starts where this one was set.
         if metricKey == WatchMetricKey.roundDuration,
@@ -789,6 +794,9 @@ public final class WatchLoggingState {
 
         let loggedAt = instant ?? clock()
         let id = newId()
+        // The slot being confirmed, read once: the awaits below can move the
+        // session on, and the clear must reach the exercise this entry belongs to.
+        let loggedKey = dialledKey
         var event: [String: Any] = [
             "entryId": id,
             "eventId": id,
@@ -810,7 +818,7 @@ public final class WatchLoggingState {
         if isResting { await endRest(at: loggedAt) }
 
         let stored = try await engine.appendObservation(event)
-        dialled.removeAll()
+        dialled[loggedKey] = nil
         // D-1304: Log ends the clock at the instant the entry's own window ends
         // (D-223). A set has no clock; it starts its rest instead.
         if let kind = workTimerKind { _ = await engine.stopTimer(kind: kind, at: loggedAt) }

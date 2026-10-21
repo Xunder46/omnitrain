@@ -506,13 +506,13 @@ final class WatchLoggingTimersTests: XCTestCase {
         var reps = model.state.fields.first { $0.metricKey == WatchMetricKey.reps }!.value
 
         // A turn smaller than a detent moves nothing; the next one tops it up.
-        model.turn(WatchMetricKey.reps, to: WatchLoggingModel.pointsPerDetent / 2)
+        model.turn(to: WatchLoggingModel.pointsPerDetent / 2)
         XCTAssertEqual(
             model.state.fields.first { $0.metricKey == WatchMetricKey.reps }!.value,
             reps
         )
 
-        model.turn(WatchMetricKey.reps, to: WatchLoggingModel.pointsPerDetent)
+        model.turn(to: WatchLoggingModel.pointsPerDetent)
         reps = model.state.fields.first { $0.metricKey == WatchMetricKey.reps }!.value
         XCTAssertEqual(reps, 11)
     }

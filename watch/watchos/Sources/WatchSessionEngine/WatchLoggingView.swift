@@ -54,7 +54,17 @@ public struct WatchLoggingView: View {
     /// the watch carries its own value rather than scaling a phone token down.
     private static let surfaceInset = 4.0
 
+    /// Height the name sits below the top edge so it clears the menu button,
+    /// which sits in the top corner beside the clock.
+    private static let titleClearance = 14.0
+
     @StateObject private var model: WatchLoggingModel
+    @FocusState private var crownFocused: Bool
+    @Environment(\.watchAccent) private var accent
+
+    /// Side of the − / + buttons: small, so Log stays on a 40 mm screen; the
+    /// Crown does most of the stepping.
+    private static let stepSide = 36.0
 
     /// Called after a successful log, so the app shell can re-evaluate which
     /// surface it shows — logging a set starts a rest, and the shell swaps to
@@ -71,6 +81,28 @@ public struct WatchLoggingView: View {
     }
 
     public var body: some View {
+        crownDriven(surface)
+            .onAppear {
+                model.start()
+                crownFocused = true
+            }
+            .onDisappear { model.stop() }
+            // The poll after a suspension is the one that matters: the countdown
+            // kept running while the screen did not, and it fires at the instant it
+            // was due. Coming back to the foreground also gives the Crown its focus
+            // back.
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: WKApplication.willEnterForegroundNotification
+                )
+            ) { _ in
+                model.poll()
+                crownFocused = true
+            }
+    }
+
+    /// The rows, the readout and the one button, titled with the exercise.
+    private var surface: some View {
         VStack(spacing: Self.surfaceInset) {
             header
             Spacer(minLength: 0)
@@ -86,16 +118,31 @@ public struct WatchLoggingView: View {
             primaryButton
         }
         .padding(.horizontal, Self.surfaceInset)
-        .onAppear { model.start() }
-        .onDisappear { model.stop() }
-        // The poll after a suspension is the one that matters: the countdown
-        // kept running while the screen did not, and it fires at the instant it
-        // was due.
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: WKApplication.willEnterForegroundNotification
+    }
+
+    /// One Crown binding for the whole surface. It steps the armed row; a
+    /// binding per row left every one of them without focus, so no turn
+    /// reached any of them.
+    private func crownDriven<Content: View>(_ content: Content) -> some View {
+        content
+            .focusable(true)
+            .focused($crownFocused)
+            .digitalCrownRotation(
+                detent: crownBinding,
+                from: -WatchLoggingModel.pointsPerDetent * Self.crownRangeDetents,
+                through: WatchLoggingModel.pointsPerDetent * Self.crownRangeDetents,
+                by: WatchLoggingModel.pointsPerDetent,
+                sensitivity: .medium,
+                isContinuous: true,
+                isHapticFeedbackEnabled: true
             )
-        ) { _ in model.poll() }
+    }
+
+    private var crownBinding: Binding<Double> {
+        Binding(
+            get: { model.crownPosition },
+            set: { model.turn(to: $0) }
+        )
     }
 
     private var header: some View {
@@ -103,7 +150,9 @@ public struct WatchLoggingView: View {
             Text(model.state.exerciseName ?? "No exercise")
                 .font(.caption2)
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .truncationMode(.tail)
+                .padding(.top, Self.titleClearance)
             if let caption = model.state.setCaption {
                 Text(caption)
                     .font(.caption2)
@@ -128,8 +177,8 @@ public struct WatchLoggingView: View {
                     .lineLimit(1)
             }
         }
-        // A couple of points of headroom, so the exercise name does not sit hard
-        // against the system clock and the menu button above it.
+        // A couple of points of headroom, so the lines sit under the exercise
+        // name above them.
         .padding(.top, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -152,16 +201,14 @@ public struct WatchLoggingView: View {
         return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
     }
 
-    /// One value: the label, the numerals, and both ways to move it. The crown
-    /// drives whichever row carries focus, which is the row the user last
-    /// touched.
-    ///
-    /// A row a sensor is keeping has neither: its controls are inert and it takes
-    /// no crown focus, so a turn aimed at the row does nothing rather than
-    /// replacing a measurement with a guess.
+    /// One value: the label, the numerals, and both ways to move it. The Crown
+    /// steps the armed row.
     private func row(_ field: WatchMetricField) -> some View {
-        HStack {
+        let armed = model.armedMetricKey == field.metricKey
+        let outline: Color = armed ? (accent?.color ?? Color.white) : Color.clear
+        return HStack {
             stepButton(systemName: "minus", label: "Less \(field.label)", enabled: !field.isMeasured) {
+                model.arm(field.metricKey)
                 model.adjust(field.metricKey, detents: -1)
             }
 
@@ -170,29 +217,34 @@ public struct WatchLoggingView: View {
                     .font(.caption2)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text(field.displayValue)
-                    .font(.title3)
-                    .fontWeight(.bold)
-                if !field.unitLabel.isEmpty {
-                    Text(field.unitLabel).font(.caption2)
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(field.displayValue)
+                        .font(.title3)
+                        .fontWeight(.bold)
+                    if !field.unitLabel.isEmpty {
+                        Text(field.unitLabel).font(.caption2)
+                    }
                 }
             }
             .frame(maxWidth: .infinity)
-            .focusable(!field.isMeasured)
-            .digitalCrownRotation(
-                detent: Binding(
-                    get: { model.crownPosition(for: field.metricKey) },
-                    set: { model.turn(field.metricKey, to: $0) }
-                ),
-                from: -WatchLoggingModel.pointsPerDetent * Self.crownRangeDetents,
-                through: WatchLoggingModel.pointsPerDetent * Self.crownRangeDetents,
-                by: WatchLoggingModel.pointsPerDetent,
-                sensitivity: .medium,
-                isContinuous: true,
-                isHapticFeedbackEnabled: true
+            .padding(.vertical, 2)
+            // The row the Crown steps wears an outline in the accent; a tap on
+            // a row, or on its − / +, moves it.
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(outline, lineWidth: 2)
             )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !field.isMeasured else { return }
+                model.arm(field.metricKey)
+                crownFocused = true
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("\(field.label) \(field.displayValue) \(field.unitLabel)")
 
             stepButton(systemName: "plus", label: "More \(field.label)", enabled: !field.isMeasured) {
+                model.arm(field.metricKey)
                 model.adjust(field.metricKey, detents: 1)
             }
         }
@@ -204,10 +256,14 @@ public struct WatchLoggingView: View {
         enabled: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
+        Button {
+            crownFocused = true
+            action()
+        } label: {
+            Image(systemName: systemName).font(.caption.weight(.bold))
         }
         .buttonStyle(.bordered)
+        .frame(width: Self.stepSide, height: Self.stepSide)
         .disabled(!enabled)
         .accessibilityLabel(label)
     }
