@@ -648,11 +648,15 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         let observation = try XCTUnwrap(harness.engine.pendingObservations().first)
         let messageId = try XCTUnwrap(observation["messageId"] as? String)
 
+        // Both delivery paths refuse: the radio cannot carry the frame and the
+        // OS queue will not take it either (D-2).
         harness.session.sendError = BridgeFixtureError.malformed("the radio refused it")
+        harness.session.queueError = BridgeFixtureError.malformed("the queue refused it")
         await harness.bridge.send(observation)
 
         // The wrist never claims the frame went out, and says so once.
         XCTAssertTrue(harness.session.sent.isEmpty)
+        XCTAssertTrue(harness.session.queued.isEmpty)
         XCTAssertEqual(harness.failures.count, 1, "a refusal is reported, once")
 
         // The refused frame is still owed: it is not treated as delivered, so a
@@ -674,8 +678,10 @@ final class WatchConnectivityBridgeTests: XCTestCase {
 
         // Once the radio takes it, the frame is out.
         harness.session.sendError = nil
+        harness.session.queueError = nil
         await harness.bridge.send(observation)
         XCTAssertEqual(harness.session.sent.count, 1)
+        XCTAssertTrue(harness.session.queued.isEmpty)
         XCTAssertEqual(harness.failures.count, 1)
     }
 

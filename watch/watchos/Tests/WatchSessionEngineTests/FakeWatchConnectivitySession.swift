@@ -20,8 +20,16 @@ final class FakeWatchConnectivitySession: WatchConnectivitySession {
     /// never appears here.
     private(set) var sent: [[String: Any]] = []
 
+    /// Every frame the bridge handed to the OS queue, in order. A frame the
+    /// radio took never appears here.
+    private(set) var queued: [[String: Any]] = []
+
     /// What the platform answers `send` with, when a test wants a send to fail.
     var sendError: Error?
+
+    /// What the platform answers `queue` with, when a test wants a hand-over to
+    /// the OS queue to fail.
+    var queueError: Error?
 
     var isPhoneReachable: Bool
 
@@ -37,9 +45,15 @@ final class FakeWatchConnectivitySession: WatchConnectivitySession {
         sent.append(frame)
     }
 
-    /// Empties the record, for a test that wants to look only at what follows.
+    func queue(_ frame: [String: Any]) throws {
+        if let queueError { throw queueError }
+        queued.append(frame)
+    }
+
+    /// Empties both records, for a test that wants to look only at what follows.
     func clearSent() {
         sent.removeAll()
+        queued.removeAll()
     }
 
     func onReceive(_ handler: @escaping ([String: Any]) async -> Void) {

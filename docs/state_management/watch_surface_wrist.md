@@ -55,12 +55,24 @@ reported failure instead of a silently dropped message. Verified by
 `…testS113AFrameThatCannotBeRepresentedIsReported` and
 `…testD5NumbersAreNeverCoerced`.
 
-**Nothing is queued on the wrist either**, for the phone transport's own reason:
-a send that fails is reported and dropped, and recovery is the next `sync()`
-re-sending from storage. **The bridge itself sends nothing unsolicited** — it
-answers a user action or nothing, so a Sync is still the only thing that asks the
-phone for an answer. Verified by `WatchConnectivityBridgeTests.testBridgeSendsNothingUntilAsked`
-and `…testASendThePlatformRefusesIsReported`.
+**A live-only frame that fails is still reported and dropped**, and recovery is
+the next `sync()` re-sending from storage. **A durable frame the radio refuses
+is queued instead.** `WatchConnectivitySession` gained `queue` — hands the phone
+one frame the OS delivers later — and `WatchConnectivityBridge.isDurable` is
+true exactly for `observations_up` and `session_lifecycle`: when `send` fails, a
+durable frame goes to the queue rather than being reported, a queue that itself
+refuses is reported through the same failure hook, and a frame that sends is
+never also queued. The app target's `OmniTrainWatchConnectivity` queues with
+`transferUserInfo`, skipping a transfer whose `messageId` is already
+outstanding, and receives `didReceiveUserInfo` like a message; the OS delivering
+a queued transfer to a closed phone app is an owner check on real devices.
+Verified by `WatchBridgeQueueTests.swift` (S-6701..S-6707) and
+`WatchQueueSourceTests.swift` (S-6708). **The bridge itself still sends nothing
+unsolicited** — it answers a user action or nothing, so a Sync is still the only
+thing that asks the phone for an answer. Verified by
+`WatchConnectivityBridgeTests.testBridgeSendsNothingUntilAsked` and
+`…testASendThePlatformRefusesIsReported` (a refused request frame, the live-only
+case).
 
 **Reachability is three-state, and starts unknown.** The start surface carries one
 status line: "Phone connected" or "Phone not reachable", said only once the radio

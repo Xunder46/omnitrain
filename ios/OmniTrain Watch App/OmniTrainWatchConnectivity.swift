@@ -24,9 +24,9 @@ import WatchSessionEngine
 /// The one place a radio failure is reported, for both halves of the radio: a
 /// frame the bridge refused, and a send the platform refused.
 ///
-/// Neither is a reason to take the wrist down. Nothing is queued (D-6): what the
-/// phone is still owed is re-sent by the next sync, so the failure is reported
-/// and dropped.
+/// Neither is a reason to take the wrist down. A durable frame is queued for the
+/// OS to deliver when the two devices meet (D-3); every other frame is re-sent by
+/// the next sync, so its failure is reported and dropped.
 func reportWatchRadioFailure(_ error: Error) {
     NSLog("OmniTrain watch radio: %@", String(describing: error))
 }
@@ -81,7 +81,8 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
     /// Hands the phone one frame, or throws the reason it cannot go.
     ///
     /// `sendMessage` answers asynchronously, so its refusal arrives after this
-    /// call returns; it goes to the same failure hook the bridge reports through.
+    /// call returns: a durable frame is queued for the OS to deliver, every other
+    /// frame goes to the same failure hook the bridge reports through.
     func send(_ frame: [String: Any]) throws {
         guard WCSession.isSupported() else { throw RadioError.notActivated }
 
@@ -90,8 +91,36 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
         guard session.isReachable else { throw RadioError.phoneNotReachable }
 
         session.sendMessage(frame, replyHandler: nil) { [weak self] error in
-            self?.onSendFailure(error)
+            guard let self else { return }
+            guard WatchConnectivityBridge.isDurable(frame) else {
+                self.onSendFailure(error)
+                return
+            }
+            do {
+                try self.queue(frame)
+            } catch {
+                self.onSendFailure(error)
+            }
         }
+    }
+
+    /// Hands the phone one frame the OS delivers when the two devices meet,
+    /// even if this app is asleep by then (plan 47b). A transfer with the same
+    /// `messageId` that is still outstanding is not queued again: a sync that
+    /// re-sends an owed set must not pile up copies.
+    func queue(_ frame: [String: Any]) throws {
+        guard WCSession.isSupported() else { throw RadioError.notActivated }
+
+        let session = WCSession.default
+        guard session.activationState == .activated else { throw RadioError.notActivated }
+
+        if let messageId = frame["messageId"] as? String,
+           session.outstandingUserInfoTransfers.contains(where: {
+               ($0.userInfo["messageId"] as? String) == messageId
+           }) {
+            return
+        }
+        session.transferUserInfo(frame)
     }
 
     /// Called once by the bridge, before the app starts receiving.
@@ -150,6 +179,12 @@ extension OmniTrainWatchConnectivity: WCSessionDelegate {
     /// The phone's messages, which it sends without asking for a reply.
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         deliver(message)
+    }
+
+    /// A frame the phone queued (a receipt it could not send live), delivered by
+    /// the OS. Handled exactly like a message.
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        deliver(userInfo)
     }
 
     /// The same message, from a sender that does want a reply. Answered with an

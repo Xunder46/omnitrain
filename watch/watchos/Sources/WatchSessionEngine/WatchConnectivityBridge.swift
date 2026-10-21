@@ -11,11 +11,15 @@
 //  Two rules shape it:
 //
 //  1. **Nothing is sent unless the watch asked** (D-16, I-1). There is no timer
-//     and no queue here: a frame leaves when the orchestrator syncs or the
-//     engine hands over something it owes, and at no other time.
-//  2. **A frame the radio cannot carry is reported and dropped** (D-4, D-6). No
-//     second delivery path — the next `sync()` re-sends what is owed from
-//     storage.
+//     here and no queue of its own: a frame leaves when the orchestrator syncs
+//     or the engine hands over something it owes, and at no other time. What the
+//     wrist owes the phone for good it hands to the platform's own queue (D-1).
+//  2. **A durable frame the radio cannot carry is queued; the rest are reported
+//     and dropped** (D-2, D-4, D-6). A set the wrist logged and the end of a
+//     session go to the OS queue, which delivers them when the two devices meet.
+//     Every other frame is live state that would arrive stale, so it is reported
+//     and dropped. The next `sync()` re-sends what is owed from storage either
+//     way.
 //
 
 import Foundation
@@ -23,7 +27,7 @@ import Foundation
 /// What the bridge needs from the platform's watch API — `WCSession` in the app
 /// target, a fake in tests.
 ///
-/// Deliberately four members and no more: everything else the bridge does
+/// Deliberately five members and no more: everything else the bridge does
 /// (building frames, checking them, reporting failures) would otherwise be
 /// written once per platform. The real `WCSession` conformance belongs to the
 /// app target and is compiled only where `WatchConnectivity` exists, which is
@@ -34,6 +38,10 @@ public protocol WatchConnectivitySession: AnyObject {
 
     /// Hands the phone one frame. Throws when the platform refuses it.
     func send(_ frame: [String: Any]) throws
+
+    /// Hands the phone one frame the OS delivers later, when the two meet,
+    /// even if this app is asleep by then. Throws when the platform refuses it.
+    func queue(_ frame: [String: Any]) throws
 
     /// Hands every frame the phone sends to `handler`, for as long as the
     /// session lives. Called once, before the app starts receiving.
@@ -77,7 +85,8 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
     private let session: WatchConnectivitySession
 
     /// A frame the radio could not carry does not take the wrist down with it:
-    /// the caller reports it and the next sync re-sends what is owed.
+    /// the caller reports it and the next sync re-sends what is owed. A frame
+    /// that is durable and refused goes to the OS queue instead (D-2).
     private let onFailure: ((Error) -> Void)?
 
     /// Who the bridge hands arriving frames to. Set by the host before the app
@@ -133,8 +142,8 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
     ///
     /// The frame is checked first: a value the radio cannot carry fails the
     /// whole message, so it is reported through the failure hook and never
-    /// reaches the session (D-4). A send the session itself refuses is reported
-    /// the same way, and nothing is queued (D-6).
+    /// reaches the session (D-4). A send the session itself refuses is queued
+    /// when the frame is durable (D-2), and reported otherwise.
     public func send(_ envelope: [String: Any]) async {
         let frame: [String: Any]
         do {
@@ -147,8 +156,25 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
         do {
             try session.send(frame)
         } catch {
-            report(error)
+            guard Self.isDurable(frame) else {
+                report(error)
+                return
+            }
+            do {
+                try session.queue(frame)
+            } catch {
+                report(error)
+            }
         }
+    }
+
+    /// The frames the wrist owes the phone for good: a set it logged and the
+    /// end of a session. A refused send is queued for the OS to deliver; every
+    /// other frame is live state that would arrive stale, so it is reported
+    /// and dropped as before (D-2).
+    public static func isDurable(_ frame: [String: Any]) -> Bool {
+        let type = frame["type"] as? String
+        return type == "observations_up" || type == "session_lifecycle"
     }
 
     /// Hands one arriving frame to the inbound handler, if there is one.
