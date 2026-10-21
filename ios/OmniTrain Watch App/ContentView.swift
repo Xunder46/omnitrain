@@ -120,7 +120,9 @@ final class WatchAppHost: ObservableObject {
         bridge.onIncoming { [weak self] frame in
             guard let self else { return }
             _ = try await self.orchestrator.receive(frame)
-            self.revision += 1
+            // The receive path runs off the main actor (the radio's handler is
+            // `@concurrent`); the counter the views watch is bumped on it.
+            await MainActor.run { self.revision += 1 }
         }
 
         // The radio's answers, mapped to the three-state value the surface reads

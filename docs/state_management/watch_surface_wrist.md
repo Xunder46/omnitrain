@@ -73,6 +73,34 @@ The sentence lives in the package's `WatchStartSurfaceCopy` rather than the
 contract's `startSurface` block; it moves into the contract if the Wear OS client
 ever ships a transport.
 
+## The engine's session-row writers run one at a time
+
+**Files**: `watch/watchos/Sources/WatchSessionEngine/WatchAsyncMutex.swift`,
+`.../WatchSessionEngine.swift`; the host hop is
+`ios/OmniTrain Watch App/ContentView.swift`.
+
+The engine's five session-row writers — `createSession`, `transitionTo`,
+`applySnapshot`, `applyStructureChange`, `applyLifecycle` — serialise through
+one first-in-first-out, non-reentrant `WatchAsyncMutex`: each public name keeps
+its signature and the old body lives in a private `<name>Exclusive` function
+run inside `exclusive`. The point is ordering, not exclusion of reads: each
+writer is built from the latest session, so a menu pick and an overlapping
+phone snapshot, structure change or lifecycle message both land and the later
+arrival wins, and two starts at once make one session. Verified by
+`WatchEngineSerialisationTests.swift` (S-6501..S-6505) and, for the mutex
+itself, `WatchAsyncMutexTests.swift` (S-6506). The host bumps its refresh
+counter for incoming messages on the main actor, so the surface is told on the
+main thread while the engine work stays off it
+(`WatchHostHopSourceTests.swift`, S-6507).
+
+Known limits, stated honestly: the engine's timers and observations are not
+serialised; the engine is not main-actor isolated; the mutex is not reentrant,
+so `exclusive` must never be taken inside a body already inside it
+(`WatchAsyncMutex.swift` says so at the top), and `applyMessage`,
+`advanceExercise`, `selectExercise`, `finishSession`, `abandonSession`,
+`insertExercise`, `applyExercisePush`, `stopTimer` and `appendTimer`
+deliberately do not take it (plan 46c, D-5).
+
 ## The wrist's start surface, and what an arrival does to it
 
 **A push with no session to land in is read and dropped.** The wrist's start

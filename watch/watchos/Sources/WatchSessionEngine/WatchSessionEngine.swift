@@ -35,6 +35,13 @@ public struct WatchEmissionRejected: Error, CustomStringConvertible {
 
 public final class WatchSessionEngine: ObservableObject {
     private let store: WatchSessionStore
+
+    /// Serialises the five session-row writers (D-2). Each runs its whole body —
+    /// the read of `current`, the awaited append, the write of `current` —
+    /// inside this gate, so a phone message and a wrist change cannot both
+    /// build a row from the same out-of-date copy.
+    private let mutex = WatchAsyncMutex()
+
     private let onEmit: WatchMessageSink?
     private let validator: SyncProtocolValidator?
     private let clock: () -> Date
@@ -275,6 +282,16 @@ public final class WatchSessionEngine: ObservableObject {
         source: String = "watch",
         exercises: [[String: Any]] = []
     ) async -> WatchSessionRecord {
+        await mutex.exclusive {
+            await createSessionExclusive(modality: modality, source: source, exercises: exercises)
+        }
+    }
+
+    private func createSessionExclusive(
+        modality: String?,
+        source: String,
+        exercises: [[String: Any]]
+    ) async -> WatchSessionRecord {
         // The wrist runs one session at a time: a start that arrives while a
         // live session is held is refused and the held session is what the
         // caller gets back — same row, no lifecycle, no snapshot (D-171,
@@ -479,6 +496,10 @@ public final class WatchSessionEngine: ObservableObject {
     /// the phone obviously has them. The snapshot is also the receipt for the
     /// observations it does carry: the watch may drop them.
     private func applySnapshot(_ envelope: [String: Any]) async -> Bool {
+        await mutex.exclusive { await applySnapshotExclusive(envelope) }
+    }
+
+    private func applySnapshotExclusive(_ envelope: [String: Any]) async -> Bool {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         guard let sessionId = payload["sessionId"] as? String,
               let messageId = envelope["messageId"] as? String,
@@ -558,6 +579,10 @@ public final class WatchSessionEngine: ObservableObject {
     /// not duplicate it), a removed slot never takes its entries with it, and a
     /// swap keeps the slot's id so entries logged against it still point at it.
     private func applyStructureChange(_ envelope: [String: Any]) async -> Bool {
+        await mutex.exclusive { await applyStructureChangeExclusive(envelope) }
+    }
+
+    private func applyStructureChangeExclusive(_ envelope: [String: Any]) async -> Bool {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         guard guardSession(envelope),
               let session = current,
@@ -595,6 +620,10 @@ public final class WatchSessionEngine: ObservableObject {
     /// Nothing is echoed back — the phone is telling the watch what it decided,
     /// and answering it with the same news would be noise.
     private func applyLifecycle(_ envelope: [String: Any]) async -> Bool {
+        await mutex.exclusive { await applyLifecycleExclusive(envelope) }
+    }
+
+    private func applyLifecycleExclusive(_ envelope: [String: Any]) async -> Bool {
         guard guardSession(envelope), let session = current else { return false }
 
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
@@ -1098,6 +1127,24 @@ public final class WatchSessionEngine: ObservableObject {
         exercises: [[String: Any]]? = nil,
         lifecycle: String?,
         revision: Int? = nil
+    ) async -> WatchSessionRecord {
+        await mutex.exclusive {
+            await transitionToExclusive(
+                status: status,
+                currentExerciseIndex: currentExerciseIndex,
+                exercises: exercises,
+                lifecycle: lifecycle,
+                revision: revision
+            )
+        }
+    }
+
+    private func transitionToExclusive(
+        status: String?,
+        currentExerciseIndex: Int?,
+        exercises: [[String: Any]]?,
+        lifecycle: String?,
+        revision: Int?
     ) async -> WatchSessionRecord {
         let session = requireSession()
         let now = clock()

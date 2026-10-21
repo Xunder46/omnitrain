@@ -1,6 +1,6 @@
 # Feature: 46c — the wrist's session changes happen one at a time, and the screen is told on the main thread
 
-> Status: SEEDED 2026-10-20, not built. Base commit: `.work/2026-10-20-46c/base.txt`. Team: the crew (lead-seeded from the scout sheet `.work/crew/2026-10-20-46a/scout-engine-writers.md`).
+> Status: BUILT, PROVED AND REVIEWED 2026-10-20 (review APPROVE, one minor fixed: the plan's wait bound). Swift 657/0, mutation pass 8/8 red, watch target builds with xcodebuild. Base commit: `.work/2026-10-20-46c/base.txt`. Team: the crew (lead-seeded from the scout sheet `.work/crew/2026-10-20-46a/scout-engine-writers.md`).
 > Series: `docs/plans/2026-10-20-46-wrist-logging-series.md`. Binding conventions: docs/global_conventions.md; .github/copilot/pr-scope-budget.md
 
 ## Goal and acceptance
@@ -22,7 +22,7 @@
 
 ## Scenarios (ids S-6501.. checked free)
 
-New `watch/watchos/Tests/WatchSessionEngineTests/WatchEngineSerialisationTests.swift`, `@MainActor`-free async XCTest, using `SuspendingStore` (`WatchEffortRatingTests.swift:160`: `arm()`, `suspended`, `resume()`) and the harness/snapshot-envelope helpers already used by `WatchLiveMirroringTests.swift` / `WatchSessionEngineTests.swift` (the builder finds the snapshot, structure-change and lifecycle envelope builders there). Fixture: a wrist session with exercises [A, B], current index 0; phone message adds exercise C. Bounded waits only (`Task.yield` loop, at most 200 iterations); no real-clock thresholds.
+New `watch/watchos/Tests/WatchSessionEngineTests/WatchEngineSerialisationTests.swift`, `@MainActor`-free async XCTest, using `SuspendingStore` (`WatchEffortRatingTests.swift:160`: `arm()`, `suspended`, `resume()`) and the harness/snapshot-envelope helpers already used by `WatchLiveMirroringTests.swift` / `WatchSessionEngineTests.swift` (the builder finds the snapshot, structure-change and lifecycle envelope builders there). Fixture: a wrist session with exercises [A, B], current index 0; phone message adds exercise C. Bounded waits only (`Task.yield` loop, bounded yield loops (the tests use limits of 500 to 100,000 iterations)); no real-clock thresholds.
 - S-6501 snapshot first: arm the store; start `applyMessage(snapshot [A,B,C], same session, higher revision)`; wait until `store.suspended`; start `selectExercise(slotId: B)`; yield 50 times (the select must be blocked, assert `engine.session.currentExerciseIndex == 0` still); `resume()`; await both: the session has 3 exercises AND the current index is B's. Fails without the gate: select built its row from the 2-exercise copy and wins last (2 exercises).
 - S-6502 select first: arm; start `selectExercise(B)`, wait until suspended; start the snapshot message; yield 50 times; `resume()`; await both: 3 exercises (the snapshot applied after the select, built from the select's row).
 - S-6503 structure change vs select, both orders, same shape as S-6501/S-6502 with a `structure_change` that appends C (see how `WatchSessionEngineTests` builds `structure_change`).
