@@ -33,6 +33,7 @@ import '../../state/food_library_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../state/stats/stats_primer_state.dart';
 import '../../state/exercise/exercise_library_state.dart';
+import '../../state/watch/watch_link_state.dart';
 import '../nutrition/nutrition_screen.dart';
 import '../nutrition/widgets/nutrition_primer_sheet.dart';
 import '../stats/widgets/stats_primer_sheet.dart';
@@ -94,6 +95,10 @@ class HomeScreen extends StatefulWidget {
   final ExerciseLibraryState exerciseLibraryState;
   final AppVersionInfo? appVersionInfo;
 
+  /// Where the watch stands, handed on to Settings (47c D-3). Null without a
+  /// watch graph, and Settings then carries no APPLE WATCH section.
+  final WatchLinkState? watchLinkState;
+
   HomeScreen({
     super.key,
     required this.workoutState,
@@ -112,6 +117,7 @@ class HomeScreen extends StatefulWidget {
     this.statsPrimerState,
     required this.exerciseLibraryState,
     this.appVersionInfo,
+    this.watchLinkState,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -1182,6 +1188,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             appVersionInfo:
                 widget.appVersionInfo ??
                 const AppVersionInfo(version: '0.0.0', build: '0'),
+            watchLinkState: widget.watchLinkState,
           ),
         ),
       ),

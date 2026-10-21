@@ -9,6 +9,7 @@ import '../../core/models/app_version_info.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
+import '../../state/watch/watch_link_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
@@ -30,6 +31,10 @@ class SettingsScreen extends StatefulWidget {
   final double? userHeightCm; // For testing - directly pass height value
   final AppVersionInfo appVersionInfo;
 
+  /// Where the watch stands, for the APPLE WATCH row (47c D-4). Null without a
+  /// watch graph, and the section is absent.
+  final WatchLinkState? watchLinkState;
+
   SettingsScreen({
     super.key,
     required this.settingsState,
@@ -38,6 +43,7 @@ class SettingsScreen extends StatefulWidget {
     RestNotificationService? restNotificationService,
     this.profileState,
     this.userHeightCm,
+    this.watchLinkState,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
 
@@ -141,6 +147,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const OmniCardHeader(title: 'WORKOUT'),
                   _WorkoutSection(settingsState: widget.settingsState),
                   const SizedBox(height: 24),
+                  if (widget.watchLinkState != null) ...[
+                    const OmniCardHeader(title: 'APPLE WATCH'),
+                    _WatchSection(state: widget.watchLinkState!),
+                    const SizedBox(height: 24),
+                  ],
                   const OmniCardHeader(title: 'HEALTH'),
                   _HealthSection(settingsState: widget.settingsState),
                   const SizedBox(height: 24),
@@ -943,6 +954,55 @@ class _HealthDeniedNotice extends StatelessWidget {
             child: const Text('Open settings'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── APPLE WATCH ───────────────────────────────────────────────────────────
+
+/// The one read-only row: where the watch stands, and when the phone last
+/// heard from it (plan 47c D-4). Refreshed on open, so a pairing change made
+/// while the app was away is read again; the state notifies on every change
+/// after that while the screen is up.
+class _WatchSection extends StatefulWidget {
+  final WatchLinkState state;
+
+  const _WatchSection({required this.state});
+
+  @override
+  State<_WatchSection> createState() => _WatchSectionState();
+}
+
+class _WatchSectionState extends State<_WatchSection> {
+  @override
+  void initState() {
+    super.initState();
+    widget.state.refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: ListenableBuilder(
+        listenable: widget.state,
+        builder: (context, _) {
+          final connected = widget.state.phase == WatchLinkPhase.connected;
+          return _SettingsRow(
+            label: 'Apple Watch',
+            subtitle: widget.state.lastSyncedLabel(DateTime.now()),
+            trailing: Text(
+              widget.state.statusLabel,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: connected
+                    ? theme.colorScheme.primary
+                    : OmniTheme.colors.textSecondary,
+              ),
+            ),
+          );
+        },
       ),
     );
   }

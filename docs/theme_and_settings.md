@@ -94,8 +94,8 @@ enumerated here — the list is presentation, and prose enumeration of it drifts
 
 ### Sections
 
-The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, and the
-platform-health sync toggles. Two
+The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, the
+platform-health sync toggles, and the watch's link status. Two
 rules matter beyond the row list:
 
 - **Height is stored canonically in centimetres regardless of the display unit.** Switching the
@@ -104,6 +104,14 @@ rules matter beyond the row list:
   one measurement with a compound display form.
 - **Sound choices preview immediately on tap** through `TimerAlertService.playPreview`, and audio
   playback no-ops safely on web rather than throwing.
+
+The APPLE WATCH section is the one read-only status readout, built only when the platform's
+transport can report a link: one `Apple Watch` row, not tappable, with the link phase on the
+right — `Connected`, `Not reachable`, `Not paired` or `Watch app not installed` — and the
+last-synced line under the label (`Never synced` until the phone first hears a frame). Verified
+by `test/settings_watch_status_test.dart` (S-6910 no section without a link state; S-6911 the
+row per phase; S-6912 the row offers no tap target; S-6913 the section sits between WORKOUT and
+HEALTH; S-6914 a heard frame updates the line while the screen is open).
 
 ### Version Footer
 

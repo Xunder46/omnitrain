@@ -14,6 +14,14 @@
 //   S-253 every sync is answered with preferences → `S-253 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-113, D-115)
+//   S-6810..S-6815 the transport over a link that queues
+//         → `S-6810 ...` (plan 47a, D-5)
+//   S-6817 when the transport attaches its listeners
+//         → `S-6817 ...` (plan 47a)
+//   S-6818 a change that lands after close
+//         → `S-6818 ...` (plan 47a review)
+//   S-6906 the graph when the link's stored stamp cannot be read
+//         → `S-6906 ...` (plan 47c review)
 //
 // The loopback below is a channel, not a transport: it carries frames in memory
 // in the order they were sent, which is the one property a fake can hold a real
@@ -28,6 +36,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/no_watch_transport.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
+import 'package:omnitrain/core/platform/watch_link_info.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/platform_watch_transport_factory.dart';
@@ -38,6 +47,7 @@ import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
+import 'package:omnitrain/state/watch/watch_link_state.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/watch/logging/watch_logging_state.dart';
 import 'package:omnitrain/watch/logging/watch_metric_stepping.dart';
@@ -128,16 +138,41 @@ class _Endpoint implements WatchMessageChannel {
   _Endpoint({required this.outbound, required this.inbound});
 
   final StreamController<Map<String, Object?>> outbound;
-  final Stream<Map<String, Object?>> inbound;
+
+  /// The frames arriving at this end. A controller rather than its stream, so a
+  /// test can ask whether anything is listening yet.
+  final StreamController<Map<String, Object?>> inbound;
 
   /// Everything this end handed to the radio, in order.
   final List<Map<String, Object?>> sent = [];
+
+  /// Everything this end handed to the OS queue, in order.
+  final List<Map<String, Object?>> queued = [];
 
   bool reachable = true;
 
   /// A send the radio refuses, so the refusal path can be exercised.
   /// Null means every send is taken.
   Object? sendFailure;
+
+  /// A queue the OS refuses, so the queueing failure path can be exercised.
+  /// Null means every queue call is taken.
+  Object? queueFailure;
+
+  /// What the peer says about the pairing, answered by [info].
+  WatchLinkInfo infoValue = const WatchLinkInfo(
+    paired: true,
+    appInstalled: true,
+    reachable: true,
+  );
+
+  /// When set, [info] answers only once the test completes it, so a case can
+  /// close the transport while the read is still in flight.
+  Completer<WatchLinkInfo>? infoGate;
+
+  /// Every reachability change the platform reports.
+  final StreamController<bool> reachabilityController =
+      StreamController<bool>.broadcast();
 
   @override
   Future<bool> get isPaired async => true;
@@ -146,7 +181,17 @@ class _Endpoint implements WatchMessageChannel {
   Future<bool> get isReachable async => reachable;
 
   @override
-  Stream<Map<String, Object?>> get messages => inbound;
+  Stream<Map<String, Object?>> get messages => inbound.stream;
+
+  @override
+  Stream<bool> get reachability => reachabilityController.stream;
+
+  @override
+  Future<WatchLinkInfo> get info async {
+    final gate = infoGate;
+    if (gate != null) return gate.future;
+    return infoValue;
+  }
 
   @override
   Future<void> send(Map<String, Object?> frame) async {
@@ -155,13 +200,20 @@ class _Endpoint implements WatchMessageChannel {
     sent.add(frame);
     outbound.add(frame);
   }
+
+  @override
+  Future<void> queue(Map<String, Object?> frame) async {
+    final failure = queueFailure;
+    if (failure != null) throw failure;
+    queued.add(frame);
+  }
 }
 
 /// Two channels wired to each other: the phone's and the wrist's.
 class _Link {
   _Link() {
-    phone = _Endpoint(outbound: _toWatch, inbound: _toPhone.stream);
-    watch = _Endpoint(outbound: _toPhone, inbound: _toWatch.stream);
+    phone = _Endpoint(outbound: _toWatch, inbound: _toPhone);
+    watch = _Endpoint(outbound: _toPhone, inbound: _toWatch);
   }
 
   final StreamController<Map<String, Object?>> _toPhone =
@@ -180,6 +232,22 @@ class _Link {
 
 /// Lets the link's broadcast streams deliver everything already queued.
 Future<void> _settle() => pumpEventQueue();
+
+/// A repository whose stored watch stamp cannot be read, as a storage failure
+/// would leave the phone's preferences: only the link's own key fails, so the
+/// rest of the graph still builds.
+class _LinkPreferenceUnreadableRepository extends MockWorkoutRepository {
+  @override
+  Future<String?> getPreferenceString(
+    String key, {
+    String? defaultValue,
+  }) async {
+    if (key == WatchLinkState.lastHeardKey) {
+      throw StateError('the stored watch stamp is unreadable');
+    }
+    return super.getPreferenceString(key, defaultValue: defaultValue);
+  }
+}
 
 /// A routine with one segment and one exercise, as a phone would hold one.
 Future<void> _seedRoutine(
@@ -782,6 +850,34 @@ void main() {
     });
   });
 
+  group('S-6906 the graph when the link cannot read its stored stamp', () {
+    test('S-6906 a failing preference read leaves the graph built, without a '
+        'link, and reports once', () async {
+      final repository = _LinkPreferenceUnreadableRepository();
+      await repository.initialize();
+      final settings = SettingsState(repository, fakePreferencesService());
+      await settings.initialize();
+
+      final graph = await createWatchSync(
+        repository: repository,
+        nutritionState: NutritionState(repository),
+        foodLibraryState: FoodLibraryState(repository),
+        settingsState: settings,
+        transport: phoneTransport,
+        onFailure: reportFailure,
+      );
+
+      expect(
+        graph,
+        isNotNull,
+        reason: 'a read-only status must not cost the phone its watch graph',
+      );
+      expect(graph!.link, isNull);
+      expect(reportedFailure, isA<StateError>());
+      expect(reportedFailureCount, 1);
+    });
+  });
+
   // D-190, D-196, D-201: a send answers whether the frame was handed over.
   group('S-206 a send answers whether the frame was handed over', () {
     test('S-206 a reachable counterpart means delivered, and the radio carried '
@@ -861,6 +957,297 @@ void main() {
         reason: 'no wrist means nothing to report, not an error per send',
       );
       expect(received, 0);
+    });
+  });
+
+  // Plan 47a (D-5): only a frame the sender owes for good — a receipt — is
+  // queued for the OS. Everything else is live state, re-offered at its next
+  // trigger rather than parked in a queue.
+  group('S-6810-6815 the transport over a link that queues', () {
+    const Map<String, Object?> receipt = {
+      'type': 'receipt',
+      'messageId': 'm-6810',
+      'payload': {
+        'entryIds': ['e-6810'],
+      },
+    };
+
+    test('S-6810 an unreachable receipt is queued, not sent', () async {
+      link.phone.reachable = false;
+
+      final result = await phoneTransport.send(receipt);
+
+      expect(result, WatchDelivery.queued);
+      expect(link.phone.queued, [receipt]);
+      expect(link.phone.sent, isEmpty);
+      expect(
+        reportedFailureCount,
+        0,
+        reason: 'a counterpart that is simply apart is quiet (D-201)',
+      );
+    });
+
+    test('S-6811 an unreachable session_snapshot is undelivered and not '
+        'queued', () async {
+      link.phone.reachable = false;
+      const frame = <String, Object?>{
+        'type': 'session_snapshot',
+        'payload': <String, Object?>{},
+      };
+
+      final result = await phoneTransport.send(frame);
+
+      expect(result, WatchDelivery.undelivered);
+      expect(link.phone.queued, isEmpty);
+      expect(link.phone.sent, isEmpty);
+      expect(reportedFailureCount, 0);
+    });
+
+    test('S-6811 unreachable timer_state is undelivered and not queued',
+        () async {
+      link.phone.reachable = false;
+      const frame = <String, Object?>{
+        'type': 'timer_state',
+        'payload': <String, Object?>{},
+      };
+
+      final result = await phoneTransport.send(frame);
+
+      expect(result, WatchDelivery.undelivered);
+      expect(link.phone.queued, isEmpty);
+      expect(link.phone.sent, isEmpty);
+      expect(reportedFailureCount, 0);
+    });
+
+    test('S-6811 an unreachable request is undelivered and not queued',
+        () async {
+      link.phone.reachable = false;
+      final frame = WatchTransportRequest.snapshotFrame();
+
+      final result = await phoneTransport.send(frame);
+
+      expect(result, WatchDelivery.undelivered);
+      expect(link.phone.queued, isEmpty);
+      expect(link.phone.sent, isEmpty);
+      expect(reportedFailureCount, 0);
+    });
+
+    test('S-6812 a reachable receipt whose send throws is queued and '
+        'reported once', () async {
+      link.phone.sendFailure = StateError('the radio refused the frame');
+
+      final result = await phoneTransport.send(receipt);
+
+      expect(result, WatchDelivery.queued);
+      expect(link.phone.queued, [receipt]);
+      expect(link.phone.sent, isEmpty);
+      expect(reportedFailure, isA<StateError>());
+      expect(reportedFailureCount, 1);
+    });
+
+    test('S-6812 a reachable session_snapshot whose send throws is '
+        'undelivered and reported once', () async {
+      link.phone.sendFailure = StateError('the radio refused the frame');
+      const frame = <String, Object?>{
+        'type': 'session_snapshot',
+        'payload': <String, Object?>{},
+      };
+
+      final result = await phoneTransport.send(frame);
+
+      expect(result, WatchDelivery.undelivered);
+      expect(link.phone.queued, isEmpty);
+      expect(link.phone.sent, isEmpty);
+      expect(reportedFailure, isA<StateError>());
+      expect(reportedFailureCount, 1);
+    });
+
+    test('S-6813 reachability events move the flag both ways and linkChanges '
+        'emits the info', () async {
+      final transport = WatchConnectivityTransport(channel: link.watch);
+      addTearDown(transport.close);
+      // Reachability is followed from the moment the transport receives, so a
+      // case that wants the events attaches first (S-6817).
+      transport.onIncoming((frame) async {});
+      link.watch.infoValue = const WatchLinkInfo(
+        paired: true,
+        appInstalled: true,
+        reachable: true,
+      );
+      final changes = <WatchLinkInfo>[];
+      final subscription = transport.linkChanges.listen(changes.add);
+      addTearDown(subscription.cancel);
+
+      expect(transport.isPhoneReachable, isFalse);
+
+      link.watch.reachabilityController.add(true);
+      await _settle();
+
+      expect(transport.isPhoneReachable, isTrue);
+      expect(changes, hasLength(1));
+      expect(changes.single.paired, isTrue);
+      expect(changes.single.appInstalled, isTrue);
+      expect(changes.single.reachable, isTrue);
+
+      link.watch.infoValue = const WatchLinkInfo(
+        paired: true,
+        appInstalled: true,
+        reachable: false,
+      );
+      link.watch.reachabilityController.add(false);
+      await _settle();
+
+      expect(transport.isPhoneReachable, isFalse);
+      expect(changes, hasLength(2));
+      expect(changes.last, link.watch.infoValue);
+    });
+
+    test('S-6814 a failed send lowers isPhoneReachable', () async {
+      expect(
+        await phoneTransport.send(WatchTransportRequest.snapshotFrame()),
+        WatchDelivery.delivered,
+      );
+      expect(phoneTransport.isPhoneReachable, isTrue);
+
+      link.phone.sendFailure = StateError('the radio refused the frame');
+
+      expect(
+        await phoneTransport.send(WatchTransportRequest.snapshotFrame()),
+        WatchDelivery.undelivered,
+      );
+      expect(phoneTransport.isPhoneReachable, isFalse);
+    });
+
+    test('S-6815 heard emits once per frame the handler took, with the '
+        'injected clock, and never for a dropped frame', () async {
+      final stamps = [
+        DateTime.utc(2026, 10, 21, 9),
+        DateTime.utc(2026, 10, 21, 10),
+      ];
+      var next = 0;
+      final transport = WatchConnectivityTransport(
+        channel: link.phone,
+        clock: () => stamps[next++],
+      );
+      addTearDown(transport.close);
+      final heard = <DateTime>[];
+      final subscription = transport.heard.listen(heard.add);
+      addTearDown(subscription.cancel);
+
+      await link.watch.send(const {'type': 'timer_state'});
+      await _settle();
+
+      expect(
+        heard,
+        isEmpty,
+        reason: 'no handler is bound yet, so the frame is dropped',
+      );
+      expect(next, 0, reason: 'a dropped frame never reads the clock');
+
+      var handled = 0;
+      transport.onIncoming((frame) async => handled++);
+      await link.watch.send(const {'type': 'session_snapshot'});
+      await _settle();
+
+      expect(handled, 1);
+      expect(heard, [stamps.first]);
+
+      await link.watch.send(const {'type': 'timer_state'});
+      await _settle();
+
+      expect(handled, 2);
+      expect(heard, stamps);
+    });
+  });
+
+  // The platform holds its one event stream until the first listener attaches
+  // and then flushes what it buffered, frames from the wrist included. A frame
+  // that arrived before the app finished starting must reach the message
+  // handler, so the message listener has to be the one attached, and it has to
+  // be attached with the reachability listener rather than after it.
+  group('S-6817 the transport attaches its listeners when it starts receiving',
+      () {
+    test('S-6817 constructing attaches no listener, and onIncoming attaches '
+        'both in the same turn', () {
+      final inbound = StreamController<Map<String, Object?>>.broadcast();
+      final outbound = StreamController<Map<String, Object?>>.broadcast();
+      addTearDown(() async {
+        await inbound.close();
+        await outbound.close();
+      });
+      final endpoint = _Endpoint(outbound: outbound, inbound: inbound);
+
+      final transport = WatchConnectivityTransport(channel: endpoint);
+      addTearDown(transport.close);
+
+      expect(
+        endpoint.reachabilityController.hasListener,
+        isFalse,
+        reason: 'a listener here would flush the buffered stream to reachability '
+            'alone, before the message listener could be attached',
+      );
+      expect(
+        endpoint.inbound.hasListener,
+        isFalse,
+        reason: 'the transport listens only once it is told who receives',
+      );
+
+      transport.onIncoming((frame) async {});
+
+      expect(
+        endpoint.inbound.hasListener,
+        isTrue,
+        reason: 'the message listener is attached first',
+      );
+      expect(
+        endpoint.reachabilityController.hasListener,
+        isTrue,
+        reason: 'and reachability in the same turn, never a turn later',
+      );
+    });
+  });
+
+  // 47a review: a reachability change that arrives during close must not turn
+  // into a reported transport failure.
+  group('S-6818 a change that lands after close', () {
+    test('S-6818 an info read that finishes after close reports no failure',
+        () async {
+      final inbound = StreamController<Map<String, Object?>>.broadcast();
+      final outbound = StreamController<Map<String, Object?>>.broadcast();
+      addTearDown(() async {
+        await inbound.close();
+        await outbound.close();
+      });
+      final endpoint = _Endpoint(outbound: outbound, inbound: inbound);
+      final gate = Completer<WatchLinkInfo>();
+      endpoint.infoGate = gate;
+
+      final transport = WatchConnectivityTransport(
+        channel: endpoint,
+        onFailure: reportFailure,
+      );
+      transport.onIncoming((frame) async {});
+
+      endpoint.reachabilityController.add(true);
+      await _settle();
+      expect(
+        transport.isPhoneReachable,
+        isTrue,
+        reason: 'the flag follows the event before the info is read',
+      );
+
+      await transport.close();
+      gate.complete(
+        const WatchLinkInfo(paired: true, appInstalled: true, reachable: true),
+      );
+      await _settle();
+
+      expect(
+        reportedFailureCount,
+        0,
+        reason: 'the controller is closed on purpose, not broken',
+      );
+      expect(reportedFailure, isNull);
     });
   });
 

@@ -5,3 +5,4 @@
 --allow-tool=write(docs/**)
 --allow-tool=write(.work/crew/**)
 --allow-tool=write(ios/OmniTrain Watch App/**)
+--allow-tool=write(packages/**)

@@ -11,10 +11,12 @@
 ///    is the seam the platform plugin plugs into — so a hand-rolled
 ///    `MethodChannel` + `WCSession` implementation, or a Wear data-layer one,
 ///    replaces the channel without touching a caller.
-/// 2. **A send answers, with the protocol doing the recovering.** There is no
-///    queue here by design: the caller learns whether the frame was handed over
-///    ([WatchDelivery]), and what the peer still owes is re-sent from storage
-///    on the next sync (PROTOCOL.md, "Idempotency and reconciliation").
+/// 2. **A send answers, with the protocol doing the recovering.** A frame the
+///    sender owes for good — a receipt — is queued for the OS when the peer
+///    cannot be reached, or when the radio refuses it; every other frame is
+///    live state, answers [WatchDelivery.undelivered], and is re-offered at its
+///    next trigger. What the peer still owes is re-sent from storage on the
+///    next sync (PROTOCOL.md, "Idempotency and reconciliation").
 library;
 
 import 'dart:async';
@@ -23,13 +25,21 @@ import '../sync_protocol/wire_timestamps.dart';
 import '../../watch/start/watch_sync_orchestrator.dart';
 import '../../state/watch/live_session_mirror_state.dart';
 import 'watch_delivery.dart';
+import 'watch_link_info.dart';
+import 'watch_link_source.dart';
 
 /// What a transport needs from the platform's watch API — the package's
 /// `WCSession` wrapper on iOS, the Wear data layer on Android, a fake in tests.
 ///
-/// Deliberately four members and no more: everything else the transport does
-/// (classifying frames, dispatching, remembering reachability) is logic that
-/// would otherwise be written once per platform.
+/// Seven members, each one the platform can answer and nothing the transport
+/// could compute for itself:
+///
+/// - [isPaired] and [isReachable] are the two questions a caller asks before
+///   deciding whether there is anything to do.
+/// - [messages] is the one inbound stream, both kinds of frame merged.
+/// - [send] is the live radio, [queue] the OS queue for a frame owed for good.
+/// - [reachability] reports every change, so the flag stops being read once.
+/// - [info] is the pairing, the app and reachability as one value.
 abstract interface class WatchMessageChannel {
   /// Whether a counterpart device is paired at all.
   Future<bool> get isPaired;
@@ -42,6 +52,15 @@ abstract interface class WatchMessageChannel {
 
   /// Hands the peer one frame. Completes when the platform has taken it.
   Future<void> send(Map<String, Object?> frame);
+
+  /// Hands the peer one frame the OS delivers later, when the devices meet.
+  Future<void> queue(Map<String, Object?> frame);
+
+  /// Every change of reachability, as the platform reports it.
+  Stream<bool> get reachability;
+
+  /// The state of the pairing right now.
+  Future<WatchLinkInfo> get info;
 }
 
 /// A frame that arrived from the peer: a protocol message, or a request.
@@ -114,12 +133,21 @@ abstract interface class WatchTransport
 
 /// The one implementation that talks to a device. Its channel is the only thing
 /// that knows which platform it is on.
-class WatchConnectivityTransport implements WatchTransport {
+class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
+  /// Builds the transport without listening to the channel.
+  ///
+  /// Listening starts at [onIncoming], not here: the platform's `messages` and
+  /// `reachability` are one event stream, it withholds that stream until the
+  /// first listener attaches, and then flushes what it buffered. A listener
+  /// attached here could take that flush before there is a message listener to
+  /// give it to.
   WatchConnectivityTransport({
     required WatchMessageChannel channel,
     void Function(Object error, StackTrace stack)? onFailure,
+    DateTime Function()? clock,
   }) : _channel = channel,
-       _onFailure = onFailure;
+       _onFailure = onFailure,
+       _clock = clock ?? DateTime.now;
 
   /// A frame the radio refuses does not take the session down with it: it is
   /// reported here, its caller learns it was not delivered, and the next sync
@@ -128,20 +156,77 @@ class WatchConnectivityTransport implements WatchTransport {
 
   final WatchMessageChannel _channel;
 
+  /// The clock [heard] stamps an arriving frame with. Injectable so a test
+  /// never reads the real clock.
+  final DateTime Function() _clock;
+
   StreamSubscription<Map<String, Object?>>? _incoming;
+  StreamSubscription<bool>? _reachability;
+  final StreamController<WatchLinkInfo> _linkChanges =
+      StreamController<WatchLinkInfo>.broadcast();
+  final StreamController<DateTime> _heard =
+      StreamController<DateTime>.broadcast();
   WatchInboundHandler? _handler;
   bool _phoneReachable = false;
+
+  /// Whether the frame is one the sender owes for good and the OS should
+  /// carry later when the radio cannot: a receipt, and nothing else. Every
+  /// other frame is live state, superseded by the next one.
+  static bool isDurable(Map<String, Object?> frame) =>
+      frame['type'] == 'receipt';
+
+  /// Every change of the link: reachability, as the platform reports it, with
+  /// the pairing and the app read alongside it.
+  ///
+  /// Events start once [onIncoming] has been called, because that is what
+  /// attaches the reachability listener; before it, [isPhoneReachable] holds
+  /// what [refreshReachability] read.
+  @override
+  Stream<WatchLinkInfo> get linkChanges => _linkChanges.stream;
+
+  /// One event per frame handed to the inbound handler, stamped by [clock].
+  @override
+  Stream<DateTime> get heard => _heard.stream;
+
+  /// The state of the link right now.
+  @override
+  Future<WatchLinkInfo> linkInfo() => _channel.info;
 
   /// Whether the counterpart can be reached right now — the phone, from the
   /// wrist's side; the wrist, from the phone's. The platform reports one flag
   /// for both, and the interface names it from the watch's side.
+  ///
+  /// The flag follows the platform's reachability events from the moment
+  /// [onIncoming] is called, plus every send; until then it is what
+  /// [refreshReachability] read.
   @override
   bool get isPhoneReachable => _phoneReachable;
 
+  Future<void> _reachabilityChanged(bool reachable) async {
+    _phoneReachable = reachable;
+    try {
+      final info = await _channel.info;
+      // A close during the read has closed the stream on purpose: the change is
+      // simply not reported, rather than as a transport failure.
+      if (_linkChanges.isClosed) return;
+      _linkChanges.add(info);
+    } catch (error, stack) {
+      _report(error, stack);
+    }
+  }
+
+  /// Binds the handler and starts listening.
+  ///
+  /// The message listener is attached first and the reachability listener in
+  /// the same synchronous block: the platform delivers nothing until the first
+  /// listener attaches and then flushes its buffer, so a frame that arrived
+  /// before the app was ready is waiting for the message listener, never for
+  /// reachability alone.
   @override
   void onIncoming(WatchInboundHandler handler) {
     _handler = handler;
     _incoming ??= _channel.messages.listen(_dispatch);
+    _reachability ??= _channel.reachability.listen(_reachabilityChanged);
   }
 
   @override
@@ -166,7 +251,10 @@ class WatchConnectivityTransport implements WatchTransport {
   /// Reachability is read per send, never from the cached [isPhoneReachable]
   /// hint, which is the UI's (D-190). An unreachable counterpart is
   /// [WatchDelivery.undelivered] without calling the channel and without a
-  /// report — the caller re-offers the frame at its next trigger (D-201).
+  /// report — the caller re-offers the frame at its next trigger (D-201) —
+  /// unless the frame is [isDurable], which goes to the OS queue instead and
+  /// answers [WatchDelivery.queued]. A radio that refuses a durable frame
+  /// falls back to the same queue; a refused live frame is undelivered.
   @override
   Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     final bool reachable;
@@ -176,11 +264,29 @@ class WatchConnectivityTransport implements WatchTransport {
       _report(error, stack);
       return WatchDelivery.undelivered;
     }
-    if (!reachable) return WatchDelivery.undelivered;
+    if (!reachable) {
+      return isDurable(envelope)
+          ? _queue(envelope)
+          : WatchDelivery.undelivered;
+    }
     try {
       await _channel.send(envelope);
       _phoneReachable = true;
       return WatchDelivery.delivered;
+    } catch (error, stack) {
+      _report(error, stack);
+      _phoneReachable = false;
+      return isDurable(envelope)
+          ? _queue(envelope)
+          : WatchDelivery.undelivered;
+    }
+  }
+
+  /// Hands a frame the sender owes for good to the OS queue.
+  Future<WatchDelivery> _queue(Map<String, Object?> envelope) async {
+    try {
+      await _channel.queue(envelope);
+      return WatchDelivery.queued;
     } catch (error, stack) {
       _report(error, stack);
       return WatchDelivery.undelivered;
@@ -191,10 +297,12 @@ class WatchConnectivityTransport implements WatchTransport {
   ///
   /// A frame that arrives before the handler is bound is dropped rather than
   /// buffered: it names a session the receiver has not built yet, and the next
-  /// sync is what brings the receiver up to date.
+  /// sync is what brings the receiver up to date. Only a frame the handler
+  /// takes counts as heard.
   Future<void> _dispatch(Map<String, Object?> frame) async {
     final handler = _handler;
     if (handler == null) return;
+    _heard.add(_clock());
     try {
       await handler(frame);
     } catch (error, stack) {
@@ -212,5 +320,9 @@ class WatchConnectivityTransport implements WatchTransport {
   Future<void> close() async {
     await _incoming?.cancel();
     _incoming = null;
+    await _reachability?.cancel();
+    _reachability = null;
+    await _linkChanges.close();
+    await _heard.close();
   }
 }

@@ -354,7 +354,7 @@ One object is both the watch's `WatchSyncTransport` and the phone's
 and adds `onIncoming`, the single handler every arriving frame is handed to.
 
 **The package boundary is `WatchMessageChannel` and nothing else.**
-`watch_connectivity` is imported in exactly one file
+`omnitrain_watch_link` is imported in exactly one file
 (`watch_connectivity_channel.dart`); `WatchConnectivityTransport` is written
 against the `WatchMessageChannel` interface, which is what lets a hand-rolled
 `MethodChannel` + `WCSession` layer, or a Wear OS data-layer one, replace it
@@ -386,6 +386,60 @@ group `S-206 a send answers whether the frame was handed over`,
 in-memory two-ended channel.
 
 The wrist's half of this area — the Swift bridge over the same radio, the wrist's start surface and the wrist's logging surface (the Crown and the per-exercise dialled numbers included) — has its own page: [The Watch Surface — the Wrist's Half](watch_surface_wrist.md).
+
+### The phone's link: the plugin, the channel, the queue and the status
+
+**Files**: `packages/omnitrain_watch_link/` (a local path dependency, iOS
+only), `lib/core/platform/watch_connectivity_channel.dart`,
+`lib/core/platform/watch_link_info.dart`,
+`lib/state/watch/watch_link_state.dart`
+
+The radio under `WatchConnectivityTransport` is the local plugin
+`packages/omnitrain_watch_link`, which replaced the `watch_connectivity`
+dependency. Its Dart API is `WatchLink`: `status()`; `sendMessage`, which
+completes on the watch's reply and fails with a `WatchLinkException` —
+`not_supported`, `not_activated`, `not_reachable`, `send_failed`, or `timeout`
+when no reply arrives within the call's `timeout`; `transferUserInfo`, which
+answers `queued` or `already_queued` by the frame's `messageId`; and one
+broadcast `events` stream of the sealed `WatchLinkEvent` kinds
+(`WatchLinkMessage`, `WatchLinkUserInfo`, `WatchLinkReachability`,
+`WatchLinkStateChanged`). The native half (`OmniTrainWatchLinkPlugin.swift`)
+is one `WCSession` delegate that buffers events until Dart listens (bounded by
+its `bufferCap`, oldest dropped past it), answers every incoming message so
+the sender's send completes, and emits state and reachability; the buffer and
+the reply are verified on the paired simulators (plan 47d), not by a unit
+test. Verified by `test/watch_link_package_test.dart` (groups `S-6801` to
+`S-6805`).
+
+The app's seam is `WatchConnectivityChannel(link:)`, the implementer of the
+seven-member `WatchMessageChannel` (`isPaired`, `isReachable`, `messages` —
+message and userInfo frames merged into one stream — `send`, `queue`,
+`reachability`, `info`); `WatchLinkInfo` is the core value type, so no plugin
+type escapes the channel. Verified by
+`test/watch_connectivity_channel_test.dart` (group `S-6816 the channel over
+the plugin`).
+
+**A frame owed for good can be queued, not only delivered.** `WatchDelivery`
+gained `queued` — handed to the OS queue; it arrives when the devices meet —
+and `WatchConnectivityTransport.isDurable` is true exactly for `receipt`: a
+durable frame the radio cannot reach or refuses is queued instead of
+reported, while every other frame stays live-only and is re-offered at its
+next trigger. Verified by `test/watch_transport_test.dart` (group `S-6810-6815
+the transport over a link that queues`).
+
+**The listener order is load-bearing.** `onIncoming` attaches the message and
+the reachability listener together, because listening is what makes the
+native side flush its buffer: the message listener must attach first or in
+the same turn. Verified by `test/watch_transport_test.dart` (group `S-6817
+the transport attaches its listeners when it starts receiving`).
+
+`WatchLinkState` (`lib/state/watch/watch_link_state.dart`) is the status
+Settings shows: a `ChangeNotifier` over `WatchLinkSource` — implemented by
+the transport — whose `phase` is `connected`, `notReachable`, `notPaired` or
+`appNotInstalled`, whose `lastSyncedLabel` says when the phone last heard a
+frame, and which persists that instant under the repository key
+`watch_last_heard_ms` at most once per `persistEvery`. Verified by
+`test/watch_link_state_test.dart` (groups `S-6901` to `S-6905`).
 
 ### `WatchSyncRequestHandler`
 

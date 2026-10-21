@@ -23,6 +23,7 @@ library;
 
 import '../../core/platform/no_watch_transport.dart';
 import '../../core/platform/watch_delivery.dart';
+import '../../core/platform/watch_link_source.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/utils/platform_watch_transport_factory.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -33,6 +34,7 @@ import '../settings/settings_state.dart';
 import '../workout/workout_state.dart';
 import 'live_session_mirror_state.dart';
 import 'watch_incoming_router.dart';
+import 'watch_link_state.dart';
 import 'watch_nutrition_log_bridge.dart';
 import 'watch_session_adoption_bridge.dart';
 import 'watch_session_auto_push.dart';
@@ -72,6 +74,7 @@ class WatchSyncGraph {
     required this.autoPush,
     required this.timerPush,
     required this.timerAdoption,
+    this.link,
   });
 
   /// The session running on the wrist, as the phone mirrors it.
@@ -103,6 +106,12 @@ class WatchSyncGraph {
   /// The adoption that applies a timer the wrist started to the phone's own
   /// interval (plan 43b2 D-3). The app binds the same `WorkoutState` to it.
   final WatchTimerAdoption timerAdoption;
+
+  /// The status state Settings shows: where the watch stands and when the
+  /// phone last heard from it (plan 47c D-3). Null when the transport cannot
+  /// report a link — or when its stored status cannot be read, which the wiring
+  /// reports and drops — and Settings then carries no APPLE WATCH section.
+  final WatchLinkState? link;
 
   /// Asks the wrist for its session once — the phone's half of catching up
   /// after being out of reach (D-96).
@@ -318,6 +327,24 @@ Future<WatchSyncGraph?> createWatchSync({
   });
 
   await inbox.resume();
+
+  // The status Settings shows, when the transport can report a link (47c D-3):
+  // initialized here so the stored last-heard value and the first pairing
+  // answer are there before the screen is ever opened. A status that cannot be
+  // read is reported and dropped: the rest of the graph is the wrist's work,
+  // and losing it over a read-only label would cost the phone the watch.
+  WatchLinkState? link;
+  if (resolved is WatchLinkSource) {
+    final source = resolved as WatchLinkSource;
+    try {
+      link = WatchLinkState(source: source, repository: repository);
+      await link.initialize();
+    } catch (error, stack) {
+      onFailure?.call(error, stack);
+      link = null;
+    }
+  }
+
   return WatchSyncGraph(
     mirror: mirror,
     ratings: inbox,
@@ -326,5 +353,6 @@ Future<WatchSyncGraph?> createWatchSync({
     autoPush: push,
     timerPush: timerPush,
     timerAdoption: timerAdoption,
+    link: link,
   );
 }
