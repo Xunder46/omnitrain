@@ -41,6 +41,7 @@ empty state`).
 ```
 StatsScreen
   ├── header chart icon → RecordsAndTrendsScreen
+  │     ├── Nutrition entry → NutritionTrendScreen
   │     └── entry → ExerciseProgressScreen
   └── Instruments row → ExerciseProgressScreen
 ```
@@ -54,6 +55,13 @@ Trends and a row of the Stats screen's Instruments list — and nothing else in
 Verified by `test/records_and_trends_screen_test.dart` (the single-entry-point
 case, the Exercise Progress entry-point guard, and `S-913`) and by
 `test/instrument_list_screen_test.dart` (`S-1014`).
+
+Records & Trends also carries a **Nutrition** entry, directly under the All-time
+card, that opens the full-history nutrition trend. It appears whenever any food
+has ever been logged and is absent when none has. It exists because the Stats
+screen's Fuel row hides once food has not been logged for a while, which would
+otherwise leave old history unreachable. Verified by
+`test/records_nutrition_entry_test.dart`.
 
 ---
 

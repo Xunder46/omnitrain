@@ -23,32 +23,25 @@
 
 import SwiftUI
 
-/// "The full catalog is a phone away" — shown only while the phone can actually
-/// be reached, because it is a promise about a radio.
-public struct WatchSearchOnPhoneHint: View {
-    public static let label = "Search on phone"
+/// What the wrist has observed about the phone: connected, or not reachable.
+/// Said only once the radio has answered (D-8), so a cold start says nothing
+/// rather than something it has not learned.
+public struct WatchPhoneStatusHint: View {
+    private let status: WatchPhoneStatus
 
-    public init() {}
-
-    public var body: some View {
-        Label(Self.label, systemImage: "iphone")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+    public init(status: WatchPhoneStatus) {
+        self.status = status
     }
-}
-
-/// "The phone is not there" — said only once the radio has observed it
-/// unreachable (D-8), so a cold start says nothing rather than something it has
-/// not learned.
-public struct WatchPhoneUnreachableHint: View {
-    public static let label = WatchStartSurfaceCopy.unreachableLabel
-
-    public init() {}
 
     public var body: some View {
-        Label(Self.label, systemImage: "iphone.slash")
+        if let sentence = status.sentence {
+            Label(
+                sentence,
+                systemImage: status.reachability == .reachable ? "iphone" : "iphone.slash"
+            )
             .font(.footnote)
             .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -141,14 +134,12 @@ public struct WatchStartView: View {
                 }
 
                 // D-8: said only once the radio has observed it.
-                if phoneStatus.sentence != nil { WatchPhoneUnreachableHint() }
+                WatchPhoneStatusHint(status: phoneStatus)
 
                 if let onOpenNutrition {
                     Button(Self.logFoodLabel, action: onOpenNutrition)
                         .buttonStyle(.bordered)
                 }
-
-                if paths.phoneReachable { WatchSearchOnPhoneHint() }
             }
             .padding(Self.surfaceInset)
         }
@@ -220,17 +211,8 @@ public struct WatchExercisePickerView: View {
             },
             onPick: { exercise in
                 Task { await select(.available(exercise)) }
-            },
-            trailing: phoneHint
+            }
         )
-    }
-
-    /// The "search on the phone" hint while the radio can reach it, and nothing
-    /// at all otherwise (D-8). A row of the list rather than a strip below it:
-    /// the hint scrolls with the rows, so it costs no wrist space while the user
-    /// reads them and is still there at the end of the list.
-    private var phoneHint: AnyView? {
-        paths.phoneReachable ? AnyView(WatchSearchOnPhoneHint()) : nil
     }
 
     /// The rows the session itself holds, in the ladder's order: the list's own

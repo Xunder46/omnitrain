@@ -46,11 +46,15 @@ HomeScreen
                                         ├── primer help ────→ the primer sheet (reopen, no state change)
                                         └── library action ─→ AddFoodScreen
 StatsScreen
-  └── Fuel row ────────────────────→ NutritionTrendScreen
+  ├── Fuel row ────────────────────→ NutritionTrendScreen
+  └── header chart icon → RecordsAndTrendsScreen
+        └── Nutrition entry ───────→ NutritionTrendScreen
 ```
 
-`NutritionScreen` is the feature's home. The Stats screen's Fuel row is the only
-entry to the full-history trend; nothing else constructs it.
+`NutritionScreen` is the feature's home. The full-history trend has two
+entries: the Stats screen's Fuel row (hidden once food has not been logged for
+about two weeks) and the Nutrition entry on Records & Trends (shown whenever any
+food has ever been logged). Nothing else constructs it.
 
 ---
 
@@ -153,7 +157,7 @@ Verified by `test/nutrition_test.dart` (the calories-only group) and
 
 ### `NutritionTrendScreen`
 
-The full-history trend, reached from the Stats screen's Fuel row. It builds one
+The full-history trend, reached from the Stats screen's Fuel row and from the Nutrition entry on Records & Trends. It builds one
 `StatsProgressService` per load over the workout repository and computes both the
 trend over the repository's whole food history and the adherence target line in
 that same load. It is *not* scoped to the Fuel row's window or to the Stats

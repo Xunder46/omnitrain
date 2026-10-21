@@ -433,13 +433,13 @@ answers a user action or nothing, so a Sync is still the only thing that asks th
 phone for an answer. Verified by `WatchConnectivityBridgeTests.testBridgeSendsNothingUntilAsked`
 and `…testASendThePlatformRefusesIsReported`.
 
-**Reachability is three-state, and starts unknown.** The wrist says the phone is
-unreachable only once the radio has said so; a launch that has asked nothing
-says nothing. `WatchPhoneReachability.unknown` is the state a `Bool` cannot
+**Reachability is three-state, and starts unknown.** The start surface carries one
+status line: "Phone connected" or "Phone not reachable", said only once the radio
+has answered; a launch that has asked nothing says nothing. `WatchPhoneReachability.unknown` is the state a `Bool` cannot
 express, which is why the app target's host starts there and moves only when the
 bridge reports what the platform observed — the platform's answer is always an
 observation, never a "not yet". Verified by
-`WatchConnectivityBridgeTests.testS111TheSurfaceSaysUnreachableOnlyAfterObservingIt`.
+`WatchConnectivityBridgeTests.testS111TheSurfaceSaysConnectedOrUnreachableOnlyAfterObservingIt`.
 The sentence lives in the package's `WatchStartSurfaceCopy` rather than the
 contract's `startSurface` block; it moves into the contract if the Wear OS client
 ever ships a transport.
@@ -480,10 +480,9 @@ Within it the sections are walked by position: only the *first* run of a key
 carries its letter as the scroll id, so a key that opens two runs — a digit name
 sorts before `A`, a `~` name after `Z` — cannot put two views under one identity
 the reader holds (`WatchMenuTests.testS3114ARepeatedLetterRunsCarryOneScrollId`,
-D-3117). The picker also hands the list the "search on the phone" hint as its
-last row, so the hint scrolls with the rows instead of holding a strip of the
-wrist below them; that row and the grid itself are drawn by the watch app
-target, which `swift test` does not compile.
+D-3117). The grid is drawn by the watch app target, which `swift test` does not
+compile. The picker carries no phone hint: the phone's status is the start
+surface's line.
 
 #### The wrist shell's second surface
 

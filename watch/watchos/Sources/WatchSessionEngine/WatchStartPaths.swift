@@ -45,6 +45,10 @@ public enum WatchStartSurfaceCopy {
     /// `watch/contract/watch_start_paths_contract.json` if that client ever
     /// ships one.
     public static let unreachableLabel = "Phone not reachable"
+
+    /// Said only when the wrist has *observed* the phone in reach — the other
+    /// half of the one status line the start surface carries.
+    public static let connectedLabel = "Phone connected"
 }
 
 /// What the wrist knows about the phone's radio: nothing yet, or one of the two
@@ -82,11 +86,13 @@ public struct WatchPhoneStatus {
     }
 
     /// The sentence about the phone, or nil when there is nothing honest to say.
-    /// Only an observed unreachable phone earns one.
+    /// Only an observed answer earns one: connected or not reachable.
     public var sentence: String? {
         switch reachability {
-        case .unknown, .reachable:
+        case .unknown:
             return nil
+        case .reachable:
+            return WatchStartSurfaceCopy.connectedLabel
         case .unreachable:
             return WatchStartSurfaceCopy.unreachableLabel
         }
@@ -277,8 +283,8 @@ public final class WatchSessionStartPaths {
 
     private var recents: [WatchCatalogExercise] = []
 
-    /// Whether the phone can be reached right now — what the wrist's
-    /// search-on-phone affordance is shown on. The sync orchestrator is what
+    /// Whether the phone can be reached right now — what the wrist decides
+    /// whether to replay a finished session on. The sync orchestrator is what
     /// knows, and it writes the flag here so the surfaces have one place to read.
     public var phoneReachable: Bool = false
 

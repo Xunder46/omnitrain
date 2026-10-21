@@ -526,31 +526,28 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
   Widget _buildNutritionLegend(ThemeData theme, OmniThemeColors themeColors) {
     final macroColors = themeColors.macroChart;
     final hasTarget = (widget.adherence?.targetLine.isNotEmpty ?? false);
+    final List<Widget> items;
     if (_nutritionView == _NutritionView.calories) {
-      return Wrap(
-        spacing: 12,
-        runSpacing: 4,
-        children: [
-          buildLegendItem(
+      items = [
+        buildLegendItem(
+          theme,
+          themeColors.primary,
+          'Calories (kcal)',
+          themeColors,
+        ),
+        if (hasTarget)
+          _buildDashedLegendItem(
             theme,
-            themeColors.primary,
-            'Calories (kcal)',
+            themeColors.primary.withAlpha(120),
+            // The target in effect on the latest day, as the Nutrition screen
+            // shows it — the dashes alone never said what the line meant.
+            'Target ${widget.adherence!.targetLine.last.calories.round()} '
+            'kcal',
             themeColors,
           ),
-          if (hasTarget)
-            _buildDashedLegendItem(
-              theme,
-              themeColors.primary.withAlpha(120),
-              'Target (kcal)',
-              themeColors,
-            ),
-        ],
-      );
-    }
-    return Wrap(
-      spacing: 12,
-      runSpacing: 4,
-      children: [
+      ];
+    } else {
+      items = [
         buildLegendItem(theme, macroColors.protein, 'Protein (g)', themeColors),
         buildLegendItem(theme, macroColors.carbs, 'Carbs (g)', themeColors),
         buildLegendItem(theme, macroColors.fat, 'Fat (g)', themeColors),
@@ -561,13 +558,28 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
             'Target',
             themeColors,
           ),
-      ],
+      ];
+    }
+    // One line in a fixed-height slot: scale down rather than wrap, so the
+    // legend is never clipped by the card at any width or text size.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(width: 12),
+            items[i],
+          ],
+        ],
+      ),
     );
   }
 
-  /// Like `buildLegendItem` but renders the color swatch as
-  /// a 2-pixel-on / 2-pixel-off dash so the legend reads as
-  /// the same dashed target line the chart draws.
+  /// Like `buildLegendItem` but renders the swatch as a short piece of the
+  /// chart's own dashed target line (same dash, gap and stroke), so the
+  /// legend reads as that line rather than as dots.
   Widget _buildDashedLegendItem(
     ThemeData theme,
     Color color,
@@ -578,7 +590,7 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
       mainAxisSize: MainAxisSize.min,
       children: [
         CustomPaint(
-          size: const Size(12, 8),
+          size: const Size(16, 8),
           painter: _DashedLegendSwatchPainter(color: color),
         ),
         const SizedBox(width: 6),
@@ -593,9 +605,9 @@ class _NutritionTrendCardState extends State<NutritionTrendCard> {
   }
 }
 
-/// Renders the dashed legend swatch for the nutrition
-/// target line. Two pixels on, two pixels off — same dash
-/// pattern the chart line uses (`dashArray: [4, 4]`).
+/// Renders the dashed legend swatch for the nutrition target line: four
+/// pixels on, four off, 1.5 pixels thick — the chart line's own
+/// `dashArray: [4, 4]` and `barWidth: 1.5`, so the two read as one thing.
 class _DashedLegendSwatchPainter extends CustomPainter {
   final Color color;
   _DashedLegendSwatchPainter({required this.color});
@@ -604,16 +616,14 @@ class _DashedLegendSwatchPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
-      ..strokeWidth = 2
+      ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
     final y = size.height / 2;
-    // 2-pixel dashes with 2-pixel gaps, repeating across
-    // the 12-pixel swatch width.
     var x = 0.0;
     while (x < size.width) {
-      final end = (x + 2).clamp(0, size.width).toDouble();
+      final end = (x + 4).clamp(0, size.width).toDouble();
       canvas.drawLine(Offset(x, y), Offset(end, y), paint);
-      x += 4;
+      x += 8;
     }
   }
 

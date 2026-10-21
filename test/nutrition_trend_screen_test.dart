@@ -24,6 +24,7 @@ import 'package:omnitrain/features/nutrition/nutrition_trend_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
 import 'package:omnitrain/widgets/common/omni_empty_state.dart';
+import 'package:omnitrain/widgets/layout/omni_surface.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
@@ -243,7 +244,31 @@ void main() {
           final data = _chartData(tester, 'kcal');
           expect(data.lineBarsData, hasLength(2));
           expect(data.lineBarsData.last.spots, isNotEmpty);
-          expect(find.text('Target (kcal)'), findsOneWidget);
+          // The legend names the target's number (the seeded 2200), so the
+          // dashed line is never an unlabelled mark.
+          expect(find.text('Target 2200 kcal'), findsOneWidget);
+        });
+
+        testWidgets('the legend stays inside the card in both views on a '
+            'narrow screen', (tester) async {
+          await pumpTrend(tester, surface: const Size(320, 568));
+
+          final cardRight = tester
+              .getRect(find.byType(OmniSurface).first)
+              .right;
+
+          expect(
+            tester.getRect(find.text('Target 2200 kcal')).right,
+            lessThanOrEqualTo(cardRight),
+          );
+
+          await tester.tap(find.text('Macros'));
+          await tester.pumpAndSettle();
+
+          expect(
+            tester.getRect(find.text('Target')).right,
+            lessThanOrEqualTo(cardRight),
+          );
         });
       });
 

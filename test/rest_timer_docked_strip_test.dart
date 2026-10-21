@@ -322,6 +322,30 @@ void main() {
   // ── S-005 / S-006 / S-007: tap behaviour ─────────────────────────────────
 
   group('Docked strip — tap behaviour', () {
+    testWidgets('rest chip digits use fixed-width figures', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final deps = await _buildDeps(modality: 'resistance_lifting');
+      await _addSetExerciseWithOpenRest(deps);
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _dismissPickerIfOpen(tester);
+
+      final digits = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const Key('rest-overlay-chip')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(
+        digits.style?.fontFeatures,
+        contains(const FontFeature.tabularFigures()),
+      );
+    });
+
     testWidgets('S-005: tap on the strip\'s empty area does nothing', (
       WidgetTester tester,
     ) async {

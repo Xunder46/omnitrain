@@ -210,6 +210,12 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
       valueStyle = valueStyle?.copyWith(fontSize: widget.valueFontSize);
     }
 
+    // Fixed-width digits so a ticking value (timer, count-up, ring) does not
+    // shift horizontally as different digits appear.
+    valueStyle = valueStyle?.copyWith(
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
     if (widget.isReadOnly && widget.emphasisTier == null) {
       valueStyle = valueStyle?.copyWith(
         color: theme.colorScheme.onSurface.withAlpha((0.45 * 255).round()),

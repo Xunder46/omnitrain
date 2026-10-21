@@ -38,11 +38,6 @@ public struct WatchExerciseLetterList: View {
     /// list is short enough to scroll by hand.
     private let letters: [WatchAddExerciseLetter]
 
-    /// What a surface puts under the rows — the picker's "search on the phone"
-    /// hint, or nothing at all. Its own row of the list, so it scrolls with the
-    /// content instead of holding a strip of the wrist below it.
-    private let trailing: AnyView?
-
     private let emptyText: String
 
     private let onPickLeading: (String, WatchCatalogExercise) -> Void
@@ -57,8 +52,7 @@ public struct WatchExerciseLetterList: View {
         letters: [WatchAddExerciseLetter],
         emptyText: String,
         onPickLeading: @escaping (String, WatchCatalogExercise) -> Void,
-        onPick: @escaping (WatchCatalogExercise) -> Void,
-        trailing: AnyView? = nil
+        onPick: @escaping (WatchCatalogExercise) -> Void
     ) {
         self.leading = leading
         self.sections = sections
@@ -66,7 +60,6 @@ public struct WatchExerciseLetterList: View {
         self.emptyText = emptyText
         self.onPickLeading = onPickLeading
         self.onPick = onPick
-        self.trailing = trailing
     }
 
     public var body: some View {
@@ -78,8 +71,6 @@ public struct WatchExerciseLetterList: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if let trailing { trailing }
                 }
                 .padding(Self.surfaceInset)
             } else {
@@ -130,12 +121,6 @@ public struct WatchExerciseLetterList: View {
                 } header: {
                     sectionHeader(section.letter, scrollId: scrollIds[index])
                 }
-            }
-
-            if let trailing {
-                trailing
-                    .listRowInsets(EdgeInsets())
-                    .padding(Self.surfaceInset)
             }
         }
         .listStyle(.plain)

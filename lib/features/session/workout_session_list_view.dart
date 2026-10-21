@@ -42,6 +42,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               Text(
                 _elapsedFormatted,
                 style: theme.textTheme.titleMedium?.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()],
                   color: widget.editMode
                       ? theme.colorScheme.primary
                       : OmniTheme.colors.textDominant,
@@ -665,6 +666,9 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     style: theme.textTheme.titleLarge?.copyWith(
                       color: foregroundColor,
                       fontWeight: FontWeight.w600,
+                      // Fixed-width digits so the chip does not resize
+                      // (and shift the strip) as the seconds tick.
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
                 ],

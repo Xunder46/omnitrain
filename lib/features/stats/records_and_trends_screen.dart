@@ -14,6 +14,7 @@ import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../nutrition/nutrition_trend_screen.dart';
 import 'exercise_progress_screen.dart';
 import 'widgets/load_failure_view.dart';
 import 'widgets/native_value_format.dart';
@@ -48,6 +49,7 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
   int _streakDays = 0;
   List<StatsPR> _recentPRs = const [];
   List<ExerciseMetricSummary> _summaries = const [];
+  bool _hasNutritionHistory = false;
 
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
@@ -84,6 +86,9 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
       final totals = await service.computeTotals();
       final progressData = await service.computeProgressData();
       final summaries = await service.computeExerciseMetrics();
+      // Whole food history, not a recent window: this is the way back to
+      // nutrition once the Stats screen's Fuel row has aged out of view.
+      final nutritionTrend = await service.computeNutritionTrend(days: null);
 
       if (!mounted) return;
 
@@ -93,6 +98,7 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
         _streakDays = streak;
         _recentPRs = progressData.recentPRs;
         _summaries = summaries;
+        _hasNutritionHistory = nutritionTrend.isNotEmpty;
         _isLoading = false;
       });
     } catch (_) {
@@ -129,7 +135,10 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     children: _summaries.isEmpty
-                        ? [_buildEmptyState(context, themeColors)]
+                        ? [
+                            _buildEmptyState(context, themeColors),
+                            ..._nutritionEntry(context, themeColors),
+                          ]
                         : _buildContent(context, themeColors),
                   ),
           ),
@@ -147,6 +156,7 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
     final children = <Widget>[
       const OmniCardHeader(title: 'ALL TIME'),
       _buildAggregateCard(context, themeColors),
+      ..._nutritionEntry(context, themeColors),
     ];
 
     if (_recentPRs.isNotEmpty) {
@@ -351,6 +361,62 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /// The nutrition section, or nothing when no food was ever logged.
+  List<Widget> _nutritionEntry(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) => _hasNutritionHistory
+      ? [const SizedBox(height: 24), _buildNutritionEntry(context, themeColors)]
+      : const [];
+
+  /// The entry to the full-history nutrition trend, shown whenever any food
+  /// has ever been logged — however long ago.
+  Widget _buildNutritionEntry(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final theme = Theme.of(context);
+
+    return Column(
+      key: const Key('records_nutrition_section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const OmniCardHeader(title: 'NUTRITION'),
+        OmniSurface(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Semantics(
+            label: 'Nutrition trend',
+            button: true,
+            child: InkWell(
+              key: const Key('records_nutrition_entry'),
+              onTap: () => OmniNavigator.push(
+                context,
+                (_) => NutritionTrendScreen(
+                  workoutState: widget.workoutState,
+                  settingsState: widget.settingsState,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Full history',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: OmniTheme.colors.textDominant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: themeColors.textMuted),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

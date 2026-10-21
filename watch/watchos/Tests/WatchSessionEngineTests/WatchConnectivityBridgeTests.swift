@@ -695,9 +695,9 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(observed, [false])
     }
 
-    // MARK: - S-111 the surface says the phone is unreachable only once observed
+    // MARK: - S-111 the surface says the phone is connected or unreachable only once observed
 
-    func testS111TheSurfaceSaysUnreachableOnlyAfterObservingIt() throws {
+    func testS111TheSurfaceSaysConnectedOrUnreachableOnlyAfterObservingIt() throws {
         // A cold start has asked the radio nothing, so there is nothing honest
         // to say (D-8) — the state a flag starting `false` would misreport as
         // "unreachable".
@@ -711,7 +711,10 @@ final class WatchConnectivityBridgeTests: XCTestCase {
             WatchPhoneStatus(reachability: .unreachable).sentence,
             WatchStartSurfaceCopy.unreachableLabel
         )
-        XCTAssertNil(WatchPhoneStatus(reachability: .reachable).sentence)
+        XCTAssertEqual(
+            WatchPhoneStatus(reachability: .reachable).sentence,
+            WatchStartSurfaceCopy.connectedLabel
+        )
 
         // The Sync button is offered in all three (D-9).
         for reachability in [WatchPhoneReachability.unknown, .reachable, .unreachable] {
@@ -719,6 +722,7 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         }
 
         XCTAssertEqual(WatchStartSurfaceCopy.unreachableLabel, "Phone not reachable")
+        XCTAssertEqual(WatchStartSurfaceCopy.connectedLabel, "Phone connected")
 
         // The surface says it through that one constant, and carries no
         // no-automatic-sync hint any more (S-82).
@@ -726,7 +730,8 @@ final class WatchConnectivityBridgeTests: XCTestCase {
             contentsOf: Fixtures.sourcesRoot.appendingPathComponent("WatchStartView.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(view.contains("WatchStartSurfaceCopy.unreachableLabel"))
+        XCTAssertTrue(view.contains("WatchPhoneStatusHint(status: phoneStatus)"))
+        XCTAssertFalse(view.contains("Search on phone"))
         XCTAssertFalse(view.contains("WatchNoAutomaticSyncHint"))
     }
 
