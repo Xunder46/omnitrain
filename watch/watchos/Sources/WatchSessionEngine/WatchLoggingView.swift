@@ -71,13 +71,20 @@ public struct WatchLoggingView: View {
     /// the rest surface on that nudge (D-161).
     private let onLogged: (() -> Void)?
 
+    /// The page counter the pager passes down ("2/5"), or nil when the session
+    /// has one exercise; the pager keeps the counter on the locked single page
+    /// (an effort clock running).
+    private let pageLabel: String?
+
     public init(
         state: WatchLoggingState,
         haptics: WatchHaptics = WristHaptics(),
-        onLogged: (() -> Void)? = nil
+        onLogged: (() -> Void)? = nil,
+        pageLabel: String? = nil
     ) {
         _model = StateObject(wrappedValue: WatchLoggingModel(state: state, haptics: haptics))
         self.onLogged = onLogged
+        self.pageLabel = pageLabel
     }
 
     public var body: some View {
@@ -147,12 +154,20 @@ public struct WatchLoggingView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(model.state.exerciseName ?? "No exercise")
-                .font(.caption2)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .truncationMode(.tail)
-                .padding(.top, Self.titleClearance)
+            HStack(spacing: 4) {
+                Text(model.state.exerciseName ?? "No exercise")
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+                if let pageLabel {
+                    Text(pageLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, Self.titleClearance)
             if let caption = model.state.setCaption {
                 Text(caption)
                     .font(.caption2)

@@ -288,7 +288,7 @@ struct ContentView: View {
         .environment(\.watchAccent, WatchAccent.usable(hex: host.preferences.accentColorHex))
         // D-3114: one sheet, on the root, so the rest↔logging switch and a rest
         // ending underneath it both leave it alone.
-        .menuSheet(host, isPresented: $showingMenu)
+        .menuSheet(host, menu: menuState, isPresented: $showingMenu)
         .task {
             await host.restore()
         }
@@ -321,6 +321,14 @@ struct ContentView: View {
         WatchEffortRatingView(state: host.rating)
     }
 
+    /// The session menu's one construction site (`menuState`), read by both the
+    /// pager and the menu sheet (D-3114). Every access constructs a plain
+    /// wrapper over the same engine, paths and rating, so the instances are
+    /// equivalent: the pager pages the ladder through it, and the sheet hosts it.
+    private var menuState: WatchMenuState {
+        WatchMenuState(engine: host.engine, paths: host.paths, rating: host.rating)
+    }
+
     /// D-24's second surface: logging, with the session menu one tap away behind
     /// its list button — the ladder's exercises with their logged counts to jump
     /// to, then Add Exercise — the phone's whole list, A to Z, whose pick is
@@ -331,11 +339,16 @@ struct ContentView: View {
     /// exercise. A Free workout starts with none, so the start surface and its
     /// picker stay up until the first exercise lands — picking one gives the
     /// session its slot and the body switches here on the host's nudge.
+    ///
+    /// Swiping pages the session's exercises (plan 46b); the menu button stays
+    /// in the toolbar either way.
     private var loggingSurface: some View {
         NavigationStack {
-            WatchLoggingView(
+            WatchLoggingPagerView(
+                menu: menuState,
                 state: host.logging,
-                onLogged: { host.noteSurfaceChange() }
+                revision: host.revision,
+                onSurfaceChange: { host.noteSurfaceChange() }
             )
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -351,18 +364,18 @@ struct ContentView: View {
 }
 
 /// D-3114's one sheet, applied to the root: neither the rest↔logging switch nor
-/// a rest ending underneath it can tear the menu down, and `WatchMenuState(` is
-/// built once for the life of the surface rather than once per host.
+/// a rest ending underneath it can tear the menu down, and the shell's one
+/// `WatchMenuState` is handed to it rather than built beside it.
 private extension View {
     /// The session menu, opened by the list button either surface carries.
-    func menuSheet(_ host: WatchAppHost, isPresented: Binding<Bool>) -> some View {
+    func menuSheet(
+        _ host: WatchAppHost,
+        menu: WatchMenuState,
+        isPresented: Binding<Bool>
+    ) -> some View {
         sheet(isPresented: isPresented) {
             WatchMenuView(
-                state: WatchMenuState(
-                    engine: host.engine,
-                    paths: host.paths,
-                    rating: host.rating
-                ),
+                state: menu,
                 revision: host.revision,
                 onClose: {
                     isPresented.wrappedValue = false

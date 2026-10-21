@@ -830,6 +830,27 @@ hardware yet.
     (`WatchDialledPerExerciseTests.swift` S-6410..S-6412; Dart twin
     `test/watch_dialled_per_exercise_test.dart`). Log on the second exercise:
     only its numbers clear; the first exercise keeps its dialled ones (S-6411).
+18. **Swipe between the session's exercises — (owner).** On a session with
+    three exercises, swipe left on the logging screen: the next exercise slides
+    in as a preview card — its name, how many sets are logged on it and the
+    counter — and when the swipe settles it becomes the current exercise with
+    its own rows and numbers; the counter beside the name moves from 1/3 to
+    2/3. The phone's screen does not move. A session with one exercise shows no
+    counter and does not page. The rules are pinned off-device by
+    `WatchPagerModelTests.swift` (S-6601..S-6608) and the shell mount and view
+    shape by `WatchPagerSourceTests.swift` (S-6610..S-6612); the swipe itself,
+    the preview card and the counter on hardware are this step — the Simulator
+    could not be driven.
+19. **A swipe during a timed effort is refused — (owner).** Start a timed
+    effort so its clock runs, then swipe: the exercise does not change, you
+    feel one failure tap, and a one-line notice, "An effort is running"
+    (`WatchPagerCopy.lockedNotice`), shows for about a second and a half
+    (`WatchPagerCopy.noticeSeconds`;
+    `WatchPagerModelTests.testS6603ASwipeDuringAWorkClockIsRefusedAndRaisesTheNotice`
+    holds the refusal, the words and the notice window off-device). The haptic
+    and the notice on hardware are this step. With the effort stopped, swiping
+    works again, and the Crown still steps the outlined value and never changes
+    exercise (`WatchPagerSourceTests.testS6612ThePagerTakesNoCrownAndNoFocus`).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

@@ -315,3 +315,60 @@ still shows the owed question by
 a re-stated entry holds the phone's new value only until the process ends, and
 the stored first value shows again until the next Sync re-states it (D-50,
 `WatchFileStoreTests.testD50ARestatedSetShowsItsFirstValueAfterARelaunchUntilTheNextSync`).
+
+## The logging screen pages the session's exercises
+
+**Files**: `watch/watchos/Sources/WatchSessionEngine/WatchPagerModel.swift`,
+`.../WatchLoggingPagerView.swift`; the shell mount is
+`ios/OmniTrain Watch App/ContentView.swift` (`loggingSurface`).
+
+**The pager is a rule over the menu, not a second way to move the session.**
+`WatchPagerModel` is a `@MainActor` model over one `WatchMenuState`, with one
+construction site (`menuState`) read by both the pager and the menu sheet. Every
+access constructs a plain wrapper over the same engine, paths and rating, so the
+instances are equivalent; a settled swipe is the menu's own select path,
+`jump(to:)`, and nothing else writes the session. The rows, the position and the
+counter are read from the menu on every access, never cached, so a frame that
+lands while the pager is open is already the page the user sees. Verified by
+`WatchPagerModelTests.swift` (`testS6601TheModelReadsTheLadderAndThePositionOnEveryAccess`,
+`…testS6607APhoneSideAdvanceIsVisibleOnTheNextRead`).
+
+**The session moves only when the swipe has settled.** `WatchPagerModel.land(on:)`
+makes one select per settled page — one `exercise_advanced` lifecycle frame, the
+existing emission — and a page that is already current settles true without
+selecting anything. A page outside the rows, including one the phone removed
+between the swipe and the settle, changes nothing and is not a locked swipe.
+Verified by `…testS6602ASettledPageMovesTheSessionOnceAndEmitsOneFrame`,
+`…testS6602TheSameIndexArmSelectsNothing`,
+`…testS6604APageOutsideTheRowsChangesNothing` and
+`…testS6608SettlingOnAPageThePhoneRemovedChangesNothing`. (The method is
+`land`, not `settle`: the module's S-004 source guard bans new names that start
+with `set`.)
+
+**While an effort clock runs there is no pager.** `showsPager` is false, the
+view renders one page without a `TabView`, and a mostly-horizontal swipe over
+the drag minimum plays the failure haptic and raises the one-line notice
+`WatchPagerCopy.lockedNotice` — the menu's own lock words — for
+`WatchPagerCopy.noticeSeconds`; a running rest is not a lock and the pager
+stays free. Verified by `…testS6603ASwipeDuringAWorkClockIsRefusedAndRaisesTheNotice`,
+`…testS6605ARunningRestLeavesThePagerFree` and
+`…testS6606ThePagerShowsOnlyForSeveralExercisesAndAnUnlockedMenu`, which also
+holds that a session with one exercise shows no pager and no counter at all
+(`pageLabel` nil).
+
+**The view is the shape around that model, and the desktop toolchain holds only
+its outline.** `WatchLoggingPagerView` (watchOS-only) is a page-style `TabView`
+whose own n/m counter sits beside the exercise name
+(`WatchLoggingView(pageLabel:)`) instead of dots, which would sit on the Log
+button on a 40 mm screen; a page that is not the current exercise is a preview
+card (`WatchExercisePreviewPage`: name, logged count, counter). The shell's
+`loggingSurface` mounts the pager and not the bare logging view, the pager
+mounts exactly one `TabView` with no dots and answers a drag only in the locked
+branch, and the pager binds no Crown and takes no focus — the Crown stays on
+`WatchLoggingView`, stepping the outlined value, and never changes exercise.
+Verified by `WatchPagerSourceTests.swift`
+(`testS6610TheLoggingSurfaceMountsThePagerAndNotTheBareView`,
+`…testS6611ThePagerIsOneTabViewWithoutDotsAndAnswersADragWhenLocked`,
+`…testS6612ThePagerTakesNoCrownAndNoFocus`). The rest screen replaces the
+logging screen as before, so there is no paging in rest; the phone screen does
+not follow a wrist swipe (owner decision O-5).
