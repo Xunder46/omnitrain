@@ -99,6 +99,17 @@ import 'helpers/watch_capture_import_harness.dart' show seedExercise;
 
 final DateTime _now = DateTime.utc(2026, 10, 6, 9);
 
+/// Real time, but strictly increasing by at least a millisecond per read, so a
+/// timer finished right after it started always ends after it began.
+DateTime Function() _tickingClock() {
+  var lastMs = 0;
+  return () {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    lastMs = nowMs > lastMs ? nowMs : lastMs + 1;
+    return DateTime.fromMillisecondsSinceEpoch(lastMs);
+  };
+}
+
 Map<String, Object?> _asObject(Object? value) =>
     (value as Map).cast<String, Object?>();
 
@@ -504,7 +515,7 @@ void main() {
     await repository.initialize();
     await _seedCatalog(repository);
 
-    phoneState = WorkoutState(repository);
+    phoneState = WorkoutState(repository, clock: _tickingClock());
     phoneSettings = SettingsState(repository, fakePreferencesService());
     await phoneSettings.initialize();
 

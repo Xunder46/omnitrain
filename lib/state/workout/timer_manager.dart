@@ -101,7 +101,8 @@ class TimerManager {
   final void Function() _clearErrorCallback;
   Map<String, List<EffortObservation>>? _observations;
 
-  /// The clock behind a new timed instance's id and stamps. A test that must
+  /// The clock behind a new timed instance's id and stamps, and behind the
+  /// start and finish stamps of timed entries and rounds. A test that must
   /// repeat a millisecond — the collision D-338 guards against — passes one
   /// that stands still.
   final DateTime Function() _clock;
@@ -496,7 +497,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final updated = old.copyWith(
         state: RoundState.active,
         startedAtMs: now,
@@ -592,7 +593,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final finishedAtMs =
           old.startedAtMs +
           (old.plannedDurationSecs * 1000) +
@@ -865,7 +866,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final offsetMs = old.targetDurationSecs > 0
           ? old.targetDurationSecs * 1000
           : 0;
@@ -963,7 +964,7 @@ class TimerManager {
         return;
       }
 
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _clock().millisecondsSinceEpoch;
       final totalPausedMs =
           old.state == TimedState.paused && old.pausedAtMs != null
           ? old.totalPausedDurationMs + (now - old.pausedAtMs!)

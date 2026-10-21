@@ -29,16 +29,20 @@ class WorkoutState extends ChangeNotifier {
   /// [watchLateEntryRecovery] is optional for the same reason: a build with
   /// no watch, and every test that does not exercise the recovery, passes
   /// nothing and the restore behaves exactly as it did before (D-803).
+  ///
+  /// [clock] is the timer's clock seam; the default is the real clock.
   WorkoutState(
     this._repository, {
     HealthSyncService? healthSync,
     WatchLateEntryRecovery? watchLateEntryRecovery,
+    DateTime Function()? clock,
   }) {
     _timerManager = TimerManager(
       _repository,
       notify: notifyListeners,
       setError: _setError,
       clearError: _clearError,
+      clock: clock,
     );
     _exerciseLibrary = ExerciseLibrary(
       _repository,
