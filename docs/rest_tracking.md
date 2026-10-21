@@ -304,12 +304,29 @@ tap instant`, `S-163 logging ends a running rest first`), its Swift twin
 that starts the rest with no length (`test/watch_logging_timers_test.dart`, `S-160 a logged set
 starts a rest with no planned length`).
 
-A rest's timer is device-local — no message carries a rest length or a countdown — but the rest
-itself travels: when it ends, the wrist emits a `rest` observation and the phone's importer writes
-it as an `EntryRest` row, so the Session Summary counts it like the phone's own rest (18d
+A rest's timer is device-local: no length or countdown is shared between the devices — only the
+count-up's start and its pause travel — but the rest itself travels both ways while it runs. The
+phone pushes its open rest to the wrist as a `rest`
+timer (`WatchTimerPush`, composed from `WorkoutState.inProgressRest()`; `test/watch_timer_push_test.dart`,
+groups `S-7301` to `S-7312` — a rest with no slot and no planned length, running or paused with its
+pause bookkeeping, and sent as `{rest: null}` when the next set ends it; a wrist rest started within
+half a second of the phone's is the same rest and is not echoed back, and two consecutive rests
+whose sets are logged less than a second apart stay two rests). And when the wrist's rest ends, the
+wrist emits a `rest` observation and the phone's importer writes
+it as an `EntryRest` row — including when the set was logged on the phone, so Next on the watch
+closes the phone's open rest whichever device logged the set
+(`test/watch_session_rest_phone_entries_test.dart`, S-7401..S-7405) — so the Session Summary counts
+it like the phone's own rest (18d
 D-219/D-220, 18c D-215; `test/watch_session_summary_integration_test.dart`, `S-329 a rest the wrist
 sent and a rest the phone counted, over the same window, total the same`; Swift wrist,
 `WatchSessionEngineTests.testS320TheRestTheWristEndsTravelsAsARestEvent`).
+
+Across the two devices, then: a set logged on either device starts the rest on both, counting from
+the moment it was logged; Next on the watch, or the next set on either device, ends it on both;
+pausing the phone's rest chip freezes the watch's rest; and both devices ping per the one Rest Ping
+setting (the ping rule and its settings key: `test/watch_rest_ping_test.dart`, S-241..S-245 and
+S-221..S-224; the wrist's side: `watch/watchos/Tests/WatchSessionEngineTests/WatchRestPingTests.swift`,
+`testS241AnIntervalTapsAtItsMultiplesAndNowhereElse` and `testS242WithTheIntervalOffNothingTaps`).
 
 ---
 

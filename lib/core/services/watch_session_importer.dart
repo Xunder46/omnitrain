@@ -365,7 +365,7 @@ class WatchSessionImporter {
 
     // A rest for a slot the session holds is written beside the entry it
     // follows; the phone's own rest at that spot wins (D-216).
-    for (final effortId in await pass._applyRests(unapplied)) {
+    for (final effortId in await pass._applyRests(unapplied, efforts)) {
       if (!changedEffortIds.contains(effortId)) changedEffortIds.add(effortId);
     }
 
@@ -530,7 +530,7 @@ class _Pass {
 
     // Rests come last: every entry has its final index now (D-215). A pass
     // that created no session never reaches this (D-214, S-326).
-    await _applyRests(unapplied);
+    await _applyRests(unapplied, efforts);
   }
 
   // --- The session ------------------------------------------------------------
@@ -1163,6 +1163,42 @@ class _Pass {
     return null;
   }
 
+  /// The phone entry a rest's `afterEntryId` names, when it named no placed
+  /// wrist entry (plan 50b D-1): `PhoneEntries` mints the phone's own entry
+  /// ids as `entry-<effortId>-<n>`, so the id resolves when `<effortId>` is
+  /// one of the session's efforts and an entry numbered `n` exists on it — a
+  /// set group whose rows carry that number, a timed or hold instance at that
+  /// `entryIndex`, a round instance at that `roundIndex`. The position the
+  /// rest follows is `n` itself. Null when the id names no such entry.
+  Future<({String effortId, int position})?> _phoneEntry(
+    String afterEntryId,
+    Map<String, SegmentEffort> efforts,
+  ) async {
+    if (!afterEntryId.startsWith('entry-')) return null;
+    final body = afterEntryId.substring('entry-'.length);
+    final cut = body.lastIndexOf('-');
+    if (cut < 1) return null;
+    final effortId = body.substring(0, cut);
+    final number = int.tryParse(body.substring(cut + 1));
+    if (number == null || number < 0) return null;
+    final effort = efforts[effortId];
+    if (effort == null) return null;
+    final exists = switch (effort.effortKind) {
+      BlockTypes.set => EntryRows.setGroups(
+        await _repository.getEffortObservations(effortId),
+      ).any((group) => group.number == number),
+      BlockTypes.round => (await _repository.getRoundInstances(effortId)).any(
+        (round) => round.roundIndex == number,
+      ),
+      // A timed, drill or other instance effort keeps its entries beside the
+      // timed ones (D-130).
+      _ => (await _repository.getTimedInstances(effortId)).any(
+        (instance) => instance.entryIndex == number,
+      ),
+    };
+    return exists ? (effortId: effortId, position: number) : null;
+  }
+
   /// Writes the session's staged rests beside the entries they follow (D-215).
   ///
   /// A rest is not an entry (D-214): it is written through the repository's own
@@ -1172,8 +1208,11 @@ class _Pass {
   /// wins and a redelivery writes nothing (D-216, S-324, S-325); a spot whose
   /// rest is still running holds the rest the set's own arrival opened (D-6),
   /// and the wrist's report closes that same row in place rather than writing a
-  /// second one (D-7, S-3608). A row whose `afterEntryId` names no placed
-  /// entry, or whose window is not a window (`endedAt <= startedAt`), is
+  /// second one (D-7, S-3608). An `afterEntryId` that names no placed wrist
+  /// entry may still name one of the phone's own — the id
+  /// `entry-<effortId>-<n>` `PhoneEntries` mints — and the rest then follows
+  /// that entry (plan 50b D-1, S-7401). A row whose `afterEntryId` names
+  /// neither, or whose window is not a window (`endedAt <= startedAt`), is
   /// dropped (S-323, S-328, S-337). A written rest counts as a write, so the
   /// summary recomputes and a merge can name the effort (D-17); a dropped row
   /// does not. Either way the caller marks the row applied, so it is never
@@ -1181,23 +1220,32 @@ class _Pass {
   ///
   /// Returns the efforts a rest was written into — the written side of the
   /// split, which is what a merge has to name.
-  Future<Set<String>> _applyRests(List<WatchInboxEntry> rows) async {
+  Future<Set<String>> _applyRests(
+    List<WatchInboxEntry> rows,
+    Map<String, SegmentEffort> efforts,
+  ) async {
     final written = <String>{};
     for (final row in rows) {
       if (row.kind != WatchInboxEntry.kindRest) continue;
       final payload = row.payload;
       final afterEntryId = payload['afterEntryId'];
       final placed = afterEntryId is String ? _placed[afterEntryId] : null;
+      final phone = placed == null && afterEntryId is String
+          ? await _phoneEntry(afterEntryId, efforts)
+          : null;
+      final ({String effortId, int position})? target = placed != null
+          ? (effortId: placed.effortId, position: placed.position)
+          : phone;
       final startedAtMs = _ms(payload['startedAt']);
       final endedAtMs = _ms(payload['endedAt']);
-      if (placed == null ||
+      if (target == null ||
           startedAtMs == null ||
           endedAtMs == null ||
           endedAtMs <= startedAtMs) {
         continue;
       }
-      final entryIndex = placed.position + 1;
-      final rests = await _repository.getEntryRests(placed.effortId);
+      final entryIndex = target.position + 1;
+      final rests = await _repository.getEntryRests(target.effortId);
       final existing = _restAt(rests, entryIndex);
       final loggedAtMs = _ms(payload['loggedAt']) ?? startedAtMs;
       if (existing != null) {
@@ -1215,13 +1263,13 @@ class _Pass {
           ),
         );
         changed = true;
-        written.add(placed.effortId);
+        written.add(target.effortId);
         continue;
       }
       await _repository.createEntryRest(
         EntryRest(
-          id: 'rest-${placed.effortId}-$entryIndex',
-          effortId: placed.effortId,
+          id: 'rest-${target.effortId}-$entryIndex',
+          effortId: target.effortId,
           entryIndex: entryIndex,
           restStartMs: startedAtMs,
           restEndMs: endedAtMs,
@@ -1230,7 +1278,7 @@ class _Pass {
         ),
       );
       changed = true;
-      written.add(placed.effortId);
+      written.add(target.effortId);
     }
     return written;
   }

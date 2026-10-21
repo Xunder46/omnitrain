@@ -52,6 +52,35 @@ class InProgressWorkTimer {
   );
 }
 
+/// One open rest, in the shape the watch's `timer_state` frame carries (plan
+/// 50a D-1).
+///
+/// A rest belongs to no slot and has no planned length: it is a count-up from
+/// the instant the set was logged.
+class InProgressRest {
+  final int startedAtMs;
+  final int? pausedAtMs;
+  final int accumulatedPauseMs;
+
+  const InProgressRest({
+    required this.startedAtMs,
+    this.pausedAtMs,
+    this.accumulatedPauseMs = 0,
+  });
+
+  bool get paused => pausedAtMs != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is InProgressRest &&
+      other.startedAtMs == startedAtMs &&
+      other.pausedAtMs == pausedAtMs &&
+      other.accumulatedPauseMs == accumulatedPauseMs;
+
+  @override
+  int get hashCode => Object.hash(startedAtMs, pausedAtMs, accumulatedPauseMs);
+}
+
 /// A running work timer the watch sent, before it is written into an effort's
 /// interval (43b2 D-2).
 ///
@@ -205,6 +234,28 @@ class TimerManager {
 
     final kinds = byKind.keys.toList()..sort();
     return [for (final kind in kinds) byKind[kind]!];
+  }
+
+  /// The open rest of [efforts], in the shape the watch's `timer_state` frame
+  /// carries (plan 50a D-1).
+  ///
+  /// Every effort's open rests ([EntryRest.restEndMs] == null) are candidates;
+  /// the one with the newest [EntryRest.restStartMs] wins (ties: the later
+  /// effort). A closed rest contributes nothing. Null when nothing is open.
+  InProgressRest? inProgressRest(Iterable<SegmentEffort> efforts) {
+    InProgressRest? newest;
+    for (final effort in efforts) {
+      for (final rest in getEntryRests(effort.id)) {
+        if (rest.restEndMs != null) continue;
+        if (newest != null && rest.restStartMs < newest.startedAtMs) continue;
+        newest = InProgressRest(
+          startedAtMs: rest.restStartMs,
+          pausedAtMs: rest.restIsPaused ? rest.restPausedAtMs : null,
+          accumulatedPauseMs: rest.restPausedDurationMs,
+        );
+      }
+    }
+    return newest;
   }
 
   static void _keepNewestWorkTimer(

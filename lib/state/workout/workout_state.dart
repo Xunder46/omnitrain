@@ -103,6 +103,16 @@ class WorkoutState extends ChangeNotifier {
       for (final segment in segments) ...getEffortsForSegment(segment.id),
     ]);
   }
+
+  /// The held session's open rest, if it has one (plan 50a D-1). Null when no
+  /// session is active or nothing is resting.
+  InProgressRest? inProgressRest() {
+    if (!hasActiveSession) return null;
+    return _timerManager.inProgressRest([
+      for (final segment in segments) ...getEffortsForSegment(segment.id),
+    ]);
+  }
+
   Exercise? getExercise(String? exerciseId) =>
       _sessionCore.getExercise(exerciseId);
   List<SessionBlock> getSessionBlocks() => _sessionCore.getSessionBlocks();

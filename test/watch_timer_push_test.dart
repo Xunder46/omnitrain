@@ -32,6 +32,30 @@
 //                                                          → `S-6330 ...`
 //   S-6341 the wrist logs after the phone logged: one interval, no duplicate
 //                                                          → `S-6341 ...`
+// Plan 50a (the phone's rest reaches the wrist):
+//   S-7301 an open rest travels as one timer_state frame with no slot and no
+//          planned length; the newest open rest is the one composed
+//                                                          → `S-7301 ...` (×2)
+//   S-7302 a pause and a resume travel with their bookkeeping → `S-7302 ...`
+//   S-7303 closing the rest clears it on the wrist          → `S-7303 ...`
+//   S-7304 the wrist's own rest a moment later is the same rest, so nothing is
+//          sent; the phone closing it sends the clear    → `S-7304 ...`
+//   S-7305 the wrist stopped its own rest first, so the close clears nothing
+//                                                          → `S-7305 ...`
+//   S-7306 the mirror's rest is a different rest: ours is sent
+//                                                          → `S-7306 ...`
+//   S-7307 an undelivered rest frame is re-offered           → `S-7307 ...`
+//   S-7308 the real engine rests from the phone's instant and stops on the
+//          clear                                            → `S-7308 ...`
+//   S-7309 an elapsed timer and a rest travel in one frame   → `S-7309 ...`
+//   S-7310 a snapshot the phone composes carries the delivered rest
+//                                                          → `S-7310 ...`
+// Review fixes (50a):
+//   S-7311 two consecutive rests whose sets are logged less than a second
+//          apart stay two rests; the tolerance boundary is 500 ms
+//                                                          → `S-7311 ...` (×3)
+//   S-7312 a rest copy this push has cleared does not block the next rest
+//                                                          → `S-7312 ...`
 //
 // The phone side is the graph `createWatchSync` builds — the shipping wiring,
 // including the timer push it returns — over a fake radio; the wrist side is
@@ -56,6 +80,7 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/state/workout/timer_manager.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/logging/watch_logging_state.dart';
 import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
 import 'package:omnitrain/watch/session/watch_records.dart';
 import 'package:omnitrain/watch/session/watch_session_engine.dart';
@@ -75,6 +100,12 @@ const String _sessionId = 's-w-timers';
 /// The one slot the fixture puts in the ladder, and its effort id on the phone
 /// (D-3: the wrist's slot id IS the phone's effort id).
 const String _slotId = 'sx-run';
+
+/// A rest start unlike any default: the instant the phone logged the set.
+final DateTime _restStart = DateTime.utc(2026, 3, 4, 5, 6, 7);
+
+/// A pause total unlike any default (50a).
+const int _restPauseMs = 12345;
 
 Map<String, Object?> _asObject(Object? value) =>
     (value as Map).cast<String, Object?>();
@@ -266,6 +297,64 @@ void main() {
   /// The phone's interval [index] of the slot.
   TimedInstance interval(int index) =>
       phoneState.getTimedInstancesForEffort(_slotId)[index];
+
+  /// The phone opens a rest on [effortId]'s entry [entryIndex] the way the
+  /// session screen does, then pins its stamps to [_restStart] (and the pause
+  /// fields to the fixture's values) so no scenario reads the wall clock.
+  Future<EntryRest> openPhoneRest({
+    String? effortId,
+    int entryIndex = 0,
+    DateTime? startedAt,
+    bool paused = false,
+    DateTime? pausedAt,
+    int accumulatedPauseMs = 0,
+  }) async {
+    final effort = effortId ?? _slotId;
+    final start = startedAt ?? _restStart;
+    await phoneState.recordRestStart(effort, entryIndex);
+
+    final stored = (await repository.getEntryRests(effort)).firstWhere(
+      (rest) => rest.entryIndex == entryIndex,
+    );
+    final pinned = stored.copyWith(
+      restStartMs: start.millisecondsSinceEpoch,
+      restIsPaused: paused,
+      restPausedAtMs: paused
+          ? (pausedAt ?? start).millisecondsSinceEpoch
+          : null,
+      restPausedDurationMs: accumulatedPauseMs,
+      createdAtMs: start.millisecondsSinceEpoch,
+      updatedAtMs: start.millisecondsSinceEpoch,
+    );
+    await repository.updateEntryRest(pinned);
+    await phoneState.refreshEfforts([effort]);
+    return pinned;
+  }
+
+  /// Hands the mirror a rest the wrist reports, the way the radio does.
+  Future<void> mirrorRest({
+    required DateTime startedAt,
+    String state = 'running',
+    DateTime? pausedAt,
+    int accumulatedPauseMs = 0,
+  }) async {
+    await radio.fromWrist(
+      _wristTimerFrame({
+        'rest': {
+          'kind': 'rest',
+          'state': state,
+          'startedAt': utcIso(startedAt),
+          'accumulatedPauseMs': accumulatedPauseMs,
+          if (pausedAt != null) 'pausedAt': utcIso(pausedAt),
+        },
+      }),
+    );
+    await _settle();
+  }
+
+  /// The `rest` timer of [envelope].
+  Map<String, Object?> restOf(Map<String, Object?> envelope) =>
+      _asObject(timersOf(envelope)['rest']);
 
   /// The "adopted interval" fixture (plan 43c D-3): the wrist started an
   /// `elapsed` timer for the slot, the phone had an interval waiting, and the
@@ -1540,6 +1629,708 @@ void main() {
           await repository.getTimedInstances(_slotId),
           hasLength(1),
           reason: 'S-6341 nothing was written beside the phone\'s interval',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Plan 50a: the phone's rest reaches the wrist
+  // ---------------------------------------------------------------------------
+
+  group("S-7301 the phone's open rest reaches the wrist", () {
+    test(
+      'S-7301 an open rest travels as one timer_state frame with no slot and no '
+      'planned length, and the wrist counts up from it',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        final rest = await openPhoneRest();
+        expect(
+          phoneState.inProgressRest()?.startedAtMs,
+          rest.restStartMs,
+          reason: 'the fixture: the phone holds the rest it opened',
+        );
+
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7301 one frame is sent');
+        expect(
+          timersOf(frames.single).keys,
+          ['rest'],
+          reason: 'S-7301 the frame names the rest',
+        );
+        final timer = restOf(frames.single);
+        expect(timer['kind'], 'rest');
+        expect(timer['state'], 'running');
+        expect(
+          parseUtcIso(timer['startedAt']),
+          _restStart,
+          reason: 'S-7301 the frame carries the instant the phone logged',
+        );
+        expect(
+          timer['accumulatedPauseMs'],
+          0,
+          reason: 'S-7301 a running rest has accumulated no pause',
+        );
+        expect(
+          timer.containsKey('sessionExerciseId'),
+          isFalse,
+          reason: 'S-7301 a rest belongs to no slot',
+        );
+        expect(
+          timer.containsKey('plannedDurationMs'),
+          isFalse,
+          reason: 'S-7301 a rest counts up, so it carries no planned length',
+        );
+        expect(
+          loadProtocolValidator().validateEnvelope(frames.single),
+          isEmpty,
+          reason: 'S-7301 the envelope passes the Dart validator',
+        );
+
+        await applyPhoneTimers();
+        final wristRest = engine.timerFor(WatchTimerKind.rest)!;
+        expect(wristRest.state, WatchTimerState.running);
+        expect(
+          wristRest.startedAt,
+          _restStart,
+          reason: 'S-7301 the wrist counts up from the phone instant',
+        );
+        expect(
+          WatchLoggingState(engine: engine).isResting,
+          isTrue,
+          reason: 'S-7301 the wrist shows its rest surface',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      "S-7301 the newest open rest across the phone's efforts is the one "
+      'composed, and a closed one never competes',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        final second = await phoneState.addExerciseToSession(
+          (await repository.getExerciseById('ex-run'))!,
+        );
+        await openPhoneRest();
+        final newer = _restStart.add(const Duration(seconds: 5));
+        await openPhoneRest(effortId: second, startedAt: newer);
+
+        // A closed rest that starts later still is not an open one.
+        final later = _restStart.add(const Duration(seconds: 9));
+        await repository.createEntryRest(
+          EntryRest(
+            id: 'rest-$_slotId-1',
+            effortId: _slotId,
+            entryIndex: 1,
+            restStartMs: later.millisecondsSinceEpoch,
+            restEndMs: later.millisecondsSinceEpoch + 1000,
+            createdAtMs: later.millisecondsSinceEpoch,
+            updatedAtMs: later.millisecondsSinceEpoch,
+          ),
+        );
+        await phoneState.refreshEfforts([_slotId, second]);
+
+        expect(
+          phoneState.inProgressRest()?.startedAtMs,
+          newer.millisecondsSinceEpoch,
+          reason: 'S-7301 the newest open rest is the one composed',
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          parseUtcIso(restOf(timerFrames().single)['startedAt']),
+          newer,
+          reason: 'S-7301 the frame carries the newest open rest',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7302 a pause and a resume travel with their bookkeeping', () {
+    test(
+      "S-7302 pausing sends the rest's paused stamp and resuming sends the "
+      'pause accumulated so far, which the wrist reads back',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(timerFrames(), hasLength(1), reason: 'the fixture: one frame');
+
+        await phoneState.pauseRest(_slotId, 0);
+        final paused = (await repository.getEntryRests(_slotId)).single;
+        expect(paused.restIsPaused, isTrue, reason: 'the fixture: paused');
+        await graph.timerPush.flush();
+
+        expect(timerFrames(), hasLength(2));
+        final pausedTimer = restOf(timerFrames().last);
+        expect(pausedTimer['state'], 'paused');
+        expect(
+          parseUtcIso(pausedTimer['pausedAt']),
+          DateTime.fromMillisecondsSinceEpoch(
+            paused.restPausedAtMs!,
+            isUtc: true,
+          ),
+          reason: 'S-7302 the frame carries the pause the phone stored',
+        );
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.paused,
+          reason: 'S-7302 the wrist holds the paused rest',
+        );
+
+        // Give the resume a pause to accumulate, at a value no default would
+        // produce, and freeze its stamp so the measured pause is not the wall
+        // clock's.
+        await repository.updateEntryRest(
+          paused.copyWith(
+            restPausedAtMs: paused.restPausedAtMs! - 1000,
+            restPausedDurationMs: _restPauseMs,
+          ),
+        );
+        await phoneState.refreshEfforts([_slotId]);
+        await phoneState.resumeRest(_slotId, 0);
+        final resumed = (await repository.getEntryRests(_slotId)).single;
+        expect(resumed.restEndMs, isNull, reason: 'the fixture: still resting');
+        expect(
+          resumed.restPausedDurationMs,
+          greaterThan(_restPauseMs),
+          reason: 'the fixture: the resume measured a pause',
+        );
+
+        await graph.timerPush.flush();
+        expect(timerFrames(), hasLength(3));
+        final resumedTimer = restOf(timerFrames().last);
+        expect(resumedTimer['state'], 'running');
+        expect(
+          resumedTimer['accumulatedPauseMs'],
+          resumed.restPausedDurationMs,
+          reason: 'S-7302 the resume carries the pause accumulated so far',
+        );
+        expect(
+          resumedTimer.containsKey('pausedAt'),
+          isFalse,
+          reason: 'S-7302 a running rest carries no paused stamp',
+        );
+
+        await applyPhoneTimers();
+        final wristRest = engine.timerFor(WatchTimerKind.rest)!;
+        expect(wristRest.state, WatchTimerState.running);
+        expect(
+          wristRest.accumulatedPauseMs,
+          resumed.restPausedDurationMs,
+          reason: 'S-7302 the wrist excludes the pause it was told about',
+        );
+        expect(
+          wristRest.startedAt,
+          _restStart,
+          reason: 'S-7302 a pause and a resume never move the start',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7303 closing the rest clears it on the wrist', () {
+    test(
+      "S-7303 the next set closes the rest and one frame with a null rest stops "
+      "the wrist's",
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.running,
+          reason: 'the fixture: the wrist is resting',
+        );
+
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          hasLength(2),
+          reason: 'S-7303 exactly one frame is sent for the close',
+        );
+        final cleared = timersOf(timerFrames().last);
+        expect(
+          cleared.containsKey('rest'),
+          isTrue,
+          reason: 'S-7303 the frame names the rest it clears',
+        );
+        expect(
+          cleared['rest'],
+          isNull,
+          reason: 'S-7303 a key present with null clears that rest',
+        );
+
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.stopped,
+          reason: 'S-7303 the wrist stops the rest the phone closed',
+        );
+        expect(
+          WatchLoggingState(engine: engine).isResting,
+          isFalse,
+          reason: 'S-7303 the wrist leaves its rest surface',
+        );
+
+        phoneState.notifyListeners();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(2),
+          reason: 'S-7303 a delivered clear is not sent twice',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group("S-7304 the wrist's own rest a moment later is the same rest", () {
+    test(
+      "S-7304 a running rest the wrist started 300 ms after ours is identical, "
+      'so nothing is sent',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 300)),
+        );
+        expect(
+          mirrorTimer('rest')['state'],
+          'running',
+          reason: 'the fixture: the mirror holds the wrist rest',
+        );
+
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'S-7304 the wrist already rests from within half a second of '
+              'ours',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-7304 closing the rest the wrist is holding sends the clear',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 300)),
+        );
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(timerFrames(), isEmpty, reason: 'the fixture: nothing to send');
+
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7304 the close is sent');
+        final cleared = timersOf(frames.single);
+        expect(
+          cleared['rest'],
+          isNull,
+          reason: "S-7304 the frame clears the wrist's rest",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7305 the wrist ended its own rest first', () {
+    test(
+      "S-7305 a mirror rest that is already stopped is not cleared when the "
+      "phone's rest closes",
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(startedAt: _restStart);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the wrist rest is the same rest',
+        );
+
+        // The wrist ends its rest itself, before the phone closes its own.
+        await mirrorRest(startedAt: _restStart, state: 'stopped');
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'S-7305 the wrist ended the rest, so there is nothing to clear',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7306 a rest started outside the tolerance is a different rest', () {
+    test(
+      "S-7306 the mirror's rest started 5 s earlier does not stop ours being "
+      'sent',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.subtract(const Duration(seconds: 5)),
+        );
+
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7306 our rest is sent');
+        expect(
+          parseUtcIso(restOf(frames.single)['startedAt']),
+          _restStart,
+          reason: "S-7306 the phone's rest is a different one",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7307 a rest frame the radio did not carry is owed', () {
+    test(
+      'S-7307 an undelivered rest frame leaves the ledger as it was and is '
+      'offered again',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        radio.unreachable = true;
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the radio took nothing',
+        );
+
+        radio.unreachable = false;
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7307 the rest is offered again');
+        expect(
+          parseUtcIso(restOf(frames.single)['startedAt']),
+          _restStart,
+          reason: 'S-7307 the frame is the one that was owed',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7308 the real wrist engine rests from the phone instant', () {
+    test(
+      'S-7308 after the frame the engine is resting and counts up from T; '
+      'after the clear it is not resting',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        await applyPhoneTimers();
+
+        final resting = engine.timerFor(WatchTimerKind.rest)!;
+        expect(resting.state, WatchTimerState.running);
+        expect(
+          resting.startedAt,
+          _restStart,
+          reason: 'S-7308 the wrist counts up from the phone instant',
+        );
+        expect(
+          resting.plannedDurationMs,
+          isNull,
+          reason: 'S-7308 a rest is not a countdown',
+        );
+        expect(WatchLoggingState(engine: engine).isResting, isTrue);
+
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+        await applyPhoneTimers();
+
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.stopped,
+          reason: 'S-7308 the clear stops the rest',
+        );
+        expect(
+          WatchLoggingState(engine: engine).isResting,
+          isFalse,
+          reason: 'S-7308 the wrist is not resting after the clear',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7309 work timers are unaffected', () {
+    test(
+      'S-7309 an elapsed timer and a rest in one pass travel as one frame with '
+      'both kinds',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        final instance = await startInterval();
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(1),
+          reason: 'S-7309 both kinds travel as one frame',
+        );
+        final timers = timersOf(frames.single);
+        expect(timers.keys.toSet(), {'elapsed', 'rest'});
+        final elapsed = _asObject(timers['elapsed']);
+        expect(
+          elapsed['sessionExerciseId'],
+          _slotId,
+          reason: 'S-7309 the work timer keeps its slot',
+        );
+        expect(
+          parseUtcIso(elapsed['startedAt']),
+          DateTime.fromMillisecondsSinceEpoch(
+            instance.startedAtMs,
+            isUtc: true,
+          ),
+          reason: 'S-7309 the work timer keeps the instance it came from',
+        );
+        expect(
+          parseUtcIso(restOf(frames.single)['startedAt']),
+          _restStart,
+          reason: 'S-7309 the rest keeps its own instant',
+        );
+        expect(
+          loadProtocolValidator().validateEnvelope(frames.single),
+          isEmpty,
+          reason: 'S-7309 the envelope passes the Dart validator',
+        );
+
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.elapsed)!.state,
+          WatchTimerState.running,
+          reason: 'S-7309 the wrist still holds the elapsed timer',
+        );
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.running,
+          reason: 'S-7309 and holds the rest beside it',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7310 a snapshot the phone composes carries the delivered rest', () {
+    test(
+      'S-7310 the rest the phone delivered rides the next projected snapshot',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(1),
+          reason: 'the fixture: the rest was delivered',
+        );
+
+        final projected = await graph.mirror.projectedSession();
+        expect(
+          projected,
+          isNotNull,
+          reason: 'the fixture: the phone holds a session to speak from',
+        );
+        final timers = _asObject(projected!['timers']);
+        expect(
+          timers.containsKey('rest'),
+          isTrue,
+          reason: 'S-7310 a snapshot without the rest would stop the wrist rest',
+        );
+        final rest = _asObject(timers['rest']);
+        expect(
+          parseUtcIso(rest['startedAt']),
+          _restStart,
+          reason: 'S-7310 the snapshot carries the rest the phone delivered',
+        );
+        expect(
+          rest.containsKey('sessionExerciseId'),
+          isFalse,
+          reason: 'S-7310 the rest still belongs to no slot',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7311 two consecutive rests less than a second apart stay two rests', () {
+    test(
+      'S-7311 set 2 logged 1500 ms after set 1 closes rest 1 and opens rest 2: '
+      'the clear and the new rest travel as two frames, in that order',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        // The wrist starts its own copy of rest 1 tens of milliseconds after
+        // the phone logged set 1.
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 80)),
+        );
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: rest 1 is the same rest on both devices',
+        );
+
+        await openPhoneRest(
+          entryIndex: 1,
+          startedAt: _restStart.add(const Duration(milliseconds: 1500)),
+        );
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(2),
+          reason: 'S-7311 the clear and the new rest, as two frames',
+        );
+        expect(
+          timersOf(frames[0])['rest'],
+          isNull,
+          reason: 'S-7311 rest 1 is cleared first',
+        );
+        expect(
+          parseUtcIso(restOf(frames[1])['startedAt']),
+          _restStart.add(const Duration(milliseconds: 1500)),
+          reason: 'S-7311 rest 2 travels with its own start',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-7311 a mirror rest started exactly 500 ms after ours is the same '
+      'rest, so nothing is sent',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 500)),
+        );
+
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'S-7311 500 ms is the boundary and still the same rest',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-7311 a mirror rest started 501 ms after ours is a different rest, '
+      'so ours is sent',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 501)),
+        );
+
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7311 501 ms is a new rest');
+        expect(
+          parseUtcIso(restOf(frames.single)['startedAt']),
+          _restStart,
+          reason: "S-7311 the phone's rest is the one sent",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7312 a rest copy this push has cleared does not block the next rest', () {
+    test(
+      'S-7312 after the phone ends an adopted rest, a new rest 700 ms after '
+      'the phone start is sent, not read as the stale copy',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 80)),
+        );
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the rest was adopted from the wrist',
+        );
+
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+        final clear = timerFrames();
+        expect(clear, hasLength(1), reason: 'the fixture: the clear is sent');
+        expect(
+          timersOf(clear.single)['rest'],
+          isNull,
+          reason: 'the fixture: the frame clears the rest',
+        );
+
+        // The mirror still shows the copy this push has cleared: the watch
+        // sends nothing back for a clear.
+        expect(mirrorTimer('rest')['state'], 'running');
+
+        await openPhoneRest(
+          entryIndex: 1,
+          startedAt: _restStart.add(const Duration(milliseconds: 700)),
+        );
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(2),
+          reason: 'S-7312 the new rest is sent after the fixture clear',
+        );
+        expect(
+          parseUtcIso(restOf(frames.last)['startedAt']),
+          _restStart.add(const Duration(milliseconds: 700)),
+          reason: 'S-7312 the new rest is not read as the stale copy',
         );
         expect(failures, isEmpty);
       },

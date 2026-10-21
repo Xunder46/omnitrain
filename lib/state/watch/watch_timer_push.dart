@@ -5,8 +5,9 @@
 /// Same shape as `WatchSessionAutoPush`, and for the same reasons: a listener on
 /// the bound `WorkoutState`, a trailing debounce window, one drain at a time,
 /// and a pass bounded by a timeout. What differs is the content: every pass
-/// composes the in-progress work timers of the phone's held session as one
-/// `timer_state` frame, and sends only what the wrist has not already been told.
+/// composes the in-progress work timers of the phone's held session — and its
+/// open rest, if it has one — as one `timer_state` frame, and sends only what
+/// the wrist has not already been told.
 ///
 /// Two rules shape the comparison:
 ///
@@ -23,7 +24,14 @@
 ///    `{kind: null}` and then the new timer. A frame the radio did not carry
 ///    leaves the ledger untouched and stops the pass.
 ///
-/// Rests are not this push's: it sends work timers only (D-4).
+/// A rest travels on its own rule (plan 50a D-3). It belongs to no slot, and
+/// the phone opens it at the instant the set was logged while the wrist starts
+/// its own copy a few milliseconds later: two rests whose starts are within
+/// half a second are the same rest, so the wrist's copy is not echoed back. A
+/// pause or a resume on the phone still travels. A rest never answers
+/// "earlier": the phone's frame supersedes the wrist's own copy.
+///
+/// The wrist is otherwise told work timers only (43b3 D-4).
 library;
 
 import 'dart:async';
@@ -103,13 +111,14 @@ class WatchTimerPush {
   Future<void>? _draining;
   bool _again = false;
 
-  /// The work timers this push has delivered to the wrist and still holds on
-  /// it, per wire kind, in the shape a snapshot's `timers` takes.
+  /// The timers this push has delivered to the wrist and still holds on it,
+  /// per wire kind, in the shape a snapshot's `timers` takes.
   ///
   /// A snapshot speaks for the wrist's timer state as a whole: it stops every
   /// timer the phone started that the snapshot does not name. A snapshot the
   /// phone composes therefore carries these, or the first snapshot after the
-  /// phone starts an interval would reset the wrist's clock to zero.
+  /// phone starts an interval — or a rest — would reset the wrist's clock to
+  /// zero.
   Map<String, Object?> deliveredTimers() => {
     for (final entry in _delivered.entries) entry.key: {...entry.value},
   };
@@ -218,6 +227,28 @@ class WatchTimerPush {
         };
       }
 
+      // Plan 50a D-2: a rest belongs to no slot and has no planned length, so
+      // it is composed without either key. The validator refuses a rest that
+      // carries a plan.
+      final rest = state.inProgressRest();
+      if (rest != null) {
+        wanted['rest'] = <String, Object?>{
+          'kind': 'rest',
+          'state': rest.paused ? 'paused' : 'running',
+          'startedAt': utcIso(
+            DateTime.fromMillisecondsSinceEpoch(rest.startedAtMs, isUtc: true),
+          ),
+          'accumulatedPauseMs': rest.accumulatedPauseMs,
+          if (rest.paused)
+            'pausedAt': utcIso(
+              DateTime.fromMillisecondsSinceEpoch(
+                rest.pausedAtMs!,
+                isUtc: true,
+              ),
+            ),
+        };
+      }
+
       // Plan 43c D-3: a timer the wrist started and the phone ran is over when
       // the phone no longer wants that slot and start. If the mirror still
       // holds it the wrist's clock must be cleared; if the wrist logged or
@@ -228,7 +259,12 @@ class WatchTimerPush {
         final sameInterval =
             timer != null &&
             timer['sessionExerciseId'] == held.value.slotId &&
-            _sameInstant(timer['startedAt'], held.value.startedAt);
+            (held.key == 'rest'
+                ? _restStartWithinTolerance(
+                    timer['startedAt'],
+                    held.value.startedAt,
+                  )
+                : _sameInstant(timer['startedAt'], held.value.startedAt));
         if (sameInterval) continue;
         if (_mirrorHolds(session.id, held.key, held.value)) {
           retired.add(held.key);
@@ -305,22 +341,39 @@ class WatchTimerPush {
     if (timers is! Map) return _WristHolds.no;
     final held = timers[kind];
     if (held is! Map) return _WristHolds.no;
-    if (held['sessionExerciseId'] != timer['sessionExerciseId']) {
+    if (kind != 'rest' &&
+        held['sessionExerciseId'] != timer['sessionExerciseId']) {
       return _WristHolds.no;
     }
     if (held['state'] == 'stopped') return _WristHolds.no;
     final stale = _stale[kind];
     if (stale != null &&
         stale.slotId == held['sessionExerciseId'] &&
-        _sameInstant(stale.startedAt, held['startedAt'])) {
+        (kind == 'rest'
+            // The adopted copy sits milliseconds after the phone's start, so
+            // an exact comparison would never recognise it.
+            ? _restStartWithinTolerance(stale.startedAt, held['startedAt'])
+            : _sameInstant(stale.startedAt, held['startedAt']))) {
       return _WristHolds.no;
     }
 
-    final same =
+    final sameState =
         held['state'] == timer['state'] &&
-        _sameInstant(held['startedAt'], timer['startedAt']) &&
         _sameInstant(held['pausedAt'], timer['pausedAt']) &&
         (held['accumulatedPauseMs'] ?? 0) == (timer['accumulatedPauseMs'] ?? 0);
+
+    // D-3 for a rest: no slot to compare, and a start within half a second is
+    // the same rest (the wrist starts its own a moment after the phone logs
+    // the set). It never answers `earlier` — the phone's frame supersedes it.
+    if (kind == 'rest') {
+      if (!_restStartWithinTolerance(held['startedAt'], timer['startedAt'])) {
+        return _WristHolds.no;
+      }
+      return sameState ? _WristHolds.identical : _WristHolds.no;
+    }
+
+    final same =
+        sameState && _sameInstant(held['startedAt'], timer['startedAt']);
     if (same) return _WristHolds.identical;
 
     final theirs = _instant(held['startedAt']);
@@ -340,7 +393,22 @@ class WatchTimerPush {
     if (held is! Map) return false;
     return held['sessionExerciseId'] == timer.slotId &&
         held['state'] != 'stopped' &&
-        _sameInstant(held['startedAt'], timer.startedAt);
+        (kind == 'rest'
+            ? _restStartWithinTolerance(held['startedAt'], timer.startedAt)
+            : _sameInstant(held['startedAt'], timer.startedAt));
+  }
+
+  /// How far apart two rest starts may be and still name one rest (50a D-3):
+  /// half a second. The phone opens its rest at the set's logged instant while
+  /// the wrist starts its own tens of milliseconds later; a wider window would
+  /// merge two real consecutive rests logged less than a second apart.
+  static const int _restStartToleranceMs = 500;
+
+  static bool _restStartWithinTolerance(Object? a, Object? b) {
+    final left = _instant(a);
+    final right = _instant(b);
+    if (left == null || right == null) return false;
+    return left.difference(right).inMilliseconds.abs() <= _restStartToleranceMs;
   }
 
   /// Sends one frame and answers whether the radio delivered it. An undelivered
