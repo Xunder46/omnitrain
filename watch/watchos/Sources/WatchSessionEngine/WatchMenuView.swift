@@ -3,8 +3,8 @@
 //  WatchSessionEngine
 //
 //  The native watchOS session menu: the session's own exercises to jump to, an
-//  Add Exercise row that opens the wrist's own list, then End Session. Compiled
-//  only into a watch target, like the other views in this module; the model it
+//  Add Exercise row that opens the wrist's own list, a Log food row that opens
+//  the quick-log, then End Session. Compiled only into a watch target, like the other views in this module; the model it
 //  reads is `WatchMenuState` (`WatchMenu.swift`), which the suite covers.
 //
 //  The menu shows the session as it is and adds only through the end of the
@@ -28,6 +28,10 @@ public struct WatchMenuView: View {
 
     private let onClose: () -> Void
     private let onFinish: () -> Void
+
+    /// The quick-log's state, handed over by the host. Nil keeps the Log food
+    /// row off: a menu built without one has no surface to push (D-3).
+    private let nutrition: WatchNutritionState?
 
     /// The screen's title, and the fixed copy of its one action row (D-1114).
     public static let title = "Exercises"
@@ -53,11 +57,13 @@ public struct WatchMenuView: View {
     public init(
         state: WatchMenuState,
         revision: Int = 0,
+        nutrition: WatchNutritionState? = nil,
         onClose: @escaping () -> Void,
         onFinish: @escaping () -> Void
     ) {
         self.state = state
         self.revision = revision
+        self.nutrition = nutrition
         self.onClose = onClose
         self.onFinish = onFinish
     }
@@ -82,6 +88,8 @@ public struct WatchMenuView: View {
 
                     addExerciseRow
                         .padding(.top, 10)
+
+                    logFoodRow
 
                     finishRow
                 }
@@ -140,7 +148,7 @@ public struct WatchMenuView: View {
     }
 
     /// The Add Exercise row: it opens the wrist's own list, and it sits below
-    /// the divider, right above End Session. Never disabled — adding moves nothing
+    /// the divider, above the Log food row. Never disabled — adding moves nothing
     /// the running effort logs (D-3607).
     private var addExerciseRow: some View {
         NavigationLink {
@@ -150,6 +158,25 @@ public struct WatchMenuView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
         }
         .buttonStyle(.bordered)
+    }
+
+    /// The Log food row: it pushes the quick-log over the host's own state, so a
+    /// log taken here is the same event the start screen's surface takes (D-3).
+    ///
+    /// Left off when the host handed over no state. Never disabled: eating is
+    /// independent of the effort being logged, so a running work clock does not
+    /// lock it.
+    @ViewBuilder
+    private var logFoodRow: some View {
+        if let nutrition {
+            NavigationLink {
+                WatchNutritionView(model: WatchNutritionModel(state: nutrition))
+            } label: {
+                Text(WatchMenuCopy.logFoodLabel)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .buttonStyle(.bordered)
+        }
     }
 
     /// End Session ends the session through the rating state, so the owed prompt

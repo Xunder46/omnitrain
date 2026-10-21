@@ -29,6 +29,13 @@ final class WatchAppHost: ObservableObject {
     let logging: WatchLoggingState
     let rating: WatchEffortRatingState
 
+    /// The food quick-log's state: the synced food list, the food and portion the
+    /// user has picked, and the observation a confirm makes. One for the life of
+    /// the app (D-1), so the start screen's sheet and the session menu's row read
+    /// the list the phone last sent and the recent order the wrist's own logs
+    /// give.
+    let nutrition: WatchNutritionState
+
     /// The platform workout, following the session's life. One coordinator for
     /// the life of the app (D-1504, D-1508): it remembers the session it opened
     /// the workout for, so a refresh never opens a second one for the same
@@ -75,10 +82,15 @@ final class WatchAppHost: ObservableObject {
         let engine = WatchSessionEngine(store: store, onEmit: forwarder.sink)
         let paths = WatchSessionStartPaths(engine: engine, store: store)
         let preferences = WatchPhonePreferences(store: store)
+        // The quick-log is built over the same engine and store (D-1): its foods
+        // arrive on the orchestrator's `foods_down`, and its log is the engine's
+        // own `logNutrition`, so it is the same event the start screen takes.
+        let nutrition = WatchNutritionState(engine: engine, store: store)
         let orchestrator = WatchSyncOrchestrator(
             transport: bridge,
             paths: paths,
             engine: engine,
+            nutrition: nutrition,
             preferences: preferences
         )
         // The health store is built once and shared (D-2106): it owns the
@@ -108,6 +120,7 @@ final class WatchAppHost: ObservableObject {
         self.preferences = preferences
         self.logging = logging
         self.rating = rating
+        self.nutrition = nutrition
         self.workout = workout
         self.sensors = sensors
         self.orchestrator = orchestrator
@@ -176,14 +189,16 @@ final class WatchAppHost: ObservableObject {
     /// Reads whatever the wrist already holds, in the order the surfaces need it:
     /// the engine first (its session, the rows it logged and their timers) so a
     /// relaunch mid-session comes back before anything is asked of it, then the
-    /// routines, the phone's settings as the last `preferences_down` left them,
-    /// and any rating the wrist's own End still owes. The routines, the settings
-    /// and the rating are empty on a fresh install, because all three only arrive
-    /// when the user asks the phone for them.
+    /// quick-log's synced food list, then the routines, the phone's settings as the
+    /// last `preferences_down` left them, and any rating the wrist's own End still
+    /// owes. The routines, the settings and the rating are empty on a fresh
+    /// install, because all three only arrive when the user asks the phone for
+    /// them.
     func restore() async {
         // A stranded workout must end before a restored session can open one.
         await workout.recoverInProgress()
         await engine.restore()
+        await nutrition.restore()
         await paths.restore()
         await preferences.restore()
         await rating.restore()
@@ -240,6 +255,11 @@ struct ContentView: View {
     /// list button opens it — the root hosts the one sheet both share.
     @State private var showingMenu = false
 
+    /// Whether the food quick-log sheet is up (D-2). The start screen's Log food
+    /// button opens it; the sheet is the root's, so a session starting or a rest
+    /// ending underneath it does not replace it.
+    @State private var showingFood = false
+
     var body: some View {
         Group {
             if host.rating.isPromptOwed {
@@ -276,6 +296,7 @@ struct ContentView: View {
                 WatchStartView(
                     paths: host.paths,
                     onSessionStarted: { _ in host.noteSurfaceChange() },
+                    onOpenNutrition: { showingFood = true },
                     onRequestSync: { Task { await host.requestSync() } },
                     phoneReachability: host.phoneReachability,
                     revision: host.revision
@@ -289,6 +310,13 @@ struct ContentView: View {
         // D-3114: one sheet, on the root, so the rest↔logging switch and a rest
         // ending underneath it both leave it alone.
         .menuSheet(host, menu: menuState, isPresented: $showingMenu)
+        // D-2: the start screen's way into the quick-log. Its own sheet, on the
+        // root, so the surface is the one the phone's foods landed in.
+        .sheet(isPresented: $showingFood) {
+            NavigationStack {
+                WatchNutritionView(model: WatchNutritionModel(state: host.nutrition))
+            }
+        }
         .task {
             await host.restore()
         }
@@ -377,6 +405,7 @@ private extension View {
             WatchMenuView(
                 state: menu,
                 revision: host.revision,
+                nutrition: host.nutrition,
                 onClose: {
                     isPresented.wrappedValue = false
                     host.noteSurfaceChange()

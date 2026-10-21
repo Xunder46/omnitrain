@@ -273,6 +273,7 @@ Future<WatchSyncGraph?> createWatchSync({
     transport: resolved,
     repository: repository,
     settings: settingsState,
+    foodLibrary: foodLibraryState,
     clock: clock,
   );
   // Built after the mirror, from the same repository the graph already holds:

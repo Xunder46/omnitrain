@@ -215,6 +215,11 @@ public enum WatchMenuCopy {
     /// title bar.
     public static let addExerciseTitle = "Add Exercise"
 
+    /// The menu's way into the food quick-log, equal to
+    /// `WatchStartView.logFoodLabel`: the two surfaces offer the same phrase,
+    /// and the start screen's button is the one the two must agree on.
+    public static let logFoodLabel = "Log food"
+
     /// Said in place of rows when the phone has sent no exercise down yet.
     public static let addExerciseEmpty = "No exercises yet. Sync with your phone."
 

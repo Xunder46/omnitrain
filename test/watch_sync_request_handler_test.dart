@@ -12,6 +12,14 @@
 //   S-3857 a phone with no capable exercise sends no batch → `S-3857 ...`
 //          (the ratified D-3831 behaviour the review asked to pin)
 //
+// Plan: `docs/plans/2026-10-21-49a-phone-sends-foods-plan/` (D-1..D-3).
+// Scenario mapping:
+//   S-7101 preferences, routines, foods, then the batches → `S-7101 ...`
+//   S-7102 the food list's order and values, and it validates → `S-7102 ...`
+//   S-7103 the version early return does not skip the foods → `S-7103 ...`
+//   S-7104 a phone with no foods sends no foods frame → `S-7104 ...`
+//   S-7105 an undelivered foods frame does not stop the batches → `S-7105 ...`
+//
 // The transport here is a recorder, not the graph: this file is about what the
 // handler sends, and in what order. That the graph's inbound handler hands the
 // frame's version on is S-3855 in `test/watch_session_projection_test.dart`.
@@ -22,6 +30,7 @@ import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/utils/watch_reference_sync.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/watch/watch_sync_request_handler.dart';
@@ -40,9 +49,15 @@ class _RecordingTransport implements WatchMirrorTransport {
   /// The `batchIndex` the radio refuses, or null when it carries every batch.
   int? undeliveredBatchIndex;
 
+  /// Whether the radio refuses the `foods_down` frame (S-7105).
+  bool undeliveredFoods = false;
+
   @override
   Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
+    if (envelope['type'] == 'foods_down' && undeliveredFoods) {
+      return WatchDelivery.undelivered;
+    }
     if (envelope['type'] == 'exercises_down' && undeliveredBatchIndex != null) {
       final payload = asObject(envelope['payload']);
       if (payload['batchIndex'] == undeliveredBatchIndex) {
@@ -82,28 +97,116 @@ class _RecordingTransport implements WatchMirrorTransport {
   }
 }
 
+/// A frame with the two values that move between identical sends removed, so
+/// two builds over the same inputs can be compared (S-7102).
+Map<String, Object?> _withoutClockFields(Map<String, Object?> frame) {
+  final payload = Map<String, Object?>.from(asObject(frame['payload']))
+    ..remove('generatedAt');
+  return (Map<String, Object?>.from(frame)
+        ..remove('messageId')
+        ..remove('sentAt'))
+      ..['payload'] = payload;
+}
+
+/// A food as the phone's library holds it, with values unlike the defaults.
+Food _food(
+  String id,
+  String name,
+  String groupId, {
+  double protein = 0,
+  double carbs = 0,
+  double fat = 0,
+  double? lastAmountConsumed,
+}) => Food(
+  id: id,
+  name: name,
+  groupId: groupId,
+  unitType: FoodUnitType.grams,
+  referenceAmount: 120,
+  referenceLabel: 'g',
+  protein: protein,
+  carbs: carbs,
+  fat: fat,
+  lastAmountConsumed: lastAmountConsumed,
+  createdAtMs: _now.millisecondsSinceEpoch,
+  updatedAtMs: _now.millisecondsSinceEpoch,
+);
+
 void main() {
   late MockWorkoutRepository repository;
   late SettingsState settings;
   late _RecordingTransport transport;
   late WatchSyncRequestHandler handler;
 
+  WatchSyncRequestHandler handlerFor(FoodLibraryState library) =>
+      WatchSyncRequestHandler(
+        mirror: LiveSessionMirrorState(
+          transport: transport,
+          snapshot: watchSessionPlaceholder,
+        ),
+        transport: transport,
+        repository: repository,
+        settings: settings,
+        foodLibrary: library,
+        clock: () => _now,
+      );
+
   setUp(() async {
     repository = MockWorkoutRepository();
     await repository.initialize();
     settings = SettingsState(repository, fakePreferencesService());
     transport = _RecordingTransport();
-    handler = WatchSyncRequestHandler(
-      mirror: LiveSessionMirrorState(
-        transport: transport,
-        snapshot: watchSessionPlaceholder,
-      ),
-      transport: transport,
-      repository: repository,
-      settings: settings,
-      clock: () => _now,
-    );
+    handler = handlerFor(FoodLibraryState(repository));
   });
+
+  /// A library holding four foods in two seeded categories, created out of
+  /// order so the Foods-I-Eat order is not the insertion order.
+  Future<FoodLibraryState> libraryWithFoods() async {
+    await repository.createFood(
+      _food(
+        'food-protein-lamb',
+        'Lamb Loin',
+        'food-group-proteins',
+        protein: 25,
+        fat: 12,
+      ),
+    );
+    await repository.createFood(
+      _food(
+        'food-veg-broccoli',
+        'Broccoli Crowns',
+        'food-group-vegetables',
+        protein: 3,
+        carbs: 7,
+        fat: 0.4,
+      ),
+    );
+    await repository.createFood(
+      _food(
+        'food-protein-beef',
+        'Beef Tenderloin',
+        'food-group-proteins',
+        protein: 30,
+        fat: 8,
+        lastAmountConsumed: 150,
+      ),
+    );
+    await repository.createFood(
+      _food(
+        'food-veg-asparagus',
+        'Asparagus Spears',
+        'food-group-vegetables',
+        protein: 2,
+        carbs: 4,
+        fat: 0.2,
+      ),
+    );
+
+    final library = FoodLibraryState(repository);
+    await library.loadFoods();
+    await library.loadFoodGroups();
+    return library;
+  }
 
   /// The version the phone would name for the exercise list it holds right now.
   Future<String> currentVersion() async {
@@ -304,6 +407,164 @@ void main() {
       final payload = sentPreferences();
       expect(payload['weightUnit'], 'kg');
       expect(payload['distanceUnit'], 'km');
+    });
+  });
+
+  group('S-7101…S-7105 the phone sends the food list with the routines', () {
+    test('S-7101 the preferences, the routines, the foods, then the exercise '
+        'batches travel in that order', () async {
+      final answer = handlerFor(await libraryWithFoods());
+
+      expect(await answer.handle(WatchTransportRequest.routines), isTrue);
+
+      expect(
+        transport.types.take(3),
+        ['preferences_down', 'routines_down', 'foods_down'],
+        reason:
+            'S-7101 the preferences lead, then the routines, then the foods; '
+            'the exercise list follows them',
+      );
+      expect(
+        transport.types.skip(3),
+        everyElement('exercises_down'),
+        reason: 'S-7101 only the exercise batches follow the food list',
+      );
+      expect(
+        transport.batchIndices,
+        [0, 1, 2],
+        reason: 'S-7101 the food list does not displace the exercise batches',
+      );
+    });
+
+    test('S-7102 the foods travel in the Foods-I-Eat order, with the phone\'s '
+        'own serving values, and the frame validates', () async {
+      final library = await libraryWithFoods();
+      final answer = handlerFor(library);
+
+      expect(await answer.handle(WatchTransportRequest.routines), isTrue);
+
+      final frame = transport.ofType('foods_down').single;
+      expect(
+        loadProtocolValidator().validateEnvelope(frame),
+        isEmpty,
+        reason: 'S-7102 the frame is one the protocol schema admits',
+      );
+
+      final payload = asObject(frame['payload']);
+      final rows = objectsOf(payload['foods']);
+      expect(
+        [for (final row in rows) row['foodId']],
+        [
+          'food-protein-beef',
+          'food-protein-lamb',
+          'food-veg-asparagus',
+          'food-veg-broccoli',
+        ],
+        reason:
+            'S-7102 the categories and the foods inside them are alphabetical, '
+            'not in the order the foods were created',
+      );
+
+      final beef = rows.first;
+      expect(beef['name'], 'Beef Tenderloin');
+      expect(
+        beef['caloriesPerServing'],
+        192,
+        reason:
+            'S-7102 the calories come from the macros the phone holds: '
+            '30 g protein and 8 g fat is 30 * 4 + 8 * 9',
+      );
+      expect(
+        beef['defaultServings'],
+        1.25,
+        reason: 'S-7102 150 g of a food whose serving is 120 g is 1.25',
+      );
+      expect(
+        {for (final row in rows) row['foodId']},
+        {
+          'food-protein-beef',
+          'food-protein-lamb',
+          'food-veg-asparagus',
+          'food-veg-broccoli',
+        },
+      );
+
+      final expected = WatchReferenceSync.buildFoodsDown(
+        foods: library.foods,
+        groups: library.foodGroups,
+        generatedAt: _now,
+      );
+      expect(
+        _withoutClockFields(frame),
+        _withoutClockFields(expected),
+        reason:
+            'S-7102 the handler and buildFoodsDown over the same inputs are '
+            'the same message',
+      );
+    });
+
+    test('S-7103 a wrist that holds the exercise list still receives the '
+        'foods', () async {
+      final version = await currentVersion();
+      final answer = handlerFor(await libraryWithFoods());
+
+      expect(
+        await answer.handle(
+          WatchTransportRequest.routines,
+          exercisesVersion: version,
+        ),
+        isTrue,
+      );
+
+      expect(
+        transport.types,
+        ['preferences_down', 'routines_down', 'foods_down'],
+        reason:
+            'S-7103 the version early return sits after the foods, so the '
+            'foods still travel and no exercise batch does',
+      );
+    });
+
+    test('S-7104 a phone with no foods sends no foods frame and still sends '
+        'the rest', () async {
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+
+      expect(
+        transport.ofType('foods_down'),
+        isEmpty,
+        reason: 'S-7104 an empty food list is not a message to send (D-2)',
+      );
+      expect(
+        transport.types.take(2),
+        ['preferences_down', 'routines_down'],
+        reason: 'S-7104 the rest of the answer still travels',
+      );
+      expect(
+        transport.batchIndices,
+        [0, 1, 2],
+        reason: 'S-7104 the exercise batches are untouched',
+      );
+    });
+
+    test('S-7105 a foods frame the radio refuses does not stop the exercise '
+        'batches', () async {
+      transport.undeliveredFoods = true;
+      final answer = handlerFor(await libraryWithFoods());
+
+      expect(await answer.handle(WatchTransportRequest.routines), isTrue);
+
+      expect(
+        transport.ofType('foods_down'),
+        hasLength(1),
+        reason: 'S-7105 the foods were attempted once',
+      );
+      expect(
+        transport.batchIndices,
+        [0, 1, 2],
+        reason:
+            'S-7105 a refused foods frame is not a reason to hold back the '
+            'exercise list',
+      );
     });
   });
 }

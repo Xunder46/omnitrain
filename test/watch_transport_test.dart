@@ -584,16 +584,17 @@ void main() {
 
       final types = [for (final frame in link.phone.sent) frame['type']];
       expect(
-        types.take(2),
-        ['preferences_down', 'routines_down'],
+        types.take(3),
+        ['preferences_down', 'routines_down', 'foods_down'],
         reason: 'S-253 the setting always travels, and a phone holding no '
             'routine still says so rather than letting the wrist keep stale '
-            'ones (D-3830)',
+            'ones (D-3830); the food list follows the routines (49a, D-2)',
       );
       expect(
-        types.skip(2),
+        types.skip(3),
         everyElement('exercises_down'),
-        reason: 'D-3834 the whole exercise list travels, after the routines',
+        reason: 'D-3834 the whole exercise list travels, after the routines '
+            'and the foods',
       );
       expect(
         types.skip(2),

@@ -25,6 +25,7 @@ import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/utils/watch_reference_sync.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
 import 'package:omnitrain/state/watch/watch_sync_request_handler.dart';
@@ -140,6 +141,7 @@ void main() {
         transport: transport,
         repository: repository,
         settings: settings,
+        foodLibrary: FoodLibraryState(repository),
         clock: () => _now,
       );
 

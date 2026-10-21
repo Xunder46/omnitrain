@@ -128,6 +128,11 @@ public struct WatchStartView: View {
                 }
                 .buttonStyle(.bordered)
 
+                if let onOpenNutrition {
+                    Button(Self.logFoodLabel, action: onOpenNutrition)
+                        .buttonStyle(.bordered)
+                }
+
                 if let onRequestSync, phoneStatus.offersSync {
                     Button(Self.syncLabel, action: onRequestSync)
                         .buttonStyle(.bordered)
@@ -135,11 +140,6 @@ public struct WatchStartView: View {
 
                 // D-8: said only once the radio has observed it.
                 WatchPhoneStatusHint(status: phoneStatus)
-
-                if let onOpenNutrition {
-                    Button(Self.logFoodLabel, action: onOpenNutrition)
-                        .buttonStyle(.bordered)
-                }
             }
             .padding(Self.surfaceInset)
         }

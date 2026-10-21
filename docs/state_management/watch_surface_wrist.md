@@ -268,6 +268,32 @@ Both wrist clients tap at each multiple of the interval the phone sent in
 sound on the wrist (`WatchRestPingTests.testS241AnIntervalTapsAtItsMultiples
 AndNowhereElse`; Dart twin, `test/watch_rest_ping_test.dart`, S-241).
 
+**Food is reachable with or without a workout, and the phone's rest arrives.**
+The watch app builds one `WatchNutritionState` for its life — `WatchAppHost`'s
+`nutrition`, handed to the sync orchestrator and restored at launch — the start
+screen shows `Log food` (`WatchStartView.logFoodLabel`) directly under Free
+workout and opens `WatchNutritionView` in a sheet, and the session menu carries
+a `Log food` row (`WatchMenuCopy.logFoodLabel`, the same words) between Add
+Exercise and End Session that pushes the same screen; the row is never
+disabled, because food is independent of the effort. Verified by
+`WatchNutritionWiringSourceTests.swift` (S-7201..S-7203 and S-7205, source
+scans; the start screen's button was seen on the 40 mm simulator); S-7204 is
+the existing `WatchNutritionQuickLogTests` and the S-3103 guards run unchanged,
+not rewritten. A restore that runs while a `foods_down` is applied keeps the
+newer list over the older stored row
+(`WatchNutritionQuickLogTests.testS7206ARestoreCannotPutTheStoredListOverANewerOne`,
+S-7206).
+
+The phone's own rest reaches the wrist too: `WatchTimerPush` sends the phone's
+open rest as a `rest` timer counting from the instant the set was logged, a
+pause on the phone's chip freezes the wrist's count, and the wrist's own rest
+started within 2000 ms of the phone's is the same rest and is not echoed back
+(`test/watch_timer_push_test.dart`, groups `S-7301` to `S-7310`). Next on the
+wrist's rest screen ends the phone's rest as well, whichever device logged the
+set: the importer resolves the `rest` event's `afterEntryId` for a phone-logged
+entry (`test/watch_session_rest_phone_entries_test.dart`, S-7401..S-7405).
+[Rest Tracking](../rest_tracking.md) carries the cross-device rules.
+
 The same copy carries the phone's theme accent (`accentColorHex`, `#RRGGBB`), and
 the wrist keeps it for the look it renders: an accent is worn only when it clears
 the contrast floor both clients share — `minContrastAgainstBlack`, 3.0 — and it

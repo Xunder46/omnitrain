@@ -219,14 +219,23 @@ wrist re-offers what is owed, never itself`, `S-205 (S-209) the wrist's own set
 arrives while a deletion is owed: it is applied, never echoed, and the deletion
 leaves after it`).
 
-`WatchTimerPush` (`lib/state/watch/watch_timer_push.dart`) is the work-timer
+`WatchTimerPush` (`lib/state/watch/watch_timer_push.dart`) is the timer
 sibling of the auto push: the same bound `WorkoutState`, trailing debounce and
 one-drain shape, but each pass composes the session's in-progress work timers
-and sends only what the wrist does not already hold, as one `timer_state` frame
-through `LiveSessionMirrorState.sendTimers` — the wrist's earlier start wins, a
-finished interval is cleared once, and a replacement clears first. Built in
+and the phone's open rest — read through `WorkoutState.inProgressRest()`
+(`TimerManager.inProgressRest`, the newest open `EntryRest` across the
+efforts) — and sends only what the wrist does not already hold, as one
+`timer_state` frame through `LiveSessionMirrorState.sendTimers` — the wrist's
+earlier start wins for the work kinds, a finished interval is cleared once, and
+a replacement clears first. The rest travels as a `rest` timer with no slot and
+no planned length (a rest is a count-up and belongs to no slot), running or
+paused with its pause bookkeeping, and a rest the phone no longer holds open
+goes out as `{rest: null}`; a wrist rest started within 2000 ms of the phone's
+is the same rest and is not echoed back, while one outside that tolerance is a
+different rest and is sent. Built in
 `createWatchSync` and returned as `WatchSyncGraph.timerPush`. Verified by
-`test/watch_timer_push_test.dart` (the `S-6211` to `S-6217` groups).
+`test/watch_timer_push_test.dart` (the `S-6211` to `S-6217` groups; the rest,
+`S-7301` to `S-7310`).
 
 `WatchTimerAdoption` (`lib/state/watch/watch_timer_adoption.dart`) is the
 receiving sibling: built in `createWatchSync` as `WatchSyncGraph.timerAdoption`,
@@ -447,9 +456,16 @@ frame, and which persists that instant under the repository key
 
 Answers the frames that are requests rather than protocol messages: `routines`
 is answered with `preferences_down` first and always, then with `routines_down`,
-then with the exercise list as `exercises_down` batches — unless the request
+then with the food list as `foods_down` — only when the phone holds foods (the
+schema requires at least one, so a phone with none sends no foods frame and the
+wrist keeps the list it has) — then with the exercise list as `exercises_down`
+batches — unless the request
 names the version of the list the phone would send, in which case the batches
-are omitted and only the preferences and the routines travel. All of it is built
+are omitted and only the preferences and the routines travel. The foods sit
+before that early return, so a wrist that already holds the exercise list still
+receives them, and a refused foods frame does not stop the batches (the next
+sync re-sends). The handler takes the library as a required `foodLibrary`
+(`FoodLibraryState`). All of it is built
 through `WatchReferenceSync`; `snapshot` re-asserts the phone's session. It is
 separate from `WatchIncomingRouter`
 because the two answer different kinds of frame, and merging them would make a
@@ -467,7 +483,8 @@ and one holding no session answers a `snapshot` request with nothing: the wrist
 keeps the copy it has, and an empty answer would be a state it never asked for.
 
 Verified by `test/watch_transport_test.dart` (the `S-003` and `S-253` groups)
-and `test/watch_sync_request_handler_test.dart` (S-3850..S-3854).
+and `test/watch_sync_request_handler_test.dart` (S-3850..S-3854; the foods,
+group `S-7101…S-7105 the phone sends the food list with the routines`).
 
 ### `createWatchSync` — the phone's watch graph
 

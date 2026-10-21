@@ -11,8 +11,9 @@
 /// explicit that a request "is a transport concern and carries no message of its
 /// own".
 ///
-/// The routines and the exercise list are built here, on demand, and nowhere
-/// else: nothing on the phone answers a request the wrist has not made (D-7).
+/// The routines, the food list and the exercise list are built here, on
+/// demand, and nowhere else: nothing on the phone answers a request the wrist
+/// has not made (D-7).
 ///
 /// The same request is how the phone's settings reach the wrist: the phone
 /// never pushes, so every sync is answered with `preferences_down` first —
@@ -26,6 +27,7 @@ import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_transport.dart';
 import '../../core/utils/watch_reference_sync.dart';
 import '../../data/repositories/workout_repository.dart';
+import '../food_library_state.dart';
 import '../settings/settings_state.dart';
 import 'live_session_mirror_state.dart';
 
@@ -36,11 +38,13 @@ class WatchSyncRequestHandler {
     required WatchMirrorTransport transport,
     required WorkoutRepository repository,
     required SettingsState settings,
+    required FoodLibraryState foodLibrary,
     DateTime Function()? clock,
   }) : _mirror = mirror,
        _transport = transport,
        _repository = repository,
        _settings = settings,
+       _foodLibrary = foodLibrary,
        _clock = clock ?? _utcNow;
 
   static DateTime _utcNow() => DateTime.now().toUtc();
@@ -49,6 +53,7 @@ class WatchSyncRequestHandler {
   final WatchMirrorTransport _transport;
   final WorkoutRepository _repository;
   final SettingsState _settings;
+  final FoodLibraryState _foodLibrary;
   final DateTime Function() _clock;
 
   /// Answers [request], and reports whether it had an answer to give.
@@ -72,11 +77,17 @@ class WatchSyncRequestHandler {
     }
   }
 
-  /// The answer to the wrist's "sync routines": the preferences, always and
-  /// first — the settings the wrist honours and the accent of the theme the
-  /// phone is wearing — then the routines, then the phone's exercise list as
+  /// The answer to the wrist's "sync routines", in this order: the
+  /// preferences, always and first — the settings the wrist honours and the
+  /// accent of the theme the phone is wearing — then the routines, then the
+  /// food list, then the phone's exercise list as
   /// [WatchReferenceSync.buildExercisesDown] batches, unless the wrist already
   /// holds the version it named (D-3834).
+  ///
+  /// The foods travel before the version check, so a wrist that holds the
+  /// exercise list still receives them; a phone with no foods sends no food
+  /// frame at all, and a refused one does not stop the batches (49a, D-1,
+  /// D-2).
   ///
   /// The batches go one at a time, in index order, and stop at the first the
   /// radio did not carry: the wrist assembles a complete list or keeps the one
@@ -106,6 +117,16 @@ class WatchSyncRequestHandler {
         generatedAt: _clock(),
       ),
     );
+
+    if (_foodLibrary.foods.isNotEmpty) {
+      await _transport.send(
+        WatchReferenceSync.buildFoodsDown(
+          foods: _foodLibrary.foods,
+          groups: _foodLibrary.foodGroups,
+          generatedAt: _clock(),
+        ),
+      );
+    }
 
     final batches = await WatchReferenceSync.buildExercisesDown(
       repository: _repository,

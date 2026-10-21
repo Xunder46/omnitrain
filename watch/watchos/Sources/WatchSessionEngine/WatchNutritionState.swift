@@ -114,7 +114,13 @@ public final class WatchNutritionState {
     /// suspension: what comes back is what the phone last sent.
     public func restore() async {
         let contents = await store.readAll()
-        catalog = contents.foodCatalogs.max { $0.sequence < $1.sequence }
+        let stored = contents.foodCatalogs.max { $0.sequence < $1.sequence }
+        // A foods_down applied while this read was in flight is newer than
+        // what an older stored row says: the stored catalog is adopted only
+        // when nothing newer is already held.
+        if let stored, catalog.map({ stored.generatedAt >= $0.generatedAt }) ?? true {
+            catalog = stored
+        }
         applyCatalog()
     }
 
