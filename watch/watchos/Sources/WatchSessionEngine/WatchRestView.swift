@@ -108,6 +108,7 @@ public struct WatchRestView: View {
         Button {
             Task {
                 await state.endRest()
+                haptics.playNext()
                 onNext()
             }
         } label: {

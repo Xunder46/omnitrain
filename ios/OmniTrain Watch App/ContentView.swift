@@ -295,6 +295,7 @@ struct ContentView: View {
                                     showingMenu = true
                                 } label: {
                                     Image(systemName: "list.bullet")
+                                        .accessibilityLabel("Exercises")
                                 }
                             }
                         }
@@ -396,6 +397,7 @@ struct ContentView: View {
                             showingMenu = true
                         } label: {
                             Image(systemName: "list.bullet")
+                                .accessibilityLabel("Exercises")
                         }
                     }
                 }

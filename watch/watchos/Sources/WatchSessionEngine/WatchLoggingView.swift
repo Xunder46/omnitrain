@@ -41,6 +41,17 @@ public struct WristHaptics: WatchHaptics {
     public func playRestPing() {
         WKInterfaceDevice.current().play(.click)
     }
+
+    /// A log the wrist recorded (plan 51e D-1).
+    public func playLogged() {
+        WKInterfaceDevice.current().play(.success)
+    }
+
+    /// Next on the rest screen: lighter than the log's tap and unlike the rest
+    /// ping's click.
+    public func playNext() {
+        WKInterfaceDevice.current().play(.directionUp)
+    }
 }
 
 public struct WatchLoggingView: View {

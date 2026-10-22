@@ -170,8 +170,8 @@ public final class WatchLoggingModel: ObservableObject {
     public func primaryAction() async {
         if isAwaitingStart {
             await state.startWork()
-        } else {
-            _ = try? await state.log()
+        } else if (try? await state.log()) != nil {
+            haptics.playLogged()
         }
         poll()
     }
@@ -201,7 +201,9 @@ public final class WatchLoggingModel: ObservableObject {
     }
 
     public func log() async {
-        _ = try? await state.log()
+        if (try? await state.log()) != nil {
+            haptics.playLogged()
+        }
         poll()
     }
 }
@@ -211,6 +213,8 @@ public final class WatchLoggingModel: ObservableObject {
 public final class RecordingHaptics: WatchHaptics {
     public private(set) var milestones: [WatchTimerMilestone] = []
     public private(set) var restPings = 0
+    public private(set) var logged = 0
+    public private(set) var nexts = 0
 
     public init() {}
 
@@ -220,6 +224,14 @@ public final class RecordingHaptics: WatchHaptics {
 
     public func playRestPing() {
         restPings += 1
+    }
+
+    public func playLogged() {
+        logged += 1
+    }
+
+    public func playNext() {
+        nexts += 1
     }
 }
 
@@ -232,4 +244,10 @@ public protocol WatchHaptics {
     /// The rest ping: a rest counts up and is owed nothing when it ends, so this
     /// is its own cue rather than a `WatchTimerMilestone` case (D-244, D-251).
     func playRestPing()
+
+    /// A log the wrist recorded: one success tap (plan 51e D-1).
+    func playLogged()
+
+    /// Next on the rest screen, back to logging: one light directional tap.
+    func playNext()
 }

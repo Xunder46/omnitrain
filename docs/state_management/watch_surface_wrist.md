@@ -338,6 +338,20 @@ running rest logs (`WatchMenuTests.testS3103ATheRestScreenCarriesTheMenuButton`,
 `…testS3102AAddingAnExerciseDuringARestKeepsTheRestRunning`); the rest ends only
 through Next or the next Log (`…testS3111ALogClosesTheRunningRestAndStartsTheNext`).
 
+**A recorded log is confirmed with one tap.** The wrist's haptics are the rest
+ping (below), the pager's failure tap, and three confirmations: a log the wrist
+recorded — through the one button (`WatchLoggingModel.primaryAction()` and
+`log()`) or the food screen's Log — plays one success tap, and Next on the rest
+screen plays one lighter directional tap (`WristHaptics` maps them to `.success`
+and `.directionUp`). The tap is guarded by the record: a refused log, and Start
+on a timed effort (starting is not logging), play nothing. Verified by
+`WatchLoggedHapticTests.testS7801ASetPlaysOneTapPerLoggedSet`,
+`…testS7802ATimedEffortStartsSilentlyAndLogsOnTheSecondTap`,
+`…testS7803LogPlaysTheTap`, `…testS7804ARefusedLogPlaysNothing` and the source
+guard `…testS7805TheSurfacesPlayTheTapsAndNameTheListButton`, which also holds
+that both toolbar list buttons (logging and rest screens) carry
+`.accessibilityLabel("Exercises")`.
+
 Both wrist clients tap at each multiple of the interval the phone sent in
 `preferences_down` (`restPingSeconds`) — one Rest Ping setting, silent, and no
 sound on the wrist (`WatchRestPingTests.testS241AnIntervalTapsAtItsMultiples

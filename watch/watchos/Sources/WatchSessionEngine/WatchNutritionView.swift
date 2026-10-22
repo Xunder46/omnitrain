@@ -21,6 +21,7 @@
 #if os(watchOS)
 
 import SwiftUI
+import WatchKit
 
 /// What the surface draws, and what a tap or a turn does to it. A small
 /// observable wrapper so the state itself stays testable without SwiftUI.
@@ -186,7 +187,12 @@ public struct WatchNutritionView: View {
     /// The primary action: a wrist log is one glance and one confirm.
     private var logButton: some View {
         Button {
-            Task { await model.log() }
+            Task {
+                // Plan 51e D-3: a food the wrist recorded earns the same tap as a set.
+                if await model.log() != nil {
+                    WKInterfaceDevice.current().play(.success)
+                }
+            }
         } label: {
             Text("Log").frame(maxWidth: .infinity)
         }
