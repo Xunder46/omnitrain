@@ -254,8 +254,11 @@ class WatchSessionAdoptionBridge {
             await _repository.getEffortObservations(effort.id),
           );
           if (groups.isNotEmpty) {
+            final hasLoad = ((slot['capabilities'] as List?) ?? const [])
+                .contains(ExerciseCapability.load);
             slot['plannedSets'] = [
-              for (final group in groups) _plannedSetOf(group),
+              for (final group in groups)
+                _plannedSetOf(group, exerciseHasLoad: hasLoad),
             ];
           }
         }
@@ -310,6 +313,8 @@ class WatchSessionAdoptionBridge {
           sessionExerciseId: effort.id,
           exerciseId: exerciseId,
           groups: groups,
+          exerciseHasLoad: ((slot['capabilities'] as List?) ?? const [])
+              .contains(ExerciseCapability.load),
           wristLoggedAtMs: _stampsOf(rows, PhoneEntries.setKind),
           loggedNumbers: EntryRows.loggedSetNumbersOf(
             groups,
@@ -578,10 +583,16 @@ class WatchSessionAdoptionBridge {
   /// floor is omitted for the same reason an entry omits it: a value the wire
   /// cannot carry is left out rather than clamped, and a rejected planned set
   /// would reject the whole snapshot (D-58).
-  static Map<String, Object?> _plannedSetOf(SetRows group) {
+  static Map<String, Object?> _plannedSetOf(
+    SetRows group, {
+    required bool exerciseHasLoad,
+  }) {
     final set = group.entry;
     final reps = (set['reps'] as int?) ?? 0;
-    final weightKg = (set['weight'] as double?) ?? 0.0;
+    // Without `load` the planned load is the extra-weight row (52c D-4).
+    final weightKg =
+        ((exerciseHasLoad ? set['weight'] : set['extra-weight']) as double?) ??
+        0.0;
     return <String, Object?>{
       if (reps >= 1) 'reps': reps,
       if (weightKg != 0 && weightKg >= WireLimits.minLoadKg)

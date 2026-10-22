@@ -67,6 +67,7 @@ abstract final class PhoneEntries {
     required List<SetRows> groups,
     required List<int> wristLoggedAtMs,
     required Set<int> loggedNumbers,
+    required bool exerciseHasLoad,
   }) {
     final claimed = claimedBy(groups: groups, wristLoggedAtMs: wristLoggedAtMs);
     final entries = <Map<String, Object?>>[];
@@ -77,6 +78,7 @@ abstract final class PhoneEntries {
         sessionExerciseId: sessionExerciseId,
         exerciseId: exerciseId,
         group: group,
+        exerciseHasLoad: exerciseHasLoad,
       );
       if (entry != null) entries.add(entry);
     }
@@ -434,17 +436,22 @@ abstract final class PhoneEntries {
   ///
   /// A weight of zero (or no weight at all) is carried without a `loadKg` key:
   /// the wire keeps "no load" and "load 0" indistinguishable, as it always has.
-  /// A set's added weight is not sent either: the wire's extra load is a hold's.
+  /// On an exercise without `load` the set's load is its added (or, negative,
+  /// assisting) weight, kept in the extra-weight row: that row's value is what
+  /// `loadKg` carries there (plan 52c D-4).
   static Map<String, Object?>? _entry({
     required String sessionExerciseId,
     required String exerciseId,
     required SetRows group,
+    required bool exerciseHasLoad,
   }) {
     final set = group.entry;
     final reps = (set['reps'] as int?) ?? 0;
     if (reps < 1) return null;
 
-    final weightKg = (set['weight'] as double?) ?? 0.0;
+    final weightKg =
+        ((exerciseHasLoad ? set['weight'] : set['extra-weight']) as double?) ??
+        0.0;
     if (weightKg < WireLimits.minLoadKg) return null;
 
     final entryId = 'entry-$sessionExerciseId-${group.number}';

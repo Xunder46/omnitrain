@@ -1376,15 +1376,21 @@ class _Pass {
     final at = entry.loggedAtMs;
     final entryIndex = rowNumber ?? index;
     final List<EffortObservation> observations;
+    // Plan 52c D-1: on an exercise without `load` the wire's `loadKg` is the
+    // set's added (or, negative, assisting) weight, which the phone keeps in the
+    // extra-weight row, never in the weight row.
+    var exerciseHasLoad = true;
     switch (entry.wireKind) {
       case WatchInboxEntry.kindSet:
         final exercise = await _repository.getExerciseById(key.exerciseId);
+        exerciseHasLoad = exercise?.capabilities.contains('load') ?? false;
         observations = LoggedEntryRows.setObservations(
           effortId: effortId,
           entryIndex: index,
           reps: entry.reps!,
-          weightKg: entry.loadKg ?? 0.0,
-          exerciseHasLoad: exercise?.capabilities.contains('load') ?? false,
+          weightKg: exerciseHasLoad ? (entry.loadKg ?? 0.0) : 0.0,
+          exerciseHasLoad: exerciseHasLoad,
+          extraWeightKg: exerciseHasLoad ? 0.0 : (entry.loadKg ?? 0.0),
           atMs: at,
         );
       case WatchInboxEntry.kindTimed:
@@ -1416,7 +1422,11 @@ class _Pass {
     }
     for (final observation in observations) {
       await _repository.createObservation(
-        _stampedByCorrections(observation, entry),
+        _stampedByCorrections(
+          observation,
+          entry,
+          exerciseHasLoad: exerciseHasLoad,
+        ),
       );
     }
     changed = true;
@@ -1524,9 +1534,19 @@ class _Pass {
     switch (entry.wireKind) {
       case WatchInboxEntry.kindSet:
         if (index == null) return;
-        for (final (key, metricKey) in const [
+        // A set of an exercise without `load` keeps its load in the extra-weight
+        // row (52c D-3).
+        final extraId = LoggedEntryRows.observationId(
+          effortId,
+          index,
+          'extra-weight',
+        );
+        final hasExtra = (await _repository.getEffortObservations(
+          effortId,
+        )).any((o) => o.id == extraId);
+        for (final (key, metricKey) in [
           ('reps', 'reps'),
-          ('loadKg', 'weight'),
+          ('loadKg', hasExtra ? 'extra-weight' : 'weight'),
         ]) {
           if (!fields.contains(key) || !entry.correctedAtMs.containsKey(key)) {
             continue;
@@ -1589,11 +1609,14 @@ class _Pass {
   /// the same stamp whether the correction arrived before or after the import.
   static EffortObservation _stampedByCorrections(
     EffortObservation row,
-    _Entry entry,
-  ) {
+    _Entry entry, {
+    bool exerciseHasLoad = true,
+  }) {
+    // The load's row is `weight` with `load`, `extra-weight` without (52c D-1).
     final field = switch (row.metricId) {
       MetricIds.reps => 'reps',
-      MetricIds.weight => 'loadKg',
+      MetricIds.weight => exerciseHasLoad ? 'loadKg' : null,
+      MetricIds.extraWeight => exerciseHasLoad ? null : 'loadKg',
       _ => null,
     };
     if (field == null || !entry.correctedAtMs.containsKey(field)) return row;
@@ -1854,15 +1877,27 @@ class _EffortRows {
     final index = indexOf(entry);
     if (index == null || (_instancesAt[index] ?? 0) != 0) return null;
     final rows = _byIndex[index] ?? const <EffortObservation>[];
-    return rows.every((row) => _holdsWhatItWrites(row, entry)) ? index : null;
+    // A position written for an exercise without `load` has an extra-weight
+    // row, which is how the check knows where the load went (52c D-2).
+    final hasExtra = rows.any((row) => row.metricId == MetricIds.extraWeight);
+    return rows.every(
+          (row) => _holdsWhatItWrites(row, entry, hasExtra: hasExtra),
+        )
+        ? index
+        : null;
   }
 
-  static bool _holdsWhatItWrites(EffortObservation row, _Entry entry) {
+  static bool _holdsWhatItWrites(
+    EffortObservation row,
+    _Entry entry, {
+    required bool hasExtra,
+  }) {
     if (row.createdAtMs != entry.loggedAtMs) return false;
     return switch (row.metricId) {
       MetricIds.reps => row.valueInt == entry.reps,
-      MetricIds.weight => row.valueReal == (entry.loadKg ?? 0.0),
-      MetricIds.extraWeight => row.valueReal == 0.0,
+      MetricIds.weight =>
+        row.valueReal == (hasExtra ? 0.0 : (entry.loadKg ?? 0.0)),
+      MetricIds.extraWeight => row.valueReal == (entry.loadKg ?? 0.0),
       _ => false,
     };
   }
