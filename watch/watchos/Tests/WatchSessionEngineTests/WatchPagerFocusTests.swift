@@ -21,8 +21,10 @@
 //  The harness below is a copy of `PagerHarness` (`WatchPagerModelTests.swift`).
 //  That harness has no `initialIndex`, so the current slot stays where its
 //  fixture puts it: index 1, the Bench Press. The plan's "B" — the slot a swipe
-//  focuses, a push-up with no `load` — sits at index 0, so its `fields` differ
-//  from the bench's.
+//  focuses, a push-up — sits at index 0. Since plan 52d a set effort offers a
+//  weight row whatever its capabilities say, so the two slots are told apart by
+//  name and by the bench's planned rows (the set caption), not by a missing
+//  weight row.
 //
 
 import Foundation
@@ -34,14 +36,17 @@ import XCTest
 private func focusSlot(
     _ id: String,
     _ name: String,
-    capabilities: [String] = ["reps", "sets", "load"]
+    capabilities: [String] = ["reps", "sets", "load"],
+    plannedSets: [[String: Any]]? = nil
 ) -> [String: Any] {
-    [
+    var slot: [String: Any] = [
         "sessionExerciseId": id,
         "exerciseId": "ex-\(id)",
         "name": name,
         "capabilities": capabilities,
     ]
+    if let plannedSets { slot["plannedSets"] = plannedSets }
+    return slot
 }
 
 /// One stored observation of the focus fixture: a set of five, no load.
@@ -132,8 +137,9 @@ final class FocusHarness {
         return self
     }
 
-    /// The ladder: Push-up (no `load`), Bench Press, Row — the session on the
-    /// Bench Press, index 1.
+    /// The ladder: Push-up, Bench Press (the phone planned its sets, so its
+    /// surface alone reads "Set 1 of 3"), Row — the session on the Bench Press,
+    /// index 1.
     @discardableResult
     func fixture() async -> FocusHarness {
         let at = instant("2026-09-02T07:15:00Z")
@@ -150,7 +156,11 @@ final class FocusHarness {
                     currentExerciseIndex: 1,
                     exercises: [
                         focusSlot("s1", "Push-up", capabilities: ["reps", "sets"]),
-                        focusSlot("s2", "Bench Press"),
+                        focusSlot(
+                            "s2",
+                            "Bench Press",
+                            plannedSets: [["reps": 10], ["reps": 10], ["reps": 8]]
+                        ),
                         focusSlot("s3", "Row"),
                     ]
                 )
@@ -207,6 +217,11 @@ final class WatchPagerFocusTests: XCTestCase {
             state.fields.first { $0.metricKey == WatchMetricKey.weight },
             "S-7911 the bench carries its weight row"
         )
+        XCTAssertEqual(
+            state.setCaption,
+            "Set 1 of 3",
+            "S-7911 the bench is the slot whose sets the phone planned"
+        )
 
         state.focusSlotId = "s1"
 
@@ -216,8 +231,8 @@ final class WatchPagerFocusTests: XCTestCase {
             "S-7911 the focus names the slot the surface shows"
         )
         XCTAssertNil(
-            state.fields.first { $0.metricKey == WatchMetricKey.weight },
-            "S-7911 the push-up has no load, so no weight row"
+            state.setCaption,
+            "S-7911 the push-up carries no planned rows, so no set caption"
         )
         XCTAssertNotNil(
             state.fields.first { $0.metricKey == WatchMetricKey.reps },
@@ -359,7 +374,11 @@ final class WatchPagerFocusTests: XCTestCase {
         _ = await harness.engine.createSession(
             modality: nil,
             exercises: [
-                focusSlot("w1", "Bench Press"),
+                focusSlot(
+                    "w1",
+                    "Bench Press",
+                    plannedSets: [["reps": 10], ["reps": 10], ["reps": 8]]
+                ),
                 [
                     "exerciseId": "ex-push",
                     "name": "Push-up",
@@ -378,6 +397,11 @@ final class WatchPagerFocusTests: XCTestCase {
             state.fields.first { $0.metricKey == WatchMetricKey.weight },
             "S-7914 the bench carries its weight row"
         )
+        XCTAssertEqual(
+            state.setCaption,
+            "Set 1 of 3",
+            "S-7914 the bench is the slot whose sets the phone planned"
+        )
 
         state.focusSlotId = "sx-ex-push"
 
@@ -387,8 +411,8 @@ final class WatchPagerFocusTests: XCTestCase {
             "S-7914 the focus reaches a slot through the id its exercise derives"
         )
         XCTAssertNil(
-            state.fields.first { $0.metricKey == WatchMetricKey.weight },
-            "S-7914 the push-up has no load, so no weight row"
+            state.setCaption,
+            "S-7914 the push-up carries no planned rows, so no set caption"
         )
         XCTAssertNotNil(
             state.fields.first { $0.metricKey == WatchMetricKey.reps },

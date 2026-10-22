@@ -257,6 +257,21 @@ status line — the set caption and the sensor readings joined by a dot ("Set 3
 of 5 · 143 bpm"), either half alone, or nothing
 (`WatchLoggingStatusTests.swift`, S-7513).
 
+Every set offers the weight tile, as on the phone, whether or not the exercise
+carries the `load` capability (a push-up, an ab wheel rollout included):
+`WatchLoggingState.capability(for:)` gates only distance now. The tile is the
+set's added weight or, negative, its assist, floored at
+`WatchMetricStepping.minimumLoadKg`; a log sends the dialled value as the set's
+`loadKg` and sends nothing at exactly 0, the next set starts where the last one
+logged, and a planned row starts the tile at its own `loadKg`. On the phone that
+`loadKg` lands in the set's extra-weight row and the phone's added weight comes
+back as `loadKg` (plan 52c; `docs/watch_session_sync.md`,
+`watch/sync_protocol/PROTOCOL.md`). A hold keeps only its extra-weight row and a
+timed effort has no weight tile. The Dart watch client under `lib/watch` still
+ties the weight row to `load` (`_capabilityFor` in
+`lib/watch/logging/watch_logging_state.dart`) — a known parity gap. Verified by
+`WatchBodyweightLoadTests.swift` (S-8101..S-8105).
+
 On a 40 mm watch the − / + capsules, the unit beside the value and the
 one-line name below the menu button (clearance `WatchLoggingView.titleClearance`)
 are meant to keep Log fully visible; the two-tile layout has not yet been

@@ -206,7 +206,7 @@ final class WatchCrownArmingTests: XCTestCase {
             harness,
             exercises: [
                 slot("sx-bench", capabilities: ["reps", "sets", "load"]),
-                slot("sx-pushup", capabilities: ["reps", "sets"]),
+                slot("sx-plank", capabilities: ["time", "hold"]),
             ]
         )
 
@@ -217,14 +217,14 @@ final class WatchCrownArmingTests: XCTestCase {
         model.arm(WatchMetricKey.weight)
         XCTAssertEqual(model.armedMetricKey, WatchMetricKey.weight)
 
-        await engine.selectExercise(slotId: "sx-pushup")
+        await engine.selectExercise(slotId: "sx-plank")
         XCTAssertNil(
             model.state.fields.first { $0.metricKey == WatchMetricKey.weight },
-            "a bodyweight movement has no load row"
+            "a hold has no set-weight row, only its extra weight"
         )
         XCTAssertEqual(
             model.armedMetricKey,
-            WatchMetricKey.reps,
+            WatchMetricKey.extraWeight,
             "the weight is no longer a row, so the first open row is armed"
         )
 

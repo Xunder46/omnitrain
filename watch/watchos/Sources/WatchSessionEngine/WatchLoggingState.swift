@@ -598,8 +598,10 @@ public final class WatchLoggingState {
     }
 
     /// The metrics the effort kind calls for, minus the ones the exercise
-    /// cannot fill: a bodyweight movement has no load row, a run that covers no
-    /// distance has no distance row.
+    /// cannot fill: a run that covers no distance has no distance row. A set
+    /// always offers its weight: on an exercise without `load` (a push-up, an
+    /// ab wheel) it is the added weight, or, negative, the assist, as on the
+    /// phone, which keeps it in the set's extra-weight row (plans 52c, 52d).
     ///
     /// Extra load is the exception: `EffortDefaults` gives a drill its
     /// extra-weight row whether or not the exercise carries `load`, because
@@ -617,7 +619,6 @@ public final class WatchLoggingState {
     /// The capability a metric depends on, or nil when it can always be offered.
     private func capability(for metricKey: String) -> String? {
         switch metricKey {
-        case WatchMetricKey.weight: return "load"
         case WatchMetricKey.distance: return "distance"
         default: return nil
         }

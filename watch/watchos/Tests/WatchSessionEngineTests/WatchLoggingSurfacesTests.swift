@@ -116,7 +116,7 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         XCTAssertEqual(value(surface, WatchMetricKey.weight), 82.5)
     }
 
-    func testS001ABodyweightSetCarriesNoLoadAtAll() async throws {
+    func testS001ABodyweightSetOffersAWeightThatCarriesNoLoadAtZero() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
         _ = await engine.createSession(
@@ -125,14 +125,19 @@ final class WatchLoggingSurfacesTests: XCTestCase {
         )
         let surface = WatchLoggingState(engine: engine, clock: harness.clock.call)
 
-        XCTAssertEqual(surface.fields.map(\.metricKey), [WatchMetricKey.reps])
+        XCTAssertEqual(
+            surface.fields.map(\.metricKey),
+            [WatchMetricKey.reps, WatchMetricKey.weight],
+            "a bodyweight set offers the added weight, as on the phone (plan 52d)"
+        )
         XCTAssertEqual(value(surface, WatchMetricKey.reps), 10)
+        XCTAssertEqual(value(surface, WatchMetricKey.weight), 0)
 
         try await surface.log()
 
         let logged = try loggedEvent(harness)
         XCTAssertTrue(logged.rejections.isEmpty, "\(logged.rejections)")
-        XCTAssertNil(logged.event["loadKg"])
+        XCTAssertNil(logged.event["loadKg"], "a weight left at 0 is no load claim")
     }
 
     // MARK: - S-062 zero still means "no load claim"
