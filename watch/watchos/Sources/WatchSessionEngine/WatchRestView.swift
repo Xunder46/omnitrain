@@ -58,18 +58,27 @@ public struct WatchRestView: View {
         // the ping is asked on.
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             let _ = pingIfOwed()
+            let labels = state.restLabels
             VStack(spacing: Self.surfaceInset) {
                 Text(WatchRestSurfaceCopy.restCaption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(state.exerciseName ?? "No exercise")
+                Text(labels.now)
                     .font(.caption2)
-                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
                 Text(elapsed)
                     .font(.title3)
                     .fontWeight(.bold)
                 Spacer(minLength: 0)
+                Text(labels.next)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                 nextButton
             }
             .padding(.horizontal, Self.surfaceInset)

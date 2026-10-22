@@ -302,7 +302,11 @@ the rest elapsed counts up and survives the screen turning off`, `S-162 Next end
 tap instant`, `S-163 logging ends a running rest first`), its Swift twin
 `WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`, and the logging path
 that starts the rest with no length (`test/watch_logging_timers_test.dart`, `S-160 a logged set
-starts a rest with no planned length`).
+starts a rest with no planned length`). Since plan 51b the wrist's rest screen
+also names what was just done and what is next — the set just logged, or the
+next set, exercise or period
+(`watch/watchos/Tests/WatchSessionEngineTests/WatchRestLabelsTests.swift`,
+S-7601..S-7611).
 
 A rest's timer is device-local: no length or countdown is shared between the devices — only the
 count-up's start and its pause travel — but the rest itself travels both ways while it runs. The

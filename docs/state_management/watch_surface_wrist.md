@@ -280,6 +280,31 @@ the phone
 starts a rest after a set alone (documented divergence, plan 23b D-3502); the
 rest screen is captioned
 "Rest" (`WatchTimedWorkTests.testS3409TheRestSurfaceNamesItself`).
+Since plan 51b the rest screen also says what was just done and what is next:
+the name line reads "Barbell Bench Press · Set 2 done" for a set effort that has
+logged sets, and the exercise name alone for a timed, hold or round effort or an
+exercise with nothing logged yet; a "Next: …" line above the Next button names
+the next set ("Next: Set 3 of 3" with a plan, "Next: Set 4" without), the next
+unfinished exercise ("Next: Barbell Back Squat · Set 1 of 2"), the next period
+("Next: Period 2") or "Nothing planned next"
+(`WatchRestLabelsTests.testS7601APlannedSetCountsTheLoggedSets`,
+`…testS7602ACompletePlanNamesTheLaterExercise`,
+`…testS7603TheForwardSearchWinsThenTheBackwardOne`,
+`…testS7604EverythingDoneSaysNothingPlannedNext`,
+`…testS7605AFreeSetCountsPastThePlan`,
+`…testS7606AJumpedToExerciseWithNothingLogged`,
+`…testS7607ARoundEffortNamesTheNextPeriod`,
+`…testS7608ATimedEffortNamesTheNextExerciseWithWork`,
+`…testS7609ThroughTheEngineThePhonesSetCounts`,
+`…testS7610TheRestViewReadsTheLabels`). The labels come from the pure function
+`deriveRestLabels` in `WatchRestLabels.swift` through
+`WatchLoggingState.restLabels`: a slot is done when all its planned sets are
+logged, or with no plan when anything is logged
+(`…testS7603cAnExerciseWithItsPlanExactlyLoggedIsSkipped`,
+`…testS7611OnlySetEntriesCountAsSets`); the next exercise is searched forward
+from the current one, then from the top; the phone's logged sets count like the
+wrist's. The Dart twin `lib/watch/logging/watch_rest_screen.dart` does not show
+these two lines yet (parity gap, plan 51b D-5).
 The rest screen carries the same list button the logging surface does, and both
 open the one session menu: a jump or an add made from there moves nothing the
 running rest logs (`WatchMenuTests.testS3103ATheRestScreenCarriesTheMenuButton`,

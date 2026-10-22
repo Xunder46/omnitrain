@@ -368,6 +368,27 @@ public final class WatchLoggingState {
         return activeElapsedMs(rest, now: clock()) / 1000
     }
 
+    /// What the rest screen says besides the count-up: the effort just done and
+    /// what is next (plan 51b). Derived on every read from the ladder and the
+    /// entries, so a set the phone logged during the rest is counted.
+    public var restLabels: WatchRestLabels {
+        guard let session = engine.session else {
+            return WatchRestLabels(
+                now: exerciseName ?? WatchRestLabelCopy.noExercise,
+                next: WatchRestLabelCopy.nothingNext
+            )
+        }
+        let kind = effortKind
+        let singular = roundsLabel.hasSuffix("s") ? String(roundsLabel.dropLast()) : roundsLabel
+        return deriveRestLabels(
+            sessionExercises: session.exercises,
+            entries: engine.entries,
+            currentIndex: session.currentExerciseIndex,
+            effortKind: kind,
+            nextRound: kind == WatchEffortKind.round ? "\(singular) \(nextRoundNumber)" : nil
+        )
+    }
+
     // MARK: - The work clock
 
     /// Whether the current effort is timed work rather than a set: the kinds
