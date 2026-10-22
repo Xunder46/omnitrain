@@ -59,6 +59,17 @@ final class WatchAppHost: ObservableObject {
     /// reach, which is what a flag starting `false` would say.
     @Published private(set) var phoneReachability = WatchPhoneReachability.unknown
 
+    /// The line the wrist shows when entries are waiting for the phone (plan 51d
+    /// D-3), read at render: the views re-run on `revision`, which every receipt
+    /// and every reachability change bumps.
+    var syncNotice: String? {
+        deriveSyncNotice(
+            pending: engine.unconfirmedObservations,
+            reachability: phoneReachability,
+            now: Date()
+        )
+    }
+
     private let orchestrator: WatchSyncOrchestrator
 
     /// The engine's sink holds this weakly, so the app has to hold it: without
@@ -299,7 +310,8 @@ struct ContentView: View {
                     onOpenNutrition: { showingFood = true },
                     onRequestSync: { Task { await host.requestSync() } },
                     phoneReachability: host.phoneReachability,
-                    revision: host.revision
+                    revision: host.revision,
+                    syncNotice: host.syncNotice
                 )
             }
         }
@@ -406,6 +418,7 @@ private extension View {
                 state: menu,
                 revision: host.revision,
                 nutrition: host.nutrition,
+                syncNotice: host.syncNotice,
                 onClose: {
                     isPresented.wrappedValue = false
                     host.noteSurfaceChange()

@@ -1441,6 +1441,14 @@ public final class WatchSessionEngine: ObservableObject {
             }
     }
 
+    /// The observations the phone has not acknowledged yet, as stored records:
+    /// what `pendingObservations()` rebuilds its messages from, here for the
+    /// wrist's "waiting for your phone" line (plan 51d D-2). A receipt
+    /// (`confirmObservations`) removes an entry from it.
+    public var unconfirmedObservations: [WatchObservationRecord] {
+        storedObservations.filter { $0.confirmedAt == nil }
+    }
+
     // MARK: - Session end
 
     /// Appends the `session_end` of a session the wrist created, the first time

@@ -33,6 +33,9 @@ public struct WatchMenuView: View {
     /// row off: a menu built without one has no surface to push (D-3).
     private let nutrition: WatchNutritionState?
 
+    /// The wrist's "N entries waiting for your phone" line, or nil (plan 51d).
+    private let syncNotice: String?
+
     /// The screen's title, and the fixed copy of its one action row (D-1114).
     public static let title = "Exercises"
     public static let finishLabel = WatchMenuCopy.finishLabel
@@ -58,12 +61,14 @@ public struct WatchMenuView: View {
         state: WatchMenuState,
         revision: Int = 0,
         nutrition: WatchNutritionState? = nil,
+        syncNotice: String? = nil,
         onClose: @escaping () -> Void,
         onFinish: @escaping () -> Void
     ) {
         self.state = state
         self.revision = revision
         self.nutrition = nutrition
+        self.syncNotice = syncNotice
         self.onClose = onClose
         self.onFinish = onFinish
     }
@@ -72,6 +77,13 @@ public struct WatchMenuView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Self.surfaceInset) {
+                    if let syncNotice {
+                        Text(syncNotice)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
                     if state.isLocked {
                         lockCaption
                     }

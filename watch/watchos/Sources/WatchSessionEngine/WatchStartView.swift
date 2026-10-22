@@ -71,6 +71,9 @@ public struct WatchStartView: View {
     /// body and makes it re-read the session it is showing.
     private let revision: Int
 
+    /// The wrist's "N entries waiting for your phone" line, or nil (plan 51d).
+    private let syncNotice: String?
+
     /// Wrist-scale inset. The phone's spacing tokens are sized for a full-width
     /// screen; this surface carries its own value rather than scaling one down.
     private static let surfaceInset = 4.0
@@ -91,7 +94,8 @@ public struct WatchStartView: View {
         onOpenNutrition: (() -> Void)? = nil,
         onRequestSync: (() -> Void)? = nil,
         phoneReachability: WatchPhoneReachability = .unknown,
-        revision: Int = 0
+        revision: Int = 0,
+        syncNotice: String? = nil
     ) {
         self.paths = paths
         self.onSessionStarted = onSessionStarted
@@ -99,6 +103,7 @@ public struct WatchStartView: View {
         self.onRequestSync = onRequestSync
         self.phoneReachability = phoneReachability
         self.revision = revision
+        self.syncNotice = syncNotice
     }
 
     /// What this surface says about the phone, from the one rule that decides it
@@ -140,6 +145,13 @@ public struct WatchStartView: View {
 
                 // D-8: said only once the radio has observed it.
                 WatchPhoneStatusHint(status: phoneStatus)
+
+                if let syncNotice {
+                    Text(syncNotice)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
             .padding(Self.surfaceInset)
         }

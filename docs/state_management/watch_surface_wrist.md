@@ -85,6 +85,32 @@ The sentence lives in the package's `WatchStartSurfaceCopy` rather than the
 contract's `startSurface` block; it moves into the contract if the Wear OS client
 ever ships a transport.
 
+**What is still owed is said on both surfaces.** Under the status line on the
+start surface, and at the top of the session menu (the list button's sheet), one
+line says when what you logged is still waiting for the phone: "1 entry waiting
+for your phone" or "N entries waiting for your phone". The line is the pure
+function `deriveSyncNotice(pending:reachability:now:)` in
+`watch/watchos/Sources/WatchSessionEngine/WatchSyncNotice.swift`, with the copy
+and the wait in `WatchSyncNoticeCopy`: nothing when nothing is pending; always
+when the radio says the phone is unreachable; when the phone is reachable or not
+yet known, only once the oldest pending entry has waited
+`WatchSyncNoticeCopy.graceSeconds` or more, so a receipt that lands within a
+second or two shows nothing. A rest window the wrist stores between two efforts
+is neither counted nor aged. The pending list is
+`WatchSessionEngine.unconfirmedObservations` — the stored observations with no
+receipt — and the shell host derives `syncNotice` at render and hands it to
+`WatchStartView` and `WatchMenuView`; the logging and rest screens carry no such
+line (plan 51d D-4: no room on 40 mm). Verified by
+`WatchSyncNoticeTests.testS7701NoPendingIsNilForEveryReachability`,
+`…testS7702UnreachableSaysTheCountOfFreshEntries`,
+`…testS7703ReachableWaitsForTheGraceAndCountsAllPending`,
+`…testS7704UnknownGetsTheSameGraceAsReachable`,
+`…testS7705TheExactGraceBoundaryShows`,
+`…testS7706TheEngineCountsUnconfirmedAndAReceiptRemovesOne`,
+`…testS7708RestWindowsAreNotCounted` and the source guards
+`…testS7707TheShellHostPassesTheNoticeToBothViews`,
+`…testS7707BothViewsDeclareAndShowTheNotice`.
+
 ## The engine's session-row writers run one at a time
 
 **Files**: `watch/watchos/Sources/WatchSessionEngine/WatchAsyncMutex.swift`,
