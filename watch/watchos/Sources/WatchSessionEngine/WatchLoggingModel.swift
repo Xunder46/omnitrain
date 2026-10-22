@@ -118,6 +118,37 @@ public final class WatchLoggingModel: ObservableObject {
         poll()
     }
 
+    /// Steps the armed row by `detents`: what the shared − / + under two value
+    /// tiles does. No armed row (every row is a sensor's reading, or there are
+    /// none) is a no-op.
+    public func stepArmed(_ detents: Double) {
+        guard let key = armedMetricKey else { return }
+        state.adjust(key, detents: detents)
+        poll()
+    }
+
+    /// The header's one status line: the set caption and what the sensors read,
+    /// joined with a dot, either alone when the other is absent, nil when
+    /// neither is there. Two short captions cost a whole row on a 40 mm screen.
+    public var statusLine: String? {
+        let parts = [state.setCaption, sensorLine].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// What the sensors are reading, as one line: the heart rate, the distance,
+    /// and the pace it is being covered at. Absent pieces are left out rather
+    /// than shown as zero — a session with no reading has nothing to report, and
+    /// the line disappears entirely when there is nothing at all.
+    private var sensorLine: String? {
+        let readout = state.sensorLabels
+        let unit = state.units.isMiles ? "mi" : "km"
+        var parts: [String] = []
+        if let beats = readout.heartRate { parts.append("\(beats) bpm") }
+        if let distance = readout.distance { parts.append("\(distance) \(unit)") }
+        if let pace = readout.pace { parts.append(pace) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     /// Starts the effort's work clock (D-1308).
     public func startWork() async {
         await state.startWork()

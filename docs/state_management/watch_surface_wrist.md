@@ -189,6 +189,16 @@ on a real watch or the 40 mm simulator. Verified by `WatchCrownArmingTests.swift
 (S-6401..S-6406, S-6408) and
 `WatchLoggingTimersTests.testCrownTurnsAccumulateIntoWholeDetents` (S-6407).
 
+**One Crown click is one value step.** The Crown's unit on watchOS is one value
+unit per detent (`WatchMetricStepping.pointsPerDetent`), so one click steps the
+armed row once, the way a system picker does — on the logging, rating and
+food-portion screens alike; the Dart client counts its drag points separately.
+Verified by `WatchCrownUnitTests.swift` (S-7501..S-7505: the constant, a reps
+row and the rating scale stepping one per unit, and the three Crown sites
+passing the constant, never a literal). How a click *feels* — the rotation one
+step needs at the chosen sensitivity — is checked on a device, not in the
+package tests: the simulator has no Crown.
+
 **Each exercise keeps its own dialled numbers.** `WatchLoggingState.dialled` is
 keyed by the slot's `sessionExerciseId` (Dart mirror `_dialled` in
 `lib/watch/logging/watch_logging_state.dart`), so switching exercise shows that
@@ -196,10 +206,24 @@ exercise's own numbers and a Log clears only the logged exercise's. Verified by
 `WatchDialledPerExerciseTests.swift` (S-6410..S-6413) and
 `test/watch_dialled_per_exercise_test.dart` (groups S-6410..S-6413).
 
-On a 40 mm watch the 36 pt − / + buttons, the unit beside the value and the
+A set with two values (reps and weight) shows them as two side-by-side tiles
+with one shared − / + pair under them: the outlined tile is the one the Crown
+and the pair step, and tapping a tile arms it
+(`WatchLoggingModel.stepArmed(_:)` steps the armed row and is a no-op without
+one; `WatchLoggingStatusTests.swift`, S-7511..S-7512). A screen with one value
+(a period's length, a drill's extra weight) keeps its single row with − and +
+around the value. The step buttons are fixed-size plain-style capsules instead
+of bordered buttons, whose drawn size was larger than their frame and overlapped
+the next row (S-7514, the same file's source guard). The header carries one
+status line — the set caption and the sensor readings joined by a dot ("Set 3
+of 5 · 143 bpm"), either half alone, or nothing
+(`WatchLoggingStatusTests.swift`, S-7513).
+
+On a 40 mm watch the − / + capsules, the unit beside the value and the
 one-line name below the menu button (clearance `WatchLoggingView.titleClearance`)
-keep Log fully visible — seen in screenshots on the Apple Watch SE 3 (40 mm)
-simulator; no unit test sees a layout.
+are meant to keep Log fully visible; the two-tile layout has not yet been
+measured on the 40 mm screen. The position of Log is checked on a device, not
+in the package tests: no unit test sees a layout.
 
 **The work clock names its exercise.** The clock is the engine's timer row of
 the effort's kind, read through `WatchLoggingState.workTimer`; a work timer the

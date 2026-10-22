@@ -62,9 +62,9 @@ public struct WatchLoggingView: View {
     @FocusState private var crownFocused: Bool
     @Environment(\.watchAccent) private var accent
 
-    /// Side of the − / + buttons: small, so Log stays on a 40 mm screen; the
-    /// Crown does most of the stepping.
-    private static let stepSide = 36.0
+    /// Side of the single row's − / + buttons, and the height of the shared pair:
+    /// small, so Log stays on a 40 mm screen; the Crown does most of the stepping.
+    private static let stepSide: CGFloat = 32
 
     /// Called after a successful log, so the app shell can re-evaluate which
     /// surface it shows — logging a set starts a rest, and the shell swaps to
@@ -113,9 +113,7 @@ public struct WatchLoggingView: View {
         VStack(spacing: Self.surfaceInset) {
             header
             Spacer(minLength: 0)
-            ForEach(model.state.fields, id: \.metricKey) { field in
-                row(field)
-            }
+            fieldControls
             if let readout = model.workReadout {
                 Text(readout)
                     .font(.largeTitle)
@@ -168,11 +166,6 @@ public struct WatchLoggingView: View {
                 }
             }
             .padding(.top, Self.titleClearance)
-            if let caption = model.state.setCaption {
-                Text(caption)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
             if let round = roundLine {
                 Text(round)
                     .font(.caption2)
@@ -185,11 +178,12 @@ public struct WatchLoggingView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            if let sensors = sensorLine {
-                Text(sensors)
+            if let status = model.statusLine {
+                Text(status)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
         // A couple of points of headroom, so the lines sit under the exercise
@@ -202,49 +196,54 @@ public struct WatchLoggingView: View {
     /// singular ("Period 2"), or nil for the kinds without periods (D-1307).
     private var roundLine: String? { model.periodLine }
 
-    /// What the sensors are reading, as one line: the heart rate, the distance,
-    /// and the pace it is being covered at. Absent pieces are left out rather
-    /// than shown as zero — a session with no reading has nothing to report, and
-    /// the line disappears entirely when there is nothing at all.
-    private var sensorLine: String? {
-        let readout = model.state.sensorLabels
-        let unit = model.state.units.isMiles ? "mi" : "km"
-        var parts: [String] = []
-        if let beats = readout.heartRate { parts.append("\(beats) bpm") }
-        if let distance = readout.distance { parts.append("\(distance) \(unit)") }
-        if let pace = readout.pace { parts.append(pace) }
-        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
-    }
-
-    /// One value: the label, the numerals, and both ways to move it. The Crown
-    /// steps the armed row.
-    private func row(_ field: WatchMetricField) -> some View {
-        let armed = model.armedMetricKey == field.metricKey
-        let outline: Color = armed ? (accent?.color ?? Color.white) : Color.clear
-        return HStack {
-            stepButton(systemName: "minus", label: "Less \(field.label)", enabled: !field.isMeasured) {
-                model.arm(field.metricKey)
-                model.adjust(field.metricKey, detents: -1)
-            }
-
-            VStack(spacing: 0) {
-                Text(field.label)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(field.displayValue)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                    if !field.unitLabel.isEmpty {
-                        Text(field.unitLabel).font(.caption2)
+    /// The value controls: one value keeps its own row with − and + around it;
+    /// two values (reps and weight) share one − / + pair under two tiles, so the
+    /// pair stays a thumb wide and Log stays on the screen.
+    @ViewBuilder
+    private var fieldControls: some View {
+        let fields = model.state.fields
+        if fields.count > 1 {
+            VStack(spacing: Self.surfaceInset) {
+                HStack(spacing: Self.surfaceInset) {
+                    ForEach(fields, id: \.metricKey) { field in
+                        tile(field)
                     }
                 }
+                sharedStepper
             }
+        } else if let only = fields.first {
+            row(only)
+        }
+    }
+
+    /// The label and the numerals of one value.
+    private func valueFace(_ field: WatchMetricField) -> some View {
+        VStack(spacing: 0) {
+            Text(field.label)
+                .font(.caption2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(field.displayValue)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                if !field.unitLabel.isEmpty {
+                    Text(field.unitLabel).font(.caption2)
+                }
+            }
+        }
+    }
+
+    /// One value as a tile. The one the Crown steps wears an outline in the
+    /// accent; a tap on a tile moves it.
+    private func tile(_ field: WatchMetricField) -> some View {
+        let armed = model.armedMetricKey == field.metricKey
+        let outline: Color = armed ? (accent?.color ?? Color.white) : Color.clear
+        return valueFace(field)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 2)
-            // The row the Crown steps wears an outline in the accent; a tap on
-            // a row, or on its − / +, moves it.
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(outline, lineWidth: 2)
@@ -257,28 +256,71 @@ public struct WatchLoggingView: View {
             }
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel("\(field.label) \(field.displayValue) \(field.unitLabel)")
+    }
 
-            stepButton(systemName: "plus", label: "More \(field.label)", enabled: !field.isMeasured) {
+    /// One value's row: − and + around its tile.
+    private func row(_ field: WatchMetricField) -> some View {
+        HStack {
+            stepButton(
+                systemName: "minus",
+                label: "Less \(field.label)",
+                enabled: !field.isMeasured,
+                width: Self.stepSide
+            ) {
+                model.arm(field.metricKey)
+                model.adjust(field.metricKey, detents: -1)
+            }
+
+            tile(field)
+
+            stepButton(
+                systemName: "plus",
+                label: "More \(field.label)",
+                enabled: !field.isMeasured,
+                width: Self.stepSide
+            ) {
                 model.arm(field.metricKey)
                 model.adjust(field.metricKey, detents: 1)
             }
         }
     }
 
+    /// The shared − / + under two tiles: both step the outlined tile.
+    private var sharedStepper: some View {
+        let label = model.state.fields.first { $0.metricKey == model.armedMetricKey }?.label ?? ""
+        let enabled = model.armedMetricKey != nil
+        return HStack(spacing: Self.surfaceInset) {
+            stepButton(systemName: "minus", label: "Less \(label)", enabled: enabled, width: nil) {
+                model.stepArmed(-1)
+            }
+            stepButton(systemName: "plus", label: "More \(label)", enabled: enabled, width: nil) {
+                model.stepArmed(1)
+            }
+        }
+    }
+
+    /// A step button: a fixed-size plain-style capsule. The bordered style draws
+    /// larger than any frame it is given, which is what overlapped the rows.
+    /// `width` nil fills the available width (the shared pair).
     private func stepButton(
         systemName: String,
         label: String,
         enabled: Bool = true,
+        width: CGFloat?,
         action: @escaping () -> Void
     ) -> some View {
         Button {
             crownFocused = true
             action()
         } label: {
-            Image(systemName: systemName).font(.caption.weight(.bold))
+            Image(systemName: systemName)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(enabled ? Color.white : Color.gray)
+                .frame(maxWidth: width == nil ? .infinity : nil)
+                .frame(width: width, height: Self.stepSide)
+                .background(Capsule().fill(Color.white.opacity(enabled ? 0.18 : 0.08)))
         }
-        .buttonStyle(.bordered)
-        .frame(width: Self.stepSide, height: Self.stepSide)
+        .buttonStyle(.plain)
         .disabled(!enabled)
         .accessibilityLabel(label)
     }
