@@ -123,6 +123,26 @@ private final class Gate: @unchecked Sendable {
     }
 }
 
+/// A boolean the test opens by hand. Body 0 spins on `isOpen` instead of
+/// guessing how many yields the next body needs to queue, so the wait cannot
+/// lose a race on a loaded machine; the yield bound is only a deadlock net.
+private final class SpinGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var open = false
+
+    var isOpen: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return open
+    }
+
+    func release() {
+        lock.lock()
+        open = true
+        lock.unlock()
+    }
+}
+
 final class WatchAsyncMutexTests: XCTestCase {
 
     /// S-6506, case A. Body 0 parks; bodies 1 and 2 queue behind it in that
@@ -207,12 +227,13 @@ final class WatchAsyncMutexTests: XCTestCase {
     func testS6506SuspendingBodyHoldsTheLock() async {
         let mutex = WatchAsyncMutex()
         let recorder = Recorder()
+        let gate = SpinGate()
 
         let first = Task {
             await mutex.exclusive {
                 recorder.enter(0)
                 var spins = 0
-                while mutex.queued == 0 && spins < 500 {
+                while !gate.isOpen && spins < 100_000 {
                     spins += 1
                     await Task.yield()
                 }
@@ -235,6 +256,8 @@ final class WatchAsyncMutexTests: XCTestCase {
         }
         let body1Queued = await waitUntil { mutex.queued == 1 }
         XCTAssertTrue(body1Queued, "body 1 queued")
+
+        gate.release()
 
         let allDone = await waitUntil { recorder.finished.count == 2 }
         XCTAssertTrue(allDone, "both bodies finished")
