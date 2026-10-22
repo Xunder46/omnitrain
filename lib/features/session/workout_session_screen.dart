@@ -337,6 +337,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         widget.workoutState.watchRefreshRevision != _seenWatchRevision) {
       _seenWatchRevision = widget.workoutState.watchRefreshRevision;
       _resyncExercisesFromState();
+      // Plan 51g D-1: a rest the watch ended (or replaced) closed or moved the
+      // phone's rest row, but the pings scheduled for the old rest are OS-side
+      // and would still fire. The helper cancels when no rest is open and
+      // schedules from the open rest's own start otherwise.
+      _scheduleActiveRestNotifications();
     }
   }
 

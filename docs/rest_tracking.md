@@ -326,7 +326,9 @@ the moment it was logged; Next on the watch, or the next set on either device, e
 pausing the phone's rest chip freezes the watch's rest; and both devices ping per the one Rest Ping
 setting (the ping rule and its settings key: `test/watch_rest_ping_test.dart`, S-241..S-245 and
 S-221..S-224; the wrist's side: `watch/watchos/Tests/WatchSessionEngineTests/WatchRestPingTests.swift`,
-`testS241AnIntervalTapsAtItsMultiplesAndNowhereElse` and `testS242WithTheIntervalOffNothingTaps`).
+`testS241AnIntervalTapsAtItsMultiplesAndNowhereElse` and `testS242WithTheIntervalOffNothingTaps`). A rest the watch ends cancels the
+phone's scheduled pings, and a rest the watch replaces reschedules them from
+its own start (`test/rest_pings_watch_end_test.dart`, S-7521..S-7524).
 
 ---
 
