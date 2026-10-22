@@ -73,7 +73,7 @@ public final class WatchLoggingModel: ObservableObject {
         carry = waiting - detents * Self.pointsPerDetent
         guard detents != 0, let key = armedMetricKey else { return }
 
-        state.adjust(key, detents: detents)
+        state.adjust(key, detents: detents, fine: true)
         poll()
     }
 

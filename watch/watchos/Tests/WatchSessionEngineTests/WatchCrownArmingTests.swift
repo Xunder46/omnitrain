@@ -86,7 +86,7 @@ final class WatchCrownArmingTests: XCTestCase {
         let (_, model) = await benchModel(harness)
 
         let repStep = field(model, WatchMetricKey.reps).step
-        let weightStep = field(model, WatchMetricKey.weight).step
+        let weightStep = field(model, WatchMetricKey.weight).fineStep
         let reps = field(model, WatchMetricKey.reps).value
         let weight = field(model, WatchMetricKey.weight).value
 
@@ -114,7 +114,7 @@ final class WatchCrownArmingTests: XCTestCase {
         let harness = Harness()
         let (_, model) = await benchModel(harness)
 
-        let weightStep = field(model, WatchMetricKey.weight).step
+        let weightStep = field(model, WatchMetricKey.weight).fineStep
         let weight = field(model, WatchMetricKey.weight).value
 
         model.turn(to: WatchLoggingModel.pointsPerDetent)
@@ -139,7 +139,7 @@ final class WatchCrownArmingTests: XCTestCase {
         let harness = Harness()
         let (_, model) = await benchModel(harness)
 
-        let weightStep = field(model, WatchMetricKey.weight).step
+        let weightStep = field(model, WatchMetricKey.weight).fineStep
         let weight = field(model, WatchMetricKey.weight).value
 
         model.turn(to: WatchLoggingModel.pointsPerDetent / 2)

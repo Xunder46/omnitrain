@@ -93,6 +93,10 @@ public struct WatchMetricField: Equatable {
     /// Canonical change per rotary detent.
     public let step: Double
 
+    /// Canonical change per Crown click: finer than `step`, which is the − / +
+    /// buttons' quick step (plan 52 D-2).
+    public let fineStep: Double
+
     public let unitLabel: String
 
     /// Whether a sensor is keeping this value, rather than the user.
@@ -109,13 +113,15 @@ public struct WatchMetricField: Equatable {
         displayValue: String,
         step: Double,
         unitLabel: String,
-        isMeasured: Bool = false
+        isMeasured: Bool = false,
+        fineStep: Double? = nil
     ) {
         self.metricKey = metricKey
         self.label = label
         self.value = value
         self.displayValue = displayValue
         self.step = step
+        self.fineStep = fineStep ?? step
         self.unitLabel = unitLabel
         self.isMeasured = isMeasured
     }
@@ -459,7 +465,9 @@ public final class WatchLoggingState {
     /// start, so a rest can never end after the effort that followed it began.
     /// A no-op for a set, and for a Start while one already runs (D-1302).
     public func startWork() async {
-        guard canLog, isTimedWork, let kind = workTimerKind, !isWorkRunning else { return }
+        guard canLog, isTimedWork, let kind = workTimerKind, !isWorkRunning,
+              !isFocusAheadOfEngine
+        else { return }
 
         let startedAt = clock()
         if isResting { await endRest(at: startedAt) }
@@ -551,7 +559,35 @@ public final class WatchLoggingState {
             .count
     }
 
-    private var slot: [String: Any]? { engine.currentExercise }
+    /// The slot the surface shows while a swipe has settled but the engine has
+    /// not yet moved to it (plan 52 D-5): named by the pager when a page settles
+    /// and cleared when the session's own position has caught up. Nil shows the
+    /// engine's current exercise.
+    public var focusSlotId: String?
+
+    /// The exercise the surface is about: the focused slot while one is named
+    /// and still on the ladder, else the engine's current exercise.
+    private var slot: [String: Any]? {
+        if let focusSlotId,
+           let focused = engine.session?.exercises.first(where: { entry in
+               ((entry["sessionExerciseId"] as? String)
+                   ?? WatchCatalogExercise(slot: entry)?.slotId) == focusSlotId
+           }) {
+            return focused
+        }
+        return engine.currentExercise
+    }
+
+    /// Whether the surface shows an exercise the engine has not reached yet (a
+    /// swipe has settled and its select is still landing). A clock must not be
+    /// started against it: the landing may still be refused (plan 52 review).
+    private var isFocusAheadOfEngine: Bool {
+        guard let focusSlotId else { return false }
+        let current = engine.currentExercise
+        let currentId = (current?["sessionExerciseId"] as? String)
+            ?? current.flatMap { WatchCatalogExercise(slot: $0)?.slotId }
+        return currentId != focusSlotId
+    }
 
     /// The slot the dialled numbers belong to; a session with no exercise yet
     /// keeps them under the empty key until the first pick.
@@ -599,7 +635,8 @@ public final class WatchLoggingState {
             displayValue: displayValue(for: metricKey, value: value),
             step: WatchMetricStepping.step(for: metricKey, units: units),
             unitLabel: unitLabel(for: metricKey),
-            isMeasured: measured
+            isMeasured: measured,
+            fineStep: WatchMetricStepping.fineStep(for: metricKey, units: units)
         )
     }
 
@@ -772,7 +809,8 @@ public final class WatchLoggingState {
     /// up. An unknown metric, or one the exercise does not carry, does nothing —
     /// and neither does a metric a sensor is keeping: a measurement outranks a
     /// dial, so the row is read-only while it is being measured (S-002).
-    public func adjust(_ metricKey: String, detents: Double) {
+    /// `fine` is the Crown's step (plan 52); the buttons take the quick one.
+    public func adjust(_ metricKey: String, detents: Double, fine: Bool = false) {
         guard let field = fields.first(where: { $0.metricKey == metricKey }),
               !field.isMeasured
         else { return }
@@ -781,7 +819,8 @@ public final class WatchLoggingState {
             field.value,
             metricKey: metricKey,
             detents: detents,
-            units: units
+            units: units,
+            fine: fine
         )
         dialled[dialledKey, default: [:]][metricKey] = adjusted
         // D-3404: a period's length outlives the Log that clears `dialled`, so

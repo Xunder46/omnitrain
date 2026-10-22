@@ -217,13 +217,25 @@ on a real watch or the 40 mm simulator. Verified by `WatchCrownArmingTests.swift
 
 **One Crown click is one value step.** The Crown's unit on watchOS is one value
 unit per detent (`WatchMetricStepping.pointsPerDetent`), so one click steps the
-armed row once, the way a system picker does — on the logging, rating and
-food-portion screens alike; the Dart client counts its drag points separately.
-Verified by `WatchCrownUnitTests.swift` (S-7501..S-7505: the constant, a reps
-row and the rating scale stepping one per unit, and the three Crown sites
-passing the constant, never a literal). How a click *feels* — the rotation one
-step needs at the chosen sensitivity — is checked on a device, not in the
-package tests: the simulator has no Crown.
+armed row once, the way a system picker does; the Dart client counts its drag
+points separately. On the logging screen the Crown is the fine control and the
+− / + buttons the quick one: a click moves a weight (and an extra weight) by one
+kilogram or one pound, and a duration or a period's length by one second
+(`WatchMetricStepping.fineStep(for:units:)`, picked by the `fine` flag on
+`WatchMetricStepping.adjust` and `WatchLoggingState.adjust(_:detents:fine:)`
+and stored per row as `WatchMetricField.fineStep`;
+`WatchLoggingModel.turn(to:)` is the only fine caller), while the buttons keep
+the quick step — a plate and five seconds — and reps, rounds and distance keep
+their step. The rating screen and the food portion keep their own
+one-per-detent steps. Verified by `WatchCrownUnitTests.swift` (S-7501..S-7505:
+the constant, a reps row and the rating scale stepping one per unit, and the
+three Crown sites passing the constant, never a literal) and
+`WatchFineCrownTests.swift` (S-7901..S-7905: the fine table, a weight and a
+length stepping one unit per click while the buttons keep the quick step,
+pounds moving the display by one, and a field without a fine step borrowing its
+step). How a click *feels* — the rotation one step needs at the chosen
+sensitivity — is checked on a device, not in the package tests: the simulator
+has no Crown.
 
 **Each exercise keeps its own dialled numbers.** `WatchLoggingState.dialled` is
 keyed by the slot's `sessionExerciseId` (Dart mirror `_dialled` in
@@ -487,15 +499,30 @@ holds that a session with one exercise shows no pager and no counter at all
 its outline.** `WatchLoggingPagerView` (watchOS-only) is a page-style `TabView`
 whose own n/m counter sits beside the exercise name
 (`WatchLoggingView(pageLabel:)`) instead of dots, which would sit on the Log
-button on a 40 mm screen; a page that is not the current exercise is a preview
-card (`WatchExercisePreviewPage`: name, logged count, counter). The shell's
-`loggingSurface` mounts the pager and not the bare logging view, the pager
-mounts exactly one `TabView` with no dots and answers a drag only in the locked
-branch, and the pager binds no Crown and takes no focus — the Crown stays on
-`WatchLoggingView`, stepping the outlined value, and never changes exercise.
-Verified by `WatchPagerSourceTests.swift`
+button on a 40 mm screen. When a swipe settles, the selection binding calls
+`WatchPagerModel.focusSlotId(for:)` and puts the result in
+`WatchLoggingState.focusSlotId`, so the logging surface shows the exercise the
+user swiped to before the engine has moved; the page at the selected index is
+the logger — its counter reads the selected page of the count — and the
+name-only preview card (`WatchExercisePreviewPage`: name, logged count,
+counter) remains only for the pages that are sliding in. `land(on:)` clears the
+focus whether it moved or was refused (also on its early return, and
+`followEngine()` clears a focus left over when no landing is in flight), and the
+next settled swipe names its own focus again. While the focus is ahead of the
+engine, `startWork()` is refused, so a clock is never started against an
+exercise the engine has not reached and a refused landing cannot strand one
+(`WatchPagerFocusTests` S-7915, S-7916). The shell's `loggingSurface` mounts the pager and not the bare
+logging view, the pager mounts exactly one `TabView` with no dots and answers a
+drag only in the locked branch, and the pager binds no Crown and takes no
+`.focusable` focus — the Crown stays on `WatchLoggingView`, stepping the
+outlined value, and never changes exercise. Verified by
+`WatchPagerSourceTests.swift`
 (`testS6610TheLoggingSurfaceMountsThePagerAndNotTheBareView`,
 `…testS6611ThePagerIsOneTabViewWithoutDotsAndAnswersADragWhenLocked`,
-`…testS6612ThePagerTakesNoCrownAndNoFocus`). The rest screen replaces the
+`…testS6612ThePagerTakesNoCrownAndNoFocus`) and `WatchPagerFocusTests.swift`
+(S-7911..S-7914: the focus shows the focused exercise and logs against it, the
+pager names a focus only for another live page and none for a locked session,
+the view's wiring as source guards, and a slot with no id of its own reached
+through the id its exercise derives). The rest screen replaces the
 logging screen as before, so there is no paging in rest; the phone screen does
 not follow a wrist swipe (owner decision O-5).

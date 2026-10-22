@@ -43,6 +43,15 @@ public final class WatchPagerModel: ObservableObject {
     public var showsPager: Bool { pageCount > 1 && !isLocked }
     public var pageLabel: String? { pageCount > 1 ? "\(currentIndex + 1)/\(pageCount)" : nil }
 
+    /// The slot a page that has just settled is shown as before the engine has
+    /// moved to it (plan 52 D-6): nil for the engine's own page, a page that is
+    /// gone, or a locked session; else that page's slot.
+    public func focusSlotId(for index: Int) -> String? {
+        let rows = self.rows
+        guard rows.indices.contains(index), !rows[index].isCurrent, !isLocked else { return nil }
+        return rows[index].slotId
+    }
+
     /// Moves the session to page `index` once the swipe has settled: true when
     /// that exercise is now (or already was) the current one. A locked session
     /// refuses and starts the notice; a page that no longer exists changes nothing.

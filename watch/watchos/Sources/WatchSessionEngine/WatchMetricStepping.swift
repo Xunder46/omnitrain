@@ -70,6 +70,14 @@ public enum WatchMetricStepping {
     /// Counts move by one.
     public static let countPerDetent = 1.0
 
+    /// What one Crown click moves: one unit of the digit the value is read in,
+    /// finer than the quick step the − / + buttons take (plan 52 D-1). Weight
+    /// moves a kilogram or a pound, a duration a second; counts and distance
+    /// already move by one digit and keep their step.
+    public static let fineKilogramsPerDetent = 1.0
+    public static let finePoundsPerDetent = 1.0
+    public static let fineSecondsPerDetent = 1.0
+
     /// The lowest canonical load the wire carries, in kilograms — a band or
     /// partner assist. Mirrors `envelope.schema.json` `$defs.entry.loadKg` and
     /// the phone's `WireLimits.minLoadKg` (D-58/D-59); a value below it is
@@ -126,14 +134,36 @@ public enum WatchMetricStepping {
         }
     }
 
+    /// The canonical change one Crown click applies to `metricKey`.
+    public static func fineStep(
+        for metricKey: String,
+        units: WatchUnitPreferences = WatchUnitPreferences()
+    ) -> Double {
+        switch metricKey {
+        case WatchMetricKey.weight, WatchMetricKey.extraWeight:
+            return toKilograms(
+                units.isPounds ? finePoundsPerDetent : fineKilogramsPerDetent,
+                unit: units.isPounds ? "lbs" : "kg"
+            )
+        case WatchMetricKey.duration, WatchMetricKey.roundDuration:
+            return fineSecondsPerDetent
+        default:
+            return step(for: metricKey, units: units)
+        }
+    }
+
     /// `value` after `detents` rotations of the crown — positive is clockwise.
     public static func adjust(
         _ value: Double,
         metricKey: String,
         detents: Double,
-        units: WatchUnitPreferences = WatchUnitPreferences()
+        units: WatchUnitPreferences = WatchUnitPreferences(),
+        fine: Bool = false
     ) -> Double {
-        clamp(quantize(value + detents * step(for: metricKey, units: units)), metricKey: metricKey)
+        let size = fine
+            ? fineStep(for: metricKey, units: units)
+            : step(for: metricKey, units: units)
+        return clamp(quantize(value + detents * size), metricKey: metricKey)
     }
 
     /// Holds `value` inside the range the metric's own semantics allow: counts

@@ -62,7 +62,7 @@ public struct WatchLoggingPagerView: View {
     }
 
     private var paged: some View {
-        TabView(selection: $selection) {
+        TabView(selection: selectionBinding) {
             ForEach(Array(pager.rows.enumerated()), id: \.element.slotId) { index, row in
                 page(row, index: index).tag(index)
             }
@@ -73,8 +73,12 @@ public struct WatchLoggingPagerView: View {
 
     @ViewBuilder
     private func page(_ row: WatchMenuRow, index: Int) -> some View {
-        if row.isCurrent {
-            WatchLoggingView(state: state, onLogged: onSurfaceChange, pageLabel: pager.pageLabel)
+        if index == selection {
+            WatchLoggingView(
+                state: state,
+                onLogged: onSurfaceChange,
+                pageLabel: "\(index + 1)/\(pager.pageCount)"
+            )
         } else {
             WatchExercisePreviewPage(row: row, label: "\(index + 1)/\(pager.pageCount)")
         }
@@ -108,8 +112,25 @@ public struct WatchLoggingPagerView: View {
             }
     }
 
+    /// The `TabView`'s selection, with the one thing a settled swipe must do
+    /// before the new page is drawn: name the slot the logging surface now
+    /// shows, so that page is the logger at once rather than a card until the
+    /// engine has moved (plan 52 D-6).
+    private var selectionBinding: Binding<Int> {
+        Binding(
+            get: { selection },
+            set: { newValue in
+                state.focusSlotId = pager.focusSlotId(for: newValue)
+                selection = newValue
+            }
+        )
+    }
+
     private func land(on index: Int) {
-        guard index != pager.currentIndex else { return }
+        guard index != pager.currentIndex else {
+            state.focusSlotId = nil
+            return
+        }
         landing = true
         Task {
             let moved = await pager.land(on: index)
@@ -118,9 +139,16 @@ public struct WatchLoggingPagerView: View {
                 onSurfaceChange()
                 // A swipe that settled while this one was landing was dropped
                 // (its index equalled the engine's old position); the newest
-                // settled page wins rather than being pulled back.
-                if selection != pager.currentIndex { land(on: selection) }
+                // settled page wins rather than being pulled back, and keeps
+                // its focus until its own landing ends.
+                if selection != pager.currentIndex {
+                    state.focusSlotId = pager.focusSlotId(for: selection)
+                    land(on: selection)
+                } else {
+                    state.focusSlotId = nil
+                }
             } else {
+                state.focusSlotId = nil
                 selection = pager.currentIndex
             }
         }
@@ -129,6 +157,8 @@ public struct WatchLoggingPagerView: View {
     /// A change the user did not make (the phone's push, a menu jump) moves the
     /// pager to the engine's page, unless a swipe is still landing.
     private func followEngine() {
+        // With no landing in flight, a focus left over from one is stale.
+        if !landing { state.focusSlotId = nil }
         guard pager.showsPager, !landing, selection != pager.currentIndex else { return }
         selection = pager.currentIndex
     }
