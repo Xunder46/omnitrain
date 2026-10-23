@@ -324,7 +324,13 @@ Future<WatchSyncGraph?> createWatchSync({
     // D-176's reset: those frames have just gone out, and a pass here would
     // send the same step a second time. The debt is untouched either way, so a
     // step the radio did not carry is re-offered at the next trigger (D-202).
-    if (!answeredReset) await push.flush();
+    // The same goes for the timers (54 D-1): a clear the wrist never received
+    // releases its clock only when the phone's state next changes, so the frame
+    // the wrist sends is the trigger that reaches it.
+    if (!answeredReset) {
+      await push.flush();
+      await timerPush.flushClears();
+    }
   });
 
   await inbox.resume();

@@ -146,10 +146,12 @@ Shell for every phase: only `.github/copilot/scripts/macos/gateway.sh` (`lint`, 
 
 ### Phase 1: Dart — the timer push flushes on an inbound frame (@developer)
 
-1. [ ] Red test S-8406 — `test/watch_timer_push_test.dart`, new plain `test()` beside the S-6321..S-6330 clear groups (symbol: `test("S-8406 an inbound frame from the wrist re-offers an undelivered timer clear")`). Fixture: `startGraph()` (~l.232) + `wristStartsTimedSession()` (~l.248) + `adoptedInterval()` (~l.365); `_PhoneRadio` (~l.156-200) with `unreachable = true`. Trigger: the phone ends the adopted interval while unreachable, so a clear (`{elapsed: null}` — the harness's timed slot yields `elapsed`, not `round`; the clear rule is kind-independent) is owed; then the radio becomes reachable and an inbound wrist frame arrives through the wiring's `onIncoming`. Expected: the clear appears in `radio.sent` and is delivered. Red: no second send until the bound `WorkoutState` changes.
-2. [ ] Apply D-1 — `lib/state/watch/watch_sync_wiring.dart`, the inbound handler (`resolved.onIncoming`, ~l.327-341): replace `if (!answeredReset) await push.flush();` with `if (!answeredReset) { await push.flush(); await timerPush.flush(); }` (`timerPush` is built at ~l.298, in scope). Nothing else changes.
-3. [ ] Guard test S-8407 — same file, `test("S-8407 a reset-answered inbound frame does not flush the timers")`: an inbound frame the router answered with a reset (`answeredReset`) sends no `timer_state` frame (`radio.sent` gains nothing). Red state produced by the mutation "flush `timerPush` unconditionally, outside the `answeredReset` gate"; green with D-1 as written.
-4. [ ] Run `.github/copilot/scripts/macos/gateway.sh test` (full suite, 900 s) and `.github/copilot/scripts/macos/gateway.sh lint`; paste pass/fail counts and the analyze issue count into the evidence file; update Progress and the Assumption Log.
+1. [x] Red test S-8406 — `test/watch_timer_push_test.dart`, new plain `test()` beside the S-6321..S-6330 clear groups (symbol: `test("S-8406 an inbound frame from the wrist re-offers an undelivered timer clear")`). Fixture: `startGraph()` (~l.232) + `wristStartsTimedSession()` (~l.248) + `adoptedInterval()` (~l.365); `_PhoneRadio` (~l.156-200) with `unreachable = true`. Trigger: the phone ends the adopted interval while unreachable, so a clear (`{elapsed: null}` — the harness's timed slot yields `elapsed`, not `round`; the clear rule is kind-independent) is owed; then the radio becomes reachable and an inbound wrist frame arrives through the wiring's `onIncoming`. Expected: the clear appears in `radio.sent` and is delivered. Red: no second send until the bound `WorkoutState` changes.
+2. [x] Apply D-1 — `lib/state/watch/watch_sync_wiring.dart`, the inbound handler (`resolved.onIncoming`, ~l.327-341): replace `if (!answeredReset) await push.flush();` with `if (!answeredReset) { await push.flush(); await timerPush.flush(); }` (`timerPush` is built at ~l.298, in scope). Nothing else changes.
+3. [x] Guard test S-8407 — same file, `test("S-8407 a reset-answered inbound frame does not flush the timers")`: an inbound frame the router answered with a reset (`answeredReset`) sends no `timer_state` frame (`radio.sent` gains nothing). Red state produced by the mutation "flush `timerPush` unconditionally, outside the `answeredReset` gate"; green with D-1 as written.
+4. [x] Run `.github/copilot/scripts/macos/gateway.sh test` (full suite, 900 s) and `.github/copilot/scripts/macos/gateway.sh lint`; paste pass/fail counts and the analyze issue count into the evidence file; update Progress and the Assumption Log.
+
+**Results** (evidence: `.evidence.md`, "Implementer evidence → P1"): S-8406 red at HEAD, green after; S-8407 green, mutation-proven red. Item 2 was delivered as `timerPush.flushClears()` (clears only), not a full `flush()` — see Assumption Log (a full flush re-offered a start to a wrist that had already ended the timer and turned S-6322/S-6323/S-6324/S-7305 red). Full suite 5436 passed / 2 skipped / 0 failed; lint 180 issues, 0 errors; file +43. Outside Predicted Files: `lib/state/watch/watch_timer_push.dart` (+15, the clears-only mode).
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh lint` (≤ 180 issues), `.github/copilot/scripts/macos/gateway.sh test` (S-8406 and S-8407 passing, no previously green test red).
 **Predicted Files**: `test/watch_timer_push_test.dart`, `lib/state/watch/watch_sync_wiring.dart` — nothing else.
@@ -211,7 +213,7 @@ Shell for every phase: only `.github/copilot/scripts/macos/gateway.sh` (`lint`, 
 
 ## Progress
 
-- [ ] P1 Dart flush (Phase 1) —
+- [x] P1 Dart flush (Phase 1) — **Complete**: the wrist's inbound frame re-offers the owed timer clear via `timerPush.flushClears()` under the `!answeredReset` gate; S-8406/S-8407 green, file +43, full suite 5436/2 skipped/0 failed, lint 180/0 errors.
 - [ ] P2A Swift jump (Phase 2A) —
 - [ ] P2B edges + reader rework (Phase 2B) —
 - [ ] P3 docs (Phase 3) —
@@ -223,6 +225,8 @@ Shell for every phase: only `.github/copilot/scripts/macos/gateway.sh` (`lint`, 
 - (builder, S-8406) The harness's timed slot yields `elapsed`, not `round`; the clear rule is kind-independent, so the test uses `{elapsed: null}`. Options: force a round fixture vs use the harness's kind; chose the harness's kind.
 - (builder, D-2) "Not stopped" reads `stoppedAt == nil`, so a paused timer is a jump candidate (S-8412). Options: running-only vs not-stopped; chose not-stopped, matching the adoption rules' own treatment of paused rows.
 - (builder, D-7) The jump target is collected during adopt and performed after the adopt call returns. Options: jump inside adopt (deadlocks under `mutex.exclusive`) vs deferred; chose deferred.
+- (builder, D-1) The trigger flushes clears only (`timerPush.flushClears()`), not a full `flush()`. A full flush re-offered the phone's still-running timer as a start to a wrist that had already ended it and turned S-6322/S-6323/S-6324/S-7305 red; clears still go out at once, starts keep their phone-state-change trigger.
+- (builder, S-8407) The fixture's debt is a delivered rest's clear, not an adopted timer's: a reset answer switches the mirror session, which retires an adopted timer (`_mirrorHolds` false), while a `_delivered` clear survives the switch — the only shape that shows the gate withholding a frame it still owes.
 
 ## Open questions
 

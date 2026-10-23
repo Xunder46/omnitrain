@@ -56,6 +56,13 @@
 //                                                          → `S-7311 ...` (×3)
 //   S-7312 a rest copy this push has cleared does not block the next rest
 //                                                          → `S-7312 ...`
+// Plan 54 D-1 (the end of the effort reaches the wrist at the next
+// conversation the wrist starts, not only at the next phone state change):
+//   S-8406 an inbound frame from the wrist re-offers an undelivered timer clear
+//                                                          → `S-8406 ...`
+//   S-8407 a reset-answered inbound frame flushes no timers → `S-8407 ...`
+//   S-8408 an ordinary flush joining a clears-only drain still sends the
+//          phone's start                                 → `S-8408 ...`
 //
 // The phone side is the graph `createWatchSync` builds — the shipping wiring,
 // including the timer push it returns — over a fake radio; the wrist side is
@@ -67,6 +74,8 @@
 // clock is not injectable from `WorkoutState`), so the assertions compare a
 // frame with the stored instance it came from rather than with the pinned
 // graph clock.
+
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
@@ -115,6 +124,15 @@ Map<String, Object?> _payload(Map<String, Object?> envelope) =>
 
 /// Lets the radio's dispatch settle before the next frame is handed over.
 Future<void> _settle() => pumpEventQueue();
+
+/// Polls [condition] to a deadline (never a wall-clock threshold on the work).
+Future<void> _waitFor(bool Function() condition, String what) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 5));
+  while (!condition()) {
+    if (DateTime.now().isAfter(deadline)) fail('timed out waiting for $what');
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+}
 
 /// A catalog the phone can adopt a timed slot for.
 Future<void> _seedCatalog(WorkoutRepository repository) async {
@@ -166,6 +184,23 @@ class _PhoneRadio implements WatchTransport {
   /// `undelivered` without a failure.
   bool unreachable = false;
 
+  /// How many sends this radio has held open (S-8408).
+  int heldSends = 0;
+
+  /// While set, `send` records the frame and then waits for [releaseSend]: the
+  /// radio a scenario holds in flight.
+  Completer<void>? _gate;
+
+  /// Holds the next `send` open until [releaseSend] is called.
+  void holdSend() => _gate = Completer<void>();
+
+  /// Completes the held `send`, the way the platform channel answers late.
+  void releaseSend() {
+    final gate = _gate;
+    _gate = null;
+    gate?.complete();
+  }
+
   WatchInboundHandler? _handler;
 
   @override
@@ -188,6 +223,11 @@ class _PhoneRadio implements WatchTransport {
   @override
   Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     attempted.add(envelope);
+    final gate = _gate;
+    if (gate != null) {
+      heldSends++;
+      await gate.future;
+    }
     if (unreachable) return WatchDelivery.undelivered;
     sent.add(envelope);
     return WatchDelivery.delivered;
@@ -1560,6 +1600,244 @@ void main() {
             isUtc: true,
           ),
           reason: "S-6330 the frame carries the phone's own start",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-8406 the end of the effort reaches the wrist at the next '
+      'conversation', () {
+    test(
+      'S-8406 an inbound frame from the wrist re-offers an undelivered timer '
+      'clear',
+      () async {
+        final started = await adoptedInterval();
+
+        // The phone ends the interval while the wrist is out of reach, so the
+        // clear it owes is offered once and carried nowhere (S-6325's first
+        // pass). Every later pass recomposes it, so it is still owed when the
+        // wrist next talks to the phone.
+        radio.unreachable = true;
+        await phoneState.finishTimedEntry(_slotId, 0);
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the radio carried nothing',
+        );
+        final offered = [
+          for (final envelope in radio.attempted)
+            if (envelope['type'] == 'timer_state') envelope,
+        ];
+        expect(offered, hasLength(1), reason: 'the fixture: one clear is owed');
+        expect(
+          timersOf(offered.single)['elapsed'],
+          isNull,
+          reason: 'the fixture: the owed frame is the clear',
+        );
+
+        // The wrist reports the clock it still runs — the frame proving the
+        // radio works — and the radio is back in range.
+        radio.unreachable = false;
+        await radio.fromWrist(
+          _wristTimerFrame({
+            'elapsed': {
+              'kind': 'elapsed',
+              'state': 'running',
+              'startedAt': utcIso(started.startedAt),
+              'accumulatedPauseMs': 0,
+              'sessionExerciseId': _slotId,
+            },
+          }),
+        );
+        await _settle();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(1),
+          reason:
+              'S-8406 the frame the wrist sent proves the radio works, so the '
+              'owed clear goes out now, not at the next phone state change',
+        );
+        expect(
+          timersOf(frames.single)['elapsed'],
+          isNull,
+          reason: 'S-8406 the timer offered again is the clear',
+        );
+        expect(
+          await engine.applyMessage(frames.single),
+          isTrue,
+          reason: 'S-8406 the wrist applies the clear the way the app does',
+        );
+        expect(
+          engine.timerFor(WatchTimerKind.elapsed)!.state,
+          WatchTimerState.stopped,
+          reason: 'S-8406 the wrist stops the clock the phone ended',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-8407 a reset-answered frame flushes no timers', () {
+    test('S-8407 a reset-answered inbound frame withholds the clear it owes, '
+        'and the debt survives for the next call', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+      int attempted() => [
+        for (final envelope in radio.attempted)
+          if (envelope['type'] == 'timer_state') envelope,
+      ].length;
+
+      // The rest the phone opens reaches the wrist, so closing it is what the
+      // push owes next — and a closing set starts no timer of its own.
+      await openPhoneRest();
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'the fixture: the rest is carried',
+      );
+      expect(attempted(), 1, reason: 'the fixture: one frame, one attempt');
+
+      // The phone closes the rest out of range: the clear is owed, offered
+      // once, and carried nowhere.
+      radio.unreachable = true;
+      await phoneState.recordRestEnd(_slotId, 0);
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'the fixture: the radio carried nothing new',
+      );
+      expect(
+        attempted(),
+        2,
+        reason: 'the fixture: the owed clear is attempted once',
+      );
+
+      // A snapshot naming a session this phone is not in is the one inbound
+      // frame the router answers with D-176's reset (D-182 row two). Its own
+      // frames have just gone out, so the pass it triggers must not add the
+      // owed clear to them.
+      radio.unreachable = false;
+      final foreign = Map<String, Object?>.of(engine.sessionSnapshot()!);
+      foreign['sessionId'] = 's-other';
+      foreign['messageId'] = 'msg-wrist-other-session';
+      foreign['payload'] = {
+        ..._asObject(foreign['payload']),
+        'sessionId': 's-other',
+      };
+      await radio.fromWrist(foreign);
+      await _settle();
+
+      expect(
+        graph.mirror.sessionId,
+        's-other',
+        reason: 'the fixture: the wrist announced its own next session',
+      );
+      expect(
+        radio.ofType('session_lifecycle'),
+        isNotEmpty,
+        reason:
+            "the fixture: the router answered the snapshot with D-182's reset",
+      );
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'S-8407 the reset answer flushes no timers',
+      );
+      expect(
+        attempted(),
+        2,
+        reason:
+            'S-8407 the timer push was not flushed at all, so the owed clear is '
+            'offered once and not again',
+      );
+
+      // D-202: withholding it costs nothing, because the debt is untouched and
+      // the next call offers it.
+      await graph.timerPush.flush();
+      expect(
+        attempted(),
+        3,
+        reason: 'S-8407 the clear the reset withheld is still owed afterwards',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-8408 an ordinary flush is not starved by a clears-only drain', () {
+    test(
+      'S-8408 a start the phone begins while a clears-only pass is in flight '
+      'travels in the pass the joining ordinary flush asks for',
+      () async {
+        await adoptedInterval();
+
+        // The phone ends the interval, so the wrist is owed a clear — and the
+        // wrist's next inbound frame is what flushes it, clears only.
+        await phoneState.finishTimedEntry(_slotId, 0);
+        radio.holdSend();
+        final clearsOnly = graph.timerPush.flushClears();
+        await _waitFor(
+          () => radio.heldSends == 1,
+          'the clears-only pass to reach the radio',
+        );
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the clear is held inside the radio',
+        );
+
+        // The phone starts its next round while that pass is in flight. Its
+        // state change schedules an ordinary flush, which joins the running
+        // drain instead of running beside it.
+        await phoneState.addEntry(_slotId);
+        await phoneState.startTimedEntry(_slotId, 1);
+        final current = phoneState.inProgressWorkTimers().single;
+        final ordinary = graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the ordinary flush joined the held drain',
+        );
+
+        radio.releaseSend();
+        await clearsOnly;
+        await ordinary;
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(2),
+          reason:
+              'S-8408 the clear and then the start the phone owes are two '
+              'frames',
+        );
+        expect(
+          timersOf(frames.first)['elapsed'],
+          isNull,
+          reason: 'S-8408 the clear still travels first',
+        );
+        final delivered = _asObject(timersOf(frames.last)['elapsed']);
+        expect(
+          parseUtcIso(delivered['startedAt']),
+          DateTime.fromMillisecondsSinceEpoch(current.startedAtMs, isUtc: true),
+          reason:
+              'S-8408 a start the phone owes is never withheld because a '
+              'clears-only flush happened to be running',
+        );
+
+        await applyPhoneTimers();
+        expect(
+          engine
+              .timerFor(WatchTimerKind.elapsed)!
+              .startedAt
+              .millisecondsSinceEpoch,
+          current.startedAtMs,
+          reason: "S-8408 the wrist counts the round the phone just started",
         );
         expect(failures, isEmpty);
       },

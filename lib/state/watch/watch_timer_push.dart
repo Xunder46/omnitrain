@@ -111,6 +111,12 @@ class WatchTimerPush {
   Future<void>? _draining;
   bool _again = false;
 
+  /// Whether a flush that joined a running drain asked for a full pass (54,
+  /// fix round 1). The request decides what the pass it asks for may send: a
+  /// clears-only pass must never withhold a start an ordinary [flush] — a phone
+  /// state change — owes.
+  bool _fullAgain = false;
+
   /// The timers this push has delivered to the wrist and still holds on it,
   /// per wire kind, in the shape a snapshot's `timers` takes.
   ///
@@ -132,26 +138,38 @@ class WatchTimerPush {
     state.addListener(_onChanged);
   }
 
+  /// Pushes only the clears this push owes (54 D-1), for the trigger where the
+  /// wrist talks to the phone: a clear it never received is re-offered, while a
+  /// start is withheld so a timer the wrist already ended is not restarted.
+  Future<void> flushClears() => _flush(clearsOnly: true);
+
   /// Closes the pending window and pushes the newest timers at once.
+  Future<void> flush() => _flush(clearsOnly: false);
+
+  /// Runs a drain, or joins the one running and asks for one more pass after it.
   ///
-  /// A flush that arrives while one is running joins it and asks for one more
-  /// pass after it, instead of running beside it.
-  Future<void> flush() async {
+  /// The request that asks for a pass decides what it may send, so an ordinary
+  /// [flush] that joins or follows a clears-only drain still gets a full pass:
+  /// a start the phone owes is never withheld because a clears-only flush
+  /// happened to be running.
+  Future<void> _flush({required bool clearsOnly}) async {
     _window?.cancel();
     _window = null;
 
     final running = _draining;
     if (running != null) {
       _again = true;
+      if (!clearsOnly) _fullAgain = true;
       return running;
     }
 
     final drained = Completer<void>();
     _draining = drained.future;
     try {
+      var onlyClears = clearsOnly;
       do {
         _again = false;
-        await _pushOnce().timeout(
+        await _pushOnce(clearsOnly: onlyClears).timeout(
           _sendTimeout,
           onTimeout: () {
             _report(
@@ -160,9 +178,12 @@ class WatchTimerPush {
             );
           },
         );
+        onlyClears = !_fullAgain;
+        _fullAgain = false;
       } while (_again);
     } finally {
       _draining = null;
+      _fullAgain = false;
       drained.complete();
     }
   }
@@ -186,8 +207,9 @@ class WatchTimerPush {
   }
 
   /// One pass: compose the held session's in-progress work timers, compare them
-  /// with what the wrist holds and was delivered, and send what is left.
-  Future<void> _pushOnce() async {
+  /// with what the wrist holds and was delivered, and send what is left. A
+  /// clears-only pass sends no start (54 D-1).
+  Future<void> _pushOnce({required bool clearsOnly}) async {
     try {
       final state = _workoutState;
       final session = state?.currentSession;
@@ -306,6 +328,8 @@ class WatchTimerPush {
       for (final kind in retired) {
         clears[kind] = null;
       }
+      // 54 D-1: the wrist's own frame triggers the debt, not the phone's news.
+      if (clearsOnly) next.clear();
 
       if (clears.isEmpty && next.isEmpty) return;
 
