@@ -51,7 +51,7 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 | Section | Content |
 |---------|---------|
 | Header | Session title only (the app bar shows no date or modality badge) |
-| Session info card | Duration and Rest Time, then the EFFORT row (rolling sessions: EFFORT row only — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
+| Session info card | Duration and Rest Time, then the heart-rate row when the session has one ([Heart rate](#heart-rate)), then the EFFORT row (rolling sessions: no Duration / Rest Time row — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
 | Group Cards | One card per group that has data in this session |
 | Session Note | Inline TextField with debounce save |
 | Calendar | Month grid and Open Calendar navigation button |
@@ -61,6 +61,25 @@ What is not rendered in the active layout:
 - Session RPE card
 - Per-exercise rows
 - Standalone PR card
+
+### Heart rate
+
+The info card carries a heart-rate row — two stat pills side by side, the
+session's average and maximum heart rate — between the Duration / Rest Time
+row and the EFFORT row. It is shown only when the session has a session-scope
+`SensorSummary` carrying average and maximum heart rate, which the watch
+importer stores from the session end (see
+[Watch Session Capture](watch_session_capture.md)); the model requires the two
+values together, so there is no average-only case. Without one the card is
+unchanged, and a rolling session — which has no Duration / Rest Time row —
+shows the heart-rate row too. The screen loads it in `_loadAsyncData` next to
+the rest time; that load runs only while `workoutState.currentSession` is
+non-null, so a past session opened from the calendar does not show the row.
+Verified by `test/session_summary_heart_rate_test.dart` (group
+`SessionSummaryScreen heart-rate row (S-9654..S-9657)`: `S-9654 seeded: the
+card shows avg and max side by side`, `S-9654 not seeded: the card is
+unchanged, no row`, `S-9656 a rolling session shows the heart-rate row too`,
+`S-9657 the row sits between Duration and Effort`).
 
 Notes:
 
@@ -268,6 +287,14 @@ Key public methods:
   each to the session's window and merging overlaps once; a session whose stored
   end precedes its start has an empty window and the total is `0`
   (`test/session_summary_inverted_window_test.dart`, `S-153`)
+- getSessionHeartRate — returns the session's average and maximum heart rate
+  as `({int avgBpm, int maxBpm})?` from the first session-scope
+  `SensorSummary` that carries both values, rounded to whole bpm; null when
+  there is none — an effort-scope summary does not count. Verified by
+  `test/session_summary_heart_rate_test.dart` (group
+  `SessionSummaryService.getSessionHeartRate (S-9651..S-9653)`: `S-9651 avg
+  127.6 / max 171.2 rounds to (128, 171)`, `S-9652 no summaries, or only a
+  non-session scope, answers null`).
 - buildGroupMetrics
 - groupPrsByEffortKind
 - getPreferredWeightUnit
@@ -275,6 +302,11 @@ Key public methods:
 Repository compatibility:
 
 - Uses WorkoutRepository interface only
+
+Tests: `test/session_summary_heart_rate_test.dart` — `S-9651` rounding to
+whole bpm, `S-9652` null with no session-scope summary, `S-9654` the row and
+its texts, absent without data, `S-9656` a rolling session, `S-9657` row order
+Duration → heart rate → Effort.
 
 ---
 

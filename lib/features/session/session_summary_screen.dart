@@ -96,6 +96,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Map<String, List<PRAchievement>> _prsByGroup = {};
   Map<String, SessionGroupMetrics> _groupMetrics = {};
   int _restTimeMs = 0;
+  ({int avgBpm, int maxBpm})? _heartRate;
   String _preferredWeightUnit = 'kg';
   Set<int> _workoutDays = {};
   int _daysInMonth = 30;
@@ -198,6 +199,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       );
       final restTimeMs = await widget.sessionSummaryService
           .computeSessionRestTimeMs(currentSession.id);
+      final heartRate = await widget.sessionSummaryService.getSessionHeartRate(
+        currentSession.id,
+      );
       final preferredWeightUnit = await widget.sessionSummaryService
           .getPreferredWeightUnit();
       await _loadCalendarData();
@@ -209,6 +213,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _prsByGroup = groupedPrs;
         _groupMetrics = groupMetrics;
         _restTimeMs = restTimeMs;
+        _heartRate = heartRate;
         _preferredWeightUnit = preferredWeightUnit;
         _isLoading = false;
       });
@@ -861,6 +866,30 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               ],
             ),
             // Gap between rows (only when Duration row is visible)
+            const SizedBox(height: 16),
+          ],
+          // Heart-rate row: only when the watch recorded a session heart
+          // rate (D-3, plan 66b). Sits between the Duration/Rest row and the
+          // Effort row.
+          if (_heartRate case final heartRate?) ...[
+            Row(
+              key: const Key('omni_session_heart_rate_row'),
+              children: [
+                Expanded(
+                  child: _StatPill(
+                    label: 'Avg heart rate',
+                    value: '${heartRate.avgBpm} bpm',
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _StatPill(
+                    label: 'Max heart rate',
+                    value: '${heartRate.maxBpm} bpm',
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
           ],
           // Effort rating row: always visible (even for rolling sessions)
