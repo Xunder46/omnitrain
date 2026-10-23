@@ -2,8 +2,8 @@
 //  WatchNutritionView.swift
 //  WatchSessionEngine
 //
-//  The native watchOS quick-log surface: the foods the user eats, one portion,
-//  one log. Native half of
+//  The native watchOS quick-log surface: the foods the user eats, and the one
+//  food a tap opens — its portion, one log. Native half of
 //  `docs/plans/2026-07-13-12-e-watch-nutrition-quick-log-plan.md`,
 //  scenarios S-001, S-004 and S-006.
 //
@@ -20,6 +20,7 @@
 
 #if os(watchOS)
 
+import Foundation
 import SwiftUI
 import WatchKit
 
@@ -36,16 +37,32 @@ public final class WatchNutritionModel: ObservableObject {
 
     public init(state: WatchNutritionState) {
         self.state = state
+        // The state may announce a change off the main thread — the store and the
+        // log are both async — so the nudge to SwiftUI hops first (D-4).
+        state.onFoodsChanged = { [weak self] in
+            DispatchQueue.main.async { self?.objectWillChange.send() }
+        }
     }
 
     public var foods: [WatchFood] { state.foods }
 
     public var confirmation: String? { state.confirmation }
 
+    /// Whether a food is open, which is what drives the list's push (D-5).
+    public var isShowingFood: Bool { state.selected != nil }
+
     /// Picks a food; its portion starts where the phone left it.
     public func select(_ foodId: String) {
         objectWillChange.send()
         state.select(foodId)
+        crownPosition = 0
+    }
+
+    /// Leaves the open food: the list has nothing selected, and the crown starts
+    /// over with the next one (D-4).
+    public func deselect() {
+        objectWillChange.send()
+        state.deselect()
         crownPosition = 0
     }
 
@@ -82,8 +99,6 @@ public struct WatchNutritionView: View {
     /// screen.
     private static let surfaceInset = 4.0
 
-    private static let crownRangeDetents = 20.0
-
     public init(model: WatchNutritionModel) {
         self.model = model
     }
@@ -102,44 +117,72 @@ public struct WatchNutritionView: View {
                         }
                     }
                 }
-
-                if model.state.selected != nil {
-                    portionRow
-                    logButton
-                }
-
-                if let confirmation = model.confirmation {
-                    Text(confirmation)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
             }
         }
         .padding(.horizontal, Self.surfaceInset)
+        .navigationDestination(isPresented: showingFood) {
+            WatchFoodPortionView(model: model)
+        }
     }
 
-    @ViewBuilder
+    /// The push follows the selection: a tap selects a food and opens its screen,
+    /// and leaving it — the back button or a swipe — clears the selection (D-5).
+    private var showingFood: Binding<Bool> {
+        Binding(
+            get: { model.isShowingFood },
+            set: { isShowing in
+                if !isShowing { model.deselect() }
+            }
+        )
+    }
+
+    /// The row is the way into the food: the name, and what the food's starting
+    /// amount costs — the state derives that amount from the wrist's newest log
+    /// where it is newer than the phone's list (D-2).
     private func foodButton(_ food: WatchFood) -> some View {
-        let isSelected = food.foodId == model.state.selectedFoodId
-        let button = Button {
+        Button {
             model.select(food.foodId)
         } label: {
             HStack {
                 Text(food.name).lineLimit(1)
                 Spacer()
-                Text("\(food.calories(at: isSelected ? model.state.servings : food.defaultServings))")
+                Text("\(food.calories(at: food.defaultServings))")
                     .foregroundStyle(.secondary)
             }
         }
-        // `.watchProminent()` and `.bordered` are distinct concrete types, so a
-        // ternary between them has no common type to infer. The branches have to
-        // be separate views.
-        if isSelected {
-            button.watchProminent()
-        } else {
-            button.buttonStyle(.bordered)
+        .buttonStyle(.bordered)
+    }
+}
+
+/// One food, open: its portion, what it costs, and the one confirm. Pushed from
+/// the list, so leaving it hands the list back with nothing selected (D-5).
+public struct WatchFoodPortionView: View {
+    @ObservedObject private var model: WatchNutritionModel
+
+    /// Wrist-scale inset, as the list uses.
+    private static let surfaceInset = 4.0
+
+    private static let crownRangeDetents = 20.0
+
+    public init(model: WatchNutritionModel) {
+        self.model = model
+    }
+
+    public var body: some View {
+        VStack(spacing: Self.surfaceInset) {
+            portionRow
+
+            logButton
+
+            if let confirmation = model.confirmation {
+                Text(confirmation)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         }
+        .padding(.horizontal, Self.surfaceInset)
+        .navigationTitle(model.state.selected?.name ?? "")
     }
 
     /// The portion row: the count, what it means in the food's own unit, the two

@@ -29,9 +29,13 @@ public struct WatchMenuView: View {
     private let onClose: () -> Void
     private let onFinish: () -> Void
 
-    /// The quick-log's state, handed over by the host. Nil keeps the Log food
-    /// row off: a menu built without one has no surface to push (D-3).
-    private let nutrition: WatchNutritionState?
+    /// The quick-log's model, handed over by the host. Nil keeps the Log food
+    /// row off: a menu built without one has no surface to push (D-3, D-10).
+    ///
+    /// The host's model, never one built here: a model built on every body
+    /// evaluation would drop the state's change observer, so a `foods_down`
+    /// landing while this row's quick-log is open would leave the old numbers.
+    private let nutritionModel: WatchNutritionModel?
 
     /// The wrist's "N entries waiting for your phone" line, or nil (plan 51d).
     private let syncNotice: String?
@@ -60,14 +64,14 @@ public struct WatchMenuView: View {
     public init(
         state: WatchMenuState,
         revision: Int = 0,
-        nutrition: WatchNutritionState? = nil,
+        nutritionModel: WatchNutritionModel? = nil,
         syncNotice: String? = nil,
         onClose: @escaping () -> Void,
         onFinish: @escaping () -> Void
     ) {
         self.state = state
         self.revision = revision
-        self.nutrition = nutrition
+        self.nutritionModel = nutritionModel
         self.syncNotice = syncNotice
         self.onClose = onClose
         self.onFinish = onFinish
@@ -172,17 +176,18 @@ public struct WatchMenuView: View {
         .buttonStyle(.bordered)
     }
 
-    /// The Log food row: it pushes the quick-log over the host's own state, so a
-    /// log taken here is the same event the start screen's surface takes (D-3).
+    /// The Log food row: it pushes the quick-log over the host's own model, so a
+    /// log taken here is the same event the start screen's surface takes and a
+    /// list arriving while it is open redraws it (D-3, D-10).
     ///
-    /// Left off when the host handed over no state. Never disabled: eating is
+    /// Left off when the host handed over no model. Never disabled: eating is
     /// independent of the effort being logged, so a running work clock does not
     /// lock it.
     @ViewBuilder
     private var logFoodRow: some View {
-        if let nutrition {
+        if let nutritionModel {
             NavigationLink {
-                WatchNutritionView(model: WatchNutritionModel(state: nutrition))
+                WatchNutritionView(model: nutritionModel)
             } label: {
                 Text(WatchMenuCopy.logFoodLabel)
                     .frame(maxWidth: .infinity, alignment: .center)

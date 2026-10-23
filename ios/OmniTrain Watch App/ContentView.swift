@@ -36,6 +36,12 @@ final class WatchAppHost: ObservableObject {
     /// give.
     let nutrition: WatchNutritionState
 
+    /// The quick-log's one model, built beside its state so the crown, the
+    /// selection and the state's change observer live as long as the app: the
+    /// start screen's sheet and the session menu's row both present this model
+    /// (D-6, D-10).
+    let nutritionModel: WatchNutritionModel
+
     /// The platform workout, following the session's life. One coordinator for
     /// the life of the app (D-1504, D-1508): it remembers the session it opened
     /// the workout for, so a refresh never opens a second one for the same
@@ -97,6 +103,10 @@ final class WatchAppHost: ObservableObject {
         // arrive on the orchestrator's `foods_down`, and its log is the engine's
         // own `logNutrition`, so it is the same event the start screen takes.
         let nutrition = WatchNutritionState(engine: engine, store: store)
+        // One model for the app's life (D-6): a model built per body evaluation
+        // would reset the crown and drop the state's change observer, so a
+        // foods_down would leave an open surface showing the old numbers.
+        let nutritionModel = WatchNutritionModel(state: nutrition)
         let orchestrator = WatchSyncOrchestrator(
             transport: bridge,
             paths: paths,
@@ -132,6 +142,7 @@ final class WatchAppHost: ObservableObject {
         self.logging = logging
         self.rating = rating
         self.nutrition = nutrition
+        self.nutritionModel = nutritionModel
         self.workout = workout
         self.sensors = sensors
         self.orchestrator = orchestrator
@@ -327,7 +338,7 @@ struct ContentView: View {
         // root, so the surface is the one the phone's foods landed in.
         .sheet(isPresented: $showingFood) {
             NavigationStack {
-                WatchNutritionView(model: WatchNutritionModel(state: host.nutrition))
+                WatchNutritionView(model: host.nutritionModel)
             }
         }
         .task {
@@ -419,7 +430,7 @@ private extension View {
             WatchMenuView(
                 state: menu,
                 revision: host.revision,
-                nutrition: host.nutrition,
+                nutritionModel: host.nutritionModel,
                 syncNotice: host.syncNotice,
                 onClose: {
                     isPresented.wrappedValue = false

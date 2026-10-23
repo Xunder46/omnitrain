@@ -223,7 +223,16 @@ Docs:
   5. [x] New `WatchNutritionFreshnessTests.swift` — Result: 9 tests (S-8301..S-8306, S-8313..S-8315), each comment naming the mutation that turns it red.
   6. [x] `WatchNutritionQuickLogTests` green — Result: green in the full run (753 executed, 0 failures), incl. `testANewSelectionStartsFromThatFoodsOwnPortion`, `testTheWristDerivesTheContractsOrder`, `testS7206ARestoreCannotPutTheStoredListOverANewerOne`.
   - Done Criteria: `swift-test` 753 executed / 0 failures; `prove-red` at the base commit RED but by compile error only (new APIs), so seven mutations carry the proof (each restored exactly, re-run green); `lint` 180 info / 0 errors, unchanged; no view, host, menu or doc file touched. Evidence: `<plan>.evidence.md` § Phase P2.
-- [ ] P3 — Swift view and host: D-4, D-5, D-6, D-10, S-8311, S-8312, S-8318
+- [x] P3 — Swift view and host: D-4, D-5, D-6, D-10, S-8311, S-8312, S-8318 — **Complete**
+  1. [x] `WatchNutritionModel.init` installs the observer — Result: `state.onFoodsChanged` hops to the main queue before `objectWillChange.send()`; the model holds the state weakly inside the closure, so no cycle.
+  2. [x] `WatchNutritionModel.deselect()` and `isShowingFood` — Result: both added; `deselect()` sends, deselects the state and resets `crownPosition`.
+  3. [x] `WatchNutritionView.body` is the list — Result: rows lost the `isSelected` branch and now show `food.calories(at: food.defaultServings)`; the portion row, Log and confirmation moved out; `.navigationDestination(isPresented:)` bound to `model.isShowingFood` and calling `model.deselect()` on dismissal.
+  4. [x] New `WatchFoodPortionView` — Result: `portionRow`, `stepButton` and `logButton` moved verbatim (Crown binding, 51e `.success` tap, `watchProminent()`), plus the confirmation; the food's name is the pushed title.
+  5. [x] `ContentView.swift` owns one model — Result: `let nutritionModel = WatchNutritionModel(state: nutrition)` in `WatchAppHost.init`, stored beside `nutrition`; the sheet passes `host.nutritionModel`.
+  6. [x] `WatchMenuView` takes `nutritionModel: WatchNutritionModel?` — Result: nil keeps the row off; `logFoodRow` pushes `WatchNutritionView(model: nutritionModel)`; `menuSheet` passes `host.nutritionModel`.
+  7. [x] Guards S-8311, S-8312, S-8318 added; S-7201 and S-7203 texts updated — Result: red at the base commit (14 assertion failures), green after; both rewritten text lines are in the evidence file.
+  8. [x] S-7202 and S-7205 untouched — Result: green in both runs.
+  - Done Criteria: `swift-test` 756 executed / 0 failures; `prove-red` at `a01be76` RED AT with assertions (not compile errors); `ui_standards_contract_test` 29/29; `lint` 180 info / 0 errors, unchanged. `xcodebuild` (watch scheme) and `flutter run` are the governor's. Evidence: `<plan>.evidence.md` § Phase P3.
 - [ ] P4 — docs and Progress
 - [ ] Governor: full `swift test`, `xcodebuild`, `flutter analyze`, full `flutter test`, `prove-red` S-8301..S-8312, review
 
@@ -239,6 +248,9 @@ Docs:
 - **P2 / proved by mutation, not `prove-red`.** `WatchNutritionFreshnessTests.swift` cannot compile at the base commit (`deselect()`, `onFoodsChanged` are new), so `prove-red` can only report a build failure. Options: accept an unprovable file, or mutate. Chose seven mutations with the original lines restored and the suite re-run green; the table is in the evidence file.
 - **P2 / S-8303's "older" list is dated 05:30.** The log sits at 06:00 and the held catalog at 05:00, so the 05:30 list is newer than the held catalog and applies — which is exactly what exercises D-2's comparison. The drop path (a list older than the held catalog) is S-8305's 04:00 envelope.
 - **P2 / `effectiveFood` falls back to the catalog's amount.** A matching log whose `loggedAt` or `servings` cannot be read leaves the catalog's value, and a state holding no catalog returns the food untouched (D-2 compares against a list that must exist). Options: treat an unreadable log as newer, or ignore it. Chose ignore.
+- **P3 / the food screen's name is its navigation title.** R-1 asks the screen to show the food's name; options were a `Text` row above the portion row (costs vertical space and needs a font the wrist has no token for) and `.navigationTitle(...)`. Chose the navigation title — it is the wrist idiom `WatchMenuView` already uses, and it keeps the moved block unchanged.
+- **P3 / `import Foundation` added to `WatchNutritionView.swift`.** The observer's `DispatchQueue.main.async` hop (D-4) needs it; SwiftUI re-exports it today, but the import is explicit rather than relying on that.
+- **P3 / the sheet keeps its `NavigationStack`.** `.navigationDestination(isPresented:)` has to sit inside a stack; the menu's row already has one, so only the sheet's root needed keeping.
 
 ## Open questions
 

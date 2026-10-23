@@ -120,17 +120,46 @@ Footprint: `git-diff --stat` → the five predicted files only
 
 ## Phase P3 (Swift view and host: D-4, D-5, D-6, D-10)
 
-- `swift test` (source guards) output: _to fill_
-- Governor's `xcodebuild` (watch scheme): _to fill by the governor_
+- Guards first, implementation second:
+  - `swift-test --filter WatchNutritionWiringSourceTests` before any production edit → **7 executed,
+    5 failed (14 assertion failures)**: S-7201, S-7203, S-8311, S-8312, S-8318 red; S-7202 and
+    S-7205 green.
+  - The same filter after the implementation → **7 executed, 0 failures**.
+- `prove-red a01be76d05e6a4807b21a6a97a3dc38dc06abba0 swift-test --filter WatchNutritionWiringSourceTests --
+  watch/watchos/Tests/WatchSessionEngineTests/WatchNutritionWiringSourceTests.swift` → **RED AT a01be76
+  (exit 1)**, 7 executed / 14 failures, every failure an assertion (the file compiles there): the base
+  files still carry the old sheet line, the single-screen layout and the menu's inline model. Log:
+  `.work/gateway/swift-test-20261022-235929-95987.log`.
+- Full `swift test --package-path watch/watchos`: **756 executed, 0 failures, 0 unexpected** (was 753 in
+  P2; +3 new guards). Log: `.work/gateway/swift-test-20261022-235954-96507.log`.
+- `test test/ui_standards_contract_test.dart` → **29 passed, 0 failed** (no Dart or phone UI file
+  changed; the scans and the allowlist self-check are clean).
+- `test test/docs_indexing_contract_test.dart` (re-run after this phase's Progress and Assumption Log
+  edits, which grow the plan) → **13 passed, 0 failed**; both plan files stay inside the ceiling band.
+- `lint` → **180 issues, 0 errors**, unchanged from the P1/P2 baseline. The three production files are
+  Swift and do not appear in the log. Log: `.work/gateway/lint-20261023-000008-96767.log`.
+- Invariant grep `import .*hive_workout_repository` over `lib/state lib/features lib/widgets lib/core`
+  → no hit; the only hit under `lib/` is `lib/main.dart` (the composition root, outside those trees).
 - Red→green table:
 
 | Scenario | Red proof | Green |
 |---|---|---|
-| S-8311 | reverting D-6: the sheet's inline `WatchNutritionModel(` construction | _to fill_ |
-| S-8312 | reverting D-5: `portionRow`/`logButton` back in the list body; no `navigationDestination` | _to fill_ |
-| S-8318 | reverting D-10: the menu row's inline construction | _to fill_ |
-| S-7201 / S-7203 (updated guard text) | old text fails against the new wiring | _to fill_ |
-| S-7202, S-7205 | regression: untouched, must stay green | _to fill_ |
+| S-8311 | prove-red at a01be76: no `let nutritionModel = WatchNutritionModel(state: nutrition)` in the host, the sheet still constructs a model (`XCTAssertFalse`), the sheet passes `host.nutrition` | `testS8311TheHostOwnsTheOneNutritionModel` passes |
+| S-8312 | prove-red at a01be76: `portionRow` and `logButton` still in the list (`XCTAssertFalse` ×2), no `navigationDestination`, no `model.isShowingFood`, no `WatchFoodPortionView` (`XCTUnwrap`) | `testS8312TheListIsTheListAndTheFoodScreenEdits` passes |
+| S-8318 | prove-red at a01be76: one `WatchNutritionModel(` in the menu (`("1") is not equal to ("0")`), the row still constructs it, the menu call passes `nutrition:` | `testS8318TheMenuPushesTheHostsNutritionModel` passes |
+| S-7201 / S-7203 (updated guard text) | prove-red at a01be76: the old wiring fails the new text (menu handed the state; `WatchNutritionState?` parameter; inline destination) | both pass after the update |
+| S-7202, S-7205 | regression: untouched, green in both the red and the green runs | green |
+
+- Guard texts rewritten in this phase (the only places that encoded the old wiring):
+  S-7201's `menu.contains("nutrition: host.nutrition")` → `nutritionModel: host.nutritionModel`;
+  S-7203's optional-parameter text → `nutritionModel: WatchNutritionModel? = nil`, and its destination
+  text → `WatchNutritionView(model: nutritionModel)`.
+- Footprint: `git-diff --stat` → the four predicted files only (`ContentView.swift` 15 changed lines,
+  `WatchMenuView.swift` 25, `WatchNutritionView.swift` 97, `WatchNutritionWiringSourceTests.swift` 147;
+  238 insertions / 46 deletions in total), plus this evidence file and the plan's Progress. No mutation
+  marker left, no scratch file created.
+- The views compile only under `xcodebuild` (watch scheme), which this role cannot run: the governor's
+  run pastes the result. `flutter run` is the governor's for the same reason.
 
 ## Phase P4 (docs)
 
