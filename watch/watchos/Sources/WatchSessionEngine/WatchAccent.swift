@@ -67,6 +67,26 @@ public struct WatchAccent: Equatable {
         return accent
     }
 
+    /// The phone's default theme accent (`abyssalNeon` in
+    /// `watch/contract/watch_accent_contract.json`), what the wrist wears
+    /// before the first Sync has carried a usable accent (plan 56, D-1).
+    public static let fallbackHex = "#2DE2E6"
+
+    private init(red: Double, green: Double, blue: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
+
+    private static let fallback = WatchAccent(red: 45.0 / 255, green: 226.0 / 255, blue: 230.0 / 255)
+
+    /// The accent the wrist wears for the hex the phone sent, or the phone's
+    /// default theme accent when there is none, when the string does not parse,
+    /// or when the accent is too dark to wear (plan 56, D-1).
+    public static func worn(hex: String?) -> WatchAccent {
+        usable(hex: hex) ?? fallback
+    }
+
     private static func linear(_ channel: Double) -> Double {
         channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
     }

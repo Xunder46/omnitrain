@@ -763,10 +763,13 @@ hardware yet.
     holds every row of `watch/contract/watch_accent_contract.json` to the label
     it names). The accent arrives with the Sync, like every other phone setting,
     and picking a new theme shows at the next one. Before any Sync — a fresh
-    install — the buttons keep the default look, and a copy that carries no
-    accent, or one too dark to read on, is worn as no accent rather than as the
-    last one seen
-    (`WatchAccentTests.testS3712ANearBlackAccentIsRefusedRatherThanWorn`).
+    install — the buttons wear the phone's default theme accent
+    (`WatchAccent.fallbackHex`, the contract's `abyssalNeon`), and a copy that
+    carries no accent, or one too dark to read on, is worn as that fallback
+    rather than as the last one seen
+    (`WatchAccentTests.testS8601WornWithNoHexIsThePhoneDefaultThemeAccent`,
+    `…testS8602UnusableOrMalformedHexWearsTheFallback`,
+    `…testS3712ANearBlackAccentIsRefusedRatherThanWorn`).
     Nothing else changes color; the wrist's black stays black.
 13. **The exercise list arrives in batches, and only when it changed —
     (owner).** On a real pair, tap **Sync** and open **Add Exercise**: the full

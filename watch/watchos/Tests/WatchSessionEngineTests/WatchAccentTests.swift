@@ -176,4 +176,107 @@ final class WatchAccentTests: XCTestCase {
         )
         XCTAssertNil(WatchAccent.usable(hex: "#010203"), "S-3712: so is a color too dark to read")
     }
+
+    // MARK: - S-8601 the wrist's default accent before the first Sync
+
+    func testS8601WornWithNoHexIsThePhoneDefaultThemeAccent() throws {
+        let fallback = try XCTUnwrap(
+            WatchAccent(hex: WatchAccent.fallbackHex),
+            "the fallback hex parses as a #RRGGBB accent"
+        )
+        XCTAssertEqual(WatchAccent.fallbackHex, "#2DE2E6", "S-8601: the fallback is the phone's default theme accent")
+        XCTAssertEqual(
+            WatchAccent.worn(hex: nil),
+            fallback,
+            "S-8601: no phone accent yet means the phone's default theme accent"
+        )
+        XCTAssertTrue(WatchAccent.worn(hex: nil).labelIsDark, "S-8601: the fallback takes dark labels")
+    }
+
+    // MARK: - S-8602 a hex the wrist cannot wear falls back too
+
+    func testS8602UnusableOrMalformedHexWearsTheFallback() throws {
+        let fallback = try XCTUnwrap(WatchAccent(hex: WatchAccent.fallbackHex))
+        XCTAssertNil(WatchAccent.usable(hex: "teal"), "S-8602: the malformed string is not usable")
+        XCTAssertNil(WatchAccent.usable(hex: "#010203"), "S-8602: nor the too-dark color")
+        XCTAssertEqual(
+            WatchAccent.worn(hex: "teal"),
+            fallback,
+            "S-8602: a malformed hex wears the fallback"
+        )
+        XCTAssertEqual(
+            WatchAccent.worn(hex: "#010203"),
+            fallback,
+            "S-8602: a too-dark hex wears the fallback"
+        )
+    }
+
+    // MARK: - S-8603 a real theme accent is worn as itself
+
+    func testS8603EveryContractThemeIsWornAsItselfNotTheFallback() throws {
+        let fallback = try XCTUnwrap(WatchAccent(hex: WatchAccent.fallbackHex))
+        XCTAssertEqual(table.themes.count, 6, "the table carries every theme")
+        for row in table.themes {
+            XCTAssertEqual(
+                WatchAccent.worn(hex: row.hex),
+                try accent(row.hex),
+                "S-8603: \(row.theme) is worn as itself"
+            )
+            if row.hex != WatchAccent.fallbackHex {
+                XCTAssertNotEqual(
+                    WatchAccent.worn(hex: row.hex),
+                    fallback,
+                    "S-8603: \(row.theme) is not the fallback"
+                )
+            }
+        }
+    }
+
+    // MARK: - S-8604 the wiring reads worn, and the asset carries the color
+
+    func testS8604ContentViewWearsWornAndTheAssetCarriesTheColor() throws {
+        let contentViewURL = Fixtures.repositoryRoot
+            .appendingPathComponent("ios/OmniTrain Watch App/ContentView.swift")
+        let contentView = try String(contentsOf: contentViewURL, encoding: .utf8)
+        // Comment-only lines carry no code: strip them before searching.
+        let code = contentView
+            .components(separatedBy: "\n")
+            .filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                return !trimmed.isEmpty && !trimmed.hasPrefix("//")
+            }
+            .joined(separator: "\n")
+
+        XCTAssertTrue(
+            code.contains(".environment(\\.watchAccent, WatchAccent.worn(hex: host.preferences.accentColorHex))"),
+            "S-8604: the root sets the environment from worn"
+        )
+        XCTAssertFalse(
+            code.contains("WatchAccent.usable("),
+            "S-8604: the root no longer reads usable"
+        )
+
+        let assetURL = Fixtures.repositoryRoot
+            .appendingPathComponent(
+                "ios/OmniTrain Watch App/Assets.xcassets/AccentColor.colorset/Contents.json"
+            )
+        let data = try Data(contentsOf: assetURL)
+        let asset = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            "the colorset parses"
+        )
+        let colors = try XCTUnwrap(asset["colors"] as? [[String: Any]], "the colorset carries colors")
+        let first = try XCTUnwrap(colors.first, "the colorset carries a first color")
+        XCTAssertEqual(first["idiom"] as? String, "universal", "S-8604: the color is universal")
+        let color = try XCTUnwrap(first["color"] as? [String: Any], "S-8604: the color entry carries a color")
+        XCTAssertEqual(color["color-space"] as? String, "srgb", "S-8604: the color is srgb")
+        let components = try XCTUnwrap(
+            color["components"] as? [String: Any],
+            "S-8604: the color carries components"
+        )
+        XCTAssertEqual(components["green"] as? String, "0.886", "S-8604: the green channel is the fallback's")
+        XCTAssertEqual(components["red"] as? String, "0.176", "S-8604: the red channel is the fallback's")
+        XCTAssertEqual(components["blue"] as? String, "0.902", "S-8604: the blue channel is the fallback's")
+        XCTAssertEqual(components["alpha"] as? String, "1.000", "S-8604: the color is opaque")
+    }
 }

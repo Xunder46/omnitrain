@@ -70,12 +70,11 @@ public final class WatchNutritionModel: ObservableObject {
     /// of one is carried to the next event rather than rounding the portion off
     /// its step.
     public func turn(to points: Double) {
-        let rising = -(points - crownPosition)
-        let whole = (rising / Self.pointsPerDetent).rounded(.towardZero)
-        crownPosition = points + whole * Self.pointsPerDetent
-        guard whole != 0 else { return }
+        let step = WatchPortionCrown.turn(from: crownPosition, to: points)
+        crownPosition = step.position
+        guard step.detents != 0 else { return }
         objectWillChange.send()
-        state.stepPortion(Int(whole))
+        state.stepPortion(step.detents)
     }
 
     public func step(_ detents: Int) {

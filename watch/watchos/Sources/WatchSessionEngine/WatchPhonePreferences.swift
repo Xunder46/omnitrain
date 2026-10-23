@@ -39,8 +39,9 @@ public struct WatchPreferencesRecord {
     public let restPingSeconds: Int
 
     /// The phone's theme accent as `#RRGGBB`, or nil when the phone had none to
-    /// send (D-3709). Read through `WatchAccent.usable(hex:)`: a wrist wears an
-    /// accent only when this parses and clears the contrast floor.
+    /// send (D-3709). Read through `WatchAccent.worn(hex:)`: the wrist wears this
+    /// accent when it parses and clears the contrast floor, and the phone's
+    /// default theme accent otherwise (plan 56, D-1).
     public let accentColorHex: String?
 
     /// The phone's weight unit, `kg` or `lbs`, or nil when the phone sent none.
@@ -175,8 +176,8 @@ public final class WatchPhonePreferences {
 
     /// The phone's theme accent, `#RRGGBB`, as the copy that applies carries it
     /// — nil when that copy carries none, and so nil for a wrist that has never
-    /// heard from the phone. Render it through `WatchAccent.usable(hex:)` rather
-    /// than trusting it (D-3704).
+    /// heard from the phone. Render it through `WatchAccent.worn(hex:)` rather
+    /// than trusting it (D-3704; plan 56, D-1).
     public var accentColorHex: String? {
         current?.accentColorHex
     }

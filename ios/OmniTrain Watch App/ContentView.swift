@@ -398,7 +398,8 @@ struct ContentView: View {
         // D-3704: the accent rides the preferences the root already observes, so
         // a Sync that changes the theme re-runs this body and the environment
         // value with it. Read here, at render, like `restPingSeconds`.
-        .environment(\.watchAccent, WatchAccent.usable(hex: host.preferences.accentColorHex))
+        // With no usable phone accent the wrist wears the phone's default theme (plan 56, D-1).
+        .environment(\.watchAccent, WatchAccent.worn(hex: host.preferences.accentColorHex))
         // D-3114: one sheet, on the root, so the rest↔logging switch and a rest
         // ending underneath it both leave it alone.
         .menuSheet(host, menu: menuState, isPresented: $showingMenu)

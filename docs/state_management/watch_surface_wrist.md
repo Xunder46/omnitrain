@@ -377,7 +377,9 @@ the phone
 `test/watch_session_engine_test.dart`, S-320). The Wear client's Dart twin still
 starts a rest after a set alone (documented divergence, plan 23b D-3502); the
 rest screen is captioned
-"Rest" (`WatchTimedWorkTests.testS3409TheRestSurfaceNamesItself`).
+"Rest" (`WatchTimedWorkTests.testS3409TheRestSurfaceNamesItself`), and its clock
+is the same scale as the logging screen's work readouts
+(`WatchRestSurfaceTests.testS8621TheRestClockMatchesTheWorkReadoutsScale`).
 Since plan 51b the rest screen also says what was just done and what is next:
 the name line reads "Barbell Bench Press · Set 2 done" for a set effort that has
 logged sets, and the exercise name alone for a timed, hold or round effort or an
@@ -442,7 +444,12 @@ a `Log food` row (`WatchMenuCopy.logFoodLabel`, the same words) between Add
 Exercise and End Session that pushes the same screen; the row is never
 disabled, because food is independent of the effort. A tapped food opens its
 own screen (`WatchFoodPortionView`: the portion row, the kcal and Log), and
-leaving it — the back button or a swipe — returns to the list with nothing
+the portion's Crown turns the raising direction the logging screen's Crown does:
+positive travel raises the portion, one detent per
+`WatchNutritionPortion.stepServings`, through
+`WatchPortionCrown.turn(from:to:)` via `WatchNutritionModel.turn(to:)`
+(`WatchPortionCrownTests` S-8611..S-8616, the arithmetic and the model's use of
+it), and leaving it — the back button or a swipe — returns to the list with nothing
 selected, so the next food opens at its own amount rather than at the portion
 the last one was left at
 (`WatchNutritionWiringSourceTests.testS8312TheListIsTheListAndTheFoodScreenEdits`,
@@ -493,14 +500,21 @@ better on it than white
 `…testS3712ANearBlackAccentIsRefusedRatherThanWorn`; the six accents both clients
 agree on are `watch/contract/watch_accent_contract.json`). A copy that carries no
 accent, and one generated before the wrist knew the field, read as no accent — the
-wrist keeps its default look rather than the last accent it saw
-(`WatchRestPingTests.testS3713TheWristStoresTheAccentAndReadsTheNewestCopyWithIt`,
+wrist wears the phone's default theme accent, `WatchAccent.fallbackHex` (the
+contract's `abyssalNeon`), rather than the last accent it saw
+(`WatchAccentTests.testS8601WornWithNoHexIsThePhoneDefaultThemeAccent`;
+`WatchRestPingTests.testS3713TheWristStoresTheAccentAndReadsTheNewestCopyWithIt`,
 `…testS3714ABadAccentIsRefusedAndThePreviousOneStays`; Dart twin,
 `test/watch_session_start_test.dart`, S-3701).
-The app's root hands the usable accent to every surface through an environment value
+The app's root hands the accent `WatchAccent.worn(hex:)` resolves — the usable
+accent, or the fallback when the copy carries none or one too dark to wear — to
+every surface through an environment value
 (`watchAccent`, `WatchAccentStyle.swift`, set in `ContentView`), and every prominent button
-asks for it with `watchProminent()`: the accent as fill with its label color, or exactly the
-default prominent look when there is none. The phone sends the accent of its current theme
+asks for it with `watchProminent()`: the accent as fill with its label color, or the
+fallback with the label color its own contrast picks out
+(`WatchAccentTests.testS8602UnusableOrMalformedHexWearsTheFallback`,
+`…testS8603EveryContractThemeIsWornAsItselfNotTheFallback`,
+`…testS8604ContentViewWearsWornAndTheAssetCarriesTheColor`). The phone sends the accent of its current theme
 at every Sync (`WatchReferenceSync.accentHexOf`; `test/watch_accent_contract_test.dart`, S-3720..S-3723).
 
 Logged rows leave the wrist as they are logged: the engine's emissions go to

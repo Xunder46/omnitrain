@@ -11,7 +11,8 @@
 //  A view asks for the accent rather than deciding it: `watchProminent()` reads
 //  the environment value the app's root sets from `WatchPhonePreferences`, so a
 //  surface handed no accent — before the first Sync, or when the copy carried
-//  none — is exactly `.buttonStyle(.borderedProminent)`, today's look.
+//  none — wears the phone's default theme accent (`WatchAccent.fallbackHex`),
+//  not a bare `.buttonStyle(.borderedProminent)`.
 //
 //  Compiled only into a watch target, like the other views in this module:
 //  `swift test` compiles and runs the package's platform-independent half and
@@ -22,16 +23,18 @@
 
 import SwiftUI
 
-/// The accent the wrist's prominent buttons wear, or nil when there is none.
-/// Carried in the environment so one read at the root reaches every surface,
-/// the sheets and alerts presented from them included (D-3704).
+/// The accent the wrist's prominent buttons wear. Carried in the environment so
+/// one read at the root reaches every surface, the sheets and alerts presented
+/// from them included (D-3704).
 private struct WatchAccentKey: EnvironmentKey {
-    static let defaultValue: WatchAccent? = nil
+    /// No phone accent yet — before the first Sync, or outside the root — means
+    /// the phone's default theme accent (plan 56, D-1).
+    static let defaultValue: WatchAccent? = WatchAccent.worn(hex: nil)
 }
 
 extension EnvironmentValues {
     /// Set by the app's root from the phone's `accentColorHex`. nil means the
-    /// wrist keeps its default look.
+    /// wrist wears the phone's default theme accent (plan 56, D-1).
     public var watchAccent: WatchAccent? {
         get { self[WatchAccentKey.self] }
         set { self[WatchAccentKey.self] = newValue }
@@ -51,7 +54,9 @@ extension WatchAccent {
 }
 
 /// Applies the accent to a button that is already prominent. With no accent in
-/// the environment the result is `.buttonStyle(.borderedProminent)` alone.
+/// the environment the result is `.buttonStyle(.borderedProminent)` alone; the
+/// environment's default value is the phone's default theme accent, so the nil
+/// branch is reachable only by a surface that injects nil (plan 56, D-2).
 private struct WatchProminentModifier: ViewModifier {
     @Environment(\.watchAccent) private var accent
 
@@ -71,9 +76,10 @@ private struct WatchProminentModifier: ViewModifier {
 
 extension View {
     /// The style a wrist's prominent button wears: the accent in the environment
-    /// when there is one, and exactly the default look when there is not
-    /// (D-3704). Every prominent wrist button asks with this rather than naming
-    /// the style itself, so no view decides the color.
+    /// when there is one, and the phone's default theme accent when the
+    /// environment carries none (D-3704; plan 56, D-1). Every prominent wrist
+    /// button asks with this rather than naming the style itself, so no view
+    /// decides the color.
     public func watchProminent() -> some View {
         modifier(WatchProminentModifier())
     }
