@@ -164,6 +164,38 @@ minus what the ladder already shows — behind them. Verified by
 lists are one list in one order by
 `WatchSessionStartPathsTests.testS3113AThePickerRowsAndTheAvailableExercisesAgree`.
 
+**A sync is finished by its replies, not by the request.** The watch's
+orchestrator awaits only the sends, so the phone's answer arrives afterwards
+through `receive` and "still syncing" cannot be read from the request. The
+window therefore lives in the pure `WatchSyncProgress`
+(`watch/watchos/Sources/WatchSessionEngine/WatchSyncProgress.swift`), a struct
+with an injected clock: a sync begins with a request — or with a catch-up that
+will actually run — and ends once a `routines_down` has arrived *and* the newest
+reply has been quiet for `WatchSyncProgressCopy.quietSeconds`, or at
+`WatchSyncProgressCopy.capSeconds`, whichever comes first. A reply of another
+type neither ends nor extends it, and the routines gate means a sync that only
+ever received foods stays open to the cap. The start surface takes `isSyncing`
+and renders a non-tappable syncing row instead of the Sync button while the
+window is open, inside the same `onRequestSync` and `offersSync` gate as the
+button, so a second tap starts nothing new and a watch with no transport shows
+neither. The host owns one window, notes every arriving frame *before* `receive`
+— a frame the wrist refuses still counts, because the phone spoke — and begins
+the catch-up's window only when the phone is reachable, since there is nothing to
+wait for otherwise. Because the window ends by the clock, the host re-reads it on
+its own tick while one may be running, and that tick assigns `isSyncing` alone:
+bumping the revision the workout and sensors observe would put their refresh on
+the tick's cycle. The copy is `WatchStartSurfaceCopy.syncingLabel`, deliberately
+not a value in `watch/contract/watch_start_paths_contract.json`: the
+wrist↔phone contract is unchanged, and the start surface already keeps
+`unreachableLabel` for itself. Verified by `WatchSyncProgressTests`
+(S-8501..S-8507, S-8510),
+`WatchSyncProgressWiringTests.testS8508RequestSyncBeginsTheWindowBeforeAwaiting`,
+`…testS8508ArrivalsAreNotedBeforeTheReceive`,
+`…testS8508CatchUpBeginsOnlyWhenReachable`,
+`…testS8509TheStartSurfaceTakesIsSyncingAndSpins`,
+`…testS8511TheSpinnerSitsInsideTheSyncGate` and
+`…testS8512TheTickerEndsTheSpinnerWithoutBumpingRevision`.
+
 **One list serves both entry points.** The picker and the menu's Add Exercise
 list render the same `WatchExerciseLetterList` (`WatchExerciseListView.swift`),
 each supplying only its own rows and its own action (D-3105, D-3112); it is a

@@ -93,13 +93,44 @@ Six tests cover four scenario ids (S-8508 has three guards: request, arrival, ca
 | P1 | gateway `swift-test` (full) | **778 tests, 0 failures** (2026-10-23 01:39:14; log `.work/gateway/swift-test-20261023-013914-5166.log`) |
 | P2 | gateway `swift-test --filter WatchSyncProgressWiringTests` | 6 tests, 0 failures (2026-10-23 01:44:54) |
 | P2 | gateway `swift-test` (full) | **784 tests, 0 failures** (2026-10-23 01:45:17; log `.work/gateway/swift-test-20261023-014516-9197.log`) — 778 + 6 new. `testS7205LogFoodSitsRightUnderFreeWorkout`, `testS111TheSurfaceSaysConnectedOrUnreachableOnlyAfterObservingIt` and both `testS6507` host-hop guards passed in the same run |
-| P3 | governor full `flutter test` (docs tests) | — |
+| P3 | gateway `test test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart` | **42 tests, 0 failures** (2026-10-23 01:52) — docs indexing/ceiling/link/reachability clean after the two doc edits |
+| P3 | governor full `flutter test` (docs tests) | — (not an agent-side check) |
 
 P1 and P2 are Swift-only: `gateway.sh lint` (`flutter analyze`, run once after P2: **180 info
 notices, 0 failures**, all pre-existing and none in a file this plan touches) and
 `test/ui_standards_contract_test.dart` (not run — no Dart, UI or test-Dart file changed) are
 unaffected; the `hive_workout_repository` grep invariant is likewise unaffected (no `lib/` file
 changed). `xcodebuild` on the watch scheme was not run: it is the governor's (P2's Finish brief).
+
+## P3 — docs (2026-10-23)
+
+Footprint:
+
+```
+docs/README.md                               |  2 +-
+docs/state_management/watch_surface_wrist.md | 32 ++++++++++++++++++++++++++++
+2 files changed, 33 insertions(+), 1 deletion(-)
+```
+
+- `docs/state_management/watch_surface_wrist.md` — one paragraph ("A sync is finished by its
+  replies, not by the request.") inside "The wrist's start surface, and what an arrival does to
+  it", before "One list serves both entry points". It names `WatchSyncProgress`,
+  `WatchSyncProgressCopy.quietSeconds` / `capSeconds` and `WatchStartSurfaceCopy.syncingLabel`
+  instead of their values (documentation_standard §3.4) and cites all 13 S-85xx tests by exact
+  group + name.
+- `docs/README.md` — one clause appended to the wrist link: " (including the sync progress
+  spinner)".
+- §3.1/§3.3 avoided: the paragraph states the gate and the row's non-tappability as structure, not
+  a tap-by-tap flow.
+
+Assumption adjudication (P3, each checked against the shipped code):
+
+| Entry | Verdict | Where the shipped code confirms it |
+|---|---|---|
+| A-1 syncingLabel stays package-side | RATIFY | `WatchStartPaths.swift:45`; grep for `syncingLabel` in `watch/contract/` finds nothing |
+| A-2 ticker task, not `TimelineView` | RATIFY | `ContentView.swift:288-304` (`syncProgressTicker`, exits on the first inactive evaluation); no `TimelineView` in the file |
+| A-3 note the arrival before `receive` | RATIFY | `ContentView.swift:183-187` (`noteArrival` awaited on the main actor before `try await orchestrator.receive`) |
+| A-4 both catch-up sites begin under reachable | RATIFY | `ContentView.swift:204` (`if reachable { beginSyncProgress() }`) and `:323` (`if reachable { beginSyncProgress() }`) |
 
 ## Notes for the reviewer
 
@@ -109,5 +140,5 @@ changed). `xcodebuild` on the watch scheme was not run: it is the governor's (P2
   `WatchStartView.swift`).
 - After P1 the type has no production reader (dead until P2) — expected, not a finding at the P1
   checkpoint.
-- Assumption Log entries A-1..A-4 (plan file) are the planner's derived interpretations, offered for
-  veto before P2.
+- Assumption Log entries A-1..A-4 (plan file) are the planner's derived interpretations; P3 ratified
+  all four against the shipped code (table in the P3 section above).

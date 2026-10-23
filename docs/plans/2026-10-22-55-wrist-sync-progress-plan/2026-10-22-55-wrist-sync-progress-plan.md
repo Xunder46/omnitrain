@@ -1,6 +1,6 @@
 # Feature: 55 — the watch shows a spinner while it is syncing
 
-> Status: SEEDED 2026-10-22 (governor), not planned yet. Owner: watch testing round 2026-10-22 item 5, in chat ("Can the syncing process have a progress spinner or something until it finishes"). Series: PR 3 of 3 (53 food, 54 effort follow before). Base commit: `.work/2026-10-22-55/base.txt`. Working branch: the one checked out; never create or switch branches. Binding conventions: docs/global_conventions.md; .github/copilot/pr-scope-budget.md.
+> Status: BUILT, PROVED AND DOCUMENTED 2026-10-23 — P1 (the type and its copy), P2 (host wiring and the start view) and P3 (docs) complete; Swift 784 tests / 0 failures, docs and UI-standards tests 42 passed; the governor's full `flutter test`, `xcodebuild` and the review follow. Owner: watch testing round 2026-10-22 item 5, in chat ("Can the syncing process have a progress spinner or something until it finishes"). Series: PR 3 of 3 (53 food, 54 effort follow before). Base commit: `.work/2026-10-22-55/base.txt`. Working branch: the one checked out; never create or switch branches. Binding conventions: docs/global_conventions.md; .github/copilot/pr-scope-budget.md.
 
 ## Goal and acceptance
 
@@ -250,17 +250,21 @@ else.
 
 ### P3 (@developer) — docs and plan Progress
 
-1. [ ] `docs/state_management/watch_surface_wrist.md` — extend "The wrist's start surface, and what
+1. [x] `docs/state_management/watch_surface_wrist.md` — extend "The wrist's start surface, and what
    an arrival does to it" (l.142) with a short paragraph: the Sync button becomes a non-tappable
    spinner row ("Syncing…") while a sync is plausibly unfinished — `WatchSyncProgress` ends it when
    a `routines_down` has arrived and the replies have been quiet 2 s, or at a 20 s cap; the same
    spinner runs for the automatic catch-up; it is clock-driven, so it ends even when no reply ever
-   comes. The doc is ~34 KB, inside the 52 KB band — no split needed
-2. [ ] `docs/README.md` — extend the `watch_surface_wrist.md` summary clause (l.87) with the sync
-   progress spinner, so the index matches the doc
-3. [ ] Plan housekeeping: tick the Progress items below with their results, paste the final suite
+   comes. The doc is ~34 KB, inside the 52 KB band — no split needed — result: the paragraph
+   "A sync is finished by its replies, not by the request." added, naming the constants rather than
+   their values (documentation_standard §3.4) and pointing at the 13 S-85xx tests
+2. [x] `docs/README.md` — extend the `watch_surface_wrist.md` summary clause (l.87) with the sync
+   progress spinner, so the index matches the doc — result: " (including the sync progress spinner)"
+   appended to the link
+3. [x] Plan housekeeping: tick the Progress items below with their results, paste the final suite
    counts into the evidence file, and leave the Assumption Log entries for the reviewer's
-   adjudication (RATIFY/REVERT)
+   adjudication (RATIFY/REVERT) — result: Progress updated; A-1..A-4 adjudicated against the shipped
+   code (all RATIFY), see the Assumption Log
 
 **Done Criteria**: the doc section and index clause exist; Progress and Assumption Log updated. The
 64 KiB doc rule is enforced by `test/docs_indexing_contract_test.dart`, which runs in the governor's
@@ -299,7 +303,7 @@ file, the evidence file. Nothing else.
 
 - [x] P1 — type + copy + S-8501..S-8507, S-8510 (result: 8 new tests; full `swift-test` 778 tests / 0 failures; each scenario red-proved by mutation — evidence file)
 - [x] P2 — view and host wiring + S-8508, S-8509, S-8511, S-8512 (result: 6 new guards, RED AT HEAD then green; full `swift-test` 784 tests / 0 failures with S-7205, S-111 and S-6507 green — evidence file)
-- [ ] P3 — docs and plan Progress (result: —)
+- [x] P3 — docs and plan Progress (result: the start-surface section and the README clause written, constants named not valued, 13 S-85xx tests cited; `docs_indexing_contract_test` + `ui_standards_contract_test` 42 passed; A-1..A-4 ratified — evidence file)
 
 ## Assumption Log
 
@@ -307,17 +311,23 @@ file, the evidence file. Nothing else.
   `watch_start_paths_contract.json` or keep it package-side. Chose package-side
   (`WatchStartSurfaceCopy.syncingLabel`) because D-4 forbids a contract change and
   `unreachableLabel` sets the precedent. Vetoable before P2.
+  **RATIFIED (P3, against the shipped code):** `syncingLabel` is in `WatchStartSurfaceCopy` and
+  `watch/contract/watch_start_paths_contract.json` is untouched.
 - A-2 (planner, fills D-2's open choice): the re-render is a host-owned ticker task, not
   `TimelineView`. Options: periodic `TimelineView` (always ticking, simpler) vs a bounded task
   (ticks only while plausibly active, cannot spam the `$revision` sink). Chose the task (D-6).
   Vetoable before P2.
+  **RATIFIED (P3):** `WatchAppHost.syncProgressTicker` runs `while !Task.isCancelled` and exits on
+  the first inactive evaluation; there is no `TimelineView` in `ContentView.swift`.
 - A-3 (planner, derived from D-1's "arrivals"): a reply frame the watch refuses still counts as an
   arrival — the phone spoke, so the wait may end. Options: note before `receive` vs only on a
   successful apply. Chose before, so a throw cannot skip the note. Vetoable before P2.
+  **RATIFIED (P3):** `onIncoming` notes the arrival before `try await orchestrator.receive(frame)`.
 - A-4 (planner, derived from D-2's "the catch-up path"): BOTH catch-up call sites begin the
   progress — the reachability edge (`onReachabilityChange`, l.166) and activation
   (`catchUpOnActivation`, l.256) — not just the named one; they are the same trigger (D-96).
   Vetoable before P2.
+  **RATIFIED (P3):** both sites call `beginSyncProgress()` only under their reachable condition.
 - A-5 (P1, resolves D-1 vs D-5's signatures): the type carries both forms — `begin()` / `isActive()`
   read the injected clock (D-5, and what the tests use) and `begin(at:)` / `isActive(at:)` take the
   time explicitly (D-1, and what D-6's host ticker calls). Options: only one pair. Chose both; the
