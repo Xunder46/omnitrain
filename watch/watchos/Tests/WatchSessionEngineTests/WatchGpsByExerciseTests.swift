@@ -188,14 +188,14 @@ final class WatchGpsByExerciseTests: XCTestCase {
         await assertStart(
             modality: nil,
             capabilities: ["time", "distance"],
-            activityType: "other",
+            activityType: "running",
             outdoors: true,
             "a free workout on a distance exercise"
         )
         await assertStart(
             modality: nil,
             capabilities: ["reps", "sets", "load"],
-            activityType: "other",
+            activityType: "traditionalStrengthTraining",
             outdoors: false,
             "a free workout on a lift"
         )
@@ -292,7 +292,7 @@ final class WatchGpsByExerciseTests: XCTestCase {
         let store = RecordingGpsOutdoorStore()
         await WatchPlatformWorkout(store: store).start(live)
 
-        XCTAssertEqual(store.begins.map(\.activityType), ["other"])
+        XCTAssertEqual(store.begins.map(\.activityType), ["running"])
         XCTAssertEqual(
             store.begins.map(\.outdoors),
             [true],

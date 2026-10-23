@@ -57,6 +57,31 @@ public enum WatchStartSurfaceCopy {
     /// Said only when the wrist has *observed* the phone in reach — the other
     /// half of the one status line the start surface carries.
     public static let connectedLabel = "Phone connected"
+
+    /// Shown when the user taps a routine whose copy is no longer in the list
+    /// the watch holds (plan 60, D-2): the start path's only throw is
+    /// `unknownRoutine`, so this is the tap's whole failure story.
+    ///
+    /// Deliberately not a contract value, like `syncingLabel`: the sentence
+    /// describes this surface's own list, not a value another client reads from
+    /// the contract file.
+    public static let routineMissingLabel = "That routine is no longer on the watch. Tap Sync."
+
+    /// Shown when a manual Sync ran its whole window and no reply of any kind
+    /// arrived (plan 60, D-2): the phone never answered the request.
+    ///
+    /// Deliberately not a contract value, like `syncingLabel`: only this
+    /// surface waits on a sync it can time out.
+    public static let syncNoAnswerLabel = "No answer from your phone. Open OmniTrain on it and try again."
+
+    /// Shown when the watch cannot bring its link to the phone up at all —
+    /// WatchConnectivity unsupported, or activation ended with an error
+    /// (plan 60, D-2).
+    ///
+    /// Deliberately not a contract value, like `syncingLabel`: the transport is
+    /// this client's own, and no other client reads the sentence from the
+    /// contract file.
+    public static let linkUnavailableLabel = "Phone link unavailable. Restart the watch app."
 }
 
 /// What the wrist knows about the phone's radio: nothing yet, or one of the two

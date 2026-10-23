@@ -601,7 +601,9 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     is recorded, never retried while the same session is live
     (`WatchWorkoutCoordinatorTests.testS1505DenialIsNotFailure`).
 23. **The wrist measures heart rate and steps — (owner).** Install on a real
-    watch and accept the new Health prompt (workout share, heart rate, steps).
+    watch and accept the new Health prompt (workout share, heart rate, steps,
+    active energy
+    — `WatchSensorSourceSourceTests.testS8812TheStoreSharesAndReadsActiveEnergySoTheWorkoutSavesCalories`).
     Run a session and watch the exercise screen's grey "bpm" line change at
     least every ~5 s, also after lowering and raising the wrist; if it freezes,
     note the last value and after how many seconds
@@ -614,12 +616,16 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     End the session and sync, then check the phone's Stats for an average heart rate.
     Decline the prompt once instead: logging, rest, the menu and sync keep
     working and no number appears
-    (`WatchSensorCoordinatorTests.testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected`).
+    (`WatchSensorCoordinatorTests.testS3104RefusedProbesAreAskedOnceAndLoggingIsUnaffected`),
+    and the screens say so — the Start screen's grey "Health access is off"
+    line and the logging screen's "No heart rate, Health access is off" line
+    (step 26; `WatchSensorAccessNoticeTests.testS8904ADeniedHeartRateBecomesTheNoticeLine`).
 24. **The wrist measures distance and pace — (owner).** Nothing in this step
     has run on a wrist; it is verified in code and builds only. Install on a
     real watch and start a **Free workout**: add Walking (or any exercise with
-    Distance ticked, including a custom one). The Health question comes first,
-    then the Location question — Allow While Using — and it appears once. The
+    Distance ticked, including a custom one). The Health question has already
+    been asked on the Start screen (step 26); the Location question — Allow
+    While Using — appears once, at the first distance exercise. The
     order is the host's: the workout is refreshed before the sensors
     (`WatchSensorSourceSourceTests.testS3110TheHostWiresTheSensorsAndRefreshesTheWorkoutFirst`),
     and the question's text is the watch target's
@@ -643,10 +649,54 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     and nothing else changes
     (`WatchDistanceTrackerTests.testS3207DeniedRawPermissionSkipsLocationAndLoggingCarriesOn`,
     `WatchGpsByExerciseTests.testS4804ARefusedSessionIsAskedAboutOnceAndANewOneAgain`).
-    Apple Health lists the free workout as a generic workout, not an outdoor
-    walk — the workout is registered once, at the session's start, and is
-    never re-registered when a walk is added later
-    (`WatchGpsByExerciseTests.testS4807TheWorkoutIsRegisteredOutdoorsByTheExerciseTheUserIsOn`).
+    Apple Health lists the free workout as a Running workout — the workout is
+    registered once, when the first exercise is picked (a Free workout with
+    nothing picked yet opens nothing), and is never re-registered when an
+    exercise is added later
+    (`WatchGpsByExerciseTests.testS4807TheWorkoutIsRegisteredOutdoorsByTheExerciseTheUserIsOn`,
+    `WatchWorkoutTypeFromExercisesTests.testS8807AFreeWorkoutWaitsForItsFirstExercise`,
+    `…testS8808ALaterExerciseNeverChangesTheOpenWorkout`).
+25. **The workout's type and its calories — (owner).** Install on a real
+    watch; the simulator shows neither the type nor the ring. Finish a
+    routine of lifts on the wrist and check Apple Health: the workout is
+    listed as Strength Training, not Other. Finish a routine of distance
+    exercises and it is listed as Running. The type is the majority of the
+    session's exercises
+    (`WatchWorkoutTypeFromExercisesTests.testS8804TheMajorityDecides`), and a
+    Free workout is typed from its first exercise, because Health fixes the
+    type when the workout opens
+    (`…testS8807AFreeWorkoutWaitsForItsFirstExercise`,
+    `…testS8808ALaterExerciseNeverChangesTheOpenWorkout`). After the strength
+    workout, check the Move ring: the workout's active calories count for
+    Move
+    (`WatchSensorSourceSourceTests.testS8812TheStoreSharesAndReadsActiveEnergySoTheWorkoutSavesCalories`).
+    The first workout after updating shows one extra line, active energy, in
+    the Health permission sheet.
+26. **The wrist asks for Health access up front and says when it is off —
+    (owner).** Nothing in this step has run on a wrist; it is verified in code
+    and tests only. Launch the watch app fresh: the Health permission sheet
+    (workout share, heart rate, steps, active energy) appears over the Start
+    screen, once — the ask joins the one memoised request, so no second sheet
+    rises later
+    (`WatchHealthAccessWiringSourceTests.testS8908HostAsksWhenTheStartScreenShows`,
+    `WatchSensorAccessNoticeTests.testS8907TheAnswerFollowsAvailabilityAndGrant`).
+    Decline it: the Start screen shows a small grey line, "Health access is
+    off. Turn it on in Health on your iPhone."
+    (`WatchHealthAccessWiringSourceTests.testS8908StartViewSaysHealthAccessIsOff`,
+    `WatchSensorAccessNoticeTests.testS8907TheStartScreenLineTextIsExact`).
+    Start a workout while declined: the logging screen's header shows "No
+    heart rate, Health access is off" under the status line
+    (`WatchSensorAccessNoticeTests.testS8904ADeniedHeartRateBecomesTheNoticeLine`,
+    `WatchHealthAccessWiringSourceTests.testS8908LoggingViewShowsSensorNotices`).
+    Decline Location too (Settings → Privacy) and reach a run: the header also
+    shows "No distance, Location access is off" while that exercise is the
+    current one, heart rate first when both are off; on a lift nothing is shown
+    (`WatchSensorAccessNoticeTests.testS8905TheDistanceNoticeShowsOnTheRunAndNotOnTheLift`,
+    `…testS8905BothRefusalsReadHeartRateFirstThenDistance`,
+    `…testS8903ALiftSessionNeverAsksSoTheAnswerStaysNil`). Location is still
+    asked at the first distance exercise, not at the Start screen. A relaunch
+    straight into a live session shows no Start screen, so Health still asks at
+    the first workout open in that case.
 
 ### The wrist's own logging (PR 2b)
 
@@ -868,6 +918,26 @@ hardware yet.
     watch session (`WatchCancelEmptyFreeWorkoutTests` S-8701..S-8706 for the wrist; the
     phone side is `test/watch_session_import_test.dart` S-265, an abandoned session
     creates no history).
+21. **The watch says when a start cannot happen — (owner).** Three grey lines on
+    the Start screen, each needing a real pair or a simulator trick. Delete or
+    replace a routine on the phone and do **not** Sync, then tap the stale
+    routine on the watch: a grey line, "That routine is no longer on the watch.
+    Tap Sync."
+    (`WatchSyncNoAnswerTests.testS9003UnknownRoutineThrowsAndLeavesTheSessionUnchanged`
+    holds the throw and the untouched session off-device;
+    `WatchPhoneProblemWiringSourceTests.testS9004TheStartSurfaceSaysWhenARoutineVanished`
+    holds the wiring). Force-quit the phone app with the phone still reachable
+    and tap **Sync**: the spinner runs about 20 s, stops, and a grey line says
+    "No answer from your phone. Open OmniTrain on it and try again." — it goes
+    when you Sync again or any answer from the phone arrives
+    (`WatchSyncNoAnswerTests.testS9001cCapWithNoArrivalsIsTrue` is the 20 s cap,
+    `…testS9001dRoutinesArrivedIsAnsweredSoFalse` the answered case;
+    `WatchPhoneProblemWiringSourceTests.testS9004TheHostRaisesTheNoAnswerAndLinkLines`
+    the wiring). The third line, "Phone link unavailable. Restart the watch
+    app.", needs a watch whose WatchConnectivity activation fails — hard to
+    provoke on hardware, so it is unit-tested only
+    (`WatchPhoneProblemWiringSourceTests.testS9004TheRadioReportsWhenItCannotComeUp`;
+    the sentence `WatchSyncNoAnswerTests.testS9002LinkUnavailableLabelIsExactlyThePlannedSentence`).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and
@@ -883,8 +953,11 @@ holds the kilogram payload underneath).
 
 Levels 1 and 2 green, plus every step at Level 3 on real paired hardware —
 steps 15–18 now, steps 19–20 and 23 on a real watch with the Health permission
-accepted (23 also with it declined once), and steps 21–22 on a real watch with
-the HealthKit capability enabled.
+accepted (23 also with it declined once — the grey access-off lines of step 26
+show), steps 21–22 on a real watch with
+the HealthKit capability enabled, step 25 on a real watch with a finished
+workout, and the logging walkthrough's step 21 on a paired phone (its
+link-unavailable line is unit-tested only).
 Anything less and the integration is still a test-suite reality.
 
 ---

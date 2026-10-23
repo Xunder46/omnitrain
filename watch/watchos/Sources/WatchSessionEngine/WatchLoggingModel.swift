@@ -135,6 +135,9 @@ public final class WatchLoggingModel: ObservableObject {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// Why a sensor is silent, as the state resolves it (plan 59, D-4).
+    public var sensorNotices: [String] { state.sensorNotices }
+
     /// What the sensors are reading, as one line: the heart rate, the distance,
     /// and the pace it is being covered at. Absent pieces are left out rather
     /// than shown as zero — a session with no reading has nothing to report, and

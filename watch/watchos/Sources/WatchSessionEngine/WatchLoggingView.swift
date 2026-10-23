@@ -196,6 +196,14 @@ public struct WatchLoggingView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
+            // Plan 59, D-4: why a sensor is silent, only while access is off.
+            ForEach(model.sensorNotices, id: \.self) { notice in
+                Text(notice)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+            }
         }
         // A couple of points of headroom, so the lines sit under the exercise
         // name above them.

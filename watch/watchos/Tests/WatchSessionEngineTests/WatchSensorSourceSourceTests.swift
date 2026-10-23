@@ -401,6 +401,47 @@ final class WatchSensorSourceSourceTests: XCTestCase {
         )
     }
 
+    // MARK: - S-8812: the store shares and reads active energy so the workout saves calories
+
+    func testS8812TheStoreSharesAndReadsActiveEnergySoTheWorkoutSavesCalories() throws {
+        let store = try storeSource()
+        let request = try XCTUnwrap(
+            arguments(of: "requestAuthorization", in: store),
+            "the store asks for authorization in one request (D-1503)"
+        )
+        let parts = request.components(separatedBy: "read:")
+        XCTAssertEqual(
+            parts.count,
+            2,
+            "the request carries exactly one read list (S-3109)"
+        )
+        let sharePart = parts[0]
+        let readPart = parts[1]
+
+        XCTAssertTrue(
+            sharePart.contains("HKQuantityType(.activeEnergyBurned)"),
+            "without active energy in the share list the workout saves no "
+                + "calories and Apple's Move ring gets nothing (plan 58, D-5)"
+        )
+        XCTAssertTrue(
+            sharePart.contains("HKObjectType.workoutType()"),
+            "without the workout type in the share list no workout is saved at "
+                + "all, and the session's calories have nothing to attach to (D-1503)"
+        )
+        XCTAssertTrue(
+            readPart.contains("HKQuantityType(.activeEnergyBurned)"),
+            "without active energy in the read list the builder's energy "
+                + "statistics never produce anything (D-2103, plan 58, D-5)"
+        )
+        XCTAssertTrue(
+            store.contains(
+                "dataSource.enableCollection(for: HKQuantityType(.activeEnergyBurned), predicate: nil)"
+            ),
+            "without the collection line the builder never collects energy "
+                + "samples, so the saved workout carries no calories (plan 58, D-5)"
+        )
+    }
+
     // MARK: - S-3310: the raw source is the only radio, and it asks only WhenInUse
 
     func testS3310TheRawSourceAsksWhenInUseAndNeverAlways() throws {

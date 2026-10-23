@@ -71,6 +71,19 @@ final class WatchAppHost: ObservableObject {
     /// the tick below assigns this and never `revision`.
     @Published private(set) var isSyncing = false
 
+    /// Whether Health access is on, asked when the start screen first shows (plan 59, D-6).
+    @Published private(set) var healthAccess = WatchHealthAccess.unknown
+
+    /// Whether the last manual Sync ended with no answer from the phone (plan 60, D-4).
+    @Published private(set) var syncNoAnswer = false
+
+    /// Whether the radio could not come up at all (plan 60, D-4).
+    @Published private(set) var linkUnavailable = false
+
+    /// Set by a manual Sync only, so an automatic catch-up never raises the
+    /// no-answer line.
+    private var manualSyncPending = false
+
     /// The window the spinner follows (D-1, D-5): begun by a sync request or a
     /// catch-up that will run, ended by the replies going quiet or by the cap.
     /// Touched on the main actor only — the host's own isolation — so the tick
@@ -96,6 +109,14 @@ final class WatchAppHost: ObservableObject {
             reachability: phoneReachability,
             now: Date()
         )
+    }
+
+    /// The one phone-link problem the Start screen shows: the link that cannot
+    /// start outranks a Sync that got no answer (plan 60, D-4).
+    var phoneProblem: String? {
+        if linkUnavailable { return WatchStartSurfaceCopy.linkUnavailableLabel }
+        if syncNoAnswer { return WatchStartSurfaceCopy.syncNoAnswerLabel }
+        return nil
     }
 
     private let orchestrator: WatchSyncOrchestrator
@@ -183,6 +204,7 @@ final class WatchAppHost: ObservableObject {
             let type = frame["type"] as? String ?? ""
             await MainActor.run {
                 self.syncProgress.noteArrival(type: type, at: Date())
+                if WatchSyncProgressCopy.replyTypes.contains(type) { self.syncNoAnswer = false }
             }
             _ = try await self.orchestrator.receive(frame)
             // The receive path runs off the main actor (the radio's handler is
@@ -204,6 +226,9 @@ final class WatchAppHost: ObservableObject {
             if reachable { self.beginSyncProgress() }
             Task { await self.orchestrator.catchUp(reachable: reachable) }
         }
+        // The radio that cannot come up at all is its own line, not a
+        // reachability answer (plan 60, D-5).
+        session.onLinkProblem { [weak self] problem in self?.linkUnavailable = problem }
 
         // End and the answer both change which surface the shell shows, and
         // neither goes through a host `@Published`. SwiftUI's `objectWillChange`
@@ -272,6 +297,8 @@ final class WatchAppHost: ObservableObject {
     /// orchestrator's `sync` returns once the frames are sent, and the answer
     /// arrives afterwards.
     func requestSync() async {
+        syncNoAnswer = false
+        manualSyncPending = true
         beginSyncProgress()
         await orchestrator.sync(reconnect: paths.syncedAt != nil)
         revision += 1
@@ -297,6 +324,10 @@ final class WatchAppHost: ObservableObject {
                     self.isSyncing = true
                 } else {
                     self.isSyncing = false
+                    if self.manualSyncPending {
+                        self.manualSyncPending = false
+                        self.syncNoAnswer = self.syncProgress.endedWithoutAnswer(at: Date())
+                    }
                     return
                 }
             }
@@ -330,6 +361,12 @@ final class WatchAppHost: ObservableObject {
     /// the app active again is therefore also the moment to re-read.
     func refreshHeartRate() {
         healthStore.refreshHeartRate()
+    }
+
+    /// Asks for Health access before any workout: called when the start screen
+    /// shows. The system raises its sheet once; every later call answers at once.
+    func askHealthAccess() async {
+        healthAccess = await healthStore.requestAccess()
     }
 }
 
@@ -392,8 +429,11 @@ struct ContentView: View {
                     phoneReachability: host.phoneReachability,
                     revision: host.revision,
                     syncNotice: host.syncNotice,
-                    isSyncing: host.isSyncing
+                    isSyncing: host.isSyncing,
+                    healthAccess: host.healthAccess,
+                    phoneProblem: host.phoneProblem
                 )
+                .task { await host.askHealthAccess() }
             }
         }
         // D-3704: the accent rides the preferences the root already observes, so

@@ -490,7 +490,10 @@ class WatchSensorRecordingTests: XCTestCase {
 
     func testS007FreeTrainingFallsBackToo() async throws {
         let engine = await harness.runningEngine()
-        _ = await session(engine, modality: nil)
+        // No modality, and one exercise that carries no capabilities: nothing
+        // is known, so the generic type is what the workout opens as (plan 58:
+        // an exercise would decide).
+        _ = await session(engine, modality: nil, capabilities: [])
         let sensors = sensors(for: engine)
 
         await sensors.start(try XCTUnwrap(engine.session))

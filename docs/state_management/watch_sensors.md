@@ -35,8 +35,10 @@ and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
 | The real sensor source on the wrist | `HealthKitSensorFeed` (`HealthKitWorkoutStore.sensorSource`) |
 | Whether a session records GPS | `WatchGpsPolicy`, reading the modality's capability profile and the current exercise's capabilities |
 | Following the exercise the user is on | `WatchSensorRecorder.sessionChanged`, called by `WatchSensorCoordinator.apply` |
-| Modality → platform workout type | `WatchActivityTypes` |
+| Modality → platform workout type; a session with no modality takes the majority of its exercises' capabilities | `WatchActivityTypes` (`forModality`, `forSession`) |
 | What is computed from the readings before they may go | `WatchSensorSummaries`, pure functions over stored rows, called by `WatchLoggingState.log` for an entry and by `WatchSessionEngine` for a `session_end` |
+| What the wrist says when access is off | `WatchLoggingState.sensorNotices` (forwarded by `WatchLoggingModel.sensorNotices`), from `WatchSensorRecorder.heartRateAccess` / `locationAccess` — `WatchSensorPermission?`, nil until asked this session, cleared by `stop()` |
+| Whether Health access is allowed, off or unavailable | `WatchHealthAccess` (`WatchHealthAccess.swift`), asked by the host's `askHealthAccess()` over `HealthKitWorkoutStore.requestAccess()` |
 
 `WatchSensorSource` and `WatchPlatformWorkoutStore` are the seam the OS bindings
 sit behind: `HKWorkoutSession`, `HKLiveWorkoutBuilder` and `CLLocationManager`
@@ -101,17 +103,56 @@ two location members straight to that adapter
 (`…testS3311TheFeedDelegatesItsLocationToTheAdapter`). The first time a session reaches distance work — a cardio or sports
 modality, or the exercise the user is on carrying the `distance` capability —
 the wrist asks for Location while in use — after the
-Health question, with the sentence the watch target's
+Health question, which the Start screen asks the first time it shows (a
+relaunch straight into a live session shows no Start screen, so Health still
+asks at the first workout open there;
+`WatchHealthAccessWiringSourceTests.testS8908HostAsksWhenTheStartScreenShows`),
+with the sentence the watch target's
 `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription` carries
 (`…testS3314TheWatchTargetAsksForLocationInOneSentenceAndNeverAlways`) — and
 the HealthKit workout of such a session is registered as outdoor
 (`WatchOutdoorWorkoutTests.testS3300OutdoorsFollowsTheCapabilityProfile`,
 `WatchSensorSourceSourceTests.testS3312TheStoreTakesTheAdapterAndRegistersOutdoors`).
-The workout is registered once, at the session's start (D-4803 of plan 40):
-nothing re-registers it mid-session, so a walk added later to a generic free
-workout still records distance, and Apple Health lists the workout as the
-generic type it began as
+The workout is registered once (D-4803 of plan 40): a session with a modality
+registers at its start, and a session with no modality — every Free workout —
+waits until its type is known and registers the moment the first exercise is
+picked; nothing re-registers it mid-session, and a later exercise never
+changes the type Health fixed at open
+(`WatchWorkoutTypeFromExercisesTests.testS8807AFreeWorkoutWaitsForItsFirstExercise`,
+`…testS8808ALaterExerciseNeverChangesTheOpenWorkout`,
+`…testS8809AModalityWinsOverTheExercises`), so a walk added later to a free
+workout that began on a lift still records distance
+(`WatchGpsByExerciseTests.testS4803TheFeedStaysOnWhenTheUserMovesBackToALift`),
+and Apple Health keeps the type the workout opened with
 (`WatchGpsByExerciseTests.testS4807TheWorkoutIsRegisteredOutdoorsByTheExerciseTheUserIsOn`).
+The type itself: a session with a modality keeps the modality table's type; a
+session with none takes the majority of its exercises' capabilities — `hold`
+→ flexibility, else `distance` → running, else any of `reps`/`sets`/`load` →
+traditionalStrengthTraining, else other — with a tie going to the earliest
+exercise that reaches the top count and an empty list meaning "not yet known"
+(`WatchWorkoutTypeFromExercisesTests.testS8801ALiftSessionRegistersAsStrengthTraining`,
+`…testS8802ARunSessionRegistersAsRunningAndOutdoors`,
+`…testS8803AHoldRegistersAsFlexibilityAndAPlankStaysOne`,
+`…testS8804TheMajorityDecides`, `…testS8805ATieGoesToTheEarliestExercise`,
+`…testS8806ATimedSlotIsGenericAndAMajorityIsNot`,
+`…testS8810TheLifecycleWaitsForAKnownType`,
+`…testS8811EmptyIsUnknownAndACapabilityLessSlotIsGeneric`).
+The store asks to share the workout type and active energy and to read heart
+rate, steps and active energy — one request — and collects active energy on
+the live data source, so the saved workout carries calories
+(`WatchSensorSourceSourceTests.testS8812TheStoreSharesAndReadsActiveEnergySoTheWorkoutSavesCalories`).
+The ask is made through `HealthKitWorkoutStore.requestAccess()`, which answers
+as `WatchHealthAccess` (`allowed` / `off` / `unavailable`) and joins the one
+memoised request, so no second sheet rises later
+(`WatchHealthAccessWiringSourceTests.testS8908StoreHasRequestAccessAnsweringWhatTheWristCanRead`,
+`WatchSensorAccessNoticeTests.testS8907TheAnswerFollowsAvailabilityAndGrant`);
+when the answer is `off`, the Start screen shows "Health access is off. Turn it
+on in Health on your iPhone." (`WatchHealthAccessCopy.offLine`;
+`WatchHealthAccessWiringSourceTests.testS8908StartViewSaysHealthAccessIsOff`,
+`WatchSensorAccessNoticeTests.testS8907TheStartScreenLineTextIsExact`). Apple
+does not report a refused *read* permission, so "access off" is read from the
+workout-share permission: a user who allows the workout but refuses only heart
+rate gets no line (platform limit, stated in plan 59).
 The ask is never latched — every parked waiter dispatches its own
 `requestWhenInUseAuthorization()`, so an expired "Allow Once" is asked again,
 and an answered status ends the pending ask without a prompt
@@ -139,7 +180,26 @@ exercise that carries the `distance` capability
 (`WatchGpsByExerciseTests.testS4800AWalkInAFreeWorkoutStartsGps`,
 `…testS4802GpsStartsWhenTheUserReachesTheWalk`). No
 route or map is stored. All of this is verified in code and builds only:
-nothing here is proven on a wrist. And a logged
+nothing here is proven on a wrist.
+
+**When access is off, the wrist says so.** `WatchLoggingState.sensorNotices`
+returns "No heart rate, Health access is off" when the recorder's
+`heartRateAccess` is `.denied`, and "No distance, Location access is off" while
+the current exercise's capabilities carry `distance` and `locationAccess` is
+`.denied` — heart rate first, and `[]` with no sensors or an `.unavailable`
+permission (`WatchSensorAccessNoticeTests.testS8904ADeniedHeartRateBecomesTheNoticeLine`,
+`…testS8905TheDistanceNoticeShowsOnTheRunAndNotOnTheLift`,
+`…testS8905BothRefusalsReadHeartRateFirstThenDistance`,
+`…testS8906NoSensorsMeansNoNotices`,
+`…testS8906AnUnavailablePermissionSaysNothing`). `WatchLoggingModel.sensorNotices`
+forwards the list and `WatchLoggingView` renders each as a grey `caption2` line
+under the status line
+(`WatchHealthAccessWiringSourceTests.testS8908LoggingViewShowsSensorNotices`).
+The recorder's answers are per session: nil until asked, and `stop()` clears
+them (`WatchSensorAccessNoticeTests.testS8901HeartRateAccessIsNilBeforeStartAndTheAnswerAfter`,
+`…testS8902StopReturnsBothAccessesToNil`,
+`…testS8903ADeniedLocationOnADistanceSessionIsRemembered`,
+`…testS8903ALiftSessionNeverAsksSoTheAnswerStaysNil`). And a logged
 timed effort's `distanceMeters` is the metres covered between its Start and its
 Log — a chain over the session's stored `gps` samples inside that window,
 starting from the baseline total at Start, never the session total, never the
@@ -240,7 +300,12 @@ logged while the sensors measure, carry neither. Verified by watchOS
 - **Both clients read one vocabulary.** The sample kinds, the modality → workout
 type table and the capability profile the GPS decision depends on live in
 `watch/contract/watch_sensor_contract.json`, and both suites assert against it, so
-a change on one platform fails the other's tests.
+a change on one platform fails the other's tests. The contract carries the
+modality table only
+(`WatchSensorRecordingTests.testS007EveryMappedModalityNamesBothPlatforms` pins
+its values); the majority rule that types a session with no modality lives in
+Swift alone, `WatchActivityTypes.forSession`, pinned by the
+`WatchWorkoutTypeFromExercisesTests` group.
 - **A reading is stored, never sent.** Sensor rows are written through the same
 append entry point as every other row and emit nothing; the measured distance
 reaches the phone inside the logged effort. Verified by
@@ -318,4 +383,4 @@ sends for the import.
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-10-18. This page is one part of [State Management & Services](../state_management.md); see that index for the full class list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+> **Doc freshness** — Last reconciled against source: 2026-10-23. This page is one part of [State Management & Services](../state_management.md); see that index for the full class list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.

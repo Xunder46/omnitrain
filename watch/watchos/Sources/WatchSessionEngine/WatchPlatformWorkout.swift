@@ -97,6 +97,53 @@ public enum WatchActivityTypes {
         guard let modality else { return generic }
         return byModality[modality] ?? generic
     }
+
+    private static let running = WatchActivityType(
+        watchOs: "running",
+        wear: "exercise_type_running"
+    )
+    private static let strength = WatchActivityType(
+        watchOs: "traditionalStrengthTraining",
+        wear: "exercise_type_strength_training"
+    )
+    private static let flexibility = WatchActivityType(
+        watchOs: "flexibility",
+        wear: "exercise_type_flexibility"
+    )
+
+    /// The type one exercise registers as, from what it can measure: a hold is
+    /// tested first (a plank has `hold` and `sets`), then distance, then
+    /// reps/sets/load; anything else is the generic type.
+    public static func forExercise(capabilities: [String]) -> WatchActivityType {
+        if capabilities.contains("hold") { return flexibility }
+        if capabilities.contains(WatchGpsPolicy.distanceCapability) { return running }
+        if capabilities.contains(where: { ["reps", "sets", "load"].contains($0) }) {
+            return strength
+        }
+        return generic
+    }
+
+    /// The majority type of `exercises`; a tie goes to the type of the earliest
+    /// exercise that reaches the highest count. nil for an empty list: the type
+    /// is not known yet.
+    public static func forExercises(_ exercises: [[String: Any]]) -> WatchActivityType? {
+        guard !exercises.isEmpty else { return nil }
+        let types = exercises.map {
+            forExercise(capabilities: ($0["capabilities"] as? [String]) ?? [])
+        }
+        var counts: [String: Int] = [:]
+        for type in types { counts[type.watchOs, default: 0] += 1 }
+        let best = counts.values.max() ?? 0
+        return types.first { counts[$0.watchOs] == best }
+    }
+
+    /// What `session` registers as: its modality's own type when it has one
+    /// (unchanged), otherwise the majority of its exercises. nil while neither
+    /// is known.
+    public static func forSession(_ session: WatchSessionRecord) -> WatchActivityType? {
+        if let modality = session.modality { return forModality(modality) }
+        return forExercises(session.exercises)
+    }
 }
 
 /// Whether a session's modality calls for GPS.
@@ -203,8 +250,9 @@ public final class WatchPlatformWorkout {
         self.store = store
     }
 
-    /// Registers `session`'s modality as a platform workout and returns what it
-    /// was registered as.
+    /// Registers `session` as a platform workout — its modality's type when it
+    /// has one, otherwise the majority of its exercises, else the generic type —
+    /// and returns what it was registered as.
     ///
     /// Starting a session while one is already open ends the old workout first:
     /// the platform grants one at a time, and a dangling one is exactly the
@@ -213,7 +261,7 @@ public final class WatchPlatformWorkout {
     public func start(_ session: WatchSessionRecord) async -> WatchActivityType {
         if running != nil { await end() }
 
-        let activityType = WatchActivityTypes.forModality(session.modality)
+        let activityType = WatchActivityTypes.forSession(session) ?? WatchActivityTypes.generic
         await store.begin(
             activityType.watchOs,
             outdoors: WatchGpsPolicy.isRequired(session)
@@ -266,14 +314,20 @@ public enum WatchWorkoutAction: Equatable {
 /// the watch should do is assertable off-device, and the coordinator that does it
 /// is a thin thing that cannot disagree with itself. A session that is not active
 /// (completed, abandoned, or gone entirely) closes the workout it owns: a
-/// dangling registration is the stuck state recovery exists to clear.
+/// dangling registration is the stuck state recovery exists to clear. A session
+/// whose type is not yet known — a Free workout before its first exercise —
+/// waits.
 public enum WatchWorkoutLifecycle {
     public static func action(
         session: WatchSessionRecord?,
         running: WatchActivityType?
     ) -> WatchWorkoutAction {
         if session?.status == WatchSessionStatus.active {
-            return running == nil ? .start : .none
+            guard running == nil else { return .none }
+            if let session, WatchActivityTypes.forSession(session) != nil {
+                return .start
+            }
+            return .none
         }
         return running == nil ? .none : .end
     }

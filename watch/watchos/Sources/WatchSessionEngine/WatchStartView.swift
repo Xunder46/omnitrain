@@ -81,6 +81,12 @@ public struct WatchStartView: View {
     /// does, the Sync button is a spinner rather than a second request.
     private let isSyncing: Bool
 
+    /// Whether Health access is off, asked when this surface first shows (plan 59, D-7).
+    private let healthAccess: WatchHealthAccess
+
+    /// A phone-link problem the user can act on, or nil (plan 60, D-3).
+    private let phoneProblem: String?
+
     /// Wrist-scale inset. The phone's spacing tokens are sized for a full-width
     /// screen; this surface carries its own value rather than scaling one down.
     private static let surfaceInset = 4.0
@@ -95,6 +101,9 @@ public struct WatchStartView: View {
 
     @State private var pickingExercise = false
 
+    /// Said when a tapped routine is no longer on the watch (plan 60, D-3).
+    @State private var routineNotice: String?
+
     public init(
         paths: WatchSessionStartPaths,
         onSessionStarted: @escaping (WatchSessionRecord) -> Void,
@@ -104,7 +113,9 @@ public struct WatchStartView: View {
         phoneReachability: WatchPhoneReachability = .unknown,
         revision: Int = 0,
         syncNotice: String? = nil,
-        isSyncing: Bool = false
+        isSyncing: Bool = false,
+        healthAccess: WatchHealthAccess = .unknown,
+        phoneProblem: String? = nil
     ) {
         self.paths = paths
         self.onSessionStarted = onSessionStarted
@@ -115,6 +126,8 @@ public struct WatchStartView: View {
         self.revision = revision
         self.syncNotice = syncNotice
         self.isSyncing = isSyncing
+        self.healthAccess = healthAccess
+        self.phoneProblem = phoneProblem
     }
 
     /// What this surface says about the phone, from the one rule that decides it
@@ -137,6 +150,13 @@ public struct WatchStartView: View {
                         }
                         .watchProminent()
                     }
+                }
+
+                if let routineNotice {
+                    Text(routineNotice)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
 
                 Button("Free workout") {
@@ -169,8 +189,22 @@ public struct WatchStartView: View {
                 // D-8: said only once the radio has observed it.
                 WatchPhoneStatusHint(status: phoneStatus)
 
+                if let phoneProblem {
+                    Text(phoneProblem)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
                 if let syncNotice {
                     Text(syncNotice)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                if healthAccess == .off {
+                    Text(WatchHealthAccessCopy.offLine)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -178,6 +212,7 @@ public struct WatchStartView: View {
             }
             .padding(Self.surfaceInset)
         }
+        .onChange(of: revision) { _ in routineNotice = nil }
         .sheet(isPresented: $pickingExercise, onDismiss: cancelIfNothingPicked) {
             WatchExercisePickerView(paths: paths, revision: revision) { session in
                 pickingExercise = false
@@ -189,8 +224,15 @@ public struct WatchStartView: View {
     /// Path 1: the routine's template becomes the session, and the first
     /// exercise is what the logging surface shows.
     private func start(_ routine: WatchRoutine) async {
-        guard let session = try? await paths.startFromRoutine(routine.routineId) else { return }
-        onSessionStarted(session)
+        routineNotice = nil
+        do {
+            let session = try await paths.startFromRoutine(routine.routineId)
+            onSessionStarted(session)
+        } catch {
+            // The routine went from the watch between the screen drawing and the
+            // tap (plan 60): the one throw is `unknownRoutine`.
+            routineNotice = WatchStartSurfaceCopy.routineMissingLabel
+        }
     }
 
     /// Path 2: an empty session, then the picker — the fallback list, or

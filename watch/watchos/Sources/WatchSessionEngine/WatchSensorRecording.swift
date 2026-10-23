@@ -113,6 +113,15 @@ public final class WatchSensorRecorder {
     /// distance, and false when the user refused permission.
     public private(set) var isMeasuringDistance = false
 
+    /// What the platform answered when this session asked for heart rate: nil
+    /// until it was asked (plan 59, D-1). A refusal is shown by the logging
+    /// header, not only skipped.
+    public private(set) var heartRateAccess: WatchSensorPermission?
+
+    /// The same for location, asked only for a session that can cover distance,
+    /// so a lift leaves it nil.
+    public private(set) var locationAccess: WatchSensorPermission?
+
     /// True once the permission has been read and was not granted, for this session.
     private var locationAnswered = false
 
@@ -160,7 +169,9 @@ public final class WatchSensorRecorder {
     private func startLocationIfNeeded(for session: WatchSessionRecord) async {
         guard !isMeasuringDistance, !locationAnswered else { return }
         guard WatchGpsPolicy.isRequired(session) else { return }
-        guard await source.locationPermission() == .granted else {
+        let answer = await source.locationPermission()
+        locationAccess = answer
+        guard answer == .granted else {
             locationAnswered = true
             return
         }
@@ -185,6 +196,8 @@ public final class WatchSensorRecorder {
         fixTask = nil
         stepsTask = nil
         locationAnswered = false
+        heartRateAccess = nil
+        locationAccess = nil
 
         guard isMeasuringDistance else { return }
         isMeasuringDistance = false
@@ -200,7 +213,9 @@ public final class WatchSensorRecorder {
     }
 
     private func startHeartRate() async {
-        guard await source.heartRatePermission() == .granted else { return }
+        let answer = await source.heartRatePermission()
+        heartRateAccess = answer
+        guard answer == .granted else { return }
         beatTask = consume(source.heartRate()) { [weak self] beats in
             await self?.record(kind: WatchSensorKind.heartRate, value: beats)
         }

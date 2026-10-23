@@ -10,7 +10,10 @@
 //  `docs/plans/2026-10-10-19d-watch-heart-rate-and-steps-plan/2026-10-10-19d-watch-heart-rate-and-steps-plan.md`
 //  (D-2103 to D-2105: this store now reads heart rate and steps, turns its
 //  builder into a collecting one, and owns the `HealthKitSensorFeed` that hands
-//  those readings to the package). Every rule about *when* a workout opens or closes
+//  those readings to the package), and
+//  `docs/plans/2026-10-23-58-health-workout-type-and-calories-plan/2026-10-23-58-health-workout-type-and-calories-plan.md`
+//  (D-5: the store also shares and reads active energy, so the workout saves its
+//  calories and the Move ring counts them). Every rule about *when* a workout opens or closes
 //  lives in the package, where `swift test` exercises it on macOS
 //  (`WatchWorkoutCoordinatorTests`). What is left here is the platform call
 //  itself, so this file is the one part of the keep-alive no desktop test can
@@ -109,11 +112,12 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
                 healthStore: healthStore,
                 workoutConfiguration: configuration
             )
-            // The data source only collects the types it was told to, and the
-            // delegate is what turns its callbacks into the package's streams
-            // (D-2103, D-2105).
+            // The data source only collects the types it was told to — heart
+            // rate, steps and active energy — and the delegate is what turns its
+            // callbacks into the package's streams (D-2103, D-2105, D-5).
             dataSource.enableCollection(for: HKQuantityType(.heartRate), predicate: nil)
             dataSource.enableCollection(for: HKQuantityType(.stepCount), predicate: nil)
+            dataSource.enableCollection(for: HKQuantityType(.activeEnergyBurned), predicate: nil)
 
             collection.dataSource = dataSource
             collection.delegate = sensorFeed
@@ -229,14 +233,27 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
 
     // MARK: - Authorization
 
+    /// Asks for Health access when the Start screen first shows and answers what
+    /// the wrist can read (plan 59, D-5). It joins the one memoised request, so
+    /// the feed's and `begin`'s asks never raise a second sheet; once the user has
+    /// answered, the system asks nothing again.
+    func requestAccess() async -> WatchHealthAccess {
+        guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
+        return WatchHealthAccess.answer(available: true, granted: await resolveAuthorization())
+    }
+
     /// Asks for permission the first time a workout is about to open, and answers
-    /// the same way for the life of the process afterwards (D-1503); concurrent
+    /// the same way for the life of the process afterwards (D-1503); the Start
+    /// screen now asks first through `requestAccess`, and the first workout open
+    /// still asks for a relaunch into a live session. Concurrent
     /// callers share that one in-flight request rather than each reading a
     /// half-settled answer.
     ///
-    /// Share the workout type; read heart rate and steps. The builder's
-    /// statistics only carry the types asked for here, so a read left out is a
-    /// stream that never produces anything (D-2103). A refusal, or a request
+    /// Share the workout type and active energy, so the workout saves its
+    /// calories and the Move ring counts them (plan 58, D-5); read heart rate,
+    /// steps and active energy. The builder's statistics only carry the types
+    /// asked for here, so a read left out is a stream that never produces
+    /// anything (D-2103). A refusal, or a request
     /// that cannot be answered, means `begin` does nothing — the session keeps
     /// running without a workout, exactly as it does when the phone denies a
     /// sync.
@@ -246,8 +263,9 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         let task = Task<Bool, Never> {
             do {
                 try await healthStore.requestAuthorization(
-                    toShare: [HKObjectType.workoutType()],
-                    read: [HKQuantityType(.heartRate), HKQuantityType(.stepCount)]
+                    toShare: [HKObjectType.workoutType(), HKQuantityType(.activeEnergyBurned)],
+                    read: [HKQuantityType(.heartRate), HKQuantityType(.stepCount),
+                           HKQuantityType(.activeEnergyBurned)]
                 )
                 return healthStore.authorizationStatus(for: HKObjectType.workoutType())
                     == .sharingAuthorized

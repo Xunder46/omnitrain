@@ -76,6 +76,15 @@ public struct WatchSyncProgress {
         return now.timeIntervalSince(newestReplyAt) < WatchSyncProgressCopy.quietSeconds
     }
 
+    /// Whether a sync began, is over, and never received the routines it asked
+    /// for (plan 60, D-1): only the cap ends a sync that got no `routines_down`,
+    /// so this is "the phone never answered". `noteArrival` refuses arrivals once
+    /// a sync is over, so a late reply cannot flip it; the host clears the line it
+    /// shows when any reply arrives.
+    public func endedWithoutAnswer(at now: Date) -> Bool {
+        beganAt != nil && !isActive(at: now) && !routinesArrived
+    }
+
     /// Starts a sync as of the injected clock.
     public mutating func begin() {
         begin(at: clock())

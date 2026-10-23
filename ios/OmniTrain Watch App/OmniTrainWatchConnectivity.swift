@@ -41,6 +41,10 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
 
     private var receiveHandler: (@concurrent ([String: Any]) async -> Void)?
     private var reachabilityHandler: ((Bool) -> Void)?
+    private var linkProblemHandler: ((Bool) -> Void)?
+
+    /// True when the radio cannot come up at all (plan 60, D-5).
+    private var linkProblem = false
 
     /// What the radio refused, as the failure hook reports it. The bridge's own
     /// failures come from the frame check; these are the platform's.
@@ -66,7 +70,7 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
         self.onSendFailure = onSendFailure
         super.init()
 
-        guard WCSession.isSupported() else { return }
+        guard WCSession.isSupported() else { linkProblem = true; return }
         let session = WCSession.default
         session.delegate = self
         session.activate()
@@ -142,6 +146,14 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
         }
     }
 
+    /// Called once by the host. Reports the state at once, like
+    /// `onReachabilityChange` does: a link that failed before the handler existed
+    /// would otherwise never be told (plan 60, D-5).
+    func onLinkProblem(_ handler: @escaping (Bool) -> Void) {
+        linkProblemHandler = handler
+        reportLinkProblem(linkProblem)
+    }
+
     /// Hands one arrival to the bridge, on the main actor.
     ///
     /// A frame that arrives before the bridge has a handler is dropped rather
@@ -157,6 +169,13 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
     private func reportReachability(_ reachable: Bool) {
         Task { @MainActor in self.reachabilityHandler?(reachable) }
     }
+
+    /// Reports whether the radio could not come up at all, on the main actor
+    /// (plan 60, D-5). Every answer is reported, like `reportReachability`'s.
+    private func reportLinkProblem(_ problem: Bool) {
+        linkProblem = problem
+        Task { @MainActor in self.linkProblemHandler?(problem) }
+    }
 }
 
 extension OmniTrainWatchConnectivity: WCSessionDelegate {
@@ -168,7 +187,11 @@ extension OmniTrainWatchConnectivity: WCSessionDelegate {
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: Error?
     ) {
-        guard error == nil, activationState == .activated else { return }
+        guard error == nil, activationState == .activated else {
+            reportLinkProblem(true)
+            return
+        }
+        reportLinkProblem(false)
         reportReachability(session.isReachable)
     }
 

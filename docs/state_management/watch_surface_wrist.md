@@ -76,7 +76,7 @@ case).
 
 **Reachability is three-state, and starts unknown.** The start surface carries one
 status line: "Phone connected" or "Phone not reachable", said only once the radio
-has answered; a launch that has asked nothing says nothing. `WatchPhoneReachability.unknown` is the state a `Bool` cannot
+has answered; a launch that has asked nothing says nothing on that line. `WatchPhoneReachability.unknown` is the state a `Bool` cannot
 express, which is why the app target's host starts there and moves only when the
 bridge reports what the platform observed — the platform's answer is always an
 observation, never a "not yet". Verified by
@@ -84,6 +84,23 @@ observation, never a "not yet". Verified by
 The sentence lives in the package's `WatchStartSurfaceCopy` rather than the
 contract's `startSurface` block; it moves into the contract if the Wear OS client
 ever ships a transport.
+
+**A link that cannot come up at all is said, not just a phone out of reach.** The
+real session (`ios/OmniTrain Watch App/OmniTrainWatchConnectivity.swift`) records
+a link problem when `WCSession.isSupported()` is false, or when
+`activationDidCompleteWith` ends with an error or a state other than
+`.activated`, and reports it through `onLinkProblem(_:)` — once at registration,
+and again on every activation result, a good activation reporting false so the
+line goes away when the link comes up. The host's `linkUnavailable` follows it,
+and `WatchAppHost.phoneProblem` boils the phone's problems down to one line for
+the surface: the link line first, else the no-answer line below, else nil;
+`WatchStartView` renders it under the phone status line. The copy is
+`WatchStartSurfaceCopy.linkUnavailableLabel`, deliberately not a contract value
+like `syncingLabel`. Verified by
+`WatchPhoneProblemWiringSourceTests.testS9004TheRadioReportsWhenItCannotComeUp`
+and `…testS9004TheHostRaisesTheNoAnswerAndLinkLines` (source text — the views
+compile only under xcodebuild), and the sentence itself by
+`WatchSyncNoAnswerTests.testS9002LinkUnavailableLabelIsExactlyThePlannedSentence`.
 
 **What is still owed is said on both surfaces.** Under the status line on the
 start surface, and at the top of the session menu (the list button's sheet), one
@@ -179,6 +196,21 @@ abandoned empty session without history. Verified by
 `…testS8705WithNoSessionAtAllCancelIsFalse`,
 `…testS8706ThePickerSheetCancelsOnDismissAndTheHostReReads`).
 
+**A routine the watch no longer holds says so when you tap it.** A Sync that
+replaces the list between the screen drawing and your tap leaves a row whose
+copy is gone, and `WatchStartView.start(_:)` no longer swallows that: it catches
+the one throw `paths.startFromRoutine` has (`WatchStartPathError.unknownRoutine`)
+and shows `WatchStartSurfaceCopy.routineMissingLabel` under the routine buttons.
+The line clears on the next start of any routine, and on any surface re-read —
+`.onChange(of: revision)`, and the host bumps the revision on an arrival and on
+a reachability change, so a Sync that brings the routines clears it too. The
+Sync button itself is unchanged. Verified by
+`WatchSyncNoAnswerTests.testS9003UnknownRoutineThrowsAndLeavesTheSessionUnchanged`
+(the throw, and the session left exactly as it was),
+`…testS9002RoutineMissingLabelIsExactlyThePlannedSentence` (the sentence) and
+`WatchPhoneProblemWiringSourceTests.testS9004TheStartSurfaceSaysWhenARoutineVanished`
+(the wiring: the catch, the two clears, the unchanged Sync button).
+
 **A sync is finished by its replies, not by the request.** The watch's
 orchestrator awaits only the sends, so the phone's answer arrives afterwards
 through `receive` and "still syncing" cannot be read from the request. The
@@ -210,6 +242,26 @@ wrist↔phone contract is unchanged, and the start surface already keeps
 `…testS8509TheStartSurfaceTakesIsSyncingAndSpins`,
 `…testS8511TheSpinnerSitsInsideTheSyncGate` and
 `…testS8512TheTickerEndsTheSpinnerWithoutBumpingRevision`.
+
+**A sync the phone never answers is said when the spinner stops.**
+`WatchSyncProgress.endedWithoutAnswer(at:)` is true exactly when a sync began,
+is over — only the cap ends a sync that got no `routines_down` — and never
+received the routines; `noteArrival` already refuses arrivals once the sync is
+over, so a late reply cannot flip it. Only a manual Sync can raise the line: the
+host sets `manualSyncPending` in `requestSync()` (the Sync button; an automatic
+catch-up never does), and when the spinner's ticker finds the sync over it sets
+`syncNoAnswer` from `endedWithoutAnswer`. Any phone reply of a type in
+`WatchSyncProgressCopy.replyTypes`, or the next manual Sync, clears it. The copy
+is `WatchStartSurfaceCopy.syncNoAnswerLabel`, again not a contract value.
+Verified by `WatchSyncNoAnswerTests` (S-9001:
+`testS9001aNeverBeganIsFalse`, `…testS9001bFiveSecondsInIsStillRunningSoFalse`,
+`…testS9001cCapWithNoArrivalsIsTrue`,
+`…testS9001dRoutinesArrivedIsAnsweredSoFalse`,
+`…testS9001eOnlyPreferencesArrivedIsStillUnanswered`,
+`…testS9001fNewBeginAfterCapIsRunningAgainSoFalseThenTrueAtItsCap`,
+`…testS9001gArrivalAfterTheCapDoesNotTurnTrueIntoFalse`; the sentence
+`…testS9002SyncNoAnswerLabelIsExactlyThePlannedSentence`) and the wiring by
+`WatchPhoneProblemWiringSourceTests.testS9004TheHostRaisesTheNoAnswerAndLinkLines`.
 
 **One list serves both entry points.** The picker and the menu's Add Exercise
 list render the same `WatchExerciseLetterList` (`WatchExerciseListView.swift`),
