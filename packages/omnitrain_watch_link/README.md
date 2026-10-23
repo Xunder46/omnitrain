@@ -17,6 +17,11 @@ Two channels:
   - `transferUserInfo(frame)` answers `queued`, or `already_queued` when a
     transfer carrying the same `messageId` is still outstanding →
     `WatchLink.transferUserInfo`.
+  - `outstandingTransfers` returns a list of
+    `{messageId, type, sessionId?, changeId?}` read from each outstanding
+    `transferUserInfo` frame → `WatchLink.outstandingTransfers`.
+  - `cancelTransfers({messageIds})` cancels those transfers and answers how
+    many → `WatchLink.cancelTransfers`.
 - `EventChannel('omnitrain/watch_link/events')`, one broadcast stream whose
   payloads all carry a `kind`: `message` and `userInfo` (with a `frame` map),
   `reachability` (with a bool), `state` (the status map). The native side

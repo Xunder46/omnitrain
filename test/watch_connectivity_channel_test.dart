@@ -7,11 +7,13 @@
 // Scenario mapping:
 //   S-6816 a `userInfo` frame reaches the handler exactly like a message
 //          (the channel merges both into `messages`)
+//   S-9703 the channel exposes the queue without plugin types
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/watch_connectivity_channel.dart';
 import 'package:omnitrain/core/platform/watch_link_info.dart';
+import 'package:omnitrain/core/platform/watch_queue_control.dart';
 import 'package:omnitrain_watch_link/omnitrain_watch_link.dart';
 
 const MethodChannel _methods = MethodChannel('omnitrain/watch_link/methods');
@@ -59,6 +61,25 @@ void main() {
           };
         case 'transferUserInfo':
           return 'queued';
+        case 'outstandingTransfers':
+          return <Object?>[
+            <String, Object?>{
+              'messageId': 'm1',
+              'type': 'session_snapshot',
+              'sessionId': 's-1',
+            },
+            <String, Object?>{
+              'messageId': 'm2',
+              'type': 'structure_change',
+              'sessionId': 's-1',
+              'changeId': 'c1',
+            },
+            <String, Object?>{'messageId': 'r1', 'type': 'receipt'},
+            <String, Object?>{'type': 'foods_down'},
+            42,
+          ];
+        case 'cancelTransfers':
+          return 2;
       }
       return null;
     });
@@ -167,6 +188,60 @@ void main() {
         const WatchLinkInfo(paired: true, appInstalled: false, reachable: true),
       );
       expect(_calls.single.method, 'status');
+    });
+  });
+
+  group('S-9703 the channel exposes the queue without plugin types', () {
+    test('S-9703 outstandingTransfers returns the three core-typed transfers '
+        'in order', () async {
+      final channel = WatchConnectivityChannel(link: link());
+
+      final transfers = await channel.outstandingTransfers();
+
+      expect(transfers, const [
+        WatchQueuedTransfer(
+          messageId: 'm1',
+          type: 'session_snapshot',
+          sessionId: 's-1',
+        ),
+        WatchQueuedTransfer(
+          messageId: 'm2',
+          type: 'structure_change',
+          sessionId: 's-1',
+          changeId: 'c1',
+        ),
+        WatchQueuedTransfer(messageId: 'r1', type: 'receipt'),
+      ]);
+    });
+
+    test(
+      'S-9703 cancelTransfers forwards the ids and returns the count',
+      () async {
+        final channel = WatchConnectivityChannel(link: link());
+
+        final cancelled = await channel.cancelTransfers(['m1', 'm2']);
+
+        expect(cancelled, 2);
+        expect(_calls.single.method, 'cancelTransfers');
+        expect(_calls.single.arguments, <String, Object?>{
+          'messageIds': <String>['m1', 'm2'],
+        });
+      },
+    );
+
+    test('S-9703 cancelTransfers with an empty list cancels nothing', () async {
+      final channel = WatchConnectivityChannel(link: link());
+
+      final cancelled = await channel.cancelTransfers([]);
+
+      expect(cancelled, 0);
+      expect(_calls, isEmpty);
+    });
+
+    test('S-9703 the channel is a WatchQueueControl', () {
+      final channel = WatchConnectivityChannel(link: link());
+
+      expect(channel, isA<WatchQueueControl>());
     });
   });
 }

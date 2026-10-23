@@ -16,6 +16,44 @@ class WatchLinkException implements Exception {
       'WatchLinkException($code${message == null ? '' : ': $message'})';
 }
 
+/// One transfer the OS still holds, read from its `userInfo` frame.
+class WatchLinkTransfer {
+  const WatchLinkTransfer({
+    required this.messageId,
+    required this.type,
+    this.sessionId,
+    this.changeId,
+  });
+
+  /// The frame's `messageId`.
+  final String messageId;
+
+  /// The frame's `type`, or `''` when it has none.
+  final String type;
+
+  /// The frame's `sessionId`, when it carries one.
+  final String? sessionId;
+
+  /// The `changeId` inside the frame's `payload`, when it carries one.
+  final String? changeId;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WatchLinkTransfer &&
+          other.messageId == messageId &&
+          other.type == type &&
+          other.sessionId == sessionId &&
+          other.changeId == changeId;
+
+  @override
+  int get hashCode => Object.hash(messageId, type, sessionId, changeId);
+
+  @override
+  String toString() => 'WatchLinkTransfer(messageId: $messageId, type: $type, '
+      'sessionId: $sessionId, changeId: $changeId)';
+}
+
 /// The phone's link to the watch.
 class WatchLink {
   WatchLink({MethodChannel? methods, EventChannel? events})
@@ -57,6 +95,51 @@ class WatchLink {
         frame,
       );
       return result ?? 'queued';
+    } on PlatformException catch (error) {
+      throw WatchLinkException(error.code, error.message);
+    }
+  }
+
+  /// The transfers the OS still holds, in native order, read from each one's
+  /// `userInfo` frame. An entry without a string `messageId` is skipped.
+  Future<List<WatchLinkTransfer>> outstandingTransfers() async {
+    try {
+      final raw = await _methods.invokeListMethod<Object?>(
+        'outstandingTransfers',
+      );
+      final transfers = <WatchLinkTransfer>[];
+      for (final entry in raw ?? const <Object?>[]) {
+        if (entry is! Map) continue;
+        final messageId = entry['messageId'];
+        if (messageId is! String) continue;
+        transfers.add(
+          WatchLinkTransfer(
+            messageId: messageId,
+            type: entry['type'] is String ? entry['type'] as String : '',
+            sessionId: entry['sessionId'] is String
+                ? entry['sessionId'] as String
+                : null,
+            changeId: entry['changeId'] is String
+                ? entry['changeId'] as String
+                : null,
+          ),
+        );
+      }
+      return transfers;
+    } on PlatformException catch (error) {
+      throw WatchLinkException(error.code, error.message);
+    }
+  }
+
+  /// Cancels the outstanding transfers whose `messageId` is in [messageIds]
+  /// and answers how many were cancelled. An empty list answers 0 without
+  /// touching the native side.
+  Future<int> cancelTransfers(List<String> messageIds) async {
+    if (messageIds.isEmpty) return 0;
+    try {
+      final result = await _methods.invokeMethod<int>(
+          'cancelTransfers', <String, Object?>{'messageIds': messageIds});
+      return result ?? 0;
     } on PlatformException catch (error) {
       throw WatchLinkException(error.code, error.message);
     }

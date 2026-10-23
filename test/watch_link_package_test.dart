@@ -9,6 +9,8 @@
 //   S-6803 transferUserInfo answers `queued` / `already_queued`
 //   S-6804 events decode the four kinds in order and skip an unknown kind
 //   S-6805 one broadcast stream: two listeners, one native `listen`
+//   S-9701 outstandingTransfers decodes the native list
+//   S-9702 cancelTransfers sends the ids, skips the empty list, maps errors
 
 import 'dart:async';
 
@@ -201,6 +203,98 @@ void main() {
       expect(await WatchLink().transferUserInfo(frame), 'already_queued');
       expect(_calls.single.method, 'transferUserInfo');
       expect(_calls.single.arguments, frame);
+    });
+  });
+
+  group('S-9701 outstandingTransfers', () {
+    test('decodes the native list in order, skipping bad entries', () async {
+      _answer(
+        (_) async => <Object?>[
+          <String, Object?>{
+            'messageId': 'm1',
+            'type': 'session_snapshot',
+            'sessionId': 's-1',
+          },
+          <String, Object?>{
+            'messageId': 'm2',
+            'type': 'structure_change',
+            'sessionId': 's-1',
+            'changeId': 'c1',
+          },
+          <String, Object?>{'messageId': 'r1', 'type': 'receipt'},
+          <String, Object?>{'type': 'foods_down'},
+          42,
+        ],
+      );
+
+      final transfers = await WatchLink().outstandingTransfers();
+
+      expect(transfers, hasLength(3));
+      expect(
+        transfers[0],
+        const WatchLinkTransfer(
+          messageId: 'm1',
+          type: 'session_snapshot',
+          sessionId: 's-1',
+        ),
+      );
+      expect(
+        transfers[1],
+        const WatchLinkTransfer(
+          messageId: 'm2',
+          type: 'structure_change',
+          sessionId: 's-1',
+          changeId: 'c1',
+        ),
+      );
+      expect(
+        transfers[2],
+        const WatchLinkTransfer(messageId: 'r1', type: 'receipt'),
+      );
+      expect(transfers[2].sessionId, isNull);
+      expect(transfers[2].changeId, isNull);
+      expect(_calls.single.method, 'outstandingTransfers');
+      expect(_calls.single.arguments, isNull);
+    });
+
+    test('answers an empty list when the native side answers null', () async {
+      _answer((_) async => null);
+
+      expect(await WatchLink().outstandingTransfers(), isEmpty);
+      expect(_calls.single.method, 'outstandingTransfers');
+    });
+  });
+
+  group('S-9702 cancelTransfers', () {
+    test('sends the ids and answers the native count', () async {
+      _answer((_) async => 1);
+
+      expect(await WatchLink().cancelTransfers(const ['a', 'b']), 1);
+      expect(_calls.single.method, 'cancelTransfers');
+      expect(_calls.single.arguments, <String, Object?>{
+        'messageIds': <String>['a', 'b'],
+      });
+    });
+
+    test('answers 0 for an empty list without invoking', () async {
+      expect(await WatchLink().cancelTransfers(const []), 0);
+      expect(_calls, isEmpty);
+    });
+
+    test('turns a platform error into WatchLinkException', () async {
+      _answer((_) async => throw PlatformException(code: 'not_activated'));
+
+      await expectLater(
+        WatchLink().cancelTransfers(const ['a', 'b']),
+        throwsA(
+          isA<WatchLinkException>().having(
+            (e) => e.code,
+            'code',
+            'not_activated',
+          ),
+        ),
+      );
+      expect(_calls.single.method, 'cancelTransfers');
     });
   });
 

@@ -6,7 +6,8 @@ import WatchConnectivity
 /// buffers every event until Dart listens (a cold background launch delivers
 /// transfers before the app is ready), acknowledges every message by replying,
 /// answers `sendMessage` only when the watch has replied, deduplicates queued
-/// transfers by `messageId`, and reports reachability and pairing changes.
+/// transfers by `messageId`, lists and cancels outstanding transfers, and
+/// reports reachability and pairing changes.
 public class OmniTrainWatchLinkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, WCSessionDelegate {
     private static let bufferCap = 500
     /// Held for the life of the app: WCSession keeps its delegate weakly.
@@ -50,6 +51,10 @@ public class OmniTrainWatchLinkPlugin: NSObject, FlutterPlugin, FlutterStreamHan
             sendMessage(call.arguments, result: result)
         case "transferUserInfo":
             transferUserInfo(call.arguments, result: result)
+        case "outstandingTransfers":
+            outstandingTransfers(result: result)
+        case "cancelTransfers":
+            cancelTransfers(call.arguments, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -117,6 +122,49 @@ public class OmniTrainWatchLinkPlugin: NSObject, FlutterPlugin, FlutterStreamHan
         current.transferUserInfo(frame)
         NSLog("OmniTrainWatchLink: transfer queued type=%@", Self.frameType(frame))
         result("queued")
+    }
+
+    /// The transfers the OS still holds, read from each one's `userInfo` (the frame itself).
+    /// An entry without a string `messageId` is skipped. `changeId` sits in the frame's `payload`.
+    private func outstandingTransfers(result: @escaping FlutterResult) {
+        guard let current = session else { return result(failure("not_supported")) }
+        guard current.activationState == .activated else { return result(failure("not_activated")) }
+        var entries: [[String: Any]] = []
+        for transfer in current.outstandingUserInfoTransfers {
+            let info = transfer.userInfo
+            guard let messageId = info["messageId"] as? String else { continue }
+            var entry: [String: Any] = [
+                "messageId": messageId,
+                "type": (info["type"] as? String) ?? "",
+            ]
+            if let sessionId = info["sessionId"] as? String { entry["sessionId"] = sessionId }
+            if let payload = info["payload"] as? [String: Any],
+               let changeId = payload["changeId"] as? String {
+                entry["changeId"] = changeId
+            }
+            entries.append(entry)
+        }
+        result(entries)
+    }
+
+    /// Cancels the outstanding transfers whose `messageId` is in `messageIds`; answers how many.
+    /// An empty list is answered 0 without touching the session.
+    private func cancelTransfers(_ arguments: Any?, result: @escaping FlutterResult) {
+        guard let ids = (arguments as? [String: Any])?["messageIds"] as? [String], !ids.isEmpty else {
+            return result(0)
+        }
+        guard let current = session else { return result(failure("not_supported")) }
+        guard current.activationState == .activated else { return result(failure("not_activated")) }
+        let wanted = Set(ids)
+        var cancelled = 0
+        for transfer in current.outstandingUserInfoTransfers {
+            guard let messageId = transfer.userInfo["messageId"] as? String,
+                  wanted.contains(messageId) else { continue }
+            transfer.cancel()
+            cancelled += 1
+        }
+        NSLog("OmniTrainWatchLink: cancelled %d transfers", cancelled)
+        result(cancelled)
     }
 
     // MARK: - Events

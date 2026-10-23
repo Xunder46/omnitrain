@@ -4,16 +4,19 @@
 /// (D-4, D-5). `omnitrain_watch_link` wraps `WCSession` on iOS and is this
 /// repository's own plugin; keeping it here means a swap — a different package,
 /// or the Wear APIs on Android — is a change to this file and nothing else (see
-/// `WatchMessageChannel`).
+/// `WatchMessageChannel`). It also exposes the OS queue: listing the transfers
+/// the OS still holds and cancelling them by id (`WatchQueueControl`).
 library;
 
 import 'package:omnitrain_watch_link/omnitrain_watch_link.dart';
 
 import 'watch_link_info.dart';
+import 'watch_queue_control.dart';
 import 'watch_transport.dart';
 
 /// [WatchMessageChannel] over the platform plugin.
-class WatchConnectivityChannel implements WatchMessageChannel {
+class WatchConnectivityChannel
+    implements WatchMessageChannel, WatchQueueControl {
   WatchConnectivityChannel({WatchLink? link}) : _link = link ?? WatchLink();
 
   final WatchLink _link;
@@ -38,9 +41,7 @@ class WatchConnectivityChannel implements WatchMessageChannel {
   /// later. The transport dispatches them alike, so they share one stream.
   @override
   Stream<Map<String, Object?>> get messages => _link.events
-      .where(
-        (event) => event is WatchLinkMessage || event is WatchLinkUserInfo,
-      )
+      .where((event) => event is WatchLinkMessage || event is WatchLinkUserInfo)
       .map(
         (event) => switch (event) {
           WatchLinkMessage(:final frame) => frame,
@@ -63,4 +64,19 @@ class WatchConnectivityChannel implements WatchMessageChannel {
   Future<void> queue(Map<String, Object?> frame) async {
     await _link.transferUserInfo(frame);
   }
+
+  @override
+  Future<List<WatchQueuedTransfer>> outstandingTransfers() async => [
+    for (final transfer in await _link.outstandingTransfers())
+      WatchQueuedTransfer(
+        messageId: transfer.messageId,
+        type: transfer.type,
+        sessionId: transfer.sessionId,
+        changeId: transfer.changeId,
+      ),
+  ];
+
+  @override
+  Future<int> cancelTransfers(List<String> messageIds) =>
+      _link.cancelTransfers(messageIds);
 }
