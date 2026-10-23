@@ -386,6 +386,7 @@ struct ContentView: View {
                 WatchStartView(
                     paths: host.paths,
                     onSessionStarted: { _ in host.noteSurfaceChange() },
+                    onFreeWorkoutCancelled: { host.noteSurfaceChange() },
                     onOpenNutrition: { showingFood = true },
                     onRequestSync: { Task { await host.requestSync() } },
                     phoneReachability: host.phoneReachability,

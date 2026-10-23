@@ -61,6 +61,9 @@ public struct WatchStartView: View {
     /// the app owns the transport, not this view.
     private let onRequestSync: (() -> Void)?
 
+    /// Told after an empty free workout was cancelled, so the host re-reads the engine (plan 57, D-3).
+    private let onFreeWorkoutCancelled: () -> Void
+
     /// What the radio last said about the phone. Unknown until the host has
     /// observed something, which is what keeps a cold start from claiming the
     /// phone is unreachable before anyone asked (D-8).
@@ -95,6 +98,7 @@ public struct WatchStartView: View {
     public init(
         paths: WatchSessionStartPaths,
         onSessionStarted: @escaping (WatchSessionRecord) -> Void,
+        onFreeWorkoutCancelled: @escaping () -> Void = {},
         onOpenNutrition: (() -> Void)? = nil,
         onRequestSync: (() -> Void)? = nil,
         phoneReachability: WatchPhoneReachability = .unknown,
@@ -104,6 +108,7 @@ public struct WatchStartView: View {
     ) {
         self.paths = paths
         self.onSessionStarted = onSessionStarted
+        self.onFreeWorkoutCancelled = onFreeWorkoutCancelled
         self.onOpenNutrition = onOpenNutrition
         self.onRequestSync = onRequestSync
         self.phoneReachability = phoneReachability
@@ -173,7 +178,7 @@ public struct WatchStartView: View {
             }
             .padding(Self.surfaceInset)
         }
-        .sheet(isPresented: $pickingExercise) {
+        .sheet(isPresented: $pickingExercise, onDismiss: cancelIfNothingPicked) {
             WatchExercisePickerView(paths: paths, revision: revision) { session in
                 pickingExercise = false
                 onSessionStarted(session)
@@ -193,6 +198,15 @@ public struct WatchStartView: View {
     private func startFreeWorkout() async {
         _ = await paths.startFreeWorkout()
         pickingExercise = true
+    }
+
+    /// Closing the picker without choosing leaves an empty workout running that
+    /// nothing on the wrist can end, so it is cancelled (plan 57). After a pick
+    /// the session holds the exercise and the paths leave it alone.
+    private func cancelIfNothingPicked() {
+        Task {
+            if await paths.cancelEmptyFreeWorkout() { onFreeWorkoutCancelled() }
+        }
     }
 }
 

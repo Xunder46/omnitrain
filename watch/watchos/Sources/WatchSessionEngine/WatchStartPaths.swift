@@ -564,6 +564,20 @@ public final class WatchSessionStartPaths {
         await engine.createSession(modality: nil)
     }
 
+    /// The user closed the free workout's picker without choosing: the empty
+    /// session it started is given up. A session that holds an exercise (a pick,
+    /// or a slot the phone pushed while the picker was open) or is no longer
+    /// active is never touched. True when a session was cancelled.
+    @discardableResult
+    public func cancelEmptyFreeWorkout() async -> Bool {
+        guard let held = engine.session,
+            held.status == WatchSessionStatus.active,
+            held.exercises.isEmpty
+        else { return false }
+        await engine.abandonSession()
+        return true
+    }
+
     /// Adds `exercise` to the live session and moves the user to it.
     ///
     /// Choosing an exercise *is* a request to do it, so the session follows the

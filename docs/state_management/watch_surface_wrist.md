@@ -164,6 +164,21 @@ minus what the ladder already shows — behind them. Verified by
 lists are one list in one order by
 `WatchSessionStartPathsTests.testS3113AThePickerRowsAndTheAvailableExercisesAgree`.
 
+**Closing the picker without a pick gives the empty Free workout back.** Dismissing
+the picker sheet runs `WatchSessionStartPaths.cancelEmptyFreeWorkout()`, which
+abandons the live session only when it is active and holds no exercise, and tells
+the host, which re-reads the engine; after a pick, or when the phone pushed a slot
+while the picker was open, nothing is cancelled, and the phone consumes an
+abandoned empty session without history. Verified by
+`WatchCancelEmptyFreeWorkoutTests` (S-8701..S-8706:
+`testS8701CancellingAnEmptyFreeWorkoutAbandonsIt`,
+`…testS8702AFreshFreeWorkoutStartsAfterTheCancel`,
+`…testS8703ASessionWithAnExerciseIsNotCancelled`,
+`…testS8704ASessionHoldingAPushedSlotIsNotCancelled`,
+`…testS8705ACompletedSessionIsNotCancelled`,
+`…testS8705WithNoSessionAtAllCancelIsFalse`,
+`…testS8706ThePickerSheetCancelsOnDismissAndTheHostReReads`).
+
 **A sync is finished by its replies, not by the request.** The watch's
 orchestrator awaits only the sends, so the phone's answer arrives afterwards
 through `receive` and "still syncing" cannot be read from the request. The

@@ -854,6 +854,20 @@ hardware yet.
     and the notice on hardware are this step. With the effort stopped, swiping
     works again, and the Crown still steps the outlined value and never changes
     exercise (`WatchPagerSourceTests.testS6612ThePagerTakesNoCrownAndNoFocus`).
+20. **Plans 56 and 57's four surfaces — (owner).** Four checks in one pass on a real
+    watch. Delete the app and reinstall, open it before any **Sync**: the
+    prominent buttons are cyan with dark labels, not grey
+    (`WatchAccentTests.testS8604ContentViewWearsWornAndTheAssetCarriesTheColor`).
+    On a food's portion row, turn the Crown the way that raises Reps on the
+    logging screen: the portion goes up
+    (`WatchPortionCrownTests` S-8611..S-8616). Log a set so the rest screen
+    shows: its clock is as large as the work clock
+    (`WatchRestSurfaceTests.testS8621TheRestClockMatchesTheWorkReadoutsScale`).
+    Start a **Free workout**, then close the picker without picking: the start
+    screen returns with no workout running, and the phone's Home shows no live
+    watch session (`WatchCancelEmptyFreeWorkoutTests` S-8701..S-8706 for the wrist; the
+    phone side is `test/watch_session_import_test.dart` S-265, an abandoned session
+    creates no history).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and
