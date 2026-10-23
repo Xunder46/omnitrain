@@ -301,16 +301,21 @@ kind no longer in progress is sent as `null` once — a timer the wrist started
 and the phone adopted included, while the mirror still holds it (plan 43c) —
 and a new interval replacing a delivered one goes out as two frames, the clear
 first. Limits, stated not
-fixed: the wrist applies a phone timer only for the exercise it is showing and
-has no pause control, finishing on the watch stops the phone's timer through
-the logged-entry fill, which lands on the interval that started with the entry
-(plan 43a, 43c's shared start), a wrist out of reach is served at the
-next phone notification, a failed session reload on the phone empties its
+fixed: the wrist has no pause control and follows a phone timer for another
+exercise with a jump to that exercise (plan 54,
+`WatchFollowPhoneEffortTests.testS8401APhoneTimerForAnotherSlotMovesTheEngineToItsSlot`),
+finishing on the watch stops the phone's timer through the logged-entry fill,
+which lands on the interval that started with the entry (plan 43a, 43c's shared
+start), a wrist out of reach is served at the next phone notification or the
+next frame the wrist sends, a failed session reload on the phone empties its
 timers and sends a clear until the next successful load, and an interval
 started with a preset target carries a back-dated start. Verified by
 `test/in_progress_work_timers_test.dart` (group
 `WorkoutState.inProgressWorkTimers (Mock)`) and
-`test/watch_timer_push_test.dart` (the `S-6211` to `S-6217` groups).
+`test/watch_timer_push_test.dart` (the `S-6211` to `S-6217` groups; the
+inbound-frame re-offer, groups `S-8406 the end of the effort reaches the wrist
+at the next conversation`, `S-8407 a reset-answered frame flushes no timers`
+and `S-8408 an ordinary flush is not starved by a clears-only drain`).
 
 **Why a timer the wrist started runs on the phone.** The same `timer_state`
 frames are the phone's to receive: `WatchTimerAdoption`

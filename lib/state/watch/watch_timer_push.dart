@@ -152,6 +152,12 @@ class WatchTimerPush {
   /// [flush] that joins or follows a clears-only drain still gets a full pass:
   /// a start the phone owes is never withheld because a clears-only flush
   /// happened to be running.
+  ///
+  /// The converse window is accepted: a clears-only flush that joins a running
+  /// full drain makes the follow-up pass clears-only, so if that full pass's
+  /// send failed, the start it owed waits for the next phone-state trigger —
+  /// exactly as any send the radio did not carry does (D-202). A full
+  /// follow-up on a wrist-frame trigger is the behaviour 54 D-1a rules out.
   Future<void> _flush({required bool clearsOnly}) async {
     _window?.cancel();
     _window = null;

@@ -233,9 +233,20 @@ paused with its pause bookkeeping, and a rest the phone no longer holds open
 goes out as `{rest: null}`; a wrist rest started within 2000 ms of the phone's
 is the same rest and is not echoed back, while one outside that tolerance is a
 different rest and is sent. Built in
-`createWatchSync` and returned as `WatchSyncGraph.timerPush`. Verified by
+`createWatchSync` and returned as `WatchSyncGraph.timerPush`. Its own trigger
+is a change of the bound `WorkoutState`; the inbound-frame handler that flushes
+the auto push flushes the timer push too, under the same reset gate (54 D-1,
+`lib/state/watch/watch_sync_wiring.dart`), so a wrist out of reach is served at
+the next frame the wrist sends, not only at the next phone state change. That
+flush is clears only (`WatchTimerPush.flushClears()`): it re-offers the
+`{kind: null}` frames the wrist is owed and withholds a start, so a timer the
+wrist has already ended is not restarted, while an ordinary `flush()` that
+joins or follows a clears-only drain still gets its full pass. Verified by
 `test/watch_timer_push_test.dart` (the `S-6211` to `S-6217` groups; the rest,
-`S-7301` to `S-7310`).
+`S-7301` to `S-7310`; the inbound-frame re-offer, groups `S-8406 the end of the
+effort reaches the wrist at the next conversation`, `S-8407 a reset-answered
+frame flushes no timers` and `S-8408 an ordinary flush is not starved by a
+clears-only drain`).
 
 `WatchTimerAdoption` (`lib/state/watch/watch_timer_adoption.dart`) is the
 receiving sibling: built in `createWatchSync` as `WatchSyncGraph.timerAdoption`,

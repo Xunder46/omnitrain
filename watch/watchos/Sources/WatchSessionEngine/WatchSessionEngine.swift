@@ -516,7 +516,11 @@ public final class WatchSessionEngine: ObservableObject {
     private func applySnapshot(_ envelope: [String: Any]) async -> Bool {
         let outcome = await mutex.exclusive { await applySnapshotExclusive(envelope) }
         // D-7: the jump runs after the mutex is released, because the select
-        // path takes it again and `WatchAsyncMutex` is not reentrant.
+        // path takes it again and `WatchAsyncMutex` is not reentrant. The
+        // active-session gate (D-6) was checked when the target was collected:
+        // a lifecycle frame landing before this line can at worst move a
+        // just-finished session's position, and `selectExercise` re-validates
+        // the slot against the held session.
         if let jump = outcome?.jump {
             await selectExercise(slotId: jump.slotId)
         }
@@ -732,7 +736,11 @@ public final class WatchSessionEngine: ObservableObject {
             authoritative: false
         )
         // D-7: this call runs outside the mutex, so the jump it names can take
-        // the select path, which takes the mutex itself.
+        // the select path, which takes the mutex itself. The active-session
+        // gate (D-6) was checked when the target was collected: a lifecycle
+        // frame landing before this line can at worst move a just-finished
+        // session's position, and `selectExercise` re-validates the slot
+        // against the held session.
         if let jump = adopted.jump {
             await selectExercise(slotId: jump.slotId)
         }

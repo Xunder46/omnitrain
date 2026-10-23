@@ -367,7 +367,95 @@ this phase's own change is `WatchTimedWorkTests.swift` +67 (the reader split) pl
 `WatchFollowPhoneEffortTests.swift` now holding 13 tests. No production file, no Dart file, no doc
 outside this plan.
 
-(P3 — paste the three docs' sizes after the edits.)
+### P3 — docs (developer, 2026-10-23)
+
+Files: `docs/state_management/watch_surface_wrist.md` (+17 −4), `docs/state_management/watch_surface.md`
+(+13 −2), `docs/watch_session_capture.md` (+11 −6) — `git-diff --stat` reports 3 files, +41 −12. No
+code, no Swift, no plan-53 text reverted.
+
+What now says what, and the test each claim names:
+
+- `watch_surface_wrist.md`, "The work clock names its exercise": the follow rule (a message-borne
+  running or paused work timer — `elapsed`, `hold`, `round` — naming another slot the live session
+  holds moves the wrist there through the engine's own select path, one `exercise_advanced` frame),
+  its negatives (rest, stopped or cleared timer, unheld slot, current slot, inactive session, an
+  earlier-start drop), the per-frame earliest-start tie-break, and the unchanged lock, pager and
+  in-flight-swipe rules. Names `WatchFollowPhoneEffortTests.swift` S-8401..S-8415 (S-8405 excepted, see
+  the plan's Q1) plus the two S-6004 names Phase 2B shipped; the pre-rework name
+  `testS6004APhoneTimerForAnotherSlotIsNotTheWristsWorkClock` no longer exists and is gone from the doc.
+- `watch_surface.md`, the `WatchTimerPush` paragraph: the inbound-frame trigger under the auto push's
+  reset gate (D-1), clears only (`flushClears()`), and an ordinary `flush()` that joins or follows a
+  clears-only drain still getting its full pass (S-8408). Verified-by extended with the S-8406..S-8408
+  groups.
+- `watch_session_capture.md`: "a wrist out of reach is served at the next phone notification or the
+  next frame the wrist sends", the follow-by-jump limit (S-8401), and the Verified-by extended with
+  the S-8406..S-8408 groups. The seeded limit "applies a phone timer only for the exercise it is
+  showing" was removed because D-2 falsified it (Assumption Log).
+
+Suite outputs (real counts):
+
+- `gateway.sh test test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart` →
+  `00:00 +42: All tests passed!` (42 passed, 0 failed). The contract's ceiling-band check
+  ("no documentation file is within the warning band of the ceiling") passes, so all three docs are
+  under 52 KB.
+- full `gateway.sh test` → `03:07 +5437 ~2: All tests passed!` (5437 passed, 2 skipped, 0 failed; the
+  same counts as the P1 tree — no code changed in this phase)
+- `gateway.sh lint` → `180 issues found. (ran in 3.4s)`, 0 errors and 0 warnings — the plan's 180
+  baseline, unchanged
+- `gateway.sh git-diff --stat` → 3 files, +41 −12, the three docs only; `git-status` shows this plan and
+  its evidence as the only other modified files
+
+Prove-red: N/A — this phase adds no test and no guard; it is prose plus this plan's bookkeeping. The
+falsifiable evidence is the two contract test files above and the named test functions, each of which
+was located in the tree (the Swift names in `WatchFollowPhoneEffortTests.swift` and
+`WatchTimedWorkTests.swift`, the Dart groups in `test/watch_timer_push_test.dart`).
+
+Out of this phase's Predicted Files: `watch/sync_protocol/PROTOCOL.md` ~l.314 names the S-6004 test
+name Phase 2B split away; recorded in the plan's Assumption Log for the governor (one-line rename).
+
+### Fix round 2 — review findings 1–5, documentation and comments only (developer, 2026-10-23)
+
+No behaviour change and no test added, so no prove-red: every guard named here (S-6322/S-6323/S-6324/
+S-7305/S-8401/S-8408) already exists and was located in the tree.
+
+- **Finding 1 (plan file):** D-1 is annotated in place and D-1a follows it without renumbering; D-1a
+  records the shipped form — `timerPush.flushClears()` plus the clears-only mode in `WatchTimerPush`
+  (`flushClears()`, `_flush({required bool clearsOnly})`, `_fullAgain`), not `timerPush.flush()`, for
+  the reason the review gives (a full flush re-offers a start for a clock the wrist ended:
+  S-6322/S-6323/S-6324/S-7305), with S-8408 as the proof an ordinary flush still gets a full pass.
+  The same correction is in the root-cause §1 paragraph, Phase 1 item 2 and the Impact row
+  "`WatchTimerPush.flushClears()`".
+- **Finding 2:** `watch/sync_protocol/PROTOCOL.md` names the two shipped names,
+  `testS6004APhoneTimerForASlotTheLadderDoesNotHoldIsNotTheWristsWorkClock` (l.1056) and
+  `testS6004APhoneTimerForAHeldSlotMovesTheWristToIt` (l.1101), both confirmed present in
+  `WatchTimedWorkTests.swift`; the removed name is gone from the file.
+- **Finding 3:** the 2026-10-20 amendment row (~l.697) scopes the hiding to a slot the session does not
+  hold and points at the follow rule (`docs/state_management/watch_surface_wrist.md`, S-8401,
+  `testS8401APhoneTimerForAnotherSlotMovesTheEngineToItsSlot`). The same one-sentence scoping was added
+  to the normative "Timer state" section (~l.290), which carried the identical now-false claim — logged
+  in the Assumption Log. No wire change, no schema edit, no version change.
+- **Finding 4:** the D-7 comment at both jump sites (`applySnapshot` ~l.518, `applyTimerState` ~l.738)
+  now states that the D-6 active-session gate is checked at collect time, that a lifecycle frame
+  landing between collect and select can at worst move a just-finished session's position, and that
+  `selectExercise` re-validates the slot against the held session. Comment only.
+- **Finding 5:** `_flush`'s doc comment names the accepted window — a clears-only flush joining a
+  running full drain makes the follow-up pass clears-only, so a failed full pass leaves the start it
+  owed to the next phone-state trigger (D-202); a full follow-up on a wrist-frame trigger is what
+  D-1a rules out. Comment only.
+
+Suite outputs (real counts):
+
+- `gateway.sh test test/docs_indexing_contract_test.dart test/watch_timer_push_test.dart` →
+  `00:00 +57: All tests passed!` (57 passed, 0 failed)
+- full `gateway.sh test` → `03:07 +5437 ~2: All tests passed!` (5437 passed, 2 skipped, 0 failed)
+- `gateway.sh lint` → `180 issues found.`, 0 errors — the plan's 180 baseline, unchanged
+- `gateway.sh swift-test` → `Executed 770 tests, with 0 failures` (0 unexpected)
+- `gateway.sh git-diff --stat` for this round's files: `watch/sync_protocol/PROTOCOL.md` +5 −2,
+  `lib/state/watch/watch_timer_push.dart` +6, `WatchSessionEngine.swift` +8 −2; plus this plan and its
+  evidence. No other file this round.
+
+PROTOCOL.md is read by `test/sync_protocol_fixtures_test.dart` only as prose naming fixtures it walks;
+the fixtures, the schema and the validators are untouched, and that suite is inside the full run above.
 
 ## Feedback
 

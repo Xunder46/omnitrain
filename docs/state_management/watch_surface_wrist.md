@@ -303,12 +303,25 @@ for another slot is stored beside, and a rest keeps last-write
 `…testS6005RestIsNotAnEarlierStartWinsKind`; Dart twin,
 `test/watch_logging_timers_test.dart`, group
 `S-6006 the earlier start wins at adoption`). A timer that came from a message
-for another slot is not shown as the current exercise's clock, while a clock
-the wrist started itself keeps running across an exercise jump
-(`WatchTimedWorkTests.testS6004APhoneTimerForAnotherSlotIsNotTheWristsWorkClock`,
+for another slot the session does not hold is not shown as the current
+exercise's clock, while a clock the wrist started itself keeps running across
+an exercise jump
+(`WatchTimedWorkTests.testS6004APhoneTimerForASlotTheLadderDoesNotHoldIsNotTheWristsWorkClock`,
 `…testS6004AClockTheWristStartedSurvivesTheJump`); the wire holds one timer per
 kind, so a newer timer of that kind for another slot supersedes the wrist's own
-row.
+row. A message-borne work timer (`elapsed`, `hold`, `round`), running or
+paused, that names another slot the live session holds moves the wrist to that
+exercise through the engine's own select path, one `exercise_advanced` frame
+(`WatchTimedWorkTests.testS6004APhoneTimerForAHeldSlotMovesTheWristToIt`;
+`WatchFollowPhoneEffortTests.swift` S-8401, S-8403, S-8412); a rest, a stopped
+or cleared timer, a slot the session does not hold, the current slot, a session
+that is no longer active and a row the earlier-start rule dropped move nothing
+and emit nothing (the same file's S-8402 cases, S-8411, S-8413). Several
+candidates in one frame jump once, to the earliest start (S-8415). The jump
+adds no lock of its own: the lock is still any running work timer of the
+session and clears on the clear frame (S-8404), the pager follows because its
+index is derived, and a swipe in flight is refused with its focus cleared
+(S-8414).
 
 **The live label follows the sensor.** The grey "bpm" and distance lines of that
 surface are derived on every read from the sensors' newest recorded sample, so
