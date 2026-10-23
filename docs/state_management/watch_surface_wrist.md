@@ -358,6 +358,20 @@ exercise's own numbers and a Log clears only the logged exercise's. Verified by
 `WatchDialledPerExerciseTests.swift` (S-6410..S-6413) and
 `test/watch_dialled_per_exercise_test.dart` (groups S-6410..S-6413).
 
+**A timed effort on a distance exercise offers a Distance row.**
+`WatchLoggingState.metricKeysByKind` gives a timed effort on an exercise with
+the distance capability a `distance` row, dialled with the Crown or − / + — the
+unit and step follow the phone's distance unit, and the value is stored in
+metres — until GPS has measured movement inside this effort's own window; from
+then on the row is measured and read-only, showing the effort's own metres
+rather than the session total. At Log the GPS metres win when above zero
+(`distanceSource: "gps"`); otherwise a dialled distance above zero is sent as
+`distanceMeters` with `distanceSource: "entered"`, and with neither dialled nor
+measured neither field is sent. Logging clears the dialled value, so the next
+effort starts at zero; hold, round and set efforts are unchanged. Verified by
+`WatchHandDistanceTests.swift` (S-9501..S-9510, plus S-9504b) and
+`WatchLoggingSurfacesTests.testS9503ADialledDistanceReachesTheObservation`.
+
 A set with two values (reps and weight) shows them as two side-by-side tiles
 with one shared − / + pair under them: the outlined tile is the one the Crown
 and the pair step, and tapping a tile arms it

@@ -138,9 +138,11 @@ final class WatchLoggingStatusTests: XCTestCase {
     func testS7512StepArmedWithNoRowsChangesNothing() async throws {
         let harness = Harness()
         let engine = await harness.runningEngine()
+        // plan 65: a distance exercise's timed surface now offers a Distance
+        // row, so this nothing-to-step case uses a time-only exercise.
         _ = await engine.createSession(
             modality: "cardio_endurance",
-            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+            exercises: [slot("sx-run", capabilities: ["time"])]
         )
         let state = WatchLoggingState(engine: engine, clock: harness.clock.call)
         let model = WatchLoggingModel(state: state, haptics: RecordingHaptics())
@@ -173,22 +175,34 @@ final class WatchLoggingStatusTests: XCTestCase {
             clock: harness.clock.call
         )
         await recorder.start(session)
-        source.fix(400)
-        await eventually { recorder.readings.distanceMeters == 400 }
 
         let state = WatchLoggingState(engine: engine, clock: harness.clock.call, sensors: recorder)
         let model = WatchLoggingModel(state: state, haptics: RecordingHaptics())
 
+        // plan 65: the row is measured once GPS samples are inside the effort's
+        // window, so the fix arrives after Start.
+        await state.startWork()
+        harness.clock.advance(60)
+        source.fix(400)
+        await eventually { recorder.readings.distanceMeters == 400 }
+
         XCTAssertTrue(state.isMeasuringDistance, "a sensor is keeping the distance")
-        XCTAssertTrue(
-            state.fields.isEmpty,
-            "the measured distance is a reading, not a row the user dials (S-004)"
+        let distance = try XCTUnwrap(
+            state.fields.first { $0.metricKey == WatchMetricKey.distance },
+            "the timed surface of a distance exercise offers one Distance row"
         )
-        XCTAssertNil(model.armedMetricKey, "there is no open row to arm")
+        XCTAssertTrue(distance.isMeasured, "samples in the window make the row measured")
+        XCTAssertEqual(distance.value, 400, "the row reads the window's metres")
+        XCTAssertNil(model.armedMetricKey, "a measured row is never armed")
 
         model.stepArmed(1)
         model.stepArmed(-1)
 
+        XCTAssertEqual(
+            state.fields.first { $0.metricKey == WatchMetricKey.distance }?.value,
+            400,
+            "the measured value is the sensor's, untouched by the stepper"
+        )
         XCTAssertEqual(
             recorder.readings.distanceMeters,
             400,

@@ -202,13 +202,14 @@ public final class WatchLoggingState {
     /// The metrics each effort kind calls for, in the order the wrist reads
     /// them. Mirrors `EffortDefaults`' primary and secondary metrics.
     ///
-    /// Timed work has no row at all: its length is its own clock, not a number
-    /// the user dials, so the clock replaces the rows (D-1305). A period's one
-    /// row is its length, and `fields` drops it once the period runs (D-3404). A
+    /// A timed effort's length is its own clock, not a number the user dials,
+    /// so it has no length row (D-1305); its one row is a distance, offered
+    /// when the exercise counts distance (plan 65 D-1). A period's one row is
+    /// its length, and `fields` drops it once the period runs (D-3404). A
     /// drill keeps only its extra load, which is assistance rather than load.
     private static let metricKeysByKind: [String: [String]] = [
         WatchEffortKind.set: [WatchMetricKey.reps, WatchMetricKey.weight],
-        WatchEffortKind.timed: [],
+        WatchEffortKind.timed: [WatchMetricKey.distance],
         WatchEffortKind.round: [WatchMetricKey.roundDuration],
         WatchEffortKind.drill: [WatchMetricKey.extraWeight],
     ]
@@ -656,16 +657,31 @@ public final class WatchLoggingState {
         )
     }
 
-    /// Whether a sensor, rather than the user, is keeping `metricKey`.
+    /// Whether a sensor, rather than the user, is keeping `metricKey`: the
+    /// distance is measured only while the location subscription runs AND the
+    /// running effort's own window has covered something (plan 65 D-2). A
+    /// subscription with no movement in the window — indoors, no fix, a still
+    /// watch — leaves the dial open.
     private func isMeasured(_ metricKey: String) -> Bool {
-        metricKey == WatchMetricKey.distance && isMeasuringDistance
+        metricKey == WatchMetricKey.distance
+            && isMeasuringDistance
+            && windowDistanceMeters() > 0
+    }
+
+    /// The metres the running effort's own window has covered so far, or zero
+    /// before Start: nothing is measured until the effort has a clock to
+    /// measure inside (plan 65 D-2).
+    private func windowDistanceMeters() -> Double {
+        guard let timer = workTimer else { return 0 }
+        return windowMeters(from: timer.startedAt, through: clock())
     }
 
     /// What the sensors have measured for `metricKey`, or zero before the first
-    /// reading lands.
+    /// reading lands. The distance is the EFFORT's metres — its own window —
+    /// not `readings.distanceMeters`'s session total (plan 65 D-2).
     private func measuredValue(for metricKey: String) -> Double {
         guard metricKey == WatchMetricKey.distance else { return 0 }
-        return readings.distanceMeters ?? 0
+        return windowDistanceMeters()
     }
 
     /// Where a value starts: what was logged last for this exercise, or what
@@ -947,9 +963,10 @@ public final class WatchLoggingState {
     }
 
     /// The window timed work or a hold was logged over: the work clock's own
-    /// start to the log instant (D-1304). A distance is saved only when the
-    /// wrist's sensors were keeping it and the effort's own window covered
-    /// something (D-2205); the number always travels with the source it came
+    /// start to the log instant (D-1304). A distance is saved when the wrist's
+    /// sensors measured movement in the effort's own window, or — when they
+    /// measured nothing — as the number the user dialled, marked "entered"
+    /// (D-2205, plan 65 D-3); the number always travels with the source it came
     /// from, and never alone (D-2206).
     private func windowPayload(loggedAt: Date, coversDistance: Bool) -> [String: Any] {
         let startedAt = workTimer?.startedAt ?? loggedAt
@@ -957,11 +974,20 @@ public final class WatchLoggingState {
             "startedAt": utcIso(startedAt),
             "endedAt": utcIso(loggedAt),
         ]
-        if coversDistance, isMeasuringDistance {
-            let covered = windowMeters(from: startedAt, through: loggedAt)
+        if coversDistance {
+            // GPS wins when it measured movement in the window; otherwise the
+            // distance the user dialled travels, marked "entered" (plan 65
+            // D-3). `dialled` is still intact here: `log` clears it only after
+            // the event is built, with no await between.
+            let covered = isMeasuringDistance
+                ? windowMeters(from: startedAt, through: loggedAt)
+                : 0
             if covered > 0 {
                 payload["distanceMeters"] = covered
                 payload["distanceSource"] = "gps"
+            } else if let entered = dialled[dialledKey]?[WatchMetricKey.distance], entered > 0 {
+                payload["distanceMeters"] = entered
+                payload["distanceSource"] = "entered"
             }
         }
         return payload

@@ -182,19 +182,33 @@ final class WatchCrownArmingTests: XCTestCase {
         let state = WatchLoggingState(engine: engine, clock: harness.clock.call, sensors: recorder)
         let model = WatchLoggingModel(state: state, haptics: RecordingHaptics())
 
+        // plan 65: the timed surface of a distance exercise offers one Distance
+        // row that is dialled until GPS measures this effort, so the
+        // never-armed case is the measured one: samples inside the window.
+        await state.startWork()
+        harness.clock.advance(60)
+        source.fix(400)
+        await eventually { recorder.readings.distanceMeters == 400 }
+
         XCTAssertTrue(state.isMeasuringDistance, "a sensor is keeping the distance")
-        XCTAssertTrue(
-            state.fields.isEmpty,
-            "a measured distance is a reading, not a row the user dials (S-004)"
+        let distance = try XCTUnwrap(
+            state.fields.first { $0.metricKey == WatchMetricKey.distance },
+            "the timed surface of a distance exercise offers one Distance row"
         )
-        XCTAssertNil(model.armedMetricKey, "there is no open row to arm")
+        XCTAssertTrue(distance.isMeasured, "samples in the window make the row measured")
+        XCTAssertNil(model.armedMetricKey, "a measured row is never armed")
 
         model.arm(WatchMetricKey.distance)
         XCTAssertNil(model.armedMetricKey, "the measured row is not one the crown may drive")
 
         model.turn(to: 2 * WatchLoggingModel.pointsPerDetent)
         XCTAssertNil(model.armedMetricKey, "a turn with nothing armed stays that way")
-        XCTAssertTrue(state.fields.isEmpty, "and changes no value: nothing crashed")
+        XCTAssertEqual(
+            state.fields.first { $0.metricKey == WatchMetricKey.distance }?.value,
+            400,
+            "and changes no value: nothing crashed"
+        )
+        source.close()
     }
 
     // MARK: - S-6406 changing exercise re-checks what may be armed
@@ -255,18 +269,14 @@ final class WatchCrownArmingTests: XCTestCase {
 
         let cardioHarness = Harness()
         let cardioEngine = await cardioHarness.runningEngine()
-        let session = await cardioEngine.createSession(
+        _ = await cardioEngine.createSession(
             modality: "cardio_endurance",
             exercises: [slot("sx-run", capabilities: ["time", "distance"])]
         )
-        let recorder = WatchSensorRecorder(
-            engine: cardioEngine,
-            source: FakeSensorSource(),
-            clock: cardioHarness.clock.call
-        )
-        await recorder.start(session)
+        // plan 65: arming the distance row now succeeds before Start, so the
+        // refusal that still exists is a metric the exercise does not carry.
         let cardio = WatchLoggingModel(
-            state: WatchLoggingState(engine: cardioEngine, clock: cardioHarness.clock.call, sensors: recorder),
+            state: WatchLoggingState(engine: cardioEngine, clock: cardioHarness.clock.call),
             haptics: RecordingHaptics()
         )
 
@@ -275,8 +285,12 @@ final class WatchCrownArmingTests: XCTestCase {
             .sink { _ in cardioNotifications += 1 }
             .store(in: &cancellables)
 
-        cardio.arm(WatchMetricKey.distance)
-        XCTAssertNil(cardio.armedMetricKey, "a measured row is not a row the crown may drive")
+        cardio.arm(WatchMetricKey.reps)
+        XCTAssertEqual(
+            cardio.armedMetricKey,
+            WatchMetricKey.distance,
+            "a metric the exercise does not carry is not a row: the armed row stays"
+        )
         XCTAssertEqual(cardioNotifications, 0, "an arm that is refused publishes nothing")
 
         withExtendedLifetime(cancellables) {}
