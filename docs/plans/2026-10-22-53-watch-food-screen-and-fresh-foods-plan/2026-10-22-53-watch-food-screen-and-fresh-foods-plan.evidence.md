@@ -72,21 +72,51 @@ Footprint: `git-diff --stat` → the five predicted files only
 
 ## Phase P2 (Swift state: D-1, D-2, D-3)
 
-- `swift test` output: _to fill_
+- `swift test` (full package, once, and again after the last restored mutation): **753 passed, 0 failed** —
+  `Executed 753 tests, with 0 failures (0 unexpected)` (`.work/gateway/swift-test-20261022-235452-92449.log`).
+  The nine new tests are `WatchNutritionFreshnessTests`, also green on their own
+  (`swift-test --filter WatchNutritionFreshnessTests` → **9 passed, 0 failed**, build clean of warnings).
+- `prove-red a01be76d05e6a4807b21a6a97a3dc38dc06abba0 swift-test --filter WatchNutritionFreshnessTests -- <new test file>` →
+  **RED AT a01be76 (exit 1)**, but by compile errors only (`WatchNutritionState has no member 'deselect'`,
+  `... no member 'onFoodsChanged'`): new APIs, so the file cannot build at the base commit. A compile
+  error is not an assertion failure, so each guard is proved by the mutations below; every original was
+  restored exactly and the suite re-run green.
+- Mutations (original line → mutant, all in `WatchNutritionState.swift`):
+  1. `        portion = WatchNutritionPortion.minServings` in `deselect()` → deleted (rest of the method intact).
+  2. `        for observation in engine.nutritionLog.reversed() {` in `effectiveFood(_:)` →
+     `        for observation in engine.nutritionLog.reversed().prefix(0) {` (the log is never consulted).
+  3. `        onFoodsChanged?()` at the end of `restore()` → deleted.
+  4. `        onFoodsChanged?()` in `applyFoodsDown`'s applied path and the same call in `logSelected()` → both deleted.
+  5. `        selectedFoodId.flatMap { food($0) }` → `        selectedFoodId.flatMap { food($0) ?? syncedFoods.first }`.
+  6. `        portion = Self.clampServings(food.defaultServings)` in `select(_:)` → `        portion = food.defaultServings`.
+  7. `            if loggedAt <= catalog.generatedAt { return food }` in `effectiveFood(_:)` → deleted (the log
+     always wins, whatever the list says).
 - Red→green table:
 
-| Scenario | Red proof | Green |
+| Scenario | Red proof (mutation) | Green |
 |---|---|---|
-| S-8301 | does not compile without `deselect()` | _to fill_ |
-| S-8302 | without D-2 the default stays 1 | _to fill_ |
-| S-8303 | mutation: apply the log's servings regardless of `generatedAt` → the older-down assertion fails | _to fill_ |
-| S-8304 | mutation: an in-memory override instead of derivation → the relaunch loses it | _to fill_ |
-| S-8305 | mutation: fire `onFoodsChanged` on dropped/refused messages too → the count fails | _to fill_ |
-| S-8306 | mutation: the log always wins regardless of `generatedAt` → the catalog-newer assertion fails | _to fill_ |
-| S-8313 | does not compile without `deselect()` | _to fill_ |
-| S-8314 | mutation: `selected` returns a stale food for an unknown id | _to fill_ |
-| S-8315 | mutation: `select` skips `clampServings` → 0.25 stands | _to fill_ |
-| `WatchNutritionQuickLogTests` (incl. `testANewSelectionStartsFromThatFoodsOwnPortion`, `testTheWristDerivesTheContractsOrder`, S-7206) | regression: must stay green | _to fill_ |
+| S-8301 | 1: `("3.5") is not equal to ("0.5")` | `testS8301LeavingAFoodClearsItAndTheNextOneOpensAtItsOwnAmount` passes |
+| S-8302 | 2: `("Optional(1.0)") is not equal to ("Optional(3.0)")` on the food, the list row and the next selection | `testS8302ALogBecomesTheFoodsStartingAmount` passes |
+| S-8303 | 7: `("Optional(3.0)") is not equal to ("Optional(2.0)")` after the post-log list; 2: `Optional(1.0)` where 3 was expected after the pre-log list | `testS8303ANewerListWinsAndAnOlderOneDoesNotRevertALog` passes |
+| S-8304 | 2: `("Optional(1.0)") is not equal to ("Optional(3.0)")` after the relaunch | `testS8304ARelaunchKeepsTheDerivedStartingAmount` passes |
+| S-8305 | 3: `("0") is not equal to ("1")` after the restore; 4: `0` where 1 after the apply, `1` where 3 after the log | `testS8305FoodChangesAreAnnouncedOnlyWhenTheListChanges` passes |
+| S-8306 | 7: `("Optional(3.0)") is not equal to ("Optional(1.0)")`, then `("3.0") is not equal to ("1.0")` on the row and the next selection | `testS8306ALogOlderThanTheCatalogKeepsTheCatalogsAmount` passes |
+| S-8313 | 1 does not reach it (idempotency, not the reset — as the plan states); the method's absence is the compile red above | `testS8313DeselectingNothingChangesNothing` passes |
+| S-8314 | 5: `XCTAssertNil failed: "WatchFood(foodId: "food-b" …"` | `testS8314ANewerListThatDropsTheSelectedFoodClearsTheSelection` passes |
+| S-8315 | 6: `("0.25") is not equal to ("0.5")` | `testS8315ASelectionClampsTheListedAmount` passes |
+| `WatchNutritionQuickLogTests` (incl. `testANewSelectionStartsFromThatFoodsOwnPortion`, `testTheWristDerivesTheContractsOrder`, S-7206) | regression: unchanged files, no new failure | green in the 753-passed run |
+
+- Residue sweeps: `git-diff --stat` after the last restore → the two Swift sources
+  (`WatchFoodCatalog.swift` +14, `WatchNutritionState.swift` +48/−2), this evidence file and the plan's
+  Progress only; the new test file is untracked (`git-status` lists it as `??`) and so absent from
+  `--stat`. No `MUTATION` marker and no mutant line remains.
+- `lint` re-run (no Dart file changed this phase): **180 issues, 0 errors**, unchanged from the P1
+  baseline. Invariant grep (`import .*hive_workout_repository` over `lib/state lib/features
+  lib/widgets lib/core`) returns nothing.
+- `test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart` → **42 passed, 0 failed**
+  (no `lib/` UI file changed, but the plan files grew and both contract suites cover what this phase
+  touched in `docs/plans/`).
+- `flutter run` / the watch scheme's `xcodebuild`: not available to this role (governor's).
 
 ## Phase P3 (Swift view and host: D-4, D-5, D-6, D-10)
 

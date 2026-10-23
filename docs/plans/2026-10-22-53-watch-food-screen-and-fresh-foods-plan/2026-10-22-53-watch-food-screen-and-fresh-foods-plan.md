@@ -215,7 +215,14 @@ Docs:
   6. [x] twin test group S-8307, S-8317 — Result: 3 tests (S-8301/S-8302/S-8303 twins, S-8317 relaunch) over `_foodsDownAt`.
   7. [x] S-7101..S-7105 green — Result: green in the 54-passed run; reason recorded in the evidence file (they seed the repository, so the reload finds the same rows).
   - Done Criteria: `test <two files>` 54/54, `lint` 180 info / 0 errors with none of the five touched files in the log, full suite 5434 passed / 2 skipped / 0 failed. Evidence: `<plan>.evidence.md` § Phase P1. `flutter run` is the governor's (not available to this role).
-- [ ] P2 — Swift state: D-1, D-2, D-3, S-8301..S-8306, S-8313..S-8315
+- [x] P2 — Swift state: D-1, D-2, D-3, S-8301..S-8306, S-8313..S-8315 — **Complete**
+  1. [x] `WatchFood.withDefaultServings(_:)` — Result: copies every other `let`, changes only `defaultServings` (+14 lines).
+  2. [x] `deselect()` — Result: clears the id, resets the portion to `minServings`, clears the confirmation; S-8301 flips red without the reset.
+  3. [x] `effectiveFood(_:)` behind `food(_:)` and `foods` — Result: private; scans `engine.nutritionLog.reversed()` for the first hit on the id, lends its `servings` only when `loggedAt > catalog.generatedAt` (and when the payload is readable); no catalog held → the food as it is; `foods` maps `syncedFoods` before `deriveWatchFoodList`.
+  4. [x] `onFoodsChanged` — Result: fired at the end of `restore()`, on `applyFoodsDown`'s applied path only, and after `logSelected()` stores its record; S-8305 counts 1/1/1/2/3.
+  5. [x] New `WatchNutritionFreshnessTests.swift` — Result: 9 tests (S-8301..S-8306, S-8313..S-8315), each comment naming the mutation that turns it red.
+  6. [x] `WatchNutritionQuickLogTests` green — Result: green in the full run (753 executed, 0 failures), incl. `testANewSelectionStartsFromThatFoodsOwnPortion`, `testTheWristDerivesTheContractsOrder`, `testS7206ARestoreCannotPutTheStoredListOverANewerOne`.
+  - Done Criteria: `swift-test` 753 executed / 0 failures; `prove-red` at the base commit RED but by compile error only (new APIs), so seven mutations carry the proof (each restored exactly, re-run green); `lint` 180 info / 0 errors, unchanged; no view, host, menu or doc file touched. Evidence: `<plan>.evidence.md` § Phase P2.
 - [ ] P3 — Swift view and host: D-4, D-5, D-6, D-10, S-8311, S-8312, S-8318
 - [ ] P4 — docs and Progress
 - [ ] Governor: full `swift test`, `xcodebuild`, `flutter analyze`, full `flutter test`, `prove-red` S-8301..S-8312, review
@@ -229,6 +236,9 @@ Docs:
 - **P1 / twin proved by mutation, not `prove-red`.** `test/watch_nutrition_quick_log_test.dart` cannot compile at HEAD (`deselect()`, `copyWithDefaultServings` are new), so `prove-red` can only report a build failure. Options: accept an unprovable group, or mutate. Chose two mutations (portion reset deleted; `_effectiveFood` returning the catalog food) with the original lines restored and re-run green — recorded in the evidence file.
 - **P1 / `deselect()` resets the portion to `minServings`.** The Swift twin (P2 item 2) does the same and S-8301 asserts 0.5 after a deselect. Options: keep the last portion, or reset. Chose reset — one twin rule, and the next selection re-derives its own amount anyway.
 - **P1 / `select`'s doc comment.** Its sentence said the portion starts "where the phone left it — the amount the user logged last". With D-9's derivation the newest source can be the wrist's own log, so the sentence became false; rewrote it to name both sources (comment only, no behavior).
+- **P2 / proved by mutation, not `prove-red`.** `WatchNutritionFreshnessTests.swift` cannot compile at the base commit (`deselect()`, `onFoodsChanged` are new), so `prove-red` can only report a build failure. Options: accept an unprovable file, or mutate. Chose seven mutations with the original lines restored and the suite re-run green; the table is in the evidence file.
+- **P2 / S-8303's "older" list is dated 05:30.** The log sits at 06:00 and the held catalog at 05:00, so the 05:30 list is newer than the held catalog and applies — which is exactly what exercises D-2's comparison. The drop path (a list older than the held catalog) is S-8305's 04:00 envelope.
+- **P2 / `effectiveFood` falls back to the catalog's amount.** A matching log whose `loggedAt` or `servings` cannot be read leaves the catalog's value, and a state holding no catalog returns the food untouched (D-2 compares against a list that must exist). Options: treat an unreadable log as newer, or ignore it. Chose ignore.
 
 ## Open questions
 
