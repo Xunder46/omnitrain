@@ -36,6 +36,14 @@ public enum WatchStartSurfaceCopy {
     /// and refreshing the routine list.
     public static let syncLabel = "Sync"
 
+    /// What the Sync button becomes while the phone's answer is owed (plan 55,
+    /// D-3, D-7): the wrist says it is working rather than offering a second
+    /// request.
+    ///
+    /// Deliberately not a contract value, for the same reason as the label
+    /// below: no other client has a sync to wait on.
+    public static let syncingLabel = "Syncing…"
+
     /// Said only when the wrist has *observed* the phone out of reach (D-8),
     /// never on a cold start, which has asked nothing.
     ///

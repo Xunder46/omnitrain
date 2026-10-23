@@ -65,6 +65,28 @@ final class WatchAppHost: ObservableObject {
     /// reach, which is what a flag starting `false` would say.
     @Published private(set) var phoneReachability = WatchPhoneReachability.unknown
 
+    /// Whether a sync is plausibly unfinished, so the start screen shows the
+    /// spinner instead of the Sync button (plan 55, D-2, D-6). Published, so the
+    /// surface re-reads it; nothing else in the host observes it, which is why
+    /// the tick below assigns this and never `revision`.
+    @Published private(set) var isSyncing = false
+
+    /// The window the spinner follows (D-1, D-5): begun by a sync request or a
+    /// catch-up that will run, ended by the replies going quiet or by the cap.
+    /// Touched on the main actor only — the host's own isolation — so the tick
+    /// and the radio handlers cannot race each other through it.
+    private var syncProgress = WatchSyncProgress()
+
+    /// The bounded tick that ends the spinner when no reply ever comes (D-6).
+    /// A begin while one is still running replaces it, so two ticks never race
+    /// to write `isSyncing`.
+    private var syncProgressTicker: Task<Void, Never>?
+
+    /// How often the tick re-reads the window (D-6): fine enough that the Sync
+    /// button is back as the quiet window ends, coarse enough to cost nothing on
+    /// a wrist.
+    private static let syncProgressTickNanoseconds: UInt64 = 500_000_000
+
     /// The line the wrist shows when entries are waiting for the phone (plan 51d
     /// D-3), read at render: the views re-run on `revision`, which every receipt
     /// and every reachability change bumps.
@@ -154,6 +176,14 @@ final class WatchAppHost: ObservableObject {
         // hook, so the throw is not swallowed here.
         bridge.onIncoming { [weak self] frame in
             guard let self else { return }
+            // Plan 55 (D-2, A-3): the phone spoke, so the wait may end. Noted
+            // before the receive, so a frame the wrist refuses still counts and a
+            // throw cannot skip it. `syncProgress` is main-actor state and this
+            // handler is not, so the note is hopped like the bump below.
+            let type = frame["type"] as? String ?? ""
+            await MainActor.run {
+                self.syncProgress.noteArrival(type: type, at: Date())
+            }
             _ = try await self.orchestrator.receive(frame)
             // The receive path runs off the main actor (the radio's handler is
             // `@concurrent`); the counter the views watch is bumped on it.
@@ -169,7 +199,9 @@ final class WatchAppHost: ObservableObject {
             self.revision += 1
             // The phone back in reach catches the wrist up by itself (D-96). Not
             // awaited, so the handler is never blocked; the gate and the in-flight
-            // guard live in `catchUp`, not here.
+            // guard live in `catchUp`, not here — and so does the spinner, which
+            // only a reachable phone has anything to wait for (plan 55, A-4).
+            if reachable { self.beginSyncProgress() }
             Task { await self.orchestrator.catchUp(reachable: reachable) }
         }
 
@@ -235,9 +267,40 @@ final class WatchAppHost: ObservableObject {
     ///
     /// The first sync asks for everything; a later one says what the wrist
     /// already has, so the phone can answer with what changed.
+    ///
+    /// The spinner starts before the request is awaited (plan 55, D-2): the
+    /// orchestrator's `sync` returns once the frames are sent, and the answer
+    /// arrives afterwards.
     func requestSync() async {
+        beginSyncProgress()
         await orchestrator.sync(reconnect: paths.syncedAt != nil)
         revision += 1
+    }
+
+    /// Starts the spinner, opens a sync window, and starts the tick that closes
+    /// it (plan 55, D-2, D-6). The window's arithmetic is `WatchSyncProgress`'s;
+    /// nothing observes a struct, so the tick re-reads it while a sync is
+    /// plausibly unfinished and then exits.
+    ///
+    /// The tick assigns `isSyncing` alone: bumping `revision` here would put the
+    /// workout and sensor refresh on a half-second cycle for the length of every
+    /// sync (S-8512).
+    private func beginSyncProgress() {
+        syncProgress.begin()
+        isSyncing = true
+        syncProgressTicker?.cancel()
+        syncProgressTicker = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.syncProgressTickNanoseconds)
+                guard let self, !Task.isCancelled else { return }
+                if self.syncProgress.isActive(at: Date()) {
+                    self.isSyncing = true
+                } else {
+                    self.isSyncing = false
+                    return
+                }
+            }
+        }
     }
 
     /// Tells the surfaces to re-read after a change the host did not make itself:
@@ -254,7 +317,11 @@ final class WatchAppHost: ObservableObject {
     /// button. Not awaited, so the handler is never blocked; the gate and the
     /// in-flight guard live in `catchUp`.
     func catchUpOnActivation() {
-        Task { await orchestrator.catchUp(reachable: phoneReachability == .reachable) }
+        let reachable = phoneReachability == .reachable
+        // Nothing to wait for when the phone is out of reach, and `catchUp` does
+        // nothing then either, so no spinner is started (plan 55, A-4).
+        if reachable { beginSyncProgress() }
+        Task { await orchestrator.catchUp(reachable: reachable) }
     }
 
     /// Reads the workout's newest beat when the app becomes active (D-3108,
@@ -323,7 +390,8 @@ struct ContentView: View {
                     onRequestSync: { Task { await host.requestSync() } },
                     phoneReachability: host.phoneReachability,
                     revision: host.revision,
-                    syncNotice: host.syncNotice
+                    syncNotice: host.syncNotice,
+                    isSyncing: host.isSyncing
                 )
             }
         }

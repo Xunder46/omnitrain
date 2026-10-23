@@ -298,7 +298,7 @@ file, the evidence file. Nothing else.
 ## Progress
 
 - [x] P1 — type + copy + S-8501..S-8507, S-8510 (result: 8 new tests; full `swift-test` 778 tests / 0 failures; each scenario red-proved by mutation — evidence file)
-- [ ] P2 — view and host wiring + S-8508, S-8509, S-8511, S-8512 (result: —)
+- [x] P2 — view and host wiring + S-8508, S-8509, S-8511, S-8512 (result: 6 new guards, RED AT HEAD then green; full `swift-test` 784 tests / 0 failures with S-7205, S-111 and S-6507 green — evidence file)
 - [ ] P3 — docs and plan Progress (result: —)
 
 ## Assumption Log
@@ -326,6 +326,15 @@ file, the evidence file. Nothing else.
   straggler reply after it finished cannot revive the window. D-5 pins only the type filter.
   Options: record unconditionally, or gate on activity. Chose the gate; the register has no scenario
   for it, so it is unproven by mutation (evidence file) — flagged for P2's reviewer.
+- A-7 (P2, refines item 6's literal): the arrival's `type` is read into a `let` before the
+  `MainActor.run` hop rather than inside it. Options: the plan's inline `frame["type"]` capture, or
+  a `String` read first. Chose the `let`: the hop's body is `@Sendable` and `[String: Any]` is not,
+  so the inline form is a strict-concurrency warning now and an error in Swift 6 mode. Behaviour is
+  identical (same key, same default).
+- A-8 (P2, fills a gap D-7 left): the 0.5 s tick interval is the host's own
+  `private static let syncProgressTickNanoseconds: UInt64` in `ContentView.swift`, not a
+  `WatchSyncProgressCopy` value. Options: extend P1's copy enum (a file outside P2's Predicted
+  Files) or keep it host-side. Chose host-side: only the host ticks, and P2 may not edit P1's file.
 
 ## Open questions
 

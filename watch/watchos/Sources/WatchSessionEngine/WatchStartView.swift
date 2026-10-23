@@ -74,6 +74,10 @@ public struct WatchStartView: View {
     /// The wrist's "N entries waiting for your phone" line, or nil (plan 51d).
     private let syncNotice: String?
 
+    /// Whether the phone still owes the wrist an answer (plan 55, D-3). While it
+    /// does, the Sync button is a spinner rather than a second request.
+    private let isSyncing: Bool
+
     /// Wrist-scale inset. The phone's spacing tokens are sized for a full-width
     /// screen; this surface carries its own value rather than scaling one down.
     private static let surfaceInset = 4.0
@@ -95,7 +99,8 @@ public struct WatchStartView: View {
         onRequestSync: (() -> Void)? = nil,
         phoneReachability: WatchPhoneReachability = .unknown,
         revision: Int = 0,
-        syncNotice: String? = nil
+        syncNotice: String? = nil,
+        isSyncing: Bool = false
     ) {
         self.paths = paths
         self.onSessionStarted = onSessionStarted
@@ -104,6 +109,7 @@ public struct WatchStartView: View {
         self.phoneReachability = phoneReachability
         self.revision = revision
         self.syncNotice = syncNotice
+        self.isSyncing = isSyncing
     }
 
     /// What this surface says about the phone, from the one rule that decides it
@@ -139,8 +145,20 @@ public struct WatchStartView: View {
                 }
 
                 if let onRequestSync, phoneStatus.offersSync {
-                    Button(Self.syncLabel, action: onRequestSync)
-                        .buttonStyle(.bordered)
+                    if isSyncing {
+                        // D-3: a row, not a button — the wrist has already asked,
+                        // and a second tap would start nothing new.
+                        HStack(spacing: Self.surfaceInset) {
+                            ProgressView()
+                            Text(WatchStartSurfaceCopy.syncingLabel)
+                        }
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityElement(children: .combine)
+                    } else {
+                        Button(Self.syncLabel, action: onRequestSync)
+                            .buttonStyle(.bordered)
+                    }
                 }
 
                 // D-8: said only once the radio has observed it.
