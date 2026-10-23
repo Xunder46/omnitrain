@@ -20,6 +20,16 @@
 //   S-7104 a phone with no foods sends no foods frame → `S-7104 ...`
 //   S-7105 an undelivered foods frame does not stop the batches → `S-7105 ...`
 //
+// Plan: `docs/plans/2026-10-22-53-watch-food-screen-and-fresh-foods-plan/`
+// (D-7). Scenario mapping:
+//   S-8308 a library nobody loaded answers with the repository's foods
+//          → `S-8308 ...`
+//   S-8309 a log written through to the repository reaches the next request
+//          → `S-8309 ...`
+//   S-8310 a throwing food read still answers with the rest → `S-8310 ...`
+//   S-8316 a throwing group read still sends the foods, uncategorised
+//          → `S-8316 ...`
+//
 // The transport here is a recorder, not the graph: this file is about what the
 // handler sends, and in what order. That the graph's inbound handler hands the
 // frame's version on is S-3855 in `test/watch_session_projection_test.dart`.
@@ -131,6 +141,36 @@ Food _food(
   createdAtMs: _now.millisecondsSinceEpoch,
   updatedAtMs: _now.millisecondsSinceEpoch,
 );
+
+/// A repository whose food reads can be made to throw exactly once, the way a
+/// storage failure does: the handler has to answer with what its cache holds
+/// (S-8310, S-8316). Armed after a test has populated its library, so the read
+/// that fails is the handler's own.
+class _ThrowingOnceRepository extends MockWorkoutRepository {
+  bool throwOnFoods = false;
+  bool throwOnGroups = false;
+
+  bool _foodsThrown = false;
+  bool _groupsThrown = false;
+
+  @override
+  Future<List<Food>> getFoods({bool includeArchived = false}) {
+    if (throwOnFoods && !_foodsThrown) {
+      _foodsThrown = true;
+      throw StateError('the food table is unavailable');
+    }
+    return super.getFoods(includeArchived: includeArchived);
+  }
+
+  @override
+  Future<List<FoodGroup>> getFoodGroups({bool includeArchived = false}) {
+    if (throwOnGroups && !_groupsThrown) {
+      _groupsThrown = true;
+      throw StateError('the food group table is unavailable');
+    }
+    return super.getFoodGroups(includeArchived: includeArchived);
+  }
+}
 
 void main() {
   late MockWorkoutRepository repository;
@@ -564,6 +604,184 @@ void main() {
         reason:
             'S-7105 a refused foods frame is not a reason to hold back the '
             'exercise list',
+      );
+    });
+  });
+
+  group('S-8308…S-8310, S-8316 the handler reloads the food library per '
+      'request', () {
+    /// The rows of the one `foods_down` the answer carried.
+    List<Map<String, Object?>> sentFoods() =>
+        objectsOf(asObject(transport.ofType('foods_down').single['payload'])['foods']);
+
+    test('S-8308 a library nobody loaded still answers with the repository\'s '
+        'foods', () async {
+      await repository.createFood(
+        _food('food-f', 'F', 'food-group-x', lastAmountConsumed: 1),
+      );
+
+      expect(
+        await handler.handle(WatchTransportRequest.routines),
+        isTrue,
+        reason: 'S-8308 the request is answered even though nothing on the '
+            'phone had opened Nutrition',
+      );
+
+      final rows = sentFoods();
+      expect(
+        [for (final row in rows) row['foodId']],
+        ['food-f'],
+        reason:
+            'S-8308 the handler reads the foods from storage, so a library '
+            'cache nobody populated is not an empty food list',
+      );
+      expect(
+        loadProtocolValidator().validateEnvelope(
+          transport.ofType('foods_down').single,
+        ),
+        isEmpty,
+        reason: 'S-8308 the frame is one the protocol schema admits',
+      );
+    });
+
+    test('S-8309 a log written through to the repository reaches the next '
+        'request', () async {
+      final food = _food(
+        'food-f',
+        'F',
+        'food-group-x',
+        lastAmountConsumed: 1,
+      );
+      await repository.createFood(food);
+      final library = FoodLibraryState(repository);
+      await library.loadFoods();
+      await library.loadFoodGroups();
+      final answer = handlerFor(library);
+
+      expect(await answer.handle(WatchTransportRequest.routines), isTrue);
+      expect(
+        (sentFoods().single['defaultServings']! as num).toDouble(),
+        closeTo(1 / 120, 1e-9),
+        reason: 'S-8309 the cache the library loaded holds the amount the '
+            'phone had when it loaded',
+      );
+
+      // The write-through leaves the repository row newer than the cache, as
+      // `NutritionState._writeThroughLastAmount` does after a log.
+      await repository.updateFood(food.copyWith(lastAmountConsumed: 3.0));
+      transport.sent.clear();
+
+      expect(await answer.handle(WatchTransportRequest.routines), isTrue);
+      expect(
+        (sentFoods().single['defaultServings']! as num).toDouble(),
+        closeTo(3 / 120, 1e-9),
+        reason:
+            'S-8309 the reload every request is what makes a log land on the '
+            'wrist\'s next sync rather than on the next launch',
+      );
+    });
+
+    test('S-8310 a throwing food read still answers with the rest', () async {
+      final throwing = _ThrowingOnceRepository();
+      await throwing.initialize();
+      await throwing.createFoodGroup(
+        FoodGroup(
+          id: 'food-group-x',
+          name: 'X',
+          createdAtMs: _now.millisecondsSinceEpoch,
+          updatedAtMs: _now.millisecondsSinceEpoch,
+        ),
+      );
+      await throwing.createFood(_food('food-f', 'F', 'food-group-x'));
+      final library = FoodLibraryState(throwing);
+      await library.loadFoods();
+      await library.loadFoodGroups();
+      throwing.throwOnFoods = true;
+      repository = throwing;
+      final answer = handlerFor(library);
+
+      expect(
+        await answer.handle(WatchTransportRequest.routines),
+        isTrue,
+        reason: 'S-8310 a storage failure on the foods does not fail the '
+            'request',
+      );
+
+      expect(
+        transport.types.take(2),
+        ['preferences_down', 'routines_down'],
+        reason: 'S-8310 the preferences and the routines still travel',
+      );
+      expect(
+        transport.batchIndices,
+        [0, 1, 2],
+        reason: 'S-8310 the exercise list still travels',
+      );
+      expect(
+        transport.ofType('foods_down'),
+        isEmpty,
+        reason: 'S-8310 a failed read leaves no foods to send, and nothing '
+            'else is withheld for it',
+      );
+
+      await throwing.createFood(_food('food-g', 'G', 'food-group-x'));
+      transport.sent.clear();
+      expect(await answer.handle(WatchTransportRequest.routines), isTrue);
+      expect(
+        [for (final row in sentFoods()) row['foodId']],
+        unorderedEquals(['food-f', 'food-g']),
+        reason: 'S-8310 the reload is per request: a failed read costs one '
+            'sync, not the list',
+      );
+    });
+
+    test('S-8316 a throwing group read still sends the foods, uncategorised', () async {
+      final throwing = _ThrowingOnceRepository();
+      await throwing.initialize();
+      await throwing.createFoodGroup(
+        FoodGroup(
+          id: 'food-group-x',
+          name: 'X',
+          createdAtMs: _now.millisecondsSinceEpoch,
+          updatedAtMs: _now.millisecondsSinceEpoch,
+        ),
+      );
+      await throwing.createFood(_food('food-f', 'F', 'food-group-x'));
+      final library = FoodLibraryState(throwing);
+      await library.loadFoods();
+      await library.loadFoodGroups();
+      throwing.throwOnGroups = true;
+      repository = throwing;
+
+      expect(
+        await handlerFor(library).handle(WatchTransportRequest.routines),
+        isTrue,
+        reason: 'S-8316 a storage failure on the categories does not fail the '
+            'request',
+      );
+
+      final frame = transport.ofType('foods_down').single;
+      expect(
+        objectsOf(asObject(frame['payload'])['categories']),
+        isEmpty,
+        reason: 'S-8316 the group cache a failed load leaves behind is empty',
+      );
+      final rows = objectsOf(asObject(frame['payload'])['foods']);
+      expect(
+        [for (final row in rows) row['foodId']],
+        ['food-f'],
+        reason: 'S-8316 the foods still travel',
+      );
+      expect(
+        [for (final row in rows) row['categoryId']],
+        everyElement(isNull),
+        reason: 'S-8316 a food whose category the phone cannot name carries '
+            'none, which is a valid row rather than a dropped one',
+      );
+      expect(
+        loadProtocolValidator().validateEnvelope(frame),
+        isEmpty,
+        reason: 'S-8316 the frame validates',
       );
     });
   });

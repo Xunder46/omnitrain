@@ -118,6 +118,18 @@ class WatchSyncRequestHandler {
       ),
     );
 
+    // The foods are read back from storage on every request: nothing on the
+    // phone loads them for this answer, and `NutritionState`'s write-through
+    // updates the repository row only, so a cache loaded once goes stale after
+    // every log (D-7). A failed read is not a reason to withhold the rest: the
+    // cache as it stands is what the wrist gets.
+    try {
+      await _foodLibrary.loadFoodGroups(includeArchived: true);
+      await _foodLibrary.loadFoods();
+    } catch (_) {
+      // Deliberately swallowed — see above.
+    }
+
     if (_foodLibrary.foods.isNotEmpty) {
       await _transport.send(
         WatchReferenceSync.buildFoodsDown(

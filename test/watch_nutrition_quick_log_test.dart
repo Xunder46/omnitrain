@@ -76,6 +76,34 @@ SyncProtocolValidator _validator() {
 Map<String, Object?> _foodsDown() =>
     _readJson('$_protocolRoot/fixtures/valid/foods_down.json');
 
+/// A `foods_down` generated at [generatedAt], with the named foods'
+/// `defaultServings` replaced — what the phone sends before or after the wrist
+/// logged something (S-8303).
+Map<String, Object?> _foodsDownAt(
+  String generatedAt, {
+  Map<String, double> defaults = const {},
+}) {
+  final current = _foodsDown();
+  final payload = _payloadOf(current);
+  return {
+    ...current,
+    'messageId': 'msg-foods-$generatedAt',
+    'sentAt': generatedAt,
+    'payload': {
+      ...payload,
+      'generatedAt': generatedAt,
+      'foods': [
+        for (final row in (payload['foods']! as List).map(_asObject))
+          {
+            ...row,
+            if (defaults.containsKey(row['foodId']))
+              'defaultServings': defaults[row['foodId']],
+          },
+      ],
+    },
+  };
+}
+
 Map<String, Object?> _nutritionContract() => _readJson(_contractPath);
 
 List<String> _stringList(Object? value) =>
@@ -1302,6 +1330,125 @@ void main() {
       expect(engine.nutritionLog, hasLength(1));
     });
   });
+
+  group(
+    'S-8307, S-8317 the Dart twin deselects and derives the starting amount',
+    () {
+      test('S-8307 (S-8301) deselecting clears the selection and the next food '
+          'starts at its own amount', () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        final state = await harness.syncedNutritionState(engine);
+
+        state.select('food-egg');
+        state.stepPortion(3);
+        expect(
+          state.servings,
+          closeTo(3.5, 1e-9),
+          reason: 'S-8307 the egg opens at its catalog amount, 2, plus three '
+              'detents',
+        );
+        await state.logSelected();
+        expect(state.confirmation, isNotNull);
+
+        state.deselect();
+
+        expect(state.selectedFoodId, isNull);
+        expect(state.selected, isNull);
+        expect(
+          state.servings,
+          closeTo(WatchNutritionPortion.minServings, 1e-9),
+          reason: 'S-8307 leaving a food leaves the portion at its floor, not '
+              'at the amount that food was logged at',
+        );
+        expect(state.confirmation, isNull);
+
+        state.select('food-banana');
+        expect(
+          state.servings,
+          closeTo(1, 1e-9),
+          reason: 'S-8307 the next food opens at its own starting amount',
+        );
+      });
+
+      test('S-8307 (S-8302, S-8303) the wrist\'s own log is the starting amount '
+          'until a newer list says otherwise', () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        final state = await harness.syncedNutritionState(engine);
+
+        // The fixture's list was generated at 17:00; the wrist logs after it.
+        harness.clock.advance(const Duration(hours: 6));
+        state.select('food-oatmeal');
+        state.stepPortion(3);
+        await state.logSelected();
+
+        expect(
+          state.food('food-oatmeal')!.defaultServings,
+          closeTo(3, 1e-9),
+          reason: 'S-8307 the amount just logged is the food\'s starting amount',
+        );
+        expect(
+          state.foods
+              .firstWhere((food) => food.foodId == 'food-oatmeal')
+              .defaultServings,
+          closeTo(3, 1e-9),
+          reason: 'S-8307 the list reads the same derivation the food does',
+        );
+
+        final older = _foodsDownAt(
+          '2026-07-13T17:30:00Z',
+          defaults: {'food-oatmeal': 1},
+        );
+        expect((await state.applyFoodsDown(older)).applied, isTrue);
+        expect(
+          state.food('food-oatmeal')!.defaultServings,
+          closeTo(3, 1e-9),
+          reason: 'S-8307 a list generated before the log does not revert it',
+        );
+
+        final newer = _foodsDownAt(
+          '2026-07-13T19:00:00Z',
+          defaults: {'food-oatmeal': 2},
+        );
+        expect((await state.applyFoodsDown(newer)).applied, isTrue);
+        expect(
+          state.food('food-oatmeal')!.defaultServings,
+          closeTo(2, 1e-9),
+          reason: 'S-8307 a list generated after the log carries the phone\'s '
+              'own last amount and it wins',
+        );
+      });
+
+      test('S-8317 a relaunch keeps the derived starting amount', () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        final state = await harness.syncedNutritionState(engine);
+
+        harness.clock.advance(const Duration(hours: 6));
+        state.select('food-oatmeal');
+        state.stepPortion(3);
+        await state.logSelected();
+        expect(state.food('food-oatmeal')!.defaultServings, closeTo(3, 1e-9));
+
+        // Nothing is handed across in memory: a new engine and state over the
+        // same storage are a relaunch.
+        final restored = await harness.nutritionState(
+          await harness.runningEngine(),
+        );
+
+        expect(restored.syncedAt, isNotNull);
+        expect(
+          restored.food('food-oatmeal')!.defaultServings,
+          closeTo(3, 1e-9),
+          reason: 'S-8317 the log is storage the relaunch reads back, so the '
+              'derived amount survives it',
+        );
+        restored.select('food-oatmeal');
+        expect(restored.servings, closeTo(3, 1e-9));
+      });
+    },
+  );
 
   group('protocol serialization', () {
     test('the event matches the shape the protocol fixture pins', () async {
