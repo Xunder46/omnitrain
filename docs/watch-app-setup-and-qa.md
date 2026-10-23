@@ -542,8 +542,8 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
 15. **The wrist asks how hard it was.** Turn Settings →
     Effort Rating on, on the phone, then sync from the wrist. Log a set on the
     wrist and end the session there. The wrist asks "How hard was this
-    session?" from 1 to 5, and only an answer closes it — no skip, back or
-    swipe. Answer 4. After the wrist syncs, the session is in the phone's
+    session?" from 1 to 5, and only an answer or the small Skip closes it —
+    no back or swipe. Answer 4. After the wrist syncs, the session is in the phone's
     calendar and its Summary shows 4 / 5. Repeat with the phone in Airplane
     Mode while you end and answer: once it reconnects, the rating arrives
     intact.
@@ -697,6 +697,30 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     asked at the first distance exercise, not at the Start screen. A relaunch
     straight into a live session shows no Start screen, so Health still asks at
     the first workout open in that case.
+27. **A distance effort can be dialled by hand until GPS measures it —
+    (owner).** Start a **Free workout**, add a run or row exercise, press
+    **Start**: the logging screen shows a Distance tile. Turn the Crown on it
+    (or its − / +) and tap **Log**: the phone's session shows the distance you
+    entered (`WatchHandDistanceTests.swift` S-9501..S-9510, plus S-9504b, and
+    `WatchLoggingSurfacesTests.testS9503ADialledDistanceReachesTheObservation`
+    hold the row, the source and the clear-off at Log off-device). Then log an
+    effort on a real outdoor run: once GPS has measured movement inside the
+    effort, the tile shows the GPS value and cannot be turned, and the phone
+    receives the measured metres (`distanceSource: "gps"`). Check the 40 mm
+    layout while you are there: the Distance tile fits beside the exercise's
+    other rows.
+28. **The wrist's end-of-workout summary, and Skip — (owner).** With the phone's
+    Effort Rating setting on, end a workout on the wrist: the question shows a
+    small **Skip** under **Confirm**. Tap **Skip**: nothing is recorded — the
+    session stays unrated — and the summary appears: the time from start to
+    end, `Sets N` (or `Efforts N`), and `Avg HR n bpm` when heart rate was
+    recorded. The phone still asks its own question about the session. Tap
+    **Done**: the start screen returns. Force-quit the watch app and relaunch
+    after a Skip: the question comes back once more
+    (`WatchWorkoutSummaryTests.swift` S-9601..S-9607 and
+    `WatchRatingSkipTests.swift` S-9610..S-9613 hold the summary, the skip and
+    the relaunch off-device; the root view order is pinned by
+    `WatchWorkoutSummaryWiringSourceTests`, S-9620).
 
 ### The wrist's own logging (PR 2b)
 
@@ -717,7 +741,7 @@ hardware yet.
 3. **End Session and answer once.** Turn Settings → Effort Rating on, on the
    phone, and sync from the wrist. On the wrist tap the list button, then
    **End Session**, then **Finish** in the prompt; the question appears alone —
-   no skip, back or swipe. Answer 4. The phone's
+   no back or swipe, only the small Skip under Confirm. Answer 4. The phone's
    calendar holds one entry for the session and its Summary shows 4 / 5.
 4. **A workout logged with the phone out of reach catches up by itself — (owner).**
    Start another wrist workout and log a set with the phone in Airplane Mode.

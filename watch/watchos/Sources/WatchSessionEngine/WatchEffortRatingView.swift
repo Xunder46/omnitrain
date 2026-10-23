@@ -18,9 +18,10 @@
 
 import SwiftUI
 
-/// The prompt: the question, the scale, one confirm. Its only way out is an
-/// answer, so it carries no other button, hides the back button when pushed,
-/// and cannot be swiped away when presented as a sheet.
+/// The prompt: the question, the scale, one confirm, and a small Skip that
+/// records nothing. Its only ways out are an answer or Skip, so it carries no
+/// other button, hides the back button when pushed, and cannot be swiped away
+/// when presented as a sheet.
 public struct WatchEffortRatingView: View {
     @ObservedObject private var state: WatchEffortRatingState
 
@@ -49,6 +50,7 @@ public struct WatchEffortRatingView: View {
             .font(.caption2)
             .foregroundStyle(.secondary)
             confirmButton
+            skipButton
         }
         .padding(.horizontal, Self.surfaceInset)
         .focusable(true)
@@ -91,6 +93,15 @@ public struct WatchEffortRatingView: View {
         }
         .watchProminent()
         .disabled(!state.canConfirm)
+    }
+
+    /// Skip closes the question without an answer and records nothing
+    /// (plan 66a D-3): the phone still asks, and the first real answer wins.
+    private var skipButton: some View {
+        Button(WatchEffortRatingCopy.skipLabel) { state.skipPrompt() }
+            .buttonStyle(.plain)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
     }
 }
 

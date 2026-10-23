@@ -285,6 +285,21 @@ groups) and watchOS `WatchEffortRatingTests`
 `testS218TheWristNeverChangesARating`,
 `testS216ThePhonesLifecycleEndingItOwesNoPrompt`).
 
+**Why the wrist shows a summary when its workout ends.** With the question out
+of the way, the wrist answers what was just done with one card:
+`WatchWorkoutSummaryState`
+(`watch/watchos/Sources/WatchSessionEngine/WatchWorkoutSummary.swift`) is noted
+on every session change, and when the session this process saw active is now
+`completed` with at least one logged effort, the summary becomes pending — the
+time from start to end as `m:ss` or `h:mm:ss`, `Sets N` when every effort is a
+set and `Efforts N` otherwise, and `Avg HR n bpm` only when heart-rate samples
+exist inside the workout window. `WatchWorkoutSummaryView` shows it with a Done
+button (`dismissPending()`); a new active workout takes it away, and a workout
+that ended while the app was closed shows nothing. The root view's order — owed
+effort question, workout summary, rest, logging, start screen — is pinned by
+`WatchWorkoutSummaryWiringSourceTests` (S-9620); the state itself by
+`WatchWorkoutSummaryTests` (S-9601..S-9607).
+
 **Why the phone's running timer is told to the wrist.** A live session runs both
 ways: while the phone holds the session, `WatchTimerPush`
 (`lib/state/watch/watch_timer_push.dart`, built in `createWatchSync` as
@@ -447,8 +462,16 @@ Invariants:
   copy stamped the same moment goes to the later-received. Verified by
   `WatchEffortRatingTests` (`S-214`) and
   `WatchSessionStartPathsTests.testTheNewestPreferencesApplyAndALaterCopyWinsATie`.
-- **The prompt's only way out is an answer.** Verified by
-  `WatchEffortRatingTests.testTheRatingOffersNoWayOutButAnAnswer`, which fails on
+- **The prompt has exactly two ways out: an answer or Skip.**
+  `WatchEffortRatingState.skipPrompt()` closes the owed question without
+  recording anything — no row, no event, the session stays unrated — and the
+  next owed session, if any, is asked; the skip is remembered only while the app
+  runs, so after a relaunch the question comes back once. The phone's own
+  question and the first-answer-wins rule are untouched, and the Skip label
+  (`WatchEffortRatingCopy.skipLabel`) is wrist-only copy outside the shared
+  contract file. Verified by
+  `WatchEffortRatingTests.testTheRatingOffersNoWayOutButAnAnswer` and
+  `…testSkipAppearsOnlyUnderItsTwoNames`, which fail on
   any declaration or button in the rating's state or views named for another way
   out.
 - **Both devices ask the same question.** The wrist's copy and scale are held to

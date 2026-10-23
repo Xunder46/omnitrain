@@ -833,10 +833,11 @@ final class WatchEffortRatingTests: XCTestCase {
         )
     }
 
-    /// D-118: once shown, the prompt must be answered. A name or a button that
-    /// offers another way out is a build failure here, not a review comment.
+    /// D-118, amended by plan 66a (D-3): once shown, the prompt has two ways
+    /// out — an answer, or Skip, which records nothing. Any other way out is a
+    /// build failure here, not a review comment.
     func testTheRatingOffersNoWayOutButAnAnswer() throws {
-        let banned = ["skip", "dismiss", "cancel", "close", "later", "not now"]
+        let banned = ["dismiss", "cancel", "close", "later", "not now"]
         let declaration = try NSRegularExpression(pattern: "\\b(?:func|var|let|case)\\s+`?(\\w+)")
         let buttonTitle = try NSRegularExpression(pattern: "Button\\(\\s*\"([^\"]*)\"")
         let buttonLabel = try NSRegularExpression(pattern: "label:\\s*\\{\\s*Text\\(\\s*\"([^\"]*)\"")
@@ -873,5 +874,54 @@ final class WatchEffortRatingTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(labelsSeen, 0, "the scan found no button labels — it is not looking")
+    }
+
+    /// Plan 66a (D-3): Skip is allowed, but only under its two names — the
+    /// state's `skipPrompt` and the copy's `skipLabel` (the view's
+    /// `skipButton` arrives in P3). Any other skip-like name or button label
+    /// in the state or view files is a build failure here.
+    func testSkipAppearsOnlyUnderItsTwoNames() throws {
+        let declaration = try NSRegularExpression(pattern: "\\b(?:func|var|let|case)\\s+`?(\\w+)")
+        let buttonTitle = try NSRegularExpression(pattern: "Button\\(\\s*\"([^\"]*)\"")
+        let buttonLabel = try NSRegularExpression(pattern: "label:\\s*\\{\\s*Text\\(\\s*\"([^\"]*)\"")
+        let allowed = ["skipprompt", "skiplabel", "skipbutton"]
+
+        func captures(_ pattern: NSRegularExpression, in source: String) -> [String] {
+            let range = NSRange(source.startIndex..<source.endIndex, in: source)
+            return pattern.matches(in: source, range: range).compactMap { match in
+                Range(match.range(at: 1), in: source).map { String(source[$0]) }
+            }
+        }
+
+        var skipNamesSeen = 0
+        for file in ["WatchEffortRating.swift", "WatchEffortRatingView.swift"] {
+            let source = try String(
+                contentsOf: Fixtures.sourcesRoot.appendingPathComponent(file),
+                encoding: .utf8
+            )
+            let names = captures(declaration, in: source)
+            let labels = captures(buttonTitle, in: source) + captures(buttonLabel, in: source)
+
+            for name in names where name.lowercased().hasPrefix("skip") {
+                skipNamesSeen += 1
+                XCTAssertTrue(
+                    allowed.contains(name.lowercased()),
+                    "S-9614 \(file) declares `\(name)`: Skip goes only by "
+                        + "skipPrompt, skipLabel or skipButton (plan 66a D-3)"
+                )
+            }
+            for label in labels where label.lowercased().hasPrefix("skip") {
+                skipNamesSeen += 1
+                XCTAssertTrue(
+                    allowed.contains(label.lowercased()),
+                    "S-9614 \(file) has a \"\(label)\" button: Skip goes only by "
+                        + "skipPrompt, skipLabel or skipButton (plan 66a D-3)"
+                )
+            }
+        }
+        XCTAssertGreaterThan(
+            skipNamesSeen, 0,
+            "the scan found no skip-like name — it is not looking"
+        )
     }
 }

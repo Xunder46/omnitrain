@@ -29,6 +29,9 @@ final class WatchAppHost: ObservableObject {
     let logging: WatchLoggingState
     let rating: WatchEffortRatingState
 
+    /// The end-of-workout summary, plan 66a.
+    let summary: WatchWorkoutSummaryState
+
     /// The food quick-log's state: the synced food list, the food and portion the
     /// user has picked, and the observation a confirm makes. One for the life of
     /// the app (D-1), so the start screen's sheet and the session menu's row read
@@ -174,6 +177,7 @@ final class WatchAppHost: ObservableObject {
             store: store,
             preferences: preferences
         )
+        let summary = WatchWorkoutSummaryState(engine: engine)
         let workout = WatchWorkoutCoordinator(
             platform: WatchPlatformWorkout(store: healthStore)
         )
@@ -184,6 +188,7 @@ final class WatchAppHost: ObservableObject {
         self.preferences = preferences
         self.logging = logging
         self.rating = rating
+        self.summary = summary
         self.nutrition = nutrition
         self.nutritionModel = nutritionModel
         self.workout = workout
@@ -240,6 +245,12 @@ final class WatchAppHost: ObservableObject {
             }
             .store(in: &cancellables)
 
+        summary.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.revision += 1 }
+            }
+            .store(in: &cancellables)
+
         // Every session change the surfaces see also settles the platform
         // workout (D-1504) and then the sensors (D-2106): the workout first, so
         // by the time a subscription starts the builder, the permission outcome
@@ -250,6 +261,8 @@ final class WatchAppHost: ObservableObject {
             .sink { [weak self] _ in
                 Task { @MainActor in
                     guard let self else { return }
+                    // The summary reads the readings before the sensors stop (plan 66a D-5).
+                    self.summary.note(self.engine.session)
                     await self.workout.refresh(self.engine.session)
                     await self.sensors.refresh(self.engine.session)
                 }
@@ -390,6 +403,8 @@ struct ContentView: View {
         Group {
             if host.rating.isPromptOwed {
                 owedRating
+            } else if let pending = host.summary.pending {
+                WatchWorkoutSummaryView(summary: pending, onDone: { host.summary.dismissPending() })
             } else if host.logging.isResting {
                 // D-161: while a rest runs, the rest surface replaces logging —
                 // an owed rating still wins above, and the rest is ended by
