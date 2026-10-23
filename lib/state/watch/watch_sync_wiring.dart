@@ -304,6 +304,7 @@ Future<WatchSyncGraph?> createWatchSync({
   );
 
   resolved.onIncoming((frame) async {
+    final owedBefore = await push.hasUnsentChange();
     final request = WatchTransportRequest.nameOf(frame);
     var answeredReset = false;
     if (request != null) {
@@ -317,8 +318,10 @@ Future<WatchSyncGraph?> createWatchSync({
       answeredReset = (await router.receive(frame)).answeredReset;
     }
     // A frame the phone applied from the wrist is not news to push back (D-82):
-    // the rows it just brought in become the baseline rather than a send.
-    await push.rebaseline();
+    // the rows it just brought in become the baseline rather than a send —
+    // unless the phone owed a change before the frame (plan 64 D-2), in which
+    // case the baseline is left alone and the owed edit goes out below.
+    if (!owedBefore) await push.rebaseline();
     // D-192(c): the frame proves the radio works, so what is owed goes out now.
     // The one exception is a snapshot the router has already answered with
     // D-176's reset: those frames have just gone out, and a pass here would

@@ -187,7 +187,12 @@ repoints. A pending session that still runs is kept while the phone is not on
 another live session of its own, so browsing away and finishing it afterwards
 still announces its end. It adds no queue, no retry and no user-visible state.
 `bindWorkoutState` is idempotent, `rebaseline()` takes the current session as the
-baseline while sending nothing (D-82), and `dispose()` unbinds. One more step
+baseline while sending nothing (D-82), and `dispose()` unbinds. Since plan 64,
+`rebaseline()` is skipped when `WatchSessionAutoPush.hasUnsentChange()` was true
+before the frame — the phone's composed session differs from the last baseline,
+which covers an edit logged inside the 250 ms debounce window and a state an
+earlier undelivered push still owed — so the edit is not baselined away as
+already sent, and the `push.flush()` that follows the frame sends it. One more step
 runs in the same pass, right after the end is announced and before the
 ended-session early return: when the phone's current session is ended and rated
 but the mirror holds no `effort_rating` entry, `_pushRating` tells the wrist the
@@ -216,8 +221,12 @@ still announces the finish`, group `S-200 a frame the radio did not carry stays
 owed`, `S-200 the baseline does not advance on an undelivered send, so the same
 state is offered again when the radio comes back`, group `S-205 a frame from the
 wrist re-offers what is owed, never itself`, `S-205 (S-209) the wrist's own set
-arrives while a deletion is owed: it is applied, never echoed, and the deletion
-leaves after it`).
+arrives while a deletion is owed: the owed state is re-offered after it (plan
+64), and the wrist's own row is still not echoed`, group `S-9400 an edit the
+phone has not pushed survives a wrist frame` (`S-9401 the phone's own set,
+logged before the wrist's frame, rides the snapshot sent after the frame is
+handled`, `S-9405 a push the radio did not carry is offered again once the
+wrist's frame proves the link`).
 
 `WatchTimerPush` (`lib/state/watch/watch_timer_push.dart`) is the timer
 sibling of the auto push: the same bound `WorkoutState`, trailing debounce and

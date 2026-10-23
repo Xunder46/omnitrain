@@ -405,7 +405,9 @@ class WatchSessionAutoPush {
 
   /// Takes the phone's current session as the new baseline, sending nothing
   /// (D-82): a frame the phone applied from the wrist is never answered with a
-  /// push of the rows that frame just brought in.
+  /// push of the rows that frame just brought in. The caller skips it when
+  /// [hasUnsentChange] was true before the frame (plan 64 D-2): a baseline
+  /// taken over an unsent edit would swallow it.
   ///
   /// It does compose, though, so the session it lands on joins the pending ends:
   /// a wrist frame must not be able to leave a session the phone finished inside
@@ -419,6 +421,20 @@ class WatchSessionAutoPush {
     } on Exception {
       // F4, and the same reason [flush] holds: a frame the phone cannot turn
       // into a baseline is not the phone's news to push.
+    }
+  }
+
+  /// True when the phone holds a change the wrist has not been told: its
+  /// composed session differs from the last state the radio carried (or that a
+  /// wrist frame baselined). False with no session and false before the first
+  /// baseline, so the first payload after a wrist frame is not pushed back.
+  Future<bool> hasUnsentChange() async {
+    try {
+      final composed = await _mirror.projectedSession();
+      if (composed == null || _baseline == null) return false;
+      return _encode(composed) != _baseline;
+    } on Exception {
+      return false;
     }
   }
 
