@@ -93,6 +93,24 @@ public final class WatchSessionEngine: ObservableObject {
     ]
     private static let wristSource = "watch"
 
+    /// The slot a frame's running work timer says the wrist should be on (D-2).
+    private struct JumpCandidate {
+        let slotId: String
+        let startedAt: Date
+    }
+
+    /// What adopting one frame's timers did: whether the store changed, and the
+    /// slot the wrist should move to, nil when nothing names one (D-8).
+    ///
+    /// The jump is carried out, never performed here: the adopt pass runs inside
+    /// the snapshot's mutex, and the select path takes that mutex again. Keeping
+    /// the target in this value rather than in a field is what stops two
+    /// overlapping frames from clobbering each other's jump (D-7).
+    private struct TimerAdoption {
+        var changed = false
+        var jump: JumpCandidate?
+    }
+
     private var current: WatchSessionRecord?
 
     public init(
@@ -496,15 +514,25 @@ public final class WatchSessionEngine: ObservableObject {
     /// the phone obviously has them. The snapshot is also the receipt for the
     /// observations it does carry: the watch may drop them.
     private func applySnapshot(_ envelope: [String: Any]) async -> Bool {
-        await mutex.exclusive { await applySnapshotExclusive(envelope) }
+        let outcome = await mutex.exclusive { await applySnapshotExclusive(envelope) }
+        // D-7: the jump runs after the mutex is released, because the select
+        // path takes it again and `WatchAsyncMutex` is not reentrant.
+        if let jump = outcome?.jump {
+            await selectExercise(slotId: jump.slotId)
+        }
+        return outcome != nil
     }
 
-    private func applySnapshotExclusive(_ envelope: [String: Any]) async -> Bool {
+    /// Applies the snapshot, or returns nil when it was refused whole.
+    ///
+    /// A snapshot that applied reports true whatever its timers did: the message
+    /// changed the session, and nil is reserved for a refusal.
+    private func applySnapshotExclusive(_ envelope: [String: Any]) async -> TimerAdoption? {
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
         guard let sessionId = payload["sessionId"] as? String,
               let messageId = envelope["messageId"] as? String,
               let sentAt = try? parseUtcIso(envelope["sentAt"])
-        else { return false }
+        else { return nil }
 
         let exercises = (payload["exercises"] as? [[String: Any]]) ?? []
         let entryMaps = (payload["entries"] as? [[String: Any]]) ?? []
@@ -522,7 +550,7 @@ public final class WatchSessionEngine: ObservableObject {
            held.status == WatchSessionStatus.active,
            !held.exercises.isEmpty,
            held.sessionId != sessionId {
-            return false
+            return nil
         }
 
         // D-113.2: an entry the snapshot carries exists, so its tombstone is
@@ -559,7 +587,7 @@ public final class WatchSessionEngine: ObservableObject {
             await storeSnapshotEntry(sessionId, entry)
         }
         _ = await confirmObservations(entryMaps.compactMap { $0["entryId"] as? String })
-        _ = await adoptTimers(
+        let adopted = await adoptTimers(
             (payload["timers"] as? [String: Any]) ?? [:],
             sessionId: sessionId,
             messageId: messageId,
@@ -569,7 +597,7 @@ public final class WatchSessionEngine: ObservableObject {
         // The phone's snapshot can close what the rating prompt asks about (42b):
         // the state forward in `WatchEffortRatingState` redraws an open prompt.
         objectWillChange.send()
-        return true
+        return adopted
     }
 
     /// Applies one structure change: the ladder, the position that follows from
@@ -696,13 +724,19 @@ public final class WatchSessionEngine: ObservableObject {
         else { return false }
 
         let payload = (envelope["payload"] as? [String: Any]) ?? [:]
-        return await adoptTimers(
+        let adopted = await adoptTimers(
             (payload["timers"] as? [String: Any]) ?? [:],
             sessionId: sessionId,
             messageId: messageId,
             recordedAt: sentAt,
             authoritative: false
         )
+        // D-7: this call runs outside the mutex, so the jump it names can take
+        // the select path, which takes the mutex itself.
+        if let jump = adopted.jump {
+            await selectExercise(slotId: jump.slotId)
+        }
+        return adopted.changed
     }
 
     /// Adopts `timers` as the rows that apply. A kind the message names as null
@@ -719,41 +753,56 @@ public final class WatchSessionEngine: ObservableObject {
         messageId: String,
         recordedAt: Date,
         authoritative: Bool
-    ) async -> Bool {
-        var changed = false
+    ) async -> TimerAdoption {
+        var outcome = TimerAdoption()
         for kind in WatchTimerKind.all {
             let recordId = "\(Self.timerPrefix)\(messageId)-\(kind)"
             guard let timer = timers[kind], !(timer is NSNull) else {
                 if timers.keys.contains(kind) || (authoritative && senderWroteTimer(kind)) {
-                    changed = await stopTimerFromMessage(
+                    outcome.changed = await stopTimerFromMessage(
                         kind,
                         sessionId: sessionId,
                         recordId: recordId,
                         stoppedAt: recordedAt
-                    ) || changed
+                    ) || outcome.changed
                 }
                 continue
             }
-            changed = await adoptTimer(
+            let adopted = await adoptTimer(
                 (timer as? [String: Any]) ?? [:],
                 sessionId: sessionId,
                 recordId: recordId,
                 recordedAt: recordedAt
-            ) || changed
+            )
+            outcome.changed = adopted.changed || outcome.changed
+            // D-8: one jump per frame, and the earliest start wins. A tie is
+            // settled by this loop's own order — `WatchTimerKind.all` walks the
+            // work kinds round, hold, elapsed — so a candidate equal to the one
+            // already held never displaces it.
+            if let candidate = adopted.jump,
+               outcome.jump.map({ candidate.startedAt < $0.startedAt }) ?? true {
+                outcome.jump = candidate
+            }
         }
-        return changed
+        return outcome
     }
 
     /// A timer the phone told the watch about. It is not news back to the phone,
     /// so nothing is emitted: the phone already decided this.
+    ///
+    /// The adoption is also where a work effort the phone started for another
+    /// exercise asks the wrist to follow it (D-2). The ask travels out with the
+    /// outcome rather than being performed here: `adoptTimers` is reached from
+    /// inside the snapshot's mutex, and the select path takes that mutex again
+    /// (D-7).
     private func adoptTimer(
         _ timer: [String: Any],
         sessionId: String,
         recordId: String,
         recordedAt: Date
-    ) async -> Bool {
+    ) async -> TimerAdoption {
         guard !storedTimers.contains(where: { $0.recordId == recordId }) else {
-            return false
+            return TimerAdoption()
         }
 
         let kind = timer["kind"] as? String ?? ""
@@ -772,7 +821,7 @@ public final class WatchSessionEngine: ObservableObject {
            held.state != WatchTimerState.stopped,
            held.sessionExerciseId == slotId,
            held.startedAt < startedAt {
-            return false
+            return TimerAdoption()
         }
 
         let stored = await store.append(
@@ -791,9 +840,48 @@ public final class WatchSessionEngine: ObservableObject {
                 )
             )
         )
-        guard let row = stored.timerRow else { return false }
+        guard let row = stored.timerRow else { return TimerAdoption() }
         storedTimers.append(row)
-        return true
+        return TimerAdoption(
+            changed: true,
+            jump: jumpTarget(
+                kind: kind,
+                slotId: slotId,
+                startedAt: startedAt,
+                stoppedAt: stoppedAt,
+                sessionId: sessionId
+            )
+        )
+    }
+
+    /// The slot a freshly stored timer asks the wrist to move to (D-2), or nil
+    /// when it asks for nothing.
+    ///
+    /// A rest is not work; a stopped timer runs nothing; a timer that names no
+    /// slot belongs to whatever exercise is current; a slot the ladder does not
+    /// hold has nowhere to land; the slot already current is not a move; and a
+    /// session that is no longer active follows nothing (D-6). Only a row that
+    /// was actually stored gets here, so the earlier-start drop in `adoptTimer`
+    /// never moves the wrist (S-8411).
+    private func jumpTarget(
+        kind: String,
+        slotId: String?,
+        startedAt: Date,
+        stoppedAt: Date?,
+        sessionId: String
+    ) -> JumpCandidate? {
+        guard kind != WatchTimerKind.rest,
+              stoppedAt == nil,
+              let slotId,
+              let session = current,
+              session.sessionId == sessionId,
+              session.status == WatchSessionStatus.active,
+              let index = session.exercises.firstIndex(where: {
+                  $0["sessionExerciseId"] as? String == slotId
+              }),
+              index != session.currentExerciseIndex
+        else { return nil }
+        return JumpCandidate(slotId: slotId, startedAt: startedAt)
     }
 
     /// Stops the newest timer of `kind` by appending its stopped version — the

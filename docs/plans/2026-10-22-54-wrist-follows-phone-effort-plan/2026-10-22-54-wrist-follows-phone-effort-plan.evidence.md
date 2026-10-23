@@ -154,7 +154,218 @@ Suite outputs (real counts):
 Diff footprint of this round: `watch_timer_push.dart` +21 −9, `watch_timer_push_test.dart` +107.
 No Swift, no docs; the public contract of `flush()` / `flushClears()` is unchanged.
 
-(P2A/P2B — paste `gateway.sh swift-test` counts and the per-S-id red→green table, including the expected-red `testS6004APhoneTimerForAnotherSlotIsNotTheWristsWorkClock` between 2A and 2B.)
+### P2A — the wrist follows the phone's effort (developer, 2026-10-23)
+
+New file `watch/watchos/Tests/WatchSessionEngineTests/WatchFollowPhoneEffortTests.swift` (8 tests,
+fixture: slots `sx-a` / `sx-b` with `sx-b` current, plus the adversarial near-duplicates each
+negative names). Production change: `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift`.
+
+Base for prove-red: `826d9379fd04a737a977130497dd4bcc47494f66` (the brief's base).
+
+Prove-red verdict (`gateway.sh prove-red 826d9379 swift-test --filter WatchFollowPhoneEffortTests -- <test file>`):
+
+```
+gateway: prove-red: RED AT 826d9379fd04a737a977130497dd4bcc47494f66 (exit 1). It proves the guard
+only if an assertion fails for the reason the test guards; a compile or load error means the test
+could not run there (use a mutation instead).
+```
+
+The three positive tests fail at the base for the reason they guard:
+
+```
+WatchFollowPhoneEffortTests.swift:198: error: testS8401A... : XCTAssertEqual failed: ("Optional("sx-b")")
+  is not equal to ("Optional("sx-a")") - the wrist follows the running effort
+WatchFollowPhoneEffortTests.swift:312: error: testS8403A... : XCTAssertEqual failed: ("Optional("sx-b")")
+  is not equal to ("Optional("sx-a")") - a snapshot's running hold moves the wrist too
+WatchFollowPhoneEffortTests.swift:339: error: testS8415T... : XCTAssertEqual failed: ("Optional("sx-b")")
+  is not equal to ("Optional("sx-a")") - the earliest running effort is the one to follow
+```
+
+The five S-8402 negatives pass at the base — nothing moves there, which is what they assert — so
+each is proven by mutation below. (The base run's suite line reads "Executed 8 tests, with 8
+failures" while its five negative case lines read "passed"; the case lines are the record.)
+
+| Scenario | Test | Base | After |
+|---|---|---|---|
+| S-8401 | `testS8401APhoneTimerForAnotherSlotMovesTheEngineToItsSlot` | RED (`sx-b` ≠ `sx-a`) | PASS |
+| S-8402 | `testS8402ARestForAnotherSlotDoesNotMoveTheEngine` | PASS (guard — mutation 1) | PASS |
+| S-8402 | `testS8402AStoppedRoundForAnotherSlotDoesNotMoveTheEngine` | PASS (guard — mutation 1) | PASS |
+| S-8402 | `testS8402AClearedTimerDoesNotMoveTheEngine` | PASS (guard) | PASS |
+| S-8402 | `testS8402ATimerForASlotTheSessionDoesNotHoldDoesNotMoveTheEngine` | PASS (guard) | PASS |
+| S-8402 | `testS8402ATimerForTheCurrentSlotDoesNotMoveTheEngine` | PASS (guard) | PASS |
+| S-8403 | `testS8403ASnapshotTimerForAnotherSlotMovesTheEngine` | RED (`sx-b` ≠ `sx-a`) | PASS |
+| S-8415 | `testS8415TwoCandidatesInOneSnapshotEarliestStartWins` | RED (`sx-b` ≠ `sx-a`) | PASS |
+
+Mutation 1 — the D-6 kind/stopped guard (original, verbatim):
+
+```swift
+        guard kind != WatchTimerKind.rest,
+              stoppedAt == nil,
+              let slotId,
+```
+
+Mutant: the first two predicates deleted, leaving `guard let slotId,` → the rest and
+stopped-round negatives failed (`the wrist does not follow a rest` / `… a stopped round`), the other
+six green. The exact original was restored and the file re-ran green (8/8).
+
+Mutation 2 — the D-8 earliest-start comparison (original, verbatim):
+
+```swift
+            if let candidate = adopted.jump,
+               outcome.jump.map({ candidate.startedAt < $0.startedAt }) ?? true {
+                outcome.jump = candidate
+            }
+```
+
+Mutant: `outcome.jump = candidate`, i.e. the last candidate wins → only S-8415 failed, with
+`("Optional("sx-c")") is not equal to ("Optional("sx-a")")` (the fixture's third, later-starting
+candidate). The exact original was restored and the file re-ran green (8/8).
+
+Regression found by the full suite and fixed: the first cut returned the adopt outcome from
+`applySnapshotExclusive`, which callers read as the applied/refused verdict, so every delivered
+snapshot reported "not applied" and five existing tests went red
+(`WatchConnectivityBridge` S-186/S-187, `S-4811GPS`, `S-77` ×2). `applySnapshotExclusive` now returns
+`TimerAdoption?` — nil is the refusal, any outcome is an application — and `applySnapshot` still
+answers `outcome != nil`. Those five are green again.
+
+Suite outputs (real counts):
+
+- `gateway.sh swift-test --filter WatchFollowPhoneEffortTests` → `Executed 8 tests, with 0 failures`
+- full `gateway.sh swift-test` → `Executed 764 tests, with 2 failures (0 unexpected) in 2.716 (2.771) seconds`;
+  both failures are assertions in the one expected-red
+  `testS6004APhoneTimerForAnotherSlotIsNotTheWristsWorkClock` (`WatchTimedWorkTests.swift:1087`/`:1088`,
+  "WatchTimerRecord(recordId: "tms-m-6004-elapsed" …)" and `XCTAssertFalse failed`), whose rework is
+  Phase 2B. No other test is red.
+- `gateway.sh lint` → `180 issues found.` — unchanged from the plan's baseline (no Dart file in this
+  change; the repo's pre-existing info notices are the whole count).
+
+Diff footprint: 2 files, 1 created (+8 tests) and 1 modified, +106 −20. No Dart and no docs changed:
+Phase 3 owns the doc pass, and nothing in `lib/` reads the watch engine directly.
+
+### P2B — Swift edges and the S-6004 reader rework (developer, 2026-10-23)
+
+Files: `watch/watchos/Tests/WatchSessionEngineTests/WatchFollowPhoneEffortTests.swift` (five tests
+added, harness `timer(_:…)` gained `pausedAt:`), `watch/watchos/Tests/WatchSessionEngineTests/WatchTimedWorkTests.swift`
+(the S-6004 reader split in two). **No production file changed** — the engine, pager and logging
+state are byte-identical to the 2A tree.
+
+`prove-red` is not available for this phase: the new file is untracked (2A) and the split reader's
+test names do not exist at HEAD, so a base run cannot compile or select them. Every guard is proven
+by mutation instead: one line changed, the named test run, the exact original restored, and the
+restoration checked with `git-diff --stat` (identical footprint before and after: 4 files,
+271 insertions, 34 deletions — engine `+126` from 2A, `WatchPagerModel.swift` and
+`WatchLoggingState.swift` clean again).
+
+| Scenario | Test | Guard proven by | Red observed |
+|---|---|---|---|
+| S-8404 | `testS8404AClearFrameReleasesTheLockAndTheWristStays` | M1 — a clear must stop the row it clears | `WatchFollowPhoneEffortTests.swift:389` `XCTAssertFalse failed - S-8404 the end of the effort releases the lock` |
+| S-8411 | `testS8411AnEarlierStartDropCausesNoJump` | M2 — a dropped row never jumps | `:420` `("sx-a") is not equal to ("sx-b")`, `:421` `a dropped row announces no move` |
+| S-8412 | `testS8412APausedPhoneTimerStillJumps` | M3 — a paused row is still a candidate | `:458` `("sx-b") ≠ ("sx-a")`, `:460`/`:461` nil timer, `:462` `0 ≠ 1` frames |
+| S-8413 | `testS8413NoJumpForAnInactiveSession` | M4 — the active-session gate | `:492` `("sx-a") ≠ ("sx-b")`, `:493` `no move is announced` |
+| S-8414 | `testS8414ASwipeInFlightWhenTheJumpLandsIsRefusedAndTheFocusClears` | M5 — a locked landing is refused with its notice | `:536` `XCTAssertTrue failed - S-8414 the refusal says why` |
+| S-6004 (hiding) | `testS6004APhoneTimerForASlotTheLadderDoesNotHoldIsNotTheWristsWorkClock` | M6 — another slot's message timer is hidden | `WatchTimedWorkTests.swift:1088` `XCTAssertNil failed: "WatchTimerRecord(recordId: "tms-m…"`, `:1089` `XCTAssertFalse failed` |
+| S-6004 (jump) | `testS6004APhoneTimerForAHeldSlotMovesTheWristToIt` | M7 — the adopted held-slot timer jumps | `:1136` `("sx-run") ≠ ("sx-other")`, `:1141`/`:1142` nil clock, `:1148` `0 ≠ 1` frames |
+
+M1 — `WatchSessionEngine.stopTimerFromMessage`, original verbatim:
+
+```swift
+                timerRowFrom(
+                    timer,
+                    recordId: recordId,
+                    recordedAt: stoppedAt,
+                    stoppedAt: stoppedAt
+                )
+```
+
+Mutant: `stoppedAt: nil` (the clear stores a still-running row) → only S-8404 red. Restored.
+
+M2 — `WatchSessionEngine.adoptTimer`'s earlier-start drop, original verbatim:
+
+```swift
+           held.startedAt < startedAt {
+            return TimerAdoption()
+        }
+```
+
+Mutant: `return TimerAdoption(jump: jumpTarget(kind: kind, slotId: slotId, startedAt: startedAt, stoppedAt: stoppedAt, sessionId: sessionId))`
+→ only S-8411 red (2 failures). Restored.
+
+M3 — `WatchSessionEngine.adoptTimer`'s return, original verbatim:
+
+```swift
+        return TimerAdoption(
+            changed: true,
+            jump: jumpTarget(
+                kind: kind,
+                slotId: slotId,
+                startedAt: startedAt,
+                stoppedAt: stoppedAt,
+                sessionId: sessionId
+            )
+        )
+```
+
+Mutant: `jump: timer["pausedAt"] == nil ? jumpTarget(…) : nil` (running only) → only S-8412 red
+(4 failures). Restored.
+
+M4 — `WatchSessionEngine.jumpTarget`'s guard, original verbatim:
+
+```swift
+              let session = current,
+              session.sessionId == sessionId,
+              session.status == WatchSessionStatus.active,
+```
+
+Mutant: the `session.status == WatchSessionStatus.active,` line deleted → only S-8413 red (2
+failures), confirming the message is still adopted after the phone ends the session and only the
+jump's own gate stops the move. Restored.
+
+M5 — `WatchPagerModel.land(on:)`, original verbatim:
+
+```swift
+        if rows[index].isCurrent { return true }
+        guard !isLocked else {
+            noteLockedSwipe()
+            return false
+        }
+        return await menu.jump(to: rows[index].slotId)
+```
+
+Mutant: the guard replaced by `_ = isLocked` → only S-8414 red, on the refusal notice. Restored.
+(`moved` stays false either way because `menu.jump` refuses under the lock; the notice is the
+model's own half and the one a mutation can remove.)
+
+M6 — `WatchLoggingState.workTimer`, original verbatim:
+
+```swift
+        if engine.isTimerFromMessage(timer),
+           let slotId = timer.sessionExerciseId,
+```
+
+Mutant: `if !engine.isTimerFromMessage(timer),` (the slot-hiding rule inverted) → only the S-6004
+hiding test red. Restored.
+
+M7 — `WatchSessionEngine.adoptTimer`'s return (the original quoted under M3). Mutant:
+`jump: nil` → only the S-6004 jump test red (4 failures). Restored.
+
+Suite outputs (real counts):
+
+- `gateway.sh swift-test --filter WatchFollowPhoneEffortTests` → `Executed 13 tests, with 0 failures (0 unexpected)`
+  (S-8401..S-8404, S-8411..S-8415)
+- `gateway.sh swift-test --filter WatchTimedWorkTests` → `Executed 36 tests, with 0 failures (0 unexpected)`
+  (the split S-6004 pair and every other S-1300..S-6331 test green; S-6005 unchanged, still green
+  although it now also jumps — its assertions are about storage)
+- full `gateway.sh swift-test` → `Executed 770 tests, with 0 failures (0 unexpected) in 2.627 (2.682) seconds`
+  (exit 0; 764 in 2A plus the 6 added here — five new in the new file, one net from the S-6004 split)
+- `gateway.sh lint` → `180 issues found.` — the plan's 180 baseline, unchanged (no Dart file in this run)
+- `gateway.sh test test/ui_standards_contract_test.dart` → `00:00 +29: All tests passed!`
+- project invariant (`import .*hive_workout_repository` under `lib/state`, `lib/features`, `lib/widgets`,
+  `lib/core`) → no matches; only `lib/main.dart`, the composition root, imports it
+
+Diff footprint: `git-diff --stat` = 4 files, +271 −34 — engine `+126` and both docs are 2A's/planner's;
+this phase's own change is `WatchTimedWorkTests.swift` +67 (the reader split) plus the untracked
+`WatchFollowPhoneEffortTests.swift` now holding 13 tests. No production file, no Dart file, no doc
+outside this plan.
 
 (P3 — paste the three docs' sizes after the edits.)
 

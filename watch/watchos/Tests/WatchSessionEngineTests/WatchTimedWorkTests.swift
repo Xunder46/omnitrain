@@ -1050,19 +1050,20 @@ final class WatchTimedWorkTests: XCTestCase {
 
     // MARK: - S-6004 the wrist reads a timer for its own slot
 
-    func testS6004APhoneTimerForAnotherSlotIsNotTheWristsWorkClock() async throws {
+    /// S-1403's hiding half: a timer that came from a message is hidden by its
+    /// slot. The phone's slot here is one the session does NOT hold, so D-2 has
+    /// nowhere to land and the row is only ever read, never followed.
+    func testS6004APhoneTimerForASlotTheLadderDoesNotHoldIsNotTheWristsWorkClock() async throws {
         let harness = Harness()
         harness.clock.now = instant("2026-07-13T10:00:00Z")
         let engine = await harness.runningEngine()
         _ = await engine.createSession(
             modality: "cardio_endurance",
-            exercises: [
-                slot("sx-run", capabilities: ["time", "distance"]),
-                slot("sx-other", capabilities: ["time", "distance"]),
-            ]
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
         )
         let surface = surface(harness, engine: engine)
         await surface.startWork()
+        harness.clearEmitted()
 
         harness.clock.advance(10)
         let phoneStartedAt = harness.clock.now
@@ -1086,11 +1087,65 @@ final class WatchTimedWorkTests: XCTestCase {
 
         XCTAssertNil(surface.workTimer, "another slot's clock is not this slot's clock")
         XCTAssertFalse(surface.isWorkRunning)
+        XCTAssertEqual(
+            engine.currentExercise?["sessionExerciseId"] as? String,
+            "sx-run",
+            "a slot the ladder does not hold has nowhere to land"
+        )
+        XCTAssertTrue(harness.emitted.isEmpty, "the wrist announces no move")
+    }
 
-        _ = await engine.selectExercise(slotId: "sx-other")
+    /// Under D-2 the phone's effort on a slot the session holds is the wrist's
+    /// own now: the engine moves there, so the stored timer is the clock of the
+    /// exercise the wrist shows.
+    func testS6004APhoneTimerForAHeldSlotMovesTheWristToIt() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [
+                slot("sx-run", capabilities: ["time", "distance"]),
+                slot("sx-other", capabilities: ["time", "distance"]),
+            ]
+        )
+        let surface = surface(harness, engine: engine)
+        await surface.startWork()
+        harness.clearEmitted()
 
+        harness.clock.advance(10)
+        let phoneStartedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6004-held",
+                sentAt: utcIso(phoneStartedAt),
+                payload: [
+                    "timers": [
+                        WatchTimerKind.elapsed: phoneTimer(
+                            WatchTimerKind.elapsed,
+                            startedAt: utcIso(phoneStartedAt),
+                            sessionExerciseId: "sx-other"
+                        )
+                    ]
+                ]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.currentExercise?["sessionExerciseId"] as? String,
+            "sx-other",
+            "the wrist follows the told-about effort to its slot"
+        )
         XCTAssertEqual(surface.workTimer?.sessionExerciseId, "sx-other")
         XCTAssertTrue(surface.isWorkRunning, "the stored timer is the one this slot runs")
+        let advanced = harness.emitted.filter {
+            $0["type"] as? String == "session_lifecycle"
+                && ($0["payload"] as? [String: Any])?["state"] as? String
+                    == WatchLifecycleState.exerciseAdvanced
+        }
+        XCTAssertEqual(advanced.count, 1, "the jump announces itself once")
     }
 
     /// D-3's second half: only a timer that came from a message is hidden by its
