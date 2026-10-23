@@ -151,17 +151,17 @@ table; all actual line numbers sit within the seed's "~" tolerance (largest drif
 
 ### P1 (@developer) — the pure type, its copy, and S-8501..S-8507 + S-8510
 
-1. [ ] Create `watch/watchos/Sources/WatchSessionEngine/WatchSyncProgress.swift` — `enum
+1. [x] Create `watch/watchos/Sources/WatchSessionEngine/WatchSyncProgress.swift` — `enum
   WatchSyncProgressCopy` (`quietSeconds = 2.0`, `capSeconds = 20.0`) and `struct WatchSyncProgress`
   per D-1, D-5, D-7: injected `clock: () -> Date` defaulting to `{ Date() }`; `begin()`,
   `noteArrival(type:at:)`, `isActive()`; the five reply types; the boundary math, the
   begin-no-op-while-active rule and the begin-resets rule exactly as D-5 pins them —
   `WatchSyncProgress` · `begin`, `noteArrival`, `isActive`
-2. [ ] Create `watch/watchos/Tests/WatchSessionEngineTests/WatchSyncProgressTests.swift` — one test
+2. [x] Create `watch/watchos/Tests/WatchSessionEngineTests/WatchSyncProgressTests.swift` — one test
    per scenario, clock advanced by hand (fixed base date + explicit offsets, the
    `WatchSyncNoticeTests` pattern): S-8501, S-8502, S-8503, S-8504, S-8505, S-8506, S-8507, S-8510 —
    `WatchSyncProgressTests` · one `testS85xx…` per scenario
-3. [ ] Prove each new test red against the stub it names, then green against the real type (record
+3. [x] Prove each new test red against the stub it names, then green against the real type (record
    the red→green table in the evidence file). The mutation that turns each red:
    - S-8501: a stub whose `isActive` returns true before any `begin`.
    - S-8502: a stub measuring the quiet window from `begin` instead of the newest arrival (it would
@@ -175,7 +175,7 @@ table; all actual line numbers sit within the seed's "~" tolerance (largest drif
      window), and one that keeps arrivals across a fresh `begin`.
    - S-8507: a stub that notes every type (a `timer_state` at t=2.5 would extend the window).
    - S-8510: a stub that requires `routines_down` to be the first reply.
-4. [ ] Run `.github/copilot/scripts/macos/gateway.sh swift-test`; paste the pass/fail counts into
+4. [x] Run `.github/copilot/scripts/macos/gateway.sh swift-test`; paste the pass/fail counts into
    the evidence file.
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh swift-test` —
@@ -297,7 +297,7 @@ file, the evidence file. Nothing else.
 
 ## Progress
 
-- [ ] P1 — type + copy + S-8501..S-8507, S-8510 (result: —)
+- [x] P1 — type + copy + S-8501..S-8507, S-8510 (result: 8 new tests; full `swift-test` 778 tests / 0 failures; each scenario red-proved by mutation — evidence file)
 - [ ] P2 — view and host wiring + S-8508, S-8509, S-8511, S-8512 (result: —)
 - [ ] P3 — docs and plan Progress (result: —)
 
@@ -318,6 +318,14 @@ file, the evidence file. Nothing else.
   progress — the reachability edge (`onReachabilityChange`, l.166) and activation
   (`catchUpOnActivation`, l.256) — not just the named one; they are the same trigger (D-96).
   Vetoable before P2.
+- A-5 (P1, resolves D-1 vs D-5's signatures): the type carries both forms — `begin()` / `isActive()`
+  read the injected clock (D-5, and what the tests use) and `begin(at:)` / `isActive(at:)` take the
+  time explicitly (D-1, and what D-6's host ticker calls). Options: only one pair. Chose both; the
+  `at:` overloads are one line each.
+- A-6 (P1, beyond D-5): `noteArrival` ignores an arrival while the sync is not running, so a
+  straggler reply after it finished cannot revive the window. D-5 pins only the type filter.
+  Options: record unconditionally, or gate on activity. Chose the gate; the register has no scenario
+  for it, so it is unproven by mutation (evidence file) — flagged for P2's reviewer.
 
 ## Open questions
 
