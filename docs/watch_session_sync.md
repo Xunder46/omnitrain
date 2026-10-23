@@ -155,7 +155,10 @@ holds it takes the values the answer carries. A phone that receives a watch
 snapshot keeps the values it already holds for an id — the watch does not edit
 existing records (authority rule 1), so the phone's model does not re-state — and
 the answer carries the watch's own values for the watch's own entries, so a
-re-statement of one is a no-op. Verified by `test/watch_session_projection_test.dart`
+re-statement of one is a no-op. The wrist takes its frames one at a time in
+arrival order and refuses a snapshot older than the newest it has applied; see
+[The Watch Surface — the Wrist's Half](state_management/watch_surface_wrist.md).
+Verified by `test/watch_session_projection_test.dart`
 (`S-35 an edit reaches the wrist and a delete is announced`,
 `S-35 a re-statement is append-only and doubles nothing`,
 `S-35 a second edit wins over the first`), by the two stacks' agreement in

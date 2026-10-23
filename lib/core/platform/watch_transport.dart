@@ -145,9 +145,11 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
     required WatchMessageChannel channel,
     void Function(Object error, StackTrace stack)? onFailure,
     DateTime Function()? clock,
+    Duration handlerTimeout = const Duration(seconds: 30),
   }) : _channel = channel,
        _onFailure = onFailure,
-       _clock = clock ?? DateTime.now;
+       _clock = clock ?? DateTime.now,
+       _handlerTimeout = handlerTimeout;
 
   /// A frame the radio refuses does not take the session down with it: it is
   /// reported here, its caller learns it was not delivered, and the next sync
@@ -167,6 +169,14 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
   final StreamController<DateTime> _heard =
       StreamController<DateTime>.broadcast();
   WatchInboundHandler? _handler;
+
+  /// Frames are handled one at a time: this is the turn of the frame being
+  /// handled, and the next frame's turn chains after it.
+  Future<void> _lane = Future<void>.value();
+
+  /// How long a handler may hold its turn before it is reported and given up
+  /// on, so later frames are not stuck behind a hung one.
+  final Duration _handlerTimeout;
   bool _phoneReachable = false;
 
   /// Whether the frame is one the sender owes for good and the OS should
@@ -299,12 +309,24 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
   /// buffered: it names a session the receiver has not built yet, and the next
   /// sync is what brings the receiver up to date. Only a frame the handler
   /// takes counts as heard.
-  Future<void> _dispatch(Map<String, Object?> frame) async {
+  ///
+  /// Frames are handled one at a time, in arrival order; a handler that does
+  /// not finish within the timeout is reported and given up on.
+  Future<void> _dispatch(Map<String, Object?> frame) {
     final handler = _handler;
-    if (handler == null) return;
+    if (handler == null) return Future<void>.value();
     _heard.add(_clock());
+    final turn = _lane.then((_) => _handle(handler, frame));
+    _lane = turn;
+    return turn;
+  }
+
+  Future<void> _handle(
+    WatchInboundHandler handler,
+    Map<String, Object?> frame,
+  ) async {
     try {
-      await handler(frame);
+      await handler(frame).timeout(_handlerTimeout);
     } catch (error, stack) {
       _report(error, stack);
     }

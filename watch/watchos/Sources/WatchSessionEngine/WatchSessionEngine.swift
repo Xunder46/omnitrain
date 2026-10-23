@@ -67,6 +67,11 @@ public final class WatchSessionEngine: ObservableObject {
     /// (PROTOCOL.md, authority rule 6).
     private var appliedChangeIds: Set<String> = []
 
+    /// The `sentAt` of the newest snapshot this watch has applied, rebuilt from
+    /// the stored `snap-` rows by `restore` (plan 63 D-6): a snapshot older than
+    /// it is refused whole.
+    private var newestSnapshotAt: Date?
+
     /// The phone's corrections to entries the watch holds, keyed by `entryId`,
     /// and the ones it deleted. The stored row is never rewritten — these are
     /// what `entries` folds in.
@@ -149,6 +154,10 @@ public final class WatchSessionEngine: ObservableObject {
                 .filter { $0.recordId.hasPrefix(Self.changePrefix) }
                 .map { String($0.recordId.dropFirst(Self.changePrefix.count)) }
         )
+        newestSnapshotAt = contents.sessions
+            .filter { $0.recordId.hasPrefix(Self.snapshotPrefix) }
+            .map(\.recordedAt)
+            .max()
 
         // D-113.1: the deletion lens is read back from the newest row, so a
         // relaunch hides the same entries the killed process hid.
@@ -538,6 +547,11 @@ public final class WatchSessionEngine: ObservableObject {
               let sentAt = try? parseUtcIso(envelope["sentAt"])
         else { return nil }
 
+        // An older state arriving late changes nothing, not even an entry or a
+        // tombstone (plan 63 D-1, D-6): the newest snapshot already applied
+        // speaks for the session.
+        if let newest = newestSnapshotAt, sentAt < newest { return nil }
+
         let exercises = (payload["exercises"] as? [[String: Any]]) ?? []
         let entryMaps = (payload["entries"] as? [[String: Any]]) ?? []
         let existing = current?.sessionId == sessionId ? current : nil
@@ -586,6 +600,7 @@ public final class WatchSessionEngine: ObservableObject {
                 revision: (payload["revision"] as? NSNumber)?.intValue ?? 0
             )
         )
+        newestSnapshotAt = max(newestSnapshotAt ?? sentAt, sentAt)
 
         for entry in entryMaps {
             await storeSnapshotEntry(sessionId, entry)

@@ -429,6 +429,18 @@ group `S-206 a send answers whether the frame was handed over`,
 `S-218 a transport that cannot carry a frame is undelivered and quiet`) over an
 in-memory two-ended channel.
 
+**Frames are handled one at a time, and a stale snapshot is ignored.**
+`WatchConnectivityTransport._dispatch` chains each incoming frame after the
+previous frame's handling and counts the frame as heard on arrival; a handler
+that does not finish within its handler timeout is reported and given up on, so
+later frames are not stuck behind it. On the mirror,
+`LiveSessionMirrorState.isStaleSnapshot` answers a `session_snapshot` whose
+`sentAt` is earlier than the newest snapshot stamp the mirror has applied — one
+stamp across all workouts — with `MirrorOutcome.ignored`: nothing applied,
+nothing notified; an equal or later stamp applies, and an unreadable `sentAt` is
+not stale, while the inbox still stages the entries of a stale snapshot.
+Verified by `test/watch_message_order_test.dart` (`S-9301`..`S-9307`).
+
 The wrist's half of this area — the Swift bridge over the same radio, the wrist's start surface and the wrist's logging surface (the Crown and the per-exercise dialled numbers included) — has its own page: [The Watch Surface — the Wrist's Half](watch_surface_wrist.md).
 
 ### The phone's link: the plugin, the channel, the queue and the status

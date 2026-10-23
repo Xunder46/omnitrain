@@ -109,6 +109,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The session as the phone closed it. Null while it is running.
   Map<String, Object?>? _completedRecord;
 
+  /// The `sentAt` of the newest `session_snapshot` this mirror has applied:
+  /// the stamp an older snapshot arriving late is judged against (plan 63 D-1).
+  DateTime? _newestSnapshotAt;
+
   /// How each session this phone announced an end for ended, by session id.
   ///
   /// [owesResetFor]'s status is the memory for the session this mirror is
@@ -216,6 +220,8 @@ class LiveSessionMirrorState extends ChangeNotifier {
       return MirrorOutcome.ignored;
     }
 
+    if (isStaleSnapshot(envelope)) return MirrorOutcome.ignored;
+
     // A message about a session this mirror is not holding is not this mirror's
     // news. A nutrition quick-log taken with no workout running names the day it
     // was logged on, and folding it into whatever session happens to be live
@@ -235,6 +241,17 @@ class LiveSessionMirrorState extends ChangeNotifier {
         _asObject(envelope['payload'])['sessionId'] != before['sessionId'];
     _reconciler.applyMessage(envelope);
     if (switchesSession) _completedRecord = null;
+    if (envelope['type'] == 'session_snapshot') {
+      final sentAt = envelope['sentAt'];
+      if (sentAt is String) {
+        final sent = DateTime.tryParse(sentAt);
+        if (sent != null) {
+          final newest = _newestSnapshotAt;
+          _newestSnapshotAt =
+              newest == null || sent.isAfter(newest) ? sent : newest;
+        }
+      }
+    }
     notifyListeners();
 
     if (switchesSession) return MirrorOutcome.applied;
@@ -267,6 +284,18 @@ class LiveSessionMirrorState extends ChangeNotifier {
 
   static bool _holdsLadder(Map<String, Object?> state) =>
       _objects(state['exercises']).isNotEmpty;
+
+  /// True when [envelope] is a `session_snapshot` stamped earlier than the
+  /// newest snapshot this mirror has applied: an older state arriving late
+  /// (plan 63 D-1). An equal stamp is not stale.
+  bool isStaleSnapshot(Map<String, Object?> envelope) {
+    if (envelope['type'] != 'session_snapshot') return false;
+    final newest = _newestSnapshotAt;
+    final sentAt = envelope['sentAt'];
+    if (newest == null || sentAt is! String) return false;
+    final sent = DateTime.tryParse(sentAt);
+    return sent != null && sent.isBefore(newest);
+  }
 
   /// True when [envelope] names the session this mirror holds. An envelope that
   /// names none at all is not a session's news either, and is equally not this

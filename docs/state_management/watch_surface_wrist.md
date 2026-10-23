@@ -156,6 +156,21 @@ so `exclusive` must never be taken inside a body already inside it
 `insertExercise`, `applyExercisePush`, `stopTimer` and `appendTimer`
 deliberately do not take it (plan 46c, D-5).
 
+**Inbound frames are handled one at a time, and a stale snapshot is refused
+whole.** `WatchInboundLane`
+(`watch/watchos/Sources/WatchSessionEngine/WatchInboundLane.swift`) hands frames
+to one handler one at a time in the order they were offered, and
+`OmniTrainWatchConnectivity.deliver` (the app target) enqueues each radio
+arrival on it instead of starting a task per frame. On top of that ordering,
+`WatchSessionEngine.applySnapshotExclusive` refuses WHOLE — no entry stored, no
+tombstone cleared, nothing answered — a snapshot whose `sentAt` is earlier than
+`newestSnapshotAt`, the newest applied snapshot stamp across all workouts; the
+stamp is rebuilt on `restore()` from the stored `snap-` rows' `recordedAt`. A
+sender whose clock is set backwards by hand is ignored until its clock passes
+the old instant. Verified by `WatchInboundLaneTests` (S-9310),
+`WatchStaleSnapshotTests` (S-9311..S-9314) and
+`WatchInboundLaneWiringSourceTests` (S-9315).
+
 ## The wrist's start surface, and what an arrival does to it
 
 **A push with no session to land in is read and dropped.** The wrist's start

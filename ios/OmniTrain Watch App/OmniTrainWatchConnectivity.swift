@@ -43,6 +43,10 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
     private var reachabilityHandler: ((Bool) -> Void)?
     private var linkProblemHandler: ((Bool) -> Void)?
 
+    /// The arrivals lane: frames are handed to the bridge one at a time, in the
+    /// order the radio offered them (plan 63 D-4).
+    private lazy var lane = WatchInboundLane { [weak self] frame in await self?.receiveHandler?(frame) }
+
     /// True when the radio cannot come up at all (plan 60, D-5).
     private var linkProblem = false
 
@@ -154,12 +158,16 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
         reportLinkProblem(linkProblem)
     }
 
-    /// Hands one arrival to the bridge, on the main actor.
+    /// Hands one arrival to the bridge.
     ///
-    /// A frame that arrives before the bridge has a handler is dropped rather
-    /// than buffered (D-6); the next sync is what brings the wrist up to date.
+    /// Frames are handled one at a time, in the order they arrive (plan 63):
+    /// the lane never lets two handlers overlap, so the wrist's state changes
+    /// in arrival order. A frame that arrives before the bridge has a handler
+    /// is dropped rather than buffered (D-6): the handler is read when the
+    /// frame's turn comes, and the next sync is what brings the wrist up to
+    /// date.
     private func deliver(_ message: [String: Any]) {
-        Task { @MainActor in await self.receiveHandler?(message) }
+        lane.enqueue(message)
     }
 
     /// Reports the radio's answer, on the main actor. Every answer is reported,

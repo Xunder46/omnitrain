@@ -410,6 +410,24 @@ correction carries no distance
   `entryId` rather than replacing the local set, so observations the
   snapshot's sender has not seen are not lost; an `entryId` the receiver already
   holds MUST NOT be stored a second time.
+- A `session_snapshot` whose envelope `sentAt` is earlier than the newest
+  snapshot `sentAt` the receiver has applied MUST change nothing: the receiver
+  applies no structure, status, position, revision, timers, entries or
+  tombstone clearing from it, and answers nothing. An equal `sentAt` applies
+  (as reference data does). The comparison is made against the receiver's
+  single newest stamp across all workouts — an old workout's snapshot cannot
+  revive it — and uses only the sender's own clock, so no clock agreement
+  between the devices is needed. The watch keeps the stamp from its stored
+  snapshot rows, so it survives a relaunch; the phone's mirror keeps it in
+  memory. The phone still stages the entries a stale watch snapshot carries:
+  they are real observations, and staging is idempotent. Known limit: a sender
+  whose clock is set backwards by hand is ignored until its clock passes the
+  old instant — the same limit reference data has.
+- Each device handles incoming messages one at a time, in the order its radio
+  delivered them. The phone does it in `WatchConnectivityTransport._dispatch`
+  (a handler that does not finish within 30 s is reported and given up on, so
+  later messages are not stuck behind it); the watch does it in
+  `WatchInboundLane`, fed by the radio's delegate callbacks in arrival order.
 - A `session_snapshot`'s `entries` are the entries its sender logged: a receiver
   MUST NOT add them back under a second `entryId`, and MUST NOT read a snapshot
   as a claim about entries its sender did not log. Entries are ordered by
