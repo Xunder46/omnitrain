@@ -280,8 +280,32 @@ and bounds are not the wrist's to choose:
 `watch/contract/watch_nutrition_contract.json` carries them and both clients'
 suites assert against it.
 
+`select` starts a food at its own starting amount: the `defaultServings` of the
+wrist's newest `engine.nutritionLog` observation for that food when the log's
+`loggedAt` is later than the held catalog's `generatedAt`, and the catalog's
+value otherwise — compared on every read rather than stored beside the list, so
+a relaunch keeps it and a list the phone generated after the log wins
+(`WatchNutritionFreshnessTests.testS8302ALogBecomesTheFoodsStartingAmount`,
+`…testS8303ANewerListWinsAndAnOlderOneDoesNotRevertALog`,
+`…testS8304ARelaunchKeepsTheDerivedStartingAmount`,
+`…testS8306ALogOlderThanTheCatalogKeepsTheCatalogsAmount`,
+`…testS8315ASelectionClampsTheListedAmount`). `deselect()` clears the selection,
+puts the portion back to `minServings` and drops the confirmation, so the next
+food opens at its own amount
+(`…testS8301LeavingAFoodClearsItAndTheNextOneOpensAtItsOwnAmount`,
+`…testS8313DeselectingNothingChangesNothing`); a list that no longer carries the
+selected food clears it the same way
+(`…testS8314ANewerListThatDropsTheSelectedFoodClearsTheSelection`).
+`onFoodsChanged` is called at the end of `restore()`, on a `foods_down` that was
+applied and on no other — a dropped, refused or unreadable one stays quiet —
+and after a log that becomes a new starting amount
+(`…testS8305FoodChangesAreAnnouncedOnlyWhenTheListChanges`); the model holding
+it is the host's one, so the observer survives a body pass
+(`WatchNutritionWiringSourceTests.testS8311TheHostOwnsTheOneNutritionModel`,
+`…testS8318TheMenuPushesTheHostsNutritionModel`).
+
 Verified by `test/watch_nutrition_quick_log_test.dart` (S-001 to S-006) and by
-watchOS `WatchNutritionQuickLogTests`.
+watchOS `WatchNutritionQuickLogTests` and `WatchNutritionFreshnessTests`.
 
 ### The wrist's food list, and why its order is the phone's rule
 

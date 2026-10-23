@@ -1,6 +1,6 @@
 # Feature: 53 — a food opens its own screen on the watch, and the food list is fresh
 
-> Status: PLANNED 2026-10-22 (conductor-v2) — seeded Ledger, scenarios and phase outline kept verbatim; D-10, S-8313..S-8318 and the phase items appended. Owner: watch testing round 2026-10-22 items 1-3, in chat. Owner decisions: a food keeps opening at the amount last logged of it (not forced to 1 serving); the quantity bug is "the phone only syncs foods when Nutrition is open" (the owner's own theory, confirmed in code). Base commit: `.work/2026-10-22-53/base.txt`. Series: PR 1 of 3 (53 food, then the running-effort lock, then the sync spinner: not in this plan). Binding conventions: docs/global_conventions.md; .github/copilot/pr-scope-budget.md. Working branch: the one checked out (`claude_develop`); never create or switch branches.
+> Status: BUILT 2026-10-23 — P1–P4 **Complete**; the build is complete pending the governor's checks (full `swift test`, the watch scheme's `xcodebuild`, `flutter analyze`, one full `flutter test`, `prove-red` for S-8301..S-8312, review). PLANNED 2026-10-22 (conductor-v2) — seeded Ledger, scenarios and phase outline kept verbatim; D-10, S-8313..S-8318 and the phase items appended. Owner: watch testing round 2026-10-22 items 1-3, in chat. Owner decisions: a food keeps opening at the amount last logged of it (not forced to 1 serving); the quantity bug is "the phone only syncs foods when Nutrition is open" (the owner's own theory, confirmed in code). Base commit: `.work/2026-10-22-53/base.txt`. Series: PR 1 of 3 (53 food, then the running-effort lock, then the sync spinner: not in this plan). Binding conventions: docs/global_conventions.md; .github/copilot/pr-scope-budget.md. Working branch: the one checked out (`claude_develop`); never create or switch branches.
 
 ## Goal and acceptance
 
@@ -233,7 +233,14 @@ Docs:
   7. [x] Guards S-8311, S-8312, S-8318 added; S-7201 and S-7203 texts updated — Result: red at the base commit (14 assertion failures), green after; both rewritten text lines are in the evidence file.
   8. [x] S-7202 and S-7205 untouched — Result: green in both runs.
   - Done Criteria: `swift-test` 756 executed / 0 failures; `prove-red` at `a01be76` RED AT with assertions (not compile errors); `ui_standards_contract_test` 29/29; `lint` 180 info / 0 errors, unchanged. `xcodebuild` (watch scheme) and `flutter run` are the governor's. Evidence: `<plan>.evidence.md` § Phase P3.
-- [ ] P4 — docs and Progress
+- [x] P4 — docs and Progress — **Complete**
+  1. [x] `docs/state_management/watch_surface_wrist.md` — Result: the one host-owned `WatchNutritionModel` for sheet and menu (S-8311/S-8318), the food screen and the deselecting back (S-8312, S-8301, S-8313, S-8314), the derived starting amount in one paragraph (S-8302, S-8303, S-8304, S-8306, S-8315), `foods_down` redrawing an open surface (S-8305), and the Dart screen's single-screen layout as a stated UI parity gap (D-9).
+  2. [x] `docs/state_management/watch_surface.md` `WatchNutritionState` — Result: `deselect()`, the `loggedAt` vs `generatedAt` comparison, and `onFoodsChanged`'s three call sites, each with its `WatchNutritionFreshnessTests` name; the section's Verified-by line now names that file.
+  3. [x] `docs/state_management/nutrition_state.md` watch bridge bullet — Result: the per-request reload (D-7) and why (`_writeThroughLastAmount` writes the row only), citing the S-8308…S-8316 group.
+  4. [x] `nutrition_widgets.md` / `navigation_and_screens.md` grep — Result: 0 `WatchNutrition` hits in both, before and after; neither file changed.
+  5. [x] This Progress — Result: one line per item, P1–P4 Complete, Status names the build complete pending the governor's checks.
+  6. [x] Doc sizes — Result: all three edited docs still read untruncated (< 20 KB); `test/docs_indexing_contract_test.dart` green after the edits.
+  - Done Criteria: `test test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart` green (counts in the evidence file). Evidence: `<plan>.evidence.md` § Phase P4. `flutter run` and the watch `xcodebuild` are the governor's.
 - [ ] Governor: full `swift test`, `xcodebuild`, `flutter analyze`, full `flutter test`, `prove-red` S-8301..S-8312, review
 
 ## Assumption Log
@@ -251,6 +258,7 @@ Docs:
 - **P3 / the food screen's name is its navigation title.** R-1 asks the screen to show the food's name; options were a `Text` row above the portion row (costs vertical space and needs a font the wrist has no token for) and `.navigationTitle(...)`. Chose the navigation title — it is the wrist idiom `WatchMenuView` already uses, and it keeps the moved block unchanged.
 - **P3 / `import Foundation` added to `WatchNutritionView.swift`.** The observer's `DispatchQueue.main.async` hop (D-4) needs it; SwiftUI re-exports it today, but the import is explicit rather than relying on that.
 - **P3 / the sheet keeps its `NavigationStack`.** `.navigationDestination(isPresented:)` has to sit inside a stack; the menu's row already has one, so only the sheet's root needed keeping.
+- **P4 / the Dart parity gap names no test.** The sentence that `lib/watch/nutrition/watch_nutrition_screen.dart` keeps its single-screen layout describes an absence, not behavior, so it cites the file and D-9 rather than a test (the 51b parity note above it is the precedent); the twin's state rules that do have tests are cited beside it.
 
 ## Open questions
 

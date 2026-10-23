@@ -163,12 +163,38 @@ Footprint: `git-diff --stat` → the five predicted files only
 
 ## Phase P4 (docs)
 
-- `flutter test test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart`: _to fill_
-- Grep records:
-  - `WatchNutrition` in `docs/widget_catalog/nutrition_widgets.md`: 0 hits at planning.
-  - `WatchNutrition` in `docs/navigation_and_screens.md`: 0 hits at planning.
-  - Re-run both greps after the doc edits and record the result here.
-- Doc sizes after edits: _to fill_ (must stay inside the 52 KB band).
+- Docs edited (three; the plan's two conditional docs were not touched):
+  - `docs/state_management/watch_surface_wrist.md` § "Food is reachable with or without a workout":
+    the one host-owned `WatchNutritionModel` for the sheet and the menu row (S-8311, S-8318), the
+    food screen and the back that deselects (S-8312, S-8301, S-8313, S-8314), the derived starting
+    amount (S-8302, S-8303, S-8304, S-8306, S-8315), `foods_down` redrawing an open surface (S-8305),
+    and the Dart screen's single-screen layout as a stated UI parity gap (D-9).
+  - `docs/state_management/watch_surface.md` § `WatchNutritionState`: `deselect()`, the
+    `loggedAt` vs `generatedAt` comparison, and `onFoodsChanged`'s three call sites; the section's
+    Verified-by line now names `WatchNutritionFreshnessTests`.
+  - `docs/state_management/nutrition_state.md`, the watch bridge bullet: the per-request reload (D-7)
+    and why (`_writeThroughLastAmount` writes the repository row only), citing the S-8308…S-8316
+    group.
+- `test test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart` → **42 passed,
+  0 failed** (13 docs-indexing tests + 29 UI-standards tests).
+- Grep records (`WatchNutrition`), re-run after the doc edits:
+  - `docs/widget_catalog/nutrition_widgets.md`: **0 hits** before and after — unchanged.
+  - `docs/navigation_and_screens.md`: **0 hits** before and after — unchanged.
+  - `docs/`: hits only in `state_management/watch_surface.md`, `watch_surface_wrist.md`,
+    `state_management.md`, `state_management/nutrition_state.md`, `watch_session_capture.md` and the
+    plan folders.
+- Doc sizes: all three edited docs read untruncated after the edits (each well under 20 KB, inside the
+  52 KB band); `test/docs_indexing_contract_test.dart`'s ceiling test is green. Exact byte counts are
+  not obtainable in this role (shell denied).
+- `lint` → **180 issues, 0 errors**, unchanged from the P1–P3 baseline. Log:
+  `.work/gateway/lint-20261023-000700-12256.log`.
+- Footprint: `git-diff --stat` → exactly the five predicted files (three docs, the plan, this evidence
+  file), 89 insertions / 12 deletions. No Dart, Swift, test or other doc file changed; no scratch file
+  created.
+- The full `flutter test`, the watch scheme's `xcodebuild` and `flutter run` are the governor's (P4's
+  Done Criteria are the two contract suites above; this phase changes no Dart source).
+
+
 
 ## Assumption Log detail
 

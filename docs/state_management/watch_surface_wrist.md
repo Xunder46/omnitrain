@@ -386,12 +386,40 @@ AndNowhereElse`; Dart twin, `test/watch_rest_ping_test.dart`, S-241).
 
 **Food is reachable with or without a workout, and the phone's rest arrives.**
 The watch app builds one `WatchNutritionState` for its life — `WatchAppHost`'s
-`nutrition`, handed to the sync orchestrator and restored at launch — the start
+`nutrition`, handed to the sync orchestrator and restored at launch — and one
+`WatchNutritionModel` beside it (`nutritionModel`) that both entry points hand
+to the screen, so either reuses the one observable rather than building a model
+on each body pass (`WatchNutritionWiringSourceTests.testS8311TheHostOwnsTheOneNutritionModel`,
+`…testS8318TheMenuPushesTheHostsNutritionModel`). The start
 screen shows `Log food` (`WatchStartView.logFoodLabel`) directly under Free
 workout and opens `WatchNutritionView` in a sheet, and the session menu carries
 a `Log food` row (`WatchMenuCopy.logFoodLabel`, the same words) between Add
 Exercise and End Session that pushes the same screen; the row is never
-disabled, because food is independent of the effort. Verified by
+disabled, because food is independent of the effort. A tapped food opens its
+own screen (`WatchFoodPortionView`: the portion row, the kcal and Log), and
+leaving it — the back button or a swipe — returns to the list with nothing
+selected, so the next food opens at its own amount rather than at the portion
+the last one was left at
+(`WatchNutritionWiringSourceTests.testS8312TheListIsTheListAndTheFoodScreenEdits`,
+`WatchNutritionFreshnessTests.testS8301LeavingAFoodClearsItAndTheNextOneOpensAtItsOwnAmount`,
+`…testS8313DeselectingNothingChangesNothing`,
+`…testS8314ANewerListThatDropsTheSelectedFoodClearsTheSelection`). A food's
+starting amount is the wrist's own newest log of it when that log is newer than
+the phone's list, and the phone's pre-fill otherwise — derived on every read, so
+a relaunch keeps it and an older list cannot revert it
+(`…testS8302ALogBecomesTheFoodsStartingAmount`,
+`…testS8303ANewerListWinsAndAnOlderOneDoesNotRevertALog`,
+`…testS8304ARelaunchKeepsTheDerivedStartingAmount`,
+`…testS8306ALogOlderThanTheCatalogKeepsTheCatalogsAmount`), and a selection
+clamps the amount it is handed (`…testS8315ASelectionClampsTheListedAmount`).
+A `foods_down` that lands while the list or a food screen is open redraws what
+is shown (`…testS8305FoodChangesAreAnnouncedOnlyWhenTheListChanges`); that is
+what the one model's change observer is for. The Dart twin's screen keeps its
+single-screen layout — the quantity row still sits under the list there
+(`lib/watch/nutrition/watch_nutrition_screen.dart`) — a stated UI parity gap;
+the twin's state carries the same `deselect()` and derived amount
+(`test/watch_nutrition_quick_log_test.dart`, group `S-8307, S-8317 the Dart
+twin deselects and derives the starting amount`; plan 53 D-9). Verified by
 `WatchNutritionWiringSourceTests.swift` (S-7201..S-7203 and S-7205, source
 scans; the start screen's button was seen on the 40 mm simulator); S-7204 is
 the existing `WatchNutritionQuickLogTests` and the S-3103 guards run unchanged,
