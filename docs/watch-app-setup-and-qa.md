@@ -962,6 +962,34 @@ hardware yet.
     provoke on hardware, so it is unit-tested only
     (`WatchPhoneProblemWiringSourceTests.testS9004TheRadioReportsWhenItCannotComeUp`;
     the sentence `WatchSyncNoAnswerTests.testS9002LinkUnavailableLabelIsExactlyThePlannedSentence`).
+22. **The wrist taps on time with the screen down, and a dimmed rest shows
+    minutes — (owner).** Three checks on a real watch. Rest Ping 30 s on the
+    phone, start a workout on the watch, log a set, lower the wrist so the
+    screen goes dark: a tap at 30 s, 60 s and 90 s. Same with the screen dimmed
+    but on (Always On): the rest shows "N min"; raise the wrist and the m:ss
+    clock is back and correct. Phone locked, watch on the wrist, phone app in
+    the background: at a boundary count the taps — one tap is fine; two close
+    taps mean the phone's own rest notification mirrors to the watch as a
+    second tap, tell the lead. The scheduler, the catch-up and the dimmed
+    minutes clock are held off-device by `WatchRestPingSchedulerTests`
+    (S-9101..S-9108) and `WatchRestPingWiringSourceTests` (S-9109); whether
+    watchOS lets the app tap with the wrist down, and the dimmed redraw
+    cadence, are this step.
+23. **A wrist raise sends nothing when nothing changed — (owner).** Four checks
+    on paired hardware. Raise the wrist twice in a row with the phone in
+    reach: the second raise stores nothing new. Change a phone setting (the
+    accent or Rest Ping), raise the wrist: the watch picks it up; raise again:
+    nothing new. Add a routine on the phone and raise the wrist: it appears.
+    Tap **Sync** on the watch's start screen: it still completes (a full
+    re-send — the way out when the phone's "nothing changed" answer is wrong).
+    On a raise with nothing changed the start screen shows no syncing spinner;
+    a watch with nothing synced yet (a fresh install) still shows it, and
+    tapping **Sync** shows it. The phone's changed-only answer is held
+    off-device by `test/watch_sync_changed_only_test.dart` (S-9201..S-9212),
+    the Sync button's full ask by `WatchManualSyncSourceTests` (S-9220), and
+    the spinner gating by `WatchSyncProgressWiringTests`
+    (`testS8508CatchUpBeginsOnlyWhenReachable`,
+    `testS9221AnIncrementalCatchUpOpensNoWindow`).
 
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and

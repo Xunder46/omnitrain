@@ -15,12 +15,14 @@
 /// demand, and nowhere else: nothing on the phone answers a request the wrist
 /// has not made (D-7).
 ///
-/// The same request is how the phone's settings reach the wrist: the phone
-/// never pushes, so every sync is answered with `preferences_down` first —
-/// even by a phone with no routines — and the setting changed since the last
-/// one lands at the wrist's next sync (Stats PR 2, D-113, D-115; scenario
-/// S-253).
+/// The same request is how the phone's settings reach the wrist: the three
+/// reference frames — the preferences, the foods, the routines — travel
+/// together, stamped alike, and only when the wrist's `since` is older than
+/// the bundle's stamp; the routines frame goes last, and only after the other
+/// two were carried (Stats PR 2, D-113, D-115; scenario S-253).
 library;
+
+import 'dart:convert';
 
 import '../../core/constants/omni_theme.dart';
 import '../../core/platform/watch_delivery.dart';
@@ -56,6 +58,11 @@ class WatchSyncRequestHandler {
   final FoodLibraryState _foodLibrary;
   final DateTime Function() _clock;
 
+  /// The reference bundle the phone last saw, as its content signature and the
+  /// stamp the three frames carry. A phone that relaunched holds none, and
+  /// re-sends once at the wrist's next request (S-9212).
+  ({String signature, DateTime stamp})? _held;
+
   /// Answers [request], and reports whether it had an answer to give.
   ///
   /// [exercisesVersion] is the version of the exercise list the wrist holds,
@@ -64,12 +71,14 @@ class WatchSyncRequestHandler {
   ///
   /// False is not a failure: a phone holding no session has nothing to send
   /// and says nothing — the wrist's own copy is what it keeps. A request for
-  /// routines is always answered: the preferences, the routines and the
-  /// exercise list (unless the wrist already holds it) travel with it.
-  Future<bool> handle(String request, {String? exercisesVersion}) {
+  /// routines is answered with the three reference frames when the wrist's
+  /// `since` is older than the bundle's stamp, and with none of them when it
+  /// is not; the exercise list (unless the wrist already holds it) travels
+  /// with every answer.
+  Future<bool> handle(String request, {String? exercisesVersion, DateTime? since}) {
     switch (request) {
       case WatchTransportRequest.routines:
-        return _sendRoutines(exercisesVersion: exercisesVersion);
+        return _sendRoutines(exercisesVersion: exercisesVersion, since: since);
       case WatchTransportRequest.snapshot:
         return _sendSnapshot();
       default:
@@ -77,17 +86,29 @@ class WatchSyncRequestHandler {
     }
   }
 
-  /// The answer to the wrist's "sync routines", in this order: the
-  /// preferences, always and first — the settings the wrist honours and the
-  /// accent of the theme the phone is wearing — then the routines, then the
-  /// food list, then the phone's exercise list as
-  /// [WatchReferenceSync.buildExercisesDown] batches, unless the wrist already
-  /// holds the version it named (D-3834).
+  /// The answer to the wrist's "sync routines": the three reference frames —
+  /// the preferences, then the foods (when the phone has any), then the
+  /// routines — sent together, stamped alike, and only when the wrist's
+  /// `since` is older than the bundle's stamp. The routines frame is the
+  /// bundle's commit marker: it goes last, and only after the preferences and
+  /// the foods were carried, so a wrist that names a stamp holds everything
+  /// up to it (plan 62, D-4).
   ///
-  /// The foods travel before the version check, so a wrist that holds the
-  /// exercise list still receives them; a phone with no foods sends no food
-  /// frame at all, and a refused one does not stop the batches (49a, D-1,
-  /// D-2).
+  /// The stamp is the bundle's own: it changes only when the content of the
+  /// three frames changes, so an unchanged phone answers a wrist that holds
+  /// the current bundle with none of the three. A phone that relaunched holds
+  /// no stamp in memory and re-sends once (S-9212).
+  ///
+  /// The foods are read back from storage on every request: nothing on the
+  /// phone loads them for this answer, and `NutritionState`'s write-through
+  /// updates the repository row only, so a cache loaded once goes stale after
+  /// every log (D-7). A failed read is not a reason to withhold the rest: the
+  /// cache as it stands is what the wrist gets.
+  ///
+  /// Then the phone's exercise list as [WatchReferenceSync.buildExercisesDown]
+  /// batches, unless the wrist already holds the version it named (D-3834) —
+  /// independent of the bundle: a skipped bundle still checks the version, and
+  /// a sent bundle still skips the batches the wrist holds.
   ///
   /// The batches go one at a time, in index order, and stop at the first the
   /// radio did not carry: the wrist assembles a complete list or keeps the one
@@ -97,32 +118,7 @@ class WatchSyncRequestHandler {
   /// The settings are `SettingsState`'s own — the one owner of them (D-115) —
   /// so nothing here reads or parses a stored preference; the accent is read
   /// the same way, from the theme that state holds rather than from a copy.
-  Future<bool> _sendRoutines({String? exercisesVersion}) async {
-    await _transport.send(
-      WatchReferenceSync.buildPreferencesDown(
-        effortRatingPrompt: _settings.showFeelingSurvey,
-        restPingSeconds: _settings.restPingInterval,
-        accentColorHex: WatchReferenceSync.accentHexOf(
-          OmniTheme.colorsForTheme(_settings.appTheme).primary,
-        ),
-        weightUnit: _settings.preferredWeightUnit,
-        distanceUnit: _settings.preferredDistanceUnit,
-        generatedAt: _clock(),
-      ),
-    );
-
-    await _transport.send(
-      await WatchReferenceSync.buildRoutinesDown(
-        repository: _repository,
-        generatedAt: _clock(),
-      ),
-    );
-
-    // The foods are read back from storage on every request: nothing on the
-    // phone loads them for this answer, and `NutritionState`'s write-through
-    // updates the repository row only, so a cache loaded once goes stale after
-    // every log (D-7). A failed read is not a reason to withhold the rest: the
-    // cache as it stands is what the wrist gets.
+  Future<bool> _sendRoutines({String? exercisesVersion, DateTime? since}) async {
     try {
       await _foodLibrary.loadFoodGroups(includeArchived: true);
       await _foodLibrary.loadFoods();
@@ -130,14 +126,36 @@ class WatchSyncRequestHandler {
       // Deliberately swallowed — see above.
     }
 
-    if (_foodLibrary.foods.isNotEmpty) {
-      await _transport.send(
-        WatchReferenceSync.buildFoodsDown(
-          foods: _foodLibrary.foods,
-          groups: _foodLibrary.foodGroups,
-          generatedAt: _clock(),
+    final probe = await _bundle(DateTime.utc(1970));
+    final signature = jsonEncode([
+      probe.preferences,
+      probe.routines,
+      probe.foods,
+    ]);
+    if (_held?.signature != signature) {
+      final now = _clock().toUtc();
+      _held = (
+        signature: signature,
+        stamp: DateTime.fromMillisecondsSinceEpoch(
+          now.millisecondsSinceEpoch,
+          isUtc: true,
         ),
       );
+    }
+    final stamp = _held!.stamp;
+
+    if (since == null || since.isBefore(stamp)) {
+      final bundle = await _bundle(stamp);
+      final preferences = await _transport.send(bundle.preferences);
+      var carried = preferences != WatchDelivery.undelivered;
+      final foods = bundle.foods;
+      if (foods != null &&
+          await _transport.send(foods) == WatchDelivery.undelivered) {
+        carried = false;
+      }
+      // The routines frame is the bundle's commit marker: the wrist names its
+      // stamp as `since`, so it is only sent once the other two were carried.
+      if (carried) await _transport.send(bundle.routines);
     }
 
     final batches = await WatchReferenceSync.buildExercisesDown(
@@ -153,6 +171,37 @@ class WatchSyncRequestHandler {
       if (await _transport.send(batch) == WatchDelivery.undelivered) break;
     }
     return true;
+  }
+
+  /// The three reference frames, stamped [at]; the foods frame is null for a
+  /// phone with no foods.
+  Future<
+    ({Map<String, Object?> preferences, Map<String, Object?> routines, Map<String, Object?>? foods})
+  >
+  _bundle(DateTime at) async {
+    return (
+      preferences: WatchReferenceSync.buildPreferencesDown(
+        effortRatingPrompt: _settings.showFeelingSurvey,
+        restPingSeconds: _settings.restPingInterval,
+        accentColorHex: WatchReferenceSync.accentHexOf(
+          OmniTheme.colorsForTheme(_settings.appTheme).primary,
+        ),
+        weightUnit: _settings.preferredWeightUnit,
+        distanceUnit: _settings.preferredDistanceUnit,
+        generatedAt: at,
+      ),
+      routines: await WatchReferenceSync.buildRoutinesDown(
+        repository: _repository,
+        generatedAt: at,
+      ),
+      foods: _foodLibrary.foods.isEmpty
+          ? null
+          : WatchReferenceSync.buildFoodsDown(
+              foods: _foodLibrary.foods,
+              groups: _foodLibrary.foodGroups,
+              generatedAt: at,
+            ),
+    );
   }
 
   /// The answer to the wrist's "give me your session".

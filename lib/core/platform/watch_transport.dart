@@ -116,6 +116,17 @@ abstract final class WatchTransportRequest {
     return version is String && version.isNotEmpty ? version : null;
   }
 
+  /// The held-routines stamp [frame] names, or null when it names none.
+  ///
+  /// The wrist names the `generatedAt` of the routines copy it holds as
+  /// `since`; anything unreadable — absent, empty, not a string, not a date —
+  /// is "names none", and the phone answers with everything.
+  static DateTime? sinceOf(Map<String, Object?> frame) {
+    final since = frame['since'];
+    if (since is! String || since.isEmpty) return null;
+    return DateTime.tryParse(since)?.toUtc();
+  }
+
   static Map<String, Object?> snapshotFrame() => const {'request': snapshot};
 }
 

@@ -32,6 +32,9 @@ final class WatchAppHost: ObservableObject {
     /// The end-of-workout summary, plan 66a.
     let summary: WatchWorkoutSummaryState
 
+    /// Asks the rest ping rule on its own clock, not the rest view's (plan 61).
+    let restPings: WatchRestPingScheduler
+
     /// The food quick-log's state: the synced food list, the food and portion the
     /// user has picked, and the observation a confirm makes. One for the life of
     /// the app (D-1), so the start screen's sheet and the session menu's row read
@@ -182,6 +185,7 @@ final class WatchAppHost: ObservableObject {
             platform: WatchPlatformWorkout(store: healthStore)
         )
         let sensors = WatchSensorCoordinator(recorder: recorder)
+        let restPings = WatchRestPingScheduler(state: logging, interval: { preferences.restPingSeconds }, haptics: WristHaptics())
 
         self.engine = engine
         self.paths = paths
@@ -189,6 +193,7 @@ final class WatchAppHost: ObservableObject {
         self.logging = logging
         self.rating = rating
         self.summary = summary
+        self.restPings = restPings
         self.nutrition = nutrition
         self.nutritionModel = nutritionModel
         self.workout = workout
@@ -228,7 +233,8 @@ final class WatchAppHost: ObservableObject {
             // awaited, so the handler is never blocked; the gate and the in-flight
             // guard live in `catchUp`, not here — and so does the spinner, which
             // only a reachable phone has anything to wait for (plan 55, A-4).
-            if reachable { self.beginSyncProgress() }
+            // A wrist that already holds a catalog asks only for what changed (plan 62): a phone with nothing new sends nothing, so there is no answer to wait on.
+            if reachable && self.paths.syncedAt == nil { self.beginSyncProgress() }
             Task { await self.orchestrator.catchUp(reachable: reachable) }
         }
         // The radio that cannot come up at all is its own line, not a
@@ -263,6 +269,8 @@ final class WatchAppHost: ObservableObject {
                     guard let self else { return }
                     // The summary reads the readings before the sensors stop (plan 66a D-5).
                     self.summary.note(self.engine.session)
+                    // Plan 61: every rest start, end or interval change passes here; arm re-reads the persisted rest row.
+                    self.restPings.arm()
                     await self.workout.refresh(self.engine.session)
                     await self.sensors.refresh(self.engine.session)
                 }
@@ -303,8 +311,9 @@ final class WatchAppHost: ObservableObject {
     /// wrist is running keeps itself in step with the phone without it, by its own
     /// announcements and its reachability catch-up (D-96).
     ///
-    /// The first sync asks for everything; a later one says what the wrist
-    /// already has, so the phone can answer with what changed.
+    /// The button always asks for everything (plan 62); the automatic catch-ups
+    /// on activation and on reaching the phone say what the wrist already has,
+    /// so the phone can answer with what changed.
     ///
     /// The spinner starts before the request is awaited (plan 55, D-2): the
     /// orchestrator's `sync` returns once the frames are sent, and the answer
@@ -313,7 +322,8 @@ final class WatchAppHost: ObservableObject {
         syncNoAnswer = false
         manualSyncPending = true
         beginSyncProgress()
-        await orchestrator.sync(reconnect: paths.syncedAt != nil)
+        // Plan 62: the Sync button asks for everything (no `since`), so it is the way out when the phone's "nothing changed" answer is wrong; the automatic catch-ups keep asking for what changed.
+        await orchestrator.sync(reconnect: false)
         revision += 1
     }
 
@@ -361,10 +371,13 @@ final class WatchAppHost: ObservableObject {
     /// button. Not awaited, so the handler is never blocked; the gate and the
     /// in-flight guard live in `catchUp`.
     func catchUpOnActivation() {
+        // Plan 61: a boundary crossed while the screen was dark is tapped now.
+        restPings.arm()
         let reachable = phoneReachability == .reachable
         // Nothing to wait for when the phone is out of reach, and `catchUp` does
         // nothing then either, so no spinner is started (plan 55, A-4).
-        if reachable { beginSyncProgress() }
+        // A wrist that already holds a catalog asks only for what changed (plan 62): a phone with nothing new sends nothing, so there is no answer to wait on.
+        if reachable && paths.syncedAt == nil { beginSyncProgress() }
         Task { await orchestrator.catchUp(reachable: reachable) }
     }
 
@@ -416,7 +429,6 @@ struct ContentView: View {
                 NavigationStack {
                     WatchRestView(
                         state: host.logging,
-                        restPingSeconds: { host.preferences.restPingSeconds },
                         onNext: { host.noteSurfaceChange() }
                     )
                         .toolbar {

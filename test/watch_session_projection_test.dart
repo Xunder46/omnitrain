@@ -36,6 +36,8 @@
 //         never the one it is not holding               → `S-183 ...`
 //   S-3855 the wrist's exercise-list version reaches the handler → `S-3855 ...`
 //         (plan 2026-10-11-23e2, D-3834)
+//   S-9213 the wrist's since reaches the handler → `S-9213 ...`
+//         (plan 62, fix 1)
 //
 // S-42's "an entry the wire cannot carry is omitted" is now S-59/S-60: a
 // band-assisted set is carried with its sign, and only a row with no reps or a
@@ -805,6 +807,90 @@ void main() {
         isNotEmpty,
         reason: 'S-3855 a wrist that says it holds nothing is sent the whole '
             'list',
+      );
+    });
+  });
+
+  group('S-9213 the wrist\'s since reaches the handler', () {
+    test('S-9213 a first request sends the reference frames', () async {
+      await radio.fromWrist(WatchTransportRequest.routinesFrame());
+      await _settle();
+
+      expect(
+        radio.ofType('preferences_down'),
+        hasLength(1),
+        reason: 'S-253 the sync is still answered with the settings',
+      );
+      expect(
+        radio.ofType('routines_down'),
+        hasLength(1),
+        reason: 'S-3850 the routines still travel',
+      );
+      final stamp =
+          _payload(radio.lastOfType('routines_down'))['generatedAt']! as String;
+      expect(
+        parseUtcIso(stamp).isUtc,
+        isTrue,
+        reason: 'the stamp the wrist would name back as `since`',
+      );
+    });
+
+    test('S-9213 a second request naming that stamp as since sends none of them',
+        () async {
+      await radio.fromWrist(WatchTransportRequest.routinesFrame());
+      await _settle();
+      final stamp =
+          _payload(radio.lastOfType('routines_down'))['generatedAt']! as String;
+
+      radio.sent.clear();
+      await radio.fromWrist(
+        WatchTransportRequest.routinesFrame(since: parseUtcIso(stamp)),
+      );
+      await _settle();
+
+      expect(
+        radio.ofType('preferences_down'),
+        isEmpty,
+        reason: 'S-9213 the wiring hands the frame\'s since to the handler',
+      );
+      expect(
+        radio.ofType('routines_down'),
+        isEmpty,
+        reason: 'S-9213 the wiring hands the frame\'s since to the handler',
+      );
+      expect(
+        radio.ofType('foods_down'),
+        isEmpty,
+        reason: 'S-9213 the wiring hands the frame\'s since to the handler',
+      );
+    });
+
+    test('S-9213 a since older than the stamp still sends them', () async {
+      await radio.fromWrist(WatchTransportRequest.routinesFrame());
+      await _settle();
+      final stamp =
+          _payload(radio.lastOfType('routines_down'))['generatedAt']! as String;
+      final routinesBefore = radio.ofType('routines_down').length;
+      final preferencesBefore = radio.ofType('preferences_down').length;
+
+      await radio.fromWrist(
+        WatchTransportRequest.routinesFrame(
+          since: parseUtcIso(stamp).subtract(const Duration(seconds: 3)),
+        ),
+      );
+      await _settle();
+
+      expect(
+        radio.ofType('routines_down').length,
+        routinesBefore + 1,
+        reason: 'S-9213 the wiring hands the frame\'s since to the handler, '
+            'so a stamp older than the bundle\'s is answered with the routines',
+      );
+      expect(
+        radio.ofType('preferences_down').length,
+        preferencesBefore + 1,
+        reason: 'S-9213 the wiring hands the frame\'s since to the handler, '
+            'so a stamp older than the bundle\'s is answered with the settings',
       );
     });
   });

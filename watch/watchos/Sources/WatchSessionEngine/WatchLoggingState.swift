@@ -390,6 +390,28 @@ public final class WatchLoggingState {
         return activeElapsedMs(rest, now: clock()) / 1000
     }
 
+    /// The running rest's elapsed time in milliseconds as of `now`, or nil when
+    /// none is running — the precision the ping scheduler wakes on (plan 61,
+    /// D-2).
+    public func restElapsedMilliseconds() -> Int? {
+        guard isResting, let rest = engine.timerFor(WatchTimerKind.rest) else { return nil }
+        return activeElapsedMs(rest, now: clock())
+    }
+
+    /// When the running rest started, or nil when none is running — the anchor
+    /// the dimmed rest screen's minute timeline is scheduled on (plan 61, D-2).
+    public var restStartedAt: Date? {
+        guard isResting else { return nil }
+        return engine.timerFor(WatchTimerKind.rest)?.startedAt
+    }
+
+    /// What the dimmed (always-on) rest screen shows instead of the m:ss clock:
+    /// whole minutes only, so a dimmed redraw once a minute is enough (plan 61,
+    /// D-2).
+    public static func dimmedRestClock(seconds: Int) -> String {
+        "\(max(0, seconds) / 60) min"
+    }
+
     /// What the rest screen says besides the count-up: the effort just done and
     /// what is next (plan 51b). Derived on every read from the ladder and the
     /// entries, so a set the phone logged during the rest is counted.

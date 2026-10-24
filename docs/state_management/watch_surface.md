@@ -384,8 +384,8 @@ decision rather than the wire's:
   milliseconds; RPE and the `extra-weight` metric have no wire key.
 
 `preferences_down` is its own message rather than a field on `routines_down`
-because the two answer different questions: the preferences travel on every
-`routines` request, while `routines_down` carries the routines and the
+because the two answer different questions: the preferences carry the
+wrist-facing settings, while `routines_down` carries the routines and the
 exercises they use. Its message id follows
 its content as well as its `generatedAt`: the wrist keeps the newest copy and a
 tie goes to the later-received one, so two different settings stamped in the
@@ -511,16 +511,23 @@ frame, and which persists that instant under the repository key
 **File**: `lib/state/watch/watch_sync_request_handler.dart`
 
 Answers the frames that are requests rather than protocol messages: `routines`
-is answered with `preferences_down` first and always, then with `routines_down`,
-then with the food list as `foods_down` — only when the phone holds foods (the
-schema requires at least one, so a phone with none sends no foods frame and the
-wrist keeps the list it has) — then with the exercise list as `exercises_down`
-batches — unless the request
-names the version of the list the phone would send, in which case the batches
-are omitted and only the preferences and the routines travel. The foods sit
-before that early return, so a wrist that already holds the exercise list still
-receives them, and a refused foods frame does not stop the batches (the next
-sync re-sends). The handler takes the library as a required `foodLibrary`
+is answered with the three reference frames — `preferences_down`, then
+`foods_down` (only when the phone holds foods; the schema requires at least
+one, so a phone with none sends no foods frame and the wrist keeps the list it
+has), then `routines_down` — but only when the wrist's `since` (the stamp of
+the routines copy it holds) is older than the phone's bundle stamp. The three
+frames share one stamp that changes only when their content changes, so an
+unchanged phone answers a wrist that holds the current bundle with none of the
+three; a request without a readable `since`, and a phone that relaunched (its
+stamp lives only in memory), gets all three. `routines_down` goes last and is
+withheld when the preferences or the foods frame came back undelivered, so a
+wrist that names a stamp holds the whole bundle. Then the exercise list as
+`exercises_down` batches — unless the request names the version of the list
+the phone would send, in which case the batches are omitted. The version check
+is independent of the bundle: a skipped bundle still checks the version, and a
+wrist that already holds the exercise list still receives the bundle. A
+refused foods frame withholds the routines frame too (the next sync re-sends
+all three). The handler takes the library as a required `foodLibrary`
 (`FoodLibraryState`). All of it is built
 through `WatchReferenceSync`; `snapshot` re-asserts the phone's session. It is
 separate from `WatchIncomingRouter`
@@ -528,9 +535,10 @@ because the two answer different kinds of frame, and merging them would make a
 transport detail a protocol one.
 
 **Nothing here answers a request the wrist has not made.** There is no phone-side
-schedule and no launch-time push, which is why the preferences ride every
-`routines` request: a setting changed on the phone reaches the wrist at the
-wrist's next sync. The value is `SettingsState`'s own toggle, never a re-read of
+schedule and no launch-time push: a setting changed on the phone changes the
+bundle's stamp, so it reaches the wrist at the wrist's next sync, and the
+watch's Sync button asks for everything regardless. The value is
+`SettingsState`'s own toggle, never a re-read of
 the stored preference, and the accent travels the same way: the handler reads
 the theme that state holds (`appTheme`) and sends that theme's primary as
 `accentColorHex`, so a theme changed on the phone needs no watch update to be
@@ -538,9 +546,19 @@ worn. A phone holding no routine sends a `routines_down` with both lists empty,
 and one holding no session answers a `snapshot` request with nothing: the wrist
 keeps the copy it has, and an empty answer would be a state it never asked for.
 
-Verified by `test/watch_transport_test.dart` (the `S-003` and `S-253` groups)
-and `test/watch_sync_request_handler_test.dart` (S-3850..S-3854; the foods,
-group `S-7101…S-7105 the phone sends the food list with the routines`).
+Verified by `test/watch_transport_test.dart` (the `S-003` and `S-253` groups;
+`S-9208 the since a frame names is read back, and only a parseable non-empty
+string is one`)
+and `test/watch_sync_request_handler_test.dart` (S-3850..S-3854; the foods and
+the new order, group `S-7101…S-7105 the phone sends the food list with the
+routines`). The changed-only rule is
+`test/watch_sync_changed_only_test.dart` (S-9201..S-9212: the first request,
+the skip, the stamp boundary, one changed input, the equal signature, a
+refused frame, unreadable `since`, the exercises' independence, no foods, an
+interleaving, a relaunch), the wiring hands the frame's `since` to the handler
+(`test/watch_session_projection_test.dart`, group `S-9213 the wrist's since
+reaches the handler`), and the wrist's Sync button is pinned by
+`WatchManualSyncSourceTests` (S-9220).
 
 ### `createWatchSync` — the phone's watch graph
 

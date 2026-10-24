@@ -171,16 +171,25 @@ the prune above is the only way batch rows leave.
 
 ## Where the two ends stand
 
-The phone answers a `routines` request with `preferences_down` first, then
-`routines_down` — whose `fallbackExercises` is the exercises its routines use
-and nothing more (`test/watch_reference_sync_test.dart`, group `S-3840..S-3843,
+The phone answers a `routines` request with the three reference frames —
+`preferences_down`, then `foods_down` when it holds foods, then
+`routines_down`, all stamped with one bundle stamp — but only when the wrist's
+`since` is older than that stamp: an unchanged phone answers a wrist that
+holds the current bundle with none of the three, and `routines_down` is
+withheld when the preferences or the foods frame came back undelivered
+(`test/watch_sync_changed_only_test.dart`, groups `S-9201`…`S-9212`; the
+wiring hands the frame's `since` to the handler,
+`test/watch_session_projection_test.dart`, group `S-9213 the wrist's since
+reaches the handler`). The `routines_down` frame's `fallbackExercises` is the
+exercises its routines use and nothing more
+(`test/watch_reference_sync_test.dart`, group `S-3840..S-3843,
 S-3845, S-3846 the phone sends the list in batches`, test `S-3841 the fallback
 list is the exercises the routines use`; a phone with no routine still answers,
-with both lists empty, `S-3840 no templates: a message with both lists empty`)
-— and then the whole catalog as `exercises_down` batches
+with both lists empty, `S-3840 no templates: a message with both lists empty`),
+and then the whole catalog as `exercises_down` batches
 (`S-3843 250 exercises arrive as three batches in name order`). When the
 request names the version of the list the phone would send, the batches are
-omitted and only the preferences and the routines travel
+omitted
 (`test/watch_sync_request_handler_test.dart`, group `S-3850…S-3853 the phone
 sends only the list the wrist lacks`, test `S-3850 the wrist names the current
 version: no batch travels`; a stale version sends the list again, `S-3852 a

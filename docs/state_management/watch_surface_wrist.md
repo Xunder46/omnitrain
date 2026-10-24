@@ -242,7 +242,10 @@ window is open, inside the same `onRequestSync` and `offersSync` gate as the
 button, so a second tap starts nothing new and a watch with no transport shows
 neither. The host owns one window, notes every arriving frame *before* `receive`
 — a frame the wrist refuses still counts, because the phone spoke — and begins
-the catch-up's window only when the phone is reachable, since there is nothing to
+the catch-up's window only when the phone is reachable and only when the wrist
+holds no routines catalog yet (plan 62: a wrist that holds one asks only for
+what changed, a phone with nothing new sends nothing, so there is no answer to
+wait on; the Sync button always opens the window), since there is nothing to
 wait for otherwise. Because the window ends by the clock, the host re-reads it on
 its own tick while one may be running, and that tick assigns `isSyncing` alone:
 bumping the revision the workout and sensors observe would put their refresh on
@@ -255,8 +258,9 @@ wrist↔phone contract is unchanged, and the start surface already keeps
 `…testS8508ArrivalsAreNotedBeforeTheReceive`,
 `…testS8508CatchUpBeginsOnlyWhenReachable`,
 `…testS8509TheStartSurfaceTakesIsSyncingAndSpins`,
-`…testS8511TheSpinnerSitsInsideTheSyncGate` and
-`…testS8512TheTickerEndsTheSpinnerWithoutBumpingRevision`.
+`…testS8511TheSpinnerSitsInsideTheSyncGate`,
+`…testS8512TheTickerEndsTheSpinnerWithoutBumpingRevision` and
+`…testS9221AnIncrementalCatchUpOpensNoWindow`.
 
 **A sync the phone never answers is said when the spinner stops.**
 `WatchSyncProgress.endedWithoutAnswer(at:)` is true exactly when a sync began,
@@ -525,7 +529,26 @@ that both toolbar list buttons (logging and rest screens) carry
 Both wrist clients tap at each multiple of the interval the phone sent in
 `preferences_down` (`restPingSeconds`) — one Rest Ping setting, silent, and no
 sound on the wrist (`WatchRestPingTests.testS241AnIntervalTapsAtItsMultiples
-AndNowhereElse`; Dart twin, `test/watch_rest_ping_test.dart`, S-241).
+AndNowhereElse`; Dart twin, `test/watch_rest_ping_test.dart`, S-241). Since
+plan 61 the rule (`WatchRestPing`) is asked on its own clock, not the rest
+view's redraw: the host owns one `WatchRestPingScheduler` (`restPings`) whose
+`arm()` asks the rule once — so a boundary crossed while nobody was looking is
+caught up with one tap — and then sleeps to just after the next boundary of
+the persisted rest row (`nextWait` adds a 50 ms margin so the wake never lands
+before the boundary), repeating until the rest closes or the interval is Off.
+The host arms it on every `revision` bump (every rest start/end, frame
+receipt, interval change) and when the app becomes active
+(`catchUpOnActivation`); the workout session is what keeps the app running
+with the wrist down. The rest view only shows the clock: dimmed (Always On,
+`isLuminanceReduced`) it shows whole minutes and its timeline ticks once a
+minute on the rest's own minute marks (`restStartedAt`); raised, it shows
+m:ss again. Verified by `WatchRestPingSchedulerTests` (S-9101..S-9108: the
+wait table, `step()` at and around a boundary, a gap taps once, Off and a
+mid-rest interval, the arm loop, disarm and re-arm, no rest, the dimmed clock)
+and the source guards `WatchRestPingWiringSourceTests` (S-9109: the view shows
+the dimmed clock and asks no ping; the host owns the scheduler and arms it on
+every rest change). The Dart twin `lib/watch` has no scheduler and is
+unchanged.
 
 **Food is reachable with or without a workout, and the phone's rest arrives.**
 The watch app builds one `WatchNutritionState` for its life — `WatchAppHost`'s

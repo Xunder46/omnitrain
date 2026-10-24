@@ -10,6 +10,7 @@
 //   S-102 the request frames match the contract → `S-102 ...`
 //   S-3856 the routines request names the exercise list the wrist holds
 //         → `S-3856 ...` (plan 23e2, D-3833)
+//   S-9208 the since a frame names is read back → `S-9208 ...` (plan 62, D-2)
 //   Phase 2 item 6: phone fixtures carry no null → `Phase 2 item 6: ...`
 //   S-253 every sync is answered with preferences → `S-253 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
@@ -555,8 +556,8 @@ void main() {
       await _settle();
 
       expect(
-        [for (final frame in link.phone.sent) frame['type']].take(2),
-        ['preferences_down', 'routines_down'],
+        link.phone.sent.first['type'],
+        'preferences_down',
         reason: 'S-253 every sync is answered with preferences first',
       );
       final message = link.phone.sent.firstWhere(
@@ -585,10 +586,11 @@ void main() {
       final types = [for (final frame in link.phone.sent) frame['type']];
       expect(
         types.take(3),
-        ['preferences_down', 'routines_down', 'foods_down'],
+        ['preferences_down', 'foods_down', 'routines_down'],
         reason: 'S-253 the setting always travels, and a phone holding no '
             'routine still says so rather than letting the wrist keep stale '
-            'ones (D-3830); the food list follows the routines (49a, D-2)',
+            'ones (D-3830); the foods follow the preferences and the routines '
+            'close the bundle (49a, D-2; plan 62 D-4)',
       );
       expect(
         types.skip(3),
@@ -664,11 +666,17 @@ void main() {
       await _settle();
 
       expect(
-        [for (final frame in link.phone.sent) frame['type']].take(2),
-        ['preferences_down', 'routines_down'],
+        link.phone.sent.first['type'],
+        'preferences_down',
         reason: 'S-253 the setting always travels first, and the routines '
             'follow it even with no routines to send (the exercise batches '
             'follow both)',
+      );
+      expect(
+        [for (final frame in link.phone.sent) frame['type']],
+        contains('routines_down'),
+        reason: 'S-253 the routines travel with the preferences even with no '
+            'routines to send',
       );
       expect(
         _asObject(link.phone.sent.first['payload']),
@@ -701,9 +709,14 @@ void main() {
       await _settle();
 
       expect(
-        [for (final frame in link.phone.sent) frame['type']].take(2),
-        ['preferences_down', 'routines_down'],
+        link.phone.sent.first['type'],
+        'preferences_down',
         reason: 'S-253 preferences first, then the routines',
+      );
+      expect(
+        [for (final frame in link.phone.sent) frame['type']],
+        contains('routines_down'),
+        reason: 'S-253 the routines travel with the preferences',
       );
       expect(
         _asObject(link.phone.sent.first['payload']),
@@ -1373,6 +1386,63 @@ void main() {
         isNull,
         reason: 'S-3856 a wrist that names a non-string is treated as holding '
             'nothing, so it is sent the whole list rather than skipped',
+      );
+    });
+
+    test('S-9208 the since a frame names is read back, and only a parseable '
+        'non-empty string is one', () {
+      expect(
+        WatchTransportRequest.sinceOf(
+          WatchTransportRequest.routinesFrame(
+            since: DateTime.utc(2026, 10, 23, 12, 0, 0, 123),
+          ),
+        ),
+        DateTime.utc(2026, 10, 23, 12, 0, 0, 123),
+        reason: 'S-9208 a stamp with milliseconds parses back to the instant',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(
+          const {'request': 'routines', 'since': '2026-10-23T12:00:00.123456Z'},
+        ),
+        DateTime.utc(2026, 10, 23, 12, 0, 0, 123, 456),
+        reason: 'S-9208 a stamp with microseconds parses back whole',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(WatchTransportRequest.routinesFrame()),
+        isNull,
+        reason:
+            'S-9208 a first sync names no since, so the phone sends '
+            'everything',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(const {'request': 'routines', 'since': ''}),
+        isNull,
+        reason: 'S-9208 an empty string is no stamp',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(const {
+          'request': 'routines',
+          'since': 42,
+        }),
+        isNull,
+        reason: 'S-9208 a non-string is no stamp',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(const {
+          'request': 'routines',
+          'since': null,
+        }),
+        isNull,
+        reason: 'S-9208 an explicit null is no stamp',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(
+          const {'request': 'routines', 'since': 'not a date'},
+        ),
+        isNull,
+        reason:
+            'S-9208 an unparseable string is no stamp, so the phone sends '
+            'everything',
       );
     });
   });

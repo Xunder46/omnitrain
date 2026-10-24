@@ -313,6 +313,7 @@ Future<WatchSyncGraph?> createWatchSync({
       await requests.handle(
         request,
         exercisesVersion: WatchTransportRequest.exercisesVersionOf(frame),
+        since: WatchTransportRequest.sinceOf(frame),
       );
     } else {
       answeredReset = (await router.receive(frame)).answeredReset;

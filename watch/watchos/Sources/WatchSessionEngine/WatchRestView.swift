@@ -15,7 +15,10 @@
 //  a screen that was off comes back showing the truth. One control, Next: it
 //  ends the rest and returns to logging (D-161). No End, no picker, no dial,
 //  no pause. The one cue a rest has is the ping: at each multiple of the
-//  interval the phone last sent, the wrist taps (D-250).
+//  interval the phone last sent, the wrist taps (D-250). The host's
+//  `WatchRestPingScheduler` asks for that ping on its own clock, so a screen
+//  that is off or dimmed pings on time; this view only shows the clock, and
+//  shows whole minutes while the display is dimmed (plan 61).
 //
 
 #if os(watchOS)
@@ -25,39 +28,31 @@ import SwiftUI
 public struct WatchRestView: View {
     private let state: WatchLoggingState
 
-    /// The phone's interval, read on each tick rather than captured at
-    /// construction: a sync landing mid-rest is heard on the next tick, and the
-    /// newest copy is what the wrist honours (D-250).
-    private let restPingSeconds: () -> Int
+    /// True while the display is dimmed (Always On, wrist down): the clock then
+    /// shows whole minutes and the timeline ticks once a minute (plan 61, D-3).
+    @Environment(\.isLuminanceReduced) private var dimmed
+
     private let haptics: WatchHaptics
     private let onNext: () -> Void
-
-    /// The ping rule's state — which boundary this rest row has already pinged
-    /// at. A class, so the tick mutates it in place instead of writing state
-    /// during the view update.
-    @State private var ping = WatchRestPing()
 
     /// Wrist-scale inset, as the other wrist surfaces use.
     private static let surfaceInset = 4.0
 
     public init(
         state: WatchLoggingState,
-        restPingSeconds: @escaping () -> Int,
         haptics: WatchHaptics = WristHaptics(),
         onNext: @escaping () -> Void
     ) {
         self.state = state
-        self.restPingSeconds = restPingSeconds
         self.haptics = haptics
         self.onNext = onNext
     }
 
     public var body: some View {
         // The timeline is the ticker: the elapsed is derived from the row, and
-        // re-reading it once a second is what makes the count-up move and what
-        // the ping is asked on.
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            let _ = pingIfOwed()
+        // re-reading it makes the count-up move; dimmed, once a minute on the
+        // rest's own minute marks.
+        TimelineView(.periodic(from: state.restStartedAt ?? Date(), by: dimmed ? 60 : 1)) { _ in
             let labels = state.restLabels
             VStack(spacing: Self.surfaceInset) {
                 Text(WatchRestSurfaceCopy.restCaption)
@@ -87,22 +82,13 @@ public struct WatchRestView: View {
         }
     }
 
-    /// Asks the rule whether this tick owes a ping, and plays it if so. A rest
-    /// that is not open has no row and no elapsed to consult, so a tick after
-    /// the rest ended pings nothing (S-224); Off never pings (S-242).
-    private func pingIfOwed() {
-        guard ping.isOwed(
-            restId: state.engine.timerFor(WatchTimerKind.rest)?.recordId,
-            elapsed: state.restElapsedSeconds(),
-            interval: restPingSeconds()
-        ) else { return }
-        haptics.playRestPing()
-    }
-
     /// The rest's elapsed time as "m:ss", read from the persisted row at this
-    /// instant rather than counted by the view.
+    /// instant rather than counted by the view; dimmed, whole minutes.
     private var elapsed: String {
-        WatchLoggingState.clock(Double(state.restElapsedSeconds() ?? 0))
+        let seconds = state.restElapsedSeconds() ?? 0
+        return dimmed
+            ? WatchLoggingState.dimmedRestClock(seconds: seconds)
+            : WatchLoggingState.clock(Double(seconds))
     }
 
     /// The surface's one control: ending the rest and returning to logging.

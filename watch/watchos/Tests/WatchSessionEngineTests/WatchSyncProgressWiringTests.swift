@@ -171,7 +171,7 @@ final class WatchSyncProgressWiringTests: XCTestCase {
             "S-8508 the host maps the radio's reachability answers"
         )
         XCTAssertTrue(
-            reachability.contains("if reachable { self.beginSyncProgress() }"),
+            reachability.contains("if reachable && self.paths.syncedAt == nil { self.beginSyncProgress() }"),
             "S-8508 the reachability edge opens the window only on a reachable phone (A-4)"
         )
         XCTAssertFalse(
@@ -197,7 +197,7 @@ final class WatchSyncProgressWiringTests: XCTestCase {
             "S-8508 activation reads the phone's reachability to decide"
         )
         XCTAssertTrue(
-            activation.contains("if reachable { beginSyncProgress() }"),
+            activation.contains("if reachable && paths.syncedAt == nil { beginSyncProgress() }"),
             "S-8508 activation opens the window only on a reachable phone (A-4)"
         )
         XCTAssertFalse(
@@ -216,6 +216,57 @@ final class WatchSyncProgressWiringTests: XCTestCase {
             activationBegin,
             activationCatchUp,
             "S-8508 the window opens before the catch-up it is waiting on"
+        )
+    }
+
+    // MARK: - S-9221: an incremental catch-up opens no window
+
+    /// A wrist that already holds a routines catalog asks only for what changed
+    /// (plan 62), so a phone with nothing new sends nothing: its automatic
+    /// catch-ups must open no sync window, or a raise with nothing changed would
+    /// spin for 20 s and then say "No answer". The Sync button still asks for
+    /// everything and always opens the window.
+    func testS9221AnIncrementalCatchUpOpensNoWindow() throws {
+        let view = try appSource("ContentView.swift")
+
+        let reachability = try XCTUnwrap(
+            braceBody(ofLineContaining: "bridge.onReachabilityChange", in: view),
+            "S-9221 the host maps the radio's reachability answers"
+        )
+        XCTAssertTrue(
+            reachability.contains("if reachable && self.paths.syncedAt == nil { self.beginSyncProgress() }"),
+            "S-9221 the reachability edge opens the window only on a first sync; otherwise a raise "
+                + "with nothing changed would spin for 20 s and then say No answer"
+        )
+
+        let activation = try XCTUnwrap(
+            braceBody(ofLineContaining: "func catchUpOnActivation()", in: view),
+            "S-9221 the host catches the wrist up on activation too"
+        )
+        XCTAssertTrue(
+            activation.contains("if reachable && paths.syncedAt == nil { beginSyncProgress() }"),
+            "S-9221 activation opens the window only on a first sync; otherwise a raise with "
+                + "nothing changed would spin for 20 s and then say No answer"
+        )
+        XCTAssertTrue(
+            activation.contains("await orchestrator.catchUp(reachable: reachable)"),
+            "S-9221 the incremental request is still sent on activation, or the wrist would stop "
+                + "converging without the Sync button"
+        )
+
+        let requestSync = try XCTUnwrap(
+            braceBody(ofLineContaining: "func requestSync() async", in: view),
+            "S-9221 the host carries the Sync button's action"
+        )
+        XCTAssertTrue(
+            hasStatement("beginSyncProgress()", in: requestSync),
+            "S-9221 the Sync button always opens the window: it asks for everything, so there is "
+                + "always an answer to wait for"
+        )
+        XCTAssertFalse(
+            requestSync.contains("syncedAt"),
+            "S-9221 the Sync button must not gate its window on what the wrist holds, or a wrong "
+                + "\"nothing changed\" answer would leave it spinning with no way out"
         )
     }
 

@@ -14,7 +14,7 @@
 //
 // Plan: `docs/plans/2026-10-21-49a-phone-sends-foods-plan/` (D-1..D-3).
 // Scenario mapping:
-//   S-7101 preferences, routines, foods, then the batches → `S-7101 ...`
+//   S-7101 preferences, foods, routines, then the batches → `S-7101 ...`
 //   S-7102 the food list's order and values, and it validates → `S-7102 ...`
 //   S-7103 the version early return does not skip the foods → `S-7103 ...`
 //   S-7104 a phone with no foods sends no foods frame → `S-7104 ...`
@@ -451,7 +451,7 @@ void main() {
   });
 
   group('S-7101…S-7105 the phone sends the food list with the routines', () {
-    test('S-7101 the preferences, the routines, the foods, then the exercise '
+    test('S-7101 the preferences, the foods, the routines, then the exercise '
         'batches travel in that order', () async {
       final answer = handlerFor(await libraryWithFoods());
 
@@ -459,9 +459,9 @@ void main() {
 
       expect(
         transport.types.take(3),
-        ['preferences_down', 'routines_down', 'foods_down'],
+        ['preferences_down', 'foods_down', 'routines_down'],
         reason:
-            'S-7101 the preferences lead, then the routines, then the foods; '
+            'S-7101 the preferences lead, then the foods, then the routines; '
             'the exercise list follows them',
       );
       expect(
@@ -558,10 +558,10 @@ void main() {
 
       expect(
         transport.types,
-        ['preferences_down', 'routines_down', 'foods_down'],
+        ['preferences_down', 'foods_down', 'routines_down'],
         reason:
-            'S-7103 the version early return sits after the foods, so the '
-            'foods still travel and no exercise batch does',
+            'S-7103 the version early return sits after the foods and the '
+            'routines, so the foods still travel and no exercise batch does',
       );
     });
 
@@ -597,6 +597,15 @@ void main() {
         transport.ofType('foods_down'),
         hasLength(1),
         reason: 'S-7105 the foods were attempted once',
+      );
+      expect(
+        transport.ofType('routines_down'),
+        isEmpty,
+        reason:
+            'S-7105 the routines frame is the bundle\'s commit marker: a '
+            'foods frame the radio refused means it is not sent, so the '
+            'wrist\'s `since` stays old and the next request re-sends all '
+            'three',
       );
       expect(
         transport.batchIndices,
