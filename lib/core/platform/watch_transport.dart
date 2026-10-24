@@ -11,12 +11,15 @@
 ///    is the seam the platform plugin plugs into — so a hand-rolled
 ///    `MethodChannel` + `WCSession` implementation, or a Wear data-layer one,
 ///    replaces the channel without touching a caller.
-/// 2. **A send answers, with the protocol doing the recovering.** A frame the
-///    sender owes for good — a receipt — is queued for the OS when the peer
-///    cannot be reached, or when the radio refuses it; every other frame is
-///    live state, answers [WatchDelivery.undelivered], and is re-offered at its
-///    next trigger. What the peer still owes is re-sent from storage on the
-///    next sync (PROTOCOL.md, "Idempotency and reconciliation").
+/// 2. **A send answers, with the protocol doing the recovering.** A receipt and
+///    the four workout messages (`session_snapshot`, `session_lifecycle`,
+///    `structure_change`, `exercise_push`) are queued for the OS when the peer
+///    cannot be reached, or when the radio refuses them; only the newest copy
+///    per workout waits, and a queued copy is a carrier, not a delivery — the
+///    caller's bookkeeping moves only on [WatchDelivery.delivered]. Every
+///    other frame is live-only: it answers [WatchDelivery.undelivered] and is
+///    re-offered at its next trigger. What the peer still owes is re-sent from
+///    storage on the next sync (PROTOCOL.md, "Idempotency and reconciliation").
 library;
 
 import 'dart:async';
@@ -27,6 +30,7 @@ import '../../state/watch/live_session_mirror_state.dart';
 import 'watch_delivery.dart';
 import 'watch_link_info.dart';
 import 'watch_link_source.dart';
+import 'watch_queue_control.dart';
 
 /// What a transport needs from the platform's watch API — the package's
 /// `WCSession` wrapper on iOS, the Wear data layer on Android, a fake in tests.
@@ -185,16 +189,44 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
   /// handled, and the next frame's turn chains after it.
   Future<void> _lane = Future<void>.value();
 
+  /// Queue work (withdraw, then queue) runs one call at a time, in call order, so two
+  /// sends never read the OS list between each other's read and cancel.
+  Future<void> _queueLane = Future<void>.value();
+
+  Future<T> _inQueueLane<T>(Future<T> Function() work) {
+    final turn = _queueLane.then((_) => work());
+    _queueLane = turn.then<void>((_) {}, onError: (Object _) {});
+    return turn;
+  }
+
   /// How long a handler may hold its turn before it is reported and given up
   /// on, so later frames are not stuck behind a hung one.
   final Duration _handlerTimeout;
   bool _phoneReachable = false;
 
-  /// Whether the frame is one the sender owes for good and the OS should
-  /// carry later when the radio cannot: a receipt, and nothing else. Every
-  /// other frame is live state, superseded by the next one.
+  /// The frames the sender may hand the OS to carry when the peer cannot be
+  /// reached (plan 67a D-2): a receipt, owed for good, and the four workout
+  /// messages the phone sends. A timer, a request or a static frame is never
+  /// queued (D-4): it would be wrong on arrival, and is re-sent fresh.
+  static const Set<String> _queueable = {
+    'receipt',
+    'session_snapshot',
+    'session_lifecycle',
+    'structure_change',
+    'exercise_push',
+  };
+
+  /// The queued types a newer copy replaces (D-3). A receipt and an
+  /// `exercise_push` are never withdrawn.
+  static const Set<String> _replaceable = {
+    'session_snapshot',
+    'session_lifecycle',
+    'structure_change',
+  };
+
+  /// Whether the OS may carry the frame later when the radio cannot (D-2).
   static bool isDurable(Map<String, Object?> frame) =>
-      frame['type'] == 'receipt';
+      _queueable.contains(frame['type']);
 
   /// Every change of the link: reachability, as the platform reports it, with
   /// the pairing and the app read alongside it.
@@ -273,9 +305,12 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
   /// hint, which is the UI's (D-190). An unreachable counterpart is
   /// [WatchDelivery.undelivered] without calling the channel and without a
   /// report — the caller re-offers the frame at its next trigger (D-201) —
-  /// unless the frame is [isDurable], which goes to the OS queue instead and
-  /// answers [WatchDelivery.queued]. A radio that refuses a durable frame
-  /// falls back to the same queue; a refused live frame is undelivered.
+  /// unless the frame is [isDurable]: a receipt or one of the four workout
+  /// messages, which is handed to the OS queue and answers
+  /// [WatchDelivery.queued]. A radio that refuses a durable frame falls back
+  /// to the same queue; a refused live frame is undelivered. A queued copy is
+  /// a carrier, not a delivery: only the newest copy per workout waits, and
+  /// the caller's bookkeeping moves only on [WatchDelivery.delivered].
   @override
   Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     final bool reachable;
@@ -293,7 +328,6 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
     try {
       await _channel.send(envelope);
       _phoneReachable = true;
-      return WatchDelivery.delivered;
     } catch (error, stack) {
       _report(error, stack);
       _phoneReachable = false;
@@ -301,16 +335,62 @@ class WatchConnectivityTransport implements WatchTransport, WatchLinkSource {
           ? _queue(envelope)
           : WatchDelivery.undelivered;
     }
+    await _inQueueLane(() => _withdrawSuperseded(envelope));
+    return WatchDelivery.delivered;
   }
 
-  /// Hands a frame the sender owes for good to the OS queue.
-  Future<WatchDelivery> _queue(Map<String, Object?> envelope) async {
+  /// Hands a frame the OS may carry to the OS queue, after withdrawing the
+  /// copies it replaces (D-3). A failing withdraw is reported and the queue
+  /// call still runs (D-5).
+  Future<WatchDelivery> _queue(Map<String, Object?> envelope) =>
+      _inQueueLane(() async {
+        await _withdrawSuperseded(envelope);
+        try {
+          await _channel.queue(envelope);
+          return WatchDelivery.queued;
+        } catch (error, stack) {
+          _report(error, stack);
+          return WatchDelivery.undelivered;
+        }
+      });
+
+  /// Cancels the outstanding transfers [envelope] replaces (D-3): same type
+  /// and `sessionId` and, for a `structure_change`, the same payload
+  /// `changeId`. A transfer with the frame's own `messageId` is never
+  /// cancelled. A channel that cannot list and cancel withdraws nothing.
+  Future<void> _withdrawSuperseded(Map<String, Object?> envelope) async {
+    // The declared type is [WatchMessageChannel], which is not a supertype of
+    // [WatchQueueControl], so the capability check goes through an `Object`
+    // local to let the type promote.
+    final Object channel = _channel;
+    final control = channel is WatchQueueControl ? channel : null;
+    if (control == null) return;
+    final type = envelope['type'];
+    final sessionId = envelope['sessionId'];
+    if (type is! String || !_replaceable.contains(type)) return;
+    if (sessionId is! String) return;
+    String? changeId;
+    if (type == 'structure_change') {
+      final payload = envelope['payload'];
+      final raw = payload is Map ? payload['changeId'] : null;
+      if (raw is! String) return;
+      changeId = raw;
+    }
+    final ownId = envelope['messageId'];
     try {
-      await _channel.queue(envelope);
-      return WatchDelivery.queued;
+      final held = await control.outstandingTransfers();
+      final replaced = <String>[
+        for (final transfer in held)
+          if (transfer.type == type &&
+              transfer.sessionId == sessionId &&
+              (changeId == null || transfer.changeId == changeId) &&
+              transfer.messageId != ownId)
+            transfer.messageId,
+      ];
+      if (replaced.isEmpty) return;
+      await control.cancelTransfers(replaced);
     } catch (error, stack) {
       _report(error, stack);
-      return WatchDelivery.undelivered;
     }
   }
 

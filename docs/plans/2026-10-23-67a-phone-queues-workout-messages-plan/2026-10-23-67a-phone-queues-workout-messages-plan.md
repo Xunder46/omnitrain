@@ -271,7 +271,7 @@ Phase lists above. Dependents that only read a touched surface: the auto-push, t
 ## Progress
 
 - Phase 1: built 2026-10-23, uncommitted (two crew runs, evidence in `…evidence.md`); the Phase 1 Done Criteria are all observed green. Owner device check: none for this phase.
-- Phase 2: not started (gated by G-0).
+- Phase 2: built 2026-10-24, uncommitted; evidence in the evidence file.
 
 ## Assumption Log
 

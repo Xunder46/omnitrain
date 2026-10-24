@@ -468,29 +468,51 @@ when no reply arrives within the call's `timeout`; `transferUserInfo`, which
 answers `queued` or `already_queued` by the frame's `messageId`; and one
 broadcast `events` stream of the sealed `WatchLinkEvent` kinds
 (`WatchLinkMessage`, `WatchLinkUserInfo`, `WatchLinkReachability`,
-`WatchLinkStateChanged`). The native half (`OmniTrainWatchLinkPlugin.swift`)
+`WatchLinkStateChanged`); `outstandingTransfers()`, which lists the transfers
+the OS still holds as `WatchLinkTransfer` values (`messageId`, `type`,
+`sessionId?`, `changeId?`); and `cancelTransfers(messageIds)`, which cancels
+them and answers how many. The native half (`OmniTrainWatchLinkPlugin.swift`)
 is one `WCSession` delegate that buffers events until Dart listens (bounded by
 its `bufferCap`, oldest dropped past it), answers every incoming message so
 the sender's send completes, and emits state and reachability; the buffer and
 the reply are verified on the paired simulators (plan 47d), not by a unit
-test. Verified by `test/watch_link_package_test.dart` (groups `S-6801` to
-`S-6805`).
+test; the two queue methods' native part is compiled by the iOS build but
+verified against real queued transfers only by the owner device checks of
+plan 67a. Verified by `test/watch_link_package_test.dart` (groups `S-6801` to
+`S-6805`, `S-9701`, `S-9702`).
 
 The app's seam is `WatchConnectivityChannel(link:)`, the implementer of the
 seven-member `WatchMessageChannel` (`isPaired`, `isReachable`, `messages` —
 message and userInfo frames merged into one stream — `send`, `queue`,
 `reachability`, `info`); `WatchLinkInfo` is the core value type, so no plugin
-type escapes the channel. Verified by
+type escapes the channel. The channel also implements the core
+`WatchQueueControl`, so `WatchMessageChannel` keeps its seven members and no
+plugin type escapes. Verified by
 `test/watch_connectivity_channel_test.dart` (group `S-6816 the channel over
-the plugin`).
+the plugin`, `S-9703`).
 
-**A frame owed for good can be queued, not only delivered.** `WatchDelivery`
-gained `queued` — handed to the OS queue; it arrives when the devices meet —
-and `WatchConnectivityTransport.isDurable` is true exactly for `receipt`: a
-durable frame the radio cannot reach or refuses is queued instead of
-reported, while every other frame stays live-only and is re-offered at its
-next trigger. Verified by `test/watch_transport_test.dart` (group `S-6810-6815
-the transport over a link that queues`).
+**A frame the OS may carry can be queued, not only delivered.** `WatchDelivery`
+gained `queued` — handed to the OS queue (`transferUserInfo`); it arrives when
+the devices meet — and `WatchConnectivityTransport.isDurable` is true for
+`receipt` and the four workout messages `session_snapshot`, `session_lifecycle`,
+`structure_change` and `exercise_push`: a durable frame the radio cannot reach
+or refuses is queued instead of reported, while every other frame stays
+live-only and is re-offered at its next trigger. Before it queues — and after
+it delivers one live — the transport cancels the outstanding transfers the new
+frame replaces: same type and `sessionId` for a snapshot or a lifecycle, same
+`sessionId` and payload `changeId` for a `structure_change`; a `receipt` and an
+`exercise_push` are never withdrawn, and a frame's own `messageId` is never
+cancelled. The cancelling goes through `WatchQueueControl`
+(`lib/core/platform/watch_queue_control.dart`: `outstandingTransfers()`,
+`cancelTransfers(ids)`), which `WatchConnectivityChannel` implements; a channel
+without the capability withdraws nothing, and the queue work (withdraw, then
+queue) runs one call at a time. `timer_state`, requests and the static `*_down`
+frames are never queued. A queued copy is a carrier, not a delivery: callers
+advance bookkeeping only on `delivered`. Verified by
+`test/watch_transport_test.dart` (S-9710..S-9719, S-9724),
+`test/watch_session_queue_test.dart` (S-9720..S-9723),
+`test/watch_link_package_test.dart` (S-9701, S-9702) and
+`test/watch_connectivity_channel_test.dart` (S-9703).
 
 **The listener order is load-bearing.** `onIncoming` attaches the message and
 the reachability listener together, because listening is what makes the
