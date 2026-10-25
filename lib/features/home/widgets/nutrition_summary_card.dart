@@ -230,8 +230,9 @@ class NutritionSummaryCard extends StatelessWidget {
 }
 
 /// Headline row (S-100, S-104, S-105): small dining icon, the
-/// `{consumed} / {target} Cal` text (the brightest, largest
-/// text on the card), spacer, chevron-right navigation cue.
+/// `Nutrition` label, the `{consumed} / {target} Cal` text (the
+/// brightest, largest text on the card), spacer, chevron-right
+/// navigation cue.
 ///
 /// Color rules:
 ///   - Happy / empty: `themeColors.textDominant` (the only
@@ -268,17 +269,33 @@ class _Headline extends StatelessWidget {
       children: [
         Icon(Icons.local_dining_outlined, size: 18, color: headlineColor),
         const SizedBox(width: 8),
-        Expanded(
+        Flexible(
           child: Text(
-            _formatHeadline(consumedCalories, targetCalories),
-            key: const Key('nutrition_card_headline_text'),
+            'Nutrition',
+            key: const Key('nutrition_card_title'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: headlineColor,
-              fontWeight: FontWeight.w800,
-              fontFeatures: const [FontFeature.tabularFigures()],
-              letterSpacing: 0.4,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: themeColors.textSecondary),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              _formatHeadline(consumedCalories, targetCalories),
+              key: const Key('nutrition_card_headline_text'),
+              maxLines: 1,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: headlineColor,
+                fontWeight: FontWeight.w800,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                letterSpacing: 0.4,
+              ),
             ),
           ),
         ),

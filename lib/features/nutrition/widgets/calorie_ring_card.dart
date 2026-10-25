@@ -254,23 +254,27 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                   ),
                 ),
               ),
-              // Bottom row — sodium chip on the left (D-7 / S-043) and
-              // the water tracker on the right. The two are siblings
-              // in a single spaceBetween row so they horizontally
-              // mirror each other — sodium on the left, water on the
-              // right. The water tracker reads from the same
-              // `nutritionState` via the existing `ListenableBuilder`
-              // so it rebuilds when the day's volume changes.
+              // Bottom row — sodium chip on the left (D-7 / S-043,
+              // hidden on an empty day) and the water tracker on the
+              // right. The two are siblings in a single spaceBetween
+              // row so they horizontally mirror each other — sodium
+              // on the left, water on the right. The water tracker
+              // reads from the same `nutritionState` via the existing
+              // `ListenableBuilder` so it rebuilds when the day's
+              // volume changes.
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _SodiumTotalChip(
-                      sodiumMg: widget.nutritionState.todayConsumedSodium,
-                      themeColors: themeColors,
-                    ),
+                    if (widget.nutritionState.todayConsumedSodium > 0)
+                      _SodiumTotalChip(
+                        sodiumMg: widget.nutritionState.todayConsumedSodium,
+                        themeColors: themeColors,
+                      )
+                    else
+                      const SizedBox.shrink(),
                     WaterTrackerControl(
                       glasses: widget.nutritionState.waterTodayGlasses,
                       onIncrement: () =>
@@ -294,8 +298,9 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
 }
 
 /// Small chip-style label that renders today's consumed sodium as
-/// `"Na 148 mg"`. Lives in the calorie-ring card's top-right corner
-/// to the left of the edit-targets icon (D-7 / S-043).
+/// `"Na 148 mg"`. Sits at the bottom-left of the calorie-ring card,
+/// opposite the water tracker (D-7 / S-043); hidden on days with
+/// nothing logged.
 ///
 /// Uses comma-grouped integers for the mg value so large numbers
 /// (e.g. 1,250 mg) read at a glance. The label is muted-text in

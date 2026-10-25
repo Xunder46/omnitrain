@@ -386,7 +386,7 @@ void main() {
   // S-043 — Sodium daily-total chip on the calorie-ring card
   // ═══════════════════════════════════════════════════════════════════════
   group('CalorieRingCard — sodium daily-total chip (D-7 / S-043)', () {
-    testWidgets('renders "Na 0 mg" when nothing is logged', (tester) async {
+    testWidgets('hides the sodium chip when nothing is logged', (tester) async {
       final repo = await _freshRepo();
       final nutrition = NutritionState(repo);
       await nutrition.loadConsumedToday();
@@ -401,8 +401,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('nutrition_sodium_total')), findsOneWidget);
-      expect(find.text('Na 0 mg'), findsOneWidget);
+      expect(find.byKey(const Key('nutrition_sodium_total')), findsNothing);
+      expect(find.text('Na 0 mg'), findsNothing);
+      expect(find.byKey(const Key('water_tracker_label')), findsOneWidget);
     });
 
     testWidgets('renders scaled sum when a sodium-bearing food is logged '
@@ -1019,17 +1020,21 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // New empty-state message: tells user Foods I Eat list is empty
-        // and points to the pencil control
+        // Empty-state message and hint (77c D-2)
         expect(
-          find.textContaining('Foods I Eat list is empty'),
+          find.textContaining('Pick the foods you eat'),
           findsOneWidget,
           reason: 'Should show empty state with default groups present',
         );
         expect(
-          find.textContaining('pencil'),
+          find.textContaining('Choose them from the library'),
           findsOneWidget,
-          reason: 'Empty state should point to pencil control',
+          reason: 'Empty state should show the hint line',
+        );
+        expect(
+          find.byKey(const Key('foods_i_eat_choose_button')),
+          findsOneWidget,
+          reason: 'Empty state should offer the Choose foods button',
         );
         // No food-row text is rendered
         expect(find.text('Uncategorized'), findsNothing);
@@ -1078,7 +1083,7 @@ void main() {
 
       // Empty state should still appear even with zero groups
       expect(
-        find.textContaining('Foods I Eat list is empty'),
+        find.textContaining('Pick the foods you eat'),
         findsOneWidget,
         reason: 'Empty state should appear with zero groups',
       );
@@ -1135,7 +1140,7 @@ void main() {
 
         // Empty state should NOT appear when foods is populated
         expect(
-          find.textContaining('Foods I Eat list is empty'),
+          find.textContaining('Pick the foods you eat'),
           findsNothing,
           reason: 'Empty state should disappear when food exists',
         );
@@ -1213,7 +1218,7 @@ void main() {
 
       // Empty state should reappear
       expect(
-        find.textContaining('Foods I Eat list is empty'),
+        find.textContaining('Pick the foods you eat'),
         findsOneWidget,
         reason: 'Empty state should reappear when last food is removed',
       );
@@ -1265,7 +1270,7 @@ void main() {
 
       // Empty state should appear with many groups and empty foods
       expect(
-        find.textContaining('Foods I Eat list is empty'),
+        find.textContaining('Pick the foods you eat'),
         findsOneWidget,
         reason: 'Empty state should appear with many groups but zero foods',
       );
@@ -1328,14 +1333,14 @@ void main() {
 
       expect(find.byType(OmniEmptyState), findsOneWidget);
       expect(
-        find.widgetWithText(
-          OmniEmptyState,
-          'Your Foods I Eat list is empty.',
-        ),
+        find.widgetWithText(OmniEmptyState, 'Pick the foods you eat'),
         findsOneWidget,
       );
       expect(
-        find.widgetWithText(OmniEmptyState, 'Tap the pencil to add foods.'),
+        find.widgetWithText(
+          OmniEmptyState,
+          'Choose them from the library, then tick them off each day.',
+        ),
         findsOneWidget,
       );
     });

@@ -76,9 +76,24 @@ The primer is a first-run overlay. Its help affordance reopens the primer
 visit — reopening is inspection, not a reset.
 
 An empty Foods I Eat list is the shared empty state (`OmniEmptyState`, title
-`Your Foods I Eat list is empty.`, hint `Tap the pencil to add foods.`).
-Verified by `test/nutrition_test.dart` (group `FoodLibraryBrowse – empty`:
+`Pick the foods you eat`, hint `Choose them from the library, then tick them off
+each day.`) with a filled **Choose foods** button (key
+`foods_i_eat_choose_button`) that opens the manage screen on the Library, which
+is grouped by category. The header pencil stays. Verified by
+`test/first_run_path_test.dart` (`S-12911`, `S-12912`) and
+`test/nutrition_test.dart` (group `FoodLibraryBrowse – empty`:
 `empty Foods I Eat list renders the shared OmniEmptyState (S-2802)`).
+
+The calorie card shows the sodium chip (`Na <n> mg`) only once something with
+sodium is logged; on an empty day only the water control shows. Verified by
+`test/first_run_path_test.dart` (`S-12913`) and `test/nutrition_test.dart`
+(`hides the sodium chip when nothing is logged`).
+
+The home screen's nutrition card carries the label **Nutrition** between the
+icon and the figure (key `nutrition_card_title`), so it says what it is; the
+figure scales down on narrow screens and large text instead of being cut off.
+Verified by `test/first_run_path_test.dart` (`S-12910`) and
+`test/home_nutrition_summary_card_test.dart`.
 
 Verified by `test/nutrition_test.dart`, `test/nutrition_primer_test.dart`,
 `test/home_nutrition_summary_card_test.dart`.

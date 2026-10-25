@@ -270,6 +270,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                     child: _FoodLibraryBrowseSection(
                       foodLibraryState: widget.foodLibraryState,
                       nutritionState: widget.nutritionState,
+                      onChooseFoods: _openManageLibrary,
                     ),
                   ),
                 ],
@@ -290,10 +291,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
 class _FoodLibraryBrowseSection extends StatelessWidget {
   final FoodLibraryState foodLibraryState;
   final NutritionState nutritionState;
+  final VoidCallback onChooseFoods;
 
   const _FoodLibraryBrowseSection({
     required this.foodLibraryState,
     required this.nutritionState,
+    required this.onChooseFoods,
   });
 
   @override
@@ -313,12 +316,26 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
 
         // Empty state: show whenever the user's Foods I Eat list is empty,
         // regardless of category count. The presence of 0, 9, or any number of
-        // default/custom categories has no effect on this condition.
+        // default/custom categories has no effect on this condition. The
+        // Choose foods button leads to the picker (the Library) via
+        // [onChooseFoods].
         if (foods.isEmpty) {
-          return const OmniEmptyState(
+          return OmniEmptyState(
             icon: Icons.restaurant_menu_outlined,
-            title: 'Your Foods I Eat list is empty.',
-            hint: 'Tap the pencil to add foods.',
+            title: 'Pick the foods you eat',
+            hint: 'Choose them from the library, then tick them off each day.',
+            action: FilledButton(
+              key: const Key('foods_i_eat_choose_button'),
+              onPressed: onChooseFoods,
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonBorderRadius,
+                  ),
+                ),
+              ),
+              child: const Text('Choose foods'),
+            ),
           );
         }
 
