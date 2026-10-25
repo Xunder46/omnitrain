@@ -85,9 +85,33 @@ Verified by `test/nutrition_test.dart`, `test/nutrition_primer_test.dart`,
 
 ### `AddFoodScreen`
 
-Three tabs — Library, My Foods, Categories. Creating a new item is not a mode of
-this screen: the My Foods tab's "+ New Food" action pushes a separate full-screen
-New Food form (`_NewFoodFormScreen` in `lib/features/nutrition/add_food_screen.dart`).
+Two tabs — Library and Categories. The old My Foods tab is gone: everything it
+showed lives in the Library list. Creating a new item is not a mode of this
+screen: the Library tab's `+ Create new food` button (key `new_food_button`)
+pushes a separate full-screen New Food form (`_NewFoodFormScreen` in
+`lib/features/nutrition/add_food_screen.dart`); the Categories tab keeps
+`+ New Category` (`new_group_button`). Verified by `test/library_merge_test.dart`
+(`S-12810` two tabs, `S-12814` the CTA opens the form and Categories keeps its own).
+
+The Library list is one alphabetical list of every food: bundled catalog foods,
+foods the user created, and older custom foods that exist only in the library.
+A food the user created carries a small **Yours** tag (key `yours_tag_<foodId>`);
+bundled foods never do. An older library-only custom food keeps its old row, with
+its red delete button, and the same tag. A library copy of a bundled food is never
+listed as a second row, even after the copy was edited. Verified by
+`test/library_merge_test.dart` (`S-12811`, `S-12812`, `S-12812b`, `S-12813`
+search) and `test/my_foods_unification_test.dart` (Library population).
+
+**Created foods and deleting them.** A food the user created is edited from its
+pencil like any other, and its editor ends with a **Delete food** button (key
+`food_delete_created`) in the footer slot where a bundled copy shows
+**Reset to original**; the two never appear together and bundled foods can never
+be deleted. Tapping it asks `Delete <name>?`; Cancel keeps the food, Confirm
+unlogs today's entry if there is one, removes the library copy and deletes the
+catalog row. Past logs stay unchanged (the log holds frozen snapshots). The
+sequence lives in `confirmAndDeleteCreatedFood`
+(`lib/features/nutrition/widgets/delete_created_food.dart`). Verified by
+`test/library_merge_test.dart` (`S-12815`, `S-12816`, `S-12816b`, `S-12817`).
 
 The catalog is read-only. Adding a catalog row **copies** it into the library; it
 does not log it. Removing a library food that is already logged today removes

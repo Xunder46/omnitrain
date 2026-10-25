@@ -27,8 +27,10 @@ const Object _cancelledSentinel = Object();
 /// Manage Food Library screen — two-tab flow for adding and removing
 /// foods to/from the user's library.
 ///
-/// Tab 1 (default): Library — flat alphabetical list of bundled
-/// catalog foods. Each row is a toggle: tapping it adds the food
+/// Tab 1 (default): Library — alphabetical list of every food
+/// (bundled ones, foods you created, tagged **Yours**, and any
+/// older custom foods). Each row is a toggle: tapping it adds the
+/// food
 /// to the user's library (`FoodLibraryState.addCatalogFoodToLibrary`)
 /// or, when the food is already in the library, asks before removing
 /// it (`FoodLibraryState.removeFood`, and, if the food is currently
@@ -37,15 +39,13 @@ const Object _cancelledSentinel = Object();
 /// copy of the food, gets a primary-colour outline, and carries a
 /// pencil (edit) and a check (remove) on the right; a not-in-list
 /// row shows the shipped catalog entry and an **Add** button.
+/// A **+ Create new food** button sits at the bottom.
 ///
 /// Both actions stay on the screen — the user can add and remove
 /// several foods in one visit and only leaves via the system back
 /// arrow. The catalog itself is never modified.
 ///
-/// Tab 2: + New Item — form for a user-owned custom food (name,
-/// group, unit type, reference, macros). The custom food is added
-/// to the library only; the catalog is not modified. On save, the
-/// screen pops back to the nutrition page (one-shot form).
+/// Tab 2: Categories — manage the food categories.
 ///
 /// Pure presentation:
 ///   - No repository access (all writes go through [FoodLibraryState]
@@ -80,7 +80,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     // Ensure the catalog cache is loaded when the screen opens so the
     // first tab has something to render. Safe to call when already
     // loaded (idempotent).
@@ -98,25 +98,23 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 
   // ── Tab-aware primary bottom CTA ──────────────────────────────────────
   //
-  // The My Foods and Groups tabs each have a single primary
-  // bottom action (New Food / + New Category). Both are routed
+  // Each tab has one primary bottom action (Library: **+ Create new
+  // food**, Categories: **+ New Category**). Both are routed
   // through the shared `OmniBottomCTA` on the host's
   // `Scaffold.bottomNavigationBar` (see
   // `docs/plans/add-food-screen-bottom-cta-plan.md` and
   // `docs/plans/primary-bottom-cta-anchor-width-plan.md`)
   // so they sit at the same width, height, and vertical anchor as
-  // every other primary bottom CTA in the app. The Library tab is
-  // browse-only and renders no bottom CTA.
+  // every other primary bottom CTA in the app.
   //
   // The CTA rebuilds via `AnimatedBuilder` on the tab controller
   // (the controller is a `Listenable`); when the user swipes or
   // taps a different tab, the previous CTA fades out and the new
   // one fades in over `OmniTheme.animationDuration`.
 
-  /// Index constants — must match the `TabBar` order above.
+  /// Index constants — must match the `TabBar` order below.
   static const int _libraryTabIndex = 0;
-  static const int _myFoodsTabIndex = 1;
-  static const int _groupsTabIndex = 2;
+  static const int _groupsTabIndex = 1;
 
   /// Pushes the full-screen New Food form (shared with the previous
   /// inline `_AddNewFoodButton._openNewFoodForm` method).
@@ -155,18 +153,13 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     }
   }
 
-  /// The tab-aware bottom CTA. Returns `SizedBox.shrink()` on the
-  /// Library tab; the appropriate `OmniBottomCTA` on the other two.
+  /// The tab-aware bottom CTA: **+ Create new food** on Library,
+  /// **+ New Category** on Categories.
   Widget _buildBottomCTA(BuildContext context) {
     return AnimatedBuilder(
       animation: _tabController,
       builder: (context, _) {
         switch (_tabController.index) {
-          case _myFoodsTabIndex:
-            return OmniBottomCTA(
-              label: '+ New Food',
-              onPressed: () => _openNewFoodForm(context),
-            );
           case _groupsTabIndex:
             return OmniBottomCTA(
               label: '+ New Category',
@@ -175,7 +168,11 @@ class _AddFoodScreenState extends State<AddFoodScreen>
             );
           case _libraryTabIndex:
           default:
-            return const SizedBox.shrink();
+            return OmniBottomCTA(
+              label: '+ Create new food',
+              buttonKey: const Key('new_food_button'),
+              onPressed: () => _openNewFoodForm(context),
+            );
         }
       },
     );
@@ -190,7 +187,6 @@ class _AddFoodScreenState extends State<AddFoodScreen>
           controller: _tabController,
           tabs: const [
             Tab(text: 'Library'),
-            Tab(text: 'My Foods'),
             Tab(text: 'Categories'),
           ],
         ),
@@ -199,10 +195,6 @@ class _AddFoodScreenState extends State<AddFoodScreen>
         controller: _tabController,
         children: [
           _FromCatalogTab(
-            foodLibraryState: widget.foodLibraryState,
-            nutritionState: widget.nutritionState,
-          ),
-          _MyFoodsTab(
             foodLibraryState: widget.foodLibraryState,
             nutritionState: widget.nutritionState,
           ),
@@ -524,7 +516,8 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
 
 // ─── Tab 1: Library ─────────────────────────────────────────────────────
 
-/// Flat alphabetical list of catalog foods. Each row's trailing
+/// Alphabetical list of every food: catalog rows ([_CatalogRow]) and
+/// older custom foods ([_UserFoodRow]). Each row's trailing
 /// affordance reflects whether the catalog food is in the user's
 /// library (see [_CatalogRow]). The tab listens to BOTH
 /// [FoodLibraryState] (for add/remove) and [NutritionState] (so the
@@ -573,7 +566,21 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
         // query. The state's `searchCatalogFoods` is a pure local
         // pass — no network call. Clearing the field restores the
         // full alphabetical list.
-        final all = _sorted(widget.foodLibraryState.catalogFoods);
+        final state = widget.foodLibraryState;
+        // Older customs (pre-D-2) live only in the library box and have no
+        // catalog twin. They stay manageable here, deduped against the
+        // catalog rows by value (the catalog row wins).
+        final seen = <_FoodIdentity>{
+          for (final f in state.catalogFoods) _FoodIdentity.fromFood(f),
+        };
+        final legacy = <Food>[];
+        for (final f in state.foods) {
+          if (f.isArchived || f.isCatalog) continue;
+          if (state.catalogIdFor(f) != null) continue;
+          if (seen.add(_FoodIdentity.fromFood(f))) legacy.add(f);
+        }
+        final legacyIds = {for (final f in legacy) f.id};
+        final all = _sorted([...state.catalogFoods, ...legacy]);
         final lower = _query.trim().toLowerCase();
         final catalog = lower.isEmpty
             ? all
@@ -625,11 +632,23 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
             else
               Expanded(
                 child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    8,
+                    0,
+                    OmniTheme.formBottomCTAClearance,
+                  ),
                   itemCount: catalog.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, i) {
                     final f = catalog[i];
+                    if (legacyIds.contains(f.id)) {
+                      return _UserFoodRow(
+                        food: f,
+                        foodLibraryState: widget.foodLibraryState,
+                        nutritionState: widget.nutritionState,
+                      );
+                    }
                     return _CatalogRow(
                       food: f,
                       foodLibraryState: widget.foodLibraryState,
@@ -652,34 +671,18 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
   }
 }
 
-// ─── Tab 2: My Foods ───────────────────────────────────────────────────
-
-/// Shows user-owned foods (D-2 / S-031):
-///
-///   * **userCreatedCatalogFoods** — every food in the catalog whose
-///     id is NOT a bundled default. These are the foods the user
-///     created via the + New Item form (and any pre-D-2 user
-///     catalog rows).
-///   * **legacy library-only customs** — non-archived rows with
-///     `isCatalog = false` (created via the pre-D-2
-///     [FoodLibraryState.createCustomFood] path). These need to stay
-///     manageable until the user deletes them.
-///
-/// Bundled (default) catalog foods never appear here. Every
-/// user-created food appears exactly once.
-///
 /// Value class that captures the identity tuple used by
 /// `FoodLibraryState._matchesIdentity` (name + reference + macros).
 ///
 /// The single source of truth for the identity rule lives in
 /// [FoodLibraryState]; this class is the dedup-key mirror of that
-/// rule for the My Foods tab. If the state rule ever expands (e.g.
-/// per-locale normalization), update both.
+/// rule for the Library tab (older customs vs catalog rows). If the
+/// state rule ever expands (e.g. per-locale normalization), update both.
 ///
 /// Equality is by value, NOT by id: two [Food] rows with the same
-/// name/reference/macros hash to the same [_FoodIdentity], so a D-2
-/// catalog row and its auto-created library copy collide here and
-/// only the first one (catalog row, by iteration order) is kept.
+/// name/reference/macros hash to the same [_FoodIdentity], so a catalog
+/// row and a library copy with the same data collide and only the first
+/// one (the catalog row, by iteration order) is kept.
 @immutable
 class _FoodIdentity {
   final String nameLower;
@@ -748,140 +751,11 @@ class _FoodIdentity {
   );
 }
 
-/// Row tap opens the **Edit Food** screen (D-2 / S-034). Tapping the
-/// row (not the trailing delete button) routes to the catalog edit
-/// path for catalog foods, and the library edit path for legacy
-/// library-only customs.
-class _MyFoodsTab extends StatelessWidget {
-  final FoodLibraryState foodLibraryState;
-  final NutritionState nutritionState;
-
-  const _MyFoodsTab({
-    required this.foodLibraryState,
-    required this.nutritionState,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: foodLibraryState,
-      builder: (context, _) {
-        // S-031a / Phase 3.1 — three sources, one deduplicated list:
-        //
-        //   1. **userCreatedCatalogFoods** (D-2 path). The user
-        //      created this food via the + New Item form; the row
-        //      lives in the catalog box (`isCatalog = true`) and its
-        //      id is NOT a bundled default. Always surfaced.
-        //
-        //   2. **legacy library-only customs**. Rows in the library
-        //      box with `isCatalog = false` that have NO catalog
-        //      identity twin — i.e. `catalogIdFor(row) == null`.
-        //      The catalogIdFor check is critical: without it, a
-        //      library copy of a bundled catalog food (created by
-        //      the user tapping Add on a row in the Library tab)
-        //      would leak into My Foods and look like a user-created
-        //      custom. The single identity rule
-        //      (FoodLibraryState._matchesIdentity) is shared with
-        //      libraryIdFor, so the inverse lookup is in lockstep.
-        //
-        //   3. **no third source**. The D-2 catalog row and its
-        //      auto-created library copy have different ids, so a
-        //      naive id-dedup would render the D-2 custom TWICE
-        //      (once as the catalog row, once as the fresh-id
-        //      library copy). The legacy filter is on the library
-        //      side only, so a user-created D-2 custom's library
-        //      twin IS excluded here. Identity-key dedup
-        //      (Food identity tuple) is the belt-and-braces second
-        //      line of defense; the two sources are disjoint by
-        //      construction after this filter.
-        final userCatalog = foodLibraryState.userCreatedCatalogFoods
-            .where((f) => !f.isArchived)
-            .toList();
-        final legacyLibrary = foodLibraryState.foods
-            .where(
-              (f) =>
-                  !f.isArchived &&
-                  !f.isCatalog &&
-                  foodLibraryState.catalogIdFor(f) == null,
-            )
-            .toList();
-
-        // Identity-key dedup (belt-and-braces). The tuple is the
-        // (name, reference, macros) shape that _matchesIdentity
-        // uses; encoding the same fields here would invite drift,
-        // so the helper is reused. The map keeps the FIRST
-        // occurrence (userCatalog has priority because it is
-        // iterated first) so the catalog row wins over a stale
-        // library twin with the same data.
-        final seenIdentities = <_FoodIdentity>{};
-        final merged = <Food>[];
-        void addIfNew(Food f) {
-          if (seenIdentities.add(_FoodIdentity.fromFood(f))) {
-            merged.add(f);
-          }
-        }
-
-        for (final f in userCatalog) {
-          addIfNew(f);
-        }
-        for (final f in legacyLibrary) {
-          addIfNew(f);
-        }
-        merged.sort(
-          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-        );
-
-        if (merged.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                24,
-                24,
-                24,
-                // Clear the host's bottom CTA (New Food).
-                OmniTheme.formBottomCTAClearance,
-              ),
-              child: const OmniEmptyState(
-                icon: Icons.restaurant_menu,
-                title: 'No custom foods yet',
-                hint: 'Create your own foods to use in your nutrition tracking',
-              ),
-            ),
-          );
-        }
-
-        return ListView.separated(
-          // Bottom padding clears the host's shared bottom CTA (New
-          // Food). Top padding mirrors the small inset that the
-          // non-empty state previously provided via the `Column`'s
-          // top edge.
-          padding: const EdgeInsets.fromLTRB(
-            0,
-            8,
-            0,
-            OmniTheme.formBottomCTAClearance,
-          ),
-          itemCount: merged.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, i) {
-            final f = merged[i];
-            return _UserFoodRow(
-              food: f,
-              foodLibraryState: foodLibraryState,
-              nutritionState: nutritionState,
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
 /// Full-screen form for creating a new custom food.
 ///
 /// On save (D-2 / S-030): the draft is written to the **catalog** via
 /// [FoodLibraryState.createCatalogFood] (so the food becomes part of
-/// the user's "My Foods" collection), then immediately copied into
+/// the Library list, tagged **Yours**), then immediately copied into
 /// the user's personal library via
 /// [FoodLibraryState.addCatalogFoodToLibrary] (so the food is
 /// reachable from the Foods I Eat card without a second tap).
@@ -890,8 +764,8 @@ class _MyFoodsTab extends StatelessWidget {
 ///   * If `createCatalogFood` throws, the form stays open and reports
 ///     the error via the snackbar — nothing was persisted.
 ///   * If `addCatalogFoodToLibrary` throws after the catalog write
-///     succeeded, the catalog row is preserved (it remains in My
-///     Foods and is editable from there) and a snackbar surfaces the
+///     succeeded, the catalog row is preserved (it remains in the
+///     Library and is editable from there) and a snackbar surfaces the
 ///     library-add error. The form still pops, so the user is not
 ///     trapped on a save screen.
 class _NewFoodFormScreen extends StatefulWidget {
@@ -996,7 +870,7 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
                 );
               } catch (e) {
                 // Catalog row is preserved; the user can re-add to
-                // library from the My Foods tab. Surface the error so
+                // library from the Library tab. Surface the error so
                 // the user is not silently left without a library copy.
                 debugPrint('Add catalog food to library: $e');
                 OmniMessage.errorOn(
@@ -1004,7 +878,7 @@ class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
                   theme,
                   'Food saved, but adding to your library failed. Try again.',
                 );
-                // Pop so the user can see My Foods and the new catalog
+                // Pop so the user can see the Library and the new catalog
                 // row. The catalog write succeeded; only the library
                 // copy failed.
                 return true;
@@ -1083,13 +957,21 @@ class _UserFoodRowState extends State<_UserFoodRow> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    widget.food.name,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textDominant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          widget.food.name,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: OmniTheme.colors.textDominant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      _YoursTag(key: Key('yours_tag_${widget.food.id}')),
+                    ],
                   ),
                   Text(
                     macroText,
@@ -1275,6 +1157,22 @@ class _UserFoodRowState extends State<_UserFoodRow> {
   }
 }
 
+/// The small "Yours" tag after the name of a food the user created.
+class _YoursTag extends StatelessWidget {
+  const _YoursTag({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      'Yours',
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.primary,
+      ),
+    );
+  }
+}
+
 /// A single catalog row: name + per-reference macros on the left, a
 /// state-dependent trailing button on the right.
 ///
@@ -1339,6 +1237,7 @@ class _CatalogRowState extends State<_CatalogRow> {
     // NutritionState, so this stays live as the user adds / removes / edits.
     final copy = widget.foodLibraryState.libraryFoodFor(widget.food.id);
     final inList = copy != null;
+    final isYours = !widget.foodLibraryState.isBundledCatalogFood(widget.food.id);
     // An in-list row shows the copy, so an edit is visible here.
     final shown = copy ?? widget.food;
     final cal = calculateCalories(shown);
@@ -1370,13 +1269,23 @@ class _CatalogRowState extends State<_CatalogRow> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    shown.name,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textDominant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          shown.name,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: OmniTheme.colors.textDominant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isYours) ...[
+                        const SizedBox(width: 6),
+                        _YoursTag(key: Key('yours_tag_${widget.food.id}')),
+                      ],
+                    ],
                   ),
                   Text(
                     servingText,
@@ -1453,6 +1362,7 @@ class _CatalogRowState extends State<_CatalogRow> {
       context,
       food: bundled ? copy : widget.food,
       foodLibraryState: widget.foodLibraryState,
+      nutritionState: widget.nutritionState,
     );
   }
 
@@ -1558,14 +1468,14 @@ class _CatalogRowState extends State<_CatalogRow> {
   }
 }
 
-// ─── Tab 2: + New Item ───────────────────────────────────────────────────
+// ─── New Food form ───────────────────────────────────────────────────
 
 /// Form for a new food in the **global managed library** (the
 /// catalog). Per the iteration-3 re-scope, every new food the
 /// user creates goes into the catalog — the user can then add it
 /// to their personal library via the **Add** button on the row in
 /// the **Library** tab. Delegates to the shared [FoodForm] widget
-// ─── Tab 3: Groups ───────────────────────────────────────────────
+// ─── Tab 2: Categories ───────────────────────────────────────────────
 
 /// Manage the food categories that organize the library.
 ///
@@ -1689,7 +1599,7 @@ class _GroupsTabState extends State<_GroupsTab> {
         // Personal-library COPIES of a catalog food are excluded:
         // adding a bundled food to "Foods I Eat" does not add a
         // second food to the category. The `catalogIdFor` check
-        // is the same identity rule the My Foods tab uses, so the
+        // is the same identity rule the Library tab uses, so the
         // two lists stay in lockstep.
         //
         // Getting this right matters beyond the label: the count

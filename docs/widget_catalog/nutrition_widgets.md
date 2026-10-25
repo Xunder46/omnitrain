@@ -219,12 +219,21 @@ tap adds the food; its pencil opens EditFoodScreen (S-001)`).
 
 ---
 
+### `_YoursTag` and `_UserFoodRow` (private to `AddFoodScreen`)
+
+`_YoursTag` is the small primary-colour `Yours` label after a food's name. A
+`_CatalogRow` shows it (key `yours_tag_<foodId>`) when the food is not bundled;
+`_UserFoodRow`, now used only for older library-only custom foods, always shows
+it and keeps its red delete button (`delete_user_food_<id>`). Both rows appear in
+the one Library list. Covered by `test/library_merge_test.dart` (`S-12811`,
+`S-12812`).
+
 ### `_GroupsTab` (private to `AddFoodScreen`)
 
 **File**: `lib/features/nutrition/add_food_screen.dart` (private
 `_GroupsTab`, `_GroupRow`, `_UngroupedRow`, `_DeleteGroupDialog`)
 
-The third tab of `AddFoodScreen`. Manages the food categories that
+The second tab of `AddFoodScreen`. Manages the food categories that
 organize the user's library. Layout (top to bottom):
 
 - A scrollable list of `_GroupRow` widgets, one per active

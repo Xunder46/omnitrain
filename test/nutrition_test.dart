@@ -1933,12 +1933,8 @@ void main() {
         await tester.tap(find.byKey(const Key('food_library_manage_pencil')));
         await tester.pumpAndSettle();
 
-        // Switch to the "My Foods" tab.
-        await tester.tap(find.text('My Foods'));
-        await tester.pumpAndSettle();
-
-        // Tap the "+ New Food" button at the bottom.
-        await tester.tap(find.text('+ New Food'));
+        // Tap the "+ Create new food" button at the bottom.
+        await tester.tap(find.text('+ Create new food'));
         await tester.pumpAndSettle();
 
         // Fill the form.
@@ -2023,10 +2019,8 @@ void main() {
         // Open the add flow via the pencil icon.
         await tester.tap(find.byKey(const Key('food_library_manage_pencil')));
         await tester.pumpAndSettle();
-        // Switch to "My Foods" tab and tap "+ New Food" button
-        await tester.tap(find.text('My Foods'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('+ New Food'));
+        // Tap the "+ Create new food" button at the bottom.
+        await tester.tap(find.text('+ Create new food'));
         await tester.pumpAndSettle();
 
         // Save with no name entered.
@@ -2853,9 +2847,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('My Foods'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('+ New Food'));
+      await tester.tap(find.text('+ Create new food'));
       await tester.pumpAndSettle();
       expect(find.text('New Food'), findsOneWidget);
       return foodLib;
@@ -3075,9 +3067,21 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('My Foods'));
+      // The Library list is lazy: bring the legacy row into view via
+      // the search field, then tap it. The row title is scoped to the
+      // list because the search field's EditableText carries the same
+      // text.
+      await tester.enterText(
+        find.byKey(const Key('catalog_search_field')),
+        'Grandma Stew',
+      );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Grandma Stew'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.text('Grandma Stew'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Edit Food'), findsOneWidget);
     }
@@ -3654,10 +3658,12 @@ void main() {
     });
   });
 
-  // S-2802 (plan 28 / D-28.2): the three AddFoodScreen tabs route their
+  // S-2802 (plan 28 / D-28.2): the AddFoodScreen tabs route their
   // "nothing here" case through the shared `OmniEmptyState` — the Library
-  // tab with no catalog, the Library tab with no search match, and the My
-  // Foods tab with no custom foods.
+  // tab with no catalog and the Library tab with no search match. The
+  // former My Foods tab is gone (plan 77b): its content merged into the
+  // Library list, which always has the catalog, so it has no
+  // custom-foods empty state (S-2802b).
   group('AddFoodScreen — empty states (S-2802)', () {
     Future<void> pumpAddFoodScreen(
       WidgetTester tester,
@@ -3726,30 +3732,21 @@ void main() {
       );
     });
 
-    testWidgets('My Foods tab with no custom foods renders the shared '
-        'OmniEmptyState', (tester) async {
+    testWidgets('Library tab has no custom-foods empty state (S-2802b)', (
+      tester,
+    ) async {
       final repo = await _freshRepo();
       final foodLib = FoodLibraryState(repo);
       final nutrition = NutritionState(repo);
       await foodLib.loadFoods();
+      await foodLib.loadCatalogFoods();
 
       await pumpAddFoodScreen(tester, foodLib, nutrition);
 
-      await tester.tap(find.text('My Foods'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(OmniEmptyState), findsOneWidget);
-      expect(
-        find.widgetWithText(OmniEmptyState, 'No custom foods yet'),
-        findsOneWidget,
-      );
-      expect(
-        find.widgetWithText(
-          OmniEmptyState,
-          'Create your own foods to use in your nutrition tracking',
-        ),
-        findsOneWidget,
-      );
+      // The My Foods tab is gone; its empty state must not render
+      // anywhere on the Library tab.
+      expect(find.text('No custom foods yet'), findsNothing);
+      expect(find.text('My Foods'), findsNothing);
     });
   });
 
@@ -4156,19 +4153,17 @@ void main() {
   // AddFoodScreen — shared bottom CTA across tabs (S-001, S-002, S-003)
   // ═══════════════════════════════════════════════════════════════════════
   //
-  // Both the **My Foods** and **Groups** tabs of `AddFoodScreen`
+  // Both the **Library** and **Categories** tabs of `AddFoodScreen`
   // (the "Manage Food Library" screen) expose a primary bottom
-  // action — "+ New Food" and "+ New Category" respectively. Per
+  // action — "+ Create new food" and "+ New Category" respectively. Per
   // the shared-CTA contract, both must route through
   // `Scaffold.bottomNavigationBar: OmniBottomCTA` so the buttons
   // sit at the same width, height, and vertical anchor as every
   // other primary bottom CTA in the app.
-  //
-  // The Library tab is browse-only and has no bottom CTA.
 
   group('AddFoodScreen — shared bottom CTA (S-001 / S-002 / S-003)', () {
     testWidgets(
-      'anchors the My Foods tab\'s primary bottom CTA at the shared width and vertical anchor (S-001)',
+      'anchors the Library tab\'s primary bottom CTA at the shared width and vertical anchor (S-001)',
       (tester) async {
         // Fixed surface so the test can assert exact pixel math.
         const surface = Size(400, 800);
@@ -4194,9 +4189,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Switch to the "My Foods" tab.
-        await tester.tap(find.text('My Foods'));
-        await tester.pumpAndSettle();
+        // The Library tab is the default; no tab switch needed.
 
         // The host's Scaffold has a non-null bottomNavigationBar
         // (a tab-aware AnimatedBuilder that renders the right CTA
@@ -4206,7 +4199,7 @@ void main() {
           scaffold.bottomNavigationBar,
           isNotNull,
           reason:
-              'My Foods tab must have a primary bottom CTA on the host '
+              'Library tab must have a primary bottom CTA on the host '
               'Scaffold.bottomNavigationBar',
         );
 
@@ -4219,8 +4212,8 @@ void main() {
         );
         expect(ctaFinder, findsOneWidget);
 
-        // The "+ New Food" label is rendered by the CTA.
-        expect(find.text('+ New Food'), findsOneWidget);
+        // The "+ Create new food" label is rendered by the CTA.
+        expect(find.text('+ Create new food'), findsOneWidget);
 
         // The CTA sits at the shared width and vertical anchor,
         // measured from the **centered content column's** edges
@@ -4323,7 +4316,7 @@ void main() {
       },
     );
 
-    testWidgets('renders no bottom CTA on the Library tab (S-003)', (
+    testWidgets('renders the Create new food CTA on the Library tab (S-003)', (
       tester,
     ) async {
       final repo = await _freshRepo();
@@ -4343,20 +4336,21 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The Library tab is the default. No OmniBottomCTA is
-      // rendered (the AnimatedBuilder returns SizedBox.shrink()
-      // for the Library tab).
+      // The Library tab is the default. The OmniBottomCTA renders
+      // the Create new food action there.
       expect(
         find.descendant(
           of: find.byType(Scaffold),
           matching: find.byType(OmniBottomCTA),
         ),
-        findsNothing,
+        findsOneWidget,
       );
-      // The "+ New Food" / "+ New Category" labels are absent on
-      // the Library tab.
-      expect(find.text('+ New Food'), findsNothing);
+      // The "+ Create new food" label is present on the Library
+      // tab; "+ New Category" is not.
+      expect(find.text('+ Create new food'), findsOneWidget);
       expect(find.text('+ New Category'), findsNothing);
+      // The old My Foods CTA label is gone everywhere.
+      expect(find.text('+ New Food'), findsNothing);
     });
   });
 

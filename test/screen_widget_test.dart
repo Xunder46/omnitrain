@@ -9712,9 +9712,9 @@ void main() {
     // ── Navigation route alignment (Add Food) ─────────────────────
     //
     // The two Add Food sub-screens pushed from the host — the
-    // new-food entry form (via the `+ New Food` bottom CTA) and
+    // new-food entry form (via the `+ Create new food` bottom CTA) and
     // the legacy library edit shim (via a row tap on a
-    // pre-D-2 custom in the My Foods tab) — must route through
+    // pre-D-2 custom in the Library list) — must route through
     // `OmniNavigator.push` so the `OmniRoute` `opaque = true` +
     // `OmniGradientBackground` wrapper applies. Raw
     // `MaterialPageRoute` pushes leave the outgoing and
@@ -9732,7 +9732,7 @@ void main() {
     // alignment (see plan file S-N3).
 
     testWidgets(
-      '+ New Food bottom CTA pushes the new-food form via OmniRoute (S-N1)',
+      '+ Create new food bottom CTA pushes the new-food form via OmniRoute (S-N1)',
       (WidgetTester tester) async {
         // Tall surface so the full-screen form's bottom CTA is
         // reachable without scrolling.
@@ -9761,15 +9761,13 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Switch to the My Foods tab so the `+ New Food` bottom
-        // CTA is the active CTA.
-        await tester.tap(find.text('My Foods'));
-        await tester.pumpAndSettle();
+        // The Library tab is the default, so the `+ Create new
+        // food` bottom CTA is the active CTA.
 
-        // Tap the `+ New Food` bottom CTA. The production code
-        // path is `_AddFoodScreenState._openNewFoodForm` which
+        // Tap the `+ Create new food` bottom CTA. The production
+        // code path is `_AddFoodScreenState._openNewFoodForm` which
         // must route through `OmniNavigator.push`.
-        await tester.tap(find.text('+ New Food'));
+        await tester.tap(find.text('+ Create new food'));
         await tester.pumpAndSettle();
 
         // The new-food form is on the navigator.
@@ -9782,7 +9780,7 @@ void main() {
           observer.lastPushed,
           isA<OmniRoute<void>>(),
           reason:
-              '`+ New Food` must route through OmniNavigator.push '
+              '`+ Create new food` must route through OmniNavigator.push '
               'so the OmniRoute opaque + OmniGradientBackground '
               'wrapper applies (no overlap frame).',
         );
@@ -9809,7 +9807,7 @@ void main() {
         final repo = await _freshRepo();
         // Seed a legacy (pre-D-2) library-only custom food
         // directly via the repository: `isCatalog = false`,
-        // no matching catalog row, so the My Foods tab
+        // no matching catalog row, so the Library list
         // surfaces it and the row tap routes through the
         // legacy edit shim branch.
         await repo.createFoodGroup(
@@ -9858,21 +9856,30 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Switch to the My Foods tab so the legacy custom row is
-        // rendered.
-        await tester.tap(find.text('My Foods'));
+        // The Library list is lazy: bring the legacy row into
+        // view via the search field.
+        await tester.enterText(
+          find.byKey(const Key('catalog_search_field')),
+          'Legacy Custom',
+        );
         await tester.pumpAndSettle();
 
         // The legacy row is rendered (no catalog twin — the
-        // My Foods tab's `catalogIdFor(f) == null` filter keeps
-        // it on the legacy branch).
-        expect(find.text('Legacy Custom'), findsOneWidget);
+        // Library list's `catalogIdFor(f) == null` filter keeps
+        // it on the legacy branch). The row title is scoped to
+        // the list because the search field's EditableText
+        // carries the same text.
+        final legacyRow = find.descendant(
+          of: find.byType(ListView),
+          matching: find.text('Legacy Custom'),
+        );
+        expect(legacyRow, findsOneWidget);
 
         // Tap the row surface (not the trailing delete button).
         // The production code path is
         // `_UserFoodRowState._openEdit`'s `else` branch (legacy
         // shim), which must route through `OmniNavigator.push`.
-        await tester.tap(find.text('Legacy Custom'));
+        await tester.tap(legacyRow);
         await tester.pumpAndSettle();
 
         // The legacy edit shim is on the navigator (it reuses
@@ -9886,7 +9893,7 @@ void main() {
           observer.lastPushed,
           isA<OmniRoute<void>>(),
           reason:
-              'the legacy edit shim push from the My Foods row '
+              'the legacy edit shim push from the Library row '
               'tap must route through OmniNavigator.push so the '
               'OmniRoute opaque + OmniGradientBackground wrapper '
               'applies (no overlap frame).',

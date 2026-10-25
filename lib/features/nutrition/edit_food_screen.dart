@@ -5,7 +5,9 @@ import '../../core/constants/omni_theme.dart';
 import '../../core/navigation/navigation.dart';
 import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
+import '../../state/nutrition_state.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import 'widgets/delete_created_food.dart';
 import 'widgets/food_form.dart';
 
 /// Edit Food screen — opened from the pencil on an in-list row of the
@@ -23,16 +25,24 @@ import 'widgets/food_form.dart';
 ///
 /// Past [ConsumedFood] snapshots stay frozen.
 ///
+/// A food the user created also shows a **Delete food** button (given a
+/// `nutritionState`).
+///
 /// Pure presentation: no repository access; all colors come from
 /// [OmniTheme.colors] / `ThemeData.colorScheme`.
 class EditFoodScreen extends StatefulWidget {
   final Food food;
   final FoodLibraryState foodLibraryState;
 
+  /// Needed only to offer "Delete food" for a food the user created (it
+  /// unlogs today's entry first). When null the delete button is not shown.
+  final NutritionState? nutritionState;
+
   const EditFoodScreen({
     super.key,
     required this.food,
     required this.foodLibraryState,
+    this.nutritionState,
   });
 
   /// Push the Edit Food screen. The screen pops on successful
@@ -43,11 +53,15 @@ class EditFoodScreen extends StatefulWidget {
     BuildContext context, {
     required Food food,
     required FoodLibraryState foodLibraryState,
+    NutritionState? nutritionState,
   }) {
     return OmniNavigator.push<void>(
       context,
-      (context) =>
-          EditFoodScreen(food: food, foodLibraryState: foodLibraryState),
+      (context) => EditFoodScreen(
+        food: food,
+        foodLibraryState: foodLibraryState,
+        nutritionState: nutritionState,
+      ),
     );
   }
 
@@ -94,12 +108,29 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
     Navigator.of(context).pop();
   }
 
+  Future<void> _onDeleteCreated() async {
+    final nutrition = widget.nutritionState;
+    if (nutrition == null) return;
+    final deleted = await confirmAndDeleteCreatedFood(
+      context,
+      food: widget.food,
+      foodLibraryState: widget.foodLibraryState,
+      nutritionState: nutrition,
+    );
+    if (!deleted || !mounted) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canReset =
         !widget.food.isCatalog &&
         widget.foodLibraryState.canResetLibraryFood(widget.food);
+    final canDelete =
+        widget.food.isCatalog &&
+        widget.nutritionState != null &&
+        !widget.foodLibraryState.isBundledCatalogFood(widget.food.id);
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Food')),
       body: Column(
@@ -120,7 +151,7 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
               onImageSave: _save,
             ),
           ),
-          if (canReset)
+          if (canReset || canDelete)
             SafeArea(
               top: false,
               child: Padding(
@@ -133,18 +164,26 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
                 child: SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
-                    key: const Key('food_reset_original'),
-                    onPressed: _onReset,
+                    key: Key(
+                      canReset ? 'food_reset_original' : 'food_delete_created',
+                    ),
+                    onPressed: canReset ? _onReset : _onDeleteCreated,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: theme.colorScheme.primary,
-                      side: BorderSide(color: theme.colorScheme.primary),
+                      foregroundColor: canReset
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.error,
+                      side: BorderSide(
+                        color: canReset
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.error,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(
                           OmniTheme.buttonBorderRadius,
                         ),
                       ),
                     ),
-                    child: const Text('Reset to original'),
+                    child: Text(canReset ? 'Reset to original' : 'Delete food'),
                   ),
                 ),
               ),
