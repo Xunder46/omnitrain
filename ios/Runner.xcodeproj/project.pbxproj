@@ -662,7 +662,7 @@
 				INFOPLIST_FILE = "OmniTrainWatchApp-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain reads your heart rate and steps during a workout and saves the workouts you finish to Health.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch, with the route of an outdoor run, to Health so they count toward your activity rings.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OmniTrain uses your location during runs and sports to measure distance and pace.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
@@ -714,7 +714,7 @@
 				INFOPLIST_FILE = "OmniTrainWatchApp-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain reads your heart rate and steps during a workout and saves the workouts you finish to Health.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch, with the route of an outdoor run, to Health so they count toward your activity rings.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OmniTrain uses your location during runs and sports to measure distance and pace.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;
@@ -764,7 +764,7 @@
 				INFOPLIST_FILE = "OmniTrainWatchApp-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OmniTrain;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "OmniTrain reads your heart rate and steps during a workout and saves the workouts you finish to Health.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch to Health so they count toward your activity rings.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "OmniTrain saves the workouts you finish on the watch, with the route of an outdoor run, to Health so they count toward your activity rings.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OmniTrain uses your location during runs and sports to measure distance and pace.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.sasha.omnitrain;

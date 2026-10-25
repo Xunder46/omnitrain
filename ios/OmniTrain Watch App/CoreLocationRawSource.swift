@@ -145,7 +145,9 @@ nonisolated final class CoreLocationRawSource: NSObject, CLLocationManagerDelega
     /// The accuracy is passed as CoreLocation gives it — a negative value means
     /// the platform says the fix is invalid, and the package's tracker refuses
     /// it — and the timestamp is the fix's own, so the adapter's stale gate can
-    /// drop a cached position before it becomes an origin.
+    /// drop a cached position before it becomes an origin. The altitude, speed
+    /// and course ride along as the platform gives them (a negative value means
+    /// invalid) so the Health route can carry them (plan 68 D-10).
     func locationManager(
         _ manager: CLLocationManager,
         didUpdateLocations locations: [CLLocation]
@@ -155,7 +157,11 @@ nonisolated final class CoreLocationRawSource: NSObject, CLLocationManagerDelega
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude,
                 horizontalAccuracyMeters: location.horizontalAccuracy,
-                timestamp: location.timestamp
+                timestamp: location.timestamp,
+                altitudeMeters: location.altitude,
+                verticalAccuracyMeters: location.verticalAccuracy,
+                speedMetersPerSecond: location.speed,
+                courseDegrees: location.course
             )
         }
 

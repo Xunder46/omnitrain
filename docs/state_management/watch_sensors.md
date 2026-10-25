@@ -178,8 +178,9 @@ lifts and holds never ask and never use location
 training and routines ask and use location only once the user is on an
 exercise that carries the `distance` capability
 (`WatchGpsByExerciseTests.testS4800AWalkInAFreeWorkoutStartsGps`,
-`…testS4802GpsStartsWhenTheUserReachesTheWalk`). No
-route or map is stored. All of this is verified in code and builds only:
+`…testS4802GpsStartsWhenTheUserReachesTheWalk`). No route or map is stored on the wrist's own log; the only route is the one
+handed to Health (see "Route in Apple Fitness"). All of this is verified in code
+and builds only:
 nothing here is proven on a wrist.
 
 **When access is off, the wrist says so.** `WatchLoggingState.sensorNotices`
@@ -247,6 +248,64 @@ to adopt it. The session it belonged to is already over, and its logged entries
 are in storage either way. Verified by
 `test/watch_sensor_recording_test.dart` (`S-005`) and by watchOS
 `WatchSensorRecordingTests.testS005TheNextLaunchEndsTheWorkoutTheKillLeftBehind`.
+
+### Route in Apple Fitness
+
+An outdoor run the user finishes on the watch records its GPS route into Apple
+Health, so iPhone Fitness shows the map on the workout. The rules live in the
+package type `WatchRouteKeeper`
+(`watch/watchos/Sources/WatchSessionEngine/WatchRouteKeeper.swift`, pure
+Foundation, covered by `swift test`); the watch app target's
+`HealthKitRouteRecorder.swift` turns accepted points into `CLLocation`s for
+HealthKit, and `HealthKitWorkoutStore.swift` opens the route after the workout's
+collection begins and finishes it after the workout is saved.
+
+**What is recorded.** Only a workout the store opens as activity `running`,
+outdoors, with route sharing authorized, records a route. A point enters when it
+is a valid coordinate, its accuracy is within 0...50 m, it is not before the
+workout began, it is strictly later than the last accepted point, and it is at
+most 20 m/s from it (the first point is exempt from the speed rule). The route
+is saved when there are at least 2 accepted points and one is at least 50 m
+(exactly 50.0 counts) from the first; otherwise it is discarded — a treadmill
+run, no fix, or a single fix leaves no map. Points go to Health in batches of
+exactly 10, with the remainder sent at close; no full route is kept in memory.
+The route reads the same raw GPS fixes the distance already uses
+(`WatchTrackedLocation.observeFixes`) and never starts the radio.
+
+**What is not recorded.** Route points leave the watch only into HealthKit —
+nothing is sent to the phone. No distance is saved to Health in this change, so
+Fitness shows the map without distance or pace. There is no start/end trimming:
+the route spans the workout as recorded. Rests and paused timers are one
+continuous line.
+
+**Permissions.** The one Health permission request now also asks to share and
+read workout routes (and read workouts). The Health permission sentence says:
+"OmniTrain saves the workouts you finish on the watch, with the route of an
+outdoor run, to Health so they count toward your activity rings."
+
+**Recovery.** A workout recovered after the app was killed gets a best-effort
+route finish; whether Apple kept the points is not documented.
+
+Pins: package tests `WatchRouteKeeperTests` (S-9801, S-9803..S-9814),
+`WatchRouteTeeTests` (S-9810 tee arm, S-9815, S-9816); app-target source guards
+`WatchRouteSourceTests` (S-9817..S-9822).
+
+Owner device checks (not yet run):
+
+1. ODC-1: an outdoor run of 10 minutes or more shows a map in iPhone Fitness and
+   in Health > Workouts > the run > Workout Route.
+2. ODC-2: the same run with the wrist down most of the time: the map follows the
+   streets (if not, distance is affected too: report it).
+3. ODC-3: a treadmill run shows no map.
+4. ODC-4: location refused: workout saved, no map, the existing "No distance,
+   Location access is off" line.
+5. ODC-5: decline only Workout Routes in the Health sheet: workout saved, no map.
+6. ODC-6: force-quit the watch app mid-run, relaunch, finish: note whether the
+   first part's workout has a map.
+7. ODC-7: a run of 2 hours or more: full map, the app stays responsive.
+8. ODC-8: first launch after the update: the Health sheet lists Workout Routes
+   once.
+9. ODC-9: an outdoor sports session: no map.
 
 ### Invariants
 

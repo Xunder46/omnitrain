@@ -35,16 +35,33 @@ public struct WatchRawFix: Equatable {
 
     public let timestamp: Date
 
+    /// Metres above sea level, as the platform gave it; nil when the source does not say.
+    public let altitudeMeters: Double?
+    /// Vertical accuracy in metres; a negative value means the altitude is not valid (platform convention, passed through).
+    public let verticalAccuracyMeters: Double?
+    /// Metres per second; negative means invalid (passed through).
+    public let speedMetersPerSecond: Double?
+    /// Degrees from true north; negative means invalid (passed through).
+    public let courseDegrees: Double?
+
     public init(
         latitude: Double,
         longitude: Double,
         horizontalAccuracyMeters: Double,
-        timestamp: Date
+        timestamp: Date,
+        altitudeMeters: Double? = nil,
+        verticalAccuracyMeters: Double? = nil,
+        speedMetersPerSecond: Double? = nil,
+        courseDegrees: Double? = nil
     ) {
         self.latitude = latitude
         self.longitude = longitude
         self.horizontalAccuracyMeters = horizontalAccuracyMeters
         self.timestamp = timestamp
+        self.altitudeMeters = altitudeMeters
+        self.verticalAccuracyMeters = verticalAccuracyMeters
+        self.speedMetersPerSecond = speedMetersPerSecond
+        self.courseDegrees = courseDegrees
     }
 }
 
@@ -110,8 +127,9 @@ public struct WatchDistanceTracker {
         return WatchLocationFix(distanceMeters: totalMeters)
     }
 
-    /// Great-circle metres between two fixes (haversine).
-    private static func meters(from origin: WatchRawFix, to fix: WatchRawFix) -> Double {
+    /// Great-circle metres between two fixes (haversine). The route keeper
+    /// (plan 68) reuses this one formula; there is no second one.
+    static func meters(from origin: WatchRawFix, to fix: WatchRawFix) -> Double {
         let radians = Double.pi / 180
         let latitude1 = origin.latitude * radians
         let latitude2 = fix.latitude * radians

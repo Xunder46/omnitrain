@@ -13,7 +13,10 @@
 //  those readings to the package), and
 //  `docs/plans/2026-10-23-58-health-workout-type-and-calories-plan/2026-10-23-58-health-workout-type-and-calories-plan.md`
 //  (D-5: the store also shares and reads active energy, so the workout saves its
-//  calories and the Move ring counts them). Every rule about *when* a workout opens or closes
+//  calories and the Move ring counts them), and
+//  `docs/plans/2026-10-24-68-run-route-map-plan/2026-10-24-68-run-route-map-plan.md`
+//  (plan 68: the store also records the Health route of an outdoor run through
+//  `HealthKitRouteRecorder`; the route never decides the workout's save). Every rule about *when* a workout opens or closes
 //  lives in the package, where `swift test` exercises it on macOS
 //  (`WatchWorkoutCoordinatorTests`). What is left here is the platform call
 //  itself, so this file is the one part of the keep-alive no desktop test can
@@ -54,6 +57,12 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// watch has nothing registered.
     private var session: HKWorkoutSession?
     private var builder: HKLiveWorkoutBuilder?
+
+    /// Feeds the Health route of an outdoor run (plan 68); nothing in the session depends on it.
+    private let routeRecorder = HealthKitRouteRecorder()
+
+    /// True while the workout held is one recovered from a previous process (D-9).
+    private var recoveredSession = false
 
     /// The one authorization request this process is allowed, from the moment it
     /// starts until the process ends. The prompt is asked for on the first
@@ -129,8 +138,12 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             session = opened
             builder = collection
 
-            opened.startActivity(with: Date())
-            try await collection.beginCollection(at: Date())
+            let startDate = Date()
+            opened.startActivity(with: startDate)
+            try await collection.beginCollection(at: startDate)
+
+            recoveredSession = false
+            openRoute(on: collection, outdoors: outdoors, activityName: activityType, startedAt: startDate)
         } catch {
             // Nothing is left registered: a session that started but whose
             // collection did not is a workout the user cannot see.
@@ -147,6 +160,25 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         await begin(activityType, outdoors: false)
     }
 
+    /// Opens the route when the workout qualifies (D-1) and points the location adapter at the recorder
+    /// (D-2): no second subscription, no permission question. Route sharing is read here, per workout.
+    private func openRoute(
+        on collection: HKLiveWorkoutBuilder,
+        outdoors: Bool,
+        activityName: String,
+        startedAt: Date
+    ) {
+        let sharing = healthStore.authorizationStatus(for: HKSeriesType.workoutRoute()) == .sharingAuthorized
+        guard routeRecorder.open(
+            on: collection,
+            outdoors: outdoors,
+            activityName: activityName,
+            routeSharingAllowed: sharing,
+            beganAt: startedAt
+        ) else { return }
+        location.observeFixes { [routeRecorder] fix in routeRecorder.offer(fix) }
+    }
+
     func end() async {
         // The feed stops reading the builder this store is about to finish,
         // whatever else `end` does: a tick over a closed builder is a stranded
@@ -155,19 +187,35 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
 
         guard let openSession = session else { return }
         let openBuilder = builder
+        let wasRecovered = recoveredSession
         session = nil
         builder = nil
+        recoveredSession = false
+
+        // The route closes before the workout does (plan 68 D-6): no point is handed to Health after this.
+        let route = routeRecorder.close()
+        // A recovered workout's route builder is asked for before the workout is finished (D-9).
+        let recoveredRoute = wasRecovered
+            ? openBuilder.flatMap { routeRecorder.recoveredBuilder(from: $0) }
+            : nil
 
         openSession.end()
 
-        guard let openBuilder else { return }
+        guard let openBuilder else {
+            await routeRecorder.finish(route, workout: nil)
+            return
+        }
+        var saved: HKWorkout?
         do {
             try await openBuilder.endCollection(at: Date())
-            _ = try await openBuilder.finishWorkout()
+            saved = try await openBuilder.finishWorkout()
         } catch {
             // The session is already closed, which is the part that matters: a
             // saved workout is a bonus, a workout left open is a lie.
         }
+        // The workout is saved first, then the route is finished with it (F-1).
+        await routeRecorder.finish(route, workout: saved)
+        await routeRecorder.finishRecovered(recoveredRoute, workout: saved)
     }
 
     /// Reads the workout's newest beat now, through the feed's one gate, so a
@@ -191,6 +239,7 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             // and that takes the session and its builder.
             session = recovered
             builder = recovered.associatedWorkoutBuilder()
+            recoveredSession = true
 
             return [Self.name(for: recovered.workoutConfiguration.activityType)]
         } catch {
@@ -250,7 +299,8 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// half-settled answer.
     ///
     /// Share the workout type and active energy, so the workout saves its
-    /// calories and the Move ring counts them (plan 58, D-5); read heart rate,
+    /// calories and the Move ring counts them (plan 58, D-5), and the workout
+    /// route, so an outdoor run saves its map (plan 68 D-7); read heart rate,
     /// steps and active energy. The builder's statistics only carry the types
     /// asked for here, so a read left out is a stream that never produces
     /// anything (D-2103). A refusal, or a request
@@ -263,9 +313,11 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         let task = Task<Bool, Never> {
             do {
                 try await healthStore.requestAuthorization(
-                    toShare: [HKObjectType.workoutType(), HKQuantityType(.activeEnergyBurned)],
+                    toShare: [HKObjectType.workoutType(), HKQuantityType(.activeEnergyBurned),
+                              HKSeriesType.workoutRoute()],
                     read: [HKQuantityType(.heartRate), HKQuantityType(.stepCount),
-                           HKQuantityType(.activeEnergyBurned)]
+                           HKQuantityType(.activeEnergyBurned), HKObjectType.workoutType(),
+                           HKSeriesType.workoutRoute()]
                 )
                 return healthStore.authorizationStatus(for: HKObjectType.workoutType())
                     == .sharingAuthorized

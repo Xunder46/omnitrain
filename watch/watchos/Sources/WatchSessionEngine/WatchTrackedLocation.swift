@@ -18,6 +18,10 @@
 //  — so a wrist that measures its own distance plugs into that recorder without
 //  either side learning about the other's types.
 //
+//  Plan 68 adds one raw-fix observer: each fix that passes the freshness gate
+//  is handed to it before the distance tracker judges it, so the route keeper
+//  sees the same stream without a second subscription.
+//
 
 import Foundation
 
@@ -37,6 +41,9 @@ public final class WatchTrackedLocation {
     private let clock: () -> Date
     private let maxFixAgeSeconds: TimeInterval
 
+    private let observerLock = NSLock()
+    private var observer: (@Sendable (WatchRawFix) -> Void)?
+
     public init(
         source: WatchRawFixSource,
         clock: @escaping () -> Date = Date.init,
@@ -51,6 +58,21 @@ public final class WatchTrackedLocation {
     /// by `WatchSensorRecorder`, not here.
     public func permission() async -> WatchSensorPermission {
         await source.permission()
+    }
+
+    /// Hands every fresh raw fix — one that passed the freshness gate, before the distance tracker judges it —
+    /// to `observer`, once, in order. It adds no subscription: the same raw stream feeds both. The route
+    /// keeper (plan 68 D-2) is the one observer. Call it once before `fixes()` is consumed; a later call replaces the earlier observer for fixes not yet read.
+    public func observeFixes(_ observer: @escaping @Sendable (WatchRawFix) -> Void) {
+        observerLock.lock()
+        defer { observerLock.unlock() }
+        self.observer = observer
+    }
+
+    private func currentObserver() -> (@Sendable (WatchRawFix) -> Void)? {
+        observerLock.lock()
+        defer { observerLock.unlock() }
+        return observer
     }
 
     /// The source's fixes, accumulated into cumulative metres.
@@ -73,6 +95,7 @@ public final class WatchTrackedLocation {
                 var tracker = WatchDistanceTracker()
                 for await raw in source.rawFixes() {
                     guard raw.timestamp >= oldest else { continue }
+                    currentObserver()?(raw)
                     if let fix = tracker.accept(raw) {
                         continuation.yield(fix)
                     }

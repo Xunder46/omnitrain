@@ -43,9 +43,7 @@ public enum WatchSensorPermission {
 /// One location fix, reduced to the only thing a training session needs from it:
 /// how far the user has covered in total.
 ///
-/// Route geometry is out of scope on purpose. The watch is an instrument panel,
-/// not a map, and a polyline is the largest thing this app could store for the
-/// least information.
+/// The package stores no route geometry: this value carries distance only. A route for Apple Health is kept by `WatchRouteKeeper` (plan 68), a few points at a time, and leaves the watch only into HealthKit.
 public struct WatchLocationFix: Equatable {
     /// Metres covered since the session started, cumulative — the platform
     /// already tracks the running total, and the wrist only has to carry it.
