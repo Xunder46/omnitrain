@@ -219,6 +219,13 @@ tap adds the food; its pencil opens EditFoodScreen (S-001)`).
 
 ---
 
+### `_LibrarySectionHeader` (private to `AddFoodScreen`)
+
+The category heading in the Library list (key `library_section_<title>`): the
+category name in the section-title style, with no divider between it and its
+first food. Shown only while the search box is empty. Covered by
+`test/library_grouping_test.dart` (`S-12820`, `S-12825`).
+
 ### `_YoursTag` and `_UserFoodRow` (private to `AddFoodScreen`)
 
 `_YoursTag` is the small primary-colour `Yours` label after a food's name. A

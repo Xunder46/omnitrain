@@ -93,7 +93,7 @@ pushes a separate full-screen New Food form (`_NewFoodFormScreen` in
 `+ New Category` (`new_group_button`). Verified by `test/library_merge_test.dart`
 (`S-12810` two tabs, `S-12814` the CTA opens the form and Categories keeps its own).
 
-The Library list is one alphabetical list of every food: bundled catalog foods,
+The Library list holds every food, grouped under category headings while the search box is empty (headings alphabetical, `Uncategorized` last, foods alphabetical inside each, the same order as Foods I Eat via `foodsIEatSections`; a typed query shows the flat filtered list instead). Verified by `test/library_grouping_test.dart` (`S-12820`, `S-12821`, `S-12822`, `S-12823`, `S-12825`). The list is: bundled catalog foods,
 foods the user created, and older custom foods that exist only in the library.
 A food the user created carries a small **Yours** tag (key `yours_tag_<foodId>`);
 bundled foods never do. An older library-only custom food keeps its old row, with

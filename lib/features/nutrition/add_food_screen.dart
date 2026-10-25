@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/navigation/navigation.dart';
 import '../../core/utils/food_helpers.dart';
+import '../../core/utils/foods_i_eat_order.dart';
 import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
@@ -27,9 +28,9 @@ const Object _cancelledSentinel = Object();
 /// Manage Food Library screen — two-tab flow for adding and removing
 /// foods to/from the user's library.
 ///
-/// Tab 1 (default): Library — alphabetical list of every food
-/// (bundled ones, foods you created, tagged **Yours**, and any
-/// older custom foods). Each row is a toggle: tapping it adds the
+/// Tab 1 (default): Library — grouped under category headings while
+/// the search is empty (flat while a query is typed). Each row is a
+/// toggle: tapping it adds the
 /// food
 /// to the user's library (`FoodLibraryState.addCatalogFoodToLibrary`)
 /// or, when the food is already in the library, asks before removing
@@ -516,7 +517,8 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
 
 // ─── Tab 1: Library ─────────────────────────────────────────────────────
 
-/// Alphabetical list of every food: catalog rows ([_CatalogRow]) and
+/// Grouped under category headings while the search is empty (flat
+/// while a query is typed): catalog rows ([_CatalogRow]) and
 /// older custom foods ([_UserFoodRow]). Each row's trailing
 /// affordance reflects whether the catalog food is in the user's
 /// library (see [_CatalogRow]). The tab listens to BOTH
@@ -526,7 +528,9 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
 /// A search field at the top of the tab filters the catalog by food
 /// name. The filter is local (no network call) and runs in
 /// `FoodLibraryState.searchCatalogFoods` (case-insensitive substring
-/// on `name`, alphabetical order).
+/// on `name`, alphabetical order). While the search box is empty the
+/// list is grouped under category headings; a query shows the flat
+/// filtered list.
 class _FromCatalogTab extends StatefulWidget {
   final FoodLibraryState foodLibraryState;
   final NutritionState nutritionState;
@@ -594,6 +598,18 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
           );
         }
 
+        // Headings only while the search box is empty (a query shows the flat
+        // filtered list). The order is the phone's own Foods I Eat rule.
+        final entries = <Object>[
+          if (lower.isEmpty)
+            for (final section in foodsIEatSections(
+              foods: catalog,
+              groups: state.activeFoodGroups,
+            )) ...[section.title, ...section.foods]
+          else
+            ...catalog,
+        ];
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -638,10 +654,20 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
                     0,
                     OmniTheme.formBottomCTAClearance,
                   ),
-                  itemCount: catalog.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemCount: entries.length,
+                  separatorBuilder: (_, i) =>
+                      entries[i] is String || entries[i + 1] is String
+                      ? const SizedBox.shrink()
+                      : const Divider(height: 1),
                   itemBuilder: (context, i) {
-                    final f = catalog[i];
+                    final entry = entries[i];
+                    if (entry is String) {
+                      return _LibrarySectionHeader(
+                        key: Key('library_section_$entry'),
+                        title: entry,
+                      );
+                    }
+                    final f = entry as Food;
                     if (legacyIds.contains(f.id)) {
                       return _UserFoodRow(
                         food: f,
@@ -668,6 +694,29 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
     final copy = [...foods];
     copy.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return copy;
+  }
+}
+
+/// A category heading in the Library list (plan 77b2).
+class _LibrarySectionHeader extends StatelessWidget {
+  const _LibrarySectionHeader({super.key, required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        title,
+        style: theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          letterSpacing: OmniTheme.titleLetterSpacing,
+          color: OmniTheme.colors.textDominant,
+        ),
+      ),
+    );
   }
 }
 

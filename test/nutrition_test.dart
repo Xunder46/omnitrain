@@ -1831,6 +1831,15 @@ void main() {
         await tester.tap(find.byKey(const Key('food_library_manage_pencil')));
         await tester.pumpAndSettle();
 
+        // The seeded food sits under the last category heading
+        // ("Uncategorized") far below the lazily-built list; filter
+        // to the flat view so the row is rendered.
+        await tester.enterText(
+          find.byKey(const Key('catalog_search_field')),
+          'Apple (widget',
+        );
+        await tester.pumpAndSettle();
+
         // The "Library" tab is the default — the seeded catalog
         // food is listed.
         expect(find.text('Apple (widget test)'), findsOneWidget);
@@ -3171,8 +3180,18 @@ void main() {
     }
 
     /// Pump the AddFoodScreen for the Library tab.
+    ///
+    /// [searchFor] types the seeded food's name into the catalog
+    /// search field after the first settle, switching the list to the
+    /// flat filtered view so the lazily-built list actually renders
+    /// the seeded row (with category headings the seeded null-group
+    /// food sits under the last heading, far below the viewport).
     Future<({NutritionState nutrition, FoodLibraryState foodLib})>
-    pumpCatalogTab(WidgetTester tester, {MockWorkoutRepository? repo}) async {
+    pumpCatalogTab(
+      WidgetTester tester, {
+      MockWorkoutRepository? repo,
+      String? searchFor,
+    }) async {
       final r = repo ?? await _freshRepo();
       final nutrition = NutritionState(r);
       final foodLib = FoodLibraryState(r);
@@ -3195,13 +3214,24 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      if (searchFor != null) {
+        await tester.enterText(
+          find.byKey(const Key('catalog_search_field')),
+          searchFor,
+        );
+        await tester.pumpAndSettle();
+      }
       return (nutrition: nutrition, foodLib: foodLib);
     }
 
     testWidgets('renders Add button on a fresh catalog row', (tester) async {
       final repo = await _freshRepo();
       final catalogId = await seedSingleCatalog(repo);
-      await pumpCatalogTab(tester, repo: repo);
+      await pumpCatalogTab(
+        tester,
+        repo: repo,
+        searchFor: 'Chicken (toggle',
+      );
 
       // The catalog row is visible.
       expect(
@@ -3221,7 +3251,11 @@ void main() {
       (tester) async {
         final repo = await _freshRepo();
         final catalogId = await seedSingleCatalog(repo);
-        final states = await pumpCatalogTab(tester, repo: repo);
+        final states = await pumpCatalogTab(
+          tester,
+          repo: repo,
+          searchFor: 'Chicken (toggle',
+        );
 
         await tester.tap(find.byKey(Key('add_catalog_food_$catalogId')));
         await tester.pumpAndSettle();
@@ -3261,7 +3295,11 @@ void main() {
       (tester) async {
         final repo = await _freshRepo();
         final catalogId = await seedSingleCatalog(repo);
-        final states = await pumpCatalogTab(tester, repo: repo);
+        final states = await pumpCatalogTab(
+          tester,
+          repo: repo,
+          searchFor: 'Chicken (toggle',
+        );
 
         // Add it, and log it for today so the cancel path has to leave
         // both the library and the day log alone.
@@ -3325,7 +3363,11 @@ void main() {
       (tester) async {
         final repo = await _freshRepo();
         final catalogId = await seedSingleCatalog(repo);
-        final states = await pumpCatalogTab(tester, repo: repo);
+        final states = await pumpCatalogTab(
+          tester,
+          repo: repo,
+          searchFor: 'Chicken (toggle',
+        );
 
         // Add it.
         await tester.tap(find.byKey(Key('add_catalog_food_$catalogId')));
@@ -3356,7 +3398,11 @@ void main() {
     ) async {
       final repo = await _freshRepo();
       final catalogId = await seedSingleCatalog(repo);
-      final states = await pumpCatalogTab(tester, repo: repo);
+      final states = await pumpCatalogTab(
+        tester,
+        repo: repo,
+        searchFor: 'Chicken (toggle',
+      );
 
       final addKey = Key('add_catalog_food_$catalogId');
       final removeKey = Key('remove_catalog_food_$catalogId');
@@ -3398,7 +3444,11 @@ void main() {
       // We drive the state directly to avoid coupling to the Add row
       // — the focus here is the Remove path's interaction with
       // today's log.
-      final states = await pumpCatalogTab(tester, repo: repo);
+      final states = await pumpCatalogTab(
+        tester,
+        repo: repo,
+        searchFor: 'Chicken (toggle',
+      );
       final libId = await states.foodLib.addCatalogFoodToLibrary(catalogId);
       await states.foodLib.loadFoods();
       final libFood = states.foodLib.foods.firstWhere((f) => f.id == libId);

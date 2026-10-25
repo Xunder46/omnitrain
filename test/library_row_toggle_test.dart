@@ -62,8 +62,18 @@ void main() {
     }
 
     /// Pump the AddFoodScreen for the Library tab.
+    ///
+    /// [searchFor] types the seeded food's name into the catalog
+    /// search field after the first settle, switching the list to the
+    /// flat filtered view so the lazily-built list actually renders
+    /// the seeded row (with category headings the seeded null-group
+    /// food sits under the last heading, far below the viewport).
     Future<({NutritionState nutrition, FoodLibraryState foodLib})>
-    pumpCatalogTab(WidgetTester tester, {MockWorkoutRepository? repo}) async {
+    pumpCatalogTab(
+      WidgetTester tester, {
+      MockWorkoutRepository? repo,
+      String? searchFor,
+    }) async {
       final r = repo ?? await _freshRepo();
       final nutrition = NutritionState(r);
       final foodLib = FoodLibraryState(r);
@@ -86,6 +96,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      if (searchFor != null) {
+        await tester.enterText(
+          find.byKey(const Key('catalog_search_field')),
+          searchFor,
+        );
+        await tester.pumpAndSettle();
+      }
       return (nutrition: nutrition, foodLib: foodLib);
     }
 
@@ -94,7 +111,11 @@ void main() {
     ) async {
       final repo = await _freshRepo();
       final catalogId = await seedSingleCatalog(repo);
-      final states = await pumpCatalogTab(tester, repo: repo);
+      final states = await pumpCatalogTab(
+        tester,
+        repo: repo,
+        searchFor: 'Chicken (toggle',
+      );
 
       // Before: the Add button is there, no pencil, no check icon.
       expect(find.byKey(Key('add_catalog_food_$catalogId')), findsOneWidget);
@@ -132,7 +153,11 @@ void main() {
       (tester) async {
         final repo = await _freshRepo();
         final catalogId = await seedSingleCatalog(repo);
-        final states = await pumpCatalogTab(tester, repo: repo);
+        final states = await pumpCatalogTab(
+          tester,
+          repo: repo,
+          searchFor: 'Chicken (toggle',
+        );
 
         // Add it by row tap, and log it for today so the confirm path
         // has to unlog it.
@@ -181,7 +206,11 @@ void main() {
       (tester) async {
         final repo = await _freshRepo();
         final catalogId = await seedSingleCatalog(repo);
-        await pumpCatalogTab(tester, repo: repo);
+        await pumpCatalogTab(
+          tester,
+          repo: repo,
+          searchFor: 'Chicken (toggle',
+        );
 
         // Before the add: no outline.
         expect(find.byKey(Key('library_row_outline_$catalogId')), findsNothing);
@@ -313,7 +342,11 @@ void main() {
     testWidgets('S-12714: the pencil does not toggle the row', (tester) async {
       final repo = await _freshRepo();
       final catalogId = await seedSingleCatalog(repo);
-      final states = await pumpCatalogTab(tester, repo: repo);
+      final states = await pumpCatalogTab(
+        tester,
+        repo: repo,
+        searchFor: 'Chicken (toggle',
+      );
 
       await tester.tap(find.text('Chicken (toggle test)'));
       await tester.pumpAndSettle();
@@ -334,7 +367,11 @@ void main() {
       (tester) async {
         final repo = await _freshRepo();
         final catalogId = await seedSingleCatalog(repo);
-        final states = await pumpCatalogTab(tester, repo: repo);
+        final states = await pumpCatalogTab(
+          tester,
+          repo: repo,
+          searchFor: 'Chicken (toggle',
+        );
 
         // Before the add the row shows the catalog food's macros,
         // computed with the same helper the row uses.
@@ -379,7 +416,11 @@ void main() {
       (tester) async {
         final repo = await _freshRepo();
         final catalogId = await seedSingleCatalog(repo);
-        await pumpCatalogTab(tester, repo: repo);
+        await pumpCatalogTab(
+          tester,
+          repo: repo,
+          searchFor: 'Chicken (toggle',
+        );
 
         await tester.tap(find.text('Chicken (toggle test)'));
         await tester.pumpAndSettle();
