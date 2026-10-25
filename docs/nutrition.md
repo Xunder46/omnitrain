@@ -94,11 +94,26 @@ does not log it. Removing a library food that is already logged today removes
 today's entry first, so the library and the day's log cannot disagree about a food
 that no longer exists.
 
-Removing a library row asks first: the remove control opens a two-choice
-confirmation (`Remove ${food.name} from your library?`), and Cancel keeps the
-food in the library. Verified by `test/nutrition_test.dart` (group
+A Library row is a toggle, not an editor. Tapping a row whose food is not in
+the library adds it (the trailing `Add` button, key `add_catalog_food_<id>`,
+does the same); tapping a row whose food is in the library asks
+`Remove <name> from your library?` first — Cancel keeps the food, Confirm
+removes it and unlogs it for today. An in-list row shows the user's own copy
+(name, macros, photograph) with a primary-colour outline, a pencil that
+opens the editor, and a check where the red trash button used to be; there is
+no trash button any more. The row's text is two lines:
+`<cal> cal per <amount> <label>` and `<P>P · <C>C · <F>F`. Verified by
+`test/library_row_toggle_test.dart` (group `Library row toggle (plan 77a
+S-12710..S-12717)`: `S-12710: row tap adds a not-in-list food to the library`,
+`S-12711: in-list row tap asks before removing; Cancel keeps, Confirm removes
+and unlogs today`, `S-12712: the in-list row carries the primary outline; the
+not-in-list row has none`, `S-12714: the pencil does not toggle the row`,
+`S-12715: the row macro line reads the copy after an edit`), by
+`test/screen_widget_test.dart` (`Library row tap adds the food; its pencil
+opens EditFoodScreen (S-001)`), and by `test/nutrition_test.dart` (group
 `ManageFoodLibrary – add/remove toggle`: `tapping Remove asks first, and Cancel
-keeps the food in the library (S-2903)`).
+keeps the food in the library (S-2903)`; the Library add/remove groups also
+assert the check icon and the absence of `Icons.delete_outline`).
 
 Group deletion refuses to strand a shipped food: moving a group's foods to the
 ungrouped bucket would silently orphan a bundled catalog food, so that case raises
@@ -129,11 +144,37 @@ Verified by `test/food_library_test.dart`, `test/food_library_edit_test.dart`,
 
 ### `EditFoodScreen`
 
-Edits a food's own values and its photograph. An edit to a catalog food
-propagates to the personal library rows linked to it through the durable
-`catalogId` linkage, and never to already-logged snapshots — history stays
-frozen. Clearing the photograph clears the stored path; the file on disk is left
-intact.
+Edits a food's own values and its photograph. Which save path runs depends on
+the food the screen is given. A library copy of a bundled catalog food
+(`isCatalog == false`) saves through `FoodLibraryState.editLibraryFood` and
+changes only the copy — the shipped catalog row and its seed-touched marker
+are untouched. A user-created catalog food (`isCatalog == true`) saves through
+`updateCatalogFood` as before, and that edit still propagates to the personal
+library rows linked to it through the durable `catalogId` linkage. Neither
+path touches already-logged snapshots — history stays frozen. Clearing the
+photograph clears the stored path; the file on disk is left intact.
+
+**Editing your copy and Reset.** When the screen holds a library copy that
+differs from its bundled original, a `Reset to original` button (key
+`food_reset_original`) shows under the form; tapping it asks `Reset to
+original?` (keys `food-reset-cancel` / `food-reset-confirm`), and confirming
+calls `resetLibraryFood` — which restores the shipped name, group, unit,
+reference amount, macros, notes and photograph while keeping the copy's id,
+`catalogId`, last amount and creation time — and pops. The button is built
+when the screen opens, so it appears the next time the editor is opened after
+an edit. Verified by `test/library_row_toggle_test.dart` (group `Library row
+toggle (plan 77a S-12710..S-12717)`: `S-12713: pencil on an in-list bundled
+food edits the copy; reset restores the shipped values`, `S-12717: a
+user-created (non-bundled) in-list food has no Reset button`, `S-12719: the
+Edit screen routes a bundled copy's save through editLibraryFood (onSave and
+onImageSave)`, `S-12720: the Edit screen routes a user-created catalog food's
+save through updateCatalogFood (propagates to the library copy)`) and by
+`test/food_library_copy_edit_test.dart` (groups `FoodLibraryState edit own
+copy (Mock)` / `FoodLibraryState edit own copy (Hive)`:
+`editLibraryFood changes only the library copy (S-12701)`,
+`canResetLibraryFood lifecycle (S-12703)`, `resetLibraryFood restores the
+shipped values (S-12704)`, `updateCatalogFood still propagates to the copy
+(S-12705)`).
 
 Verified by `test/food_library_edit_test.dart`, `test/food_form_shipped_photo_test.dart`,
 `test/food_form_pick_saves_test.dart`, `test/food_photo_clear_legacy_edit_test.dart`.
@@ -210,7 +251,12 @@ photograph it has replaced.
 
 It is also the feature's guard rail: `deleteFoodGroupReassigningFoods` is the only
 group-deletion path, and it refuses the bundled-food case described above rather
-than reassigning.
+than reassigning. Editing a bundled food's library copy — and resetting that copy
+to the shipped values — are state methods too (`editLibraryFood`,
+`canResetLibraryFood`, `resetLibraryFood`, `libraryFoodFor`; their contracts are
+in [Nutrition State](state_management/nutrition_state.md)). Verified by
+`test/food_library_copy_edit_test.dart` (group `FoodLibraryState edit own copy
+(Mock)`).
 
 Verified by `test/food_library_state_test.dart`, `test/food_library_state_delete_guard_test.dart`,
 `test/food_library_persistence_test.dart`, `test/food_orphan_category_integration_test.dart`.
@@ -421,6 +467,8 @@ contract, not a live persistence path.
 | Foods I Eat ordering is shared with the watch quick-log | `test/watch_nutrition_quick_log_test.dart` |
 | Catalog rows load identically on every platform | `test/food_catalog_load_test.dart`, `test/bundled_food_asset_contract_test.dart` |
 | A library copy shows the shipped photograph | `test/food_photo_service_test.dart`, `test/bundled_food_photographs_test.dart` |
+| A Library row tap toggles the food in the library (add, or remove after asking) | `test/library_row_toggle_test.dart`, `test/screen_widget_test.dart` |
+| Editing a bundled food changes only the library copy; Reset restores the shipped values | `test/food_library_copy_edit_test.dart`, `test/library_row_toggle_test.dart` |
 | Trend days are summed and rounded once per day, gaps skipped | `test/stats_progress_test.dart` |
 | The target line steps at each saved target change | `test/stats_progress_test.dart`, `test/nutrition_trend_screen_test.dart` |
 | The Fuel summary averages over logged days only | `test/fuel_row_screen_test.dart` |

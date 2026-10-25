@@ -9643,7 +9643,7 @@ void main() {
     );
 
     testWidgets(
-      'Catalog row on the Library tab opens EditFoodScreen on row tap (S-001)',
+      'Library row tap adds the food; its pencil opens EditFoodScreen (S-001)',
       (WidgetTester tester) async {
         // Tall surface to provide room for the expanded catalog
         // (150 foods). The "Chicken breast, skinless" row is
@@ -9660,6 +9660,7 @@ void main() {
         // groupId ("food-group-proteins") has a matching item.
         await foodLibraryState.loadFoodGroups();
         await foodLibraryState.loadCatalogFoods();
+        await foodLibraryState.loadFoods();
 
         await tester.pumpWidget(
           MaterialApp(
@@ -9673,8 +9674,8 @@ void main() {
 
         // The bundled catalog ships a "Chicken breast, skinless"
         // row. The list is lazily built, so scroll until the row is
-        // constructed, then tap its name (not the Add button) to
-        // open the Edit Food screen.
+        // constructed, then tap its name — the row tap is now the
+        // add toggle, so the food is added and NO editor opens.
         await tester.scrollUntilVisible(
           find.text('Chicken breast, skinless'),
           200,
@@ -9684,7 +9685,26 @@ void main() {
         await tester.tap(find.text('Chicken breast, skinless'));
         await tester.pumpAndSettle();
 
-        // EditFoodScreen is on the navigator.
+        // No editor opened; the food was added to the library.
+        expect(find.text('Edit Food'), findsNothing);
+        await foodLibraryState.loadFoods();
+        expect(
+          foodLibraryState.libraryIdFor('chicken_breast'),
+          isNotNull,
+          reason: 'row tap adds the food to the library',
+        );
+
+        // The pencil on the in-list row opens the Edit Food screen.
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('edit_catalog_food_chicken_breast')),
+          200,
+          scrollable: _verticalScrollable,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('edit_catalog_food_chicken_breast')),
+        );
+        await tester.pumpAndSettle();
         expect(find.text('Edit Food'), findsOneWidget);
       },
     );

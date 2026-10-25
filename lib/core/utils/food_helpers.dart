@@ -48,3 +48,31 @@ String formatGrams(double value) {
   }
   return value.toString();
 }
+
+/// Render the serving label for a food row, e.g. "100 g" or "1 tbsp".
+///
+/// Shows "{referenceAmount} {referenceLabel}" and handles legacy
+/// labels like "per 100g" / "per 100 g" by extracting just the unit
+/// part. Body moved verbatim from `LogFoodRow._unitLabel`
+/// (plan 77a D-6) so the Library rows and the log rows render the
+/// same string.
+String foodServingLabel(Food food) {
+  final amount = food.referenceAmount.toInt();
+  var label = food.referenceLabel.trim();
+
+  // Handle legacy labels that contain "per" (e.g., "per 100g", "per 100 g")
+  if (label.toLowerCase().startsWith('per ')) {
+    label = label.substring(4).trim();
+    // If it still starts with a number, extract just the unit part
+    final parts = label.split(' ');
+    if (parts.isNotEmpty) {
+      final firstPart = parts[0];
+      if (double.tryParse(firstPart) != null) {
+        // First part is a number, take the rest
+        label = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+      }
+    }
+  }
+
+  return '$amount $label';
+}

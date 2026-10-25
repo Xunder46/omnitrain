@@ -418,7 +418,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
                   const SizedBox(height: 4),
                   // Unit label beneath the textbox (e.g. "g", "ml", "units")
                   Text(
-                    _unitLabel(food),
+                    foodServingLabel(food),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: themeColors.textMuted,
                     ),
@@ -432,29 +432,6 @@ class _LogFoodRowState extends State<LogFoodRow> {
     );
   }
 
-  /// Render the unit label for display beneath the amount textbox.
-  /// Shows "{referenceAmount} {referenceLabel}" (e.g., "100 g", "1 unit").
-  /// Handles legacy labels like "per 100g" by extracting just the unit part.
-  static String _unitLabel(Food food) {
-    final amount = food.referenceAmount.toInt();
-    var label = food.referenceLabel.trim();
-
-    // Handle legacy labels that contain "per" (e.g., "per 100g", "per 100 g")
-    if (label.toLowerCase().startsWith('per ')) {
-      label = label.substring(4).trim();
-      // If it still starts with a number, extract just the unit part
-      final parts = label.split(' ');
-      if (parts.isNotEmpty) {
-        final firstPart = parts[0];
-        if (double.tryParse(firstPart) != null) {
-          // First part is a number, take the rest
-          label = parts.length > 1 ? parts.sublist(1).join(' ') : '';
-        }
-      }
-    }
-
-    return '$amount $label';
-  }
 }
 
 /// Tappable food thumbnail that IS the log/unlog toggle on a

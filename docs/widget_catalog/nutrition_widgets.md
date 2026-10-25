@@ -108,7 +108,14 @@ The form owns validation, the image picker, and the translation from
 controllers to a typed `FoodDraft`. The caller hands the draft to
 `FoodLibraryState.createCustomFood` (create) or
 `FoodLibraryState.updateCustomFood` / `updateCatalogFood` (edit) —
-never to the repository directly. Macro and amount fields accept
+never to the repository directly. One more edit host exists: when the
+screen is given a library copy of a bundled catalog food
+(`isCatalog == false`), `EditFoodScreen` hands the draft to
+`FoodLibraryState.editLibraryFood`, which changes only the copy
+(verified by `test/library_row_toggle_test.dart`, group
+`Library row toggle (plan 77a S-12710..S-12717)` · `S-12719: the Edit
+screen routes a bundled copy's save through editLibraryFood (onSave and
+onImageSave)`). Macro and amount fields accept
 decimal entry, and macros are stored as `double` on `Food` /
 `FoodDraft` so fractional grams persist. Fiber is exposed alongside
 carbs, matching the `Food.fiber` field on the model;
@@ -176,6 +183,39 @@ go through the OS picker via `_pickImage(ImageSource)` and the
 × overlay via the `FoodFormImageTile.onClear` callback; tests
 invoke the seams directly to bypass the platform channel and
 overlay tap.
+
+---
+
+### `_CatalogRow` (private to `AddFoodScreen`)
+
+**File**: `lib/features/nutrition/add_food_screen.dart` (private
+`_CatalogRow`, `_CatalogRowState`)
+
+One row of the Library tab, one per catalog food. The whole row is the
+toggle: a food not in the user's library is added by tapping the row (the
+trailing `Add` button, key `add_catalog_food_<id>`, does the same); a food
+in the library is removed by tapping the row, which asks
+`Remove <name> from your library?` first (keys `food-remove-cancel` /
+`food-remove-confirm`) and unlogs the food for today on confirm. An in-list
+row shows the user's copy with a primary-colour outline (key
+`library_row_outline_<id>`), a pencil `IconButton` (key
+`edit_catalog_food_<id>`, tooltip `Edit food`) that opens `EditFoodScreen`
+with the library copy for a bundled food and with the catalog row itself
+for a user-created food, and a check (key `remove_catalog_food_<id>`)
+where the red trash button used to be. The row's text is two lines:
+`<cal> cal per <serving>` and `<P>P · <C>C · <F>F`, the serving built by
+`foodServingLabel` in `lib/core/utils/food_helpers.dart`. Verified by
+`test/library_row_toggle_test.dart` (group `Library row toggle (plan 77a
+S-12710..S-12717)`: `S-12710: row tap adds a not-in-list food to the
+library`, `S-12711: in-list row tap asks before removing; Cancel keeps,
+Confirm removes and unlogs today`, `S-12712: the in-list row carries the
+primary outline; the not-in-list row has none`, `S-12713: pencil on an
+in-list bundled food edits the copy; reset restores the shipped values`,
+`S-12714: the pencil does not toggle the row`, `S-12715: the row macro
+line reads the copy after an edit`, `S-12716` source guard on
+`_CatalogRowState`, `S-12717: a user-created (non-bundled) in-list food
+has no Reset button`) and by `test/screen_widget_test.dart` (`Library row
+tap adds the food; its pencil opens EditFoodScreen (S-001)`).
 
 ---
 

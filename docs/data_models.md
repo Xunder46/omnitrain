@@ -408,7 +408,7 @@ Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
 ### Food
 
 A food item with macronutrient metadata. Foods exist in two collections:
-- **Catalog** (`isCatalog == true`): the **global managed library** of foods. Mutated at runtime — the user can edit any catalog food (row tap in the **Library** tab of `AddFoodScreen`) and create new catalog foods (**+ New Item** tab). The bundled seed (`FoodCatalogSeed` / `assets/data/food_catalog.json`) is loaded once on first install and is then mutable.
+- **Catalog** (`isCatalog == true`): the **global managed library** of foods. Mutated at runtime — the user can create new catalog foods (**+ New Item** tab) and edit user-created catalog foods (the pencil on a Library row of `AddFoodScreen`). A bundled seed row is never edited directly: editing changes the user's library copy (`FoodLibraryState.editLibraryFood`), and `Reset to original` restores the shipped values. The bundled seed (`FoodCatalogSeed` / `assets/data/food_catalog.json`) is loaded once on first install and stays at its shipped values. Verified by `test/food_library_copy_edit_test.dart` (`editLibraryFood changes only the library copy (S-12701)`, `updateCatalogFood still propagates to the copy (S-12705)`) and `test/library_row_toggle_test.dart` (`S-12713: pencil on an in-list bundled food edits the copy; reset restores the shipped values`).
 - **Library** (`isCatalog == false`): user-owned foods, the personal logging library. Catalog copies land here via the **Add** button on a catalog row.
 
 Derived getters:

@@ -1868,7 +1868,16 @@ void main() {
           ),
           findsOneWidget,
         );
-        // The trash icon is visible inside the Remove button.
+        // The check icon is visible inside the Remove button.
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const Key('remove_catalog_food_test-catalog-apple-widget'),
+            ),
+            matching: find.byIcon(Icons.check_circle),
+          ),
+          findsOneWidget,
+        );
         expect(
           find.descendant(
             of: find.byKey(
@@ -1876,7 +1885,7 @@ void main() {
             ),
             matching: find.byIcon(Icons.delete_outline),
           ),
-          findsOneWidget,
+          findsNothing,
         );
       },
     );
@@ -3226,9 +3235,16 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(Key('remove_catalog_food_$catalogId')),
-            matching: find.byIcon(Icons.delete_outline),
+            matching: find.byIcon(Icons.check_circle),
           ),
           findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(Key('remove_catalog_food_$catalogId')),
+            matching: find.byIcon(Icons.delete_outline),
+          ),
+          findsNothing,
         );
         // The screen did not pop — the AppBar is still on top.
         expect(find.text('Manage Food Library'), findsOneWidget);

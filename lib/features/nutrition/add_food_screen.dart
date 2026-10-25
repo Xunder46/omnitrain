@@ -28,16 +28,15 @@ const Object _cancelledSentinel = Object();
 /// foods to/from the user's library.
 ///
 /// Tab 1 (default): Library — flat alphabetical list of bundled
-/// catalog foods. Each row renders a state-dependent trailing
-/// affordance:
-///
-///   * **Add** (primary background) when the catalog food is NOT in
-///     the user's library. Tap → `FoodLibraryState.addCatalogFoodToLibrary`.
-///   * **Remove** (red `theme.colorScheme.error` background, white
-///     `Icons.delete_outline`) when the food IS in the library. Tap →
-///     `FoodLibraryState.removeFood` (and, if the food is currently
-///     logged today, `NutritionState.unlogFoodToday` first so the
-///     day-log stays consistent).
+/// catalog foods. Each row is a toggle: tapping it adds the food
+/// to the user's library (`FoodLibraryState.addCatalogFoodToLibrary`)
+/// or, when the food is already in the library, asks before removing
+/// it (`FoodLibraryState.removeFood`, and, if the food is currently
+/// logged today, `NutritionState.unlogFoodToday` first so the
+/// day-log stays consistent). An in-list row shows the user's own
+/// copy of the food, gets a primary-colour outline, and carries a
+/// pencil (edit) and a check (remove) on the right; a not-in-list
+/// row shows the shipped catalog entry and an **Add** button.
 ///
 /// Both actions stay on the screen — the user can add and remove
 /// several foods in one visit and only leaves via the system back
@@ -1288,30 +1287,28 @@ class _UserFoodRowState extends State<_UserFoodRow> {
 ///
 ///   * **Not in library** — a primary "Add" `FilledButton` with text.
 /// A single catalog row in the **Library** tab: a 40×40 thumbnail
-/// (image or placeholder) on the left, food name + per-reference
-/// macros in the middle, and a state-dependent trailing button on
-/// the right.
+/// (image or placeholder) on the left, food name + per-serving
+/// macros in the middle, and a state-dependent trailing affordance
+/// on the right.
 ///
-/// Tapping the row surface (outside the trailing Add / Remove
-/// button) opens the **Edit Food** screen for the catalog food;
-/// this is the iteration-3 entry point to the edit affordance for
-/// the global managed library. The trailing Add / Remove button
-/// consumes its own tap and does NOT bubble to the row-level
-/// `onRowTap` handler.
+/// The whole row toggles the food in/out of the user's list: a row
+/// tap adds the food (when it is not in the list) or asks before
+/// removing it (when it is). An in-list row shows the user's own
+/// copy of the food, gets a primary-colour outline, and carries a
+/// pencil (edit) and a check (remove) on the right; a not-in-list
+/// row shows the shipped catalog entry and an **Add** button.
 ///
-/// State derives from [FoodLibraryState.libraryIdFor] (uses the
-/// name + reference + macros identity rule, so it is robust to the
-/// fresh-id allocation done by `addCatalogFoodToLibrary`).
+/// State derives from [FoodLibraryState.libraryFoodFor] (which uses
+/// [FoodLibraryState.libraryIdFor]'s name + reference + macros
+/// identity rule, so it is robust to the fresh-id allocation done
+/// by `addCatalogFoodToLibrary`).
 ///
-/// Trailing actions (both wrapped in a fixed-width `SizedBox` so
-/// the row's name column does not reflow when the state flips):
+/// Trailing actions:
 ///
-///   * **Not in library** — a primary "Add" `FilledButton` with text.
-///   * **In library** — a square red `FilledButton` containing only a
-///     white trashcan icon (`Icons.delete_outline`); tapping it
-///     removes the food. No text label — the trash icon is
-///     universally legible and the red surface already signals
-///     "destructive" (per UX direction).
+///   * **Not in list** — a primary "Add" `FilledButton` with text.
+///   * **In list** — a pencil `IconButton` (edit) and a check
+///     `IconButton` (remove, after confirmation). The check is
+///     deliberately not a red button.
 class _CatalogRow extends StatefulWidget {
   final Food food;
   final FoodLibraryState foodLibraryState;
@@ -1332,57 +1329,49 @@ class _CatalogRowState extends State<_CatalogRow> {
   /// so the row does not reflow on a single add.
   static const double _addTrailingWidth = 88;
 
-  /// Square size for the icon-only "Remove" trailing action. Matches
-  /// the size of the `CalorieRingCard` edit-targets icon for visual
-  /// parity with the rest of the nutrition page.
-  static const double _removeTrailingSize = 40;
-
   bool _busy = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cal = calculateCalories(widget.food);
-    // `formatGrams` keeps the no-suffix display for whole-number
-    // macros (e.g. `21.0 -> 21`) and renders fractional grams with
-    // their decimal (e.g. `0.5 -> 0.5`). See `formatGrams` in
-    // food_helpers.dart for the rationale.
+    // The user's own copy when the food is in their list, else null. The
+    // list rebuilds under a ListenableBuilder on FoodLibraryState and
+    // NutritionState, so this stays live as the user adds / removes / edits.
+    final copy = widget.foodLibraryState.libraryFoodFor(widget.food.id);
+    final inList = copy != null;
+    // An in-list row shows the copy, so an edit is visible here.
+    final shown = copy ?? widget.food;
+    final cal = calculateCalories(shown);
+    // `formatGrams` keeps the no-suffix display for whole-number macros
+    // (e.g. `21.0 -> 21`); the serving says what the calories are per; the
+    // macros sit on their own line.
+    final servingText = '$cal cal per ${foodServingLabel(shown)}';
     final macroText =
-        '$cal cal · ${formatGrams(widget.food.protein)}P · ${formatGrams(widget.food.carbs)}C · ${formatGrams(widget.food.fat)}F';
+        '${formatGrams(shown.protein)}P · ${formatGrams(shown.carbs)}C · ${formatGrams(shown.fat)}F';
 
-    // libraryIdFor walks the user's library cache (O(n) over
-    // user-owned foods). The list rebuilds under a ListenableBuilder
-    // that listens to both FoodLibraryState and NutritionState, so the
-    // answer stays live as the user adds / removes / logs / unlogs.
-    // A non-null id means the catalog food is in the library.
-    final libraryId = widget.foodLibraryState.libraryIdFor(widget.food.id);
-
-    final row = InkWell(
-      onTap: () => _openEdit(context),
+    final content = InkWell(
+      onTap: () => _onToggle(context),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            // ── Thumbnail: 40×40 image or placeholder (S-006) ────
-            // Always rendered (placeholder when null) so the
-            // trailing Add / Remove button column does not reflow
-            // when an image is added or removed.
+            // Always rendered (placeholder when null) so the trailing
+            // column does not reflow when an image is added or removed.
             FoodThumbnail(
               key: Key('food_catalog_thumb_${widget.food.id}'),
-              imagePath: widget.food.imagePath,
+              imagePath: shown.imagePath,
               imageStorage: widget.foodLibraryState.imageStorageOrNull,
-              foodId: widget.food.id,
-              catalogId: widget.food.catalogId,
+              foodId: shown.id,
+              catalogId: inList ? widget.food.id : widget.food.catalogId,
             ),
             const SizedBox(width: 12),
-            // ── Name + macros (takes remaining space) ───────────
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    widget.food.name,
+                    shown.name,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: OmniTheme.colors.textDominant,
                     ),
@@ -1390,7 +1379,18 @@ class _CatalogRowState extends State<_CatalogRow> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
+                    servingText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  Text(
                     macroText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: OmniTheme.colors.textSecondary,
                       fontFeatures: const [FontFeature.tabularFigures()],
@@ -1400,24 +1400,58 @@ class _CatalogRowState extends State<_CatalogRow> {
               ),
             ),
             const SizedBox(width: 8),
-            // ── Add / Remove button (consumes its own tap) ───────
-            libraryId != null
-                ? _buildRemoveButton(context)
-                : _buildAddButton(context),
+            if (inList) ...[
+              IconButton(
+                key: Key('edit_catalog_food_${widget.food.id}'),
+                icon: const Icon(Icons.edit_outlined, size: 20),
+                color: theme.colorScheme.primary,
+                tooltip: 'Edit food',
+                onPressed: _busy ? null : () => _openEdit(context),
+              ),
+              _buildInListIndicator(context),
+            ] else
+              _buildAddButton(context),
           ],
         ),
       ),
     );
-    return row;
+
+    if (!inList) return content;
+    // The in-list outline: primary colour, same rounding as buttons.
+    final radius = BorderRadius.circular(OmniTheme.buttonBorderRadius);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: DecoratedBox(
+        key: Key('library_row_outline_${widget.food.id}'),
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(color: theme.colorScheme.primary, width: 2),
+        ),
+        child: ClipRRect(borderRadius: radius, child: content),
+      ),
+    );
   }
 
-  /// Open the Edit Food screen for this catalog food. Wired to the
-  /// row's `onTap` so tapping the row surface (thumbnail, name,
-  /// macro text, or padding) edits the food.
+  /// Row tap: adds the food to the user's list, or (when it is already
+  /// there) asks before removing it.
+  Future<void> _onToggle(BuildContext context) {
+    final inList = widget.foodLibraryState.libraryIdFor(widget.food.id) != null;
+    return inList ? _onRemove(context) : _onAdd(context);
+  }
+
+  /// Open the Edit Food screen. Only reachable from an in-list row. A
+  /// bundled food edits the user's own copy (the shipped entry is never
+  /// altered); a food the user created has no shipped original, so its
+  /// catalog row is the thing edited.
   void _openEdit(BuildContext context) {
+    final copy = widget.foodLibraryState.libraryFoodFor(widget.food.id);
+    if (copy == null) return;
+    final bundled = widget.foodLibraryState.isBundledCatalogFood(
+      widget.food.id,
+    );
     EditFoodScreen.push(
       context,
-      food: widget.food,
+      food: bundled ? copy : widget.food,
       foodLibraryState: widget.foodLibraryState,
     );
   }
@@ -1441,30 +1475,21 @@ class _CatalogRowState extends State<_CatalogRow> {
     );
   }
 
-  Widget _buildRemoveButton(BuildContext context) {
+  /// The "in your list" check. Tapping it removes the food (after the
+  /// confirmation in [_onRemove]); it is deliberately not a red button.
+  Widget _buildInListIndicator(BuildContext context) {
     final theme = Theme.of(context);
-    return SizedBox(
-      width: _addTrailingWidth,
-      height: _removeTrailingSize,
-      child: FilledButton(
-        key: Key('remove_catalog_food_${widget.food.id}'),
-        onPressed: _busy ? null : () => _onRemove(context),
-        style: FilledButton.styleFrom(
-          backgroundColor: theme.colorScheme.error,
-          foregroundColor: theme.colorScheme.onError,
-          padding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
-          ),
-        ),
-        child: Icon(Icons.delete_outline, color: theme.colorScheme.onError),
-      ),
+    return IconButton(
+      key: Key('remove_catalog_food_${widget.food.id}'),
+      icon: Icon(Icons.check_circle, color: theme.colorScheme.primary),
+      tooltip: 'In your list. Tap to remove',
+      onPressed: _busy ? null : () => _onRemove(context),
     );
   }
 
   /// Add the catalog food to the user's library. The screen stays
   /// open; the [ListenableBuilder] in [_FromCatalogTab] rebuilds the
-  /// row in its Remove (trashcan) state.
+  /// row in its in-list state.
   Future<void> _onAdd(BuildContext context) async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -1495,7 +1520,7 @@ class _CatalogRowState extends State<_CatalogRow> {
     if (_busy) return;
     final libraryId = widget.foodLibraryState.libraryIdFor(widget.food.id);
     if (libraryId == null) {
-      // Defensive: the row is in the Remove state but no matching
+      // Defensive: the row is in the in-list state but no matching
       // library row exists (e.g. the cache is mid-update). Bail out
       // silently — the ListenableBuilder will re-render shortly.
       return;
