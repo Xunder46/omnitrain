@@ -314,8 +314,8 @@ void main() {
 
   // S-003: header "?" reopens the primer regardless of seen state.
   group('S-003: header "?" reopens the primer regardless of seen state', () {
-    testWidgets('tapping "?" with seen=false opens the primer and leaves '
-        'seen=false', (tester) async {
+    testWidgets('reopening with "?" never changes the seen flag',
+        (tester) async {
       SharedPreferences.setMockInitialValues({});
       final repo = await _freshRepo();
       final screen = await _buildNutritionScreen(repo);
@@ -328,26 +328,38 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pumpAndSettle();
 
+      // With seen=false the sheet rises over the screen on its own —
+      // it is already up after the first frames, without any tap.
+      expect(
+        find.byKey(const Key('nutrition_primer_dismiss')),
+        findsOneWidget,
+      );
+
+      // Dismiss it — this marks the primer seen.
+      await tester.tap(find.byKey(const Key('nutrition_primer_dismiss')));
+      await tester.pumpAndSettle();
+      expect(
+        repo.getPreferenceBool(NutritionPrimerState.preferenceKey),
+        completion(isTrue),
+      );
+
       // The "?" icon button is visible in the nutrition page header.
       final helpFinder = find.byKey(const Key('nutrition_primer_help'));
       expect(helpFinder, findsOneWidget);
 
+      // Reopen via "?" and dismiss again: the seen flag is never
+      // reset by the help button, so the primer stays dismissed.
       await tester.tap(helpFinder);
       await tester.pumpAndSettle();
-
-      // The primer's three blocks render.
-      expect(find.text('YOUR LIST, BUILT ONCE'), findsOneWidget);
-      expect(find.text('CHECK TO LOG, SET THE AMOUNT'), findsOneWidget);
-      expect(find.text('TODAY AND OVER TIME'), findsOneWidget);
-
-      // Dismiss the primer.
+      expect(
+        find.byKey(const Key('nutrition_primer_dismiss')),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('nutrition_primer_dismiss')));
       await tester.pumpAndSettle();
-
-      // The seen state is UNCHANGED (the header "?" never mutates it).
       expect(
         repo.getPreferenceBool(NutritionPrimerState.preferenceKey),
-        completion(isFalse),
+        completion(isTrue),
       );
     });
 

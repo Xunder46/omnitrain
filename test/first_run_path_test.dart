@@ -64,7 +64,7 @@ Future<void> _pumpNutritionScreen(
   WidgetTester tester,
   MockWorkoutRepository repo,
 ) async {
-  final primer = await buildNutritionPrimerState(repo);
+  final primer = await buildNutritionPrimerState(repo, seen: true);
   final nutritionState = NutritionState(repo);
   final foodLibraryState = FoodLibraryState(repo);
   await foodLibraryState.loadFoodGroups();

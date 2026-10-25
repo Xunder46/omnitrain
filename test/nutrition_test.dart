@@ -1614,7 +1614,7 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
-      final primer = await buildNutritionPrimerState(repo);
+      final primer = await buildNutritionPrimerState(repo, seen: true);
       final nutritionState = NutritionState(repo);
       final foodLibraryState = FoodLibraryState(repo);
 
@@ -1796,7 +1796,7 @@ void main() {
       'tapping a catalog food adds it to the library and stays on the screen',
       (tester) async {
         final repo = await _freshRepo();
-        final primer = await buildNutritionPrimerState(repo);
+        final primer = await buildNutritionPrimerState(repo, seen: true);
         final nutritionState = NutritionState(repo);
         final foodLibraryState = FoodLibraryState(repo);
         await foodLibraryState.loadFoodGroups();
@@ -1916,7 +1916,7 @@ void main() {
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
         final repo = await _freshRepo();
-        final primer = await buildNutritionPrimerState(repo);
+        final primer = await buildNutritionPrimerState(repo, seen: true);
         const now = 1700000000000;
         await repo.createFoodGroup(
           const FoodGroup(
@@ -2013,7 +2013,7 @@ void main() {
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
         final repo = await _freshRepo();
-        final primer = await buildNutritionPrimerState(repo);
+        final primer = await buildNutritionPrimerState(repo, seen: true);
         final nutritionState = NutritionState(repo);
         final foodLibraryState = FoodLibraryState(repo);
         await foodLibraryState.loadFoodGroups();
@@ -2090,9 +2090,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('100 g'), findsOneWidget);
-      expect(find.text('28 g'), findsOneWidget);
-      expect(find.text('100 ml'), findsOneWidget);
+      // The caption under each amount box is the unit alone (77d D-1):
+      // the quantity sits in the box, the unit in the caption, so the
+      // line still reads as one quantity and one unit. Chicken and
+      // jerky are both "g"; juice is "ml".
+      expect(find.text('g'), findsNWidgets(2));
+      expect(find.text('ml'), findsOneWidget);
+      expect(find.text('100 g'), findsNothing);
+      expect(find.text('28 g'), findsNothing);
+      expect(find.text('100 ml'), findsNothing);
       expect(find.text('100 100 g'), findsNothing);
       expect(find.text('28 28 g'), findsNothing);
       expect(find.text('100 100 ml'), findsNothing);
@@ -2117,7 +2123,7 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
-      final primer = await buildNutritionPrimerState(repo);
+      final primer = await buildNutritionPrimerState(repo, seen: true);
       const now = 1700000000000;
 
       await repo.createFoodGroup(

@@ -32,10 +32,14 @@ The sheet does NOT cover target editing, group management, or water-stepper inst
 - The "Got it" CTA fires `Navigator.of(context).pop()` and then `onDismiss?.call()`. The seen-state mutation lives in the host screen (`HomeScreen._openNutritionScreen` calls `nutritionPrimerState.markSeen()` AFTER the sheet pops), NOT inside the sheet — the sheet is presentation-only.
 - The header "?" control on `NutritionScreen` uses the same widget but passes an `onDismiss` that does NOT call `markSeen()` — the seen state is preserved across reopens.
 
-**Auto-show contract**: the home strip's first-ever tap opens this sheet
-over the home screen, and on dismiss the host marks the primer seen and
-pushes `NutritionScreen`; the header "?" on `NutritionScreen` reopens the
-same sheet at any time without touching the seen state. Pinned by
+**Auto-show contract** (plan 77d): the home strip's tap pushes
+`NutritionScreen` at once; the first time it opens (primer unseen) the
+screen itself raises this sheet over the screen it explains, and on dismiss
+marks the primer seen; the header "?" reopens the same sheet at any time
+without touching the seen state. The sheet content scrolls when a small
+phone or large text leaves less room than it needs
+(`test/screen_overflow_contract_test.dart`, Nutrition cases). Pinned by
+`test/row_caption_and_primer_test.dart` (`S-13013`) and
 `test/nutrition_primer_test.dart` (groups 'S-001: first nutrition strip
 tap shows the primer', 'S-003: header "?" reopens the primer regardless
 of seen state', 'S-005: primer never gates access', 'S-006: wrong-pattern

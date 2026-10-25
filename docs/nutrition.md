@@ -89,6 +89,12 @@ sodium is logged; on an empty day only the water control shows. Verified by
 `test/first_run_path_test.dart` (`S-12913`) and `test/nutrition_test.dart`
 (`hides the sodium chip when nothing is logged`).
 
+The caption under a Foods I Eat amount box is the unit alone (`g`, `ml`,
+`medium`), not the reference serving, so it no longer reads like the box counts
+100-ml units; an unlogged food's thumbnail ring carries a small plus (the
+thumbnail is still the log button). Verified by
+`test/row_caption_and_primer_test.dart` (`S-13010`, `S-13011`, `S-13012`).
+
 The home screen's nutrition card carries the label **Nutrition** between the
 icon and the figure (key `nutrition_card_title`), so it says what it is; the
 figure scales down on narrow screens and large text instead of being cut off.

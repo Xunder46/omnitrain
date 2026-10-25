@@ -189,7 +189,7 @@ retroactively change past day-log snapshots (the snapshots are frozen).
 **File**: `lib/state/nutrition/nutrition_primer_state.dart`
 **Depends on**: `WorkoutRepository`
 
-Tracks the once-per-install "primer seen" flag for the Daily Nutrition page primer sheet (see `docs/widget_catalog.md` → `NutritionPrimerSheet`). The primer auto-shows on the first-ever tap of the home nutrition strip and explains the "curate once / check daily / rollup" model in three short blocks. The seen-flag is persisted via `WorkoutRepository.setPreferenceBool` so it survives a full app close + relaunch.
+Tracks the once-per-install "primer seen" flag for the Daily Nutrition page primer sheet (see `docs/widget_catalog.md` → `NutritionPrimerSheet`). The primer auto-shows the first time the Daily Nutrition screen opens (the screen shows it over itself, not the home screen) and explains the "curate once / check daily / rollup" model in three short blocks. The seen-flag is persisted via `WorkoutRepository.setPreferenceBool` so it survives a full app close + relaunch.
 
 | Field | Type | Purpose |
 |-------|------|---------|

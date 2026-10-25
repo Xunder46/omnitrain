@@ -76,3 +76,18 @@ String foodServingLabel(Food food) {
 
   return '$amount $label';
 }
+
+/// The unit alone, for the caption under an amount box ("g", "ml", "medium").
+///
+/// Strips a legacy leading `per ` and a leading number ("100 g", "per 100g"
+/// both give "g"), so the caption never repeats the reference amount. When
+/// nothing is left it returns the trimmed original label.
+String foodUnitCaption(Food food) {
+  final original = food.referenceLabel.trim();
+  var label = original;
+  if (label.toLowerCase().startsWith('per ')) {
+    label = label.substring(4).trim();
+  }
+  label = label.replaceFirst(RegExp(r'^\d+(\.\d+)?\s*'), '').trim();
+  return label.isEmpty ? original : label;
+}

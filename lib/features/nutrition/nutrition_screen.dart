@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/foods_i_eat_order.dart';
@@ -43,6 +45,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
     _loadConsumedToday();
     _loadWaterForToday();
     _loadLibrary();
+    // The one-shot primer rises over this screen the first time it opens.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.nutritionPrimerState.shouldShowPrimer) {
+        _showPrimer(markSeen: true);
+      }
+    });
   }
 
   Future<void> _loadTodayTarget() async {
@@ -105,11 +114,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
     );
   }
 
-  /// Reopen the one-shot primer sheet at any time. The seen state is
-  /// NOT mutated — the primer can be reopened as many times as the
-  /// user wants (it just won't auto-show on the next home-strip tap
-  /// unless the seen flag is still false). Sheet host: this method.
-  Future<void> _reopenPrimer() async {
+  /// Show the primer sheet. On first open ([markSeen] true) the seen flag
+  /// is marked when the sheet is dismissed; the header "?" reopens it with
+  /// [markSeen] false, which never changes the flag.
+  Future<void> _showPrimer({required bool markSeen}) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -120,11 +128,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
             bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
           ),
           child: NutritionPrimerSheet(
-            // onDismiss intentionally null — reopening never marks
-            // seen, so the next home-strip tap can still auto-show
-            // if the seen flag is still false. The header "?" is the
-            // way to read the primer without committing.
-            onDismiss: null,
+            onDismiss: markSeen
+                ? () => unawaited(widget.nutritionPrimerState.markSeen())
+                : null,
           ),
         );
       },
@@ -149,7 +155,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               color: theme.colorScheme.primary,
             ),
             tooltip: 'About Daily Nutrition',
-            onPressed: _reopenPrimer,
+            onPressed: () => _showPrimer(markSeen: false),
           ),
         ],
       ),

@@ -35,7 +35,6 @@ import '../../state/stats/stats_primer_state.dart';
 import '../../state/exercise/exercise_library_state.dart';
 import '../../state/watch/watch_link_state.dart';
 import '../nutrition/nutrition_screen.dart';
-import '../nutrition/widgets/nutrition_primer_sheet.dart';
 import '../stats/widgets/stats_primer_sheet.dart';
 
 /// Hub-sheet layout constants used to size the destination grid against the
@@ -332,22 +331,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// the Foods I Eat card (D-5: the strip is always tappable →
   /// NutritionScreen in all states).
   ///
-  /// First-ever tap of the home strip fires the one-shot primer
-  /// (`NutritionPrimerSheet`) over the home screen via
-  /// `showModalBottomSheet`. On dismiss, the seen-flag is marked
-  /// AND `NutritionScreen` is pushed — the primer is a sheet, NOT
-  /// a route, so it does not block navigation; the user can dismiss
-  /// it and reach the page behind it. Subsequent taps push the
-  /// page directly with no overlay (S-005: the primer never gates
-  /// access). The header "?" on the nutrition page reopens the
-  /// primer at any time without mutating the seen state.
-  Future<void> _openNutritionScreen() async {
-    // Auto-show path: first tap, primer not yet seen. Open the
-    // primer sheet, mark seen on dismiss, then push the page.
-    if (widget.nutritionPrimerState.shouldShowPrimer) {
-      await _showNutritionPrimer();
-    }
-    if (!mounted) return;
+  /// The one-shot primer is shown by the nutrition screen itself, over the
+  /// screen it explains, the first time it opens (plan 77d). The header "?"
+  /// there reopens it at any time without mutating the seen state.
+  void _openNutritionScreen() {
     OmniNavigator.push(
       context,
       (_) => NutritionScreen(
@@ -355,34 +342,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         foodLibraryState: widget.foodLibraryState,
         nutritionPrimerState: widget.nutritionPrimerState,
       ),
-    );
-  }
-
-  /// Show the [NutritionPrimerSheet] over the home screen. The
-  /// seen flag is marked ON DISMISS (in the post-pop callback),
-  /// not on show, so a sheet that gets dismissed externally (e.g.
-  /// by a back-tap) still counts as "seen" — the user has at
-  /// least read the primer once.
-  Future<void> _showNutritionPrimer() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-          ),
-          child: NutritionPrimerSheet(
-            onDismiss: () {
-              // Mark seen AFTER the sheet pops. Fire-and-forget: the
-              // seen flag is local UX state and the round-trip
-              // cannot fail the user-facing flow.
-              unawaited(widget.nutritionPrimerState.markSeen());
-            },
-          ),
-        );
-      },
     );
   }
 

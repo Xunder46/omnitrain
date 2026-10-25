@@ -1525,7 +1525,7 @@ void main() {
     await nutrition.loadConsumedToday();
     await foodLib.loadFoodGroups();
     await foodLib.loadFoods();
-    final primer = await buildNutritionPrimerState(repo);
+    final primer = await buildNutritionPrimerState(repo, seen: true);
     await tester.pumpWidget(
       MaterialApp(
         home: NutritionScreen(

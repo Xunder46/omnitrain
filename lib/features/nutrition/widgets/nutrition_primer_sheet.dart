@@ -66,88 +66,92 @@ class NutritionPrimerSheet extends StatelessWidget {
 
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Top eyebrow: short sheet title.
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              'DAILY NUTRITION',
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2.0,
-                color: themeColors.textMuted,
+      // Scrolls when a small phone or large text leaves less room than the
+      // content needs (the sheet now rises over the nutrition screen).
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Top eyebrow: short sheet title.
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'DAILY NUTRITION',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2.0,
+                  color: themeColors.textMuted,
+                ),
               ),
             ),
-          ),
-          Text(
-            'A quick orientation',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: OmniTheme.titleLetterSpacing,
-              color: themeColors.textDominant,
+            Text(
+              'A quick orientation',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: OmniTheme.titleLetterSpacing,
+                color: themeColors.textDominant,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          // Block 1: curated "Foods I Eat" list.
-          const _PrimerBlock(
-            key: Key('nutrition_primer_block_curate'),
-            label: 'YOUR LIST, BUILT ONCE',
-            body:
-                'Add foods from the library into "Foods I Eat" once. '
-                'They stay, grouped by category, until you remove them. '
-                'Manage the list anytime from the edit control.',
-          ),
-          const SizedBox(height: 16),
-          // Block 2: daily check-off with adjustable portion.
-          const _PrimerBlock(
-            key: Key('nutrition_primer_block_check'),
-            label: 'CHECK TO LOG, SET THE AMOUNT',
-            body:
-                'Each day, check off what you ate to count it toward today. '
-                'Adjust the amount per food — the portion is yours to set, not fixed.',
-          ),
-          const SizedBox(height: 16),
-          // Block 3: rollup — calories, macros, water, sodium.
-          const _PrimerBlock(
-            key: Key('nutrition_primer_block_rollup'),
-            label: 'TODAY AND OVER TIME',
-            body:
-                'Check-offs roll into the donut chart, '
-                'and your stats screen tracks your nutrition trends across days and weeks.',
-          ),
-          const SizedBox(height: 24),
-          // Single primary action — explicit shape, theme token, no
-          // StadiumBorder. Keyed for tests.
-          SizedBox(
-            height: OmniTheme.buttonPrimaryHeight,
-            width: double.infinity,
-            child: FilledButton(
-              key: const Key('nutrition_primer_dismiss'),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
+            const SizedBox(height: 16),
+            // Block 1: curated "Foods I Eat" list.
+            const _PrimerBlock(
+              key: Key('nutrition_primer_block_curate'),
+              label: 'YOUR LIST, BUILT ONCE',
+              body:
+                  'Add foods from the library into "Foods I Eat" once. '
+                  'They stay, grouped by category, until you remove them. '
+                  'Manage the list anytime from the edit control.',
+            ),
+            const SizedBox(height: 16),
+            // Block 2: daily check-off with adjustable portion.
+            const _PrimerBlock(
+              key: Key('nutrition_primer_block_check'),
+              label: 'CHECK TO LOG, SET THE AMOUNT',
+              body:
+                  'Each day, check off what you ate to count it toward today. '
+                  'Adjust the amount per food — the portion is yours to set, not fixed.',
+            ),
+            const SizedBox(height: 16),
+            // Block 3: rollup — calories, macros, water, sodium.
+            const _PrimerBlock(
+              key: Key('nutrition_primer_block_rollup'),
+              label: 'TODAY AND OVER TIME',
+              body:
+                  'Check-offs roll into the donut chart, '
+                  'and your stats screen tracks your nutrition trends across days and weeks.',
+            ),
+            const SizedBox(height: 24),
+            // Single primary action — explicit shape, theme token, no
+            // StadiumBorder. Keyed for tests.
+            SizedBox(
+              height: OmniTheme.buttonPrimaryHeight,
+              width: double.infinity,
+              child: FilledButton(
+                key: const Key('nutrition_primer_dismiss'),
+                style: ButtonStyle(
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonBorderRadius,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              onPressed: () {
-                // Pop first so the host's post-dismiss logic runs
-                // against a stable, sheet-less tree.
-                Navigator.of(context).pop();
-                onDismiss?.call();
-              },
-              child: const FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text('Got it'),
+                onPressed: () {
+                  // Pop first so the host's post-dismiss logic runs
+                  // against a stable, sheet-less tree.
+                  Navigator.of(context).pop();
+                  onDismiss?.call();
+                },
+                child: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Got it'),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

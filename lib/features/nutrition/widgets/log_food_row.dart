@@ -416,9 +416,11 @@ class _LogFoodRowState extends State<LogFoodRow> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  // Unit label beneath the textbox (e.g. "g", "ml", "units")
+                  // Unit caption beneath the textbox: the unit the
+                  // box counts (e.g. "g", "ml", "medium"), not the
+                  // reference serving (plan 77d D-1).
                   Text(
-                    foodServingLabel(food),
+                    foodUnitCaption(food),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: themeColors.textMuted,
                     ),
@@ -452,10 +454,11 @@ class _LogFoodRowState extends State<LogFoodRow> {
 ///     reads as a paired state of the same control.
 ///   - The top-right corner carries a 16×16 circular badge in
 ///     both states. Unchecked: a hollow ring (surface fill,
-///     muted border, no glyph) so it reads as "empty / not yet
-///     selected." Checked: a filled `primary` disc with a
-///     surface-colored check glyph. The badge's color, fill,
-///     and border all animate through `AnimatedContainer`.
+///     muted border) carrying a small muted plus glyph, so it
+///     reads as "empty / not yet logged — tap to add." Checked:
+///     a filled `primary` disc with a surface-colored check
+///     glyph. The badge's color, fill, and glyph all animate
+///     through `AnimatedContainer`.
 ///   - The whole thing is wrapped in a `Semantics(checked: ...)`
 ///     node so screen readers + tests see a toggle (S-005).
 ///   - The `Key('log_food_thumb_<food.id>')` is mounted on the
@@ -597,9 +600,9 @@ class _ThumbToggleState extends State<_ThumbToggle> {
               // toggle affordance reads as a paired state. The
               // fill + border + glyph cross-fade through
               // AnimatedContainer; the unchecked state is a
-              // hollow ring (surface fill, muted border, no
-              // glyph) and the checked state is a filled
-              // primary disc with a surface-colored check.
+              // hollow ring (surface fill, muted border) with a
+              // small muted plus glyph and the checked state is a
+              // filled primary disc with a surface-colored check.
               Positioned(
                 top: 0,
                 right: 0,
@@ -618,7 +621,7 @@ class _ThumbToggleState extends State<_ThumbToggle> {
                   ),
                   child: isLogged
                       ? Icon(Icons.check, size: 12, color: themeColors.surface)
-                      : const SizedBox.shrink(),
+                      : Icon(Icons.add, size: 12, color: themeColors.textMuted),
                 ),
               ),
             ],
