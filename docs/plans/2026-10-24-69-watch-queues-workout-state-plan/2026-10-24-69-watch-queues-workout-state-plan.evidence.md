@@ -32,3 +32,18 @@ Mutation pass (lead, in place, original restored and compared after each; script
 | the queue call without the withdraw | S-9903, S-9904 A, S-9904 B |
 
 Not checked: the real `WCSession` (lists and cancels of the app target are Phase 2), and everything on a device. No separate reviewer run; the lead read the production diff.
+
+## Phase 2: the watch app, the contract and the docs (built 2026-10-24, uncommitted)
+
+Base commit cb0c1ad6 (Phase 1). G-2: the four files were clean at HEAD. Crew runs: D (the app radio file and the source guard S-9915), F (PROTOCOL.md row and one sentence, in parallel), G (docs keeper, in parallel). No fix rounds. Two small lead edits: the S-6703 snapshot message wording in `WatchBridgeQueueTests.swift` (the plan's residue grep) and the S-9915 citation in the doc (the keeper ran before the guard existed).
+
+Observed by the lead:
+- Full package `swift test`: `Executed 967 tests, with 0 failures` (965 + 2 new source guards).
+- `xcodebuild` "OmniTrain Watch App" (watchOS simulator, Series 11 42mm): `** BUILD SUCCEEDED **` with the real `outstandingTransfers`/`cancelTransfers` over `WCSession`. The build's project-file rewrite was reverted with `git checkout`.
+- `flutter test test/ui_standards_contract_test.dart test/docs_indexing_contract_test.dart`: `+42: All tests passed!`; invariant grep: empty.
+- `watch_surface_wrist.md`: 50,480 bytes (limit 52,000).
+- Residue: `try self.queue(frame)` in the app file, `Deliberately five members`, "true exactly for `observations_up`" in the doc, "a snapshot would arrive stale" in the tests: all gone.
+
+Mutation pass on the app file guards (lead, in place, restored and compared): 5 of 5 killed: late refusal back to `self.queue` (S-9915), `cancel()` never called (S-9915), cancel without the activation guard (S-9915), list without the activation guard (S-9915), a second `transferUserInfo(` call (S-6708, S-9915).
+
+Not checked: the real transfers on devices (listing and cancelling a transfer already in flight; delivery to a closed phone app). Those are the owner device checks 1-3 in this plan. No separate reviewer run; the lead read the diffs.

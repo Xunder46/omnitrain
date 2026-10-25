@@ -56,18 +56,35 @@ reported failure instead of a silently dropped message. Verified by
 `…testD5NumbersAreNeverCoerced`.
 
 **A live-only frame that fails is still reported and dropped**, and recovery is
-the next `sync()` re-sending from storage. **A durable frame the radio refuses
-is queued instead.** `WatchConnectivitySession` gained `queue` — hands the phone
-one frame the OS delivers later — and `WatchConnectivityBridge.isDurable` is
-true exactly for `observations_up` and `session_lifecycle`: when `send` fails, a
-durable frame goes to the queue rather than being reported, a queue that itself
-refuses is reported through the same failure hook, and a frame that sends is
-never also queued. The app target's `OmniTrainWatchConnectivity` queues with
-`transferUserInfo`, skipping a transfer whose `messageId` is already
-outstanding, and receives `didReceiveUserInfo` like a message; the OS delivering
-a queued transfer to a closed phone app is an owner check on real devices.
-Verified by `WatchBridgeQueueTests.swift` (S-6701..S-6707) and
-`WatchQueueSourceTests.swift` (S-6708). **The bridge itself still sends nothing
+the next `sync()` re-sending from storage: a `timer_state`, a request, and the
+snapshot of a workout that has ended would arrive wrong, so they are never
+queued. **A durable frame the radio refuses is queued instead.** When the phone
+is unreachable or the radio refuses, the bridge hands the OS queue
+(`transferUserInfo`) an `observations_up`, every `session_lifecycle`, and a
+`session_snapshot` whose `payload.status` is `active`; the app target's
+`OmniTrainWatchConnectivity` receives `didReceiveUserInfo` like a message, and
+the OS delivering a queued transfer to a closed phone app is an owner check on
+real devices. **Only the newest copy waits.**
+`WatchConnectivityBridge.queueNewest(_:on:)` runs list → withdraw → queue under
+one lock: a snapshot replaces the waiting snapshots of its session, a
+non-terminal lifecycle (`started`, `exercise_advanced`) the waiting
+non-terminal ones, a terminal lifecycle (`completed`, `abandoned`) both;
+observations and terminal lifecycles are never withdrawn; of two competing
+copies the later `sentAt` wins (a terminal lifecycle is never stale); a waiting
+copy under the same `messageId` is not queued again except a snapshot, whose id
+does not change with its content; and a frame that goes out live also withdraws
+the older waiting copies. The seam gained `outstandingTransfers()` and
+`cancelTransfers(messageIds:)` — the package's `WatchConnectivitySession`
+declares them with defaults for a conformer that cannot list or cancel, and the
+app target's `OmniTrainWatchConnectivity` implements them over
+`WCSession.outstandingUserInfoTransfers` and `cancel()`; its late-refusal path
+(the `sendMessage` error handler) calls `queueNewest` instead of queuing
+directly. **A queued copy is a carrier, not a delivery**: the phone's `receipt`
+is the only thing that settles an owed entry. A queue that itself refuses is
+reported through the same failure hook. Verified by
+`WatchBridgeReplacementTests.swift` (S-9903..S-9914, S-9916),
+`WatchBridgeQueueTests.swift` (S-9901, S-9902, S-9909, S-6701..S-6705) and
+`WatchQueueSourceTests.swift` (S-6708, S-9915). **The bridge itself still sends nothing
 unsolicited** — it answers a user action or nothing, so a Sync is still the only
 thing that asks the phone for an answer. Verified by
 `WatchConnectivityBridgeTests.testBridgeSendsNothingUntilAsked` and

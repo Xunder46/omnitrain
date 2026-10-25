@@ -242,8 +242,13 @@ Phase lists above. Dependents that only read a touched surface: the phone's mirr
 ## Progress
 
 - Phase 1: built 2026-10-24, uncommitted (evidence in the evidence file); Q1 answered (A).
-- Phase 2: not started.
+- Phase 2: built 2026-10-24, uncommitted (owner device checks open).
 
 ## Assumption Log
+
+- Deviation: the two new seam members (`outstandingTransfers()`,
+  `cancelTransfers(messageIds:)`) have default implementations in a protocol
+  extension (so the app target compiled between the phases); Phase 2 gives the
+  app the real ones.
 
 ## Feedback

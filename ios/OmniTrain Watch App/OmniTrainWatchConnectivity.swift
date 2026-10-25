@@ -3,7 +3,9 @@
 //  OmniTrain Watch App
 //
 //  The wrist's real radio: `WCSession` behind the package's
-//  `WatchConnectivitySession` seam.
+//  `WatchConnectivitySession` seam. The radio also lists and cancels what the
+//  OS holds, so the package can keep only the newest copy of a frame waiting
+//  (plan 69).
 //
 //  Plan: `docs/plans/2026-10-04-14-watch-shell-bridge-plan/2026-10-04-14-watch-shell-bridge-plan.md`,
 //  D-1 and D-8. Every rule about frames — what they carry, what may not cross,
@@ -90,7 +92,9 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
     ///
     /// `sendMessage` answers asynchronously, so its refusal arrives after this
     /// call returns: a durable frame is queued for the OS to deliver, every other
-    /// frame goes to the same failure hook the bridge reports through.
+    /// frame goes to the same failure hook the bridge reports through. A late
+    /// refusal goes through the package's replacement rule, so only the newest
+    /// copy of a snapshot or a start/move message waits (plan 69).
     func send(_ frame: [String: Any]) throws {
         guard WCSession.isSupported() else { throw RadioError.notActivated }
 
@@ -105,7 +109,7 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
                 return
             }
             do {
-                try self.queue(frame)
+                try WatchConnectivityBridge.queueNewest(frame, on: self)
             } catch {
                 self.onSendFailure(error)
             }
@@ -129,6 +133,36 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
             return
         }
         session.transferUserInfo(frame)
+    }
+
+    /// The frames the OS still holds for the phone, oldest first (plan 69 D-10): what
+    /// `WCSession.outstandingUserInfoTransfers` reports, each transfer's frame. A session that is not up lists nothing.
+    func outstandingTransfers() -> [[String: Any]] {
+        guard WCSession.isSupported() else { return [] }
+
+        let session = WCSession.default
+        guard session.activationState == .activated else { return [] }
+
+        return session.outstandingUserInfoTransfers.map { $0.userInfo }
+    }
+
+    /// Cancels the outstanding transfers whose `messageId` is in `messageIds` and answers how many (D-8). A transfer
+    /// that carries no string `messageId` is never touched. A session that is not up cancels nothing.
+    func cancelTransfers(messageIds: [String]) -> Int {
+        guard WCSession.isSupported(), !messageIds.isEmpty else { return 0 }
+
+        let session = WCSession.default
+        guard session.activationState == .activated else { return 0 }
+
+        var cancelled = 0
+        for transfer in session.outstandingUserInfoTransfers {
+            guard let messageId = transfer.userInfo["messageId"] as? String,
+                  messageIds.contains(messageId)
+            else { continue }
+            transfer.cancel()
+            cancelled += 1
+        }
+        return cancelled
     }
 
     /// Called once by the bridge, before the app starts receiving.

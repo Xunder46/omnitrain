@@ -153,7 +153,7 @@ final class WatchBridgeQueueTests: XCTestCase {
         harness.session.sendError = SendFixtureError.refusedByTheRadio
         await harness.bridge.send(snapshot)
 
-        XCTAssertTrue(harness.session.queued.isEmpty, "a snapshot would arrive stale")
+        XCTAssertTrue(harness.session.queued.isEmpty, "an ended workout's snapshot is live state and is dropped")
         XCTAssertEqual(harness.failures.count, 1)
     }
 
