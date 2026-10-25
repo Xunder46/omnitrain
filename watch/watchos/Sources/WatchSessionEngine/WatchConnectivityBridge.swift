@@ -14,12 +14,15 @@
 //     here and no queue of its own: a frame leaves when the orchestrator syncs
 //     or the engine hands over something it owes, and at no other time. What the
 //     wrist owes the phone for good it hands to the platform's own queue (D-1).
-//  2. **A durable frame the radio cannot carry is queued; the rest are reported
-//     and dropped** (D-2, D-4, D-6). A set the wrist logged and the end of a
-//     session go to the OS queue, which delivers them when the two devices meet.
-//     Every other frame is live state that would arrive stale, so it is reported
-//     and dropped. The next `sync()` re-sends what is owed from storage either
-//     way.
+//  2. **A durable frame the radio cannot carry is queued — a set the wrist
+//     logged, a lifecycle message and the snapshot of a workout that is
+//     running — and only the newest copy of a snapshot or a lifecycle waits
+//     per workout (plan 69); a timer, a request and an ended workout's
+//     snapshot are live state, reported and dropped.** The next `sync()`
+//     re-sends what is owed from storage either way.
+//
+//  Plan: `docs/plans/2026-10-24-69-watch-queues-workout-state-plan/2026-10-24-69-watch-queues-workout-state-plan.md`,
+//  D-2 to D-10.
 //
 
 import Foundation
@@ -27,9 +30,10 @@ import Foundation
 /// What the bridge needs from the platform's watch API — `WCSession` in the app
 /// target, a fake in tests.
 ///
-/// Deliberately five members and no more: everything else the bridge does
-/// (building frames, checking them, reporting failures) would otherwise be
-/// written once per platform. The real `WCSession` conformance belongs to the
+/// Deliberately seven members and no more: the bridge's own logic (building
+/// frames, checking them, reporting failures, keeping only the newest queued
+/// copy) is written once, and a conformer only lists and cancels what the OS
+/// holds. The real `WCSession` conformance belongs to the
 /// app target and is compiled only where `WatchConnectivity` exists, which is
 /// what lets this package compile and its tests run on macOS.
 public protocol WatchConnectivitySession: AnyObject {
@@ -43,12 +47,26 @@ public protocol WatchConnectivitySession: AnyObject {
     /// even if this app is asleep by then. Throws when the platform refuses it.
     func queue(_ frame: [String: Any]) throws
 
+    /// The frames the OS still holds for the phone, in the OS's order (oldest first). A session that
+    /// cannot list answers an empty list.
+    func outstandingTransfers() -> [[String: Any]]
+
+    /// Cancels the outstanding transfers whose `messageId` is in `messageIds` and answers how many were
+    /// cancelled. Never throws; a session that cannot cancel answers 0.
+    func cancelTransfers(messageIds: [String]) -> Int
+
     /// Hands every frame the phone sends to `handler`, for as long as the
     /// session lives. Called once, before the app starts receiving.
     func onReceive(_ handler: @escaping ([String: Any]) async -> Void)
 
     /// Hands every reachability change to `handler`. Called once.
     func onReachabilityChange(_ handler: @escaping (Bool) -> Void)
+}
+
+extension WatchConnectivitySession {
+    /// Defaults for a conformer that cannot list or cancel: the bridge then queues without withdrawing.
+    public func outstandingTransfers() -> [[String: Any]] { [] }
+    public func cancelTransfers(messageIds: [String]) -> Int { 0 }
 }
 
 /// The requests the bridge carries that are not protocol messages (D-2).
@@ -143,7 +161,8 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
     /// The frame is checked first: a value the radio cannot carry fails the
     /// whole message, so it is reported through the failure hook and never
     /// reaches the session (D-4). A send the session itself refuses is queued
-    /// when the frame is durable (D-2), and reported otherwise.
+    /// when the frame is durable (D-2), and reported otherwise. A durable frame
+    /// that went out live withdraws the older copies still waiting (D-6).
     public func send(_ envelope: [String: Any]) async {
         let frame: [String: Any]
         do {
@@ -161,20 +180,131 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
                 return
             }
             do {
-                try session.queue(frame)
+                try Self.queueNewest(frame, on: session)
             } catch {
                 report(error)
             }
+            return
+        }
+        // The frame went out live: a copy of it still waiting in the OS queue is now older news (D-6).
+        if Self.isDurable(frame) { Self.withdrawSuperseded(by: frame, on: session) }
+    }
+
+    /// The frames the wrist may hand the OS to deliver later when the radio refuses them (plan 69 D-2):
+    /// a set it logged, every lifecycle message, and the snapshot of a workout that is still running. A
+    /// timer, a request, a receipt and the snapshot of an ended workout are live state that would arrive
+    /// wrong, so they are reported and dropped.
+    public static func isDurable(_ frame: [String: Any]) -> Bool {
+        switch frame["type"] as? String {
+        case "observations_up", "session_lifecycle":
+            return true
+        case "session_snapshot":
+            return (frame["payload"] as? [String: Any])?["status"] as? String == "active"
+        default:
+            return false
         }
     }
 
-    /// The frames the wrist owes the phone for good: a set it logged and the
-    /// end of a session. A refused send is queued for the OS to deliver; every
-    /// other frame is live state that would arrive stale, so it is reported
-    /// and dropped as before (D-2).
-    public static func isDurable(_ frame: [String: Any]) -> Bool {
-        let type = frame["type"] as? String
-        return type == "observations_up" || type == "session_lifecycle"
+    // MARK: - Only the newest copy waits (plan 69 D-3…D-8)
+
+    /// One lock for every path that lists, withdraws and queues, so two hand-overs at once cannot both
+    /// keep a copy (D-7). Static on purpose: the app target's late-refusal path calls `queueNewest` too.
+    private static let queueLock = NSLock()
+
+    private static let terminalStates: Set<String> = ["completed", "abandoned"]
+
+    /// Queues a frame the radio refused, after withdrawing the waiting copies it replaces. A copy with a
+    /// LATER `sentAt` is newer than the frame: the frame is then not queued and nothing is withdrawn (D-4,
+    /// not a failure). A frame that already waits under its own message id is not queued again (D-5),
+    /// except a snapshot, whose id does not change with its content. Throws only what the queue throws.
+    public static func queueNewest(
+        _ frame: [String: Any],
+        on session: WatchConnectivitySession
+    ) throws {
+        queueLock.lock()
+        defer { queueLock.unlock() }
+        let held = session.outstandingTransfers()
+        let own = frame["messageId"] as? String
+        if frame["type"] as? String != "session_snapshot",
+           let own,
+           held.contains(where: { ($0["messageId"] as? String) == own }) {
+            return
+        }
+        let found = superseded(by: frame, in: held)
+        if found.newerExists { return }
+        if !found.olderIds.isEmpty { _ = session.cancelTransfers(messageIds: found.olderIds) }
+        try session.queue(frame)
+    }
+
+    /// After a frame went out live: cancels the waiting copies it replaces, never a newer one (D-6).
+    static func withdrawSuperseded(
+        by frame: [String: Any],
+        on session: WatchConnectivitySession
+    ) {
+        guard let type = frame["type"] as? String,
+              type == "session_snapshot" || type == "session_lifecycle"
+        else { return }
+        queueLock.lock()
+        defer { queueLock.unlock() }
+        let found = superseded(by: frame, in: session.outstandingTransfers())
+        if !found.olderIds.isEmpty { _ = session.cancelTransfers(messageIds: found.olderIds) }
+    }
+
+    private struct Superseded {
+        var olderIds: [String] = []
+        var newerExists = false
+    }
+
+    /// The waiting copies `frame` replaces (D-3), split by the wrist's own `sentAt` (D-4). A snapshot
+    /// replaces the snapshots of its session; a non-terminal lifecycle the non-terminal lifecycles of its
+    /// session; a terminal lifecycle (completed, abandoned) both of those and is never stale. A logged set,
+    /// a terminal lifecycle and another session's frame are never replaced. A copy without a string
+    /// `messageId` or `type` is never touched. An unreadable `sentAt` counts as oldest on a waiting copy
+    /// and as newest on the frame.
+    private static func superseded(
+        by frame: [String: Any],
+        in held: [[String: Any]]
+    ) -> Superseded {
+        var result = Superseded()
+        guard let type = frame["type"] as? String,
+              type == "session_snapshot" || type == "session_lifecycle",
+              let sessionId = frame["sessionId"] as? String
+        else { return result }
+        let terminal = type == "session_lifecycle" && isTerminal(frame)
+        let own = frame["messageId"] as? String
+        let sent = sentAt(of: frame, missing: .distantFuture)
+        for copy in held {
+            guard copy["sessionId"] as? String == sessionId,
+                  let copyId = copy["messageId"] as? String,
+                  let copyType = copy["type"] as? String
+            else { continue }
+            let replaced: Bool
+            switch (type, copyType) {
+            case ("session_snapshot", "session_snapshot"): replaced = true
+            case ("session_lifecycle", "session_snapshot"): replaced = terminal
+            case ("session_lifecycle", "session_lifecycle"): replaced = !isTerminal(copy)
+            default: replaced = false
+            }
+            guard replaced else { continue }
+            if copyId == own && type != "session_snapshot" { continue }
+            if !terminal && sentAt(of: copy, missing: .distantPast) > sent {
+                result.newerExists = true
+            } else {
+                result.olderIds.append(copyId)
+            }
+        }
+        return result
+    }
+
+    private static func isTerminal(_ frame: [String: Any]) -> Bool {
+        guard let state = (frame["payload"] as? [String: Any])?["state"] as? String else {
+            return false
+        }
+        return terminalStates.contains(state)
+    }
+
+    private static func sentAt(of frame: [String: Any], missing: Date) -> Date {
+        (try? parseUtcIso(frame["sentAt"])) ?? missing
     }
 
     /// Hands one arriving frame to the inbound handler, if there is one.

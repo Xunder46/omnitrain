@@ -51,4 +51,4 @@ The new scope has no functional dependency on plans 61/62. What remains is a fil
 ## Progress
 
 - 67a: planned 2026-10-23 (re-shaped). Next handoff: @developer (Phase 1).
-- 67b: not planned.
+- 67b: planned 2026-10-24 as plan 69, `docs/plans/2026-10-24-69-watch-queues-workout-state-plan/` (2 phases, watch track; owner Q1 open with a default). Next handoff: @developer (Phase 1).

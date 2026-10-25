@@ -7,6 +7,11 @@
 //  D-1 and D-2: what the wrist owes the phone for good goes to the OS queue when
 //  the radio refuses it, and every other frame is still reported and dropped.
 //
+//  Plan 69 (`docs/plans/2026-10-24-69-watch-queues-workout-state-plan/…`) supersedes
+//  three of them: S-6706 → S-9901 (an active snapshot is durable too), S-6703's
+//  snapshot arm → S-9902 (a refused active snapshot waits, an ended one does not),
+//  S-6707 → S-9909 (two catch-ups apart leave one snapshot and each set once).
+//
 //  The harness is `WatchConnectivityBridgeTests`'s, so the frames under test are
 //  the ones the engine and the start paths really build.
 //
@@ -112,7 +117,9 @@ final class WatchBridgeQueueTests: XCTestCase {
         XCTAssertEqual(harness.failures.count, 1)
     }
 
-    func testS6703ARefusedSessionSnapshotIsReportedAndDropped() async throws {
+    // MARK: - S-9902 (supersedes S-6703's snapshot arm) a refused snapshot waits, an ended one does not
+
+    func testS9902ARefusedActiveSnapshotWaits() async throws {
         let harness = WatchBridgeHarness()
         await harness.launch()
         _ = await harness.engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
@@ -121,7 +128,31 @@ final class WatchBridgeQueueTests: XCTestCase {
         harness.session.sendError = SendFixtureError.refusedByTheRadio
         await harness.bridge.send(snapshot)
 
-        XCTAssertTrue(harness.session.sent.isEmpty)
+        XCTAssertTrue(harness.session.sent.isEmpty, "the radio took nothing")
+        XCTAssertEqual(harness.session.queued.count, 1, "the OS queue holds it")
+        XCTAssertEqual(
+            harness.session.queued.first?["messageId"] as? String,
+            snapshot["messageId"] as? String,
+            "the same frame, under the same message id"
+        )
+        XCTAssertTrue(harness.failures.isEmpty, "a hand-over to the queue is not a refusal")
+    }
+
+    func testS9902BAnEndedSnapshotIsReportedAndDropped() async throws {
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+        _ = await harness.engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
+        _ = await harness.engine.finishSession()
+        let snapshot = try XCTUnwrap(harness.engine.sessionSnapshot())
+        XCTAssertEqual(
+            (snapshot["payload"] as? [String: Any])?["status"] as? String,
+            "completed",
+            "an ended workout's snapshot"
+        )
+
+        harness.session.sendError = SendFixtureError.refusedByTheRadio
+        await harness.bridge.send(snapshot)
+
         XCTAssertTrue(harness.session.queued.isEmpty, "a snapshot would arrive stale")
         XCTAssertEqual(harness.failures.count, 1)
     }
@@ -172,14 +203,54 @@ final class WatchBridgeQueueTests: XCTestCase {
         XCTAssertTrue(harness.failures.isEmpty)
     }
 
-    // MARK: - S-6706 durability is exactly the two frames the phone must not lose
+    // MARK: - S-9901 (supersedes S-6706) which frames may wait
 
-    func testS6706OnlyObservationsAndTheEndAreDurable() {
+    /// A schema-shaped `session_snapshot` with the given status.
+    private func snap(_ status: String?) -> [String: Any] {
+        var frame: [String: Any] = [
+            "type": "session_snapshot",
+            "messageId": "m",
+            "sessionId": "s-1",
+            "sentAt": "2026-07-13T06:00:01.000Z",
+        ]
+        if let status { frame["payload"] = ["status": status] }
+        return frame
+    }
+
+    /// A schema-shaped `session_lifecycle` with the given state.
+    private func lifecycle(_ state: String) -> [String: Any] {
+        [
+            "type": "session_lifecycle",
+            "messageId": "m",
+            "sessionId": "s-1",
+            "sentAt": "2026-07-13T06:00:01.000Z",
+            "payload": ["state": state],
+        ]
+    }
+
+    func testS9901OnlyTheFramesThatMayWaitAreDurable() {
+        XCTAssertTrue(
+            WatchConnectivityBridge.isDurable(snap("active")),
+            "an active workout's snapshot may wait"
+        )
+        for state in ["started", "exercise_advanced", "completed", "abandoned"] {
+            XCTAssertTrue(
+                WatchConnectivityBridge.isDurable(lifecycle(state)),
+                "a \(state) lifecycle may wait"
+            )
+        }
         XCTAssertTrue(WatchConnectivityBridge.isDurable(["type": "observations_up"]))
-        XCTAssertTrue(WatchConnectivityBridge.isDurable(["type": "session_lifecycle"]))
 
+        XCTAssertFalse(
+            WatchConnectivityBridge.isDurable(snap("completed")),
+            "an ended workout's snapshot would arrive stale"
+        )
+        XCTAssertFalse(WatchConnectivityBridge.isDurable(snap("abandoned")))
+        XCTAssertFalse(
+            WatchConnectivityBridge.isDurable(snap(nil)),
+            "a snapshot without a status would arrive stale"
+        )
         XCTAssertFalse(WatchConnectivityBridge.isDurable(["type": "timer_state"]))
-        XCTAssertFalse(WatchConnectivityBridge.isDurable(["type": "session_snapshot"]))
         XCTAssertFalse(WatchConnectivityBridge.isDurable(["type": "receipt"]))
         XCTAssertFalse(
             WatchConnectivityBridge.isDurable(WatchTransportRequest.snapshotFrame()),
@@ -188,9 +259,9 @@ final class WatchBridgeQueueTests: XCTestCase {
         XCTAssertFalse(WatchConnectivityBridge.isDurable([:]))
     }
 
-    // MARK: - S-6707 an unreachable catch-up queues both logged sets
+    // MARK: - S-9909 (supersedes S-6707's count) two catch-ups apart
 
-    func testS6707AnUnreachableCatchUpQueuesBothLoggedSets() async throws {
+    func testS9909TwoCatchUpsWhileApartLeaveOneSnapshotAndEachSetOnce() async throws {
         let harness = WatchBridgeHarness(isPhoneReachable: false)
         await harness.launch()
         _ = await harness.engine.createSession(modality: nil, exercises: [exercise("sx-bench")])
@@ -208,17 +279,38 @@ final class WatchBridgeQueueTests: XCTestCase {
         await harness.orchestrator.sync()
         await harness.orchestrator.sync()
 
-        XCTAssertTrue(harness.session.sent.isEmpty, "apart, the radio took nothing")
-        let queued = harness.session.queued.compactMap { $0["messageId"] as? String }
-        XCTAssertEqual(Set(queued), Set(messageIds), "both sets are queued under their own ids")
+        let outstandingIds = harness.session.outstanding.compactMap { $0["messageId"] as? String }
         XCTAssertEqual(
-            queued.count,
-            4,
-            "two catch-ups queue both sets again — the fake does not dedupe, the app target does"
+            Array(outstandingIds.prefix(2)),
+            messageIds,
+            "each set waits once, in order, oldest first"
         )
+        XCTAssertEqual(
+            harness.session.outstanding.compactMap { $0["type"] as? String }.last,
+            "session_snapshot",
+            "exactly one snapshot waits, after the sets"
+        )
+        XCTAssertEqual(
+            harness.session.outstanding.filter { $0["type"] as? String == "session_snapshot" }.count,
+            1,
+            "the second sync's equal-stamp snapshot replaced the first"
+        )
+        XCTAssertEqual(
+            harness.session.cancels.flatMap { $0 }.count,
+            1,
+            "one cancel: the first snapshot"
+        )
+        for id in messageIds {
+            XCTAssertEqual(
+                outstandingIds.filter { $0 == id }.count,
+                1,
+                "no observation is queued twice"
+            )
+        }
         XCTAssertTrue(
-            harness.session.queued.allSatisfy { $0["type"] as? String == "observations_up" },
-            "only the durable frames reach the queue"
+            harness.session.queued.filter { $0["type"] as? String == "observations_up" }.count
+                == harness.session.queued.filter { ($0["messageId"] as? String).map(messageIds.contains) ?? false }.count,
+            "every queued observation is observations_up"
         )
     }
 }
