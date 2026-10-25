@@ -146,8 +146,8 @@ final class WatchSensorAccessNoticeTests: XCTestCase {
 
         XCTAssertEqual(
             surface.sensorNotices,
-            [WatchSensorNoticeCopy.noHeartRate],
-            "S-8904 a refused heart rate is one line, heart rate first"
+            [],
+            "S-8904 heart-rate refusal adds no exercise-page line (plan 70, D-1)"
         )
     }
 
@@ -225,8 +225,8 @@ final class WatchSensorAccessNoticeTests: XCTestCase {
 
         XCTAssertEqual(
             surface.sensorNotices,
-            [WatchSensorNoticeCopy.noHeartRate, WatchSensorNoticeCopy.noDistance],
-            "S-8905 both lines, heart rate first"
+            [WatchSensorNoticeCopy.noDistance],
+            "S-8905 the distance line alone (plan 70, D-1)"
         )
     }
 

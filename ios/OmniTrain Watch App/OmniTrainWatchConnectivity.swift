@@ -46,8 +46,11 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
     private var linkProblemHandler: ((Bool) -> Void)?
 
     /// The arrivals lane: frames are handed to the bridge one at a time, in the
-    /// order the radio offered them (plan 63 D-4).
-    private lazy var lane = WatchInboundLane { [weak self] frame in await self?.receiveHandler?(frame) }
+    /// order the radio offered them (plan 63 D-4). Built closed in `init`
+    /// (plan 73 D-4): a frame the OS delivers while the app is still starting
+    /// waits in the lane instead of being dropped, and is handed over when the
+    /// bridge's `onIncoming` opens the gate.
+    private var lane: WatchInboundLane!
 
     /// True when the radio cannot come up at all (plan 60, D-5).
     private var linkProblem = false
@@ -75,6 +78,8 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
     init(onSendFailure: @escaping (Error) -> Void = { _ in }) {
         self.onSendFailure = onSendFailure
         super.init()
+
+        lane = WatchInboundLane(startsOpen: false) { [weak self] frame in await self?.receiveHandler?(frame) }
 
         guard WCSession.isSupported() else { linkProblem = true; return }
         let session = WCSession.default
@@ -170,6 +175,13 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
         receiveHandler = handler
     }
 
+    /// Called once by the bridge, after it holds an inbound handler (plan 73
+    /// D-3): opens the gate, so the frames the radio held during launch are
+    /// handed over now, in arrival order.
+    func openInbound() {
+        lane.open()
+    }
+
     /// Called once by the bridge.
     ///
     /// A session that is already up has already answered, and the radio only
@@ -197,9 +209,8 @@ final class OmniTrainWatchConnectivity: NSObject, WatchConnectivitySession {
     /// Frames are handled one at a time, in the order they arrive (plan 63):
     /// the lane never lets two handlers overlap, so the wrist's state changes
     /// in arrival order. A frame that arrives before the bridge has a handler
-    /// is dropped rather than buffered (D-6): the handler is read when the
-    /// frame's turn comes, and the next sync is what brings the wrist up to
-    /// date.
+    /// waits in the lane (plan 73): the gate opens when the bridge's
+    /// `onIncoming` runs, and the handler is read when the frame's turn comes.
     private func deliver(_ message: [String: Any]) {
         lane.enqueue(message)
     }

@@ -36,6 +36,7 @@ class WatchSessionImport {
     this.changedEffortIds = const [],
     this.historyChanged = false,
     this.appliedRating,
+    this.sensorSummaryAttached = false,
   });
 
   /// The wrist entries this pass applied — materialised or discarded. What the
@@ -53,6 +54,10 @@ class WatchSessionImport {
 
   /// The rating this pass wrote, when it wrote one (D-1, D-138).
   final int? appliedRating;
+
+  /// Whether this pass stored the wrist's session-scope heart-rate summary
+  /// (plan 71, D-5): a screen showing the session can re-read it.
+  final bool sensorSummaryAttached;
 }
 
 /// A wrist session's rows, applied to history.
@@ -152,6 +157,9 @@ class WatchSessionImporter {
     if (unapplied.isEmpty) return const WatchSessionImport();
 
     final end = _End.parse(endRow);
+    if (end != null && end.followed) {
+      return _applyFollowedEnd(watchSessionId, endRow, end);
+    }
     if (end == null || end.status != _completed) {
       // An abandoned session is consumed and acknowledged without history
       // (D-133). An end the phone cannot read can never import, and a row
@@ -221,6 +229,36 @@ class WatchSessionImporter {
       appliedEntryIds: _wristIds(unapplied),
       historyChanged: pass.changed,
       appliedRating: pass.ratingWritten,
+      sensorSummaryAttached: pass.summaryWritten,
+    );
+  }
+
+  /// The end of a session the phone started and the wrist only followed (plan
+  /// 71, D-4): it carries the wrist's heart rate and nothing the phone lacks,
+  /// so it is never turned into history. A completed end for a session still
+  /// in history stores the summary; an abandoned end, an end for a session the
+  /// user deleted, and an end already applied store nothing. Only the end row
+  /// is marked applied: the wrist's effort rows are not this method's to merge.
+  Future<WatchSessionImport> _applyFollowedEnd(
+    String watchSessionId,
+    WatchInboxEntry endRow,
+    _End end,
+  ) async {
+    if (endRow.appliedAtMs != null) return const WatchSessionImport();
+    final pass = _Pass(
+      repository: _repository,
+      sessionId: watchSessionId,
+      end: end,
+    );
+    if (end.status == _completed &&
+        await _repository.getSession(watchSessionId) != null) {
+      await pass._attachSessionSummary();
+    }
+    await _markApplied([endRow]);
+    return WatchSessionImport(
+      appliedEntryIds: _wristIds([endRow]),
+      historyChanged: pass.changed,
+      sensorSummaryAttached: pass.summaryWritten,
     );
   }
 
@@ -375,6 +413,7 @@ class WatchSessionImporter {
       changedEffortIds: changedEffortIds,
       historyChanged: pass.changed,
       appliedRating: pass.ratingWritten,
+      sensorSummaryAttached: pass.summaryWritten,
     );
   }
 
@@ -434,6 +473,9 @@ class _Pass {
 
   /// The rating this pass wrote, when it wrote one (D-1).
   int? ratingWritten;
+
+  /// Whether this pass stored a session-scope summary (plan 71, D-5).
+  bool summaryWritten = false;
 
   /// Whether the pass created, changed or removed any history row.
   bool get changed => writes > 0;
@@ -1644,9 +1686,10 @@ class _Pass {
 
   /// Summaries attach when their target is created — which may be long after
   /// the summary itself arrived (a set block travels in `session_end`).
-  Future<void> _attachSessionSummary() {
+  Future<void> _attachSessionSummary() async {
     final end = this.end!;
-    return _attach(
+    final before = writes;
+    await _attach(
       () => SensorSummary(
         sessionId: sessionId,
         scope: SensorSummary.scopeSession,
@@ -1659,6 +1702,7 @@ class _Pass {
       ),
       when: end.avgHeartRateBpm != null || end.maxHeartRateBpm != null,
     );
+    if (writes > before) summaryWritten = true;
   }
 
   Future<void> _attachSetBlockSummary(_Key key, String effortId) async {
@@ -2131,6 +2175,7 @@ class _End {
     required this.endedAtMs,
     required this.status,
     required this.modality,
+    required this.followed,
     required this.avgHeartRateBpm,
     required this.maxHeartRateBpm,
     required this.setBlocks,
@@ -2142,6 +2187,10 @@ class _End {
   final int endedAtMs;
   final String status;
   final String? modality;
+
+  /// True when the wrist only followed a session the phone started: the end
+  /// carries its heart rate and nothing the phone lacks, plan 71.
+  final bool followed;
   final double? avgHeartRateBpm;
   final double? maxHeartRateBpm;
   final List<_SetBlock> setBlocks;
@@ -2167,6 +2216,7 @@ class _End {
       endedAtMs: endedAtMs,
       status: status,
       modality: modality is String && modality.isNotEmpty ? modality : null,
+      followed: payload['followed'] == true,
       avgHeartRateBpm: _real(payload['avgHeartRateBpm']),
       maxHeartRateBpm: _real(payload['maxHeartRateBpm']),
       setBlocks: [

@@ -141,6 +141,7 @@ class SyncProtocolValidator {
     'rating': ['effort_rating'],
     'status': ['session_end'],
     'modality': ['session_end'],
+    'followed': ['session_end'],
   };
 
   /// Every code this validator can emit. PROTOCOL.md documents each one, and

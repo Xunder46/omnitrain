@@ -80,5 +80,12 @@
       "watchos": "other",
       "wear": "exercise_type_other_workout"
     }
+  },
+  "distanceActivityTypes": {
+    "running": { "watchos": "running", "wear": "exercise_type_running" },
+    "cycling": { "watchos": "cycling", "wear": "exercise_type_biking" },
+    "rowing": { "watchos": "rowing", "wear": "exercise_type_rowing" },
+    "walking": { "watchos": "walking", "wear": "exercise_type_walking" },
+    "hiking": { "watchos": "hiking", "wear": "exercise_type_hiking" }
   }
 }

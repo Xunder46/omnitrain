@@ -45,9 +45,9 @@ final class WatchRouteKeeperTests: XCTestCase {
                     timestamp: t0.addingTimeInterval(t))
     }
 
-    private func keeper(outdoors: Bool = true, name: String = "running", sharing: Bool = true) -> WatchRouteKeeper {
+    private func keeper(sharing: Bool = true) -> WatchRouteKeeper {
         let keeper = WatchRouteKeeper()
-        keeper.open(outdoors: outdoors, activityName: name, routeSharingAllowed: sharing, beganAt: t0)
+        keeper.open(routeSharingAllowed: sharing, beganAt: t0)
         return keeper
     }
 
@@ -248,7 +248,7 @@ final class WatchRouteKeeperTests: XCTestCase {
         let refused = k.offer(fix(12, 52.00072))
         XCTAssertTrue(refused.isEmpty, "S-9813: a closed keeper hands out nothing")
         XCTAssertEqual(k.acceptedCount, 12, "S-9813: the post-close fix changed nothing")
-        let reopened = k.open(outdoors: true, activityName: "running", routeSharingAllowed: true, beganAt: t0)
+        let reopened = k.open(routeSharingAllowed: true, beganAt: t0)
         XCTAssertTrue(reopened, "S-9813: reopen records again")
         XCTAssertEqual(k.acceptedCount, 0, "S-9813: reopen starts fresh")
         let after = k.offer(fix(0, 52.0))
@@ -256,32 +256,64 @@ final class WatchRouteKeeperTests: XCTestCase {
         XCTAssertEqual(k.acceptedCount, 1, "S-9813: the earlier timestamp is accepted after reopen")
     }
 
-    // MARK: S-9814
+    // MARK: S-9814 (plan 76: S-10602)
 
-    func testS9814() {
-        let denied: [(Bool, String, Bool)] = [
-            (false, "running", true),
-            (true, "other", true),
-            (true, "traditionalStrengthTraining", true),
-            (true, "flexibility", true),
-            (true, "crossTraining", true),
-            (true, "running", false),
-        ]
-        for (outdoors, name, sharing) in denied {
-            let k = keeper(outdoors: outdoors, name: name, sharing: sharing)
-            XCTAssertFalse(
-                k.open(outdoors: outdoors, activityName: name, routeSharingAllowed: sharing, beganAt: t0),
-                "S-9814: open(\(outdoors), \(name), \(sharing)) does not record")
-            let handed = batches(k, run12())
-            XCTAssertTrue(handed.isEmpty, "S-9814: no batch for open(\(outdoors), \(name), \(sharing))")
-            XCTAssertEqual(k.acceptedCount, 0, "S-9814: nothing accepted for open(\(outdoors), \(name), \(sharing))")
-            let end = k.close()
-            XCTAssertEqual(end.remainder, [], "S-9814: empty remainder for open(\(outdoors), \(name), \(sharing))")
-            XCTAssertEqual(end.verdict, .none, "S-9814: verdict none for open(\(outdoors), \(name), \(sharing))")
-        }
+    /// Plan 76 D-1: route sharing alone decides. The old matrix refused an indoor
+    /// workout, a non-running name and every other type; none of those is a
+    /// reason any more, so only a refused Health route permission gives `none`.
+    func testS9814OnlyARefusedRoutePermissionRecordsNothing() {
+        let k = keeper(sharing: false)
+        XCTAssertFalse(
+            k.open(routeSharingAllowed: false, beganAt: t0),
+            "S-10602: route sharing refused does not record")
+        let handed = batches(k, run12())
+        XCTAssertTrue(handed.isEmpty, "S-10602: no batch when sharing is refused")
+        XCTAssertEqual(k.acceptedCount, 0, "S-10602: nothing accepted when sharing is refused")
+        let end = k.close()
+        XCTAssertEqual(end.remainder, [], "S-10602: empty remainder when sharing is refused")
+        XCTAssertEqual(end.verdict, .none, "S-10602: verdict none when sharing is refused")
         let control = keeper()
         XCTAssertTrue(
-            control.open(outdoors: true, activityName: "running", routeSharingAllowed: true, beganAt: t0),
-            "S-9814: the positive control records")
+            control.open(routeSharingAllowed: true, beganAt: t0),
+            "S-10602: the positive control records")
+    }
+
+    // MARK: S-10601
+
+    /// Route sharing alone decides: any workout that opens records and saves a route that covers 50 m.
+    func testS10601RouteSharingAloneDecides() {
+        let k = keeper()
+        let handed = batches(k, run12())
+        XCTAssertEqual(handed.count, 1, "S-10601: the 10th accepted fix completes the one batch")
+        XCTAssertEqual(handed[0].count, 10, "S-10601: the batch is exactly 10 fixes")
+        let end = k.close()
+        XCTAssertEqual(end.remainder.count, 2, "S-10601: the last two fixes are handed out at close")
+        XCTAssertEqual(end.verdict, .save, "S-10601: 73 m of spread saves the route")
+    }
+
+    // MARK: S-10603
+
+    /// A workout that opened on a lift and ran later: the first fix is 900 s after the begin instant,
+    /// 14 fixes 7.78 m apart (101 m of spread). Every fix is after the begin instant, so all are accepted.
+    func testS10603ALiftFirstWorkoutKeepsTheRunInTheMiddle() {
+        let k = keeper()
+        let run = (0..<14).map { fix(900 + Double($0), 52.0 + Double($0) * 0.00007) }
+        let handed = batches(k, run)
+        XCTAssertEqual(handed.map(\.count), [10], "S-10603: one batch of ten, then four waiting")
+        XCTAssertEqual(k.acceptedCount, 14, "S-10603: every fix of the run is accepted")
+        let end = k.close()
+        XCTAssertEqual(end.remainder.count, 4, "S-10603: the remaining four are handed out at close")
+        XCTAssertEqual(end.verdict, .save, "S-10603: 101 m of spread saves the route")
+    }
+
+    // MARK: S-10604
+
+    /// A lifting-only workout holds no GPS: it opened, nothing was offered, and nothing is saved.
+    func testS10604ALiftingOnlyWorkoutSavesNothing() {
+        let k = keeper()
+        let end = k.close()
+        XCTAssertEqual(end.remainder, [], "S-10604: nothing to hand out")
+        XCTAssertEqual(k.acceptedCount, 0, "S-10604: no fix was accepted")
+        XCTAssertEqual(end.verdict, .discard, "S-10604: an opened workout with no fix discards its route builder")
     }
 }

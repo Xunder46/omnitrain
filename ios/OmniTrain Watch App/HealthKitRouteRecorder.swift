@@ -37,8 +37,6 @@ nonisolated final class HealthKitRouteRecorder: @unchecked Sendable {
     /// comes from the live builder's series builder (D-8), never from `HKWorkoutRouteBuilder(healthStore:`.
     func open(
         on workout: HKLiveWorkoutBuilder,
-        outdoors: Bool,
-        activityName: String,
         routeSharingAllowed: Bool,
         beganAt: Date
     ) -> Bool {
@@ -46,8 +44,6 @@ nonisolated final class HealthKitRouteRecorder: @unchecked Sendable {
         defer { lock.unlock() }
         builder = nil
         guard keeper.open(
-            outdoors: outdoors,
-            activityName: activityName,
             routeSharingAllowed: routeSharingAllowed,
             beganAt: beganAt
         ) else { return false }

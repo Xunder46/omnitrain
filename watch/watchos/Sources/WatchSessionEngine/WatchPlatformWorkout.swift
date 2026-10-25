@@ -102,6 +102,22 @@ public enum WatchActivityTypes {
         watchOs: "running",
         wear: "exercise_type_running"
     )
+    private static let cycling = WatchActivityType(
+        watchOs: "cycling",
+        wear: "exercise_type_biking"
+    )
+    private static let rowing = WatchActivityType(
+        watchOs: "rowing",
+        wear: "exercise_type_rowing"
+    )
+    private static let walking = WatchActivityType(
+        watchOs: "walking",
+        wear: "exercise_type_walking"
+    )
+    private static let hiking = WatchActivityType(
+        watchOs: "hiking",
+        wear: "exercise_type_hiking"
+    )
     private static let strength = WatchActivityType(
         watchOs: "traditionalStrengthTraining",
         wear: "exercise_type_strength_training"
@@ -111,12 +127,31 @@ public enum WatchActivityTypes {
         wear: "exercise_type_flexibility"
     )
 
+    /// The type a distance exercise registers as, from the Health kind the phone
+    /// named for it: a known kind gets its own type, and anything else — nil,
+    /// "running", a kind this table does not carry — stays running (D-2).
+    private static func distanceType(_ activity: String?) -> WatchActivityType {
+        switch activity {
+        case "cycling": return cycling
+        case "rowing": return rowing
+        case "walking": return walking
+        case "hiking": return hiking
+        default: return running
+        }
+    }
+
     /// The type one exercise registers as, from what it can measure: a hold is
-    /// tested first (a plank has `hold` and `sets`), then distance, then
-    /// reps/sets/load; anything else is the generic type.
-    public static func forExercise(capabilities: [String]) -> WatchActivityType {
+    /// tested first (a plank has `hold` and `sets`), then distance — refined by
+    /// the Health kind the phone named, when it named one — then reps/sets/load;
+    /// anything else is the generic type.
+    public static func forExercise(
+        capabilities: [String],
+        healthActivity: String? = nil
+    ) -> WatchActivityType {
         if capabilities.contains("hold") { return flexibility }
-        if capabilities.contains(WatchGpsPolicy.distanceCapability) { return running }
+        if capabilities.contains(WatchGpsPolicy.distanceCapability) {
+            return distanceType(healthActivity)
+        }
         if capabilities.contains(where: { ["reps", "sets", "load"].contains($0) }) {
             return strength
         }
@@ -129,7 +164,10 @@ public enum WatchActivityTypes {
     public static func forExercises(_ exercises: [[String: Any]]) -> WatchActivityType? {
         guard !exercises.isEmpty else { return nil }
         let types = exercises.map {
-            forExercise(capabilities: ($0["capabilities"] as? [String]) ?? [])
+            forExercise(
+                capabilities: ($0["capabilities"] as? [String]) ?? [],
+                healthActivity: $0["healthActivity"] as? String
+            )
         }
         var counts: [String: Int] = [:]
         for type in types { counts[type.watchOs, default: 0] += 1 }

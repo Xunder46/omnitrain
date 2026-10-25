@@ -549,8 +549,10 @@ the phone would send, in which case the batches are omitted. The version check
 is independent of the bundle: a skipped bundle still checks the version, and a
 wrist that already holds the exercise list still receives the bundle. A
 refused foods frame withholds the routines frame too (the next sync re-sends
-all three). The handler takes the library as a required `foodLibrary`
-(`FoodLibraryState`). All of it is built
+all three). The foods, routines and exercises are read from storage only when
+the repository's `referenceRevision` stands still no longer (plan 74): an
+unchanged phone reads none of them again. The handler takes the library as a
+required `foodLibrary` (`FoodLibraryState`). All of it is built
 through `WatchReferenceSync`; `snapshot` re-asserts the phone's session. It is
 separate from `WatchIncomingRouter`
 because the two answer different kinds of frame, and merging them would make a
@@ -604,6 +606,11 @@ Edit Session was open, so a Discard does not lose a set the user logged on the
 wrist. `main.dart` hands it to `WorkoutState`, which passes it to the session
 core's restore. Verified by `test/watch_session_edit_restore_late_entry_test.dart`
 (`S-1401` to `S-1410`).
+
+The inbox also tells a screen when the wrist's heart-rate summary was stored
+(`onSensorSummaryAttached` → `WorkoutState.wristSummary`, plan 72), and the
+session summary re-reads the heart rate only. Verified by
+`test/watch_summary_notify_test.dart` (`S-10201` to `S-10203`, `S-10207`).
 
 Two construction details are load-bearing:
 

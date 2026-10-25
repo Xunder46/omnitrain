@@ -85,6 +85,7 @@ public final class SyncProtocolValidator {
         ("rating", ["effort_rating"]),
         ("status", ["session_end"]),
         ("modality", ["session_end"]),
+        ("followed", ["session_end"]),
     ]
 
     /// Root of every message path, as a constant so `$` never needs escaping.

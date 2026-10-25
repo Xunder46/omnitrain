@@ -143,7 +143,7 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
             try await collection.beginCollection(at: startDate)
 
             recoveredSession = false
-            openRoute(on: collection, outdoors: outdoors, activityName: activityType, startedAt: startDate)
+            openRoute(on: collection, startedAt: startDate)
         } catch {
             // Nothing is left registered: a session that started but whose
             // collection did not is a workout the user cannot see.
@@ -160,19 +160,16 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         await begin(activityType, outdoors: false)
     }
 
-    /// Opens the route when the workout qualifies (D-1) and points the location adapter at the recorder
-    /// (D-2): no second subscription, no permission question. Route sharing is read here, per workout.
+    /// Opens the route for every workout while route sharing is allowed (plan 76 D-1) and points the location
+    /// adapter at the recorder (plan 68 D-2): no second subscription, no permission question. Route sharing is
+    /// read here, per workout; the route is kept at close only when it covers 50 m or more.
     private func openRoute(
         on collection: HKLiveWorkoutBuilder,
-        outdoors: Bool,
-        activityName: String,
         startedAt: Date
     ) {
         let sharing = healthStore.authorizationStatus(for: HKSeriesType.workoutRoute()) == .sharingAuthorized
         guard routeRecorder.open(
             on: collection,
-            outdoors: outdoors,
-            activityName: activityName,
             routeSharingAllowed: sharing,
             beganAt: startedAt
         ) else { return }
@@ -251,7 +248,8 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
 
     /// The activity type a contract name registers as (D-1509).
     ///
-    /// The labels are exactly the distinct `watchos` names in
+    /// The labels are the distinct `watchos` names across the contract's
+    /// `activityTypes` and `distanceActivityTypes` sections in
     /// `watch/contract/watch_sensor_contract.json`, and anything else lands on
     /// the generic type: a workout with the wrong type is one the user can
     /// correct, no workout at all loses the session's runtime priority and its
@@ -259,6 +257,10 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     static func activityType(for name: String) -> HKWorkoutActivityType {
         switch name {
         case "running": return .running
+        case "cycling": return .cycling
+        case "rowing": return .rowing
+        case "walking": return .walking
+        case "hiking": return .hiking
         case "traditionalStrengthTraining": return .traditionalStrengthTraining
         case "flexibility": return .flexibility
         case "crossTraining": return .crossTraining
@@ -273,6 +275,10 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     static func name(for activityType: HKWorkoutActivityType) -> String {
         switch activityType {
         case .running: return "running"
+        case .cycling: return "cycling"
+        case .rowing: return "rowing"
+        case .walking: return "walking"
+        case .hiking: return "hiking"
         case .traditionalStrengthTraining: return "traditionalStrengthTraining"
         case .flexibility: return "flexibility"
         case .crossTraining: return "crossTraining"

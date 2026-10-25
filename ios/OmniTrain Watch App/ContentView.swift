@@ -417,7 +417,7 @@ struct ContentView: View {
             if host.rating.isPromptOwed {
                 owedRating
             } else if let pending = host.summary.pending {
-                WatchWorkoutSummaryView(summary: pending, onDone: { host.summary.dismissPending() })
+                WatchWorkoutSummaryView(summary: pending, healthOff: host.healthAccess == .off, onDone: { host.summary.dismissPending() })
             } else if host.logging.isResting {
                 // D-161: while a rest runs, the rest surface replaces logging —
                 // an owed rating still wins above, and the rest is ended by

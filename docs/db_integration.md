@@ -198,6 +198,7 @@ Repository methods used by the service:
 | `getLegacyAppliedDataVersion()` | Back-compat shim: returns the highest version implied by any legacy marker (`1` if none). |
 | `getLastDataVersionTransition()` | Diagnostic: most recent `(from, to)` transition, or `null`. |
 | `setLastDataVersionTransition(int from, int to)` | Diagnostic: records a transition. |
+| `referenceRevision` | Null on the Mock; a counter on Hive that changes when any food, routine or exercise row is written. The watch sync reads it to skip re-reading storage. |
 
 Storage shape (Hive runtime; SQL parity noted for the future importer):
 

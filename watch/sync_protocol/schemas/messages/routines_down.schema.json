@@ -85,6 +85,9 @@
           "minItems": 1,
           "items": { "$ref": "envelope.schema.json#/$defs/capability" }
         },
+        "healthActivity": {
+          "$ref": "envelope.schema.json#/$defs/healthActivity"
+        },
         "targets": { "$ref": "envelope.schema.json#/$defs/metricTargets" }
       }
     }

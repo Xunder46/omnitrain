@@ -193,6 +193,20 @@ class WorkoutState extends ChangeNotifier {
   );
   Future<void> adoptSessionFeeling(String sessionId, int feeling) =>
       _sessionCore.adoptSessionFeeling(sessionId, feeling);
+
+  /// The wrist's heart-rate summary for a session just landed (plan 72): the
+  /// session it is for and a running count, so a second arrival for the same
+  /// session is a new value. A screen showing that session listens to this
+  /// alone; it does not notify the whole state.
+  final ValueNotifier<({String sessionId, int count})?> wristSummary =
+      ValueNotifier(null);
+
+  void noteWristSummary(String sessionId) {
+    wristSummary.value = (
+      sessionId: sessionId,
+      count: (wristSummary.value?.count ?? 0) + 1,
+    );
+  }
   Future<void> updateSessionRpe(String sessionId, double rpe) =>
       _sessionCore.updateSessionRpe(sessionId, rpe);
   Future<void> restoreSessionSnapshot(SessionEditSnapshot snapshot) =>

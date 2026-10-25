@@ -161,12 +161,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showFeelingSheet(context);
     });
+    widget.workoutState.wristSummary.addListener(_reloadHeartRateOnWristSummary);
     _loadAsyncData();
   }
 
   @override
   void dispose() {
     widget.workoutState.removeListener(_closeAutoSheetOnOutsideRating);
+    widget.workoutState.wristSummary.removeListener(_reloadHeartRateOnWristSummary);
     _noteDebounce?.cancel();
     _noteController.dispose();
     super.dispose();
@@ -218,6 +220,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  /// The wrist's heart-rate summary landed after this screen opened (plan 72):
+  /// re-read the heart rate alone, so nothing else on the screen reloads.
+  Future<void> _reloadHeartRateOnWristSummary() async {
+    final arrived = widget.workoutState.wristSummary.value;
+    final session = widget.workoutState.currentSession;
+    if (arrived == null || session == null || arrived.sessionId != session.id) {
+      return;
+    }
+    final heartRate = await widget.sessionSummaryService.getSessionHeartRate(
+      session.id,
+    );
+    if (!mounted) return;
+    setState(() => _heartRate = heartRate);
   }
 
   Future<void> _loadCalendarData() async {

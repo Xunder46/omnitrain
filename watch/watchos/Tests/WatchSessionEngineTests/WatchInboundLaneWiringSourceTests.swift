@@ -73,7 +73,7 @@ final class WatchInboundLaneWiringSourceTests: XCTestCase {
                 + "getting frames handled one at a time in arrival order"
         )
         XCTAssertTrue(
-            source.contains("WatchInboundLane {"),
+            source.contains("WatchInboundLane(startsOpen: false)"),
             "S-9315 the bridge builds the lane over its own handler, so the "
                 + "wearer keeps getting every arrival routed through the one-at-a-time path"
         )
@@ -81,6 +81,102 @@ final class WatchInboundLaneWiringSourceTests: XCTestCase {
             source.contains("Task { @MainActor in await self.receiveHandler"),
             "S-9315 the old per-frame hop is gone: without the lane the wearer "
                 + "would stop getting the guarantee that no two frames' handlers overlap"
+        )
+    }
+
+    // MARK: - S-10306 the radio builds its lane closed, before the delegate
+
+    /// The lane is built closed in `init`, before `session.delegate = self`, so
+    /// a frame the OS delivers during launch waits in the lane instead of
+    /// racing a `lazy var` built on a delegate thread (plan 73 D-4). The gate
+    /// is opened by `openInbound`, and nothing else.
+    func testS10306TheRadioBuildsItsLaneClosedBeforeTheDelegate() throws {
+        let source = try appSource("OmniTrainWatchConnectivity.swift")
+
+        XCTAssertTrue(
+            source.contains("WatchInboundLane(startsOpen: false)"),
+            "S-10306 the lane is built closed, so a frame that arrives during "
+                + "launch waits instead of being dropped"
+        )
+        XCTAssertFalse(
+            source.contains("private lazy var lane"),
+            "S-10306 the lane is no longer a `lazy var`: a lazy var built from "
+                + "a delegate thread races"
+        )
+
+        let openInbound = try XCTUnwrap(
+            source.range(of: "func openInbound() {"),
+            "S-10306 the radio has an `openInbound`"
+        )
+        let laneOpen = try XCTUnwrap(
+            source.range(
+                of: "lane.open()",
+                options: .literal,
+                range: openInbound.lowerBound..<source.endIndex
+            ),
+            "S-10306 `openInbound` opens the lane's gate"
+        )
+        let openInboundEnd = try XCTUnwrap(
+            source.range(
+                of: "}",
+                options: .literal,
+                range: laneOpen.lowerBound..<source.endIndex
+            ),
+            "S-10306 `openInbound`'s body ends"
+        )
+        XCTAssertLessThan(
+            laneOpen.lowerBound, openInboundEnd.lowerBound,
+            "S-10306 `lane.open()` sits inside `openInbound`'s body"
+        )
+
+        let laneBuilt = try XCTUnwrap(
+            source.range(of: "WatchInboundLane(startsOpen: false)"),
+            "S-10306 the lane is built in `init`"
+        )
+        let delegateSet = try XCTUnwrap(
+            source.range(of: "session.delegate = self"),
+            "S-10306 the delegate is set in `init`"
+        )
+        XCTAssertLessThan(
+            laneBuilt.lowerBound, delegateSet.lowerBound,
+            "S-10306 the lane is built before `session.delegate = self`, so no "
+                + "arrival can reach a lane that does not exist yet"
+        )
+    }
+
+    // MARK: - S-10307 the bridge stores the handler before it opens the gate
+
+    /// `onIncoming` stores `inbound` first, then opens the gate: the first
+    /// frame the gate hands over already finds its handler (plan 73 D-3).
+    func testS10307TheBridgeStoresTheHandlerBeforeItOpensTheGate() throws {
+        let source = try engineSource("WatchConnectivityBridge.swift")
+
+        let onIncoming = try XCTUnwrap(
+            source.range(of: "public func onIncoming("),
+            "S-10307 the bridge has an `onIncoming`"
+        )
+        let bodyEnd = try XCTUnwrap(
+            source.range(
+                of: "public func onReachabilityChange(",
+                options: .literal,
+                range: onIncoming.lowerBound..<source.endIndex
+            ),
+            "S-10307 `onIncoming` is followed by the next member"
+        )
+        let body = String(source[onIncoming.lowerBound..<bodyEnd.lowerBound])
+
+        let stored = try XCTUnwrap(
+            body.range(of: "inbound = handler", options: .literal),
+            "S-10307 `onIncoming` stores the handler"
+        )
+        let opened = try XCTUnwrap(
+            body.range(of: "session.openInbound()", options: .literal),
+            "S-10307 `onIncoming` opens the gate"
+        )
+        XCTAssertLessThan(
+            stored.lowerBound, opened.lowerBound,
+            "S-10307 the handler is stored before the gate is opened, so the "
+                + "first drained frame already finds its handler"
         )
     }
 

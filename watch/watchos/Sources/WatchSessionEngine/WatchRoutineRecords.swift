@@ -21,6 +21,10 @@ public struct WatchCatalogExercise: Equatable {
     /// catalog entry and the slot so the two can never drift (D-1400).
     public static let roundDurationKey = "roundDurationSecs"
 
+    /// The protocol key the phone's Health kind for a distance exercise travels
+    /// under, shared by the catalog entry and the slot.
+    public static let healthActivityKey = "healthActivity"
+
     public let exerciseId: String
     public let name: String
 
@@ -36,16 +40,23 @@ public struct WatchCatalogExercise: Equatable {
     /// (D-1404, D-1413).
     public let roundDurationSecs: Int?
 
+    /// The Health kind the phone named for a distance exercise, nil when it
+    /// named none. Only a distance exercise carries one, and only the phone
+    /// chooses it: the wrist reads it, it never decides (D-2).
+    public let healthActivity: String?
+
     public init(
         exerciseId: String,
         name: String,
         capabilities: [String],
-        roundDurationSecs: Int? = nil
+        roundDurationSecs: Int? = nil,
+        healthActivity: String? = nil
     ) {
         self.exerciseId = exerciseId
         self.name = name
         self.capabilities = capabilities
         self.roundDurationSecs = roundDurationSecs
+        self.healthActivity = healthActivity
     }
 
     public init(json: [String: Any]) throws {
@@ -53,7 +64,8 @@ public struct WatchCatalogExercise: Equatable {
             exerciseId: try requiredString(json, "exerciseId"),
             name: try requiredString(json, "name"),
             capabilities: (json["capabilities"] as? [String]) ?? [],
-            roundDurationSecs: Self.roundSeconds(json[Self.roundDurationKey])
+            roundDurationSecs: Self.roundSeconds(json[Self.roundDurationKey]),
+            healthActivity: json[Self.healthActivityKey] as? String
         )
     }
 
@@ -66,7 +78,8 @@ public struct WatchCatalogExercise: Equatable {
             exerciseId: exerciseId,
             name: name,
             capabilities: (slot["capabilities"] as? [String]) ?? [],
-            roundDurationSecs: Self.roundSeconds(slot[Self.roundDurationKey])
+            roundDurationSecs: Self.roundSeconds(slot[Self.roundDurationKey]),
+            healthActivity: slot[Self.healthActivityKey] as? String
         )
     }
 
@@ -124,6 +137,7 @@ public struct WatchCatalogExercise: Equatable {
            seconds >= 1 {
             slot[Self.roundDurationKey] = seconds
         }
+        if let healthActivity { slot[Self.healthActivityKey] = healthActivity }
         return slot
     }
 
@@ -134,6 +148,7 @@ public struct WatchCatalogExercise: Equatable {
             "capabilities": capabilities,
         ]
         if let roundDurationSecs { json[Self.roundDurationKey] = roundDurationSecs }
+        if let healthActivity { json[Self.healthActivityKey] = healthActivity }
         return json
     }
 }
@@ -147,13 +162,18 @@ public struct WatchRoutineEffort {
     public let capabilities: [String]
     public let targets: [String: Any]
 
+    /// The Health kind the phone named for this effort's distance exercise, nil
+    /// when it named none (D-2).
+    public let healthActivity: String?
+
     public init(
         effortId: String,
         exerciseId: String,
         exerciseName: String,
         effortKind: String,
         capabilities: [String],
-        targets: [String: Any] = [:]
+        targets: [String: Any] = [:],
+        healthActivity: String? = nil
     ) {
         self.effortId = effortId
         self.exerciseId = exerciseId
@@ -161,6 +181,7 @@ public struct WatchRoutineEffort {
         self.effortKind = effortKind
         self.capabilities = capabilities
         self.targets = targets
+        self.healthActivity = healthActivity
     }
 
     public init(json: [String: Any]) throws {
@@ -170,7 +191,8 @@ public struct WatchRoutineEffort {
             exerciseName: try requiredString(json, "exerciseName"),
             effortKind: try requiredString(json, "effortKind"),
             capabilities: (json["capabilities"] as? [String]) ?? [],
-            targets: (json["targets"] as? [String: Any]) ?? [:]
+            targets: (json["targets"] as? [String: Any]) ?? [:],
+            healthActivity: json[WatchCatalogExercise.healthActivityKey] as? String
         )
     }
 
@@ -199,12 +221,13 @@ public struct WatchRoutineEffort {
         WatchCatalogExercise(
             exerciseId: exerciseId,
             name: exerciseName,
-            capabilities: capabilities
+            capabilities: capabilities,
+            healthActivity: healthActivity
         )
     }
 
     public func toJson() -> [String: Any] {
-        [
+        var json: [String: Any] = [
             "effortId": effortId,
             "exerciseId": exerciseId,
             "exerciseName": exerciseName,
@@ -212,6 +235,8 @@ public struct WatchRoutineEffort {
             "capabilities": capabilities,
             "targets": targets,
         ]
+        if let healthActivity { json[WatchCatalogExercise.healthActivityKey] = healthActivity }
+        return json
     }
 }
 

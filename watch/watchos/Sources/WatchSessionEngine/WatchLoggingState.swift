@@ -311,14 +311,14 @@ public final class WatchLoggingState {
         )
     }
 
-    /// The lines that say why a sensor is silent (plan 59, D-2): heart rate
-    /// first, then distance, and distance only while the exercise the user is on
-    /// can cover it. A permission the platform never asked about, or one the
+    /// The lines that say why a sensor is silent (plan 59, D-2; plan 70, D-1):
+    /// distance only while the exercise the user is on can cover it. Heart-rate
+    /// refusal is said on the Start screen and the workout summary, not on an
+    /// exercise page. A permission the platform never asked about, or one the
     /// hardware cannot give, says nothing.
     public var sensorNotices: [String] {
         guard let sensors else { return [] }
         var notices: [String] = []
-        if sensors.heartRateAccess == .denied { notices.append(WatchSensorNoticeCopy.noHeartRate) }
         if sensors.locationAccess == .denied,
            WatchGpsPolicy.coversDistance(capabilities) {
             notices.append(WatchSensorNoticeCopy.noDistance)

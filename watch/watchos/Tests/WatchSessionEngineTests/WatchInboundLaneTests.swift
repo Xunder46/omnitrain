@@ -203,4 +203,116 @@ final class WatchInboundLaneTests: XCTestCase {
             "S-9310 both paused rounds were handled in offer order"
         )
     }
+
+    // MARK: - S-10301 a closed lane holds, then hands out in order
+
+    func testS10301AClosedLaneHoldsThenHandsOutInOrder() async throws {
+        let recorder = Recorder()
+        let lane = WatchInboundLane(startsOpen: false) { frame in
+            recorder.begin(frame["n"] as! Int)
+            recorder.end(frame["n"] as! Int)
+        }
+
+        lane.enqueue(["n": 1])
+        lane.enqueue(["n": 2])
+        lane.enqueue(["n": 3])
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertTrue(
+            recorder.starts.isEmpty,
+            "S-10301 a closed lane handles nothing before `open()`"
+        )
+
+        lane.open()
+        let drained = await spin(until: { recorder.finished.count == 3 })
+        XCTAssertTrue(drained, "S-10301 all three held frames were handled after `open()`")
+        XCTAssertEqual(
+            recorder.starts,
+            [1, 2, 3],
+            "S-10301 the held frames were handed out in offer order"
+        )
+    }
+
+    // MARK: - S-10302 frames offered after `open()` queue behind the held ones
+
+    func testS10302FramesOfferedAfterOpenQueueBehindTheHeldOnes() async throws {
+        let recorder = Recorder()
+        let gate = Gate()
+        let lane = WatchInboundLane(startsOpen: false) { frame in
+            let n = frame["n"] as! Int
+            recorder.begin(n)
+            if n == 1 {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    gate.hold(continuation)
+                }
+            }
+            recorder.end(n)
+        }
+
+        lane.enqueue(["n": 1])
+        lane.enqueue(["n": 2])
+        lane.enqueue(["n": 3])
+        lane.open()
+
+        let parked = await spin(until: { recorder.starts == [1] && gate.isHeld })
+        guard parked else {
+            XCTFail("S-10302 the first handler never parked on the gate")
+            gate.open()
+            return
+        }
+
+        // Offered while frame 1's handler is still parked: it queues behind.
+        lane.enqueue(["n": 4])
+        gate.open()
+
+        let drained = await spin(until: { recorder.finished.count == 4 })
+        XCTAssertTrue(drained, "S-10302 all four frames were handled")
+        XCTAssertEqual(
+            recorder.starts,
+            [1, 2, 3, 4],
+            "S-10302 the frame offered after `open()` queued behind the held ones"
+        )
+        XCTAssertEqual(
+            recorder.maxInFlight,
+            1,
+            "S-10302 no two handlers ever overlapped"
+        )
+    }
+
+    // MARK: - S-10303 `open()` twice and `open()` on a default lane are harmless
+
+    func testS10303OpenTwiceAndOpenOnADefaultLaneAreHarmless() async throws {
+        let defaultRecorder = Recorder()
+        let defaultHandled = expectation(description: "the default lane's frame was handled")
+        let defaultLane = WatchInboundLane { frame in
+            defaultRecorder.begin(frame["n"] as! Int)
+            defaultRecorder.end(frame["n"] as! Int)
+            defaultHandled.fulfill()
+        }
+        defaultLane.open()
+        defaultLane.enqueue(["n": 1])
+        await fulfillment(of: [defaultHandled], timeout: 5)
+        XCTAssertEqual(
+            defaultRecorder.starts,
+            [1],
+            "S-10303 `open()` on a default lane handled the frame exactly once"
+        )
+
+        let closedRecorder = Recorder()
+        let closedHandled = expectation(description: "the closed lane's frame was handled")
+        let closedLane = WatchInboundLane(startsOpen: false) { frame in
+            closedRecorder.begin(frame["n"] as! Int)
+            closedRecorder.end(frame["n"] as! Int)
+            closedHandled.fulfill()
+        }
+        closedLane.open()
+        closedLane.open()
+        closedLane.enqueue(["n": 1])
+        await fulfillment(of: [closedHandled], timeout: 5)
+        XCTAssertEqual(
+            closedRecorder.starts,
+            [1],
+            "S-10303 `open()` twice handled the frame exactly once"
+        )
+    }
 }

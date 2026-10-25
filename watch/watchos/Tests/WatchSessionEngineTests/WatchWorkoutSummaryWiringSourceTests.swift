@@ -55,7 +55,7 @@ final class WatchWorkoutSummaryWiringSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             content.contains(
-                "WatchWorkoutSummaryView(summary: pending, onDone: { host.summary.dismissPending() })"
+                "WatchWorkoutSummaryView(summary: pending, healthOff: host.healthAccess == .off, onDone: { host.summary.dismissPending() })"
             ),
             "S-9620 the wearer stops seeing Done take the summary away and return to the start screen"
         )

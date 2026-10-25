@@ -44,6 +44,7 @@ const List<String> restRuleRoots = [
   'docs/watch_session_sync.md',
   'docs/state_management/watch_surface.md',
   'docs/watch-app-setup-and-qa.md',
+  'docs/watch-app-qa-wrist-logging.md',
   'docs/theme_and_settings.md',
   'docs/modality_based_exercise_ui.md',
 ];

@@ -1327,33 +1327,6 @@ final class WatchSessionEngineTests: XCTestCase {
         XCTAssertTrue(relaunched.pendingObservations().isEmpty)
     }
 
-    func testASessionTheWristJoinedEndsWithNoEnd() async throws {
-        let harness = Harness()
-        let engine = await harness.runningEngine()
-        _ = try await engine.applyMessage([
-            "protocolVersion": SyncProtocolValidator.protocolVersion,
-            "messageId": "msg-join",
-            "sessionId": "s-phone",
-            "type": "session_snapshot",
-            "origin": "phone",
-            "sentAt": "2026-07-13T06:00:00Z",
-            "payload": [
-                "sessionId": "s-phone",
-                "revision": 0,
-                "status": WatchSessionStatus.active,
-                "currentExerciseIndex": 0,
-                "exercises": [exercise("sx-bench")],
-                "entries": [[String: Any]](),
-                "timers": [String: Any](),
-            ] as [String: Any],
-        ])
-
-        _ = await engine.finishSession()
-
-        XCTAssertEqual(engine.session?.status, WatchSessionStatus.completed)
-        XCTAssertNil(sessionEnd(engine), "D-120 a session the wrist joined from the phone gets none")
-    }
-
     // MARK: - S-240 resend across sessions
 
     func testS240EveryUnacknowledgedObservationOfEverySessionIsResentInStoreOrder() async throws {

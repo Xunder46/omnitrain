@@ -8,17 +8,32 @@ public final class WatchInboundLane: @unchecked Sendable {
     private let lock = NSLock()
     private var waiting: [[String: Any]] = []
     private var running = false
+    private var opened = true
     private let handler: @Sendable ([String: Any]) async -> Void
 
-    public init(handler: @escaping @Sendable ([String: Any]) async -> Void) {
+    public init(startsOpen: Bool = true, handler: @escaping @Sendable ([String: Any]) async -> Void) {
+        self.opened = startsOpen
         self.handler = handler
+    }
+
+    /// Opens a lane built with `startsOpen: false`: the frames it held are
+    /// drained in offer order, and frames offered after this call queue behind
+    /// them. Idempotent, and safe from any thread.
+    public func open() {
+        lock.lock()
+        opened = true
+        let start = !running && !waiting.isEmpty
+        if start { running = true }
+        lock.unlock()
+        guard start else { return }
+        Task { await self.drain() }
     }
 
     public func enqueue(_ frame: [String: Any]) {
         lock.lock()
         waiting.append(frame)
-        let start = !running
-        running = true
+        let start = opened && !running
+        if start { running = true }
         lock.unlock()
         guard start else { return }
         Task { await self.drain() }

@@ -177,6 +177,10 @@ class _WiringAdoptionBridge extends WatchSessionAdoptionBridge {
   Future<void> adoptRating(String sessionId, int rating) async {
     await _boundState?.adoptSessionFeeling(sessionId, rating);
   }
+
+  Future<void> noteSensorSummary(String sessionId) async {
+    _boundState?.noteWristSummary(sessionId);
+  }
 }
 
 /// Builds the phone's watch graph and answers the handles the app keeps on it,
@@ -238,6 +242,9 @@ Future<WatchSyncGraph?> createWatchSync({
     // A rating the import wrote reaches the live session, so an open Summary
     // shows it without reloading and cannot overwrite it (D-1).
     onSessionRated: adoption.adoptRating,
+    // The wrist's heart rate landing after the summary opened reaches that
+    // screen (plan 72).
+    onSensorSummaryAttached: adoption.noteSensorSummary,
   );
   // Built after the mirror, but the projection below reads it.
   WatchTimerPush? timerPushForSnapshots;

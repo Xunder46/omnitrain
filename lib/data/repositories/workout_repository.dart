@@ -708,6 +708,12 @@ abstract class WorkoutRepository {
   /// mapped by the back-compat shim.
   Future<int> getDataVersion({int defaultValue = 1});
 
+  /// A number that differs whenever any food, food group, catalog food,
+  /// template, template segment/effort/target, exercise or exercise-capability
+  /// row was written since it was last read; `null` means the repository
+  /// cannot tell, so a caller must re-read.
+  int? get referenceRevision;
+
   /// Persist the device's data-migration version. Called by
   /// `DataMigrationService` after each step completes so subsequent
   /// launches skip the work.

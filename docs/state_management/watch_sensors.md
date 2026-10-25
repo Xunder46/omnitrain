@@ -127,7 +127,9 @@ and Apple Health keeps the type the workout opened with
 (`WatchGpsByExerciseTests.testS4807TheWorkoutIsRegisteredOutdoorsByTheExerciseTheUserIsOn`).
 The type itself: a session with a modality keeps the modality table's type; a
 session with none takes the majority of its exercises' capabilities — `hold`
-→ flexibility, else `distance` → running, else any of `reps`/`sets`/`load` →
+→ flexibility, else `distance` → the kind the phone named for that exercise
+(`healthActivity`: cycling, rowing, walking or hiking; running when it named
+none — see `WatchHealthActivityTests`), else any of `reps`/`sets`/`load` →
 traditionalStrengthTraining, else other — with a tie going to the earliest
 exercise that reaches the top count and an empty list meaning "not yet known"
 (`WatchWorkoutTypeFromExercisesTests.testS8801ALiftSessionRegistersAsStrengthTraining`,
@@ -184,11 +186,14 @@ and builds only:
 nothing here is proven on a wrist.
 
 **When access is off, the wrist says so.** `WatchLoggingState.sensorNotices`
-returns "No heart rate, Health access is off" when the recorder's
-`heartRateAccess` is `.denied`, and "No distance, Location access is off" while
-the current exercise's capabilities carry `distance` and `locationAccess` is
-`.denied` — heart rate first, and `[]` with no sensors or an `.unavailable`
-permission (`WatchSensorAccessNoticeTests.testS8904ADeniedHeartRateBecomesTheNoticeLine`,
+returns "No distance, Location access is off" while the current exercise's
+capabilities carry `distance` and `locationAccess` is `.denied`, and `[]` with
+no sensors or an `.unavailable` permission. A refused heart rate adds no line
+to an exercise page (plan 70: it repeated on every page and pushed Start off a
+40 mm screen); the Start screen says it, and the workout summary shows "No
+heart rate, Health access is off" in place of the Avg HR row when Health access
+is off and none was recorded (`WatchWorkoutSummary.heartRateNote`;
+`WatchExercisePageFitTests`). Earlier tests of the notice list (`WatchSensorAccessNoticeTests.testS8904ADeniedHeartRateBecomesTheNoticeLine`,
 `…testS8905TheDistanceNoticeShowsOnTheRunAndNotOnTheLift`,
 `…testS8905BothRefusalsReadHeartRateFirstThenDistance`,
 `…testS8906NoSensorsMeansNoNotices`,
@@ -260,8 +265,12 @@ Foundation, covered by `swift test`); the watch app target's
 HealthKit, and `HealthKitWorkoutStore.swift` opens the route after the workout's
 collection begins and finishes it after the workout is saved.
 
-**What is recorded.** Only a workout the store opens as activity `running`,
-outdoors, with route sharing authorized, records a route. A point enters when it
+**What is recorded.** Every workout the store opens records a route while route
+sharing is authorized, whatever type Health saves it as and wherever it opened
+(plan 76; plan 68 limited this to an outdoor `running` workout): GPS only runs
+while the current exercise covers distance, so a run in the middle of a routine
+that began on a lift is recorded, and a lifting-only workout holds no points and
+saves nothing. A point enters when it
 is a valid coordinate, its accuracy is within 0...50 m, it is not before the
 workout began, it is strictly later than the last accepted point, and it is at
 most 20 m/s from it (the first point is exempt from the speed rule). The route
@@ -305,7 +314,12 @@ Owner device checks (not yet run):
 7. ODC-7: a run of 2 hours or more: full map, the app stays responsive.
 8. ODC-8: first launch after the update: the Health sheet lists Workout Routes
    once.
-9. ODC-9: an outdoor sports session: no map.
+9. ODC-9: an outdoor sports session with a distance exercise: a map when you
+   moved 50 m or more (plan 76).
+10. ODC-10 (plan 76): a routine that starts with a lift and has an outdoor run in
+    the middle: Health > Workouts > the workout > Route exists after you finish;
+    note whether Fitness draws the map for that workout type. Lifting only: no
+    route and no error.
 
 ### Invariants
 

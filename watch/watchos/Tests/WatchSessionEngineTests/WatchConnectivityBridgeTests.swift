@@ -1228,6 +1228,53 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         let stored = await wrist.store.readAll()
         XCTAssertEqual(stored.sessions.count, 2, "S-215 the repeat mints no row")
     }
+
+    // MARK: - S-10304 the bridge opens the gate only after it holds a handler
+
+    func testS10304TheBridgeOpensTheGateOnlyAfterItHoldsAHandler() async throws {
+        let session = FakeWatchConnectivitySession()
+        let bridge = WatchConnectivityBridge(session: session)
+        XCTAssertEqual(
+            session.openInboundCalls,
+            0,
+            "S-10304 nothing opened the gate before `onIncoming`"
+        )
+
+        var handled: [[String: Any]] = []
+        bridge.onIncoming { frame in
+            handled.append(frame)
+        }
+        XCTAssertEqual(
+            session.openInboundCalls,
+            1,
+            "S-10304 `onIncoming` opened the gate exactly once, after storing the handler"
+        )
+
+        await session.deliver(["n": 1])
+        XCTAssertEqual(
+            handled.count,
+            1,
+            "S-10304 a frame delivered after the gate opened reached the handler"
+        )
+    }
+
+    // MARK: - S-10305 a frame delivered before `onIncoming` is a drop at the bridge
+
+    func testS10305AFrameDeliveredBeforeOnIncomingIsADropAtTheBridge() async throws {
+        let session = FakeWatchConnectivitySession()
+        let bridge = WatchConnectivityBridge(session: session)
+
+        await session.deliver(["n": 1])
+
+        var handled: [[String: Any]] = []
+        bridge.onIncoming { frame in
+            handled.append(frame)
+        }
+        XCTAssertTrue(
+            handled.isEmpty,
+            "S-10305 the frame delivered before `onIncoming` was dropped, not replayed"
+        )
+    }
 }
 
 /// A transport whose first send waits for the test to release it, so a second

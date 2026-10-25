@@ -1855,6 +1855,9 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  int? get referenceRevision => null;
+
+  @override
   Future<void> setDataVersion(int version) async {
     _dataVersion = version;
   }

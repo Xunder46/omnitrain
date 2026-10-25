@@ -6,7 +6,10 @@
 //  kept: raw fixes in, batches of ten out, one verdict at close.
 //
 //  Plan: `docs/plans/2026-10-24-68-run-route-map-plan/2026-10-24-68-run-route-map-plan.md`,
-//  scenarios S-9801..S-9814 (D-1, D-3, D-4, D-5).
+//  scenarios S-9801..S-9814 (D-1, D-3, D-4, D-5). Plan 76 supersedes D-1: every
+//  workout records while route sharing is allowed (`open`), and the 50 m spread
+//  rule at close is what keeps a treadmill, a lift or a standing workout from
+//  saving a route (S-10601..S-10604).
 //
 //  The keeper holds at most one batch in memory and never the whole route: a
 //  point is either handed to Health in the batch it completes, or it is still
@@ -51,11 +54,11 @@ public final class WatchRouteKeeper {
     public init() {}
 
     /// Starts a fresh route for a workout and answers whether it will record. Everything from an earlier workout is dropped.
-    /// Only an outdoor workout whose activity name is `running`, with route sharing allowed, records.
+    /// Any workout records while route sharing is allowed, whatever it is saved as and wherever it opened (plan 76 D-1,
+    /// superseding plan 68 D-1): the route is kept at close only when it covers 50 m or more, so a workout that never got
+    /// a GPS fix, or stood in one place, saves nothing.
     @discardableResult
     public func open(
-        outdoors: Bool,
-        activityName: String,
         routeSharingAllowed: Bool,
         beganAt: Date
     ) -> Bool {
@@ -68,7 +71,7 @@ public final class WatchRouteKeeper {
         farthest = 0
         outcome = .none
         self.beganAt = beganAt
-        recording = outdoors && routeSharingAllowed && activityName == "running"
+        recording = routeSharingAllowed
         return recording
     }
 

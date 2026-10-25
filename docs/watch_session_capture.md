@@ -239,7 +239,11 @@ session end, summary or effort rating.
 a `session_end`, and only the wrist holds the readings its summaries come from.
 So the wrist appends one for each session it created — at its own End or
 abandon, or when the phone's lifecycle message or snapshot ends it — and none for
-a session it joined from the phone, which the phone already holds.
+a session it joined from the phone, which the phone already holds. Since plan 71
+a session the wrist joined from the phone sends its `session_end` too, marked
+`followed: true`: the phone stores only the heart-rate summary the end carries
+from it — no session row and no effort rows — and never turns the end into
+history.
 
 **Why the end is stored before the row that ends the session.** A kill between
 the two then leaves a session still running with its end already owed, rather

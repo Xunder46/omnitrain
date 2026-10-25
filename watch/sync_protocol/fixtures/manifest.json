@@ -38,6 +38,11 @@
       "scenario": "S-201"
     },
     {
+      "path": "valid/observations_up_session_end_followed.json",
+      "type": "observations_up",
+      "scenario": "S-10117"
+    },
+    {
       "path": "valid/session_snapshot_session_capture.json",
       "type": "session_snapshot",
       "scenario": "S-203"
@@ -127,6 +132,24 @@
       "type": "exercises_down",
       "scenario": "S-3802",
       "note": "A list that fits in one batch: `batchCount` 1, `batchIndex` 0, `totalCount` 3, three exercises."
+    },
+    {
+      "path": "valid/exercises_down_health_activity.json",
+      "type": "exercises_down",
+      "scenario": "S-10501",
+      "note": "A distance exercise MAY name its Health kind: `ex-ride` carries `healthActivity: \"cycling\"` while `ex-bench`, a lifting exercise, carries no such key."
+    },
+    {
+      "path": "valid/routines_down_health_activity.json",
+      "type": "routines_down",
+      "scenario": "S-10501",
+      "note": "A routine effort and the fallback list MAY name the Health kind too: `ef-ride` and the `ex-ride` fallback both carry `healthActivity: \"cycling\"`."
+    },
+    {
+      "path": "valid/session_snapshot_health_activity.json",
+      "type": "session_snapshot",
+      "scenario": "S-10501",
+      "note": "A session slot MAY name the Health kind: `sx-hike` carries `healthActivity: \"hiking\"` with `capabilities` `[\"time\", \"distance\"]`."
     }
   ],
   "invalid": [
@@ -436,6 +459,13 @@
       "expectedReasonContains": "status is carried only by session_end entries"
     },
     {
+      "path": "invalid/observations_up_followed_on_set.json",
+      "type": "observations_up",
+      "scenario": "S-10117",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "followed is carried only by session_end entries"
+    },
+    {
       "path": "invalid/observations_up_modality_on_timed.json",
       "type": "observations_up",
       "scenario": "S-202",
@@ -564,6 +594,14 @@
       "expectedCode": "unexpected_field",
       "expectedReasonContains": "setNumber",
       "note": "A planned row is a closed object: its position in the array IS the set number, so a `setNumber` key is a field the schema does not define and the snapshot is refused."
+    },
+    {
+      "path": "invalid/exercises_down_unknown_health_activity.json",
+      "type": "exercises_down",
+      "scenario": "S-10501",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "swimming",
+      "note": "`healthActivity` is a closed enum: `\"swimming\"` is not one of the five kinds the phone can name, so the batch is refused."
     }
   ],
   "scenarios": [

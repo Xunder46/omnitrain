@@ -68,7 +68,11 @@ const List<String> _recordFolders = ['plans', 'releases', 'memories'];
 
 /// Owner-facing files in [_docsRoot] that are not part of the indexed
 /// documentation set: the unbuilt-ideas list and the manual watch setup guide.
-const List<String> _recordFiles = ['future-work.md', 'watch-app-setup-and-qa.md'];
+const List<String> _recordFiles = [
+  'future-work.md',
+  'watch-app-setup-and-qa.md',
+  'watch-app-qa-wrist-logging.md',
+];
 
 bool _isRecord(File file) =>
     _recordFolders.any(

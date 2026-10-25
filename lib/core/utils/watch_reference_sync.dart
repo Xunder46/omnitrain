@@ -25,6 +25,7 @@ library;
 import 'dart:ui' show Color;
 
 import '../constants/block_types.dart';
+import '../constants/capability.dart';
 import '../constants/metric_ids.dart';
 import '../sync_protocol/phone_envelope.dart';
 import '../sync_protocol/wire_timestamps.dart';
@@ -46,6 +47,7 @@ typedef _SyncedExercise = ({
   String name,
   List<String> capabilities,
   int? defaultRoundDurationSecs,
+  String? healthActivity,
 });
 
 /// Resolves exercises to what the wire carries, reading each one's capabilities
@@ -57,6 +59,7 @@ class _ExerciseResolver {
   final Map<String, String> _names = {};
   final Map<String, int?> _defaultRoundSecs = {};
   final Map<String, List<String>> _capabilities = {};
+  final Map<String, String?> _disciplines = {};
 
   Future<_SyncedExercise?> resolve(String? exerciseId) async {
     if (exerciseId == null) return null;
@@ -65,6 +68,7 @@ class _ExerciseResolver {
       for (final exercise in await _repository.getExercises()) {
         _names[exercise.id] = exercise.name;
         _defaultRoundSecs[exercise.id] = exercise.defaultRoundDurationSecs;
+        _disciplines[exercise.id] = exercise.disciplineId;
       }
     }
     final name = _names[exerciseId];
@@ -79,6 +83,11 @@ class _ExerciseResolver {
       name: name,
       capabilities: capabilities,
       defaultRoundDurationSecs: _defaultRoundSecs[exerciseId],
+      healthActivity: WatchReferenceSync.healthActivityOf(
+        disciplineId: _disciplines[exerciseId],
+        exerciseId: exerciseId,
+        capabilities: capabilities,
+      ),
     );
   }
 }
@@ -183,6 +192,8 @@ abstract final class WatchReferenceSync {
         'exerciseId': exercise.id,
         'name': exercise.name,
         'capabilities': exercise.capabilities,
+        if (exercise.healthActivity != null)
+          'healthActivity': exercise.healthActivity,
         if (exercise.defaultRoundDurationSecs != null &&
             exercise.defaultRoundDurationSecs! >= 1)
           'roundDurationSecs': exercise.defaultRoundDurationSecs!,
@@ -316,6 +327,8 @@ abstract final class WatchReferenceSync {
           'exerciseName': exercise.name,
           'effortKind': _wireEffortKind(effort.effortKind),
           'capabilities': exercise.capabilities,
+          if (exercise.healthActivity != null)
+            'healthActivity': exercise.healthActivity,
           'targets': _targetsJson(
             await repository.getTemplateTargets(effort.id),
             isHold: _isHold(effort),
@@ -474,6 +487,34 @@ abstract final class WatchReferenceSync {
       'distanceUnit': ?distanceUnit,
     },
   );
+
+  /// The Health workout kind a distance exercise records as on the wrist (plan
+  /// 75, D-3), from its discipline: running, cycling and rowing as themselves,
+  /// walking as walking (hiking for the built-in Hike and Rucking, which share
+  /// the walking discipline). Null for an exercise that cannot cover distance
+  /// or whose discipline has no kind of its own — the wrist then records it as
+  /// it always has, a run.
+  static String? healthActivityOf({
+    required String? disciplineId,
+    required String exerciseId,
+    required List<String> capabilities,
+  }) {
+    if (!capabilities.contains(ExerciseCapability.distance)) return null;
+    switch (disciplineId) {
+      case 'discipline-running':
+        return 'running';
+      case 'discipline-cycling':
+        return 'cycling';
+      case 'discipline-rowing':
+        return 'rowing';
+      case 'discipline-walking':
+        return exerciseId == 'exercise-hike' || exerciseId == 'exercise-rucking'
+            ? 'hiking'
+            : 'walking';
+      default:
+        return null;
+    }
+  }
 
   /// [color] as the wire spells a theme accent: `#RRGGBB`, upper-case, no alpha.
   ///

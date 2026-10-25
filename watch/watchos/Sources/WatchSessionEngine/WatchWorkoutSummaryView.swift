@@ -19,10 +19,12 @@ import SwiftUI
 /// The end-of-workout summary: title, the rows the state built, and Done.
 public struct WatchWorkoutSummaryView: View {
     public let summary: WatchWorkoutSummary
+    public let healthOff: Bool
     public let onDone: () -> Void
 
-    public init(summary: WatchWorkoutSummary, onDone: @escaping () -> Void) {
+    public init(summary: WatchWorkoutSummary, healthOff: Bool, onDone: @escaping () -> Void) {
         self.summary = summary
+        self.healthOff = healthOff
         self.onDone = onDone
     }
 
@@ -41,6 +43,12 @@ public struct WatchWorkoutSummaryView: View {
                             .monospacedDigit()
                     }
                     .font(.footnote)
+                }
+                if let note = summary.heartRateNote(healthOff: healthOff) {
+                    Text(note)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
                 Button(WatchWorkoutSummaryCopy.done, action: onDone)
                     .watchProminent()

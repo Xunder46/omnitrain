@@ -325,13 +325,19 @@ final class WatchRouteSourceTests: XCTestCase {
             openRoute.contains("routeRecorder.open("),
             "S-9820/D-1: openRoute must open the keeper with routeRecorder.open("
         )
+        // Plan 76 D-1 (S-10606): route sharing alone decides, so the store hands the
+        // keeper neither the outdoors verdict nor the activity name.
         XCTAssertTrue(
-            openRoute.contains("outdoors: outdoors"),
-            "S-9820/D-1: openRoute must hand the outdoors verdict to the keeper"
+            openRoute.contains("routeSharingAllowed: sharing"),
+            "S-10606: openRoute must hand the route-sharing answer to the keeper"
         )
-        XCTAssertTrue(
-            openRoute.contains("activityName: activityName"),
-            "S-9820/D-1: openRoute must hand the activity name to the keeper"
+        XCTAssertFalse(
+            openRoute.contains("outdoors:"),
+            "S-10606: openRoute must not hand the outdoors verdict to the keeper"
+        )
+        XCTAssertFalse(
+            openRoute.contains("activityName"),
+            "S-10606: openRoute must not hand the activity name to the keeper"
         )
         XCTAssertTrue(
             openRoute.contains("location.observeFixes"),
@@ -357,6 +363,42 @@ final class WatchRouteSourceTests: XCTestCase {
         XCTAssertLessThan(
             beginCollection, routeOpen,
             "S-9820/D-8: the route opens only after beginCollection succeeds"
+        )
+    }
+
+    // MARK: - S-10606 (plan 76 D-1): route sharing alone decides
+
+    func testS10606RouteSharingAloneDecidesWhetherARouteRecords() throws {
+        let keeperURL = Fixtures.repositoryRoot
+            .appendingPathComponent("watch/watchos/Sources/WatchSessionEngine/WatchRouteKeeper.swift")
+        let keeper = try String(contentsOf: keeperURL, encoding: .utf8)
+        XCTAssertTrue(
+            keeper.contains("        recording = routeSharingAllowed\n"),
+            "S-10606: the keeper records when route sharing is allowed, and for no other reason"
+        )
+        XCTAssertFalse(
+            keeper.contains("activityName == \"running\""),
+            "S-10606: the running-name rule is gone from the keeper"
+        )
+        XCTAssertFalse(
+            keeper.contains("outdoors &&"),
+            "S-10606: the outdoors rule is gone from the keeper"
+        )
+
+        let recorder = try recorderSource()
+        XCTAssertFalse(
+            recorder.contains("outdoors") || recorder.contains("activityName"),
+            "S-10606: the recorder hands the keeper neither the outdoors verdict nor the activity name"
+        )
+
+        let store = try storeSource()
+        XCTAssertTrue(
+            store.contains("openRoute(on: collection, startedAt: startDate)"),
+            "S-10606: begin opens the route for every workout it registers"
+        )
+        XCTAssertTrue(
+            store.contains("configuration.locationType = outdoors ? .outdoor : .unknown"),
+            "S-10606: the outdoors verdict still sets the workout's location type"
         )
     }
 

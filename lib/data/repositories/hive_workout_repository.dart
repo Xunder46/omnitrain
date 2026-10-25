@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -172,6 +174,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   bool _initialized = false;
 
+  /// Bumped by one Hive box listener per reference-data box (plan 74, D-3).
+  /// Only ever compared for equality; never interpreted.
+  int _referenceRevision = 0;
+  final List<StreamSubscription<BoxEvent>> _revisionListeners = [];
+
   @override
   Future<void> initialize() async {
     if (_initialized) return;
@@ -242,9 +249,36 @@ class HiveWorkoutRepository implements WorkoutRepository {
     // any legacy one-shot markers to a starting version on the first
     // launch under the new system, so existing installs do not re-run
     // already-applied steps.
+    _listenForReferenceWrites();
     await _runDataMigrations();
 
     _initialized = true;
+  }
+
+  /// Point one listener at each reference-data box, so [referenceRevision]
+  /// moves on any write to a food, routine or exercise row (plan 74, D-3).
+  /// Listeners left by an earlier [initialize] are cancelled first, so a
+  /// second call over the same storage does not stack them.
+  void _listenForReferenceWrites() {
+    for (final listener in _revisionListeners) {
+      listener.cancel();
+    }
+    _revisionListeners.clear();
+
+    final boxes = <Box<dynamic>>[
+      _exercisesBox,
+      _exerciseCapabilitiesBox,
+      _templatesBox,
+      _templateSegmentsBox,
+      _templateEffortsBox,
+      _templateTargetsBox,
+      _foodGroupsBox,
+      _foodsBox,
+      _foodCatalogBox,
+    ];
+    for (final box in boxes) {
+      _revisionListeners.add(box.watch().listen((_) => _referenceRevision++));
+    }
   }
 
   /// Run the consolidated data-migration sequence once on startup. Each
@@ -2508,6 +2542,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
     if (raw is int) return raw;
     return defaultValue;
   }
+
+  @override
+  int? get referenceRevision => _referenceRevision;
 
   @override
   Future<void> setDataVersion(int version) async {

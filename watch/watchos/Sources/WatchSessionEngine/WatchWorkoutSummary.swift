@@ -88,6 +88,12 @@ public struct WatchWorkoutSummary: Equatable {
         return rows
     }
 
+    /// The one line that says why there is no heart rate, only while Health
+    /// access is off and none was recorded (plan 70, D-4).
+    public func heartRateNote(healthOff: Bool) -> String? {
+        averageBpm == nil && healthOff ? WatchSensorNoticeCopy.noHeartRate : nil
+    }
+
     /// `m:ss` under an hour, `h:mm:ss` from an hour; a negative length reads 0:00.
     public static func durationText(_ seconds: Int) -> String {
         let total = max(0, seconds)

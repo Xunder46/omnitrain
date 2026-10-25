@@ -69,6 +69,11 @@ public struct WatchLoggingView: View {
     /// which sits in the top corner beside the clock.
     private static let titleClearance = 14.0
 
+    /// Width the name row leaves free at the trailing edge so the page counter
+    /// and a long name stop short of the menu button, which spans the last
+    /// 40 pt of a 40 mm screen's top-right corner (plan 70, D-2).
+    private static let menuClearance = 40.0
+
     @StateObject private var model: WatchLoggingModel
     @FocusState private var crownFocused: Bool
     @Environment(\.watchAccent) private var accent
@@ -176,6 +181,7 @@ public struct WatchLoggingView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .padding(.trailing, Self.menuClearance)
             .padding(.top, Self.titleClearance)
             if let round = roundLine {
                 Text(round)
@@ -201,7 +207,7 @@ public struct WatchLoggingView: View {
                 Text(notice)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
         }

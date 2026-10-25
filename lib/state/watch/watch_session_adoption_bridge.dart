@@ -29,6 +29,7 @@ import '../../core/sync_protocol/phone_entries.dart';
 import '../../core/sync_protocol/wire_limits.dart';
 import '../../core/utils/entry_rows.dart';
 import '../../core/utils/logged_entry_rows.dart';
+import '../../core/utils/watch_reference_sync.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../watch/session/watch_records.dart'
@@ -536,6 +537,11 @@ class WatchSessionAdoptionBridge {
       if (_declaredKinds.contains(effort.effortKind))
         'effortKind': effort.effortKind,
       'capabilities': [...capabilities],
+      'healthActivity': ?WatchReferenceSync.healthActivityOf(
+        disciplineId: exercise?.disciplineId,
+        exerciseId: exerciseId,
+        capabilities: capabilities,
+      ),
       if (effort.effortKind == BlockTypes.round && secs != null && secs >= 1)
         'roundDurationSecs': secs,
     };

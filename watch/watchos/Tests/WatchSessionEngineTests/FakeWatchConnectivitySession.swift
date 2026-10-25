@@ -50,6 +50,9 @@ final class FakeWatchConnectivitySession: WatchConnectivitySession {
     /// When true the fake behaves like a session that is not activated: it lists nothing, cancels 0, and `queue` throws `NotActivated`.
     var notActivated = false
 
+    /// How many times the bridge asked the radio to open its inbound gate (plan 73 S-10304).
+    private(set) var openInboundCalls = 0
+
     private let lock = NSLock()
 
     private var receiveHandler: (([String: Any]) async -> Void)?
@@ -89,6 +92,10 @@ final class FakeWatchConnectivitySession: WatchConnectivitySession {
 
     func onReachabilityChange(_ handler: @escaping (Bool) -> Void) {
         reachabilityHandler = handler
+    }
+
+    func openInbound() {
+        openInboundCalls += 1
     }
 
     /// The phone sending a frame, as the platform would deliver it.

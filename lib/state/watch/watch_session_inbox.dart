@@ -113,6 +113,7 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
     Future<void> Function(String sessionId, List<String> effortIds)?
     onSessionRowsChanged,
     Future<void> Function(String sessionId, int rating)? onSessionRated,
+    Future<void> Function(String sessionId)? onSensorSummaryAttached,
   }) : _repository = repository,
        _transport = transport,
        _validator = validator,
@@ -123,6 +124,7 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
        _phoneOwnsSession = phoneOwnsSession,
        _onSessionRowsChanged = onSessionRowsChanged,
        _onSessionRated = onSessionRated,
+       _onSensorSummaryAttached = onSensorSummaryAttached,
        _importer = WatchSessionImporter(
          repository: repository,
          clock: clock ?? _utcNow,
@@ -169,6 +171,11 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
   /// rating it wrote — the live session's adoption (D-1). Null (a test, a build
   /// with no session state) adopts nothing.
   final Future<void> Function(String sessionId, int rating)? _onSessionRated;
+
+  /// Called once per settled session whose pass stored the wrist's heart-rate
+  /// summary (plan 72): a screen showing that session can re-read it. Null
+  /// (a test, a build with no session state) tells nobody.
+  final Future<void> Function(String sessionId)? _onSensorSummaryAttached;
 
   /// The fields each staged kind must carry to become history — the ones the
   /// `observations_up` schema requires of it. A snapshot entry is held only to
@@ -452,6 +459,9 @@ class WatchSessionInbox implements WatchSessionRatings, WatchLateEntryRecovery {
       }
       if (pass.appliedRating != null) {
         await _onSessionRated?.call(sessionId, pass.appliedRating!);
+      }
+      if (pass.sensorSummaryAttached) {
+        await _onSensorSummaryAttached?.call(sessionId);
       }
     }
     for (final entryId in redelivered) {

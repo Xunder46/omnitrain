@@ -762,7 +762,7 @@ class WatchSensorRecordingTests: XCTestCase {
         XCTAssertTrue(stored.observations.isEmpty, "a launch does not invent an end for it")
     }
 
-    func testS237ASessionTheWristJoinedOwesNoEnd() async throws {
+    func testS237ASessionTheWristJoinedOwesItsEndToo() async throws {
         let engine = await harness.runningEngine()
         _ = try await engine.applyMessage([
             "protocolVersion": SyncProtocolValidator.protocolVersion,
@@ -786,8 +786,16 @@ class WatchSensorRecordingTests: XCTestCase {
 
         let released = await engine.pruneSettledSensorSamples()
 
-        XCTAssertTrue(engine.observations.isEmpty, "S-237 a joined session gets no end (D-120)")
-        XCTAssertEqual(released.count, 1, "S-237 so nothing but today's gates holds its log")
+        // Plan 71: a session the wrist joined sends its end too, marked `followed`, so
+        // the end is an observation the log waits on like any other.
+        let ends = engine.observations.filter { $0.payload["kind"] as? String == WatchObservationKind.sessionEnd }
+        XCTAssertEqual(ends.count, 1, "S-237 a joined session owes one end (plan 71)")
+        XCTAssertEqual(ends.first?.payload["followed"] as? Bool, true, "S-237 and says it followed")
+        XCTAssertEqual(released, [], "S-237 the end not yet acknowledged: nothing released")
+
+        _ = await engine.confirmObservations(ends.map(\.entryId))
+        let afterEnd = await engine.pruneSettledSensorSamples()
+        XCTAssertEqual(afterEnd.count, 1, "S-237 the end acknowledged: the log is released")
     }
 
     // MARK: - S-239 steps change nothing else

@@ -61,12 +61,21 @@ public protocol WatchConnectivitySession: AnyObject {
 
     /// Hands every reachability change to `handler`. Called once.
     func onReachabilityChange(_ handler: @escaping (Bool) -> Void)
+
+    /// Opens the radio's inbound gate, so frames that arrived before the app
+    /// was ready are handed over now. Called once, after the host has
+    /// installed its inbound handler. A session that has no gate answers
+    /// nothing (the default below).
+    func openInbound()
 }
 
 extension WatchConnectivitySession {
     /// Defaults for a conformer that cannot list or cancel: the bridge then queues without withdrawing.
     public func outstandingTransfers() -> [[String: Any]] { [] }
     public func cancelTransfers(messageIds: [String]) -> Int { 0 }
+
+    /// Default for a conformer with no gate: nothing to open.
+    public func openInbound() {}
 }
 
 /// The requests the bridge carries that are not protocol messages (D-2).
@@ -108,8 +117,9 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
     private let onFailure: ((Error) -> Void)?
 
     /// Who the bridge hands arriving frames to. Set by the host before the app
-    /// starts receiving; a frame that arrives first is dropped rather than
-    /// buffered, because the next sync is what brings the wrist up to date.
+    /// starts receiving; a frame that arrives first waits in the radio's gate
+    /// (plan 73) and is handed over when `onIncoming` opens it. The guard here
+    /// stays as defence only.
     private var inbound: (([String: Any]) async throws -> Void)?
 
     private var reachabilityHandler: ((Bool) -> Void)?
@@ -136,8 +146,12 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
     /// Hands every arriving frame to `handler`, unmodified (D-7). The phone
     /// already sent property-list values; re-encoding them here would only be a
     /// chance to lose one.
+    ///
+    /// The handler is stored first, then the radio's gate is opened: the first
+    /// frame the gate hands over already finds its handler here (plan 73 D-3).
     public func onIncoming(_ handler: @escaping ([String: Any]) async throws -> Void) {
         inbound = handler
+        session.openInbound()
     }
 
     /// Hands every reachability change to `handler`. The host decides what an
@@ -311,7 +325,9 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
     ///
     /// A handler that throws has already refused the message whole (I-4); the
     /// throw is reported here so the caller of the arrival does not have to
-    /// carry it.
+    /// carry it. The radio's gate (plan 73) holds a frame that arrived before
+    /// `onIncoming`, so this guard is unreachable in the wired app; it stays
+    /// for a session without a gate.
     private func deliver(_ frame: [String: Any]) async {
         guard let inbound else { return }
         do {

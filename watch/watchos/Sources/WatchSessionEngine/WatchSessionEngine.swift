@@ -1562,21 +1562,21 @@ public final class WatchSessionEngine: ObservableObject {
 
     // MARK: - Session end
 
-    /// Appends the `session_end` of a session the wrist created, the first time
-    /// it becomes completed or abandoned — by the wrist's End or abandon, or by
-    /// the phone's lifecycle message or snapshot (D-120).
+    /// Appends the `session_end` of a session the wrist created or followed
+    /// from the phone, the first time it becomes completed or abandoned — by
+    /// the wrist's End or abandon, or by the phone's lifecycle message or
+    /// snapshot (D-120; plan 71 D-1). A followed session's end carries
+    /// `followed: true` (plan 71 D-2), so the phone stores only its heart rate.
     ///
     /// Called before the row that records the new status, so nothing else is
     /// stored for the session first, and a kill in between leaves the session
     /// still running with its end already owed to the phone rather than ended
-    /// with no end the phone could import. A session the wrist joined from the
-    /// phone gets none. A session that already has one — reopened and ended
-    /// again, or ended by two messages — keeps it: the id is the session's, so
-    /// no end is ever re-emitted with different values.
+    /// with no end the phone could import. A session that already has one —
+    /// reopened and ended again, or ended by two messages — keeps it: the id is
+    /// the session's, so no end is ever re-emitted with different values.
     private func captureSessionEnd(_ sessionId: String, status: String, endedAt: Date) async {
         guard Self.terminalStatuses.contains(status),
               let origin = creationRow(sessionId),
-              origin.source == Self.wristSource,
               !knowsObservation(WatchSessionCapture.sessionEndId(sessionId))
         else { return }
 
@@ -1616,6 +1616,11 @@ public final class WatchSessionEngine: ObservableObject {
             "endedAt": utcIso(end),
             "status": status,
         ]
+        // A session the phone started and the wrist followed says so (plan 71 D-2):
+        // the phone then stores only its heart rate. A wrist-created end has no key.
+        if origin.source != Self.wristSource {
+            event["followed"] = true
+        }
         if let modality = origin.modality, !modality.isEmpty {
             event["modality"] = modality
         }
@@ -1701,7 +1706,9 @@ public final class WatchSessionEngine: ObservableObject {
 
     /// The prune gate's extra step for a session the wrist created: its
     /// `session_end` has been acknowledged (D-129). A session the wrist joined
-    /// owes no end, so nothing extra holds it.
+    /// now also sends an end (plan 71 D-1), but the observation gate already
+    /// holds it until that end is acknowledged, so nothing extra holds it here
+    /// (plan 71 D-3).
     private func isEndAcknowledgedWhereOwed(_ sessionId: String) -> Bool {
         guard creationRow(sessionId)?.source == Self.wristSource else { return true }
         return acknowledgedObservationIds.contains(WatchSessionCapture.sessionEndId(sessionId))
