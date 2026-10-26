@@ -725,9 +725,16 @@ Future<void> _seedDensest(WorkoutRepository repo) async {
 /// back and nothing inside the strip's eight weeks, so every column is empty
 /// while the window (the recency fallback over those two days) still holds
 /// time and the bar renders.
+///
+/// The offsets are constants, not `now`-derived: the strip's oldest week
+/// starts between 49 and 55 days back (49 + up to 6 days into the week, either
+/// start-of-week convention), so anything 57 or more days back is outside the
+/// strip on every run day. A smaller "55 days back" is not: on a Sunday it
+/// lands exactly on the oldest week's first day, and the empty strip's guard
+/// refuses a line that names a session inside the span.
 Future<void> _seedStriplessHistory(WorkoutRepository repo) async {
   await _seedLifting(repo, sessionId: 's-old-a', daysAgo: 60);
-  await _seedLifting(repo, sessionId: 's-old-b', daysAgo: 55);
+  await _seedLifting(repo, sessionId: 's-old-b', daysAgo: 57);
 }
 
 /// S-4015's fixture: `_seedStriplessHistory` plus an unfinished session today.
@@ -1442,10 +1449,11 @@ void main() {
           expect(find.byKey(const Key('mix_strip_start_label')), findsNothing);
           expect(find.byKey(const Key('mix_strip_current_label')), findsNothing);
 
+          final lastSessionDay = _day(57);
           expect(
             _textOf(tester, const Key('mix_strip_empty')),
             'No training in the last $kMixStripWeeks weeks. '
-            'Last session: ${OmniDateUtils.formatShort(_day(55))}.',
+            'Last session: ${OmniDateUtils.formatShort(lastSessionDay)}.',
           );
           expect(
             _textColorOf(tester, const Key('mix_strip_empty')),
@@ -1514,17 +1522,20 @@ void main() {
       group('S-4015 the empty line names the last completed session', () {
         setUp(() => _seedStriplessHistoryWithUnfinished(repo));
 
-        testWidgets('it names day 55 — not the oldest session, not the window’s '
-            'end and not today’s unfinished one', (tester) async {
+        testWidgets('it names the last completed session — not the oldest '
+            'session, not the window’s end and not today’s unfinished one',
+            (tester) async {
           await pumpStats(tester);
 
+          final lastSessionDay = _day(57);
+          final oldestDay = _day(60);
           final line = _textOf(tester, const Key('mix_strip_empty'));
           expect(
             line,
             'No training in the last $kMixStripWeeks weeks. '
-            'Last session: ${OmniDateUtils.formatShort(_day(55))}.',
+            'Last session: ${OmniDateUtils.formatShort(lastSessionDay)}.',
           );
-          expect(line, isNot(contains(OmniDateUtils.formatShort(_day(60)))));
+          expect(line, isNot(contains(OmniDateUtils.formatShort(oldestDay))));
           expect(line, isNot(contains(OmniDateUtils.formatShort(_day(0)))));
 
           // Everything D-4004 leaves alone still renders.
@@ -1553,7 +1564,7 @@ void main() {
             startOfWeek: settingsState.startOfWeek,
           );
           expect(layer, isNotNull);
-          expect(layer!.lastSessionDay, localMidnightDay(_day(55)));
+          expect(layer!.lastSessionDay, localMidnightDay(_day(57)));
           expect(layer.weeks, hasLength(kMixStripWeeks));
           expect(
             layer.weeks.every((week) => week.measure <= 0),
