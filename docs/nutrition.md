@@ -108,7 +108,7 @@ Verified by `test/nutrition_test.dart`, `test/nutrition_primer_test.dart`,
 
 Two tabs — Library and Categories. The old My Foods tab is gone: everything it
 showed lives in the Library list. Creating a new item is not a mode of this
-screen: the Library tab's `+ Create new food` button (key `new_food_button`)
+screen: the Library tab's `+ New Food` button (key `new_food_button`)
 pushes a separate full-screen New Food form (`_NewFoodFormScreen` in
 `lib/features/nutrition/add_food_screen.dart`); the Categories tab keeps
 `+ New Category` (`new_group_button`). Verified by `test/library_merge_test.dart`
@@ -122,6 +122,19 @@ its red delete button, and the same tag. A library copy of a bundled food is nev
 listed as a second row, even after the copy was edited. Verified by
 `test/library_merge_test.dart` (`S-12811`, `S-12812`, `S-12812b`, `S-12813`
 search) and `test/my_foods_unification_test.dart` (Library population).
+
+The Library headings follow a fixed first-run order (Proteins, Dairy, Grains &
+Starches, Fruits, Vegetables, Nuts Seeds & Fats, Snacks & Prepared, Drinks,
+Condiments; the user's own categories after; Uncategorized last) while Foods I
+Eat and the wrist keep their alphabetical order; a line under Search (key
+`library_count_line`) says how many foods are in the user's list ("4 foods in
+your list"); and the Library keeps its scroll and search when the user switches
+to Categories and back. Verified by `test/picker_polish_test.dart` (`S-13110`,
+`S-13111`, `S-13112`, `S-13117`). The calorie ring reads "Pick your foods to get
+started" while the list is empty and "Log a food to start filling" once it has a
+food (`S-13115`). Pressing Done after changing the amount of an unlogged Foods I
+Eat row logs it with that amount; Done on an untouched or reset-to-shown number
+logs nothing (`S-13118`).
 
 **Created foods and deleting them.** A food the user created is edited from its
 pencil like any other, and its editor ends with a **Delete food** button (key
@@ -142,7 +155,7 @@ that no longer exists.
 A Library row is a toggle, not an editor. Tapping a row whose food is not in
 the library adds it (the trailing `Add` button, key `add_catalog_food_<id>`,
 does the same); tapping a row whose food is in the library asks
-`Remove <name> from your library?` first — Cancel keeps the food, Confirm
+`Remove <name> from Foods I Eat?` first — Cancel keeps the food, Confirm
 removes it and unlogs it for today. An in-list row shows the user's own copy
 (name, macros, photograph) with a primary-colour outline, a pencil that
 opens the editor, and a check where the red trash button used to be; there is

@@ -101,15 +101,15 @@ class NutritionPrimerSheet extends StatelessWidget {
               body:
                   'Add foods from the library into "Foods I Eat" once. '
                   'They stay, grouped by category, until you remove them. '
-                  'Manage the list anytime from the edit control.',
+                  'Change the list anytime with Choose foods or the pencil.',
             ),
             const SizedBox(height: 16),
             // Block 2: daily check-off with adjustable portion.
             const _PrimerBlock(
               key: Key('nutrition_primer_block_check'),
-              label: 'CHECK TO LOG, SET THE AMOUNT',
+              label: 'TAP TO LOG, SET THE AMOUNT',
               body:
-                  'Each day, check off what you ate to count it toward today. '
+                  "Each day, tap a food's picture to log it; it shows a check. "
                   'Adjust the amount per food — the portion is yours to set, not fixed.',
             ),
             const SizedBox(height: 16),
@@ -118,7 +118,7 @@ class NutritionPrimerSheet extends StatelessWidget {
               key: Key('nutrition_primer_block_rollup'),
               label: 'TODAY AND OVER TIME',
               body:
-                  'Check-offs roll into the donut chart, '
+                  'What you log rolls into the donut chart, '
                   'and your stats screen tracks your nutrition trends across days and weeks.',
             ),
             const SizedBox(height: 24),

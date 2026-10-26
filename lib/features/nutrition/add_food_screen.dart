@@ -40,7 +40,7 @@ const Object _cancelledSentinel = Object();
 /// copy of the food, gets a primary-colour outline, and carries a
 /// pencil (edit) and a check (remove) on the right; a not-in-list
 /// row shows the shipped catalog entry and an **Add** button.
-/// A **+ Create new food** button sits at the bottom.
+/// A **+ New Food** button sits at the bottom.
 ///
 /// Both actions stay on the screen — the user can add and remove
 /// several foods in one visit and only leaves via the system back
@@ -154,7 +154,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     }
   }
 
-  /// The tab-aware bottom CTA: **+ Create new food** on Library,
+  /// The tab-aware bottom CTA: **+ New Food** on Library,
   /// **+ New Category** on Categories.
   Widget _buildBottomCTA(BuildContext context) {
     return AnimatedBuilder(
@@ -170,7 +170,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
           case _libraryTabIndex:
           default:
             return OmniBottomCTA(
-              label: '+ Create new food',
+              label: '+ New Food',
               buttonKey: const Key('new_food_button'),
               onPressed: () => _openNewFoodForm(context),
             );
@@ -544,9 +544,13 @@ class _FromCatalogTab extends StatefulWidget {
   State<_FromCatalogTab> createState() => _FromCatalogTabState();
 }
 
-class _FromCatalogTabState extends State<_FromCatalogTab> {
+class _FromCatalogTabState extends State<_FromCatalogTab>
+    with AutomaticKeepAliveClientMixin<_FromCatalogTab> {
   final _searchController = TextEditingController();
   String _query = '';
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void dispose() {
@@ -556,6 +560,7 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return ListenableBuilder(
       listenable: Listenable.merge([
         widget.foodLibraryState,
@@ -599,12 +604,16 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
         }
 
         // Headings only while the search box is empty (a query shows the flat
-        // filtered list). The order is the phone's own Foods I Eat rule.
+        // filtered list). The order is the Library's fixed first-run order
+        // (D-1): the shipped categories first, the user's own after them,
+        // Uncategorized last.
         final entries = <Object>[
           if (lower.isEmpty)
-            for (final section in foodsIEatSections(
-              foods: catalog,
-              groups: state.activeFoodGroups,
+            for (final section in _libraryOrderedSections(
+              foodsIEatSections(
+                foods: catalog,
+                groups: state.activeFoodGroups,
+              ),
             )) ...[section.title, ...section.foods]
           else
             ...catalog,
@@ -635,6 +644,18 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
                         ),
                 ),
                 onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Text(
+                _inListText(
+                  state.foods.where((f) => !f.isArchived).length,
+                ),
+                key: const Key('library_count_line'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: OmniTheme.colors.textSecondary,
+                ),
               ),
             ),
             if (catalog.isEmpty)
@@ -719,6 +740,52 @@ class _LibrarySectionHeader extends StatelessWidget {
     );
   }
 }
+
+/// First-run order of the Library headings: the categories a strength-app user
+/// came for come first. Categories not listed (the user's own) keep their
+/// alphabetical order after these; Uncategorized is last. Foods I Eat and the
+/// wrist keep the plain alphabetical rule of [foodsIEatSections].
+const List<String> _libraryHeadingOrder = [
+  'Proteins',
+  'Dairy',
+  'Grains & Starches',
+  'Fruits',
+  'Vegetables',
+  'Nuts, Seeds & Fats',
+  'Snacks & Prepared',
+  'Drinks',
+  'Condiments',
+];
+
+List<FoodsIEatSection> _libraryOrderedSections(
+  List<FoodsIEatSection> sections,
+) {
+  final uncategorised = [
+    for (final s in sections)
+      if (s.title == foodsIEatUncategorisedTitle) s,
+  ];
+  final named = [
+    for (final s in sections)
+      if (s.title != foodsIEatUncategorisedTitle) s,
+  ];
+  int rank(FoodsIEatSection s) {
+    final i = _libraryHeadingOrder.indexOf(s.title);
+    return i < 0 ? _libraryHeadingOrder.length : i;
+  }
+
+  final indexed = [for (var i = 0; i < named.length; i++) (i, named[i])];
+  indexed.sort((a, b) {
+    final byRank = rank(a.$2).compareTo(rank(b.$2));
+    return byRank != 0 ? byRank : a.$1.compareTo(b.$1);
+  });
+  return [for (final e in indexed) e.$2, ...uncategorised];
+}
+
+String _inListText(int n) => n == 0
+    ? 'No foods in your list yet'
+    : n == 1
+    ? '1 food in your list'
+    : '$n foods in your list';
 
 /// Value class that captures the identity tuple used by
 /// `FoodLibraryState._matchesIdentity` (name + reference + macros).
@@ -1490,7 +1557,7 @@ class _CatalogRowState extends State<_CatalogRow> {
     final theme = Theme.of(context);
     final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      title: 'Remove ${widget.food.name} from your library?',
+      title: 'Remove ${widget.food.name} from Foods I Eat?',
       dismissLabel: 'Cancel',
       confirmLabel: 'Remove',
       dismissKey: const Key('food-remove-cancel'),

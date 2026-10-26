@@ -161,7 +161,7 @@ void main() {
 
       // The three labeled blocks are present.
       expect(find.text('YOUR LIST, BUILT ONCE'), findsOneWidget);
-      expect(find.text('CHECK TO LOG, SET THE AMOUNT'), findsOneWidget);
+      expect(find.text('TAP TO LOG, SET THE AMOUNT'), findsOneWidget);
       expect(find.text('TODAY AND OVER TIME'), findsOneWidget);
 
       // The dismiss CTA is present and is a FilledButton.
@@ -176,11 +176,11 @@ void main() {
       // is caught. The copy guidance is "one or two plain sentences
       // per block" — assert on a distinctive phrase from each block.
       expect(
-        find.textContaining('Foods I Eat', findRichText: true),
+        find.textContaining('Choose foods or the pencil', findRichText: true),
         findsWidgets,
       );
       expect(
-        find.textContaining('check off', findRichText: true),
+        find.textContaining("tap a food's picture to log it", findRichText: true),
         findsWidgets,
       );
       expect(
@@ -220,7 +220,7 @@ void main() {
       // blocks render in a modal bottom sheet.
       await tester.pumpAndSettle();
       expect(find.text('YOUR LIST, BUILT ONCE'), findsOneWidget);
-      expect(find.text('CHECK TO LOG, SET THE AMOUNT'), findsOneWidget);
+      expect(find.text('TAP TO LOG, SET THE AMOUNT'), findsOneWidget);
       expect(find.text('TODAY AND OVER TIME'), findsOneWidget);
     });
   });
@@ -303,7 +303,7 @@ void main() {
 
       // The primer's three blocks must NOT be present.
       expect(find.text('YOUR LIST, BUILT ONCE'), findsNothing);
-      expect(find.text('CHECK TO LOG, SET THE AMOUNT'), findsNothing);
+      expect(find.text('TAP TO LOG, SET THE AMOUNT'), findsNothing);
       expect(find.text('TODAY AND OVER TIME'), findsNothing);
 
       // The nutrition page itself IS pushed — auto-show does not

@@ -271,8 +271,8 @@ void main() {
         await pumpLibraryTab(tester);
 
         expect(find.byKey(const Key('new_food_button')), findsOneWidget);
-        expect(find.text('+ Create new food'), findsOneWidget);
-        expect(find.text('+ New Food'), findsNothing);
+        expect(find.text('+ New Food'), findsOneWidget);
+        expect(find.text('+ Create new food'), findsNothing);
 
         await tester.tap(find.byKey(const Key('new_food_button')));
         await tester.pumpAndSettle();
@@ -285,7 +285,7 @@ void main() {
         await tester.tap(find.text('Categories'));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('new_group_button')), findsOneWidget);
-        expect(find.text('+ Create new food'), findsNothing);
+        expect(find.text('+ New Food'), findsNothing);
       },
     );
 
@@ -529,8 +529,13 @@ void main() {
     );
     expect(
       source,
-      isNot(contains("'+ New Food'")),
-      reason: 'S-12818: the old CTA label is replaced by + Create new food',
+      contains("label: '+ New Food',"),
+      reason: 'S-12818: the Library CTA label is + New Food',
+    );
+    expect(
+      source,
+      isNot(contains("'+ Create new food'")),
+      reason: 'S-12818: the old CTA label is replaced by + New Food',
     );
     expect(
       source,
@@ -541,11 +546,6 @@ void main() {
       source,
       contains('TabController(length: 2, vsync: this)'),
       reason: 'S-12818: the screen has exactly two tabs',
-    );
-    expect(
-      source,
-      contains("label: '+ Create new food'"),
-      reason: 'S-12818: the Library CTA label is + Create new food',
     );
   });
 }

@@ -177,7 +177,7 @@ void main() {
         await tester.tap(find.text('Chicken (toggle test)'));
         await tester.pumpAndSettle();
         expect(
-          find.text('Remove Chicken (toggle test) from your library?'),
+          find.text('Remove Chicken (toggle test) from Foods I Eat?'),
           findsOneWidget,
         );
 

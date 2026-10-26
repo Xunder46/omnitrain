@@ -246,9 +246,17 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       ),
                     ],
                   ),
-                  CalorieRingCard(
-                    nutritionState: widget.nutritionState,
-                    onEditTap: _navigateToTargets,
+                  ListenableBuilder(
+                    listenable: widget.foodLibraryState,
+                    builder: (context, _) => CalorieRingCard(
+                      nutritionState: widget.nutritionState,
+                      onEditTap: _navigateToTargets,
+                      emptyHint:
+                          !widget.foodLibraryState.isLoadingFoods &&
+                              widget.foodLibraryState.foods.isEmpty
+                          ? 'Pick your foods to get started'
+                          : null,
+                    ),
                   ),
                   const SizedBox(height: 24),
                   // Food Library header with edit icon — OmniCardHeader

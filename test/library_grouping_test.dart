@@ -1,8 +1,8 @@
 // Widget-level tests for the Library category headings (plan 77b2,
 // scenarios S-12820..S-12824): with an empty search box the Library
-// list shows category headings in the Foods I Eat order; a query
-// shows the flat list; Uncategorized is last; archived categories
-// disappear.
+// list shows category headings in the fixed first-run order (plan 78
+// D-1); a query shows the flat list; Uncategorized is last; archived
+// categories disappear.
 
 import 'dart:io';
 
@@ -65,6 +65,42 @@ Future<void> _scrollToBottom(WidgetTester tester) async {
   }
 }
 
+/// The Library heading order the screen must print (plan 78 D-1): the
+/// fixed first-run order filtered to the categories that have foods,
+/// then the remaining categories alphabetically, Uncategorized last.
+List<String> _expectedLibraryHeadings(FoodLibraryState foodLib) {
+  const fixedOrder = [
+    'Proteins',
+    'Dairy',
+    'Grains & Starches',
+    'Fruits',
+    'Vegetables',
+    'Nuts, Seeds & Fats',
+    'Snacks & Prepared',
+    'Drinks',
+    'Condiments',
+  ];
+  final titled = foodsIEatSections(
+    foods: foodLib.catalogFoods,
+    groups: foodLib.activeFoodGroups,
+  ).map((s) => s.title).toList();
+  final listed = [
+    for (final name in fixedOrder)
+      if (titled.contains(name)) name,
+  ];
+  final rest =
+      titled
+          .where(
+            (t) => t != foodsIEatUncategorisedTitle && !fixedOrder.contains(t),
+          )
+          .toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  final uncategorised = titled
+      .where((t) => t == foodsIEatUncategorisedTitle)
+      .toList();
+  return [...listed, ...rest, ...uncategorised];
+}
+
 void main() {
   group('Library category headings (plan 77b2 S-12820..S-12824)', () {
     /// Pump the AddFoodScreen for the Library tab with the categories
@@ -95,18 +131,16 @@ void main() {
     }
 
     testWidgets('S-12820: real catalog, empty search — headings follow the '
-        'Foods I Eat order and the first food sits below its heading', (
+        'fixed Library order and the first food sits below its heading', (
       tester,
     ) async {
       final repo = await _freshRepo();
       final states = await pumpCatalogTab(tester, repo: repo);
       final foodLib = states.foodLib;
 
-      final names = foodLib.activeFoodGroups.map((g) => g.name).toList()
-        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
       final built = _builtHeadingTitles(tester);
       expect(built.length, greaterThanOrEqualTo(2));
-      expect(built, names.take(built.length));
+      expect(built, _expectedLibraryHeadings(foodLib).take(built.length));
 
       // Headings are vertically ordered.
       for (var i = 1; i < built.length; i++) {
@@ -125,14 +159,14 @@ void main() {
         groups: foodLib.activeFoodGroups,
       );
       expect(sections, isNotEmpty);
-      expect(sections.first.foods, isNotEmpty);
+      final firstTitle = built.first;
+      final firstSection = sections.firstWhere((s) => s.title == firstTitle);
+      expect(firstSection.foods, isNotEmpty);
       final headingDy = tester
-          .getTopLeft(
-            find.byKey(Key('library_section_${sections.first.title}')),
-          )
+          .getTopLeft(find.byKey(Key('library_section_$firstTitle')))
           .dy;
       final foodDy = tester
-          .getTopLeft(find.text(sections.first.foods.first.name))
+          .getTopLeft(find.text(firstSection.foods.first.name))
           .dy;
       expect(foodDy, greaterThan(headingDy));
     });
@@ -317,7 +351,12 @@ void main() {
           foods: states.foodLib.catalogFoods,
           groups: states.foodLib.activeFoodGroups,
         );
-        final title = sections.first.title;
+        // The first BUILT heading (plan 78: the fixed Library order,
+        // not the alphabetical sections order).
+        final built = _builtHeadingTitles(tester);
+        expect(built, isNotEmpty);
+        final title = built.first;
+        final section = sections.firstWhere((s) => s.title == title);
         final heading = find.byKey(Key('library_section_$title'));
         expect(
           find.descendant(of: heading, matching: find.text(title)),
@@ -326,7 +365,7 @@ void main() {
 
         final headingBottom = tester.getBottomLeft(heading).dy;
         final firstFoodDy = tester
-            .getTopLeft(find.text(sections.first.foods.first.name))
+            .getTopLeft(find.text(section.foods.first.name))
             .dy;
         final dividers = find.byType(Divider);
         final count = dividers.evaluate().length;

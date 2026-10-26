@@ -12,8 +12,8 @@
 
 One-shot orientation sheet for the Daily Nutrition page. The page inverts the usual food-logging model and packs several unfamiliar ideas onto one screen (curate a "Foods I Eat" list once from the global library, check foods off daily with adjustable per-food portions, watch the day roll up into a calories/macros ring + water + sodium), so a brief primer helps a first-time user understand the model. The sheet is single-pane (no carousel, no `PageView`, no Next/Back navigation, no pointers anchored to on-screen widgets) and presents exactly three labeled blocks:
 
-1. **YOUR LIST, BUILT ONCE** — describes the curated "Foods I Eat" list and the pencil edit control on the page.
-2. **CHECK TO LOG, SET THE AMOUNT** — describes daily check-off logging and the per-food portion amount.
+1. **YOUR LIST, BUILT ONCE** — describes the curated "Foods I Eat" list and the Choose foods button and the pencil on the page.
+2. **TAP TO LOG, SET THE AMOUNT** — describes logging by tapping a food's picture and the per-food portion amount.
 3. **TODAY AND OVER TIME** — describes the rollup: calories vs target, protein/carb/fat split, water, sodium.
 
 The sheet does NOT cover target editing, group management, or water-stepper instructions — those are discoverable and out of scope.
@@ -199,7 +199,7 @@ One row of the Library tab, one per catalog food. The whole row is the
 toggle: a food not in the user's library is added by tapping the row (the
 trailing `Add` button, key `add_catalog_food_<id>`, does the same); a food
 in the library is removed by tapping the row, which asks
-`Remove <name> from your library?` first (keys `food-remove-cancel` /
+`Remove <name> from Foods I Eat?` first (keys `food-remove-cancel` /
 `food-remove-confirm`) and unlogs the food for today on confirm. An in-list
 row shows the user's copy with a primary-colour outline (key
 `library_row_outline_<id>`), a pencil `IconButton` (key

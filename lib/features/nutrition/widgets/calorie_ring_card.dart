@@ -57,10 +57,16 @@ class CalorieRingCard extends StatefulWidget {
   /// (so this widget stays presentational and testable).
   final VoidCallback onEditTap;
 
+  /// Overrides the ring's empty subtext (shown when nothing is
+  /// logged today). When `null`, the ring keeps its own default
+  /// ([CalorieRing.defaultEmptyHint]).
+  final String? emptyHint;
+
   const CalorieRingCard({
     super.key,
     required this.nutritionState,
     required this.onEditTap,
+    this.emptyHint,
   });
 
   @override
@@ -222,6 +228,8 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                         target: targetCalories,
                         size: 195,
                         centerOverride: centerOverride,
+                        emptyHint:
+                            widget.emptyHint ?? CalorieRing.defaultEmptyHint,
                       ),
                       // Outer macro donut on top — its
                       // GestureDetector owns hit testing for

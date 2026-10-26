@@ -111,6 +111,8 @@ tapping it again or tapping the centre clears. When the focused section's grams 
 focus falls back to none rather than pointing at nothing. Rebuilds on every `NutritionState`
 notification, so a log or unlog anywhere propagates here.
 
+An optional `emptyHint` replaces the ring's empty subtext (default `Log a food to start filling`); the nutrition screen passes `Pick your foods to get started` while the user's list is empty. Verified by `test/picker_polish_test.dart` (`S-13115`).
+
 ### `WaterTrackerControl`
 
 **File**: `lib/features/nutrition/widgets/water_tracker_control.dart`

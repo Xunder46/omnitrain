@@ -1947,8 +1947,8 @@ void main() {
         await tester.tap(find.byKey(const Key('food_library_manage_pencil')));
         await tester.pumpAndSettle();
 
-        // Tap the "+ Create new food" button at the bottom.
-        await tester.tap(find.text('+ Create new food'));
+        // Tap the "+ New Food" button at the bottom.
+        await tester.tap(find.text('+ New Food'));
         await tester.pumpAndSettle();
 
         // Fill the form.
@@ -2033,8 +2033,8 @@ void main() {
         // Open the add flow via the pencil icon.
         await tester.tap(find.byKey(const Key('food_library_manage_pencil')));
         await tester.pumpAndSettle();
-        // Tap the "+ Create new food" button at the bottom.
-        await tester.tap(find.text('+ Create new food'));
+        // Tap the "+ New Food" button at the bottom.
+        await tester.tap(find.text('+ New Food'));
         await tester.pumpAndSettle();
 
         // Save with no name entered.
@@ -2867,7 +2867,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('+ Create new food'));
+      await tester.tap(find.text('+ New Food'));
       await tester.pumpAndSettle();
       expect(find.text('New Food'), findsOneWidget);
       return foodLib;
@@ -3332,7 +3332,7 @@ void main() {
 
         // The dialog names the food and offers Cancel / Remove.
         expect(
-          find.text('Remove Chicken (toggle test) from your library?'),
+          find.text('Remove Chicken (toggle test) from Foods I Eat?'),
           findsOneWidget,
         );
         expect(
@@ -4216,7 +4216,7 @@ void main() {
   //
   // Both the **Library** and **Categories** tabs of `AddFoodScreen`
   // (the "Manage Food Library" screen) expose a primary bottom
-  // action — "+ Create new food" and "+ New Category" respectively. Per
+  // action — "+ New Food" and "+ New Category" respectively. Per
   // the shared-CTA contract, both must route through
   // `Scaffold.bottomNavigationBar: OmniBottomCTA` so the buttons
   // sit at the same width, height, and vertical anchor as every
@@ -4273,8 +4273,8 @@ void main() {
         );
         expect(ctaFinder, findsOneWidget);
 
-        // The "+ Create new food" label is rendered by the CTA.
-        expect(find.text('+ Create new food'), findsOneWidget);
+        // The "+ New Food" label is rendered by the CTA.
+        expect(find.text('+ New Food'), findsOneWidget);
 
         // The CTA sits at the shared width and vertical anchor,
         // measured from the **centered content column's** edges
@@ -4377,7 +4377,7 @@ void main() {
       },
     );
 
-    testWidgets('renders the Create new food CTA on the Library tab (S-003)', (
+    testWidgets('renders the New Food CTA on the Library tab (S-003)', (
       tester,
     ) async {
       final repo = await _freshRepo();
@@ -4398,7 +4398,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // The Library tab is the default. The OmniBottomCTA renders
-      // the Create new food action there.
+      // the New Food action there.
       expect(
         find.descendant(
           of: find.byType(Scaffold),
@@ -4406,12 +4406,12 @@ void main() {
         ),
         findsOneWidget,
       );
-      // The "+ Create new food" label is present on the Library
+      // The "+ New Food" label is present on the Library
       // tab; "+ New Category" is not.
-      expect(find.text('+ Create new food'), findsOneWidget);
+      expect(find.text('+ New Food'), findsOneWidget);
       expect(find.text('+ New Category'), findsNothing);
-      // The old My Foods CTA label is gone everywhere.
-      expect(find.text('+ New Food'), findsNothing);
+      // The old CTA label is gone everywhere.
+      expect(find.text('+ Create new food'), findsNothing);
     });
   });
 

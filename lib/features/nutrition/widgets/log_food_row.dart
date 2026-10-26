@@ -100,6 +100,11 @@ class _LogFoodRowState extends State<LogFoodRow> {
   late final TextEditingController _amountController;
   String? _amountError;
 
+  /// The amount text the row started with (default or today-log
+  /// pre-fill). Pressing Done on an untouched field must not log an
+  /// unlogged food, so [_recommitIfLogged] compares against this.
+  late String _initialAmountText;
+
   /// Debounce timer for the auto-commit on amount edit. When the
   /// user types in the amount input on an already-logged row, the
   /// row is re-committed to the day log after this timer elapses
@@ -155,6 +160,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
           : existing.amountConsumed / widget.food.referenceAmount;
       _amountController.text = _formatAmount(displayValue);
     }
+    _initialAmountText = _amountController.text;
     _amountController.addListener(_onAmountChanged);
   }
 
@@ -168,6 +174,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
         oldWidget.food.referenceAmount != widget.food.referenceAmount ||
         oldWidget.food.unitType != widget.food.unitType) {
       _amountController.text = _formatAmount(_defaultAmount);
+      _initialAmountText = _amountController.text;
     }
   }
 
@@ -241,7 +248,8 @@ class _LogFoodRowState extends State<LogFoodRow> {
     // immediately. Then restart the auto-commit debounce so the
     // new amount is written to the day log after the user
     // stops typing (only when the food is already logged today;
-    // otherwise the thumb is the explicit commit affordance).
+    // otherwise the Done key on a changed amount is the explicit
+    // commit affordance).
     setState(() {
       _validateAmount();
     });
@@ -297,14 +305,24 @@ class _LogFoodRowState extends State<LogFoodRow> {
     // guard is kept defensively).
   }
 
-  /// Re-commit the current multiplier for an already-logged food.
+  /// Re-commit the current multiplier for an already-logged food,
+  /// or log an unlogged food the user typed a new amount into.
   /// Called from the `onSubmitted` / `onEditingComplete` callbacks
   /// (i.e. when the user submits the field with the keyboard
   /// "done" key or moves focus away). The typical typing flow is
   /// covered by the debounce timer in [_scheduleAutoCommit]; this
-  /// is the focus-loss / submit fallback.
+  /// is the focus-loss / submit fallback. An unlogged food is
+  /// logged by typing only when the user actually changed the
+  /// number — pressing Done on the untouched default must not log
+  /// by accident.
   Future<void> _recommitIfLogged() async {
-    if (!widget.nutritionState.isFoodLoggedToday(widget.food.id)) return;
+    final isLogged = widget.nutritionState.isFoodLoggedToday(widget.food.id);
+    // An unlogged food is logged by typing only when the user changed the
+    // number: pressing Done on the untouched default must not log by accident.
+    if (!isLogged &&
+        _amountController.text.trim() == _initialAmountText.trim()) {
+      return;
+    }
     final amount = _amountInOwnUnit();
     if (amount == null) {
       setState(() {});
