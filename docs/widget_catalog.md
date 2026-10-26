@@ -39,7 +39,7 @@ Note on the nutrition trend card:
 - It is feature-scoped rather than `lib/widgets/` material, but it is presentation-only and theme-reactive in the same sense as the catalogued widgets. Its only host is the full-history nutrition trend screen (`lib/features/nutrition/nutrition_trend_screen.dart`), reached from the Stats screen's Fuel row. Its behaviour is owned by [Nutrition](nutrition.md) and verified by `test/nutrition_trend_screen_test.dart`.
 
 Note on the Stats screen's Fuel row:
-- `FuelSection` in `lib/features/stats/widgets/fuel_section.dart` is the Fuel row's body: the logged-days indicator, the calories and protein figures with their comparison readouts, and the training / rest split. Its inputs are a `FuelSummary` (from `StatsProgressService.computeFuelSummary()`), the theme colours and the tap callback; it reads no repository.
+- `FuelSection` in `lib/features/stats/widgets/fuel_section.dart` is the Fuel row's body: the logged-days indicator, the calories, protein, carbs and fat figures (each labelled, with its comparison readout, in two rows), and the training / rest split. Its inputs are a `FuelSummary` (from `StatsProgressService.computeFuelSummary()`), the theme colours and the tap callback; it reads no repository.
 - It is feature-scoped rather than `lib/widgets/` material, but it is presentation-only and theme-reactive in the same sense as the catalogued widgets. The section root and the row's tap target carry keys (`fuel_section`, `fuel_row`); every other key the row's tests address is declared in the same file. Its behaviour is owned by [Stats Screen](stats_screen.md) and verified by `test/fuel_row_screen_test.dart`.
 
 Note on the Stats screen's primer sheet:

@@ -386,6 +386,7 @@ Methods: `fromMap(Map)` and `toMap()` (use key `date_ms` for `dateMs`); `copyWit
 Round-trip notes:
 - All four macros are non-nullable and default to `0.0`; never `null`.
 - `0.0` is the canonical "no goal" sentinel — the UI hides the row and never attempts division-by-zero math against it.
+- Protein, carbs and fat are grams the user sets on the `NutritionTargetScreen`; `0.0` is no target for that macro, and the carbs target counts TOTAL carbohydrates, fibre included. Verified by `test/daily_targets_screen_test.dart` (`S-14015 Save stores the typed target for today`) and `test/daily_targets_display_test.dart` (group `CalorieRingCard — focus text with macro targets (S-14035)`).
 - A target with `dateMs == null` indicates a legacy single-row save (kept for back-compat with `WorkoutRepository.getNutritionTarget()` / `saveNutritionTarget()`).
 
 ### FoodUnitType
@@ -484,13 +485,17 @@ Logged days are split by whether a completed session started that day: the
 training side and the rest side are each averaged over their own days, so the
 split covers the same logged days the overall average does.
 
-The summary carries the window's logged-day count; the window's calories and
-protein averages and the preceding range's; the training and rest split of each;
-and the day's calorie and protein targets, with `hasCalorieTarget` /
-`hasProteinTarget` reporting which are set. The row compares
+The summary carries the window's logged-day count; the window's calories,
+protein, carbs and fat averages and the preceding range's; the training and
+rest split of each; and the day's calorie, protein, carbs and fat targets, with
+`hasCalorieTarget` / `hasProteinTarget` / `hasCarbsTarget` / `hasFatTarget`
+reporting which are set. The row compares
 an average against the target where one is set and against the previous range
 otherwise. The window it averages over is the service's own (`kFuelWindowDays`),
-not the Stats screen's selected training period.
+not the Stats screen's selected training period. Verified by
+`test/fuel_row_screen_test.dart` (group `Fuel row — carbs and fat (plan 80)`:
+`S-14040 the averages are means of TOTAL carbs and fat over the logged days,
+against the saved targets`).
 
 ---
 

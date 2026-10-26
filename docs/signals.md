@@ -605,12 +605,15 @@ cautions qualifying renders the higher-priority caution above the protein card`,
 `S-2215 two cautions qualifying dismissing Fuel vs Load leaves the protein card
 on the layer`).
 
-In the shipped app this signal always compares with the user's own usual level:
-the daily target screen is calories-only and saves a protein target of zero, so
-target mode is unreachable outside a target stored through the repository
-directly (see [Nutrition](nutrition.md)). Verified by
-`test/nutrition_test.dart` (`NutritionTargetScreen — calories only (D-3 / S-040)
-save builds a macros-0 target (D-3)`).
+The comparison mode follows the stored protein target: when one is stored the
+card compares with it, and when none is stored it falls back to the user's own
+usual level. The Daily Targets screen (`NutritionTargetScreen`) saves the
+protein target the user entered, so once a user saves one the signal judges
+against that number (see [Nutrition](nutrition.md)). Verified by
+`test/daily_targets_screen_test.dart` (`S-14015 Save stores the typed target
+for today`) for the save and by `test/protein_consistency_test.dart` (`S-2211
+a mixed window falls back to the own baseline`) for the own-level comparison
+when no target is stored.
 
 The definition reads no clock, no repository and no service — `now` and the
 figures are arguments. The adapter derives its window and the

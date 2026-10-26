@@ -100,6 +100,8 @@ class FuelSection extends StatelessWidget {
                         Expanded(
                           child: _metric(
                             theme,
+                            labelKey: const Key('fuel_calories_label'),
+                            label: 'Calories',
                             valueKey: const Key('fuel_calories'),
                             changeKey: const Key('fuel_calories_change'),
                             targetKey: const Key('fuel_calories_target'),
@@ -123,6 +125,8 @@ class FuelSection extends StatelessWidget {
                         Expanded(
                           child: _metric(
                             theme,
+                            labelKey: const Key('fuel_protein_label'),
+                            label: 'Protein',
                             valueKey: const Key('fuel_protein'),
                             changeKey: const Key('fuel_protein_change'),
                             targetKey: const Key('fuel_protein_target'),
@@ -138,6 +142,59 @@ class FuelSection extends StatelessWidget {
                             ),
                             target: summary.hasProteinTarget
                                 ? 'of ${_whole(summary.targetProtein)} g target'
+                                : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _metric(
+                            theme,
+                            labelKey: const Key('fuel_carbs_label'),
+                            label: 'Carbs',
+                            valueKey: const Key('fuel_carbs'),
+                            changeKey: const Key('fuel_carbs_change'),
+                            targetKey: const Key('fuel_carbs_target'),
+                            value: _figure(summary.carbsAverage, 'g'),
+                            change: _change(
+                              summary.carbsAverage,
+                              _reference(
+                                summary.hasCarbsTarget,
+                                summary.targetCarbs,
+                                summary.previousCarbsAverage,
+                              ),
+                              'g',
+                            ),
+                            target: summary.hasCarbsTarget
+                                ? 'of ${_whole(summary.targetCarbs)} g target'
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _metric(
+                            theme,
+                            labelKey: const Key('fuel_fat_label'),
+                            label: 'Fat',
+                            valueKey: const Key('fuel_fat'),
+                            changeKey: const Key('fuel_fat_change'),
+                            targetKey: const Key('fuel_fat_target'),
+                            value: _figure(summary.fatAverage, 'g'),
+                            change: _change(
+                              summary.fatAverage,
+                              _reference(
+                                summary.hasFatTarget,
+                                summary.targetFat,
+                                summary.previousFatAverage,
+                              ),
+                              'g',
+                            ),
+                            target: summary.hasFatTarget
+                                ? 'of ${_whole(summary.targetFat)} g target'
                                 : null,
                           ),
                         ),
@@ -183,6 +240,8 @@ class FuelSection extends StatelessWidget {
   /// measured against when one is set.
   Widget _metric(
     ThemeData theme, {
+    required Key labelKey,
+    required String label,
     required Key valueKey,
     required Key changeKey,
     required Key targetKey,
@@ -193,6 +252,15 @@ class FuelSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          label,
+          key: labelKey,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: themeColors.textMuted,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         Text(
           value,
           key: valueKey,

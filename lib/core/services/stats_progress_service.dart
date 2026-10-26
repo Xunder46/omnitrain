@@ -2055,11 +2055,15 @@ class StatsProgressService {
       loggedDays: window.length,
       caloriesAverage: _averageOf(window, (p) => p.calories.toDouble()),
       proteinAverage: _averageOf(window, (p) => p.protein.toDouble()),
+      carbsAverage: _averageOf(window, (p) => p.carbs.toDouble()),
+      fatAverage: _averageOf(window, (p) => p.fat.toDouble()),
       previousCaloriesAverage: _averageOf(
         previous,
         (p) => p.calories.toDouble(),
       ),
       previousProteinAverage: _averageOf(previous, (p) => p.protein.toDouble()),
+      previousCarbsAverage: _averageOf(previous, (p) => p.carbs.toDouble()),
+      previousFatAverage: _averageOf(previous, (p) => p.fat.toDouble()),
       trainingCaloriesAverage: _averageOf(
         training,
         (p) => p.calories.toDouble(),
@@ -2069,6 +2073,8 @@ class StatsProgressService {
       restProteinAverage: _averageOf(rest, (p) => p.protein.toDouble()),
       targetCalories: target?.calories ?? 0,
       targetProtein: target?.protein ?? 0,
+      targetCarbs: target?.carbs ?? 0,
+      targetFat: target?.fat ?? 0,
     );
   }
 

@@ -239,11 +239,33 @@ Verified by `test/food_library_edit_test.dart`, `test/food_form_shipped_photo_te
 
 ### `NutritionTargetScreen`
 
-Calories-only by design (decision D-3, scenario S-040). The form loads and saves
-the calorie target and nothing else: stored protein, carbs and fat are ignored on
-load and written back as zero. A target that is unset or not positive shows an
-empty field rather than a zero, so "no target" and "a target of zero" cannot be
-confused.
+Titled `Daily Targets`. The form loads and saves the calorie target and the
+three macro targets — protein, carbs and fat, in grams — beside it. A macro box
+left empty means no target for that macro, and a target that is unset or not
+positive shows an empty field rather than a zero, so "no target" and "a target
+of zero" cannot be confused. The default split and the calories the macro boxes
+add up to come from `defaultMacroTargets` / `impliedCalories` in
+`lib/core/utils/macro_targets.dart`: a calories entry fills every macro box the
+user has not typed in, a macro entry moves Calories to what the three boxes add
+up to, and a box the user typed in — or one loaded from a stored target — is
+manual, so a later calories edit leaves it alone. Save writes all four values
+(an empty macro saves as no target) and is never blocked by a calories/macros
+mismatch; calories left empty or zero are saved as the macros' implied calories.
+Verified by `test/daily_targets_screen_test.dart` (group `NutritionTargetScreen
+— daily targets behaviour (S-14010..S-14022a)`: `S-14011 calories 2000 prefills
+the default split`, `S-14012 protein 180 moves calories to 2123`, `S-14018
+stored macros are manual on load`, `S-14015 Save stores the typed target for
+today`, `S-14019 protein-only save derives calories`, `S-14020 negative protein
+blocks Save`), by `test/nutrition_test.dart` (group `NutritionTargetScreen —
+daily targets (plan 80)`: `renders calories and the three macro fields`,
+`pre-fills the stored calories and macros`, `save keeps the stored macros`) and
+by `test/macro_targets_test.dart` (groups `defaultMacroTargets (S-14001)`,
+`impliedCalories (S-14002)`).
+
+A stored calories-only target opens with the default split shown in the macro
+boxes; that prefill becomes stored only on Save. Verified by
+`test/daily_targets_screen_test.dart` (`S-14017 load-time prefill is not an
+unsaved change`).
 
 Leaving the form with unsaved edits warns first: a two-button dialog (keep
 editing / discard) guards the back path, so a typed target cannot be
@@ -251,8 +273,7 @@ lost silently. Verified by `test/nutrition_test.dart` (group
 `NutritionTargetScreen — unsaved changes guard (S-2902)`: `Discard pops and
 leaves the stored target unchanged`).
 
-Verified by `test/nutrition_test.dart` (the calories-only group) and
-`test/nutrition_target_button_test.dart`.
+Verified by `test/nutrition_target_button_test.dart`.
 
 ### `NutritionTrendScreen`
 
@@ -464,15 +485,15 @@ forward.** The service reads one value per local calendar day through the
 repository's existing per-day lookup, which returns the target stored for that
 day or the most recent earlier one, so a target saved once applies to every later
 day until it is changed; a day before any stored target has none, and no day is
-ever zero-filled. The shipped target screen is calories-only and writes a
-protein target of zero on every save, so a rolled-forward protein figure only
-arises from a target stored directly through the repository rather than from the
-screen, and in the shipped app the Protein Consistency card always compares with
-the user's own usual level rather than with a target. Verified by
+ever zero-filled. The Daily Targets screen saves the protein target the user
+entered (none when the box is empty), so a rolled-forward protein figure arises
+from the screen as soon as a protein target is stored; until then the Protein
+Consistency card compares with the user's own usual level rather than with a
+target. Verified by
 `test/protein_consistency_service_test.dart` (`proteinTargetsByDay inherits the
 last stored target forward`, `a day before any stored target is absent`) and, for
-the screen, `test/nutrition_test.dart` (`NutritionTargetScreen — calories only
-(D-3 / S-040) save builds a macros-0 target (D-3)`).
+the screen's save, `test/daily_targets_screen_test.dart` (`S-14015 Save stores
+the typed target for today`).
 
 **The own baseline is pooled over logged days, never over the window.** The
 baseline is the eight 7-day blocks abutting the window, and only blocks with at
@@ -520,7 +541,7 @@ contract, not a live persistence path.
 | The home summary card opens the feature | `test/home_nutrition_summary_card_test.dart` |
 | Adding a catalog row copies it into the library instead of logging it | `test/nutrition_log_from_library_test.dart` |
 | Group deletion refuses to strand a bundled food | `test/food_library_state_delete_guard_test.dart` |
-| The target form is calories-only (D-3 / S-040) | `test/nutrition_test.dart`, `test/nutrition_target_button_test.dart` |
+| The target form carries the calorie target and the three macro targets | `test/daily_targets_screen_test.dart`, `test/nutrition_test.dart`, `test/nutrition_target_button_test.dart` |
 | The trend screen plots the repository's full food history | `test/nutrition_trend_screen_test.dart` |
 | Foods I Eat ordering is shared with the watch quick-log | `test/watch_nutrition_quick_log_test.dart` |
 | Catalog rows load identically on every platform | `test/food_catalog_load_test.dart`, `test/bundled_food_asset_contract_test.dart` |

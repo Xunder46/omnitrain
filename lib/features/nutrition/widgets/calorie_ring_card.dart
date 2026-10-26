@@ -142,9 +142,11 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
         ];
 
         // Center content: default calories vs the focused
-        // macro's content. Per S-041 / D-4, the focused view shows
-        // grams + the macro's share of *consumed calories* (never
-        // "of target"). Calories per macro follow D-4:
+        // macro's content. Per S-041 / D-4, without a macro
+        // target the focused view shows grams + the macro's
+        // share of *consumed calories*; with a target it shows
+        // "<grams> of <target> g" (plan 80). Calories per macro
+        // follow D-4:
         //   protein*4 + carbs*4 + fat*9
         // Net carbs and protein are scaled to the reference
         // amount already, so we multiply by 4 (kcal per gram).
@@ -174,12 +176,28 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
             pct = totalKcal == 0 ? 0 : (sectionKcal * 100 / totalKcal).round();
           }
           final isInformational = s.name == 'Fiber';
+          // A macro with a daily target reads "<grams> of <target> g". The
+          // carbs target is TOTAL carbs (fibre included), so the Net Carbs
+          // slice then names "Carbs" and counts total carbs.
+          final rawTarget = switch (s.name) {
+            'Protein' => target?.protein,
+            'Net Carbs' => target?.carbs,
+            'Fat' => target?.fat,
+            _ => null,
+          };
+          final focusTarget = (rawTarget != null && rawTarget > 0)
+              ? rawTarget.round()
+              : null;
+          final showsTotalCarbs = s.name == 'Net Carbs' && focusTarget != null;
           centerOverride = MacroFocusContent(
-            name: s.name,
-            grams: s.grams,
+            name: showsTotalCarbs ? 'Carbs' : s.name,
+            grams: showsTotalCarbs
+                ? widget.nutritionState.todayConsumedCarbs
+                : s.grams,
             percentOfCalories: pct ?? 0,
             color: s.color,
             informational: isInformational,
+            targetGrams: focusTarget,
           );
         } else {
           centerOverride = null;

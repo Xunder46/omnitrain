@@ -69,6 +69,10 @@ const double hubTileNaturalAspectRatio = 1.1;
 /// this the tile has no room for a label at all.
 const double hubMinTileHeight = 56.0;
 
+/// A macro target in whole grams, or null when none is set (0 means unset).
+int? _targetGrams(double? grams) =>
+    (grams != null && grams > 0) ? grams.round() : null;
+
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
@@ -592,6 +596,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           proteinKcal: widget.nutritionState.todayProteinKcal,
                           carbsKcal: widget.nutritionState.todayNetCarbsKcal,
                           fatKcal: widget.nutritionState.todayFatKcal,
+                          proteinGrams: widget.nutritionState.todayConsumedProtein,
+                          carbsGrams: widget.nutritionState.todayConsumedCarbs,
+                          fatGrams: widget.nutritionState.todayConsumedFat,
+                          targetProteinGrams: _targetGrams(target?.protein),
+                          targetCarbsGrams: _targetGrams(target?.carbs),
+                          targetFatGrams: _targetGrams(target?.fat),
                           onTap: _openNutritionScreen,
                         );
                       },

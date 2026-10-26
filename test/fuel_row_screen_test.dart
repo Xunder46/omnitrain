@@ -65,15 +65,19 @@ Finder get _fuelSection => find.byKey(const Key('fuel_section'));
 
 /// One logged `ConsumedFood` on the local day [daysAgo] days back.
 ///
-/// Fat is zero and the consumed amount equals the reference, so the row's
-/// calories are `4 × (protein + carbs)` and a fixture can name its days in
-/// round kcal.
+/// Fat and fibre default to zero and the consumed amount equals the
+/// reference, so with the defaults the row's calories are
+/// `4 × (protein + carbs)` and a fixture can name its days in round kcal.
+/// A scenario that needs the row's fat or carbs figures names them (and
+/// [fiber]) explicitly.
 Future<void> _seedFood(
   WorkoutRepository repo, {
   required String id,
   required int daysAgo,
   required double protein,
   required double carbs,
+  double fat = 0,
+  double fiber = 0,
 }) async {
   final now = DateTime.now();
   final day = DateTime(now.year, now.month, now.day - daysAgo);
@@ -90,8 +94,8 @@ Future<void> _seedFood(
       referenceLabel: '100 g',
       protein: protein,
       carbs: carbs,
-      fiber: 0,
-      fat: 0,
+      fiber: fiber,
+      fat: fat,
       sodium: null,
       amountConsumed: 100,
       groupIdSnapshot: 'food-group-proteins',
@@ -107,19 +111,27 @@ Future<void> _seedFood(
 }
 
 /// A logged day of [calories] kcal and [protein] g, as the fixture's own macro
-/// pair: `4 × (protein + carbs)` with no fat.
+/// pair: `4 × (protein + carbs)` with no fat. A scenario that needs the row's
+/// carbs or fat figures passes [carbs]/[fat]/[fiber] explicitly — an explicit
+/// [carbs] replaces the derived pair, and [calories] then only documents the
+/// day's kcal (it is unused).
 Future<void> _seedDay(
   WorkoutRepository repo, {
   required String id,
   required int daysAgo,
   required double protein,
   required double calories,
+  double? carbs,
+  double fat = 0,
+  double fiber = 0,
 }) => _seedFood(
   repo,
   id: id,
   daysAgo: daysAgo,
   protein: protein,
-  carbs: (calories / 4) - protein,
+  carbs: carbs ?? (calories / 4) - protein,
+  fat: fat,
+  fiber: fiber,
 );
 
 /// The repository's food log, emptied.
@@ -135,16 +147,24 @@ Future<void> _clearConsumedFoods(WorkoutRepository repo) async {
   }
 }
 
-/// The day the row's target is saved on: today.
+/// The day the row's target is saved on: today. Carbs and fat default to
+/// zero — no target for either, the pre-plan-80 shape.
 Future<void> _seedTarget(
   WorkoutRepository repo, {
   required double calories,
   required double protein,
+  double carbs = 0,
+  double fat = 0,
 }) async {
   final now = DateTime.now();
   await repo.saveNutritionTargetForDate(
     DateTime(now.year, now.month, now.day).millisecondsSinceEpoch,
-    NutritionTarget(calories: calories, protein: protein),
+    NutritionTarget(
+      calories: calories,
+      protein: protein,
+      carbs: carbs,
+      fat: fat,
+    ),
   );
 }
 
@@ -901,6 +921,162 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(find.byType(NutritionTrendScreen), findsOneWidget);
+        });
+      });
+
+      // ─── Fuel row — carbs and fat (plan 80): S-14040, S-14041 ─────────────
+
+      /// S-14040's fixture: two logged days whose carbs and fat the test
+      /// names outright. Day 1's food carries fibre 10 g beside carbs 50 g —
+      /// TOTAL carbs, so the day counts all 50 and the fibre is not
+      /// subtracted (D-1). The `calories` arguments document each day's kcal
+      /// (`4 × (protein + carbs) + 9 × fat`); with carbs explicit they are
+      /// not used to derive anything.
+      Future<void> seedCarbFatDays() async {
+        await seedSession(repo, sessionId: 's-fuel', daysAgo: 3);
+        await _seedDay(
+          repo,
+          id: 'food-c1',
+          daysAgo: 1,
+          protein: 100,
+          calories: 960,
+          carbs: 50,
+          fat: 40,
+          fiber: 10,
+        );
+        await _seedDay(
+          repo,
+          id: 'food-c2',
+          daysAgo: 2,
+          protein: 50,
+          calories: 750,
+          carbs: 70,
+          fat: 30,
+        );
+      }
+
+      group('Fuel row — carbs and fat (plan 80)', () {
+        group('S-14040', () {
+          setUp(() async {
+            await seedCarbFatDays();
+            await _seedTarget(
+              repo,
+              calories: 2200,
+              protein: 150,
+              carbs: 250,
+              fat: 70,
+            );
+            model = await readModel();
+          });
+
+          testWidgets('the averages are means of TOTAL carbs and fat over '
+              'the logged days, against the saved targets', (tester) async {
+            // Day 1 counts all 50 g of carbs (fibre 10 g included, D-1);
+            // day 2 carries 70 g. Mean over the two logged days:
+            // (50 + 70) / 2 = 60.
+            expect(model.carbsAverage, closeTo(60, 0.001));
+            // Fat: (40 + 30) / 2 = 35.
+            expect(model.fatAverage, closeTo(35, 0.001));
+            expect(model.targetCarbs, 250);
+            expect(model.targetFat, 70);
+            expect(model.hasCarbsTarget, isTrue);
+            expect(model.hasFatTarget, isTrue);
+          });
+        });
+
+        group('S-14043', () {
+          setUp(() async {
+            await seedCarbFatDays();
+            await _seedTarget(
+              repo,
+              calories: 2200,
+              protein: 150,
+              carbs: 250,
+              fat: 70,
+            );
+            model = await readModel();
+          });
+
+          testWidgets('the four figures are labelled', (tester) async {
+            await pumpStats(tester);
+
+            expect(_fuelText('fuel_calories_label'), 'Calories');
+            expect(_fuelText('fuel_protein_label'), 'Protein');
+            expect(_fuelText('fuel_carbs_label'), 'Carbs');
+            expect(_fuelText('fuel_fat_label'), 'Fat');
+          });
+        });
+
+        group('S-14041', () {
+          group('with a carbs and a fat target', () {
+            setUp(() async {
+              await seedCarbFatDays();
+              await _seedTarget(
+                repo,
+                calories: 2200,
+                protein: 150,
+                carbs: 250,
+                fat: 70,
+              );
+              model = await readModel();
+            });
+
+            testWidgets('the second row reads the carbs and fat figures '
+                'against their targets', (tester) async {
+              await pumpStats(tester);
+
+              // (50 + 70) / 2 = 60.
+              expect(_fuelText('fuel_carbs'), '60 g');
+              expect(_fuelText('fuel_carbs_target'), 'of 250 g target');
+              // (40 + 30) / 2 = 35.
+              expect(_fuelText('fuel_fat'), '35 g');
+              expect(_fuelText('fuel_fat_target'), 'of 70 g target');
+            });
+          });
+
+          group('with no carbs or fat target', () {
+            setUp(() async {
+              await seedSession(repo, sessionId: 's-fuel', daysAgo: 2);
+              // Window: carbs 100 g, fat 40 g. Previous window: carbs 50 g,
+              // fat 20 g — so a comparison against the previous window reads
+              // differently from a dash.
+              await _seedDay(
+                repo,
+                id: 'food-w1',
+                daysAgo: 1,
+                protein: 100,
+                calories: 2000,
+                carbs: 100,
+                fat: 40,
+              );
+              await _seedDay(
+                repo,
+                id: 'food-p1',
+                daysAgo: 9,
+                protein: 100,
+                calories: 2000,
+                carbs: 50,
+                fat: 20,
+              );
+              await _seedTarget(repo, calories: 2200, protein: 150);
+              model = await readModel();
+            });
+
+            testWidgets('the target lines are absent and the changes compare '
+                'with the previous window', (tester) async {
+              expect(model.hasCarbsTarget, isFalse);
+              expect(model.hasFatTarget, isFalse);
+
+              await pumpStats(tester);
+
+              expect(find.byKey(const Key('fuel_carbs_target')), findsNothing);
+              expect(find.byKey(const Key('fuel_fat_target')), findsNothing);
+              // Window carbs 100 against the previous window's 50.
+              expect(_fuelText('fuel_carbs_change'), '↑ +50 g');
+              // Fat 40 against 20 — the protein pattern without a target.
+              expect(_fuelText('fuel_fat_change'), '↑ +20 g');
+            });
+          });
         });
       });
     });

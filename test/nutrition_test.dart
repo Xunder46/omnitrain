@@ -4,7 +4,8 @@
 // State method tests (load/save/rollover/forward-propagation) live in
 // `test/state_test.dart` under the `NutritionState` group.
 //
-// Phase 3 alignment: D-3 / S-040 (calories-only target), S-041
+// Phase 3 alignment: D-3 / S-040 was calories-only; plan 80 added macro
+// targets. S-041
 // (focused-macro center is grams + %, no "of target"),
 // S-043 (sodium daily-total chip on the calorie-ring card), S-044
 // (sodium frozen onto the ConsumedFood snapshot at log time).
@@ -52,10 +53,11 @@ Future<MockWorkoutRepository> _freshRepo() async {
 
 void main() {
   // ═══════════════════════════════════════════════════════════════════════
-  // S-040 — NutritionTargetScreen is calories-only
+  // Plan 80 — NutritionTargetScreen daily targets (D-3 / S-040 was
+  // calories-only)
   // ═══════════════════════════════════════════════════════════════════════
-  group('NutritionTargetScreen — calories only (D-3 / S-040)', () {
-    testWidgets('renders only the calories field', (tester) async {
+  group('NutritionTargetScreen — daily targets (plan 80)', () {
+    testWidgets('renders calories and the three macro fields', (tester) async {
       final repo = await _freshRepo();
       final state = NutritionState(repo);
 
@@ -64,26 +66,23 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Single calories input.
+      // All four inputs are present.
       expect(find.byKey(const Key('calories_field')), findsOneWidget);
-      // The four-field form is gone: no protein/carbs/fat inputs.
-      expect(find.byKey(const Key('protein_field')), findsNothing);
-      expect(find.byKey(const Key('carbs_field')), findsNothing);
-      expect(find.byKey(const Key('fat_field')), findsNothing);
-      // The implied-calories helper is gone.
+      expect(find.byKey(const Key('protein_field')), findsOneWidget);
+      expect(find.byKey(const Key('carbs_field')), findsOneWidget);
+      expect(find.byKey(const Key('fat_field')), findsOneWidget);
+      // No readout while every box is empty.
       expect(find.byKey(const Key('implied_calories_readout')), findsNothing);
-      // Save button is still present.
+      // Title and Save button.
+      expect(find.text('Daily Targets'), findsOneWidget);
       expect(find.text('Save'), findsOneWidget);
     });
 
-    testWidgets('pre-fills from a previously saved target (calories only)', (
-      tester,
-    ) async {
+    testWidgets('pre-fills the stored calories and macros', (tester) async {
       final repo = await _freshRepo();
       final state = NutritionState(repo);
-      // Pre-save a target with macros non-zero. The form should still
-      // only show the calories value — protein/carbs/fat are
-      // schema/back-compat and not user-editable (D-3).
+      // A stored target with non-zero macros shows the stored grams in
+      // all four boxes (plan 80 / D-5).
       await state.saveNutritionTarget(
         NutritionTarget(calories: 2500, protein: 150, carbs: 300, fat: 80),
       );
@@ -93,20 +92,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Calories is rendered as an integer string.
       expect(find.text('2500'), findsOneWidget);
-      // The macro values are NOT rendered in the form.
-      expect(find.text('150'), findsNothing);
-      expect(find.text('300'), findsNothing);
-      expect(find.text('80'), findsNothing);
+      expect(find.text('150'), findsOneWidget);
+      expect(find.text('300'), findsOneWidget);
+      expect(find.text('80'), findsOneWidget);
     });
 
-    testWidgets('save builds a macros-0 target (D-3)', (tester) async {
+    testWidgets('save keeps the stored macros', (tester) async {
       final repo = await _freshRepo();
       final state = NutritionState(repo);
-      // Pre-seed a target with non-zero macros to verify the save
-      // path overwrites them with 0 (per D-3 — macros 0 going
-      // forward, persisted for schema/back-compat).
+      // Pre-seed a target with non-zero macros; saving untouched keeps
+      // them (plan 80 / D-6 — the save writes all four values).
       await state.saveNutritionTarget(
         NutritionTarget(calories: 2000, protein: 100, carbs: 200, fat: 60),
       );
@@ -124,10 +120,9 @@ void main() {
       final fresh = NutritionState(repo);
       await fresh.loadNutritionTarget();
       expect(fresh.nutritionTarget?.calories, 2000.0);
-      // Macros are 0 going forward (D-3).
-      expect(fresh.nutritionTarget?.protein, 0.0);
-      expect(fresh.nutritionTarget?.carbs, 0.0);
-      expect(fresh.nutritionTarget?.fat, 0.0);
+      expect(fresh.nutritionTarget?.protein, 100.0);
+      expect(fresh.nutritionTarget?.carbs, 200.0);
+      expect(fresh.nutritionTarget?.fat, 60.0);
     });
 
     testWidgets('save with empty calories clears the target', (tester) async {
@@ -1643,9 +1638,9 @@ void main() {
       await tester.tap(find.byKey(const Key('nutrition_target_button')));
       await tester.pumpAndSettle();
 
-      // The targets screen is now on top (Phase 3 / D-3: title is
-      // "Daily Calorie Target" because the form is calories-only).
-      expect(find.text('Daily Calorie Target'), findsOneWidget);
+      // The targets screen is now on top (plan 80 / D-7: title is
+      // "Daily Targets").
+      expect(find.text('Daily Targets'), findsOneWidget);
     });
 
     // S-004: Fully logged / over-target. The ring fills to 100% (clamped)

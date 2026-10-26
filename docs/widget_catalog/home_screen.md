@@ -82,6 +82,19 @@ group 'NutritionSummaryCard — no target + zero-macro data (S-202)'
   · 'caption row shows dashes when consumed > 0 but all macro contributions are zero'
 ```
 
+**Per-macro targets.** The card takes optional per-macro targets
+(`targetProteinGrams`, `targetCarbsGrams`, `targetFatGrams`) alongside the
+consumed grams (`proteinGrams`, `carbsGrams`, `fatGrams`, passed by
+`home_screen.dart` from `NutritionState`). A macro whose target is set shows
+the grams form — `<L> <consumed>/<target> g`, also when nothing is logged —
+while a macro without a target keeps its share of the consumed calories; the
+two forms can mix within one caption row. Caption entries are `Flexible`, so a
+long caption cannot overflow the card. Verified by
+`test/home_nutrition_summary_card_test.dart`, group
+`NutritionSummaryCard — macro targets (plan 80)` (`S-14030`, `S-14031`,
+`S-14032`, `S-14034`, `S-14034b`, `caption row does not overflow at 390 and 320
+card widths (plan 80 / D-9)`).
+
 When consumption exceeds the target the fill clamps rather than overflowing and the headline
 switches to the theme's error tone — a restrained warning, not an alarm. Verified by
 `test/home_nutrition_summary_card_test.dart`, group
@@ -110,6 +123,12 @@ the water tracker. Owns the tap-to-focus state for the donut: tapping a section 
 tapping it again or tapping the centre clears. When the focused section's grams fall to zero the
 focus falls back to none rather than pointing at nothing. Rebuilds on every `NutritionState`
 notification, so a log or unlog anywhere propagates here.
+
+With a macro target stored, a focused macro section reads `<grams> of <target> g` in the centre,
+and the Net Carbs section is named `Carbs` and reports total carbs against the carbs target;
+fibre and macros without a target keep the grams-plus-percent form. Verified by
+`test/daily_targets_display_test.dart` (group `CalorieRingCard — focus text with
+macro targets (S-14035)`).
 
 An optional `emptyHint` replaces the ring's empty subtext (default `Log a food to start filling`); the nutrition screen passes `Pick your foods to get started` while the user's list is empty. Verified by `test/picker_polish_test.dart` (`S-13115`).
 
@@ -148,8 +167,11 @@ without a widget tree. Colours come from `OmniTheme.colors.macroChart`.
 **File**: `lib/features/nutrition/widgets/macro_donut_chart.dart`
 
 Rendered in the calorie ring's centre when a macro section is focused, showing the macro name with
-its colour marker plus grams and percentage. Passed to `CalorieRing` as its centre override by
-`CalorieRingCard`.
+its colour marker plus grams and percentage. An optional `targetGrams` switches the detail line to
+`<grams> of <target> g` (no percentage); an `informational` section ignores it. Passed to
+`CalorieRing` as its centre override by `CalorieRingCard`. Verified by
+`test/daily_targets_display_test.dart` (group `MacroFocusContent — target forms
+(S-14036)`).
 
 ---
 
