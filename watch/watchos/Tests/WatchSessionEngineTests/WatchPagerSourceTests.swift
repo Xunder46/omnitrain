@@ -3,17 +3,21 @@
 //  WatchSessionEngineTests
 //
 //  Source guards for the wrist's swipe pager: the shell mounts it, the view
-//  mounts one paged `TabView`, and the Crown stays on the logging surface.
+//  mounts one logger with a swipe between exercises, and the Crown stays on
+//  the logging surface.
 //
 //  Plan: `docs/plans/2026-10-20-46b-wrist-swipe-pager-plan/2026-10-20-46b-wrist-swipe-pager-plan.md`,
-//  scenarios S-6610, S-6611 and S-6612 (decisions D-3, D-5, D-6).
+//  scenarios S-6610, S-6611 and S-6612 (decisions D-3, D-5, D-6); plan 79
+//  (`docs/plans/2026-10-26-79-wrist-swipe-and-rest-next-plan/2026-10-26-79-wrist-swipe-and-rest-next-plan.md`)
+//  rewrites S-6611 and adds S-9111: no page-turn, so no `TabView` and no
+//  preview card — one logger, and a swipe that switches at once.
 //
 //  The pager's rules are held by `WatchPagerModelTests`; what is left is the
 //  shape of the watchOS-only view, which `swift test` cannot compile. What can
 //  be held off-device is what drift would break: the shell's one mount, the
-//  single `TabView` with no dots, the locked page's drag, and the absence of a
-//  second Crown binding — the Crown belongs to the logging surface, and a pager
-//  that captured it would take the value stepping away.
+//  one logger with its swipe and no page-turn, the locked page's drag, and the
+//  absence of a second Crown binding — the Crown belongs to the logging
+//  surface, and a pager that captured it would take the value stepping away.
 //
 //  Every guard reads a file's text with its comment lines removed, so a sentence
 //  of prose can neither satisfy a guard nor trip one.
@@ -107,22 +111,81 @@ final class WatchPagerSourceTests: XCTestCase {
         )
     }
 
-    // MARK: - S-6611: one paged TabView and the locked drag
+    // MARK: - S-6611: no TabView, and the locked drag
 
-    func testS6611ThePagerIsOneTabViewWithoutDotsAndAnswersADragWhenLocked() throws {
+    func testS6611ThePagerIsNoTabViewAndStillAnswersADragWhenLocked() throws {
         let source = try engineSource("WatchLoggingPagerView.swift")
 
-        XCTAssertTrue(
-            source.contains(".tabViewStyle(.page(indexDisplayMode: .never))"),
-            "the paged TabView should carry no dots: the page label is the counter"
+        XCTAssertFalse(
+            source.contains("TabView("),
+            "plan 79 D-1: the pager mounts one logger, not a TabView of pages"
+        )
+        XCTAssertFalse(
+            source.contains(".tabViewStyle"),
+            "there is no paged TabView left, so no tab view style either"
         )
         XCTAssertEqual(
-            occurrences(of: "TabView(", in: source), 1,
-            "the pager should mount exactly one TabView"
+            occurrences(of: "DragGesture(minimumDistance: 24)", in: source), 2,
+            "exactly two drags: the swipe between exercises and the locked branch"
         )
         XCTAssertTrue(
-            source.contains("DragGesture("),
-            "the locked single page should answer a drag"
+            source.contains("let across = abs(value.translation.width)"),
+            "the locked branch keeps its own width reading, so it is not lost"
+        )
+    }
+
+    // MARK: - S-9111: one logger with a swipe
+
+    func testS9111ThePagerIsOneLoggerWithASwipe() throws {
+        let source = try engineSource("WatchLoggingPagerView.swift")
+
+        XCTAssertFalse(
+            source.contains("WatchExercisePreviewPage"),
+            "plan 79 D-1: the preview card between exercises is gone"
+        )
+        XCTAssertTrue(
+            source.contains(".id("),
+            "plan 79 D-5: the shown logger is rebuilt per exercise through its slot id"
+        )
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: "DragGesture(minimumDistance: 24)", in: source), 2,
+            "the swipe between exercises and the locked branch both drag"
+        )
+        XCTAssertTrue(
+            source.contains("pager.neighbourIndex(of: selection, towardsNext:"),
+            "plan 79 D-2: the swipe asks the model which page it reaches"
+        )
+        XCTAssertTrue(
+            source.contains("state.focusSlotId = pager.focusSlotId(for: target)"),
+            "plan 52 D-5: the focus names the page the user reached before the engine has moved"
+        )
+        XCTAssertTrue(
+            source.contains("selection = target"),
+            "the selection moves to the page the user reached"
+        )
+        XCTAssertTrue(
+            source.contains(".onChange(of: selection)"),
+            "the settled selection lands through land(on:)"
+        )
+        XCTAssertTrue(
+            source.contains("play(.click)"),
+            "plan 79 D-4: a swipe that moves gives a click"
+        )
+        XCTAssertTrue(
+            source.contains("pager.neighbourIndex(of: selection, towardsNext: across < 0)"),
+            "plan 79 D-3: a finger moving left (negative width) goes to the NEXT exercise"
+        )
+        XCTAssertTrue(
+            source.contains("guard abs(across) > 24, abs(across) > abs(value.translation.height),"),
+            "plan 79 D-3: only a mostly horizontal drag longer than 24 points switches exercise"
+        )
+        XCTAssertFalse(
+            source.contains("digitalCrownRotation"),
+            "the Crown belongs to WatchLoggingView; the pager must not bind it"
+        )
+        XCTAssertFalse(
+            source.contains(".focusable"),
+            "the pager must not take focus, or the Crown's value stepping goes with it"
         )
     }
 

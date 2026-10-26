@@ -312,6 +312,18 @@ hardware yet.
     Strength workout); a lifting-only workout leaves no route
     (`WatchHealthActivityTests`, `WatchRouteKeeperTests`, plans 75 and 76).
 
+34. **Swiping between exercises and the rest screen's Next — (owner).** In a
+    session with three exercises, swipe left and right on the logging screen:
+    the next exercise's logger replaces the current one at once with a light
+    tap, no screen with only the exercise name appears at any moment, and the
+    counter reads 2/3; swiping past the first or last exercise does nothing.
+    Log the last planned set of exercise 1 and read the rest line
+    "Next: <exercise 2> · Set 1 of N": tap Next and exercise 2's logger opens.
+    With sets remaining ("Next: Set 2 of 3"), or on an exercise with no plan,
+    Next returns to the same exercise. Swipe back to exercise 1 and log an
+    extra set. Held off-device by `WatchRestAdvanceTests.swift`,
+    `WatchPagerModelTests` S-9110 and `WatchPagerSourceTests` S-9111 (plan 79).
+
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and
 leaves a wrist-started one running (`test/watch_logging_timers_test.dart`,

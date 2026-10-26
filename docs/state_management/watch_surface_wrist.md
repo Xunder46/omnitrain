@@ -513,7 +513,26 @@ unfinished exercise ("Next: Barbell Back Squat · Set 1 of 2"), the next period
 `…testS7607ARoundEffortNamesTheNextPeriod`,
 `…testS7608ATimedEffortNamesTheNextExerciseWithWork`,
 `…testS7609ThroughTheEngineThePhonesSetCounts`,
-`…testS7610TheRestViewReadsTheLabels`). The labels come from the pure function
+`…testS7610TheRestViewReadsTheLabels`). Since plan 79 the "Next: …" line also
+carries the announced exercise's slot id (`WatchRestLabels.nextSlotId`, set
+only when the line names another exercise, nil for "Next: Set n",
+"Next: Period n" and "Nothing planned next"), and the rest screen's Next
+button reads it before it ends the rest and then jumps through the menu
+(`advance: { await menuState.jump(to: $0) }` in `ContentView.swift`): when the
+line names an exercise, Next opens that exercise's logger; with sets
+remaining, no plan, a period, or nothing planned it returns to the same
+exercise as before; a refused jump leaves the rest ended and the same exercise
+shown. An extra set on a finished exercise: swipe back to it. Verified by
+`WatchRestLabelsTests` (`testS9101TheAnnouncedExerciseCarriesItsSlotId`,
+`…testS9102ASetCountCarriesNoSlotId`,
+`…testS9103ASetCountWithoutAPlanCarriesNoSlotId`,
+`…testS9104NothingPlannedCarriesNoSlotId`,
+`…testS9105APeriodCarriesNoSlotId`,
+`…testS9106ATimedEffortAnnouncesTheExerciseAndTheWrapHolds`,
+`…testS9107ASlotWithoutItsOwnIdAnnouncesTheCatalogSlotId`) and
+`WatchRestAdvanceTests.swift`
+(`testS9108TheRestsNextJumpsToTheAnnouncedExercise` through the engine,
+`testS9109TheNextReadsTheTargetBeforeItEndsTheRest` as the source guard). The labels come from the pure function
 `deriveRestLabels` in `WatchRestLabels.swift` through
 `WatchLoggingState.restLabels`: a slot is done when all its planned sets are
 logged, or with no plan when anything is logged
@@ -723,7 +742,7 @@ Verified by `…testS6602ASettledPageMovesTheSessionOnceAndEmitsOneFrame`,
 with `set`.)
 
 **While an effort clock runs there is no pager.** `showsPager` is false, the
-view renders one page without a `TabView`, and a mostly-horizontal swipe over
+view renders one page with no swipe paging, and a mostly-horizontal swipe over
 the drag minimum plays the failure haptic and raises the one-line notice
 `WatchPagerCopy.lockedNotice` — the menu's own lock words — for
 `WatchPagerCopy.noticeSeconds`; a running rest is not a lock and the pager
@@ -734,33 +753,37 @@ holds that a session with one exercise shows no pager and no counter at all
 (`pageLabel` nil).
 
 **The view is the shape around that model, and the desktop toolchain holds only
-its outline.** `WatchLoggingPagerView` (watchOS-only) is a page-style `TabView`
-whose own n/m counter sits beside the exercise name
-(`WatchLoggingView(pageLabel:)`) instead of dots, which would sit on the Log
-button on a 40 mm screen. When a swipe settles, the selection binding calls
-`WatchPagerModel.focusSlotId(for:)` and puts the result in
-`WatchLoggingState.focusSlotId`, so the logging surface shows the exercise the
-user swiped to before the engine has moved; the page at the selected index is
-the logger — its counter reads the selected page of the count — and the
-name-only preview card (`WatchExercisePreviewPage`: name, logged count,
-counter) remains only for the pages that are sliding in. `land(on:)` clears the
+its outline.** `WatchLoggingPagerView` (watchOS-only) mounts ONE
+`WatchLoggingView` for the shown exercise — its n/m counter sits beside the
+exercise name (`WatchLoggingView(pageLabel:)`) — rebuilt per exercise through
+`.id(<shown slot id>)`, so no tile or Crown state of one exercise leaks into
+the next. There is no page-turn and no name-only card at any moment: a
+mostly-horizontal drag longer than 24 points on the shown logger asks
+`WatchPagerModel.neighbourIndex(of:towardsNext:)` for the neighbouring page
+(a finger moving left goes to the NEXT exercise, right to the previous; no
+wrap; nil when the pager is not shown), plays `.click`, sets
+`state.focusSlotId = pager.focusSlotId(for: target)` and then moves the
+selection; `.onChange(of: selection)` calls `land(on:)` unchanged, so the
+logging surface shows the exercise the user swiped to before the engine has
+moved. `land(on:)` clears the
 focus whether it moved or was refused (also on its early return, and
 `followEngine()` clears a focus left over when no landing is in flight), and the
 next settled swipe names its own focus again. While the focus is ahead of the
 engine, `startWork()` is refused, so a clock is never started against an
 exercise the engine has not reached and a refused landing cannot strand one
 (`WatchPagerFocusTests` S-7915, S-7916). The shell's `loggingSurface` mounts the pager and not the bare
-logging view, the pager mounts exactly one `TabView` with no dots and answers a
-drag only in the locked branch, and the pager binds no Crown and takes no
+logging view, and the pager binds no Crown and takes no
 `.focusable` focus — the Crown stays on `WatchLoggingView`, stepping the
 outlined value, and never changes exercise. Verified by
 `WatchPagerSourceTests.swift`
 (`testS6610TheLoggingSurfaceMountsThePagerAndNotTheBareView`,
-`…testS6611ThePagerIsOneTabViewWithoutDotsAndAnswersADragWhenLocked`,
+`…testS6611ThePagerIsNoTabViewAndStillAnswersADragWhenLocked`,
+`…testS9111ThePagerIsOneLoggerWithASwipe`,
 `…testS6612ThePagerTakesNoCrownAndNoFocus`) and `WatchPagerFocusTests.swift`
-(S-7911..S-7914: the focus shows the focused exercise and logs against it, the
+(`testS7913ThePagerViewWiresTheFocusThroughTheSwipe`, S-7911, S-7912, S-7914:
+the focus shows the focused exercise and logs against it, the
 pager names a focus only for another live page and none for a locked session,
-the view's wiring as source guards, and a slot with no id of its own reached
+and a slot with no id of its own reached
 through the id its exercise derives). The rest screen replaces the
 logging screen as before, so there is no paging in rest; the phone screen does
 not follow a wrist swipe (owner decision O-5).

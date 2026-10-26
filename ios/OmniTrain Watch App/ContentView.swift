@@ -429,6 +429,7 @@ struct ContentView: View {
                 NavigationStack {
                     WatchRestView(
                         state: host.logging,
+                        advance: { await menuState.jump(to: $0) },
                         onNext: { host.noteSurfaceChange() }
                     )
                         .toolbar {

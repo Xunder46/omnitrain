@@ -13,8 +13,9 @@
 //  Rest is a count-up from the moment a set is logged; there is no preset
 //  length. The elapsed is re-read every second from the persisted timer row, so
 //  a screen that was off comes back showing the truth. One control, Next: it
-//  ends the rest and returns to logging (D-161). No End, no picker, no dial,
-//  no pause. The one cue a rest has is the ping: at each multiple of the
+//  ends the rest and returns to logging (D-161), opening the exercise the next
+//  line names when the line names one (plan 79, D-6). No End, no picker, no
+//  dial, no pause. The one cue a rest has is the ping: at each multiple of the
 //  interval the phone last sent, the wrist taps (D-250). The host's
 //  `WatchRestPingScheduler` asks for that ping on its own clock, so a screen
 //  that is off or dimmed pings on time; this view only shows the clock, and
@@ -33,6 +34,9 @@ public struct WatchRestView: View {
     @Environment(\.isLuminanceReduced) private var dimmed
 
     private let haptics: WatchHaptics
+    /// Moves the session to the slot id the next line announced (plan 79, D-6).
+    /// The default refuses, so a caller without the menu keeps today's behaviour.
+    private let advance: (String) async -> Bool
     private let onNext: () -> Void
 
     /// Wrist-scale inset, as the other wrist surfaces use.
@@ -41,10 +45,12 @@ public struct WatchRestView: View {
     public init(
         state: WatchLoggingState,
         haptics: WatchHaptics = WristHaptics(),
+        advance: @escaping (String) async -> Bool = { _ in false },
         onNext: @escaping () -> Void
     ) {
         self.state = state
         self.haptics = haptics
+        self.advance = advance
         self.onNext = onNext
     }
 
@@ -95,7 +101,9 @@ public struct WatchRestView: View {
     private var nextButton: some View {
         Button {
             Task {
+                let target = state.restLabels.nextSlotId
                 await state.endRest()
+                if let target { _ = await advance(target) }
                 haptics.playNext()
                 onNext()
             }

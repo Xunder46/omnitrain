@@ -8,7 +8,8 @@
 //  Deliberately outside the watchOS-only view: this is the part with a rule in
 //  it — when a swipe moves the session and when it only raises a notice — so it
 //  builds and is tested on the desktop toolchain like the rest of the module.
-//  The view that mounts a `TabView` over it is compiled only into the watch app.
+//  The view that mounts the loggers over it is compiled only into the watch
+//  app.
 //
 //  The model owns no session structure of its own: a settled page is the menu's
 //  `jump(to:)`, which is the engine's own select path. The rows and the
@@ -50,6 +51,16 @@ public final class WatchPagerModel: ObservableObject {
         let rows = self.rows
         guard rows.indices.contains(index), !rows[index].isCurrent, !isLocked else { return nil }
         return rows[index].slotId
+    }
+
+    /// The page a horizontal swipe from page `index` reaches (plan 79 D-2): the
+    /// next one when `towardsNext`, else the previous one. Nil when the pager is
+    /// not shown (one exercise, or an effort clock runs) or the swipe runs off
+    /// either end; the pager does not wrap.
+    public func neighbourIndex(of index: Int, towardsNext: Bool) -> Int? {
+        guard showsPager else { return nil }
+        let target = towardsNext ? index + 1 : index - 1
+        return rows.indices.contains(target) ? target : nil
     }
 
     /// Moves the session to page `index` once the swipe has settled: true when

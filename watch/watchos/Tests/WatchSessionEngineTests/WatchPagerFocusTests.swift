@@ -8,8 +8,10 @@
 //  moved — the logging surface shows the focused slot and logs against it, the
 //  pager model answers which slot a page would focus (nil for the engine's own
 //  page, an out-of-range index or a locked session), and the watch-only view
-//  wires the binding, the page choice, the clears and the counter as the plan
-//  says.
+//  wires the swipe, the clears and the counter as the plan says. Plan 79
+//  (`docs/plans/2026-10-26-79-wrist-swipe-and-rest-next-plan/2026-10-26-79-wrist-swipe-and-rest-next-plan.md`)
+//  rewrites S-7913 to S-9112's statements: no page-turn, so no binding and no
+//  page choice — the swipe names the focus and moves the selection itself.
 //
 //  S-7914 (fix round 1): a slot the phone pushed without a
 //  `sessionExerciseId` of its own is still focusable, through the id
@@ -330,33 +332,41 @@ final class WatchPagerFocusTests: XCTestCase {
             .joined(separator: "\n")
     }
 
-    func testS7913ThePagerViewWiresTheFocusThroughItsOwnBinding() throws {
+    func testS7913ThePagerViewWiresTheFocusThroughTheSwipe() throws {
         let source = try engineSource("WatchLoggingPagerView.swift")
 
-        XCTAssertTrue(
-            source.contains("TabView(selection: selectionBinding)"),
-            "S-7913 the TabView binds the custom selection, not the state var"
+        let focus = try XCTUnwrap(
+            source.range(of: "state.focusSlotId = pager.focusSlotId(for: target)"),
+            "S-9112 the swipe names the focus synchronously"
         )
-        XCTAssertTrue(
-            source.contains("state.focusSlotId = pager.focusSlotId(for: newValue)"),
-            "S-7913 a settled swipe names the focus synchronously"
+        let selection = try XCTUnwrap(
+            source.range(of: "selection = target"),
+            "S-9112 the selection moves to the page the user reached"
         )
-        XCTAssertTrue(
-            source.contains("if index == selection"),
-            "S-7913 the selected page renders the logger, the others the card"
+        XCTAssertLessThan(
+            focus.lowerBound, selection.lowerBound,
+            "S-9112 the focus is named before the selection moves (plan 52 D-5)"
         )
         XCTAssertGreaterThanOrEqual(
             occurrences(of: "state.focusSlotId = nil", in: source),
             2,
-            "S-7913 land(on:) clears the focus whether it moved or was refused"
+            "S-9112 land(on:) clears the focus whether it moved or was refused"
         )
         XCTAssertTrue(
-            source.contains("pageLabel: \"\\(index + 1)/\\(pager.pageCount)\""),
-            "S-7913 the counter reads the selection's page of the count"
+            source.contains("pageLabel: \"\\(selection + 1)/\\(pager.pageCount)\""),
+            "S-9112 the counter reads the selection's page of the count"
         )
         XCTAssertFalse(
-            source.contains("TabView(selection: $selection)"),
-            "S-7913 the plain state binding would set no focus"
+            source.contains("TabView("),
+            "S-9112 there is no paged TabView any more"
+        )
+        XCTAssertFalse(
+            source.contains("selectionBinding"),
+            "S-9112 the custom binding is gone with the TabView"
+        )
+        XCTAssertFalse(
+            source.contains("if index == selection"),
+            "S-9112 there is no per-page choice of logger against card"
         )
     }
 

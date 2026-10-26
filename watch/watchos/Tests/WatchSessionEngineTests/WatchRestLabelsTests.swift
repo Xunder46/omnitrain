@@ -6,7 +6,8 @@
 //  scenarios S-7601..S-7608 and S-7610 of
 //  `docs/plans/2026-10-21-51b-wrist-rest-now-next-plan/2026-10-21-51b-wrist-rest-now-next-plan.md`
 //  against the pure function, and S-7609 through the real engine and
-//  `WatchLoggingState`.
+//  `WatchLoggingState`. Plan 79 (D-6) adds S-9101..S-9107: the slot id the
+//  announced exercise's line carries.
 //
 
 import XCTest
@@ -266,6 +267,143 @@ final class WatchRestLabelsTests: XCTestCase {
             "S-7611 the timed entry is not a set, so the count is two"
         )
         XCTAssertEqual(labels.next, "Next: Set 3 of 3")
+    }
+
+    // MARK: - S-9101 the announced exercise carries its slot id (plan 79, D-6)
+
+    /// The plan's fixture ladder: A "Squat" planned 2, B "Bench" planned 3,
+    /// C "Row" planned 0 (S-9101..S-9107).
+    private func restLadder(aPlanned: Int = 2) -> [[String: Any]] {
+        [
+            slot("A", "Squat", planned: aPlanned),
+            slot("B", "Bench", planned: 3),
+            slot("C", "Row"),
+        ]
+    }
+
+    func testS9101TheAnnouncedExerciseCarriesItsSlotId() {
+        let labels = deriveRestLabels(
+            sessionExercises: restLadder(),
+            entries: entries("A", 2),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(labels.now, "Squat · Set 2 done")
+        XCTAssertEqual(labels.next, "Next: Bench · Set 1 of 3", "S-9101 the line names B's first set")
+        XCTAssertEqual(labels.nextSlotId, "B", "S-9101 the id the menu's jump accepts rides with it")
+    }
+
+    // MARK: - S-9102 a set count carries no slot id
+
+    func testS9102ASetCountCarriesNoSlotId() {
+        let labels = deriveRestLabels(
+            sessionExercises: restLadder(),
+            entries: entries("A", 1),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(labels.next, "Next: Set 2 of 2", "S-9102 the line is this exercise's own set count")
+        XCTAssertNil(labels.nextSlotId, "S-9102 a set count names no exercise to open")
+    }
+
+    // MARK: - S-9103 a planless set count carries no slot id
+
+    func testS9103ASetCountWithoutAPlanCarriesNoSlotId() {
+        let labels = deriveRestLabels(
+            sessionExercises: restLadder(aPlanned: 0),
+            entries: entries("A", 3),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(labels.next, "Next: Set 4", "S-9103 no plan, so no 'of N'")
+        XCTAssertNil(labels.nextSlotId, "S-9103 a planless count names no exercise")
+    }
+
+    // MARK: - S-9104 nothing planned carries no slot id
+
+    func testS9104NothingPlannedCarriesNoSlotId() {
+        let labels = deriveRestLabels(
+            sessionExercises: restLadder(),
+            entries: entries("A", 2) + entries("B", 3) + entries("C", 1),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(labels.next, WatchRestLabelCopy.nothingNext, "S-9104 the whole ladder is done")
+        XCTAssertNil(labels.nextSlotId, "S-9104 and nothing is announced")
+    }
+
+    // MARK: - S-9105 a period carries no slot id
+
+    func testS9105APeriodCarriesNoSlotId() {
+        let labels = deriveRestLabels(
+            sessionExercises: restLadder(),
+            entries: entries("A", 1, kind: WatchObservationKind.round),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.round,
+            nextRound: "Period 2"
+        )
+        XCTAssertEqual(labels.next, "Next: Period 2", "S-9105 the modality's own word")
+        XCTAssertNil(labels.nextSlotId, "S-9105 a period is not an exercise to open")
+    }
+
+    // MARK: - S-9106 a timed effort announces the exercise, and the wrap holds
+
+    func testS9106ATimedEffortAnnouncesTheExerciseAndTheWrapHolds() {
+        let timed = entries("A", 1, kind: WatchObservationKind.timed)
+
+        let forward = deriveRestLabels(
+            sessionExercises: restLadder(),
+            entries: timed,
+            currentIndex: 0,
+            effortKind: WatchEffortKind.timed,
+            nextRound: nil
+        )
+        XCTAssertEqual(forward.next, "Next: Bench · Set 1 of 3", "S-9106 the later unlogged exercise")
+        XCTAssertEqual(forward.nextSlotId, "B", "S-9106 the timed effort announces B all the same")
+
+        let wrap = deriveRestLabels(
+            sessionExercises: restLadder(),
+            entries: timed + entries("C", 1, kind: WatchObservationKind.timed),
+            currentIndex: 2,
+            effortKind: WatchEffortKind.timed,
+            nextRound: nil
+        )
+        XCTAssertEqual(wrap.next, "Next: Squat · Set 1 of 2", "S-9106 the search wraps to the top")
+        XCTAssertEqual(wrap.nextSlotId, "A", "S-9106 and the wrap carries the id too")
+    }
+
+    // MARK: - S-9107 a slot without its own id announces the catalog slot id
+
+    func testS9107ASlotWithoutItsOwnIdAnnouncesTheCatalogSlotId() throws {
+        var bare = slot("B", "Bench", planned: 3)
+        bare.removeValue(forKey: "sessionExerciseId")
+        let exercise = try XCTUnwrap(
+            WatchCatalogExercise(slot: bare),
+            "S-9107 the slot is still a valid exercise"
+        )
+
+        let labels = deriveRestLabels(
+            sessionExercises: [slot("A", "Squat", planned: 2), bare],
+            entries: entries("A", 2),
+            currentIndex: 0,
+            effortKind: WatchEffortKind.set,
+            nextRound: nil
+        )
+        XCTAssertEqual(labels.next, "Next: Bench · Set 1 of 3", "S-9107 the line reads as always")
+        XCTAssertEqual(
+            labels.nextSlotId,
+            exercise.slotId,
+            "S-9107 the announced id is the catalog slot id the menu's jump accepts"
+        )
+        XCTAssertEqual(
+            exercise.slotId,
+            "sx-ex-B",
+            "S-9107 the derived id, the slot carrying no sessionExerciseId of its own"
+        )
     }
 
     // MARK: - S-7609 through the engine: the phone's set counts

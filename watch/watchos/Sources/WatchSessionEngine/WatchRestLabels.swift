@@ -26,9 +26,15 @@ public struct WatchRestLabels: Equatable {
     /// of 2", "Next: Period 2", or the words that say nothing is planned.
     public let next: String
 
-    public init(now: String, next: String) {
+    /// The slot the next line announces, when the line names an exercise: the
+    /// id the menu's jump accepts. Nil for a set count, a period and the
+    /// nothing-planned words (plan 79, D-6).
+    public let nextSlotId: String?
+
+    public init(now: String, next: String, nextSlotId: String? = nil) {
         self.now = now
         self.next = next
+        self.nextSlotId = nextSlotId
     }
 }
 
@@ -43,6 +49,9 @@ public enum WatchRestLabelCopy {
 /// One valid slot of the ladder, as the rule reads it.
 private struct RestLabelSlot {
     let name: String
+    /// The id the slot answers to in the menu: its own `sessionExerciseId`, or
+    /// the exercise's when the slot carries none (plan 79, D-6).
+    let slotId: String
     /// Entries of kind `set` logged for the slot (the phone's and the wrist's).
     let sets: Int
     /// Entries of any effort kind logged for the slot.
@@ -83,6 +92,7 @@ public func deriveRestLabels(
         slots.append(
             RestLabelSlot(
                 name: exercise.name,
+                slotId: slotId,
                 sets: mine.filter { $0.kind == WatchObservationKind.set }.count,
                 efforts: mine.filter { WatchObservationKind.efforts.contains($0.kind) }.count,
                 planned: (slot["plannedSets"] as? [[String: Any]])?.count ?? 0
@@ -120,7 +130,11 @@ public func deriveRestLabels(
 
     let order = Array((here + 1)..<slots.count) + Array(0..<here)
     for index in order where !slots[index].isDone {
-        return WatchRestLabels(now: now, next: "\(prefix)\(slots[index].nextLabel)")
+        return WatchRestLabels(
+            now: now,
+            next: "\(prefix)\(slots[index].nextLabel)",
+            nextSlotId: slots[index].slotId
+        )
     }
     return WatchRestLabels(now: now, next: WatchRestLabelCopy.nothingNext)
 }

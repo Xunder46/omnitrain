@@ -10,8 +10,8 @@
 //  the time the swipe settles.
 //
 //  The pager's rules are held here rather than in the watchOS-only view, so the
-//  desktop toolchain can assert them: the view that mounts a `TabView` over this
-//  model is compiled only by the watch app target.
+//  desktop toolchain can assert them: the view that mounts the loggers over
+//  this model is compiled only by the watch app target.
 //
 //  The harness below is a private copy of `WatchMenuHarness`
 //  (`WatchMenuTests.swift`) with one addition: the engine's `onEmit` capture,
@@ -456,5 +456,66 @@ final class WatchPagerModelTests: XCTestCase {
         XCTAssertEqual(model.currentIndex, 1, "S-6608 the session did not move")
         XCTAssertEqual(harness.engine.session?.currentExerciseIndex, 1)
         XCTAssertEqual(model.pageLabel, "2/2", "S-6608 the counter reads the ladder that is left")
+    }
+
+    // MARK: - S-9110 the page a swipe reaches
+
+    func testS9110NeighbourIndexNamesTheAdjacentPageWithoutWrapping() async throws {
+        let harness = await PagerHarness().launch()
+        await harness.fixtureA()
+        let model = WatchPagerModel(menu: harness.menu, clock: harness.clock.call)
+        XCTAssertTrue(model.showsPager, "S-9110 the fixture shows the pager")
+        XCTAssertEqual(model.currentIndex, 1, "S-9110 the fixture sits on Bench Press")
+
+        XCTAssertEqual(
+            model.neighbourIndex(of: 1, towardsNext: true), 2,
+            "S-9110 a swipe towards next from the middle reaches the last page"
+        )
+        XCTAssertEqual(
+            model.neighbourIndex(of: 1, towardsNext: false), 0,
+            "S-9110 a swipe towards previous reaches the first page"
+        )
+        XCTAssertNil(
+            model.neighbourIndex(of: 2, towardsNext: true),
+            "S-9110 there is no page after the last: the pager does not wrap"
+        )
+        XCTAssertNil(
+            model.neighbourIndex(of: 0, towardsNext: false),
+            "S-9110 there is no page before the first either"
+        )
+
+        let locked = await PagerHarness().launch()
+        await startAWorkClock(locked)
+        XCTAssertEqual(
+            locked.engine.timerFor(WatchTimerKind.elapsed)?.state,
+            WatchTimerState.running,
+            "S-9110 the locked fixture is running an elapsed work clock, so the lock case is the one exercised"
+        )
+        let lockedModel = WatchPagerModel(menu: locked.menu, clock: locked.clock.call)
+        XCTAssertTrue(lockedModel.isLocked, "S-9110 the menu is locked")
+        XCTAssertNil(
+            lockedModel.neighbourIndex(of: 1, towardsNext: true),
+            "S-9110 a locked session has no neighbour to swipe to"
+        )
+        XCTAssertNil(
+            lockedModel.neighbourIndex(of: 1, towardsNext: false),
+            "S-9110 nor towards the previous page"
+        )
+
+        let single = await PagerHarness().launch()
+        _ = await single.engine.createSession(
+            modality: nil,
+            exercises: [pagerSlot("solo", "Farmer Carry")]
+        )
+        let onePage = WatchPagerModel(menu: single.menu, clock: single.clock.call)
+        XCTAssertEqual(onePage.pageCount, 1, "S-9110 one exercise is one page")
+        XCTAssertNil(
+            onePage.neighbourIndex(of: 0, towardsNext: true),
+            "S-9110 a session of one has no neighbour to swipe to"
+        )
+        XCTAssertNil(
+            onePage.neighbourIndex(of: 0, towardsNext: false),
+            "S-9110 nor towards the previous page"
+        )
     }
 }
