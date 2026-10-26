@@ -1279,7 +1279,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.textContaining('Sync'), findsOneWidget);
+      expect(find.textContaining('Choose foods'), findsOneWidget);
     });
 
     testWidgets('the watch home offers it with no workout running', (

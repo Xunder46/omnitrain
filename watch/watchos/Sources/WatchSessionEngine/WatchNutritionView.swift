@@ -105,7 +105,7 @@ public struct WatchNutritionView: View {
     public var body: some View {
         VStack(spacing: Self.surfaceInset) {
             if model.foods.isEmpty {
-                Text("No foods yet. Sync with your phone to get them.")
+                Text("No foods yet. On your phone, open Nutrition and tap Choose foods.")
                     .font(.footnote)
                     .multilineTextAlignment(.center)
             } else {

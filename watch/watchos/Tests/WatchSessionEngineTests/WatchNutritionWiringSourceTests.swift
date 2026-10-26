@@ -411,4 +411,24 @@ final class WatchNutritionWiringSourceTests: XCTestCase {
             "S-8318 the menu is handed the host's one model"
         )
     }
+
+    // MARK: - The empty list names the phone's button (plan 78)
+
+    /// S-13120: with nothing synced the wrist tells the user where the list
+    /// is made: the phone's Nutrition screen, whose empty list now offers a
+    /// "Choose foods" button. The old line sent them to "sync", which they
+    /// cannot do before they have chosen anything.
+    func testS13120TheEmptyListNamesTheChooseFoodsButton() throws {
+        let view = try engineSource("WatchNutritionView.swift")
+        XCTAssertTrue(
+            view.contains(
+                "Text(\"No foods yet. On your phone, open Nutrition and tap Choose foods.\")"
+            ),
+            "the empty list must print the Choose foods line"
+        )
+        XCTAssertFalse(
+            view.contains("Sync with your phone to get them"),
+            "the old sync line must be gone"
+        )
+    }
 }
