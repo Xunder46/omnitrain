@@ -19,46 +19,22 @@ All settings apply immediately. There is no save button and no staged draft stat
 
 **File**: `lib/core/constants/omni_theme.dart`
 
-> **Flagged, not owned here (documentation standard §5).** The `AppTheme` enum
-> block and the token-field table below are copied implementation content
-> (§3.5/§3.4). They predate this document's conformance pass and are left as
-> they are rather than silently rewritten: bringing them into conformance is a
-> follow-up, and until then the class and
-> [Design System](design_system.md) are the owners.
-
-### `AppTheme` Enum
-
-```dart
-enum AppTheme {
-  abyssalNeon,
-  forgeEmber,
-  obsidianVolt,
-  voidPulse,
-  crimsonDojo,
-  malachiteCore,
-}
-```
-
 ### Available Themes
 
-Six themes: Abyssal Neon, Forge & Ember, Obsidian Volt, Void Pulse, Crimson Dojo, and Malachite
+The `AppTheme` enum in `lib/core/constants/omni_theme.dart` declares six themes: Abyssal Neon,
+Forge & Ember, Obsidian Volt, Void Pulse, Crimson Dojo, and Malachite
 Core. Their palettes and the reasoning behind each are in [Design System](design_system.md); the
 values themselves live only in `lib/core/constants/omni_theme.dart`.
 
 ### `OmniTheme` Token Resolver
 
-`OmniTheme.colorsForTheme(AppTheme theme)` returns a typed record with these fields:
-
-| Token Field | Purpose |
-|-------------|---------|
-| `backgroundTop` | Top stop of the app gradient |
-| `backgroundBottom` | Bottom stop of the app gradient |
-| `surface` | Surface and sheet background |
-| `primary` | Primary CTA / active accent |
-| `secondary` | Supporting accent |
-| `textMuted` | Secondary and metadata text |
-| `divider` | Dividers and low-emphasis separators |
-| `surfaceBorder` | Subtle surface outline |
+`OmniTheme.colorsForTheme(AppTheme theme)` returns the `OmniThemeColors`
+record defined by the typedef of the same name in
+`lib/core/constants/omni_theme.dart` — one field per token group
+(gradient stops, surface, primary and secondary accents, text tiers,
+divider, surface border, macro chart palette, strip macros, intensity
+ramp). The field list is the typedef's own; read it there rather than
+restating it here.
 
 ### Helper API
 
@@ -96,6 +72,14 @@ defines as whether a session ended on the wrist asks for the rating. The phone
 never pushes it: a change reaches the wrist with the answer to the wrist's next
 sync request. Verified by `test/watch_transport_test.dart` (`S-253`).
 
+**The weight and distance units are the wrist's too.** The Units setting
+(`preferredWeightUnit`: kg or lbs; `preferredDistanceUnit`: km or miles) travels
+as `preferences_down`'s `weightUnit` and `distanceUnit`, so the watch's logging
+screens show and step in the units the phone does. Like the effort rating, a
+change reaches the wrist with its next sync; a wrist that has never synced shows
+kg and km. Verified by `test/watch_sync_request_handler_test.dart` (`S-3903`) and
+`WatchUnitsTests.swift`.
+
 ---
 
 ## Settings Screen
@@ -110,8 +94,8 @@ enumerated here — the list is presentation, and prose enumeration of it drifts
 
 ### Sections
 
-The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, and the
-platform-health sync toggles. Two
+The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, the
+platform-health sync toggles, and the watch's link status. Two
 rules matter beyond the row list:
 
 - **Height is stored canonically in centimetres regardless of the display unit.** Switching the
@@ -120,6 +104,14 @@ rules matter beyond the row list:
   one measurement with a compound display form.
 - **Sound choices preview immediately on tap** through `TimerAlertService.playPreview`, and audio
   playback no-ops safely on web rather than throwing.
+
+The APPLE WATCH section is the one read-only status readout, built only when the platform's
+transport can report a link: one `Apple Watch` row, not tappable, with the link phase on the
+right — `Connected`, `Not reachable`, `Not paired` or `Watch app not installed` — and the
+last-synced line under the label (`Never synced` until the phone first hears a frame). Verified
+by `test/settings_watch_status_test.dart` (S-6910 no section without a link state; S-6911 the
+row per phase; S-6912 the row offers no tap target; S-6913 the section sits between WORKOUT and
+HEALTH; S-6914 a heard frame updates the line while the screen is open).
 
 ### Version Footer
 

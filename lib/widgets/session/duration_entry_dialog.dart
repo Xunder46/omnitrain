@@ -8,11 +8,15 @@ import '../inputs/numeric_field_with_done_bar.dart';
 /// Returns the confirmed duration in whole seconds, or null if dismissed
 /// without confirming. There is NO Cancel button; tapping outside the dialog
 /// barrier dismisses without applying.
+///
+/// [maxSecs]: when given, the confirmed duration is clamped to it; callers
+/// whose value has a ceiling pass it.
 Future<int?> showDurationEntryDialog(
   BuildContext context, {
   String title = 'Edit Duration',
   String subtitle = '',
   required int initialSecs,
+  int? maxSecs,
 }) async {
   final h = initialSecs ~/ 3600;
   final m = (initialSecs % 3600) ~/ 60;
@@ -92,7 +96,11 @@ Future<int?> showDurationEntryDialog(
             final hVal = int.tryParse(hhCtrl.text.trim()) ?? 0;
             final mVal = int.tryParse(mmCtrl.text.trim()) ?? 0;
             final sVal = int.tryParse(ssCtrl.text.trim()) ?? 0;
-            Navigator.pop(context, hVal * 3600 + mVal * 60 + sVal);
+            final total = hVal * 3600 + mVal * 60 + sVal;
+            Navigator.pop(
+              context,
+              maxSecs == null ? total : total.clamp(0, maxSecs),
+            );
           },
           style: ButtonStyle(
             shape: WidgetStateProperty.all(

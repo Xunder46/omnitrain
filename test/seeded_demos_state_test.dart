@@ -32,7 +32,7 @@ class _RoutinesFakeCatalogSource implements CatalogSource {
   List<MuscleGroup> get muscleGroups => SeedData.sampleMuscleGroups;
 
   @override
-  final Map<String, List<String>> exerciseMuscleGroups;
+  final Map<String, List<ExerciseMuscleLink>> exerciseMuscleGroups;
 
   @override
   final List<Food> foodCatalog;
@@ -46,7 +46,7 @@ CatalogSource _bundledSource() {
     version: bundledCatalogVersion,
     exercises: SeedData.sampleExercises,
     exerciseCapabilities: SeedData.exerciseCapabilityRelationships,
-    exerciseMuscleGroups: SeedData.exerciseMuscleGroupRelationships,
+    exerciseMuscleGroups: SeedData.exerciseMuscleLinks,
     foodCatalog: FoodCatalogSeed.sampleCatalogFoods,
     routineTemplates: SeedData.sampleDemoRoutineBundles,
   );

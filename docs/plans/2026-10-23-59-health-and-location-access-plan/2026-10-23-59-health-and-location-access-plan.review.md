@@ -1,0 +1,26 @@
+APPROVE
+# Review: plan 59 (Health/Location access up front and visible denial) · P1-P3 · 83c933a8..working tree
+Counts: blocker 0 · major 0 · minor 0 · tests: 846 passed / 0 failed (`swift-test`, this run, 2026-10-23 12:10; the brief's 846/0 was pre-fix-round, this run is after it and the count is unchanged)
+Diff vs Predicted Files: conforms. Outside the plan's list, all explained: `WatchPlatformWorkout.swift` and `WatchWorkoutTypeFromExercisesTests.swift` (plan 58, already reviewed, out of scope per brief); `WatchGpsByExerciseTests.swift` and `WatchSensorRecordingTests.swift` (plan 58's activity-type expectations, "other" → "running"/"traditionalStrengthTraining"); `WatchSensorSourceSourceTests.swift` (+S-8812, plan 58's active-energy guard). No Dart file changed, so no UI-standards scan or allowlist entry is implicated; the diff adds only `Text` rows styled `.secondary`, no button, no colour literal.
+
+## Findings
+None. D-1..D-7 are in the tree as written: the recorder stores both answers before the guard and `stop()` clears them (WatchSensorRecording.swift:173, 199-200, 217); `sensorNotices` is heart-rate-first and gates the distance line on the current slot's capabilities (WatchLoggingState.swift:317-325, `capabilities` is the focused-or-current slot's, the same slot the rest of the state reads); `WatchGpsPolicy.coversDistance(_:)` exists and is exactly "capabilities contain `distanceCapability`" (WatchGpsPolicy.swift:193-195), so D-2's wording and the code agree; `WatchHealthAccess.answer` and both copy enums match D-3; the model forwards and the view renders (WatchLoggingModel.swift:139, WatchLoggingView.swift:199-206); `requestAccess` joins the memoised request (HealthKitWorkoutStore.swift:240-244, 260-277); the host asks on the Start screen's `.task` (ContentView.swift:368-369, 436) and the Start line renders only for `.off` (WatchStartView.swift:206-211).
+
+## Assumption Log rulings
+Neither plan carries an Assumption Log section, so there are no entries to rule and none were created. No plan-text deviation found in 59.
+
+## Scenario coverage
+S-8901 -> WatchSensorAccessNoticeTests · testS8901HeartRateAccessIsNilBeforeStartAndTheAnswerAfter
+S-8902 -> … · testS8902StopReturnsBothAccessesToNil
+S-8903 -> … · testS8903ADeniedLocationOnADistanceSessionIsRemembered · testS8903ALiftSessionNeverAsksSoTheAnswerStaysNil
+S-8904 -> … · testS8904ADeniedHeartRateBecomesTheNoticeLine · testS8904AGrantedHeartRateSaysNothing · testS8904TheHeartRateNoticeTextIsExact
+S-8905 -> … · testS8905TheDistanceNoticeShowsOnTheRunAndNotOnTheLift · testS8905BothRefusalsReadHeartRateFirstThenDistance · testS8905TheDistanceNoticeTextIsExact
+S-8906 -> … · testS8906NoSensorsMeansNoNotices · testS8906AnUnavailablePermissionSaysNothing
+S-8907 -> … · testS8907TheAnswerFollowsAvailabilityAndGrant · testS8907TheStartScreenLineTextIsExact
+S-8908 -> WatchHealthAccessWiringSourceTests · testS8908StoreHasRequestAccessAnsweringWhatTheWristCanRead · testS8908HostAsksWhenTheStartScreenShows · testS8908StartViewSaysHealthAccessIsOff · testS8908LoggingViewShowsSensorNotices
+Every scenario has a test that would fail without the change (each asserts a property or source statement the diff introduces).
+
+## The brief's questions
+- Q1 (can the Health sheet still rise mid-workout?): No, other than the documented relaunch case. The sheet can only rise on the process's first `resolveAuthorization` (HealthKitWorkoutStore.swift:260); `authorization` is memoised and never reset (:276), so every later call — including every re-appearance of the Start screen and its `.task` (ContentView.swift:436) — returns the cached answer. The only other first-call path is the `$revision` sink (ContentView.swift:249) → `workout.refresh` → `begin` → `resolveAuthorization`, which fires on `restore()`'s revision bump (ContentView.swift:276-286) — exactly the relaunch-straight-into-a-live-session case the plan excepts, where no Start screen is shown.
+- Q2 (can a late permission answer land after `stop()` and go stale?): No. `recorder.stop()` is called only from `WatchSensorCoordinator.apply` (WatchSensorCoordinator.swift:64, 79), and `apply` runs on the coordinator's serial tail with `recorder.start(session)` awaited inside it (:71) — a stop's `apply` is enqueued behind a completed start, so the answer is written (WatchSensorRecording.swift:173, 217) before any stop can clear it. The only reader-visible window is a brief nil between a session's start and the answer, which shows nothing (nil ≠ `.denied`). A lift after a denied run is safe too: `stop()` cleared the value and the lift's notice is masked by `coversDistance(capabilities)` (WatchLoggingState.swift:322).
+- Q5 (docs vs code, 59): every claim checked holds. `watch_sensors.md`'s "Start screen asks the first time it shows / relaunch still asks at the first workout open" matches ContentView.swift:436 + HealthKitWorkoutStore.swift:260; the off-line texts match the copy enums; the read-permission limit sentence matches `answer`'s workout-share basis; the QA amendments (step 23's declined screens, step 24's "already asked on the Start screen", new step 26) match the code, and every test the docs name exists (grepped, including the plan-58 S-88xx group).

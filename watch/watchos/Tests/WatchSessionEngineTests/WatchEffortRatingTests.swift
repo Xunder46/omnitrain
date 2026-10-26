@@ -211,6 +211,10 @@ final class SuspendingStore: WatchSessionStore {
         await inner.pruneSensorSamples(sessionIds)
     }
 
+    func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+        await inner.pruneExerciseBatches(keepingVersion: keepingVersion)
+    }
+
     /// Consumes the arm and marks the store suspended, if it was armed.
     private func beginAppend() -> Bool {
         lock.lock()
@@ -467,6 +471,118 @@ final class WatchEffortRatingTests: XCTestCase {
         XCTAssertEqual(ends.first?["endedAt"] as? String, "2026-09-25T10:30:00.000Z", "S-217 the snapshot's sentAt")
     }
 
+    // MARK: - S-4310 / S-4311 the phone answered first
+
+    /// The phone's snapshot of the wrist's own session, carrying the wrist's
+    /// logged entry plus the phone's `effort_rating` under the wrist's id.
+    private func phoneRatingSnapshot(
+        sessionId: String,
+        entry: [String: Any],
+        sentAt: String
+    ) -> [String: Any] {
+        [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": "msg-phone-snap-rating-\(sessionId)",
+            "sessionId": sessionId,
+            "type": "session_snapshot",
+            "origin": "phone",
+            "sentAt": sentAt,
+            "payload": [
+                "sessionId": sessionId,
+                "revision": 0,
+                "status": WatchSessionStatus.completed,
+                "currentExerciseIndex": 0,
+                "exercises": [exercise("sx-bench")],
+                "entries": [
+                    entry,
+                    [
+                        "entryId": "rating-\(sessionId)",
+                        "eventId": "rating-\(sessionId)",
+                        "kind": "effort_rating",
+                        "loggedAt": "2026-09-25T10:11:30.000Z",
+                        "rating": 3,
+                    ] as [String: Any],
+                ],
+                "timers": [String: Any](),
+            ] as [String: Any],
+        ]
+    }
+
+    func testS4310ThePhonesRatingInASnapshotClosesTheOwedQuestion() async throws {
+        let wrist = await RatingHarness(sessionIds: ["s-r-4"]).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        try await wrist.loggedSession(
+            start: "2026-09-25T10:00:00Z",
+            set: "e-1",
+            logged: "2026-09-25T10:05:00Z",
+            end: "2026-09-25T10:10:00Z"
+        )
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-4310 the wrist's End owes the question")
+
+        let logged = try XCTUnwrap(wrist.engine.entries.first?.payload)
+        let snapshot = phoneRatingSnapshot(
+            sessionId: "s-r-4",
+            entry: logged,
+            sentAt: "2026-09-25T10:12:00Z"
+        )
+
+        // The state forwards the engine's change on the main queue (42b fix 1),
+        // so the publication arrives after `applyMessage` returns.
+        let notified = expectation(description: "S-4310 the open prompt is told to redraw")
+        notified.assertForOverFulfill = false
+        var cancellables: Set<AnyCancellable> = []
+        wrist.rating.objectWillChange
+            .sink { _ in notified.fulfill() }
+            .store(in: &cancellables)
+
+        wrist.clock.now = instant("2026-09-25T10:12:30Z")
+        _ = try await wrist.engine.applyMessage(snapshot)
+        await fulfillment(of: [notified], timeout: 2)
+        withExtendedLifetime(cancellables) {}
+
+        XCTAssertFalse(wrist.rating.isPromptOwed, "S-4310 the phone's rating closes the question")
+        XCTAssertTrue(wrist.rating.owedSessionIds.isEmpty, "S-4310 nothing is owed")
+        wrist.rating.select(5)
+        XCTAssertFalse(wrist.rating.canConfirm, "S-4310 there is nothing left to confirm")
+        let late = try await wrist.rating.confirm()
+        XCTAssertNil(late, "S-4310 a late answer records nothing")
+        let direct = try await wrist.engine.recordEffortRating(5, sessionId: "s-r-4")
+        XCTAssertNil(direct, "S-4310 nor does the engine's own append path")
+        XCTAssertTrue(wrist.events("effort_rating").isEmpty, "S-4310 the wrist emitted no rating of its own")
+    }
+
+    func testS4311ThePhonesRatingIsNotUploadedBackAsAnEffortRating() async throws {
+        let wrist = await RatingHarness(sessionIds: ["s-r-4"]).launch()
+        await wrist.sync(true, generatedAt: "2026-09-25T09:00:00Z")
+        try await wrist.loggedSession(
+            start: "2026-09-25T10:00:00Z",
+            set: "e-1",
+            logged: "2026-09-25T10:05:00Z",
+            end: "2026-09-25T10:10:00Z"
+        )
+        XCTAssertTrue(wrist.rating.isPromptOwed, "S-4311 the wrist's End owes the question")
+
+        let logged = try XCTUnwrap(wrist.engine.entries.first?.payload)
+        let snapshot = phoneRatingSnapshot(
+            sessionId: "s-r-4",
+            entry: logged,
+            sentAt: "2026-09-25T10:12:00Z"
+        )
+        wrist.clock.now = instant("2026-09-25T10:12:30Z")
+        _ = try await wrist.engine.applyMessage(snapshot)
+
+        let pendingIds = wrist.engine.pendingObservations().flatMap { envelope -> [String] in
+            let events = ((envelope["payload"] as? [String: Any])?["events"] as? [[String: Any]]) ?? []
+            return events.flatMap { event in
+                [event["entryId"] as? String, event["eventId"] as? String].compactMap { $0 }
+            }
+        }
+        XCTAssertFalse(
+            pendingIds.contains("rating-s-r-4"),
+            "S-4311 the phone's rating is not owed back up: the phone's own number stands"
+        )
+    }
+
     // MARK: - S-218 the wrist never changes a rating
 
     func testS218TheWristNeverChangesARating() async throws {
@@ -717,10 +833,11 @@ final class WatchEffortRatingTests: XCTestCase {
         )
     }
 
-    /// D-118: once shown, the prompt must be answered. A name or a button that
-    /// offers another way out is a build failure here, not a review comment.
+    /// D-118, amended by plan 66a (D-3): once shown, the prompt has two ways
+    /// out — an answer, or Skip, which records nothing. Any other way out is a
+    /// build failure here, not a review comment.
     func testTheRatingOffersNoWayOutButAnAnswer() throws {
-        let banned = ["skip", "dismiss", "cancel", "close", "later", "not now"]
+        let banned = ["dismiss", "cancel", "close", "later", "not now"]
         let declaration = try NSRegularExpression(pattern: "\\b(?:func|var|let|case)\\s+`?(\\w+)")
         let buttonTitle = try NSRegularExpression(pattern: "Button\\(\\s*\"([^\"]*)\"")
         let buttonLabel = try NSRegularExpression(pattern: "label:\\s*\\{\\s*Text\\(\\s*\"([^\"]*)\"")
@@ -757,5 +874,54 @@ final class WatchEffortRatingTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(labelsSeen, 0, "the scan found no button labels — it is not looking")
+    }
+
+    /// Plan 66a (D-3): Skip is allowed, but only under its two names — the
+    /// state's `skipPrompt` and the copy's `skipLabel` (the view's
+    /// `skipButton` arrives in P3). Any other skip-like name or button label
+    /// in the state or view files is a build failure here.
+    func testSkipAppearsOnlyUnderItsTwoNames() throws {
+        let declaration = try NSRegularExpression(pattern: "\\b(?:func|var|let|case)\\s+`?(\\w+)")
+        let buttonTitle = try NSRegularExpression(pattern: "Button\\(\\s*\"([^\"]*)\"")
+        let buttonLabel = try NSRegularExpression(pattern: "label:\\s*\\{\\s*Text\\(\\s*\"([^\"]*)\"")
+        let allowed = ["skipprompt", "skiplabel", "skipbutton"]
+
+        func captures(_ pattern: NSRegularExpression, in source: String) -> [String] {
+            let range = NSRange(source.startIndex..<source.endIndex, in: source)
+            return pattern.matches(in: source, range: range).compactMap { match in
+                Range(match.range(at: 1), in: source).map { String(source[$0]) }
+            }
+        }
+
+        var skipNamesSeen = 0
+        for file in ["WatchEffortRating.swift", "WatchEffortRatingView.swift"] {
+            let source = try String(
+                contentsOf: Fixtures.sourcesRoot.appendingPathComponent(file),
+                encoding: .utf8
+            )
+            let names = captures(declaration, in: source)
+            let labels = captures(buttonTitle, in: source) + captures(buttonLabel, in: source)
+
+            for name in names where name.lowercased().hasPrefix("skip") {
+                skipNamesSeen += 1
+                XCTAssertTrue(
+                    allowed.contains(name.lowercased()),
+                    "S-9614 \(file) declares `\(name)`: Skip goes only by "
+                        + "skipPrompt, skipLabel or skipButton (plan 66a D-3)"
+                )
+            }
+            for label in labels where label.lowercased().hasPrefix("skip") {
+                skipNamesSeen += 1
+                XCTAssertTrue(
+                    allowed.contains(label.lowercased()),
+                    "S-9614 \(file) has a \"\(label)\" button: Skip goes only by "
+                        + "skipPrompt, skipLabel or skipButton (plan 66a D-3)"
+                )
+            }
+        }
+        XCTAssertGreaterThan(
+            skipNamesSeen, 0,
+            "the scan found no skip-like name — it is not looking"
+        )
     }
 }

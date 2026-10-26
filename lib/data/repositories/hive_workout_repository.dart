@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
+import '../models/muscle_taxonomy.dart';
 import '../datasources/food_catalog_loader.dart';
 import '../../mock/seed_data.dart';
 import '../../core/constants/data_version.dart';
@@ -171,6 +174,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   bool _initialized = false;
 
+  /// Bumped by one Hive box listener per reference-data box (plan 74, D-3).
+  /// Only ever compared for equality; never interpreted.
+  int _referenceRevision = 0;
+  final List<StreamSubscription<BoxEvent>> _revisionListeners = [];
+
   @override
   Future<void> initialize() async {
     if (_initialized) return;
@@ -241,9 +249,36 @@ class HiveWorkoutRepository implements WorkoutRepository {
     // any legacy one-shot markers to a starting version on the first
     // launch under the new system, so existing installs do not re-run
     // already-applied steps.
+    _listenForReferenceWrites();
     await _runDataMigrations();
 
     _initialized = true;
+  }
+
+  /// Point one listener at each reference-data box, so [referenceRevision]
+  /// moves on any write to a food, routine or exercise row (plan 74, D-3).
+  /// Listeners left by an earlier [initialize] are cancelled first, so a
+  /// second call over the same storage does not stack them.
+  void _listenForReferenceWrites() {
+    for (final listener in _revisionListeners) {
+      listener.cancel();
+    }
+    _revisionListeners.clear();
+
+    final boxes = <Box<dynamic>>[
+      _exercisesBox,
+      _exerciseCapabilitiesBox,
+      _templatesBox,
+      _templateSegmentsBox,
+      _templateEffortsBox,
+      _templateTargetsBox,
+      _foodGroupsBox,
+      _foodsBox,
+      _foodCatalogBox,
+    ];
+    for (final box in boxes) {
+      _revisionListeners.add(box.watch().listen((_) => _referenceRevision++));
+    }
   }
 
   /// Run the consolidated data-migration sequence once on startup. Each
@@ -321,6 +356,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
         15,
         'clampInvertedSessionWindows',
         () => repo._clampInvertedSessionWindows(),
+      ),
+      _MethodStep(
+        16,
+        'muscleLinkRoles',
+        () => repo._migrateMuscleLinkRoles(),
       ),
     ];
   }
@@ -518,6 +558,29 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
   }
 
+  /// Rewrites every stored link row into the role-aware shape (D-9).
+  ///
+  /// Iterates the link store's keys, not the exercise list, so an archived
+  /// exercise's links are cleaned too. The reader accepts the legacy
+  /// `List<String>` shape as primary links, so a pre-16 row is upgraded here.
+  /// A row that cannot be read (an unknown role, or a non-String id) or whose
+  /// links fail [MuscleTaxonomy.normalize] — an id in both roles, or a
+  /// secondary-only row — is left exactly as it is: throwing would stop the
+  /// step, which is retried on every launch. No other box is touched.
+  Future<void> _migrateMuscleLinkRoles() async {
+    for (final key in _exerciseMuscleGroupsBox.keys.toList()) {
+      final exerciseId = key as String;
+      final List<ExerciseMuscleLink> links;
+      try {
+        links = _exerciseMuscleLinks(exerciseId);
+        MuscleTaxonomy.normalize(links);
+      } catch (_) {
+        continue;
+      }
+      await setExerciseMuscleLinks(exerciseId, links);
+    }
+  }
+
   Future<void> _seedData() async {
     await _sportCategoriesBox.putAll({
       for (final category in SeedData.sampleSportCategories)
@@ -571,8 +634,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
     });
 
     await _exerciseMuscleGroupsBox.putAll({
-      for (final entry in SeedData.exerciseMuscleGroupRelationships.entries)
-        entry.key: List<String>.from(entry.value),
+      for (final entry in SeedData.exerciseMuscleLinks.entries)
+        entry.key: [for (final link in entry.value) link.toMap()],
     });
 
     await _exerciseEquipmentBox.putAll({
@@ -762,8 +825,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
     });
 
     await _exerciseMuscleGroupsBox.putAll({
-      for (final entry in SeedData.exerciseMuscleGroupRelationships.entries)
-        entry.key: List<String>.from(entry.value),
+      for (final entry in SeedData.exerciseMuscleLinks.entries)
+        entry.key: [for (final link in entry.value) link.toMap()],
     });
 
     await _exerciseEquipmentBox.putAll({
@@ -869,10 +932,10 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
     if (muscleGroupIds != null && muscleGroupIds.isNotEmpty) {
       results = results.where((e) {
-        final exerciseMuscles = _asStringList(
-          _exerciseMuscleGroupsBox.get(e.id),
+        final exerciseMuscles = _exerciseMuscleLinks(e.id);
+        return muscleGroupIds.any(
+          (id) => MuscleTaxonomy.matches(id, exerciseMuscles),
         );
-        return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
       });
     }
 
@@ -1672,27 +1735,41 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _muscleGroupsBox.put(group.id, group.toMap());
   }
 
-  @override
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
-    final muscleGroupIds = _asStringList(
-      _exerciseMuscleGroupsBox.get(exerciseId),
-    );
-    return muscleGroupIds
-        .map((id) => _muscleGroupsBox.get(id))
-        .whereType<Map>()
-        .map((raw) => MuscleGroup.fromMap(_asStringMap(raw)))
-        .toList();
+  /// Reads the links stored for [exerciseId] in stored order.
+  ///
+  /// The box value may be absent, a legacy `List` of muscle group ids (read as
+  /// primary links) or a `List` of `ExerciseMuscleLink` maps; the reader
+  /// branches per element and normalises nothing.
+  List<ExerciseMuscleLink> _exerciseMuscleLinks(String exerciseId) {
+    final raw = _exerciseMuscleGroupsBox.get(exerciseId);
+    if (raw == null) return const [];
+    return [
+      for (final element in raw)
+        if (element is String)
+          ExerciseMuscleLink(
+            muscleGroupId: element,
+            role: MuscleRole.primary,
+          )
+        else if (element is Map)
+          ExerciseMuscleLink.fromMap(_asStringMap(element)),
+    ];
   }
 
   @override
-  Future<void> setExerciseMuscleGroups(
+  Future<List<ExerciseMuscleLink>> getExerciseMuscleLinks(
     String exerciseId,
-    List<String> muscleGroupIds,
   ) async {
-    await _exerciseMuscleGroupsBox.put(
-      exerciseId,
-      List<String>.from(muscleGroupIds),
-    );
+    return _exerciseMuscleLinks(exerciseId);
+  }
+
+  @override
+  Future<void> setExerciseMuscleLinks(
+    String exerciseId,
+    List<ExerciseMuscleLink> links,
+  ) async {
+    await _exerciseMuscleGroupsBox.put(exerciseId, [
+      for (final link in MuscleTaxonomy.normalize(links)) link.toMap(),
+    ]);
   }
 
   // ===== EQUIPMENT =====
@@ -1823,10 +1900,10 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
     if (muscleGroupIds != null && muscleGroupIds.isNotEmpty) {
       results = results.where((e) {
-        final exerciseMuscles = _asStringList(
-          _exerciseMuscleGroupsBox.get(e.id),
+        final exerciseMuscles = _exerciseMuscleLinks(e.id);
+        return muscleGroupIds.any(
+          (id) => MuscleTaxonomy.matches(id, exerciseMuscles),
         );
-        return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
       });
     }
 
@@ -2465,6 +2542,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
     if (raw is int) return raw;
     return defaultValue;
   }
+
+  @override
+  int? get referenceRevision => _referenceRevision;
 
   @override
   Future<void> setDataVersion(int version) async {

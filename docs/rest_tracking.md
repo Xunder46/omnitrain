@@ -8,7 +8,8 @@ OmniTrain uses **wall-clock-persisted rest records** to track recovery time betw
 
 ## The rule: rest is a count-up
 
-Rest is a count-up from the moment a set is logged to the moment the next set starts. There is no
+Rest is a count-up from the moment an effort (a set, a timed entry, a hold or a period) is logged to
+the moment the next one starts. There is no
 preset rest length, no rest countdown and no end-of-rest alarm on any device
 ([Global Conventions](global_conventions.md), "Rest rule: rest is a count-up";
 `docs/plans/2026-10-08-18b-watch-rest-count-up-plan`, D-160). A routine's stored `restSeconds` is a
@@ -72,6 +73,56 @@ Future<void>            deleteEntryRestsForEffort(String effortId);
 
 `deleteEntryRestsForEffort` is called inside `deleteEffort()` in both `HiveWorkoutRepository` and `MockWorkoutRepository` so cleanup is automatic.
 
+### Rests are positional, and a delete moves them
+
+A rest's `entryIndex` is a **position**, not a set number: a rest at index *k*
+marks the set at position *k* − 1 logged. The session screen's `_isSetLogged`,
+the `recordRestStart` a log fires, the watch importer and the delete re-key all
+read it that way.
+
+Deleting an entry takes its rest with it: `WorkoutState.deleteEntry` calls
+`TimerManager.rekeyEntryRestsAfterDelete(effortId, deletedIndex)`
+(`lib/state/workout/timer_manager.dart`), which removes the rest at
+`deletedIndex + 1` — the mark that the deleted set was logged — and moves every
+rest above it down one, keeping the id shape `rest-<effortId>-<index>` and each
+rest's times and open/paused state. A set added afterwards is therefore a new
+unlogged set, and the rest history of the deleted set disappears with it.
+
+The watch importer writes under the same rule. Every rest it writes — the one
+a wrist set's arrival opens and the one the wrist's `rest` report closes — is
+keyed on the set's position + 1, never on the number the set's rows carry, so
+a hole a phone delete left in the row numbers does not displace it. When the
+phone user deletes a watch-logged set and its rows are still in the store when
+the import pass runs, the importer re-keys the effort's rests with the same pure
+rule the phone's own delete uses (when the phone's own delete already removed
+the rows and re-keyed, the importer finds no rows and leaves the rests alone), `EntryRows.restsAfterDelete` (`lib/core/utils/entry_rows.dart`), which
+`TimerManager.rekeyEntryRestsAfterDelete` also calls.
+
+Verified by `test/entry_delete_rests_test.dart` (group
+`${harness.name} — deleteEntry takes the rest with the entry` ·
+`S-4301 deleting the last set takes its rest, so a new set reads unlogged`,
+`S-4302 deleting the first set moves every rest down with the sets it keeps`,
+`S-4303 deleting a middle set drops its own rest and moves the rest above it
+down`, `S-4304 timed: the rest of the deleted interval closes over it`,
+`S-4304 round: the rest of the deleted round closes over it`).
+
+The importer's side is verified by `test/watch_session_merge_test.dart`
+(group `S-4501..S-4507 a rest is keyed on the POSITION`, run under Mock and
+Hive · `S-4501 after the phone deleted a middle set the wrist's set opens its
+rest at its POSITION + 1, not the row number + 1`, `S-4502a the wrist's late
+rest report closes the rest the appended set opened`, `S-4502b the same, with
+the set and its report in one message`, `S-4503 a wrist set after the phone's
+delete fills the first unlogged POSITION and opens its rest there`,
+`S-4504 a fill below an open rest leaves that rest running`, `S-4505 the
+phone's delete of a wrist set re-keys the rests the merge wrote`, `S-4506 the
+delete re-keys by position where the numbers and the positions disagree`,
+`S-4507 the delete of the only wrist set takes its rest with it, once per
+change`, `S-4509 a retry of the pass that wrote the appended set opens no second
+rest, and leaves the one it left closed`, `S-4510 the delete of a wrist set
+appended after a hole re-keys the effort's rests by POSITION`, `S-4511 two wrist
+sets in one message fill two POSITIONS, not the same one twice`), and the shared
+rule itself by `test/entry_rows_test.dart` (group `S-4508 restsAfterDelete`).
+
 ### Hive Implementation
 
 - Box name: `'entry_rests'`
@@ -102,7 +153,7 @@ Populated during `loadSessionData()` and `loadHistoricalSession()` alongside obs
 | Method | Signature | Purpose |
 |--------|-----------|---------|
 | `getEntryRests` | `(String effortId) → List<EntryRest>` | Returns unmodifiable list of rest records for an effort |
-| `recordRestStart` | `(String effortId, int entryIndex) → Future<void>` | Creates rest record with current epoch time as `restStartMs`; called after a set is logged |
+| `recordRestStart` | `(String effortId, int entryIndex) → Future<void>` | Creates rest record with current epoch time as `restStartMs`; called after an entry is logged |
 | `recordRestEnd` | `(String effortId, int entryIndex) → Future<void>` | Updates `restEndMs` on the open rest record; called when the athlete starts the next set/round |
 | `pauseRest` | `(String effortId, int entryIndex) → Future<void>` | PR 4: Sets `restIsPaused = true` and stamps `restPausedAtMs = now`. No-op when the rest is already paused or closed. |
 | `resumeRest` | `(String effortId, int entryIndex) → Future<void>` | PR 4: Accumulates the paused interval (`now - restPausedAtMs`) into `restPausedDurationMs` and clears `restIsPaused`. No-op when the rest is already running or closed. |
@@ -196,15 +247,31 @@ Verified by:
   stability`, `… cross-surface parity`, `… viewport overflow
   sweep`) — the docked placement satisfies the no-overlap,
   scroll-stability, and cross-surface-parity invariants.
+- `test/timer_digits_hours_test.dart` (group `Timer digits past an
+  hour — rest chip (S-4703)` · `S-4703: a rest open 4535 s reads
+  1:15:35`, `S-4703: a rest open 75 s reads 01:15`) — the chip's
+  digit format.
 
 The chip itself is unchanged from the previous floating
 implementation: it is tappable across its whole tile, distinguishes
 its states without requiring the user to read the number, and
 keeps an identical bounding rect across running and paused
-states. The strip's empty area around the chip absorbs taps via
+states. Its elapsed count reads `mm:ss` below an hour and `h:mm:ss`
+from it (`OmniDateUtils.formatTimerDigits`). The strip's empty area around the chip absorbs taps via
 a transparent `GestureDetector`, so a tap that lands on the
 padding around the chip does not reach the scrollable beneath;
 the chip's own tap-to-pause/resume handler is unaffected.
+
+The chip's two states (plan 44 D-2): running shows a pause icon on the
+theme's tonal container fill; paused shows a play icon on the muted surface
+fill; the icon and the digits are the theme's primary in both states, and the
+screen-reader label reads `Pause rest` while running and `Resume rest` while
+paused. Verified by `test/logger_feedback_controls_test.dart` (group
+`Forward arrow and rest chip (plan 44 T2a)` · `S-5114: the rest chip shows
+pause while running and play while paused`, `S-5114: the chip foreground
+clears 3:1 on both fills on every theme`, `S-5115: the rest chip keeps its
+running look on the standard list view`, `S-5115: the rest chip keeps its
+running look on the rolling list view`).
 
 Pause/resume behaviour:
 
@@ -235,14 +302,37 @@ the rest elapsed counts up and survives the screen turning off`, `S-162 Next end
 tap instant`, `S-163 logging ends a running rest first`), its Swift twin
 `WatchRestSurfaceTests.testS161TheRestElapsedCountsUpAndSurvivesARelaunch`, and the logging path
 that starts the rest with no length (`test/watch_logging_timers_test.dart`, `S-160 a logged set
-starts a rest with no planned length`).
+starts a rest with no planned length`). Since plan 51b the wrist's rest screen
+also names what was just done and what is next — the set just logged, or the
+next set, exercise or period
+(`watch/watchos/Tests/WatchSessionEngineTests/WatchRestLabelsTests.swift`,
+S-7601..S-7611).
 
-A rest's timer is device-local — no message carries a rest length or a countdown — but the rest
-itself travels: when it ends, the wrist emits a `rest` observation and the phone's importer writes
-it as an `EntryRest` row, so the Session Summary counts it like the phone's own rest (18d
+A rest's timer is device-local: no length or countdown is shared between the devices — only the
+count-up's start and its pause travel — but the rest itself travels both ways while it runs. The
+phone pushes its open rest to the wrist as a `rest`
+timer (`WatchTimerPush`, composed from `WorkoutState.inProgressRest()`; `test/watch_timer_push_test.dart`,
+groups `S-7301` to `S-7312` — a rest with no slot and no planned length, running or paused with its
+pause bookkeeping, and sent as `{rest: null}` when the next set ends it; a wrist rest started within
+half a second of the phone's is the same rest and is not echoed back, and two consecutive rests
+whose sets are logged less than a second apart stay two rests). And when the wrist's rest ends, the
+wrist emits a `rest` observation and the phone's importer writes
+it as an `EntryRest` row — including when the set was logged on the phone, so Next on the watch
+closes the phone's open rest whichever device logged the set
+(`test/watch_session_rest_phone_entries_test.dart`, S-7401..S-7405) — so the Session Summary counts
+it like the phone's own rest (18d
 D-219/D-220, 18c D-215; `test/watch_session_summary_integration_test.dart`, `S-329 a rest the wrist
 sent and a rest the phone counted, over the same window, total the same`; Swift wrist,
 `WatchSessionEngineTests.testS320TheRestTheWristEndsTravelsAsARestEvent`).
+
+Across the two devices, then: a set logged on either device starts the rest on both, counting from
+the moment it was logged; Next on the watch, or the next set on either device, ends it on both;
+pausing the phone's rest chip freezes the watch's rest; and both devices ping per the one Rest Ping
+setting (the ping rule and its settings key: `test/watch_rest_ping_test.dart`, S-241..S-245 and
+S-221..S-224; the wrist's side: `watch/watchos/Tests/WatchSessionEngineTests/WatchRestPingTests.swift`,
+`testS241AnIntervalTapsAtItsMultiplesAndNowhereElse` and `testS242WithTheIntervalOffNothingTaps`). A rest the watch ends cancels the
+phone's scheduled pings, and a rest the watch replaces reschedules them from
+its own start (`test/rest_pings_watch_end_test.dart`, S-7521..S-7524).
 
 ---
 
@@ -275,7 +365,21 @@ As part of the full rest tracking implementation, the `_isSetLogged()` method wa
 
 ## Edit Mode Behavior
 
-Rest records are **never created or mutated during edit mode** (`WorkoutSessionScreen.editMode == true`). The `session_edit_snapshot.dart` does not snapshot rest records because edit mode does not trigger new set logging.
+Rest records follow the same delete and snapshot rules in edit mode as in a
+live session. Deleting an entry re-keys the later rests, and an edit-mode
+delete that is Saved keeps the re-key
+(`test/logger_shell_screen_test.dart`, group `Logger polish — deleting a logged
+set (S-4310, S-4319..S-4321)` · `S-4319: an edit-mode delete that is Saved
+keeps the new rest indexes`).
+
+The edit snapshot carries the rests: `SessionEditSnapshot.entryRests`
+(`lib/core/models/session_edit_snapshot.dart`) is filled by
+`snapshotSessionState` and put back by `restoreSessionSnapshot`
+(`lib/state/workout/session_core_lifecycle.dart`), so cancelling an edit
+session restores the rests a delete changed
+(`test/entry_delete_rests_test.dart`, group
+`${harness.name} — deleteEntry takes the rest with the entry` ·
+`S-4318 an edit-mode delete that is cancelled puts the rests back`).
 
 ---
 

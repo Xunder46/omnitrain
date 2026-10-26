@@ -72,6 +72,18 @@ class SignalsData {
 bool signalsGateMet(MixLayerData? mix) =>
     mix != null && mix.ratedBaselineWeeks >= kTrainingLoadMinRatedWeeks;
 
+/// The line the locked Signals section shows while the gate is unmet (D-4001,
+/// D-4002).
+///
+/// One sentence in the layer's own slot: how many rated weeks the user has, and
+/// how many the gate needs. The count is clamped to the gate, so a payload
+/// below zero or above it reads as the boundary it is, and the number in the
+/// copy is always [kTrainingLoadMinRatedWeeks] — never a literal.
+String signalsLockedLine(int ratedWeeks) =>
+    'Unlocks after $kTrainingLoadMinRatedWeeks weeks of rating your workouts — '
+    '${ratedWeeks.clamp(0, kTrainingLoadMinRatedWeeks)} of '
+    '$kTrainingLoadMinRatedWeeks so far.';
+
 /// Whether the signal dismissed at [dismissedAtMs] is still hidden at [now]
 /// (D-1011, D-1012).
 ///

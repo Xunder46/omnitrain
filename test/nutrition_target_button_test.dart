@@ -35,7 +35,7 @@ Future<void> _pumpNutritionScreen(
   required NutritionState nutritionState,
   required FoodLibraryState foodLibraryState,
 }) async {
-  final primer = await buildNutritionPrimerState(repo);
+  final primer = await buildNutritionPrimerState(repo, seen: true);
   await tester.pumpWidget(
     MaterialApp(
       home: NutritionScreen(

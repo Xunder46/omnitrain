@@ -11,9 +11,11 @@ import '../../state/workout/workout_state.dart';
 import '../../widgets/chart/chart_primitives.dart';
 import '../../widgets/chart/edge_aware_date_label.dart';
 import '../../widgets/chart/scrollable_trend_chart.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import 'widgets/load_failure_view.dart';
 import 'widgets/native_value_format.dart';
 import 'widgets/stats_pill.dart';
 
@@ -46,6 +48,7 @@ class ExerciseProgressScreen extends StatefulWidget {
 
 class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
   bool _isLoading = true;
+  bool _loadFailed = false;
   ExerciseMetricSummary? _summary;
 
   @override
@@ -55,6 +58,11 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() {
+      _loadFailed = false;
+      _isLoading = true;
+    });
     try {
       final service = StatsProgressService(widget.workoutState.repository);
       final summaries = await service.computeExerciseMetrics();
@@ -73,7 +81,10 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
     }
   }
 
@@ -98,6 +109,11 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
           body: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loadFailed
+                ? LoadFailureView(
+                    message: 'Could not load this exercise.',
+                    onRetry: _loadData,
+                  )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     children: summary == null
@@ -393,35 +409,12 @@ class _ExerciseProgressScreenState extends State<ExerciseProgressScreen> {
   }
 
   Widget _buildEmptyState(BuildContext context, OmniThemeColors themeColors) {
-    final theme = Theme.of(context);
-
     return OmniSurface(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 16),
-          Icon(
-            Icons.show_chart,
-            size: 48,
-            color: themeColors.textMuted.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No history for this exercise',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: OmniTheme.colors.textDominant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Log it in a completed session to see its progress here.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: themeColors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
+      child: OmniEmptyState(
+        compact: true,
+        icon: Icons.show_chart,
+        title: 'No history for this exercise',
+        hint: 'Log this exercise in a session to see its history.',
       ),
     );
   }

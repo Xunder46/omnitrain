@@ -9,6 +9,7 @@ import '../../core/models/app_version_info.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
+import '../../state/watch/watch_link_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
@@ -30,6 +31,10 @@ class SettingsScreen extends StatefulWidget {
   final double? userHeightCm; // For testing - directly pass height value
   final AppVersionInfo appVersionInfo;
 
+  /// Where the watch stands, for the APPLE WATCH row (47c D-4). Null without a
+  /// watch graph, and the section is absent.
+  final WatchLinkState? watchLinkState;
+
   SettingsScreen({
     super.key,
     required this.settingsState,
@@ -38,6 +43,7 @@ class SettingsScreen extends StatefulWidget {
     RestNotificationService? restNotificationService,
     this.profileState,
     this.userHeightCm,
+    this.watchLinkState,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
 
@@ -114,131 +120,143 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListenableBuilder(
           listenable: widget.settingsState,
           builder: (context, child) {
-            return ListView(
+            // A plain scroll view, not a lazy ListView: the page is a few
+            // dozen rows, and a lazy list guesses its total length from the
+            // rows it has built. With the tall sections here that guess swung
+            // by thousands of pixels while scrolling, so a fling at the
+            // bottom kept re-aiming and the page jittered.
+            return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                const OmniCardHeader(title: 'PREFERENCES'),
-                _MeasurementsSection(
-                  settingsState: widget.settingsState,
-                  theme: theme,
-                  userHeightCm: _isLoadingHeight ? null : _userHeightCm,
-                ),
-                const SizedBox(height: 24),
-                const OmniCardHeader(title: 'SOUNDS & ALERTS'),
-                _SoundsAlertsSection(
-                  settingsState: widget.settingsState,
-                  timerAlertService: widget.timerAlertService,
-                  restNotificationService: widget.restNotificationService,
-                ),
-                const SizedBox(height: 24),
-                const OmniCardHeader(title: 'WORKOUT'),
-                _WorkoutSection(settingsState: widget.settingsState),
-                const SizedBox(height: 24),
-                const OmniCardHeader(title: 'HEALTH'),
-                _HealthSection(settingsState: widget.settingsState),
-                const SizedBox(height: 24),
-                const OmniCardHeader(title: 'APPEARANCE'),
-                OmniSurface(
-                  padding: const EdgeInsets.all(0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GridView.builder(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
-                        ),
-                        physics: const NeverScrollableScrollPhysics(),
-                        // Ghost-pad odd counts so the last row is never a
-                        // lone tile. When count becomes even after the
-                        // bake-off pruning pass this expression collapses
-                        // to plain length with no visual change needed.
-                        itemCount: AppTheme.values.length.isOdd
-                            ? AppTheme.values.length + 1
-                            : AppTheme.values.length,
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                              childAspectRatio: 2.8,
-                            ),
-                        itemBuilder: (context, index) {
-                          // Ghost slot that balances an odd-count final row.
-                          if (index >= AppTheme.values.length) {
-                            return const SizedBox.shrink();
-                          }
-                          final appTheme = AppTheme.values[index];
-                          final isSelected =
-                              widget.settingsState.appTheme == appTheme;
-
-                          return GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () =>
-                                widget.settingsState.setAppTheme(appTheme),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              curve: Curves.easeInOut,
-                              alignment: Alignment.center,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? theme.colorScheme.surface.withOpacity(
-                                        0.88,
-                                      )
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(
-                                  OmniTheme.buttonUtilityRadius,
-                                ),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurface.withOpacity(
-                                          0.25,
-                                        ),
-                                ),
-                              ),
-                              child: Text(
-                                OmniTheme.displayNameForTheme(appTheme),
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: isSelected
-                                      ? theme.colorScheme.onSurface
-                                      : OmniTheme.colors.textSecondary,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const OmniCardHeader(title: 'PREFERENCES'),
+                  _MeasurementsSection(
+                    settingsState: widget.settingsState,
+                    theme: theme,
+                    userHeightCm: _isLoadingHeight ? null : _userHeightCm,
                   ),
-                ),
-                const SizedBox(height: 24),
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      widget.appVersionInfo.formatVersionLine(),
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: OmniTheme.colors.textMuted,
-                        fontWeight: FontWeight.w500,
+                  const SizedBox(height: 24),
+                  const OmniCardHeader(title: 'SOUNDS & ALERTS'),
+                  _SoundsAlertsSection(
+                    settingsState: widget.settingsState,
+                    timerAlertService: widget.timerAlertService,
+                    restNotificationService: widget.restNotificationService,
+                  ),
+                  const SizedBox(height: 24),
+                  const OmniCardHeader(title: 'WORKOUT'),
+                  _WorkoutSection(settingsState: widget.settingsState),
+                  const SizedBox(height: 24),
+                  if (widget.watchLinkState != null) ...[
+                    const OmniCardHeader(title: 'APPLE WATCH'),
+                    _WatchSection(state: widget.watchLinkState!),
+                    const SizedBox(height: 24),
+                  ],
+                  const OmniCardHeader(title: 'HEALTH'),
+                  _HealthSection(settingsState: widget.settingsState),
+                  const SizedBox(height: 24),
+                  const OmniCardHeader(title: 'APPEARANCE'),
+                  OmniSurface(
+                    padding: const EdgeInsets.all(0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GridView.builder(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
+                          ),
+                          physics: const NeverScrollableScrollPhysics(),
+                          // Ghost-pad odd counts so the last row is never a
+                          // lone tile. When count becomes even after the
+                          // bake-off pruning pass this expression collapses
+                          // to plain length with no visual change needed.
+                          itemCount: AppTheme.values.length.isOdd
+                              ? AppTheme.values.length + 1
+                              : AppTheme.values.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                                childAspectRatio: 2.8,
+                              ),
+                          itemBuilder: (context, index) {
+                            // Ghost slot that balances an odd-count final row.
+                            if (index >= AppTheme.values.length) {
+                              return const SizedBox.shrink();
+                            }
+                            final appTheme = AppTheme.values[index];
+                            final isSelected =
+                                widget.settingsState.appTheme == appTheme;
+
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () =>
+                                  widget.settingsState.setAppTheme(appTheme),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                curve: Curves.easeInOut,
+                                alignment: Alignment.center,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? theme.colorScheme.surface.withOpacity(
+                                          0.88,
+                                        )
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(
+                                    OmniTheme.buttonUtilityRadius,
+                                  ),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface
+                                              .withOpacity(0.25),
+                                  ),
+                                ),
+                                child: Text(
+                                  OmniTheme.displayNameForTheme(appTheme),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: isSelected
+                                        ? theme.colorScheme.onSurface
+                                        : OmniTheme.colors.textSecondary,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        widget.appVersionInfo.formatVersionLine(),
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: OmniTheme.colors.textMuted,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 40),
-              ],
+                  const SizedBox(height: 40),
+                ],
+              ),
             );
           },
         ),
@@ -394,7 +412,8 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
           _SurfaceDivider(theme: theme),
           _SettingsRow(
             label: 'Rest Ping Sound',
-            subtitle: 'Sound for the rest ping, phone only (the watch taps your wrist)',
+            subtitle:
+                'Sound for the rest ping, phone only (the watch taps your wrist)',
             trailing: Text(
               SettingsState.soundDisplayNames[widget
                       .settingsState
@@ -524,6 +543,7 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -619,6 +639,7 @@ class _IntervalPickerSheet extends StatelessWidget {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -933,6 +954,55 @@ class _HealthDeniedNotice extends StatelessWidget {
             child: const Text('Open settings'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── APPLE WATCH ───────────────────────────────────────────────────────────
+
+/// The one read-only row: where the watch stands, and when the phone last
+/// heard from it (plan 47c D-4). Refreshed on open, so a pairing change made
+/// while the app was away is read again; the state notifies on every change
+/// after that while the screen is up.
+class _WatchSection extends StatefulWidget {
+  final WatchLinkState state;
+
+  const _WatchSection({required this.state});
+
+  @override
+  State<_WatchSection> createState() => _WatchSectionState();
+}
+
+class _WatchSectionState extends State<_WatchSection> {
+  @override
+  void initState() {
+    super.initState();
+    widget.state.refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: ListenableBuilder(
+        listenable: widget.state,
+        builder: (context, _) {
+          final connected = widget.state.phase == WatchLinkPhase.connected;
+          return _SettingsRow(
+            label: 'Apple Watch',
+            subtitle: widget.state.lastSyncedLabel(DateTime.now()),
+            trailing: Text(
+              widget.state.statusLabel,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: connected
+                    ? theme.colorScheme.primary
+                    : OmniTheme.colors.textSecondary,
+              ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -1,0 +1,108 @@
+//
+//  WatchTrackedLocation.swift
+//  WatchSessionEngine
+//
+//  The seam between the platform's raw fixes and the sensor layer that already
+//  exists: `WatchTrackedLocation` is a `WatchSensorSource`'s location stream,
+//  made of `WatchLocationFix` values the wrist computed itself.
+//
+//  Plan: `docs/plans/2026-10-10-19e-watch-distance-tracking-plan/2026-10-10-19e-watch-distance-tracking-plan.md`,
+//  scenarios S-3206, S-3207 (D-2203).
+//
+//  `docs/plans/2026-10-10-19f-watch-gps-feed-plan/2026-10-10-19f-watch-gps-feed-plan.md`
+//  adds the freshness gate: D-2302, scenarios S-3303, S-3304 and S-3306.
+//
+//  The adapter is deliberately thin: it owns a permission passthrough and a
+//  mapping, nothing else. `WatchSensorRecorder` already knows what to do with a
+//  `WatchLocationFix` stream — store each value and settle the last one on stop
+//  — so a wrist that measures its own distance plugs into that recorder without
+//  either side learning about the other's types.
+//
+//  Plan 68 adds one raw-fix observer: each fix that passes the freshness gate
+//  is handed to it before the distance tracker judges it, so the route keeper
+//  sees the same stream without a second subscription.
+//
+
+import Foundation
+
+/// Where raw fixes and their permission come from.
+///
+/// This is the part the watch app target binds to a real sensor (19f); nothing
+/// in this module imports an OS location type, so the rules stay testable.
+public protocol WatchRawFixSource {
+    func permission() async -> WatchSensorPermission
+
+    func rawFixes() -> AsyncStream<WatchRawFix>
+}
+
+/// A raw fix source, seen as the sensor layer's location stream.
+public final class WatchTrackedLocation {
+    private let source: WatchRawFixSource
+    private let clock: () -> Date
+    private let maxFixAgeSeconds: TimeInterval
+
+    private let observerLock = NSLock()
+    private var observer: (@Sendable (WatchRawFix) -> Void)?
+
+    public init(
+        source: WatchRawFixSource,
+        clock: @escaping () -> Date = Date.init,
+        maxFixAgeSeconds: TimeInterval = 10
+    ) {
+        self.source = source
+        self.clock = clock
+        self.maxFixAgeSeconds = maxFixAgeSeconds
+    }
+
+    /// The platform's answer, unchanged: the watch's decision to listen is made
+    /// by `WatchSensorRecorder`, not here.
+    public func permission() async -> WatchSensorPermission {
+        await source.permission()
+    }
+
+    /// Hands every fresh raw fix — one that passed the freshness gate, before the distance tracker judges it —
+    /// to `observer`, once, in order. It adds no subscription: the same raw stream feeds both. The route
+    /// keeper (plan 68 D-2) is the one observer. Call it once before `fixes()` is consumed; a later call replaces the earlier observer for fixes not yet read.
+    public func observeFixes(_ observer: @escaping @Sendable (WatchRawFix) -> Void) {
+        observerLock.lock()
+        defer { observerLock.unlock() }
+        self.observer = observer
+    }
+
+    private func currentObserver() -> (@Sendable (WatchRawFix) -> Void)? {
+        observerLock.lock()
+        defer { observerLock.unlock() }
+        return observer
+    }
+
+    /// The source's fixes, accumulated into cumulative metres.
+    ///
+    /// Each call is its own effort: a new tracker, a new total, and its own raw
+    /// stream. The returned stream yields only the fixes that added something,
+    /// finishes when the raw one does, and cancelling it stops consuming the
+    /// raw one. Anything the source does not answer — the refused radio, the
+    /// fix the tracker ignored — simply never appears.
+    ///
+    /// A fix older than the call's own start — one `clock()` read, taken once
+    /// per call — by more than `maxFixAgeSeconds` is dropped before the tracker
+    /// sees it: the platform hands over a cached position first, and a position
+    /// from before the session must never become the origin. Exactly at the
+    /// limit is kept.
+    public func fixes() -> AsyncStream<WatchLocationFix> {
+        AsyncStream { continuation in
+            let task = Task {
+                let oldest = clock().addingTimeInterval(-maxFixAgeSeconds)
+                var tracker = WatchDistanceTracker()
+                for await raw in source.rawFixes() {
+                    guard raw.timestamp >= oldest else { continue }
+                    currentObserver()?(raw)
+                    if let fix = tracker.accept(raw) {
+                        continuation.yield(fix)
+                    }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}

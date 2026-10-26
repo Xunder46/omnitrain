@@ -22,6 +22,7 @@
     "type": {
       "enum": [
         "routines_down",
+        "exercises_down",
         "foods_down",
         "preferences_down",
         "exercise_push",
@@ -64,6 +65,10 @@
     "effortKind": {
       "enum": ["set", "timed", "round", "drill"]
     },
+    "healthActivity": {
+      "enum": ["running", "cycling", "rowing", "walking", "hiking"],
+      "description": "The Health workout kind a distance exercise records as, named by the phone from the exercise's discipline. Present only on an exercise whose capabilities include distance and whose kind the phone can name; omitted otherwise (the receiver then treats it as running)."
+    },
     "catalogExercise": {
       "type": "object",
       "description": "A catalog exercise: what it is, not where it sits in a session.",
@@ -89,7 +94,8 @@
           "type": "integer",
           "minimum": 1,
           "description": "The length of ONE round or period in seconds as the phone knows it. Omitted when unknown, and ignored by a receiver for any effort that is not a round."
-        }
+        },
+        "healthActivity": { "$ref": "#/$defs/healthActivity" }
       }
     },
     "sessionExercise": {
@@ -130,6 +136,27 @@
           "type": "integer",
           "minimum": 1,
           "description": "The length of ONE round or period in seconds as the phone knows it. Omitted when unknown, and ignored by a receiver for any effort that is not a round."
+        },
+        "healthActivity": { "$ref": "#/$defs/healthActivity" },
+        "plannedSets": {
+          "type": "array",
+          "description": "The phone's set rows for this slot, in set order (index k is set k+1, the numbering of entry-<slot>-<k>), logged rows included. Sent only for a set effort. Optional: a slot with no set rows, a non-set slot, or an older phone omits it, and the wrist then starts each set from its own defaults.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "reps": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Omitted for a row with fewer than 1 rep (a skipped row)."
+              },
+              "loadKg": {
+                "type": "number",
+                "minimum": -200,
+                "description": "Omitted when the load is 0, as an entry omits it. Kilograms; negative is band assist, floored like an entry's loadKg."
+              }
+            }
+          }
         }
       }
     },
@@ -268,6 +295,10 @@
           "minLength": 1,
           "description": "The session's modality, on a session_end entry only. Omitted when the session has none."
         },
+        "followed": {
+          "enum": [true],
+          "description": "On a session_end entry only: true when the wrist followed a session the phone started, so the entry carries the wrist's heart rate and nothing the phone lacks. Omitted when the wrist created the session."
+        },
         "avgHeartRateBpm": {
           "$ref": "#/$defs/heartRateBpm",
           "description": "Mean heart rate over the entry's active window, computed on the wrist from its own readings. Travels with maxHeartRateBpm or not at all; absent means not measured, never zero."
@@ -361,6 +392,10 @@
         "plannedDurationMs": {
           "type": "integer",
           "minimum": 1
+        },
+        "sessionExerciseId": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "if": {

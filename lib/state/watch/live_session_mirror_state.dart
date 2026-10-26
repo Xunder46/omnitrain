@@ -109,6 +109,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The session as the phone closed it. Null while it is running.
   Map<String, Object?>? _completedRecord;
 
+  /// The `sentAt` of the newest `session_snapshot` this mirror has applied:
+  /// the stamp an older snapshot arriving late is judged against (plan 63 D-1).
+  DateTime? _newestSnapshotAt;
+
   /// How each session this phone announced an end for ended, by session id.
   ///
   /// [owesResetFor]'s status is the memory for the session this mirror is
@@ -127,6 +131,11 @@ class LiveSessionMirrorState extends ChangeNotifier {
 
   /// The session's identity, as both devices know it.
   String? get sessionId => state['sessionId'] as String?;
+
+  /// Whether the converged session already holds a session effort rating: the
+  /// wrist's own answer, which the phone must not echo back (plan 42b D-3).
+  bool get holdsEffortRating =>
+      entries.any((entry) => entry['kind'] == 'effort_rating');
 
   /// The protocol's status for the session — `active`, `completed`, or
   /// `abandoned`.
@@ -211,6 +220,8 @@ class LiveSessionMirrorState extends ChangeNotifier {
       return MirrorOutcome.ignored;
     }
 
+    if (isStaleSnapshot(envelope)) return MirrorOutcome.ignored;
+
     // A message about a session this mirror is not holding is not this mirror's
     // news. A nutrition quick-log taken with no workout running names the day it
     // was logged on, and folding it into whatever session happens to be live
@@ -230,6 +241,17 @@ class LiveSessionMirrorState extends ChangeNotifier {
         _asObject(envelope['payload'])['sessionId'] != before['sessionId'];
     _reconciler.applyMessage(envelope);
     if (switchesSession) _completedRecord = null;
+    if (envelope['type'] == 'session_snapshot') {
+      final sentAt = envelope['sentAt'];
+      if (sentAt is String) {
+        final sent = DateTime.tryParse(sentAt);
+        if (sent != null) {
+          final newest = _newestSnapshotAt;
+          _newestSnapshotAt =
+              newest == null || sent.isAfter(newest) ? sent : newest;
+        }
+      }
+    }
     notifyListeners();
 
     if (switchesSession) return MirrorOutcome.applied;
@@ -262,6 +284,18 @@ class LiveSessionMirrorState extends ChangeNotifier {
 
   static bool _holdsLadder(Map<String, Object?> state) =>
       _objects(state['exercises']).isNotEmpty;
+
+  /// True when [envelope] is a `session_snapshot` stamped earlier than the
+  /// newest snapshot this mirror has applied: an older state arriving late
+  /// (plan 63 D-1). An equal stamp is not stale.
+  bool isStaleSnapshot(Map<String, Object?> envelope) {
+    if (envelope['type'] != 'session_snapshot') return false;
+    final newest = _newestSnapshotAt;
+    final sentAt = envelope['sentAt'];
+    if (newest == null || sentAt is! String) return false;
+    final sent = DateTime.tryParse(sentAt);
+    return sent != null && sent.isBefore(newest);
+  }
 
   /// True when [envelope] names the session this mirror holds. An envelope that
   /// names none at all is not a session's news either, and is equally not this
@@ -349,6 +383,39 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// handed over, not the frame (D-196, D-197).
   Future<WatchDelivery> sendState(Map<String, Object?> state) =>
       _transport.send(snapshotEnvelope(state: state));
+
+  /// Tells the wrist the phone answered the effort question for [sessionId]
+  /// first (plan 42b D-1): this mirror's converged state plus one
+  /// `effort_rating` entry under the wrist's own id, `rating-<sessionId>`, so
+  /// the wrist's open question closes and cannot be answered late. Sends
+  /// nothing and answers undelivered when the mirror holds another session.
+  Future<WatchDelivery> sendRatingFor(String sessionId, int rating) {
+    if (this.sessionId != sessionId) {
+      return Future.value(WatchDelivery.undelivered);
+    }
+    final id = 'rating-$sessionId';
+    return sendState({
+      ...state,
+      'entries': [
+        ...entries,
+        {
+          'entryId': id,
+          'eventId': id,
+          'kind': 'effort_rating',
+          'loggedAt': utcIso(_clock()),
+          'rating': rating,
+        },
+      ],
+    });
+  }
+
+  /// Hands the watch the phone's work timers for [sessionId] as one
+  /// `timer_state` frame (plan 43b3 D-2). A kind mapped to null clears that
+  /// timer. Nothing is applied to this mirror: its timers are the wrist's.
+  Future<WatchDelivery> sendTimers(
+    String sessionId,
+    Map<String, Object?> timers,
+  ) => _transport.send(_envelopeFor(sessionId, 'timer_state', {'timers': timers}));
 
   /// Asks the watch for its snapshot — the phone's half of joining a session
   /// that was started on the wrist.

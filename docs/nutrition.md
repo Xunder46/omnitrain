@@ -46,11 +46,15 @@ HomeScreen
                                         ├── primer help ────→ the primer sheet (reopen, no state change)
                                         └── library action ─→ AddFoodScreen
 StatsScreen
-  └── Fuel row ────────────────────→ NutritionTrendScreen
+  ├── Fuel row ────────────────────→ NutritionTrendScreen
+  └── header chart icon → RecordsAndTrendsScreen
+        └── Nutrition entry ───────→ NutritionTrendScreen
 ```
 
-`NutritionScreen` is the feature's home. The Stats screen's Fuel row is the only
-entry to the full-history trend; nothing else constructs it.
+`NutritionScreen` is the feature's home. The full-history trend has two
+entries: the Stats screen's Fuel row (hidden once food has not been logged for
+about two weeks) and the Nutrition entry on Records & Trends (shown whenever any
+food has ever been logged). Nothing else constructs it.
 
 ---
 
@@ -71,23 +75,126 @@ The primer is a first-run overlay. Its help affordance reopens the primer
 **without** marking it seen, so a dismissed primer stays dismissed on the next
 visit — reopening is inspection, not a reset.
 
+An empty Foods I Eat list is the shared empty state (`OmniEmptyState`, title
+`Pick the foods you eat`, hint `Choose them from the library, then tick them off
+each day.`) with a filled **Choose foods** button (key
+`foods_i_eat_choose_button`) that opens the manage screen on the Library, which
+is grouped by category. The header pencil stays. Verified by
+`test/first_run_path_test.dart` (`S-12911`, `S-12912`) and
+`test/nutrition_test.dart` (group `FoodLibraryBrowse – empty`:
+`empty Foods I Eat list renders the shared OmniEmptyState (S-2802)`).
+
+The calorie card shows the sodium chip (`Na <n> mg`) only once something with
+sodium is logged; on an empty day only the water control shows. Verified by
+`test/first_run_path_test.dart` (`S-12913`) and `test/nutrition_test.dart`
+(`hides the sodium chip when nothing is logged`).
+
+The caption under a Foods I Eat amount box is the unit alone (`g`, `ml`,
+`medium`), not the reference serving, so it no longer reads like the box counts
+100-ml units; an unlogged food's thumbnail ring carries a small plus (the
+thumbnail is still the log button). Verified by
+`test/row_caption_and_primer_test.dart` (`S-13010`, `S-13011`, `S-13012`).
+
+The home screen's nutrition card carries the label **Nutrition** between the
+icon and the figure (key `nutrition_card_title`), so it says what it is; the
+figure scales down on narrow screens and large text instead of being cut off.
+Verified by `test/first_run_path_test.dart` (`S-12910`) and
+`test/home_nutrition_summary_card_test.dart`.
+
 Verified by `test/nutrition_test.dart`, `test/nutrition_primer_test.dart`,
 `test/home_nutrition_summary_card_test.dart`.
 
 ### `AddFoodScreen`
 
-The library's editor, in three modes: the library itself, creating a new item, and
-managing groups.
+Two tabs — Library and Categories. The old My Foods tab is gone: everything it
+showed lives in the Library list. Creating a new item is not a mode of this
+screen: the Library tab's `+ New Food` button (key `new_food_button`)
+pushes a separate full-screen New Food form (`_NewFoodFormScreen` in
+`lib/features/nutrition/add_food_screen.dart`); the Categories tab keeps
+`+ New Category` (`new_group_button`). Verified by `test/library_merge_test.dart`
+(`S-12810` two tabs, `S-12814` the CTA opens the form and Categories keeps its own).
+
+The Library list holds every food, grouped under category headings while the search box is empty (headings alphabetical, `Uncategorized` last, foods alphabetical inside each, the same order as Foods I Eat via `foodsIEatSections`; a typed query shows the flat filtered list instead). Verified by `test/library_grouping_test.dart` (`S-12820`, `S-12821`, `S-12822`, `S-12823`, `S-12825`). The list is: bundled catalog foods,
+foods the user created, and older custom foods that exist only in the library.
+A food the user created carries a small **Yours** tag (key `yours_tag_<foodId>`);
+bundled foods never do. An older library-only custom food keeps its old row, with
+its red delete button, and the same tag. A library copy of a bundled food is never
+listed as a second row, even after the copy was edited. Verified by
+`test/library_merge_test.dart` (`S-12811`, `S-12812`, `S-12812b`, `S-12813`
+search) and `test/my_foods_unification_test.dart` (Library population).
+
+The Library headings follow a fixed first-run order (Proteins, Dairy, Grains &
+Starches, Fruits, Vegetables, Nuts Seeds & Fats, Snacks & Prepared, Drinks,
+Condiments; the user's own categories after; Uncategorized last) while Foods I
+Eat and the wrist keep their alphabetical order; a line under Search (key
+`library_count_line`) says how many foods are in the user's list ("4 foods in
+your list"); and the Library keeps its scroll and search when the user switches
+to Categories and back. Verified by `test/picker_polish_test.dart` (`S-13110`,
+`S-13111`, `S-13112`, `S-13117`). The calorie ring reads "Pick your foods to get
+started" while the list is empty and "Log a food to start filling" once it has a
+food (`S-13115`). Pressing Done after changing the amount of an unlogged Foods I
+Eat row logs it with that amount; Done on an untouched or reset-to-shown number
+logs nothing (`S-13118`).
+
+**Created foods and deleting them.** A food the user created is edited from its
+pencil like any other, and its editor ends with a **Delete food** button (key
+`food_delete_created`) in the footer slot where a bundled copy shows
+**Reset to original**; the two never appear together and bundled foods can never
+be deleted. Tapping it asks `Delete <name>?`; Cancel keeps the food, Confirm
+unlogs today's entry if there is one, removes the library copy and deletes the
+catalog row. Past logs stay unchanged (the log holds frozen snapshots). The
+sequence lives in `confirmAndDeleteCreatedFood`
+(`lib/features/nutrition/widgets/delete_created_food.dart`). Verified by
+`test/library_merge_test.dart` (`S-12815`, `S-12816`, `S-12816b`, `S-12817`).
 
 The catalog is read-only. Adding a catalog row **copies** it into the library; it
 does not log it. Removing a library food that is already logged today removes
 today's entry first, so the library and the day's log cannot disagree about a food
 that no longer exists.
 
+A Library row is a toggle, not an editor. Tapping a row whose food is not in
+the library adds it (the trailing `Add` button, key `add_catalog_food_<id>`,
+does the same); tapping a row whose food is in the library asks
+`Remove <name> from Foods I Eat?` first — Cancel keeps the food, Confirm
+removes it and unlogs it for today. An in-list row shows the user's own copy
+(name, macros, photograph) with a primary-colour outline, a pencil that
+opens the editor, and a check where the red trash button used to be; there is
+no trash button any more. The row's text is two lines:
+`<cal> cal per <amount> <label>` and `<P>P · <C>C · <F>F`. Verified by
+`test/library_row_toggle_test.dart` (group `Library row toggle (plan 77a
+S-12710..S-12717)`: `S-12710: row tap adds a not-in-list food to the library`,
+`S-12711: in-list row tap asks before removing; Cancel keeps, Confirm removes
+and unlogs today`, `S-12712: the in-list row carries the primary outline; the
+not-in-list row has none`, `S-12714: the pencil does not toggle the row`,
+`S-12715: the row macro line reads the copy after an edit`), by
+`test/screen_widget_test.dart` (`Library row tap adds the food; its pencil
+opens EditFoodScreen (S-001)`), and by `test/nutrition_test.dart` (group
+`ManageFoodLibrary – add/remove toggle`: `tapping Remove asks first, and Cancel
+keeps the food in the library (S-2903)`; the Library add/remove groups also
+assert the check icon and the absence of `Icons.delete_outline`).
+
 Group deletion refuses to strand a shipped food: moving a group's foods to the
 ungrouped bucket would silently orphan a bundled catalog food, so that case raises
 `FoodGroupHasBundledFoodsError` instead. Cancel and "move to uncategorised" are
-distinct outcomes of the group dialog.
+distinct outcomes of the group dialog. Deleting an **empty** category asks
+first too: the trash control on an empty category opens a two-choice
+confirmation (`Delete category ${group.name}?`), and confirming it archives
+the category; a category that still holds foods keeps the bespoke group
+dialog. On a non-empty category, Cancel on that dialog closes it without
+throwing and leaves the category and its foods unchanged. Verified by
+`test/nutrition_test.dart` (group `AddFoodScreen — Groups
+tab`: `trash on an empty category asks first, and Cancel keeps it (S-2904)`,
+`confirming the delete archives an empty category (S-2904)`, `Cancel on a
+non-empty category closes the dialog without throwing and keeps the category
+and its foods (S-2910)`).
+
+The New Food form and the legacy edit shim warn about unsaved changes: leaving
+with edits open a two-button dialog (keep editing / discard), so typed
+values cannot be lost silently; saving is the form's own Save button. Verified by `test/nutrition_test.dart` (group
+`AddFoodScreen — New Food form unsaved guard (S-2902)`: `Discard pops without
+creating the food`; group
+`AddFoodScreen — legacy edit shim unsaved guard (S-2902)`: `Discard pops and
+leaves the stored food unchanged`).
 
 Verified by `test/food_library_test.dart`, `test/food_library_edit_test.dart`,
 `test/food_library_state_delete_guard_test.dart`, `test/food_group_membership_test.dart`,
@@ -95,11 +202,37 @@ Verified by `test/food_library_test.dart`, `test/food_library_edit_test.dart`,
 
 ### `EditFoodScreen`
 
-Edits a food's own values and its photograph. An edit to a catalog food
-propagates to the personal library rows linked to it through the durable
-`catalogId` linkage, and never to already-logged snapshots — history stays
-frozen. Clearing the photograph clears the stored path; the file on disk is left
-intact.
+Edits a food's own values and its photograph. Which save path runs depends on
+the food the screen is given. A library copy of a bundled catalog food
+(`isCatalog == false`) saves through `FoodLibraryState.editLibraryFood` and
+changes only the copy — the shipped catalog row and its seed-touched marker
+are untouched. A user-created catalog food (`isCatalog == true`) saves through
+`updateCatalogFood` as before, and that edit still propagates to the personal
+library rows linked to it through the durable `catalogId` linkage. Neither
+path touches already-logged snapshots — history stays frozen. Clearing the
+photograph clears the stored path; the file on disk is left intact.
+
+**Editing your copy and Reset.** When the screen holds a library copy that
+differs from its bundled original, a `Reset to original` button (key
+`food_reset_original`) shows under the form; tapping it asks `Reset to
+original?` (keys `food-reset-cancel` / `food-reset-confirm`), and confirming
+calls `resetLibraryFood` — which restores the shipped name, group, unit,
+reference amount, macros, notes and photograph while keeping the copy's id,
+`catalogId`, last amount and creation time — and pops. The button is built
+when the screen opens, so it appears the next time the editor is opened after
+an edit. Verified by `test/library_row_toggle_test.dart` (group `Library row
+toggle (plan 77a S-12710..S-12717)`: `S-12713: pencil on an in-list bundled
+food edits the copy; reset restores the shipped values`, `S-12717: a
+user-created (non-bundled) in-list food has no Reset button`, `S-12719: the
+Edit screen routes a bundled copy's save through editLibraryFood (onSave and
+onImageSave)`, `S-12720: the Edit screen routes a user-created catalog food's
+save through updateCatalogFood (propagates to the library copy)`) and by
+`test/food_library_copy_edit_test.dart` (groups `FoodLibraryState edit own
+copy (Mock)` / `FoodLibraryState edit own copy (Hive)`:
+`editLibraryFood changes only the library copy (S-12701)`,
+`canResetLibraryFood lifecycle (S-12703)`, `resetLibraryFood restores the
+shipped values (S-12704)`, `updateCatalogFood still propagates to the copy
+(S-12705)`).
 
 Verified by `test/food_library_edit_test.dart`, `test/food_form_shipped_photo_test.dart`,
 `test/food_form_pick_saves_test.dart`, `test/food_photo_clear_legacy_edit_test.dart`.
@@ -112,12 +245,18 @@ load and written back as zero. A target that is unset or not positive shows an
 empty field rather than a zero, so "no target" and "a target of zero" cannot be
 confused.
 
+Leaving the form with unsaved edits warns first: a two-button dialog (keep
+editing / discard) guards the back path, so a typed target cannot be
+lost silently. Verified by `test/nutrition_test.dart` (group
+`NutritionTargetScreen — unsaved changes guard (S-2902)`: `Discard pops and
+leaves the stored target unchanged`).
+
 Verified by `test/nutrition_test.dart` (the calories-only group) and
 `test/nutrition_target_button_test.dart`.
 
 ### `NutritionTrendScreen`
 
-The full-history trend, reached from the Stats screen's Fuel row. It builds one
+The full-history trend, reached from the Stats screen's Fuel row and from the Nutrition entry on Records & Trends. It builds one
 `StatsProgressService` per load over the workout repository and computes both the
 trend over the repository's whole food history and the adherence target line in
 that same load. It is *not* scoped to the Fuel row's window or to the Stats
@@ -139,9 +278,11 @@ database, and all writes go through the state owners; the trend card's behaviour
 owned by this document.
 
 Two widgets are platform-shaped rather than feature-shaped and are worth naming
+Two widgets are platform-shaped rather than feature-shaped and are worth naming
 here: `FoodThumbnail` has a conditional implementation behind a stub/IO split, so
 the same call site works on web and native, and `NutritionTrendCard` is the trend
-screen's entire body (its toggle, both charts, its empty chart and its legend).
+screen's entire body (its toggle, both charts, the shared empty state that
+replaces the charts when no day is logged, and its legend).
 
 ---
 
@@ -168,7 +309,12 @@ photograph it has replaced.
 
 It is also the feature's guard rail: `deleteFoodGroupReassigningFoods` is the only
 group-deletion path, and it refuses the bundled-food case described above rather
-than reassigning.
+than reassigning. Editing a bundled food's library copy — and resetting that copy
+to the shipped values — are state methods too (`editLibraryFood`,
+`canResetLibraryFood`, `resetLibraryFood`, `libraryFoodFor`; their contracts are
+in [Nutrition State](state_management/nutrition_state.md)). Verified by
+`test/food_library_copy_edit_test.dart` (group `FoodLibraryState edit own copy
+(Mock)`).
 
 Verified by `test/food_library_state_test.dart`, `test/food_library_state_delete_guard_test.dart`,
 `test/food_library_persistence_test.dart`, `test/food_orphan_category_integration_test.dart`.
@@ -379,6 +525,8 @@ contract, not a live persistence path.
 | Foods I Eat ordering is shared with the watch quick-log | `test/watch_nutrition_quick_log_test.dart` |
 | Catalog rows load identically on every platform | `test/food_catalog_load_test.dart`, `test/bundled_food_asset_contract_test.dart` |
 | A library copy shows the shipped photograph | `test/food_photo_service_test.dart`, `test/bundled_food_photographs_test.dart` |
+| A Library row tap toggles the food in the library (add, or remove after asking) | `test/library_row_toggle_test.dart`, `test/screen_widget_test.dart` |
+| Editing a bundled food changes only the library copy; Reset restores the shipped values | `test/food_library_copy_edit_test.dart`, `test/library_row_toggle_test.dart` |
 | Trend days are summed and rounded once per day, gaps skipped | `test/stats_progress_test.dart` |
 | The target line steps at each saved target change | `test/stats_progress_test.dart`, `test/nutrition_trend_screen_test.dart` |
 | The Fuel summary averages over logged days only | `test/fuel_row_screen_test.dart` |

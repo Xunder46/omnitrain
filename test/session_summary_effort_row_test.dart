@@ -46,6 +46,7 @@ ThemeData _appTheme() {
 }
 
 const _effortMarkerKey = Key('omni_session_effort_marker');
+const _effortCaptionKey = Key('omni_session_effort_caption');
 const _sheetTitle = 'How hard was this session?';
 
 void _useTallSurface(WidgetTester tester) {
@@ -84,7 +85,9 @@ Text _pillValue(WidgetTester tester, String label) {
       .first;
   final values = tester
       .widgetList<Text>(find.descendant(of: pill, matching: find.byType(Text)))
-      .where((t) => t.data != label)
+      // The EFFORT pill's caption (D-3207) is not the value: it has its own
+      // key and its own assertions (S-3211).
+      .where((t) => t.data != label && t.key != _effortCaptionKey)
       .toList();
   expect(values, hasLength(1), reason: '$label pill must have one value');
   return values.single;
@@ -181,7 +184,7 @@ void main() {
         // CRITICAL: After automatic prompt closes, EFFORT row MUST show the value
         // This test FAILS without setState in _showFeelingSheet
         expect(find.text('4 / 5'), findsOneWidget, reason: 'EFFORT row must refresh after automatic prompt');
-        expect(find.text('Change'), findsOneWidget);
+        expect(find.text('Change rating'), findsOneWidget);
 
         // Verify repository has the value
         final updated = await repo.getSession(session.id);
@@ -232,7 +235,7 @@ void main() {
         // CRITICAL: User-opened sheet needs setState to refresh
         // This test FAILS without setState in _openEffortRatingSheet
         expect(find.text('4 / 5'), findsOneWidget, reason: 'EFFORT row must refresh after user-opened sheet');
-        expect(find.text('Change'), findsOneWidget);
+        expect(find.text('Change rating'), findsOneWidget);
 
         final updated = await repo.getSession(session.id);
         expect(updated?.sessionFeeling, 4);
@@ -291,7 +294,7 @@ void main() {
         // Sheet should close, verify value is displayed
         expect(find.text('How hard was this session?'), findsNothing);
         expect(find.text('4 / 5'), findsOneWidget);
-        expect(find.text('Change'), findsOneWidget);
+        expect(find.text('Change rating'), findsOneWidget);
         expect(_markerColor(tester), _ramp.step4);
 
         // Verify repository has the value
@@ -318,7 +321,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('2 / 5'), findsOneWidget);
-        await tester.tap(find.text('Change'));
+        await tester.tap(find.text('Change rating'));
         await tester.pumpAndSettle();
         expect(find.text(_sheetTitle), findsOneWidget);
 
@@ -327,7 +330,7 @@ void main() {
         expect(find.text(_sheetTitle), findsNothing);
         expect(find.text('4 / 5'), findsOneWidget);
         expect(find.text('2 / 5'), findsNothing);
-        expect(find.text('Change'), findsOneWidget);
+        expect(find.text('Change rating'), findsOneWidget);
         expect(_markerColor(tester), _ramp.step4);
         expect((await repo.getSession(session.id))?.sessionFeeling, 4);
       },
@@ -365,7 +368,7 @@ void main() {
 
         for (var stored = 1; stored <= 5; stored++) {
           expect(find.text('$stored / 5'), findsOneWidget);
-          await tester.tap(find.text('Change'));
+          await tester.tap(find.text('Change rating'));
           await tester.pumpAndSettle();
 
           for (var n = 1; n <= 5; n++) {
@@ -480,7 +483,7 @@ void main() {
         expect(find.text(_sheetTitle), findsNothing);
         expect(_pillValue(tester, 'EFFORT').data, '5 / 5');
         expect(_markerColor(tester), _ramp.step5);
-        expect(find.text('Change'), findsOneWidget);
+        expect(find.text('Change rating'), findsOneWidget);
         expect(find.text('Great'), findsNothing);
         expect((await repo.getSession(sessionId))?.sessionFeeling, 5);
       },
@@ -503,7 +506,7 @@ void main() {
         ));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Change'));
+        await tester.tap(find.text('Change rating'));
         await tester.pumpAndSettle();
         expect(find.text(_sheetTitle), findsOneWidget);
 
@@ -649,7 +652,7 @@ void main() {
         expect(find.byType(SessionSummaryScreen), findsOneWidget);
         expect(find.text('5 / 5'), findsOneWidget);
 
-        await tester.tap(find.text('Change'));
+        await tester.tap(find.text('Change rating'));
         await tester.pumpAndSettle();
         await _tapTile(tester, 1);
         expect(find.text('1 / 5'), findsOneWidget);
@@ -724,8 +727,8 @@ void main() {
         var stored = await repo.getSession(sessionId);
         expect(stored?.sessionFeeling, 2);
 
-        // Change rating: tap "Change"
-        await tester.tap(find.text('Change'));
+        // Change rating: tap "Change rating"
+        await tester.tap(find.text('Change rating'));
         await tester.pumpAndSettle();
 
         // Select rating 5
@@ -771,8 +774,8 @@ void main() {
         // Verify current value is 3
         expect(find.text('3 / 5'), findsOneWidget);
 
-        // Tap "Change"
-        await tester.tap(find.text('Change'));
+        // Tap "Change rating"
+        await tester.tap(find.text('Change rating'));
         await tester.pumpAndSettle();
 
         // Dismiss by tapping barrier (outside the sheet, in the dim area)
@@ -807,7 +810,7 @@ void main() {
         ));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Change'));
+        await tester.tap(find.text('Change rating'));
         await tester.pumpAndSettle();
         expect(find.text(_sheetTitle), findsOneWidget);
 
@@ -868,12 +871,182 @@ void main() {
         // EFFORT row MUST be visible for rolling sessions
         expect(find.text('EFFORT'), findsOneWidget, reason: 'EFFORT label must be visible');
         expect(find.text('2 / 5'), findsOneWidget, reason: 'EFFORT value must be visible');
-        expect(find.text('Change'), findsOneWidget, reason: 'Change button must be visible');
+        expect(find.text('Change rating'), findsOneWidget, reason: 'Change rating button must be visible');
 
         // Duration and Rest Time must be HIDDEN for rolling sessions
         expect(find.text('DURATION'), findsNothing, reason: 'Duration must be hidden in rolling session');
         expect(find.text('REST TIME'), findsNothing, reason: 'Rest Time must be hidden in rolling session');
       },
     );
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Plan 32, phase B — S-3211 / S-3212: the EFFORT row explains itself
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('S-3211 the EFFORT pill carries its own caption', () {
+    testWidgets('S-3211 a rated session shows the caption under the value', (
+      WidgetTester tester,
+    ) async {
+      _useTallSurface(tester);
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession();
+      await workoutState.updateSessionFeeling(
+        workoutState.currentSession!.id,
+        3,
+      );
+
+      await tester.pumpWidget(await _buildSessionSummaryScreen(
+        workoutState: workoutState,
+        repo: repo,
+        showFeelingSurvey: false,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('3 / 5'), findsOneWidget);
+      final caption = find.byKey(_effortCaptionKey);
+      expect(caption, findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('omni_session_info_card')),
+          matching: caption,
+        ),
+        findsOneWidget,
+        reason: 'the caption lives in the info card',
+      );
+      expect(
+        tester.widget<Text>(caption).data,
+        'How hard the session felt',
+      );
+      expect(
+        tester.getTopLeft(caption).dy,
+        greaterThan(tester.getBottomLeft(find.text('3 / 5')).dy),
+        reason: 'D-3207: the caption sits under the value',
+      );
+      expect(
+        caption,
+        findsOneWidget,
+        reason: 'D-3207: Duration and Rest Time carry no caption',
+      );
+    });
+
+    testWidgets('S-3211 an unrated session shows it too', (
+      WidgetTester tester,
+    ) async {
+      _useTallSurface(tester);
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession();
+
+      await tester.pumpWidget(await _buildSessionSummaryScreen(
+        workoutState: workoutState,
+        repo: repo,
+        showFeelingSurvey: false,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(_pillValue(tester, 'EFFORT').data, '—');
+      expect(
+        tester.widget<Text>(find.byKey(_effortCaptionKey)).data,
+        'How hard the session felt',
+        reason: 'D-3207: the caption is there rated or not',
+      );
+    });
+
+    testWidgets('S-3211 a rolling session shows it too', (
+      WidgetTester tester,
+    ) async {
+      _useTallSurface(tester);
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.updateSessionFeeling(
+        workoutState.currentSession!.id,
+        2,
+      );
+
+      await tester.pumpWidget(await _buildSessionSummaryScreen(
+        workoutState: workoutState,
+        repo: repo,
+        showFeelingSurvey: false,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('DURATION'), findsNothing);
+      expect(find.text('2 / 5'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(_effortCaptionKey)).data,
+        'How hard the session felt',
+        reason: 'D-3207: rolling sessions keep the caption',
+      );
+    });
+  });
+
+  group('S-3212 the button names what it does', () {
+    testWidgets('S-3212 an unrated session reads Add rating, then Change rating '
+        'after the sheet rates it', (WidgetTester tester) async {
+      _useTallSurface(tester);
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession();
+
+      await tester.pumpWidget(await _buildSessionSummaryScreen(
+        workoutState: workoutState,
+        repo: repo,
+        showFeelingSurvey: false,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add rating'), findsOneWidget);
+      expect(find.text('Change rating'), findsNothing);
+
+      await tester.tap(find.text('Add rating'));
+      await tester.pumpAndSettle();
+      expect(find.text(_sheetTitle), findsOneWidget);
+      await _tapTile(tester, 3);
+
+      expect(find.text('3 / 5'), findsOneWidget);
+      expect(find.text('Change rating'), findsOneWidget);
+      expect(
+        find.text('Change'),
+        findsNothing,
+        reason: 'D-3208: the old bare Change is gone',
+      );
+      expect(find.text('Add rating'), findsNothing);
+    });
+
+    testWidgets('S-3212 a rated session reads Change rating, and tapping it '
+        'opens the sheet on the stored rating', (WidgetTester tester) async {
+      _useTallSurface(tester);
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession();
+      await workoutState.updateSessionFeeling(
+        workoutState.currentSession!.id,
+        3,
+      );
+
+      await tester.pumpWidget(await _buildSessionSummaryScreen(
+        workoutState: workoutState,
+        repo: repo,
+        showFeelingSurvey: false,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('3 / 5'), findsOneWidget);
+      expect(find.text('Change rating'), findsOneWidget);
+      expect(find.text('Change'), findsNothing);
+
+      await tester.tap(find.text('Change rating'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_sheetTitle), findsOneWidget);
+      expect(
+        _tileDecoration(tester, 3).color,
+        _ramp.step3,
+        reason: 'the stored rating is still pre-selected',
+      );
+    });
   });
 }

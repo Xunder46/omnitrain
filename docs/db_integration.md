@@ -115,6 +115,16 @@ the bundled version is newer, the refresh re-applies new / changed seed
 entries to the device in place, never touching user-created entries and
 never overwriting a seed entry the user has edited.
 
+The refresh also carries the muscle hierarchy: `_refreshMuscleGroups`
+upserts a group that is missing or whose name or `parentId` differs from the
+bundled taxonomy, and `_refreshExerciseMuscleGroups` rewrites an untouched
+exercise's links when they differ from the bundled ones, roles included and
+order-insensitively. Verified by `test/catalog_refresh_test.dart`
+(`S-MH-1: refresh from v10 lands the taxonomy parents, the Traps rename and
+role-aware links, and leaves custom / copy / touched rows alone`). The
+bundled version that ships the hierarchy is `11` (`bundledCatalogVersion`,
+`lib/core/constants/catalog_version.dart`).
+
 `SeedEntryType` enumerates the tombstone key spaces the refresh understands:
 
 | Constant | Tombstone space | Notes |
@@ -188,6 +198,7 @@ Repository methods used by the service:
 | `getLegacyAppliedDataVersion()` | Back-compat shim: returns the highest version implied by any legacy marker (`1` if none). |
 | `getLastDataVersionTransition()` | Diagnostic: most recent `(from, to)` transition, or `null`. |
 | `setLastDataVersionTransition(int from, int to)` | Diagnostic: records a transition. |
+| `referenceRevision` | Null on the Mock; a counter on Hive that changes when any food, routine or exercise row is written. The watch sync reads it to skip re-reading storage. |
 
 Storage shape (Hive runtime; SQL parity noted for the future importer):
 
@@ -202,6 +213,13 @@ and bump `currentDataVersion` in
 [`lib/core/constants/data_version.dart`](../lib/core/constants/data_version.dart).
 The next launch runs the new step exactly once per device. No new meta-box
 key is required for the step itself.
+
+The most recent step is `muscleLinkRoles` (target version 16): it rewrites
+every stored exercise→muscle link row into the role-aware shape — a legacy
+all-primary row keeps its ids as primaries, and a region tag sitting next to
+one of its own muscles is dropped. Verified by `test/data_migration_test.dart`
+(`S-8: the muscleLinkRoles step on the Mock`,
+`S-8: the muscleLinkRoles step on Hive (seeded before step 16)`).
 
 Idempotency: every consolidated step preserves its existing effect — same
 box writes, same upsert semantics, same idempotency — only the gating
@@ -558,6 +576,17 @@ Active-session ordering parity columns for future `SqliteWorkoutRepository`:
 - `app_segment_effort.top_level_order_index`
 - `app_segment_effort.block_order_index`
 
+And the muscle hierarchy:
+
+- `app_muscle_group.parent_id` — the parent region of a muscle; NULL for a
+  region and for a standalone entry.
+- `app_exercise_muscle_group.is_primary` — 1 = primary link, 0 = secondary
+  link.
+
+Verified by `test/db_seed_test.dart` (`Pipeline schema documentation` ·
+`S-9 app_muscle_group carries parent_id and seeds the 23 groups the taxonomy
+defines`).
+
 Recommended SQL ordering for retrieval parity:
 
 - Blocks: `ORDER BY top_level_order_index, order_index, created_at_ms, id`
@@ -577,7 +606,10 @@ Recommended SQL ordering for retrieval parity:
 > (only `sqflite_common_ffi` remains, under `dev_dependencies`, for the
 > validation test), and the SQL files are no longer bundled as Flutter
 > assets. The app persists exclusively through `HiveWorkoutRepository` on
-> every platform.
+> every platform. `pubspec.yaml` also sets `hooks: user_defines: sqlite3:
+> source: system`, so the dev-only `sqlite3` package uses the operating
+> system's SQLite and no `sqlite3.framework` is bundled into iOS builds (an
+> unsigned copy of it once made a device install fail).
 
 What remains is the **schema documentation**, and it is still authoritative
 for the data model:
@@ -599,7 +631,9 @@ for the data model:
 
 Runtime **data** migrations (the ones that actually execute today) are a
 separate mechanism keyed on `currentDataVersion` — see
-[Constants Reference](constants_reference.md#data_versiondart).
+[Constants Reference](constants_reference.md#data_versiondart). Their latest
+step is `muscleLinkRoles` (version 16), which rewrites stored muscle links
+into the role-aware shape; see the data-migration sequence above.
 
 ---
 

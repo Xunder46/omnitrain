@@ -91,12 +91,48 @@ extension SessionCoreEntryMethods on SessionCore {
       for (final effort in efforts) {
         await _repository.createEffort(effort);
         _efforts.putIfAbsent(effort.segmentId, () => []).add(effort);
+
+        // A slot the wrist added names an exercise this state has never read:
+        // without the cache entry the session screens render the slot's title
+        // as the summary builder's fallback until the session is reopened
+        // (the same fill `loadSessionData` and `refreshEfforts` do).
+        if (effort.exerciseId != null &&
+            !_exerciseCache.containsKey(effort.exerciseId)) {
+          final exercise = await _repository.getExerciseById(
+            effort.exerciseId!,
+          );
+          if (exercise != null) _exerciseCache[effort.exerciseId!] = exercise;
+        }
+        await seedFirstInterval(effort.id);
       }
 
+      _watchRefreshRevision++;
       _notify();
     } catch (e) {
       _setError('Failed to append session slots: $e');
     }
+  }
+
+  /// Gives a timed, hold or round effort its first interval when it holds none.
+  ///
+  /// A slot adopted off the watch arrives with no intervals, unlike an
+  /// exercise the phone adds itself; without one the session screen reads
+  /// "Interval 1 of 0" and a timer the watch starts has nothing to land on.
+  /// A set effort is left as it is. Safe to call twice: an effort that already
+  /// holds an interval is untouched.
+  Future<void> seedFirstInterval(String effortId) async {
+    final effort = _findEffort(effortId);
+    if (effort == null) return;
+
+    final held = switch (effort.effortKind) {
+      'round' => _timerManager.getRoundsForEffort(effortId).length,
+      'timed' ||
+      'drill' => _timerManager.getTimedInstancesForEffort(effortId).length,
+      _ => -1,
+    };
+    if (held != 0) return;
+
+    await addEntry(effortId);
   }
 
   Future<void> addEntry(
@@ -639,13 +675,21 @@ extension SessionCoreEntryMethods on SessionCore {
       final effort = _findEffort(effortId);
       if (effort == null) return;
 
+      // D-1: whichever kind the entry was, the rest that marked it goes with it
+      // and every rest above it moves down one, or the deleted entry comes back
+      // as logged on the next load. A delete that found no such entry leaves the
+      // rests alone.
       if (effort.effortKind == 'round') {
-        await _timerManager.deleteRound(effortId, entryIndex);
+        if (await _timerManager.deleteRound(effortId, entryIndex)) {
+          await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
+        }
         return;
       }
 
       if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
-        await _timerManager.deleteTimedEntry(effortId, entryIndex);
+        if (await _timerManager.deleteTimedEntry(effortId, entryIndex)) {
+          await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
+        }
         return;
       }
 
@@ -664,6 +708,7 @@ extension SessionCoreEntryMethods on SessionCore {
         await _repository.deleteObservation(id);
       }
       observations.removeWhere((row) => doomed.contains(row.id));
+      await _timerManager.rekeyEntryRestsAfterDelete(effortId, entryIndex);
       _notify();
     } catch (e) {
       _setError('Failed to delete entry: $e');

@@ -10,6 +10,15 @@
   "gpsCapability": "distance",
   "gpsModalities": ["cardio_endurance", "sports"],
   "paceMinDistanceMeters": 50,
+  "exerciseGpsCases": [
+    { "capabilities": ["time", "distance"], "gps": true },
+    { "capabilities": ["distance"], "gps": true },
+    { "capabilities": ["time", "distance", "rounds"], "gps": true },
+    { "capabilities": ["reps", "sets", "load"], "gps": false },
+    { "capabilities": ["time", "rounds"], "gps": false },
+    { "capabilities": ["hold", "time"], "gps": false },
+    { "capabilities": [], "gps": false }
+  ],
   "modalityCapabilities": [
     {
       "modality": "cardio_endurance",
@@ -71,5 +80,12 @@
       "watchos": "other",
       "wear": "exercise_type_other_workout"
     }
+  },
+  "distanceActivityTypes": {
+    "running": { "watchos": "running", "wear": "exercise_type_running" },
+    "cycling": { "watchos": "cycling", "wear": "exercise_type_biking" },
+    "rowing": { "watchos": "rowing", "wear": "exercise_type_rowing" },
+    "walking": { "watchos": "walking", "wear": "exercise_type_walking" },
+    "hiking": { "watchos": "hiking", "wear": "exercise_type_hiking" }
   }
 }

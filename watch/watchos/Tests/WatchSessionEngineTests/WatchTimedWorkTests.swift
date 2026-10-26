@@ -84,6 +84,19 @@ final class WatchTimedWorkTests: XCTestCase {
         ]
     }
 
+    /// A round slot: the register's `time`+`rounds` pair, with the phone's own
+    /// period length when the case has one.
+    private func roundSlot(_ id: String, roundDurationSecs: Int? = nil) -> [String: Any] {
+        var slot = slot(id, capabilities: ["time", "rounds"])
+        if let roundDurationSecs { slot[WatchCatalogExercise.roundDurationKey] = roundDurationSecs }
+        return slot
+    }
+
+    /// What a row shows right now, or nil when the surface offers no such row.
+    private func fieldValue(_ surface: WatchLoggingState, _ metricKey: String) -> Double? {
+        surface.fields.first { $0.metricKey == metricKey }?.value
+    }
+
     private func runningTimer(_ kind: String, startedAt: String) -> [String: Any] {
         [
             "kind": kind,
@@ -93,15 +106,47 @@ final class WatchTimedWorkTests: XCTestCase {
         ]
     }
 
+    /// A timer object the phone names in a `timer_state`, with the slot when the
+    /// case has one.
+    private func phoneTimer(
+        _ kind: String,
+        startedAt: String,
+        sessionExerciseId: String? = nil
+    ) -> [String: Any] {
+        var timer: [String: Any] = [
+            "kind": kind,
+            "state": WatchTimerState.running,
+            "startedAt": startedAt,
+            "accumulatedPauseMs": 0,
+        ]
+        if let sessionExerciseId { timer["sessionExerciseId"] = sessionExerciseId }
+        return timer
+    }
+
+    /// The timer object of the newest frame that names `kind`, with the frame
+    /// itself so the schema can pass its verdict on it.
+    private func lastTimerFrame(
+        _ harness: Harness,
+        kind: String
+    ) -> (frame: [String: Any], timer: [String: Any])? {
+        for frame in harness.emitted.reversed() where frame["type"] as? String == "timer_state" {
+            let timers = (frame["payload"] as? [String: Any])?["timers"] as? [String: Any]
+            if let timer = timers?[kind] as? [String: Any] { return (frame, timer) }
+        }
+        return nil
+    }
+
     // MARK: - S-1300 cardio Start → Log
 
     func testS1300TimedWorkIsLoggedAsTheWindowFromStartToLog() async throws {
         let harness = Harness()
         harness.clock.now = instant("2026-07-13T10:00:00Z")
         let engine = await harness.runningEngine()
+        // plan 65: the timed surface of a distance exercise now offers one
+        // Distance row, so this no-row case uses a time-only exercise.
         _ = await engine.createSession(
             modality: "cardio_endurance",
-            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+            exercises: [slot("sx-run", capabilities: ["time"])]
         )
         let surface = surface(harness, engine: engine)
 
@@ -201,7 +246,11 @@ final class WatchTimedWorkTests: XCTestCase {
         let model = WatchLoggingModel(state: surface, haptics: RecordingHaptics())
 
         XCTAssertEqual(surface.effortKind, WatchEffortKind.round)
-        XCTAssertTrue(surface.fields.isEmpty, "a period has no rounds or length row")
+        XCTAssertEqual(
+            surface.fields.map(\.metricKey),
+            [WatchMetricKey.roundDuration],
+            "23a: a period shows its length row before Start, and nothing else"
+        )
         XCTAssertEqual(surface.workRemainingSeconds(), 180, "before Start a period shows its preset")
         XCTAssertEqual(model.primaryTitle, "Start", "a period that is not running offers Start")
         XCTAssertEqual(model.workReadout, "3:00", "the preset is what a period shows before Start")
@@ -238,9 +287,16 @@ final class WatchTimedWorkTests: XCTestCase {
             milestones += haptics.poll(now: startedAt.addingTimeInterval(Double(second)))
         }
         XCTAssertTrue(milestones.isEmpty, "a logged period starts nothing")
-        XCTAssertTrue(
-            engine.timerRows(WatchTimerKind.rest).isEmpty,
-            "timed work starts no rest of its own (D-1306)"
+        let rests = engine.timerRows(WatchTimerKind.rest)
+        XCTAssertEqual(rests.count, 1, "a logged period starts one rest (D-3501)")
+        XCTAssertEqual(
+            rests.first?.state,
+            WatchTimerState.running,
+            "and that rest is running, not a countdown"
+        )
+        XCTAssertNil(
+            rests.first?.plannedDurationMs,
+            "the rest is a count-up with no length (D-160)"
         )
         XCTAssertEqual(
             stopped.startedAt,
@@ -545,5 +601,857 @@ final class WatchTimedWorkTests: XCTestCase {
         let logged = try loggedEvent(harness)
         XCTAssertEqual(logged.event["startedAt"] as? String, utcIso(startedAt))
         XCTAssertEqual(logged.event["endedAt"] as? String, utcIso(harness.clock.now))
+    }
+
+    // MARK: - S-3403 to S-3409, plan 23a: the Load label and the period length row
+
+    func testS3403AHoldRowIsLabelledLoad() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "isometric_stretching",
+            exercises: [slot("sx-plank", capabilities: ["hold", "time"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        let row = try XCTUnwrap(
+            surface.fields.first { $0.metricKey == WatchMetricKey.extraWeight }
+        )
+        XCTAssertEqual(
+            row.label,
+            "Load",
+            "the wire field stays extraLoadKg; the wrist's word is Load (D-3403)"
+        )
+    }
+
+    func testS3404APeriodShowsItsLengthBeforeStart() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [roundSlot("sx-half", roundDurationSecs: 2400)]
+        )
+        let surface = surface(harness, engine: engine)
+
+        XCTAssertEqual(surface.effortKind, WatchEffortKind.round)
+        XCTAssertEqual(
+            surface.fields.map(\.metricKey),
+            [WatchMetricKey.roundDuration],
+            "a period's only row is its length (D-3404)"
+        )
+        XCTAssertEqual(fieldValue(surface, WatchMetricKey.roundDuration), 2400, "the phone's own number")
+        XCTAssertEqual(surface.workRemainingSeconds(), 2400, "and it is what the countdown would start from")
+
+        let preset = Harness()
+        preset.clock.now = instant("2026-07-13T10:00:00Z")
+        let presetEngine = await preset.runningEngine()
+        _ = await presetEngine.createSession(
+            modality: "sports",
+            exercises: [roundSlot("sx-bjj")]
+        )
+        let presetSurface = self.surface(preset, engine: presetEngine)
+
+        XCTAssertEqual(
+            fieldValue(presetSurface, WatchMetricKey.roundDuration),
+            180,
+            "no number on the slot: the wrist's own preset"
+        )
+    }
+
+    func testS3405TurningTheLengthChangesWhatStartCountsDownFrom() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [roundSlot("sx-bjj")]
+        )
+        let surface = surface(harness, engine: engine)
+
+        XCTAssertEqual(fieldValue(surface, WatchMetricKey.roundDuration), 180)
+        surface.adjust(WatchMetricKey.roundDuration, detents: 3)
+        XCTAssertEqual(
+            fieldValue(surface, WatchMetricKey.roundDuration),
+            180 + 3 * WatchMetricStepping.secondsPerDetent,
+            "three detents of five seconds"
+        )
+
+        let startedAt = harness.clock.now
+        await surface.startWork()
+        let countdown = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(
+            countdown.plannedDurationMs,
+            195_000,
+            "Start counts down from the length the user dialled (D-3404)"
+        )
+        XCTAssertEqual(countdown.startedAt, startedAt)
+        XCTAssertEqual(surface.workRemainingSeconds(), 195)
+    }
+
+    func testS3406ARunningPeriodHasNoLengthRowAndKeepsTheDialledLength() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [
+                roundSlot("sx-half", roundDurationSecs: 2400),
+                roundSlot("sx-shift", roundDurationSecs: 600),
+            ]
+        )
+        let surface = surface(harness, engine: engine)
+
+        surface.adjust(WatchMetricKey.roundDuration, detents: 3)
+        let dialled = try XCTUnwrap(fieldValue(surface, WatchMetricKey.roundDuration))
+        XCTAssertEqual(dialled, 2400 + 3 * WatchMetricStepping.secondsPerDetent)
+
+        await surface.startWork()
+        XCTAssertTrue(
+            surface.fields.isEmpty,
+            "a running period offers no row: its length cannot change mid-countdown (D-3404)"
+        )
+        XCTAssertEqual(engine.timerFor(WatchTimerKind.round)?.plannedDurationMs, Int(dialled) * 1000)
+
+        harness.clock.advance(60)
+        try await surface.log()
+
+        XCTAssertEqual(
+            fieldValue(surface, WatchMetricKey.roundDuration),
+            dialled,
+            "after Log the next period starts from the length the last one used (D-3404)"
+        )
+        XCTAssertFalse(surface.isWorkRunning)
+
+        await surface.startWork()
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.round)?.plannedDurationMs,
+            Int(dialled) * 1000,
+            "the same slot's next period counts down from the same length"
+        )
+        harness.clock.advance(30)
+        try await surface.log()
+
+        _ = await engine.selectExercise(slotId: "sx-shift")
+        XCTAssertEqual(
+            fieldValue(surface, WatchMetricKey.roundDuration),
+            600,
+            "another slot starts from its own number, never the override (D-3404)"
+        )
+    }
+
+    func testS3407APeriodLengthNeverFallsBelowOneSecond() async throws {
+        XCTAssertEqual(
+            WatchMetricStepping.adjust(0, metricKey: WatchMetricKey.roundDuration, detents: -1),
+            1,
+            "the shortest length the schema accepts (D-3405)"
+        )
+
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [roundSlot("sx-bjj")]
+        )
+        let surface = surface(harness, engine: engine)
+
+        surface.adjust(WatchMetricKey.roundDuration, detents: -40)
+        XCTAssertEqual(fieldValue(surface, WatchMetricKey.roundDuration), 1)
+
+        await surface.startWork()
+        XCTAssertEqual(engine.timerFor(WatchTimerKind.round)?.plannedDurationMs, 1000)
+    }
+
+    func testS3408SetsAndTimedWorkKeepTheRowsTheyHad() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: nil,
+            exercises: [
+                slot("sx-bench", capabilities: ["reps", "sets", "load"]),
+                // plan 65: the no-row half of this test is about a timed
+                // effort with nothing to step, so the fixture is time-only.
+                slot("sx-run", capabilities: ["time"]),
+            ]
+        )
+        let surface = surface(harness, engine: engine)
+
+        XCTAssertEqual(
+            surface.fields.map(\.metricKey),
+            [WatchMetricKey.reps, WatchMetricKey.weight],
+            "a set shows reps and load and nothing new"
+        )
+
+        _ = await engine.selectExercise(slotId: "sx-run")
+        XCTAssertTrue(surface.fields.isEmpty, "a timed effort still has no row (D-1305)")
+    }
+
+    func testS3409TheRestSurfaceNamesItself() {
+        XCTAssertEqual(WatchRestSurfaceCopy.restCaption, "Rest")
+    }
+
+    // MARK: - S-3502 to S-3505, plan 23b: every effort starts a rest
+
+    func testS3502ATimedEntryStartAndLogLeavesTheRestRunning() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(754) // 10:12:34
+        try await surface.log()
+
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.state,
+            WatchTimerState.stopped,
+            "Log still ends the timed window's own clock (S-1300)"
+        )
+        XCTAssertTrue(
+            surface.isResting,
+            "a logged timed entry starts the rest screen, as a set does (D-3501)"
+        )
+        XCTAssertEqual(surface.restElapsedSeconds(), 0, "the rest starts at 0:00")
+
+        let rests = engine.timerRows(WatchTimerKind.rest)
+        XCTAssertEqual(rests.count, 1, "one rest, the one this log started")
+        XCTAssertEqual(rests.first?.state, WatchTimerState.running)
+        XCTAssertEqual(rests.first?.startedAt, harness.clock.now)
+        XCTAssertNil(rests.first?.plannedDurationMs, "a rest has no length (D-160)")
+    }
+
+    func testS3503AHoldStartsARestAfterItsLog() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "isometric_stretching",
+            exercises: [slot("sx-plank", capabilities: ["hold", "time"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(60)
+        try await surface.log()
+
+        XCTAssertEqual(surface.effortKind, WatchEffortKind.drill)
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.hold)?.state,
+            WatchTimerState.stopped,
+            "the hold's own clock is the one Log stops"
+        )
+        XCTAssertTrue(surface.isResting, "a logged hold starts the rest screen (D-3501)")
+
+        let rests = engine.timerRows(WatchTimerKind.rest)
+        XCTAssertEqual(rests.count, 1, "exactly one rest row")
+        XCTAssertEqual(rests.first?.state, WatchTimerState.running)
+        XCTAssertNil(rests.first?.plannedDurationMs)
+    }
+
+    @MainActor
+    func testS3503BAPeriodStartsARestAfterItsLog() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [slot("sx-bjj", capabilities: ["time", "rounds"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        let startedAt = harness.clock.now
+        await surface.startWork()
+        harness.clock.advance(90)
+        try await surface.log()
+
+        let stopped = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(stopped.state, WatchTimerState.stopped, "Log stops the period's clock")
+        XCTAssertEqual(
+            stopped.startedAt,
+            startedAt,
+            "no new round countdown replaces it (D-1306)"
+        )
+        XCTAssertTrue(surface.isResting, "a logged period starts the rest screen (D-3501)")
+
+        let rests = engine.timerRows(WatchTimerKind.rest)
+        XCTAssertEqual(rests.count, 1, "exactly one rest row")
+        XCTAssertEqual(rests.first?.state, WatchTimerState.running)
+        XCTAssertNil(
+            rests.first?.plannedDurationMs,
+            "the rest is a count-up: the period's countdown is not moved onto it"
+        )
+
+        // The user's own Start ends the rest and opens period 2 where it left
+        // off — no countdown of the app's own (D-1306).
+        harness.clock.advance(30)
+        let nextStart = harness.clock.now
+        await surface.startWork()
+        let nextRound = try XCTUnwrap(engine.timerFor(WatchTimerKind.round))
+        XCTAssertEqual(nextRound.startedAt, nextStart)
+        XCTAssertFalse(surface.isResting, "Start leaves the rest")
+    }
+
+    func testS3504StartOfTheNextTimedEffortEndsTheRestItWalksInto() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(300) // 10:05:00
+        let first = try await surface.log()
+        let restStartedAt = harness.clock.now
+
+        harness.clock.advance(45) // 10:05:45
+        let startInstant = harness.clock.now
+        await surface.startWork()
+
+        let rest = try XCTUnwrap(engine.timerFor(WatchTimerKind.rest))
+        XCTAssertEqual(rest.state, WatchTimerState.stopped)
+        XCTAssertEqual(rest.stoppedAt, startInstant, "the rest ends at the Start instant (D-1311)")
+
+        let rests = emittedEvents(harness).filter { $0["kind"] as? String == "rest" }
+        XCTAssertEqual(rests.count, 1, "one rest observation, the one this Start ended")
+        XCTAssertEqual(rests.first?["startedAt"] as? String, utcIso(restStartedAt))
+        XCTAssertEqual(rests.first?["endedAt"] as? String, utcIso(startInstant))
+        XCTAssertEqual(
+            rests.first?["afterEntryId"] as? String,
+            first.entryId,
+            "the rest hangs on the entry it followed (D-221)"
+        )
+        XCTAssertFalse(surface.isResting)
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.startedAt,
+            startInstant,
+            "the next timed window runs from Start"
+        )
+    }
+
+    func testS3505EndingTheRestAfterATimedEntryReportsThatEntry() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(240) // 10:04:00
+        let timed = try await surface.log()
+        let restStartedAt = harness.clock.now
+
+        harness.clock.advance(75)
+        let endedAt = harness.clock.now
+        await surface.endRest()
+
+        XCTAssertFalse(surface.isResting, "Next ends the rest, so the shell returns to logging")
+        let rests = emittedEvents(harness).filter { $0["kind"] as? String == "rest" }
+        XCTAssertEqual(rests.count, 1)
+        XCTAssertEqual(rests.first?["startedAt"] as? String, utcIso(restStartedAt))
+        XCTAssertEqual(rests.first?["endedAt"] as? String, utcIso(endedAt))
+        XCTAssertEqual(
+            rests.first?["afterEntryId"] as? String,
+            timed.entryId,
+            "the rest hangs on the timed entry it followed (D-221)"
+        )
+    }
+
+    // MARK: - S-6002 Start names the slot it works
+
+    func testS6002AStartOfATimedSlotNamesTheSlotOnTheWire() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+        harness.clearEmitted()
+
+        await surface.startWork()
+
+        let sent = try XCTUnwrap(lastTimerFrame(harness, kind: WatchTimerKind.elapsed))
+        XCTAssertEqual(sent.timer["sessionExerciseId"] as? String, "sx-run")
+        let rejections = Harness.validator().validateEnvelope(sent.frame)
+        XCTAssertTrue(rejections.isEmpty, "\(rejections)")
+    }
+
+    func testS6002AStartOfAHoldSlotNamesTheSlotOnTheWire() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "resistance_lifting",
+            exercises: [slot("sx-plank", capabilities: ["hold", "time"])]
+        )
+        let surface = surface(harness, engine: engine)
+        harness.clearEmitted()
+
+        await surface.startWork()
+
+        let sent = try XCTUnwrap(lastTimerFrame(harness, kind: WatchTimerKind.hold))
+        XCTAssertEqual(sent.timer["sessionExerciseId"] as? String, "sx-plank")
+    }
+
+    func testS6002AStartOfARoundsSlotNamesTheSlotAndKeepsItsLength() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [roundSlot("sx-period", roundDurationSecs: 180)]
+        )
+        let surface = surface(harness, engine: engine)
+        harness.clearEmitted()
+
+        await surface.startWork()
+
+        let sent = try XCTUnwrap(lastTimerFrame(harness, kind: WatchTimerKind.round))
+        XCTAssertEqual(sent.timer["sessionExerciseId"] as? String, "sx-period")
+        XCTAssertEqual(
+            sent.timer["plannedDurationMs"] as? Int,
+            180_000,
+            "the slot's own length still travels with it"
+        )
+    }
+
+    func testS6002TheRestTheFollowingLogStartsCarriesNoSlot() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        harness.clock.advance(60)
+        try await surface.log()
+
+        let sent = try XCTUnwrap(lastTimerFrame(harness, kind: WatchTimerKind.rest))
+        XCTAssertNil(
+            sent.timer["sessionExerciseId"],
+            "a rest is nobody's slot, and the wire refuses a length on it too"
+        )
+        let rejections = Harness.validator().validateEnvelope(sent.frame)
+        XCTAssertTrue(rejections.isEmpty, "\(rejections)")
+    }
+
+    // MARK: - S-6004 the wrist reads a timer for its own slot
+
+    /// S-1403's hiding half: a timer that came from a message is hidden by its
+    /// slot. The phone's slot here is one the session does NOT hold, so D-2 has
+    /// nowhere to land and the row is only ever read, never followed.
+    func testS6004APhoneTimerForASlotTheLadderDoesNotHoldIsNotTheWristsWorkClock() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+        await surface.startWork()
+        harness.clearEmitted()
+
+        harness.clock.advance(10)
+        let phoneStartedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6004",
+                sentAt: utcIso(phoneStartedAt),
+                payload: [
+                    "timers": [
+                        WatchTimerKind.elapsed: phoneTimer(
+                            WatchTimerKind.elapsed,
+                            startedAt: utcIso(phoneStartedAt),
+                            sessionExerciseId: "sx-other"
+                        )
+                    ]
+                ]
+            )
+        )
+
+        XCTAssertNil(surface.workTimer, "another slot's clock is not this slot's clock")
+        XCTAssertFalse(surface.isWorkRunning)
+        XCTAssertEqual(
+            engine.currentExercise?["sessionExerciseId"] as? String,
+            "sx-run",
+            "a slot the ladder does not hold has nowhere to land"
+        )
+        XCTAssertTrue(harness.emitted.isEmpty, "the wrist announces no move")
+    }
+
+    /// Under D-2 the phone's effort on a slot the session holds is the wrist's
+    /// own now: the engine moves there, so the stored timer is the clock of the
+    /// exercise the wrist shows.
+    func testS6004APhoneTimerForAHeldSlotMovesTheWristToIt() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [
+                slot("sx-run", capabilities: ["time", "distance"]),
+                slot("sx-other", capabilities: ["time", "distance"]),
+            ]
+        )
+        let surface = surface(harness, engine: engine)
+        await surface.startWork()
+        harness.clearEmitted()
+
+        harness.clock.advance(10)
+        let phoneStartedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6004-held",
+                sentAt: utcIso(phoneStartedAt),
+                payload: [
+                    "timers": [
+                        WatchTimerKind.elapsed: phoneTimer(
+                            WatchTimerKind.elapsed,
+                            startedAt: utcIso(phoneStartedAt),
+                            sessionExerciseId: "sx-other"
+                        )
+                    ]
+                ]
+            )
+        )
+
+        XCTAssertEqual(
+            engine.currentExercise?["sessionExerciseId"] as? String,
+            "sx-other",
+            "the wrist follows the told-about effort to its slot"
+        )
+        XCTAssertEqual(surface.workTimer?.sessionExerciseId, "sx-other")
+        XCTAssertTrue(surface.isWorkRunning, "the stored timer is the one this slot runs")
+        let advanced = harness.emitted.filter {
+            $0["type"] as? String == "session_lifecycle"
+                && ($0["payload"] as? [String: Any])?["state"] as? String
+                    == WatchLifecycleState.exerciseAdvanced
+        }
+        XCTAssertEqual(advanced.count, 1, "the jump announces itself once")
+    }
+
+    /// D-3's second half: only a timer that came from a message is hidden by its
+    /// slot. A clock the wrist started is nobody else's clock, so it stays the
+    /// running one across the jump (the S-1403 premise).
+    func testS6004AClockTheWristStartedSurvivesTheJump() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [
+                roundSlot("sx-half", roundDurationSecs: 2400),
+                roundSlot("sx-shift", roundDurationSecs: 600),
+            ]
+        )
+        let surface = surface(harness, engine: engine)
+
+        await surface.startWork()
+        let startedAt = try XCTUnwrap(surface.workTimer?.startedAt)
+        harness.clock.advance(60)
+
+        _ = await engine.advanceExercise()
+
+        XCTAssertEqual(
+            surface.workTimer?.startedAt,
+            startedAt,
+            "the period the user started is still the clock they are reading"
+        )
+        XCTAssertTrue(surface.isWorkRunning)
+    }
+
+    func testS6004APhoneTimerWithNoSlotIsShownForTheCurrentSlot() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let surface = surface(harness, engine: engine)
+
+        harness.clock.advance(10)
+        let phoneStartedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6004-noslot",
+                sentAt: utcIso(phoneStartedAt),
+                payload: [
+                    "timers": [
+                        WatchTimerKind.elapsed: phoneTimer(
+                            WatchTimerKind.elapsed,
+                            startedAt: utcIso(phoneStartedAt)
+                        )
+                    ]
+                ]
+            )
+        )
+
+        XCTAssertEqual(
+            surface.workTimer?.startedAt,
+            phoneStartedAt,
+            "a timer with no slot belongs to whatever slot the wrist is on"
+        )
+        XCTAssertTrue(surface.isWorkRunning)
+    }
+
+    // MARK: - S-6331 a phone clear of a work timer offers Start again
+
+    /// D-6: the phone finishing an interval the wrist's clock started sends
+    /// `{kind: null}`; the wrist stops that kind's newest row and its one button
+    /// offers Start again.
+    @MainActor
+    func testS6331APhoneClearOfTheElapsedTimerMakesTheWristOfferStart() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let state = surface(harness, engine: engine)
+        let model = WatchLoggingModel(state: state, haptics: RecordingHaptics())
+
+        let phoneStartedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6331-start",
+                sentAt: utcIso(phoneStartedAt),
+                payload: [
+                    "timers": [
+                        WatchTimerKind.elapsed: phoneTimer(
+                            WatchTimerKind.elapsed,
+                            startedAt: utcIso(phoneStartedAt),
+                            sessionExerciseId: "sx-run"
+                        )
+                    ]
+                ]
+            )
+        )
+
+        XCTAssertTrue(state.isWorkRunning, "the phone's clock for this slot is the wrist's clock")
+        XCTAssertEqual(model.primaryTitle, "Log", "a running clock offers Log")
+
+        harness.clock.advance(30)
+        let clearedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6331-clear",
+                sentAt: utcIso(clearedAt),
+                payload: [
+                    "timers": [WatchTimerKind.elapsed: NSNull()] as [String: Any]
+                ]
+            )
+        )
+
+        XCTAssertFalse(state.isWorkRunning, "a clear of the work kind leaves nothing running")
+        XCTAssertEqual(model.primaryTitle, "Start", "and the one button offers Start again")
+        XCTAssertEqual(
+            engine.timerFor(WatchTimerKind.elapsed)?.state,
+            WatchTimerState.stopped,
+            "the clear is a stopped row appended to the kind, not a rewritten one"
+        )
+        XCTAssertEqual(engine.timerFor(WatchTimerKind.elapsed)?.stoppedAt, clearedAt)
+    }
+
+    /// The documented limit: a clear names a KIND, not a slot, so it stops the
+    /// wrist's own clock too.
+    @MainActor
+    func testS6331BTheSameClearStopsAClockTheWristStartedItself() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let state = surface(harness, engine: engine)
+        let model = WatchLoggingModel(state: state, haptics: RecordingHaptics())
+
+        await state.startWork()
+        XCTAssertTrue(state.isWorkRunning, "the wrist's own clock is running")
+        XCTAssertEqual(model.primaryTitle, "Log")
+
+        harness.clock.advance(30)
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6331-clear-own",
+                sentAt: utcIso(harness.clock.now),
+                payload: [
+                    "timers": [WatchTimerKind.elapsed: NSNull()] as [String: Any]
+                ]
+            )
+        )
+
+        XCTAssertFalse(
+            state.isWorkRunning,
+            "a clear names a kind, not a slot: the wrist's own clock stops too"
+        )
+        XCTAssertEqual(model.primaryTitle, "Start")
+    }
+
+    func testS6331CAClearOfAnotherKindLeavesTheClockRunning() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "cardio_endurance",
+            exercises: [slot("sx-run", capabilities: ["time", "distance"])]
+        )
+        let state = surface(harness, engine: engine)
+
+        await state.startWork()
+        XCTAssertTrue(state.isWorkRunning)
+
+        for (messageId, kind) in [("m-6331-clear-hold", WatchTimerKind.hold),
+                                  ("m-6331-clear-round", WatchTimerKind.round)] {
+            _ = try await engine.applyMessage(
+                phoneFrame(
+                    "timer_state",
+                    sessionId: harness.sessionId,
+                    messageId: messageId,
+                    sentAt: utcIso(harness.clock.now),
+                    payload: ["timers": [kind: NSNull()] as [String: Any]]
+                )
+            )
+            XCTAssertTrue(
+                state.isWorkRunning,
+                "a clear of \(kind) says nothing about the running elapsed clock"
+            )
+        }
+
+        XCTAssertEqual(engine.timerFor(WatchTimerKind.elapsed)?.state, WatchTimerState.running)
+    }
+
+    @MainActor
+    func testS6331DAHoldEffortOffersStartAfterTheClear() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "isometric_stretching",
+            exercises: [slot("sx-plank", capabilities: ["hold", "time"])]
+        )
+        let state = surface(harness, engine: engine)
+        let model = WatchLoggingModel(state: state, haptics: RecordingHaptics())
+
+        let phoneStartedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6331-hold-start",
+                sentAt: utcIso(phoneStartedAt),
+                payload: [
+                    "timers": [
+                        WatchTimerKind.hold: phoneTimer(
+                            WatchTimerKind.hold,
+                            startedAt: utcIso(phoneStartedAt),
+                            sessionExerciseId: "sx-plank"
+                        )
+                    ]
+                ]
+            )
+        )
+        XCTAssertTrue(state.isWorkRunning)
+        XCTAssertEqual(model.primaryTitle, "Log")
+
+        harness.clock.advance(20)
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6331-hold-clear",
+                sentAt: utcIso(harness.clock.now),
+                payload: [
+                    "timers": [WatchTimerKind.hold: NSNull()] as [String: Any]
+                ]
+            )
+        )
+
+        XCTAssertFalse(state.isWorkRunning)
+        XCTAssertEqual(model.primaryTitle, "Start")
+        XCTAssertEqual(engine.timerFor(WatchTimerKind.hold)?.state, WatchTimerState.stopped)
+    }
+
+    @MainActor
+    func testS6331EARoundEffortOffersStartAfterTheClear() async throws {
+        let harness = Harness()
+        harness.clock.now = instant("2026-07-13T10:00:00Z")
+        let engine = await harness.runningEngine()
+        _ = await engine.createSession(
+            modality: "sports",
+            exercises: [slot("sx-bjj", capabilities: ["time", "rounds"])]
+        )
+        let state = surface(harness, engine: engine)
+        let model = WatchLoggingModel(state: state, haptics: RecordingHaptics())
+
+        let phoneStartedAt = harness.clock.now
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6331-round-start",
+                sentAt: utcIso(phoneStartedAt),
+                payload: [
+                    "timers": [
+                        WatchTimerKind.round: phoneTimer(
+                            WatchTimerKind.round,
+                            startedAt: utcIso(phoneStartedAt),
+                            sessionExerciseId: "sx-bjj"
+                        )
+                    ]
+                ]
+            )
+        )
+        XCTAssertTrue(state.isWorkRunning)
+        XCTAssertEqual(model.primaryTitle, "Log")
+
+        harness.clock.advance(20)
+        _ = try await engine.applyMessage(
+            phoneFrame(
+                "timer_state",
+                sessionId: harness.sessionId,
+                messageId: "m-6331-round-clear",
+                sentAt: utcIso(harness.clock.now),
+                payload: [
+                    "timers": [WatchTimerKind.round: NSNull()] as [String: Any]
+                ]
+            )
+        )
+
+        XCTAssertFalse(state.isWorkRunning)
+        XCTAssertEqual(model.primaryTitle, "Start")
+        XCTAssertEqual(engine.timerFor(WatchTimerKind.round)?.state, WatchTimerState.stopped)
     }
 }

@@ -22,11 +22,13 @@ The **session effort rating** is how hard the whole session was: 1 is the easies
 
 **Rules.**
 
-- **The automatic prompt must be answered.** It has no close or skip control and cannot be dismissed without a choice; the Effort Rating setting (`SettingsState.showFeelingSurvey`, see [Theme & Settings](theme_and_settings.md)) is the only way not to be asked. It appears only on a post-workout summary of an unrated session, at most once.
+- **The automatic prompt must be answered.** It has no close or skip control and cannot be dismissed without a choice; the Effort Rating setting (`SettingsState.showFeelingSurvey`, see [Theme & Settings](theme_and_settings.md)) is the only way not to be asked. It appears only on a post-workout summary of an unrated session, at most once. This is the phone's rule: the wrist's own question can be skipped, which records nothing, so the phone's prompt still appears (see [Watch Session Capture](watch_session_capture.md)).
+- **The automatic prompt is first-answer-wins.** A rating the watch settles while the prompt is open closes it and shows in the EFFORT row, and the prompt's own answer is written only while the session has none, so the watch's number is never overwritten by it. The EFFORT row's Add/Change control stays an explicit edit and still overwrites. Verified by `test/rating_first_answer_summary_test.dart` (group `Summary automatic effort question, first answer wins (plan 42a)`: `S-4303 the watch rating closes the automatic question and stays stored`, `S-4303 the user's own answer closes the sheet once`, `S-4303 a late tap on the open question cannot overwrite the watch's answer`) and by `test/rating_first_answer_state_test.dart` (`S-4304 onlyIfUnrated leaves the stored rating alone, the default still writes`).
 - **The user-opened sheet is optional.** The user chose to open it, so closing it without a choice leaves the rating unchanged.
 - **A change reaches the calendar.** On a calendar-opened summary a saved rating refreshes the originating `CalendarState` — the same path Discard uses — so the day list shows the new tint on return.
 - **The rating is never drawn as ramp-colored text.** The lower ramp steps sit below the text-contrast floor, so the EFFORT value uses the stat pills' shared value color and the intensity is carried by a non-text marker in the rating's ramp step (D-15 in `docs/plans/2026-09-24-01-stats-pr1-effort-rating-plan.md`).
 - **Rolling sessions can still be rated.** They have no session clock, so their info card drops Duration and Rest Time but keeps the EFFORT row.
+- **The EFFORT row explains itself.** Under the value a muted caption reads `How hard the session felt`, and the row's button reads `Change rating` once a rating exists and `Add rating` before one. Verified by `test/session_summary_effort_row_test.dart` (group `S-3211 the EFFORT pill carries its own caption`: `S-3211 a rated session shows the caption under the value`, `S-3211 an unrated session shows it too`, `S-3211 a rolling session shows it too`; group `S-3212 the button names what it does`: `S-3212 an unrated session reads Add rating, then Change rating after the sheet rates it`, `S-3212 a rated session reads Change rating, and tapping it opens the sheet on the stored rating`).
 - **A watch session in history is rated like any other.** An imported watch session is an ordinary `TrainingSession`, so its summary shows the rating the wrist recorded, or offers to add one, through the same control. Verified by `test/watch_session_summary_integration_test.dart` (`S-285`, `S-286`).
 - **The phone's rating is final.** A rating written here is never replaced by one the wrist sends later: the import applies a wrist rating only while the session has none (D-138 of `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`). Verified by `test/watch_session_import_test.dart` (`S-264`).
 - **Both devices ask the same question.** The sheet's question, scale and end labels are the ones `watch/contract/watch_effort_rating_contract.json` gives the wrist. Verified by `test/watch_effort_rating_copy_parity_test.dart` (`S-287`).
@@ -36,6 +38,8 @@ Verified by:
 - `test/screen_widget_test.dart` (group `SessionSummaryScreen`): `feeling modal is non-dismissible and blocks summary controls`, `selecting tile 3 dismisses the feeling modal and persists`, `does not show feeling modal when session feeling already exists`.
 - `test/interaction_flow_test.dart`: `does not show feeling survey sheet when disabled in settings`.
 - `test/session_summary_effort_row_test.dart`: the prompt's copy and refresh (`Task 1a`); add, change, pre-selection and the selected tile's text color (`S-3`, `Fresh session — Change replaces …`, `Change sheet pre-selects …`); closing without a choice by tap and by swipe (`S-5.5`, `Change sheet swiped down …`); calendar-opened summaries — no prompt, add/change, day-list refresh (`S-4/S-5`, `S-5: day list → …`); value color and marker (`EFFORT value is drawn …`); pre-redefinition answers (`S-6`); the sheet's date subtitle (`Sheet subtitle …`); rolling sessions (`Task 3`).
+- `test/rating_first_answer_state_test.dart`: the wrist's settled answer reported once and adopted by the live session (`S-4301`), the phone's stored rating kept with no callback (`S-4302`), the late automatic answer writes nothing while the default still writes (`S-4304`).
+- `test/rating_first_answer_summary_test.dart` (group `Summary automatic effort question, first answer wins (plan 42a)`): the watch answer closes the open prompt and shows in the row, the user's own answer closes it once, a late tap cannot overwrite (`S-4303`).
 - `test/header_standardization_test.dart`: `S-008: rolling session shows combined card with EFFORT row only (Duration/Rest hidden)`.
 
 ---
@@ -46,8 +50,8 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 
 | Section | Content |
 |---------|---------|
-| Header | Session title, formatted start date and time, modality badge |
-| Session info card | Duration and Rest Time, then the EFFORT row (rolling sessions: EFFORT row only — see [Effort Rating Capture](#effort-rating-capture)) |
+| Header | Session title only (the app bar shows no date or modality badge) |
+| Session info card | Duration and Rest Time, then the heart-rate row when the session has one ([Heart rate](#heart-rate)), then the EFFORT row (rolling sessions: no Duration / Rest Time row — see [Effort Rating Capture](#effort-rating-capture)); the formatted start date/time and the modality chip sit in this card's header |
 | Group Cards | One card per group that has data in this session |
 | Session Note | Inline TextField with debounce save |
 | Calendar | Month grid and Open Calendar navigation button |
@@ -57,6 +61,25 @@ What is not rendered in the active layout:
 - Session RPE card
 - Per-exercise rows
 - Standalone PR card
+
+### Heart rate
+
+The info card carries a heart-rate row — two stat pills side by side, the
+session's average and maximum heart rate — between the Duration / Rest Time
+row and the EFFORT row. It is shown only when the session has a session-scope
+`SensorSummary` carrying average and maximum heart rate, which the watch
+importer stores from the session end (see
+[Watch Session Capture](watch_session_capture.md)); the model requires the two
+values together, so there is no average-only case. Without one the card is
+unchanged, and a rolling session — which has no Duration / Rest Time row —
+shows the heart-rate row too. The screen loads it in `_loadAsyncData` next to
+the rest time; that load runs only while `workoutState.currentSession` is
+non-null, so a past session opened from the calendar does not show the row.
+Verified by `test/session_summary_heart_rate_test.dart` (group
+`SessionSummaryScreen heart-rate row (S-9654..S-9657)`: `S-9654 seeded: the
+card shows avg and max side by side`, `S-9654 not seeded: the card is
+unchanged, no row`, `S-9656 a rolling session shows the heart-rate row too`,
+`S-9657 the row sits between Duration and Effort`).
 
 Notes:
 
@@ -131,7 +154,16 @@ the answer goes through `WorkoutState.setEntryDistance` or
 - **The section is hidden when it has no rows**, as the group cards are.
 - **A row carries a name, a distance and a unit, and nothing else.** No pace,
   total, change indicator or duration is added anywhere on the Summary: the
-  values belong to Stats.
+  values belong to Stats. The pencil that ends each row marks it editable; it
+  is decoration, not data.
+- **The card says how to edit a row.** A hint above the rows reads
+  `Tap a row to enter or correct it.`, and each row ends with a pencil; a row
+  with no distance keeps its em dash. Verified by
+  `test/session_summary_distance_test.dart` (`S-3213 the card says how to edit
+  a row, above the rows`, `S-3213 a session with no distance rows shows neither
+  the card nor the hint`, `S-3214 every row ends with a pencil, and the row
+  still opens the editor`, `S-3215 the card fits 280 dp with a 60-character
+  name`).
 - **Confirming the pre-filled value keeps the stored metres**, which is what
   confirms an estimate; any other value is stored as entered, and zero removes
   the distance. The field's label never carries the estimate marker, because
@@ -255,6 +287,14 @@ Key public methods:
   each to the session's window and merging overlaps once; a session whose stored
   end precedes its start has an empty window and the total is `0`
   (`test/session_summary_inverted_window_test.dart`, `S-153`)
+- getSessionHeartRate — returns the session's average and maximum heart rate
+  as `({int avgBpm, int maxBpm})?` from the first session-scope
+  `SensorSummary` that carries both values, rounded to whole bpm; null when
+  there is none — an effort-scope summary does not count. Verified by
+  `test/session_summary_heart_rate_test.dart` (group
+  `SessionSummaryService.getSessionHeartRate (S-9651..S-9653)`: `S-9651 avg
+  127.6 / max 171.2 rounds to (128, 171)`, `S-9652 no summaries, or only a
+  non-session scope, answers null`).
 - buildGroupMetrics
 - groupPrsByEffortKind
 - getPreferredWeightUnit
@@ -262,6 +302,11 @@ Key public methods:
 Repository compatibility:
 
 - Uses WorkoutRepository interface only
+
+Tests: `test/session_summary_heart_rate_test.dart` — `S-9651` rounding to
+whole bpm, `S-9652` null with no session-scope summary, `S-9654` the row and
+its texts, absent without data, `S-9656` a rolling session, `S-9657` row order
+Duration → heart rate → Effort.
 
 ---
 
@@ -332,4 +377,4 @@ Last Updated: April 13, 2026
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-10-13. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

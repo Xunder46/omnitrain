@@ -1,0 +1,4 @@
+# crew-prover: tests only, never production code.
+--allow-tool=write(test/**)
+--allow-tool=write(watch/watchos/Tests/**)
+--allow-tool=write(.work/crew/**)

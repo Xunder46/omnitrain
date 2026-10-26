@@ -2455,6 +2455,198 @@ void main() {
       );
 
       test(
+        'round: updatePlannedDurationFrom reaches the later unstarted rounds',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'sports');
+
+          final exercises = await repo.getExercises();
+          final roundExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('rounds'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            roundExercise,
+            effortKindOverride: 'round',
+          );
+          await state.addRound(effortId);
+          await state.addRound(effortId);
+
+          // (a) Nothing started yet: the change reaches every round.
+          final allTouched = await state.updatePlannedDurationFrom(
+            effortId,
+            0,
+            240,
+          );
+          expect(allTouched, [0, 1, 2]);
+          expect(
+            state
+                .getRoundsForEffort(effortId)
+                .map((r) => r.plannedDurationSecs)
+                .toList(),
+            [240, 240, 240],
+          );
+
+          // (b) Round 0 is over: changing round 1's length leaves it alone.
+          await state.setRoundDuration(effortId, 0, 100);
+          final laterTouched = await state.updatePlannedDurationFrom(
+            effortId,
+            1,
+            120,
+          );
+          expect(laterTouched, [1, 2]);
+          expect(
+            state
+                .getRoundsForEffort(effortId)
+                .map((r) => r.plannedDurationSecs)
+                .toList(),
+            [240, 120, 120],
+          );
+
+          // Persisted, not only cached.
+          final stored = await repo.getRoundInstances(effortId);
+          expect(
+            stored.map((r) => r.plannedDurationSecs).toList(),
+            [240, 120, 120],
+          );
+        },
+      );
+
+      test(
+        'round: updatePlannedDurationFrom leaves a finished round at fromIndex alone',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'sports');
+
+          final exercises = await repo.getExercises();
+          final roundExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('rounds'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            roundExercise,
+            effortKindOverride: 'round',
+          );
+          await state.addRound(effortId);
+          await state.addRound(effortId);
+
+          // Round 0 is over: 100 s logged of its 180 s planned length.
+          await state.setRoundDuration(effortId, 0, 100);
+          expect(
+            state.getRoundsForEffort(effortId).first.state,
+            RoundState.finished,
+          );
+
+          // fromIndex is the finished round itself: it is not rewritten, while
+          // every later round that has not started follows the new value.
+          final touched = await state.updatePlannedDurationFrom(effortId, 0, 240);
+          expect(touched, [1, 2]);
+          final rounds = state.getRoundsForEffort(effortId);
+          expect(
+            rounds.map((r) => r.plannedDurationSecs).toList(),
+            [180, 240, 240],
+          );
+          expect(rounds[0].actualDurationSecs, 100);
+
+          // Persisted, not only cached.
+          final stored = await repo.getRoundInstances(effortId);
+          expect(
+            stored.map((r) => r.plannedDurationSecs).toList(),
+            [180, 240, 240],
+          );
+        },
+      );
+
+      test(
+        'round: updatePlannedDurationFrom keeps the running round its length',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'sports');
+
+          final exercises = await repo.getExercises();
+          final roundExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('rounds'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            roundExercise,
+            effortKindOverride: 'round',
+          );
+          await state.addRound(effortId);
+          await state.addRound(effortId);
+
+          // (c) Round 1 is running: it keeps the length it started with, while
+          // round 0 (not started) and round 2 follow the new value.
+          await state.startRound(effortId, 1);
+          final runningSkipped = await state.updatePlannedDurationFrom(
+            effortId,
+            0,
+            300,
+          );
+          expect(runningSkipped, [0, 2]);
+          final rounds = state.getRoundsForEffort(effortId);
+          expect(
+            rounds.map((r) => r.plannedDurationSecs).toList(),
+            [300, 180, 300],
+          );
+          expect(rounds[1].state, RoundState.active);
+
+          // Persisted, not only cached.
+          final stored = await repo.getRoundInstances(effortId);
+          expect(
+            stored.map((r) => r.plannedDurationSecs).toList(),
+            [300, 180, 300],
+          );
+        },
+      );
+
+      test(
+        'round: edit-mode setRoundDuration changes only that round (S-4414)',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'sports');
+
+          final exercises = await repo.getExercises();
+          final roundExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('rounds'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            roundExercise,
+            effortKindOverride: 'round',
+          );
+          await state.addRound(effortId);
+          await state.addRound(effortId);
+
+          // Distinct planned lengths, so a stray neighbour write shows up.
+          await state.updateRoundPlannedDuration(effortId, 0, 100);
+          await state.updateRoundPlannedDuration(effortId, 1, 200);
+          await state.updateRoundPlannedDuration(effortId, 2, 300);
+
+          // The retrospective edit-mode path writes one round only.
+          await state.setRoundDuration(effortId, 1, 90);
+
+          final rounds = state.getRoundsForEffort(effortId);
+          expect(rounds[1].actualDurationSecs, 90);
+          expect(rounds[1].state, RoundState.finished);
+          expect(
+            rounds.map((r) => r.plannedDurationSecs).toList(),
+            [100, 200, 300],
+          );
+
+          final stored = await repo.getRoundInstances(effortId);
+          expect(
+            stored.map((r) => r.plannedDurationSecs).toList(),
+            [100, 200, 300],
+          );
+        },
+      );
+
+      test(
         'drill: addEntry carries extra-weight forward into the new drill',
         () async {
           final repo = await _freshRepo();

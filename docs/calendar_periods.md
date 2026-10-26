@@ -27,8 +27,11 @@ overflow count, so a heavy day never overruns its cell.
 ### Monthly Stats Strip
 
 A strip below the grid reports four figures for the **displayed month**: completed session count,
-total training time, the current streak (computed from up to 90 days of history, not just the
-displayed month), and a per-modality breakdown. Values render as an em dash rather than a zero
+total training time, the streak slot, and a per-modality breakdown. The streak slot's label comes
+from `CalendarState.isActiveStreak` (`lib/state/calendar/calendar_state.dart`): it reads STREAK
+when the displayed month is the current month with a live streak, otherwise BEST RUN (the longest
+consecutive-day run within the displayed month's data). A multi-day streak renders with a flame
+prefix. Values render as an em dash rather than a zero
 when the month has no data, and the strip stays blank while the month is loading rather than
 flashing placeholder values.
 
@@ -43,7 +46,18 @@ Routing behavior is date-sensitive:
 
 ### Day Session List
 
-`DaySessionListScreen` groups entries into Completed first, then Planned.
+`DaySessionListScreen` groups entries into Completed first, then Planned, then In Progress.
+The three group labels are shared `OmniCardHeader`s (`COMPLETED`, `PLANNED`,
+`IN PROGRESS`), not screen-local header widgets. Verified by
+`test/ui_standards_widget_test.dart` (group `Mock S-2605b DaySessionListScreen
+headers`: `a completed, a planned and an open session give three uppercase
+OmniCardHeaders`, `no header renders when the day is empty`).
+
+An empty day is the shared empty state (`OmniEmptyState`): a past day shows
+`No sessions on this day.`; a today or future day shows `No sessions planned
+yet.` with hint `Add one with the button below.` Verified by
+`test/screen_widget_test.dart` (group `DaySessionListScreen`: `empty day
+renders the shared OmniEmptyState (S-2802)`).
 
 **Past days are read-only.** Today and future days allow adding, editing, deleting, and starting a
 planned session; a past day allows none of those. Tapping a completed entry opens its summary;
@@ -102,6 +116,19 @@ Period capabilities:
 - Curated color palette (stored as `colorHex`)
 
 Calendar highlights days covered by periods with a semi-transparent background.
+
+An empty periods list is the shared empty state (`OmniEmptyState`, title
+`No training periods yet.`, hint `Add one with the button below.`). Verified
+by `test/screen_widget_test.dart` (group `PeriodListScreen`: `empty list
+renders the shared OmniEmptyState (S-2802)`).
+
+Create Period — in new and edit mode alike — warns about unsaved changes:
+leaving the form with edits open a two-button dialog (keep editing / discard),
+so typed values cannot be lost silently. Verified by
+`test/screen_widget_test.dart` (group `CreatePeriodScreen unsaved changes
+guard (S-2901)`: `typed name + system back shows the Unsaved changes dialog`,
+`Discard pops and persists nothing`, `edit mode: an untouched stored period pops with no dialog`,
+`edit mode: Discard leaves the stored period unchanged`).
 
 ---
 
@@ -244,7 +271,7 @@ Supporting flows:
 
 1. Calendar indicators include both planned and historical sessions.
 2. Indicator style communicates state (filled vs outlined).
-3. Day list is grouped: Completed first, Planned second.
+3. Day list is grouped: Completed first, Planned second, In Progress third.
 4. Past days are read-only in day list.
 5. Planned-session tap starts workout using correct modality/routine path.
 6. Completed-session tap opens summary.

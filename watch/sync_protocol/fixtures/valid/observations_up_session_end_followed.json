@@ -1,0 +1,24 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-followed-1",
+  "sessionId": "s-fol-fx",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-10-24T10:56:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "end-s-fol-fx",
+        "entryId": "end-s-fol-fx",
+        "kind": "session_end",
+        "loggedAt": "2026-10-24T10:55:00Z",
+        "startedAt": "2026-10-24T10:00:00Z",
+        "endedAt": "2026-10-24T10:55:00Z",
+        "status": "completed",
+        "followed": true,
+        "avgHeartRateBpm": 133,
+        "maxHeartRateBpm": 171
+      }
+    ]
+  }
+}

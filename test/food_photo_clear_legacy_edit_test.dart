@@ -84,8 +84,8 @@ void main() {
       );
 
       // A legacy library-only custom: isCatalog = false and no
-      // catalog twin, so My Foods renders it and the row tap
-      // opens the legacy shim editor.
+      // catalog twin, so the Library list renders it and the row
+      // tap opens the legacy shim editor.
       final foodId = await state.createFood(
         Food(
           id: '',
@@ -116,11 +116,23 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('My Foods'));
+      // The Library list is lazy: bring the legacy row into view
+      // via the search field.
+      await tester.enterText(
+        find.byKey(const Key('catalog_search_field')),
+        'Grandma\'s Stew',
+      );
       await tester.pumpAndSettle();
 
-      // Row tap opens the editor for this food.
-      await tester.tap(find.text('Grandma\'s Stew'));
+      // Row tap opens the editor for this food. The row title is
+      // scoped to the list because the search field's
+      // EditableText carries the same text.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.text('Grandma\'s Stew'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(
         find.text('Edit Food'),

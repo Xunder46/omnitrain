@@ -14,7 +14,9 @@ back an entry which arrived while the screen was open
 (`lib/state/workout/session_core_lifecycle.dart`), the screen that captures the
 snapshot that restore reads (`lib/features/session/workout_session_screen.dart`),
 and the question the phone's Summary asks about an imported session
-(`lib/widgets/session/effort_rating_sheet.dart`). Which session is whose, and
+(`lib/widgets/session/effort_rating_sheet.dart`), and the timer a wrist starts
+running on the phone's own intervals
+(`lib/state/watch/watch_timer_adoption.dart`). Which session is whose, and
 what ending a session on either device does, is
 [Watch Session Sync](watch_session_sync.md). The stored models (`WatchInboxEntry`,
 `SensorSummary`) belong to [Data Models](data_models.md); the wire format is
@@ -22,8 +24,7 @@ what ending a session on either device does, is
 [The Watch Surface](state_management/watch_surface.md). "The wrist half"
 covers what the watchOS package (`watch/watchos/Sources/WatchSessionEngine/`)
 sends for the import; its sensors and the summaries computed from them are in
-[The Watch Surface](state_management/watch_surface.md) ("Watch Sensors
-and the Platform Workout").
+[Watch Sensors and the Platform Workout](state_management/watch_sensors.md).
 
 ---
 
@@ -69,7 +70,13 @@ as its own is the exception: the wrist's effort rows merge into the efforts that
 session already has as they arrive, with no end to wait for, and its end then
 adds only what the phone's session does not have — its rating, and its
 heart-rate summary, an abandoned end included. Verified by
-`test/watch_session_merge_test.dart` (`S-9`, `D-19`).
+`test/watch_session_merge_test.dart` (`S-9`, `D-19`). A timed, hold or round
+entry in that merge fills the first interval the phone has not finished — a
+running or paused one included — instead of appending beside it, and appends
+only once every interval is finished (`test/watch_timed_fill_test.dart`,
+groups `Mock` and `Hive`: `S-5001 a wrist timed entry fills the unfinished
+interval`, `S-5002a a running interval is filled`,
+`S-5003 every interval finished: the entry appends`).
 
 **Why the rating and the end are observations of their own.** The wrist
 re-sends only observations the phone has not acknowledged; it never re-sends a
@@ -82,8 +89,8 @@ receipt names them, and their ids derive from the session (PROTOCOL.md,
 **Where the measurements travel.** Each timed, round and hold entry carries its
 own heart rate, and a timed entry its steps; the session's heart rate and each
 set block's travel in the `session_end`. Why they are computed on the wrist, and
-when, is [The Watch Surface](state_management/watch_surface.md)'s
-("Watch Sensors and the Platform Workout").
+when, is in [Watch Sensors and the Platform
+Workout](state_management/watch_sensors.md).
 
 **Why the rows a user added to an imported effort are never touched.** An
 imported session is ordinary history, so the user can add a set to an imported
@@ -232,7 +239,11 @@ session end, summary or effort rating.
 a `session_end`, and only the wrist holds the readings its summaries come from.
 So the wrist appends one for each session it created — at its own End or
 abandon, or when the phone's lifecycle message or snapshot ends it — and none for
-a session it joined from the phone, which the phone already holds.
+a session it joined from the phone, which the phone already holds. Since plan 71
+a session the wrist joined from the phone sends its `session_end` too, marked
+`followed: true`: the phone stores only the heart-rate summary the end carries
+from it — no session row and no effort rows — and never turns the end into
+history.
 
 **Why the end is stored before the row that ends the session.** A kill between
 the two then leaves a session still running with its end already owed, rather
@@ -248,6 +259,177 @@ live-mirrored session a completion can reach the wrist from the phone; asking
 then would be asking about a decision the wrist did not make. Whatever the wrist
 sends, a rating the phone holds for the session wins (see "The phone's rating is
 final" above).
+
+**Why the wrist's question can close by itself.** The phone may answer first —
+the Summary's automatic prompt or its EFFORT row — and when it does, the push
+tells the wrist with one `session_snapshot`: the mirror's converged state plus
+one `effort_rating` entry under the wrist's own id, `rating-<sessionId>`
+(`LiveSessionMirrorState.sendRatingFor`, called from
+`WatchSessionAutoPush._pushRating` right after the end is announced, before the
+push's ended-session early return). No wire or schema change: the envelope
+passes the Dart validator, and the wrist stores the entry under that id — the
+record `WatchSessionEngine.hasEffortRating` looks up — so the owed prompt drops
+out, `confirm()` records nothing and `recordEffortRating` refuses; the engine
+publishes the change and the rating state forwards it on the main queue, so an
+open prompt redraws. The phone sends only for an ended session that has a rating
+and that the mirror holds, remembers the session id once the send is delivered,
+and never when the mirror already holds the wrist's own answer. Limits, stated
+not fixed: both devices answering inside the radio latency window leaves the
+phone's number standing on the phone (D-138) while the wrist keeps the answer it
+recorded; a wrist out of reach keeps its question open until the next phone
+notification after it becomes reachable; and a session the phone ended itself,
+whose wrist copy is still held, is sent the entry too — the guards ask only that
+the phone's row is ended and rated — though the wrist asks nothing for a
+completion that came from the phone and does not upload the entry back. Verified
+by `test/rating_first_answer_push_test.dart` (the `S-4306`,
+`S-4307 the first answer stands and nothing is echoed`, `S-4308` and `S-4309`
+groups) and watchOS `WatchEffortRatingTests`
+(`testS4310ThePhonesRatingInASnapshotClosesTheOwedQuestion`,
+`testS4311ThePhonesRatingIsNotUploadedBackAsAnEffortRating`,
+`testS218TheWristNeverChangesARating`,
+`testS216ThePhonesLifecycleEndingItOwesNoPrompt`).
+
+**Why the wrist shows a summary when its workout ends.** With the question out
+of the way, the wrist answers what was just done with one card:
+`WatchWorkoutSummaryState`
+(`watch/watchos/Sources/WatchSessionEngine/WatchWorkoutSummary.swift`) is noted
+on every session change, and when the session this process saw active is now
+`completed` with at least one logged effort, the summary becomes pending — the
+time from start to end as `m:ss` or `h:mm:ss`, `Sets N` when every effort is a
+set and `Efforts N` otherwise, and `Avg HR n bpm` only when heart-rate samples
+exist inside the workout window. `WatchWorkoutSummaryView` shows it with a Done
+button (`dismissPending()`); a new active workout takes it away, and a workout
+that ended while the app was closed shows nothing. The root view's order — owed
+effort question, workout summary, rest, logging, start screen — is pinned by
+`WatchWorkoutSummaryWiringSourceTests` (S-9620); the state itself by
+`WatchWorkoutSummaryTests` (S-9601..S-9607).
+
+**Why the phone's running timer is told to the wrist.** A live session runs both
+ways: while the phone holds the session, `WatchTimerPush`
+(`lib/state/watch/watch_timer_push.dart`, built in `createWatchSync` as
+`WatchSyncGraph.timerPush` and bound in `lib/main.dart` beside the auto push)
+listens to the bound `WorkoutState`, debounces, and sends one `timer_state`
+frame per pass through `LiveSessionMirrorState.sendTimers` — the in-progress
+work interval per wire kind (`elapsed` for a timed effort, `hold` for a drill,
+`round`), running or paused, with its start, pause bookkeeping and a round's
+planned length, and `sessionExerciseId` naming the effort it belongs to. A kind
+the wrist already holds for the same slot, not stopped, with identical fields or
+an earlier start is not sent — the wrist's own timer wins — and a skipped kind
+is not recorded as delivered, so a later pause on the phone still travels. A
+kind no longer in progress is sent as `null` once — a timer the wrist started
+and the phone adopted included, while the mirror still holds it (plan 43c) —
+and a new interval replacing a delivered one goes out as two frames, the clear
+first. Limits, stated not
+fixed: the wrist has no pause control and follows a phone timer for another
+exercise with a jump to that exercise (plan 54,
+`WatchFollowPhoneEffortTests.testS8401APhoneTimerForAnotherSlotMovesTheEngineToItsSlot`),
+finishing on the watch stops the phone's timer through the logged-entry fill,
+which lands on the interval that started with the entry (plan 43a, 43c's shared
+start), a wrist out of reach is served at the next phone notification or the
+next frame the wrist sends, a failed session reload on the phone empties its
+timers and sends a clear until the next successful load, and an interval
+started with a preset target carries a back-dated start. Verified by
+`test/in_progress_work_timers_test.dart` (group
+`WorkoutState.inProgressWorkTimers (Mock)`) and
+`test/watch_timer_push_test.dart` (the `S-6211` to `S-6217` groups; the
+inbound-frame re-offer, groups `S-8406 the end of the effort reaches the wrist
+at the next conversation`, `S-8407 a reset-answered frame flushes no timers`
+and `S-8408 an ordinary flush is not starved by a clears-only drain`).
+
+**Why a timer the wrist started runs on the phone.** The same `timer_state`
+frames are the phone's to receive: `WatchTimerAdoption`
+(`lib/state/watch/watch_timer_adoption.dart`, built in `createWatchSync` as
+`WatchSyncGraph.timerAdoption` and bound in `lib/main.dart` after `timerPush`)
+listens to the live mirror and to the bound `WorkoutState`, and for each work
+kind the mirror holds with a non-empty `sessionExerciseId`, not stopped, for
+the session the phone is running, hands a `RemoteWorkTimer`
+(`lib/state/workout/timer_manager.dart`) to `WorkoutState.adoptRemoteWorkTimer`
+(`SessionCore.adoptRemoteWorkTimer` in `session_core_io.dart`, over
+`TimerManager.adoptRemoteTimer`). The target is the effort's in-progress
+interval if it has one, else its first not-finished interval, in the order
+plan 43a's fill uses; a not-started target becomes active — or paused, when the
+frame carries a pause stamp — with the wrist's start, pause stamp and
+accumulated pause, a round takes the wrist's planned length when the frame
+carries one, and the effort's open rests are closed and persisted as a phone
+start does. An in-progress target is replaced only when the wrist's start is
+earlier; an equal or later start changes nothing. A stopped timer, one for a
+slot the phone does not hold, or the wrong kind for the effort is ignored, and
+a wrist stop is not applied — the wrist's logged entry fills and finishes the
+interval (plan 43a). The write bumps `watchRefreshRevision` once so the open
+session screen resyncs: `_adoptRunningTimerState`
+(`lib/features/session/workout_session_timer_mixin.dart`, called from
+`_resyncExercisesFromState` in `workout_session_screen.dart`) gives an interval
+that became active from outside its running flag, its place in the
+one-timer-in-progress lock, the per-second ticker, the expiry notification and
+the refreshed cached target length. Repeated identical frames are skipped, the
+memo resetting when the session changes; there is no echo while the interval
+runs — after adoption the phone's instance equals the mirror's timer, so
+`WatchTimerPush` sends nothing back until the phone finishes the interval and
+the clear in the next paragraph goes out — while a later pause on the phone
+still travels. Limits, stated not
+fixed: when the session screen is opened after the watch started a round, the
+ring shows the running digits but does not sweep and no expiry fires, because
+the load path restores an active round as not running — pinned by
+`test/round_countdown_screen_test.dart` (`S-4408: at 390x844 with the rest
+strip up everything is hittable`, which expects the rest chip on a restored
+running round) — while the same screen already open follows the watch; the
+wrist has no pause control, so pause travels phone to wrist only; a timer for
+another exercise runs on that exercise's interval and shows when the user moves
+to it (the phone does not navigate); the wire holds one timer per kind, so
+a newer timer of a kind for another exercise supersedes the older one; a timer
+the phone refuses because its own interval started later is not retried until
+the watch's timer changes. A write from the watch in the middle of an interval
+the phone started itself leaves that interval's dialled auto-expiry running (the
+screen keeps the target dialled before the start in memory, since the started
+instance persists a zero target; `S-6126 a watch-driven resync does not kill the
+phone's own dialled expiry` in `test/widget_test.dart`). Verified
+by `test/remote_work_timer_state_test.dart` (groups `Mock` and `Hive`,
+`S-6101`–`S-6106`), `test/watch_timer_adoption_test.dart` (`S-6111`–`S-6115`)
+and `test/watch_timer_adoption_screen_test.dart` (`S-6121 a wrist elapsed timer
+starts the open timed interval`, `S-6122 a wrist round timer runs the open
+round countdown`, `S-6122 a round the phone had already started with another
+length takes the earlier wrist start and its length`, `S-6123 the adopted
+interval blocks starting another one`, `S-6124 a wrist timer for another effort
+leaves the open one alone`, `S-6125 a wrist elapsed timer that arrives before
+the mount still runs`).
+
+**Why finishing on either device logs once.** The live merge aims the wrist's
+entry at the interval whose clock started with it: among the effort's
+not-finished intervals, the in-progress one whose start is within 1000 ms of
+the entry's — the tolerance of a start that crosses the wire as an ISO string,
+which a Swift Date round trip can move by a millisecond — else the first
+in-progress one, else the first not-finished one (plan 43a's rule), else the
+entry appends. Verified by `test/watch_finish_once_test.dart` (groups `Mock`
+and `Hive`: `S-6301 the entry fills the interval whose start is its own`,
+`S-6304`, `S-6305a`/`S-6305b`,
+`S-6306a`/`S-6306b`, `S-6307a`/`S-6307b`). An entry for an interval the
+phone already logged — a FINISHED interval of its kind whose start is within
+the same 1000 ms and which is not the entry's own instance (an unfinished
+instance of the entry's own is finished in place, not mistaken for a
+duplicate); the watch out of reach, or the clear not yet arrived — writes nothing: the phone's numbers stand, and a following rest
+still lands on the phone's interval (`S-6311 a second report of an interval
+the phone logged is ignored` through `S-6316 a rest after a duplicate lands
+on the phone's interval`). The mirror image: the phone finishing an interval
+the wrist's clock started. `WatchTimerPush` remembered the adopted timer;
+when that slot-and-start interval ends it sends one
+`{kind: null}` frame while the mirror still holds that exact timer, before any
+new timer of the kind; the wrist stops the clock and offers Start. Verified by
+`test/watch_timer_push_test.dart` (the `S-6321` to `S-6330` groups and
+`S-6341 one interval, no duplicate: the wrist entry lands on the interval the
+phone already finished`) and watchOS `WatchTimedWorkTests`
+(`testS6331APhoneClearOfTheElapsedTimerMakesTheWristOfferStart` and its
+S-6331 siblings). A remote `stopped` timer stays ignored on the phone: the
+watch stops a work clock only by Log (the entry arrives and the fill finishes
+the interval) or by the phone's own clear, which the watch does not echo — a
+stop frame ahead of its entry would end an interval with nothing logged.
+Limits, stated not fixed: both devices logging inside the radio latency — the
+first entry to reach the phone's data wins, and phone-first the watch's own
+list keeps both entries (none retracts one; delete it on the watch),
+watch-first the phone's later Log finds the interval finished and does
+nothing; a clear names a kind, not a slot, so one arriving after the watch
+began its next interval of that kind stops that clock too (the phone sends
+one only while its mirror still shows the exact timer); and a watch clock
+stopped without a log would leave the phone's running (no such path today).
 
 **Why the wrist decides at End, and stores the decision.** Whether a prompt is
 owed depends on the phone's deletions, which only the running process knows, and
@@ -284,8 +466,16 @@ Invariants:
   copy stamped the same moment goes to the later-received. Verified by
   `WatchEffortRatingTests` (`S-214`) and
   `WatchSessionStartPathsTests.testTheNewestPreferencesApplyAndALaterCopyWinsATie`.
-- **The prompt's only way out is an answer.** Verified by
-  `WatchEffortRatingTests.testTheRatingOffersNoWayOutButAnAnswer`, which fails on
+- **The prompt has exactly two ways out: an answer or Skip.**
+  `WatchEffortRatingState.skipPrompt()` closes the owed question without
+  recording anything — no row, no event, the session stays unrated — and the
+  next owed session, if any, is asked; the skip is remembered only while the app
+  runs, so after a relaunch the question comes back once. The phone's own
+  question and the first-answer-wins rule are untouched, and the Skip label
+  (`WatchEffortRatingCopy.skipLabel`) is wrist-only copy outside the shared
+  contract file. Verified by
+  `WatchEffortRatingTests.testTheRatingOffersNoWayOutButAnAnswer` and
+  `…testSkipAppearsOnlyUnderItsTwoNames`, which fail on
   any declaration or button in the rating's state or views named for another way
   out.
 - **Both devices ask the same question.** The wrist's copy and scale are held to

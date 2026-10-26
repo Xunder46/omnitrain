@@ -6,14 +6,17 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/navigation/navigation.dart';
 import '../../core/utils/food_helpers.dart';
+import '../../core/utils/foods_i_eat_order.dart';
 import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
 import 'edit_food_screen.dart';
 import 'widgets/food_form.dart';
 import 'widgets/food_thumbnail.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+import '../../widgets/feedback/omni_message.dart';
 
 /// Sentinel used by [_DeleteGroupDialog] to distinguish "user
 /// tapped Cancel" from "user picked Uncategorized (which is a legitimate
@@ -25,26 +28,25 @@ const Object _cancelledSentinel = Object();
 /// Manage Food Library screen — two-tab flow for adding and removing
 /// foods to/from the user's library.
 ///
-/// Tab 1 (default): Library — flat alphabetical list of bundled
-/// catalog foods. Each row renders a state-dependent trailing
-/// affordance:
-///
-///   * **Add** (primary background) when the catalog food is NOT in
-///     the user's library. Tap → `FoodLibraryState.addCatalogFoodToLibrary`.
-///   * **Remove** (red `theme.colorScheme.error` background, white
-///     `Icons.delete_outline`) when the food IS in the library. Tap →
-///     `FoodLibraryState.removeFood` (and, if the food is currently
-///     logged today, `NutritionState.unlogFoodToday` first so the
-///     day-log stays consistent).
+/// Tab 1 (default): Library — grouped under category headings while
+/// the search is empty (flat while a query is typed). Each row is a
+/// toggle: tapping it adds the
+/// food
+/// to the user's library (`FoodLibraryState.addCatalogFoodToLibrary`)
+/// or, when the food is already in the library, asks before removing
+/// it (`FoodLibraryState.removeFood`, and, if the food is currently
+/// logged today, `NutritionState.unlogFoodToday` first so the
+/// day-log stays consistent). An in-list row shows the user's own
+/// copy of the food, gets a primary-colour outline, and carries a
+/// pencil (edit) and a check (remove) on the right; a not-in-list
+/// row shows the shipped catalog entry and an **Add** button.
+/// A **+ New Food** button sits at the bottom.
 ///
 /// Both actions stay on the screen — the user can add and remove
 /// several foods in one visit and only leaves via the system back
 /// arrow. The catalog itself is never modified.
 ///
-/// Tab 2: + New Item — form for a user-owned custom food (name,
-/// group, unit type, reference, macros). The custom food is added
-/// to the library only; the catalog is not modified. On save, the
-/// screen pops back to the nutrition page (one-shot form).
+/// Tab 2: Categories — manage the food categories.
 ///
 /// Pure presentation:
 ///   - No repository access (all writes go through [FoodLibraryState]
@@ -79,7 +81,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     // Ensure the catalog cache is loaded when the screen opens so the
     // first tab has something to render. Safe to call when already
     // loaded (idempotent).
@@ -97,25 +99,23 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 
   // ── Tab-aware primary bottom CTA ──────────────────────────────────────
   //
-  // The My Foods and Groups tabs each have a single primary
-  // bottom action (New Food / + New Category). Both are routed
+  // Each tab has one primary bottom action (Library: **+ Create new
+  // food**, Categories: **+ New Category**). Both are routed
   // through the shared `OmniBottomCTA` on the host's
   // `Scaffold.bottomNavigationBar` (see
   // `docs/plans/add-food-screen-bottom-cta-plan.md` and
   // `docs/plans/primary-bottom-cta-anchor-width-plan.md`)
   // so they sit at the same width, height, and vertical anchor as
-  // every other primary bottom CTA in the app. The Library tab is
-  // browse-only and renders no bottom CTA.
+  // every other primary bottom CTA in the app.
   //
   // The CTA rebuilds via `AnimatedBuilder` on the tab controller
   // (the controller is a `Listenable`); when the user swipes or
   // taps a different tab, the previous CTA fades out and the new
   // one fades in over `OmniTheme.animationDuration`.
 
-  /// Index constants — must match the `TabBar` order above.
+  /// Index constants — must match the `TabBar` order below.
   static const int _libraryTabIndex = 0;
-  static const int _myFoodsTabIndex = 1;
-  static const int _groupsTabIndex = 2;
+  static const int _groupsTabIndex = 1;
 
   /// Pushes the full-screen New Food form (shared with the previous
   /// inline `_AddNewFoodButton._openNewFoodForm` method).
@@ -139,6 +139,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   /// Tracks the new category ID so it appears at the end of the list.
   Future<void> _createGroup() async {
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     try {
       final newId = await widget.foodLibraryState.createFoodGroup(
         'New Category',
@@ -149,24 +150,17 @@ class _AddFoodScreenState extends State<AddFoodScreen>
         _focusGroupId = newId;
       });
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Could not create category')),
-      );
+      OmniMessage.errorOn(messenger, theme, 'Could not create category');
     }
   }
 
-  /// The tab-aware bottom CTA. Returns `SizedBox.shrink()` on the
-  /// Library tab; the appropriate `OmniBottomCTA` on the other two.
+  /// The tab-aware bottom CTA: **+ New Food** on Library,
+  /// **+ New Category** on Categories.
   Widget _buildBottomCTA(BuildContext context) {
     return AnimatedBuilder(
       animation: _tabController,
       builder: (context, _) {
         switch (_tabController.index) {
-          case _myFoodsTabIndex:
-            return OmniBottomCTA(
-              label: '+ New Food',
-              onPressed: () => _openNewFoodForm(context),
-            );
           case _groupsTabIndex:
             return OmniBottomCTA(
               label: '+ New Category',
@@ -175,7 +169,11 @@ class _AddFoodScreenState extends State<AddFoodScreen>
             );
           case _libraryTabIndex:
           default:
-            return const SizedBox.shrink();
+            return OmniBottomCTA(
+              label: '+ New Food',
+              buttonKey: const Key('new_food_button'),
+              onPressed: () => _openNewFoodForm(context),
+            );
         }
       },
     );
@@ -190,7 +188,6 @@ class _AddFoodScreenState extends State<AddFoodScreen>
           controller: _tabController,
           tabs: const [
             Tab(text: 'Library'),
-            Tab(text: 'My Foods'),
             Tab(text: 'Categories'),
           ],
         ),
@@ -199,10 +196,6 @@ class _AddFoodScreenState extends State<AddFoodScreen>
         controller: _tabController,
         children: [
           _FromCatalogTab(
-            foodLibraryState: widget.foodLibraryState,
-            nutritionState: widget.nutritionState,
-          ),
-          _MyFoodsTab(
             foodLibraryState: widget.foodLibraryState,
             nutritionState: widget.nutritionState,
           ),
@@ -220,6 +213,134 @@ class _AddFoodScreenState extends State<AddFoodScreen>
       bottomNavigationBar: _buildBottomCTA(context),
     );
   }
+}
+
+/// Unsaved-work probe for the two screens that host a [FoodForm].
+///
+/// `FoodForm` owns its controllers and its dropdown selections privately,
+/// so a host cannot ask it whether the user changed anything. What a host
+/// *can* read is what the form renders: every field is a keyed
+/// [FormField] whose state carries the live value
+/// ([FormFieldState.value] — a text field's controller text, a dropdown's
+/// selection). The probe remembers the first value it sees per field key
+/// and reports a later difference as unsaved work. A text field it has
+/// seen also gets a controller listener, so typing still counts after the
+/// field has scrolled out of the build window and its element is gone.
+class _FoodFormProbe {
+  _FoodFormProbe(this._formKey);
+
+  /// Key on the host's [FoodForm]; it is the root of the field walk.
+  final GlobalKey _formKey;
+
+  /// First value seen per rendered field key (the untouched baseline).
+  final Map<Key, Object?> _firstSeen = <Key, Object?>{};
+
+  /// Text controllers already hooked; holding them keeps a typing signal
+  /// alive after the field's element has been disposed.
+  final Set<TextEditingController> _hooked = <TextEditingController>{};
+  bool _typed = false;
+
+  /// Latest photo state reported through [FoodForm.onImageChanged]; null
+  /// until the photo changes at all. A create-mode form starts with no
+  /// photo, so `true` is unsaved work and clearing back to no photo is
+  /// clean again.
+  bool? _imageHasPhoto;
+
+  /// Record a change to the form-local photo, reported by
+  /// [FoodForm.onImageChanged]. The photo tile is neither a rendered
+  /// [FormField] nor an [EditableText], so a pick or a clear is invisible
+  /// to [_renderedFields] and would otherwise be dropped on the way out.
+  void markImageChanged(bool hasPhoto) => _imageHasPhoto = hasPhoto;
+
+  /// True when the form carries work the user has not saved.
+  bool get isDirty {
+    if (_typed) return true;
+    if (_imageHasPhoto ?? false) return true;
+    for (final field in _renderedFields()) {
+      if (_firstSeen.containsKey(field.key) &&
+          field.value != _firstSeen[field.key]) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Record the values the form currently renders as the untouched
+  /// baseline. Called once the form has laid out, and again after every
+  /// scroll, so a field that scrolls into the build window is baselined
+  /// before the user can type into it.
+  void record() {
+    for (final field in _renderedFields()) {
+      _firstSeen.putIfAbsent(field.key, () => field.value);
+      final controller = field.controller;
+      if (controller != null && _hooked.add(controller)) {
+        controller.addListener(_onTyped);
+      }
+    }
+  }
+
+  void _onTyped() => _typed = true;
+
+  /// Release the controller hooks. [ChangeNotifier.removeListener] is safe
+  /// on a controller [FoodForm] has already disposed.
+  void dispose() {
+    for (final controller in _hooked) {
+      controller.removeListener(_onTyped);
+    }
+    _hooked.clear();
+  }
+
+  /// Every keyed [FormField] the form currently renders.
+  List<_RenderedField> _renderedFields() {
+    final root = _formKey.currentContext;
+    if (root == null) return const <_RenderedField>[];
+    final fields = <_RenderedField>[];
+
+    void visit(Element element) {
+      final widget = element.widget;
+      if (widget is FormField) {
+        final state = element is StatefulElement ? element.state : null;
+        if (widget.key != null && state is FormFieldState<Object?>) {
+          fields.add(
+            _RenderedField(widget.key!, state.value, _controllerOf(element)),
+          );
+        }
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    root.visitChildElements(visit);
+    return fields;
+  }
+
+  /// The text controller a rendered text field edits, or null when the
+  /// field is not a text field.
+  TextEditingController? _controllerOf(Element field) {
+    TextEditingController? controller;
+
+    void visit(Element element) {
+      final widget = element.widget;
+      if (widget is EditableText) {
+        controller = widget.controller;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    field.visitChildElements(visit);
+    return controller;
+  }
+}
+
+/// A [FormField] the form renders, reduced to what the probe compares: the
+/// value the user sees and the controller behind it.
+class _RenderedField {
+  const _RenderedField(this.key, this.value, this.controller);
+
+  final Key key;
+  final Object? value;
+  final TextEditingController? controller;
 }
 
 /// Edit screen shim for **legacy library-only customs** (D-2
@@ -256,10 +377,48 @@ class _LegacyLibraryEditScreen extends StatefulWidget {
 class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
   final FoodFormController _formController = FoodFormController();
 
+  /// Key on the hosted [FoodForm]; the unsaved-work probe reads the form's
+  /// rendered fields through it (see [_FoodFormProbe]).
+  final GlobalKey _formKey = GlobalKey();
+  late final _FoodFormProbe _probe = _FoodFormProbe(_formKey);
+
+  @override
+  void initState() {
+    super.initState();
+    // The form's fields exist once it has laid out; that first frame is the
+    // baseline the guard compares against.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _probe.record();
+    });
+  }
+
   @override
   void dispose() {
+    _probe.dispose();
     _formController.detach();
     super.dispose();
+  }
+
+  /// Single exit path for the header back button and system back: leaving a
+  /// form the user has not touched pops straight away, leaving one with
+  /// edits asks first. Save runs the form's normal save path, which pops
+  /// only when the food was written.
+  Future<void> _attemptExit() async {
+    if (!_probe.isDirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final discard = await ConfirmationDialog.showUnsavedChanges(
+      context: context,
+      title: 'Unsaved changes',
+      body: 'You have unsaved edits. Discard them to return to the '
+          'food library.',
+      keepEditingKey: const Key('legacy-food-unsaved-keep'),
+      discardKey: const Key('legacy-food-unsaved-discard'),
+    );
+    if (!mounted || !discard) return;
+    Navigator.of(context).pop();
   }
 
   /// Write [draft] through the state layer. Legacy rows are
@@ -289,46 +448,68 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Edit Food')),
-      body: FoodForm(
-        initial: widget.food,
-        foodLibraryState: widget.foodLibraryState,
-        saveLabel: 'Save',
-        showNotesField: true,
-        controller: _formController,
-        onSave: (draft) async {
-          final messenger = ScaffoldMessenger.of(context);
-          try {
-            await _persist(draft);
-            return true;
-          } catch (e) {
-            messenger.showSnackBar(
-              SnackBar(content: Text('Could not save ${widget.food.name}: $e')),
-            );
+    return PopScope(
+      // Always intercept: whether leaving is safe is decided fresh in
+      // [_attemptExit], because the host does not rebuild as the user types
+      // into the form (so a `canPop` computed at build time would go stale
+      // and let the edits through).
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _attemptExit();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Edit Food')),
+        body: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollEndNotification) _probe.record();
             return false;
-          }
-        },
-        // "Save on upload / save on clear": picking or clearing a
-        // photo persists immediately, the same as the catalog
-        // editor (`EditFoodScreen`). Without this the photo
-        // change lived only in the form until the user pressed
-        // Save — and a user who tapped × and then backed out
-        // (the natural gesture, since the catalog editor needs no
-        // Save) found the photo still there.
-        onImageSave: (draft) async {
-          try {
-            await _persist(draft);
-            return true;
-          } catch (_) {
-            return false;
-          }
-        },
-      ),
-      bottomNavigationBar: OmniBottomCTA(
-        label: 'Save',
-        buttonKey: const Key('food_form_save'),
-        onPressed: _formController.submit,
+          },
+          child: FoodForm(
+            key: _formKey,
+            initial: widget.food,
+            foodLibraryState: widget.foodLibraryState,
+            saveLabel: 'Save',
+            showNotesField: true,
+            controller: _formController,
+            onSave: (draft) async {
+              final messenger = ScaffoldMessenger.of(context);
+              final theme = Theme.of(context);
+              try {
+                await _persist(draft);
+                return true;
+              } catch (e) {
+                debugPrint('Edit food: $e');
+                OmniMessage.errorOn(
+                  messenger,
+                  theme,
+                  'Could not save ${widget.food.name}. Try again.',
+                );
+                return false;
+              }
+            },
+            // "Save on upload / save on clear": picking or clearing a
+            // photo persists immediately, the same as the catalog
+            // editor (`EditFoodScreen`). Without this the photo
+            // change lived only in the form until the user pressed
+            // Save — and a user who tapped × and then backed out
+            // (the natural gesture, since the catalog editor needs no
+            // Save) found the photo still there.
+            onImageSave: (draft) async {
+              try {
+                await _persist(draft);
+                return true;
+              } catch (_) {
+                return false;
+              }
+            },
+          ),
+        ),
+        bottomNavigationBar: OmniBottomCTA(
+          label: 'Save',
+          buttonKey: const Key('food_form_save'),
+          onPressed: _formController.submit,
+        ),
       ),
     );
   }
@@ -336,7 +517,9 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
 
 // ─── Tab 1: Library ─────────────────────────────────────────────────────
 
-/// Flat alphabetical list of catalog foods. Each row's trailing
+/// Grouped under category headings while the search is empty (flat
+/// while a query is typed): catalog rows ([_CatalogRow]) and
+/// older custom foods ([_UserFoodRow]). Each row's trailing
 /// affordance reflects whether the catalog food is in the user's
 /// library (see [_CatalogRow]). The tab listens to BOTH
 /// [FoodLibraryState] (for add/remove) and [NutritionState] (so the
@@ -345,7 +528,9 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
 /// A search field at the top of the tab filters the catalog by food
 /// name. The filter is local (no network call) and runs in
 /// `FoodLibraryState.searchCatalogFoods` (case-insensitive substring
-/// on `name`, alphabetical order).
+/// on `name`, alphabetical order). While the search box is empty the
+/// list is grouped under category headings; a query shows the flat
+/// filtered list.
 class _FromCatalogTab extends StatefulWidget {
   final FoodLibraryState foodLibraryState;
   final NutritionState nutritionState;
@@ -359,9 +544,13 @@ class _FromCatalogTab extends StatefulWidget {
   State<_FromCatalogTab> createState() => _FromCatalogTabState();
 }
 
-class _FromCatalogTabState extends State<_FromCatalogTab> {
+class _FromCatalogTabState extends State<_FromCatalogTab>
+    with AutomaticKeepAliveClientMixin<_FromCatalogTab> {
   final _searchController = TextEditingController();
   String _query = '';
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void dispose() {
@@ -371,6 +560,7 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return ListenableBuilder(
       listenable: Listenable.merge([
         widget.foodLibraryState,
@@ -385,22 +575,49 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
         // query. The state's `searchCatalogFoods` is a pure local
         // pass — no network call. Clearing the field restores the
         // full alphabetical list.
-        final all = _sorted(widget.foodLibraryState.catalogFoods);
+        final state = widget.foodLibraryState;
+        // Older customs (pre-D-2) live only in the library box and have no
+        // catalog twin. They stay manageable here, deduped against the
+        // catalog rows by value (the catalog row wins).
+        final seen = <_FoodIdentity>{
+          for (final f in state.catalogFoods) _FoodIdentity.fromFood(f),
+        };
+        final legacy = <Food>[];
+        for (final f in state.foods) {
+          if (f.isArchived || f.isCatalog) continue;
+          if (state.catalogIdFor(f) != null) continue;
+          if (seen.add(_FoodIdentity.fromFood(f))) legacy.add(f);
+        }
+        final legacyIds = {for (final f in legacy) f.id};
+        final all = _sorted([...state.catalogFoods, ...legacy]);
         final lower = _query.trim().toLowerCase();
         final catalog = lower.isEmpty
             ? all
             : all.where((f) => f.name.toLowerCase().contains(lower)).toList();
 
         if (all.isEmpty) {
-          return Center(
-            child: Text(
-              'No catalog foods available',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: OmniTheme.colors.textMuted,
-              ),
-            ),
+          return const OmniEmptyState(
+            icon: Icons.menu_book_outlined,
+            title: 'No catalog foods available',
+            hint: 'Nothing is in the catalog right now.',
           );
         }
+
+        // Headings only while the search box is empty (a query shows the flat
+        // filtered list). The order is the Library's fixed first-run order
+        // (D-1): the shipped categories first, the user's own after them,
+        // Uncategorized last.
+        final entries = <Object>[
+          if (lower.isEmpty)
+            for (final section in _libraryOrderedSections(
+              foodsIEatSections(
+                foods: catalog,
+                groups: state.activeFoodGroups,
+              ),
+            )) ...[section.title, ...section.foods]
+          else
+            ...catalog,
+        ];
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -429,25 +646,56 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
                 onChanged: (v) => setState(() => _query = v),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Text(
+                _inListText(
+                  state.foods.where((f) => !f.isArchived).length,
+                ),
+                key: const Key('library_count_line'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: OmniTheme.colors.textSecondary,
+                ),
+              ),
+            ),
             if (catalog.isEmpty)
               Expanded(
-                child: Center(
-                  child: Text(
-                    'No matches for "${_query.trim()}"',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textMuted,
-                    ),
-                  ),
+                child: OmniEmptyState(
+                  icon: Icons.search_off,
+                  title: 'No matches for "${_query.trim()}"',
+                  hint: 'Try a different search.',
                 ),
               )
             else
               Expanded(
                 child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: catalog.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    8,
+                    0,
+                    OmniTheme.formBottomCTAClearance,
+                  ),
+                  itemCount: entries.length,
+                  separatorBuilder: (_, i) =>
+                      entries[i] is String || entries[i + 1] is String
+                      ? const SizedBox.shrink()
+                      : const Divider(height: 1),
                   itemBuilder: (context, i) {
-                    final f = catalog[i];
+                    final entry = entries[i];
+                    if (entry is String) {
+                      return _LibrarySectionHeader(
+                        key: Key('library_section_$entry'),
+                        title: entry,
+                      );
+                    }
+                    final f = entry as Food;
+                    if (legacyIds.contains(f.id)) {
+                      return _UserFoodRow(
+                        food: f,
+                        foodLibraryState: widget.foodLibraryState,
+                        nutritionState: widget.nutritionState,
+                      );
+                    }
                     return _CatalogRow(
                       food: f,
                       foodLibraryState: widget.foodLibraryState,
@@ -470,34 +718,87 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
   }
 }
 
-// ─── Tab 2: My Foods ───────────────────────────────────────────────────
+/// A category heading in the Library list (plan 77b2).
+class _LibrarySectionHeader extends StatelessWidget {
+  const _LibrarySectionHeader({super.key, required this.title});
 
-/// Shows user-owned foods (D-2 / S-031):
-///
-///   * **userCreatedCatalogFoods** — every food in the catalog whose
-///     id is NOT a bundled default. These are the foods the user
-///     created via the + New Item form (and any pre-D-2 user
-///     catalog rows).
-///   * **legacy library-only customs** — non-archived rows with
-///     `isCatalog = false` (created via the pre-D-2
-///     [FoodLibraryState.createCustomFood] path). These need to stay
-///     manageable until the user deletes them.
-///
-/// Bundled (default) catalog foods never appear here. Every
-/// user-created food appears exactly once.
-///
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        title,
+        style: theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          letterSpacing: OmniTheme.titleLetterSpacing,
+          color: OmniTheme.colors.textDominant,
+        ),
+      ),
+    );
+  }
+}
+
+/// First-run order of the Library headings: the categories a strength-app user
+/// came for come first. Categories not listed (the user's own) keep their
+/// alphabetical order after these; Uncategorized is last. Foods I Eat and the
+/// wrist keep the plain alphabetical rule of [foodsIEatSections].
+const List<String> _libraryHeadingOrder = [
+  'Proteins',
+  'Dairy',
+  'Grains & Starches',
+  'Fruits',
+  'Vegetables',
+  'Nuts, Seeds & Fats',
+  'Snacks & Prepared',
+  'Drinks',
+  'Condiments',
+];
+
+List<FoodsIEatSection> _libraryOrderedSections(
+  List<FoodsIEatSection> sections,
+) {
+  final uncategorised = [
+    for (final s in sections)
+      if (s.title == foodsIEatUncategorisedTitle) s,
+  ];
+  final named = [
+    for (final s in sections)
+      if (s.title != foodsIEatUncategorisedTitle) s,
+  ];
+  int rank(FoodsIEatSection s) {
+    final i = _libraryHeadingOrder.indexOf(s.title);
+    return i < 0 ? _libraryHeadingOrder.length : i;
+  }
+
+  final indexed = [for (var i = 0; i < named.length; i++) (i, named[i])];
+  indexed.sort((a, b) {
+    final byRank = rank(a.$2).compareTo(rank(b.$2));
+    return byRank != 0 ? byRank : a.$1.compareTo(b.$1);
+  });
+  return [for (final e in indexed) e.$2, ...uncategorised];
+}
+
+String _inListText(int n) => n == 0
+    ? 'No foods in your list yet'
+    : n == 1
+    ? '1 food in your list'
+    : '$n foods in your list';
+
 /// Value class that captures the identity tuple used by
 /// `FoodLibraryState._matchesIdentity` (name + reference + macros).
 ///
 /// The single source of truth for the identity rule lives in
 /// [FoodLibraryState]; this class is the dedup-key mirror of that
-/// rule for the My Foods tab. If the state rule ever expands (e.g.
-/// per-locale normalization), update both.
+/// rule for the Library tab (older customs vs catalog rows). If the
+/// state rule ever expands (e.g. per-locale normalization), update both.
 ///
 /// Equality is by value, NOT by id: two [Food] rows with the same
-/// name/reference/macros hash to the same [_FoodIdentity], so a D-2
-/// catalog row and its auto-created library copy collide here and
-/// only the first one (catalog row, by iteration order) is kept.
+/// name/reference/macros hash to the same [_FoodIdentity], so a catalog
+/// row and a library copy with the same data collide and only the first
+/// one (the catalog row, by iteration order) is kept.
 @immutable
 class _FoodIdentity {
   final String nameLower;
@@ -566,160 +867,11 @@ class _FoodIdentity {
   );
 }
 
-/// Row tap opens the **Edit Food** screen (D-2 / S-034). Tapping the
-/// row (not the trailing delete button) routes to the catalog edit
-/// path for catalog foods, and the library edit path for legacy
-/// library-only customs.
-class _MyFoodsTab extends StatelessWidget {
-  final FoodLibraryState foodLibraryState;
-  final NutritionState nutritionState;
-
-  const _MyFoodsTab({
-    required this.foodLibraryState,
-    required this.nutritionState,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: foodLibraryState,
-      builder: (context, _) {
-        // S-031a / Phase 3.1 — three sources, one deduplicated list:
-        //
-        //   1. **userCreatedCatalogFoods** (D-2 path). The user
-        //      created this food via the + New Item form; the row
-        //      lives in the catalog box (`isCatalog = true`) and its
-        //      id is NOT a bundled default. Always surfaced.
-        //
-        //   2. **legacy library-only customs**. Rows in the library
-        //      box with `isCatalog = false` that have NO catalog
-        //      identity twin — i.e. `catalogIdFor(row) == null`.
-        //      The catalogIdFor check is critical: without it, a
-        //      library copy of a bundled catalog food (created by
-        //      the user tapping Add on a row in the Library tab)
-        //      would leak into My Foods and look like a user-created
-        //      custom. The single identity rule
-        //      (FoodLibraryState._matchesIdentity) is shared with
-        //      libraryIdFor, so the inverse lookup is in lockstep.
-        //
-        //   3. **no third source**. The D-2 catalog row and its
-        //      auto-created library copy have different ids, so a
-        //      naive id-dedup would render the D-2 custom TWICE
-        //      (once as the catalog row, once as the fresh-id
-        //      library copy). The legacy filter is on the library
-        //      side only, so a user-created D-2 custom's library
-        //      twin IS excluded here. Identity-key dedup
-        //      (Food identity tuple) is the belt-and-braces second
-        //      line of defense; the two sources are disjoint by
-        //      construction after this filter.
-        final userCatalog = foodLibraryState.userCreatedCatalogFoods
-            .where((f) => !f.isArchived)
-            .toList();
-        final legacyLibrary = foodLibraryState.foods
-            .where(
-              (f) =>
-                  !f.isArchived &&
-                  !f.isCatalog &&
-                  foodLibraryState.catalogIdFor(f) == null,
-            )
-            .toList();
-
-        // Identity-key dedup (belt-and-braces). The tuple is the
-        // (name, reference, macros) shape that _matchesIdentity
-        // uses; encoding the same fields here would invite drift,
-        // so the helper is reused. The map keeps the FIRST
-        // occurrence (userCatalog has priority because it is
-        // iterated first) so the catalog row wins over a stale
-        // library twin with the same data.
-        final seenIdentities = <_FoodIdentity>{};
-        final merged = <Food>[];
-        void addIfNew(Food f) {
-          if (seenIdentities.add(_FoodIdentity.fromFood(f))) {
-            merged.add(f);
-          }
-        }
-
-        for (final f in userCatalog) {
-          addIfNew(f);
-        }
-        for (final f in legacyLibrary) {
-          addIfNew(f);
-        }
-        merged.sort(
-          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-        );
-
-        if (merged.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                24,
-                24,
-                24,
-                // Clear the host's bottom CTA (New Food).
-                OmniTheme.formBottomCTAClearance,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.restaurant_menu,
-                    size: 64,
-                    color: OmniTheme.colors.textMuted,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No custom foods yet',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: OmniTheme.colors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Create your own foods to use in your nutrition tracking',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textMuted,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return ListView.separated(
-          // Bottom padding clears the host's shared bottom CTA (New
-          // Food). Top padding mirrors the small inset that the
-          // non-empty state previously provided via the `Column`'s
-          // top edge.
-          padding: const EdgeInsets.fromLTRB(
-            0,
-            8,
-            0,
-            OmniTheme.formBottomCTAClearance,
-          ),
-          itemCount: merged.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, i) {
-            final f = merged[i];
-            return _UserFoodRow(
-              food: f,
-              foodLibraryState: foodLibraryState,
-              nutritionState: nutritionState,
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
 /// Full-screen form for creating a new custom food.
 ///
 /// On save (D-2 / S-030): the draft is written to the **catalog** via
 /// [FoodLibraryState.createCatalogFood] (so the food becomes part of
-/// the user's "My Foods" collection), then immediately copied into
+/// the Library list, tagged **Yours**), then immediately copied into
 /// the user's personal library via
 /// [FoodLibraryState.addCatalogFoodToLibrary] (so the food is
 /// reachable from the Foods I Eat card without a second tap).
@@ -728,8 +880,8 @@ class _MyFoodsTab extends StatelessWidget {
 ///   * If `createCatalogFood` throws, the form stays open and reports
 ///     the error via the snackbar — nothing was persisted.
 ///   * If `addCatalogFoodToLibrary` throws after the catalog write
-///     succeeded, the catalog row is preserved (it remains in My
-///     Foods and is editable from there) and a snackbar surfaces the
+///     succeeded, the catalog row is preserved (it remains in the
+///     Library and is editable from there) and a snackbar surfaces the
 ///     library-add error. The form still pops, so the user is not
 ///     trapped on a save screen.
 class _NewFoodFormScreen extends StatefulWidget {
@@ -744,61 +896,122 @@ class _NewFoodFormScreen extends StatefulWidget {
 class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
   final FoodFormController _formController = FoodFormController();
 
+  /// Key on the hosted [FoodForm]; the unsaved-work probe reads the form's
+  /// rendered fields through it (see [_FoodFormProbe]).
+  final GlobalKey _formKey = GlobalKey();
+  late final _FoodFormProbe _probe = _FoodFormProbe(_formKey);
+
+  @override
+  void initState() {
+    super.initState();
+    // The form's fields exist once it has laid out; that first frame is the
+    // baseline the guard compares against.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _probe.record();
+    });
+  }
+
   @override
   void dispose() {
+    _probe.dispose();
     _formController.detach();
     super.dispose();
   }
 
+  /// Single exit path for the header back button and system back: leaving a
+  /// form the user has not touched pops straight away, leaving one with
+  /// edits asks first. Save runs the form's normal save path, which pops
+  /// only when the food was written.
+  Future<void> _attemptExit() async {
+    if (!_probe.isDirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final discard = await ConfirmationDialog.showUnsavedChanges(
+      context: context,
+      title: 'Unsaved changes',
+      body: 'You have unsaved edits. Discard them to return to the '
+          'food library.',
+      keepEditingKey: const Key('new-food-unsaved-keep'),
+      discardKey: const Key('new-food-unsaved-discard'),
+    );
+    if (!mounted || !discard) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('New Food')),
-      body: FoodForm(
-        initial: null,
-        foodLibraryState: widget.foodLibraryState,
-        saveLabel: 'Create',
-        controller: _formController,
-        onSave: (draft) async {
-          final messenger = ScaffoldMessenger.of(context);
-          String? catalogId;
-          try {
-            catalogId = await widget.foodLibraryState.createCatalogFood(draft);
-          } catch (_) {
-            messenger.showSnackBar(
-              const SnackBar(content: Text('Could not create food')),
-            );
+    return PopScope(
+      // Always intercept: whether leaving is safe is decided fresh in
+      // [_attemptExit], because the host does not rebuild as the user types
+      // into the form (so a `canPop` computed at build time would go stale
+      // and let the edits through).
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _attemptExit();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('New Food')),
+        body: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollEndNotification) _probe.record();
             return false;
-          }
-          try {
-            await widget.foodLibraryState.addCatalogFoodToLibrary(catalogId);
-          } catch (e) {
-            // Catalog row is preserved; the user can re-add to
-            // library from the My Foods tab. Surface the error so
-            // the user is not silently left without a library copy.
-            messenger.showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Food saved, but adding to your library failed: $e',
-                ),
-              ),
-            );
-            // Pop so the user can see My Foods and the new catalog
-            // row. The catalog write succeeded; only the library
-            // copy failed.
-            return true;
-          }
-          if (context.mounted) Navigator.of(context).pop();
-          return true;
-        },
-      ),
-      // The shared primary bottom CTA. The `food_form_save` key
-      // is preserved on the rendered FilledButton for backward
-      // compatibility with the existing test contract.
-      bottomNavigationBar: OmniBottomCTA(
-        label: 'Create',
-        buttonKey: const Key('food_form_save'),
-        onPressed: _formController.submit,
+          },
+          child: FoodForm(
+            key: _formKey,
+            initial: null,
+            foodLibraryState: widget.foodLibraryState,
+            saveLabel: 'Create',
+            controller: _formController,
+            // Create mode never persists the photo until Save, so the
+            // probe learns about a pick (or a clear) from the form.
+            onImageChanged: _probe.markImageChanged,
+            onSave: (draft) async {
+              final messenger = ScaffoldMessenger.of(context);
+              final theme = Theme.of(context);
+              String? catalogId;
+              try {
+                catalogId = await widget.foodLibraryState.createCatalogFood(
+                  draft,
+                );
+              } catch (_) {
+                OmniMessage.errorOn(messenger, theme, 'Could not create food');
+                return false;
+              }
+              try {
+                await widget.foodLibraryState.addCatalogFoodToLibrary(
+                  catalogId,
+                );
+              } catch (e) {
+                // Catalog row is preserved; the user can re-add to
+                // library from the Library tab. Surface the error so
+                // the user is not silently left without a library copy.
+                debugPrint('Add catalog food to library: $e');
+                OmniMessage.errorOn(
+                  messenger,
+                  theme,
+                  'Food saved, but adding to your library failed. Try again.',
+                );
+                // Pop so the user can see the Library and the new catalog
+                // row. The catalog write succeeded; only the library
+                // copy failed.
+                return true;
+              }
+              if (context.mounted) Navigator.of(context).pop();
+              return true;
+            },
+          ),
+        ),
+        // The shared primary bottom CTA. The `food_form_save` key
+        // is preserved on the rendered FilledButton for backward
+        // compatibility with the existing test contract.
+        bottomNavigationBar: OmniBottomCTA(
+          label: 'Create',
+          buttonKey: const Key('food_form_save'),
+          onPressed: _formController.submit,
+        ),
       ),
     );
   }
@@ -860,13 +1073,21 @@ class _UserFoodRowState extends State<_UserFoodRow> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    widget.food.name,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textDominant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          widget.food.name,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: OmniTheme.colors.textDominant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      _YoursTag(key: Key('yours_tag_${widget.food.id}')),
+                    ],
                   ),
                   Text(
                     macroText,
@@ -950,6 +1171,7 @@ class _UserFoodRowState extends State<_UserFoodRow> {
     // a child of the navigation stack and a delete can rebuild the
     // tree).
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     final isBundled = widget.foodLibraryState.isBundledCatalogFood(
       widget.food.id,
     );
@@ -966,6 +1188,15 @@ class _UserFoodRowState extends State<_UserFoodRow> {
           ),
           actions: [
             TextButton(
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('OK'),
             ),
@@ -1030,13 +1261,31 @@ class _UserFoodRowState extends State<_UserFoodRow> {
         }
         await widget.foodLibraryState.removeFood(widget.food.id);
       }
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not delete ${widget.food.name}')),
+    } catch (_) {
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Could not delete ${widget.food.name}',
       );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+/// The small "Yours" tag after the name of a food the user created.
+class _YoursTag extends StatelessWidget {
+  const _YoursTag({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      'Yours',
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.primary,
+      ),
+    );
   }
 }
 
@@ -1052,30 +1301,28 @@ class _UserFoodRowState extends State<_UserFoodRow> {
 ///
 ///   * **Not in library** — a primary "Add" `FilledButton` with text.
 /// A single catalog row in the **Library** tab: a 40×40 thumbnail
-/// (image or placeholder) on the left, food name + per-reference
-/// macros in the middle, and a state-dependent trailing button on
-/// the right.
+/// (image or placeholder) on the left, food name + per-serving
+/// macros in the middle, and a state-dependent trailing affordance
+/// on the right.
 ///
-/// Tapping the row surface (outside the trailing Add / Remove
-/// button) opens the **Edit Food** screen for the catalog food;
-/// this is the iteration-3 entry point to the edit affordance for
-/// the global managed library. The trailing Add / Remove button
-/// consumes its own tap and does NOT bubble to the row-level
-/// `onRowTap` handler.
+/// The whole row toggles the food in/out of the user's list: a row
+/// tap adds the food (when it is not in the list) or asks before
+/// removing it (when it is). An in-list row shows the user's own
+/// copy of the food, gets a primary-colour outline, and carries a
+/// pencil (edit) and a check (remove) on the right; a not-in-list
+/// row shows the shipped catalog entry and an **Add** button.
 ///
-/// State derives from [FoodLibraryState.libraryIdFor] (uses the
-/// name + reference + macros identity rule, so it is robust to the
-/// fresh-id allocation done by `addCatalogFoodToLibrary`).
+/// State derives from [FoodLibraryState.libraryFoodFor] (which uses
+/// [FoodLibraryState.libraryIdFor]'s name + reference + macros
+/// identity rule, so it is robust to the fresh-id allocation done
+/// by `addCatalogFoodToLibrary`).
 ///
-/// Trailing actions (both wrapped in a fixed-width `SizedBox` so
-/// the row's name column does not reflow when the state flips):
+/// Trailing actions:
 ///
-///   * **Not in library** — a primary "Add" `FilledButton` with text.
-///   * **In library** — a square red `FilledButton` containing only a
-///     white trashcan icon (`Icons.delete_outline`); tapping it
-///     removes the food. No text label — the trash icon is
-///     universally legible and the red surface already signals
-///     "destructive" (per UX direction).
+///   * **Not in list** — a primary "Add" `FilledButton` with text.
+///   * **In list** — a pencil `IconButton` (edit) and a check
+///     `IconButton` (remove, after confirmation). The check is
+///     deliberately not a red button.
 class _CatalogRow extends StatefulWidget {
   final Food food;
   final FoodLibraryState foodLibraryState;
@@ -1096,65 +1343,79 @@ class _CatalogRowState extends State<_CatalogRow> {
   /// so the row does not reflow on a single add.
   static const double _addTrailingWidth = 88;
 
-  /// Square size for the icon-only "Remove" trailing action. Matches
-  /// the size of the `CalorieRingCard` edit-targets icon for visual
-  /// parity with the rest of the nutrition page.
-  static const double _removeTrailingSize = 40;
-
   bool _busy = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cal = calculateCalories(widget.food);
-    // `formatGrams` keeps the no-suffix display for whole-number
-    // macros (e.g. `21.0 -> 21`) and renders fractional grams with
-    // their decimal (e.g. `0.5 -> 0.5`). See `formatGrams` in
-    // food_helpers.dart for the rationale.
+    // The user's own copy when the food is in their list, else null. The
+    // list rebuilds under a ListenableBuilder on FoodLibraryState and
+    // NutritionState, so this stays live as the user adds / removes / edits.
+    final copy = widget.foodLibraryState.libraryFoodFor(widget.food.id);
+    final inList = copy != null;
+    final isYours = !widget.foodLibraryState.isBundledCatalogFood(widget.food.id);
+    // An in-list row shows the copy, so an edit is visible here.
+    final shown = copy ?? widget.food;
+    final cal = calculateCalories(shown);
+    // `formatGrams` keeps the no-suffix display for whole-number macros
+    // (e.g. `21.0 -> 21`); the serving says what the calories are per; the
+    // macros sit on their own line.
+    final servingText = '$cal cal per ${foodServingLabel(shown)}';
     final macroText =
-        '$cal cal · ${formatGrams(widget.food.protein)}P · ${formatGrams(widget.food.carbs)}C · ${formatGrams(widget.food.fat)}F';
+        '${formatGrams(shown.protein)}P · ${formatGrams(shown.carbs)}C · ${formatGrams(shown.fat)}F';
 
-    // libraryIdFor walks the user's library cache (O(n) over
-    // user-owned foods). The list rebuilds under a ListenableBuilder
-    // that listens to both FoodLibraryState and NutritionState, so the
-    // answer stays live as the user adds / removes / logs / unlogs.
-    // A non-null id means the catalog food is in the library.
-    final libraryId = widget.foodLibraryState.libraryIdFor(widget.food.id);
-
-    final row = InkWell(
-      onTap: () => _openEdit(context),
+    final content = InkWell(
+      onTap: () => _onToggle(context),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            // ── Thumbnail: 40×40 image or placeholder (S-006) ────
-            // Always rendered (placeholder when null) so the
-            // trailing Add / Remove button column does not reflow
-            // when an image is added or removed.
+            // Always rendered (placeholder when null) so the trailing
+            // column does not reflow when an image is added or removed.
             FoodThumbnail(
               key: Key('food_catalog_thumb_${widget.food.id}'),
-              imagePath: widget.food.imagePath,
+              imagePath: shown.imagePath,
               imageStorage: widget.foodLibraryState.imageStorageOrNull,
-              foodId: widget.food.id,
-              catalogId: widget.food.catalogId,
+              foodId: shown.id,
+              catalogId: inList ? widget.food.id : widget.food.catalogId,
             ),
             const SizedBox(width: 12),
-            // ── Name + macros (takes remaining space) ───────────
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          shown.name,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: OmniTheme.colors.textDominant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isYours) ...[
+                        const SizedBox(width: 6),
+                        _YoursTag(key: Key('yours_tag_${widget.food.id}')),
+                      ],
+                    ],
+                  ),
                   Text(
-                    widget.food.name,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textDominant,
-                    ),
+                    servingText,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                   Text(
                     macroText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: OmniTheme.colors.textSecondary,
                       fontFeatures: const [FontFeature.tabularFigures()],
@@ -1164,25 +1425,60 @@ class _CatalogRowState extends State<_CatalogRow> {
               ),
             ),
             const SizedBox(width: 8),
-            // ── Add / Remove button (consumes its own tap) ───────
-            libraryId != null
-                ? _buildRemoveButton(context)
-                : _buildAddButton(context),
+            if (inList) ...[
+              IconButton(
+                key: Key('edit_catalog_food_${widget.food.id}'),
+                icon: const Icon(Icons.edit_outlined, size: 20),
+                color: theme.colorScheme.primary,
+                tooltip: 'Edit food',
+                onPressed: _busy ? null : () => _openEdit(context),
+              ),
+              _buildInListIndicator(context),
+            ] else
+              _buildAddButton(context),
           ],
         ),
       ),
     );
-    return row;
+
+    if (!inList) return content;
+    // The in-list outline: primary colour, same rounding as buttons.
+    final radius = BorderRadius.circular(OmniTheme.buttonBorderRadius);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: DecoratedBox(
+        key: Key('library_row_outline_${widget.food.id}'),
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(color: theme.colorScheme.primary, width: 2),
+        ),
+        child: ClipRRect(borderRadius: radius, child: content),
+      ),
+    );
   }
 
-  /// Open the Edit Food screen for this catalog food. Wired to the
-  /// row's `onTap` so tapping the row surface (thumbnail, name,
-  /// macro text, or padding) edits the food.
+  /// Row tap: adds the food to the user's list, or (when it is already
+  /// there) asks before removing it.
+  Future<void> _onToggle(BuildContext context) {
+    final inList = widget.foodLibraryState.libraryIdFor(widget.food.id) != null;
+    return inList ? _onRemove(context) : _onAdd(context);
+  }
+
+  /// Open the Edit Food screen. Only reachable from an in-list row. A
+  /// bundled food edits the user's own copy (the shipped entry is never
+  /// altered); a food the user created has no shipped original, so its
+  /// catalog row is the thing edited.
   void _openEdit(BuildContext context) {
+    final copy = widget.foodLibraryState.libraryFoodFor(widget.food.id);
+    if (copy == null) return;
+    final bundled = widget.foodLibraryState.isBundledCatalogFood(
+      widget.food.id,
+    );
     EditFoodScreen.push(
       context,
-      food: widget.food,
+      food: bundled ? copy : widget.food,
       foodLibraryState: widget.foodLibraryState,
+      nutritionState: widget.nutritionState,
     );
   }
 
@@ -1205,40 +1501,34 @@ class _CatalogRowState extends State<_CatalogRow> {
     );
   }
 
-  Widget _buildRemoveButton(BuildContext context) {
+  /// The "in your list" check. Tapping it removes the food (after the
+  /// confirmation in [_onRemove]); it is deliberately not a red button.
+  Widget _buildInListIndicator(BuildContext context) {
     final theme = Theme.of(context);
-    return SizedBox(
-      width: _addTrailingWidth,
-      height: _removeTrailingSize,
-      child: FilledButton(
-        key: Key('remove_catalog_food_${widget.food.id}'),
-        onPressed: _busy ? null : () => _onRemove(context),
-        style: FilledButton.styleFrom(
-          backgroundColor: theme.colorScheme.error,
-          foregroundColor: theme.colorScheme.onError,
-          padding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
-          ),
-        ),
-        child: Icon(Icons.delete_outline, color: theme.colorScheme.onError),
-      ),
+    return IconButton(
+      key: Key('remove_catalog_food_${widget.food.id}'),
+      icon: Icon(Icons.check_circle, color: theme.colorScheme.primary),
+      tooltip: 'In your list. Tap to remove',
+      onPressed: _busy ? null : () => _onRemove(context),
     );
   }
 
   /// Add the catalog food to the user's library. The screen stays
   /// open; the [ListenableBuilder] in [_FromCatalogTab] rebuilds the
-  /// row in its Remove (trashcan) state.
+  /// row in its in-list state.
   Future<void> _onAdd(BuildContext context) async {
     if (_busy) return;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     try {
       await widget.foodLibraryState.addCatalogFoodToLibrary(widget.food.id);
       // No pop. The cache update + notifyListeners flips the row.
     } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not add ${widget.food.name}')),
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Could not add ${widget.food.name}',
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1249,25 +1539,44 @@ class _CatalogRowState extends State<_CatalogRow> {
   /// currently in today's consumed log, unlog it first so the
   /// day-log stays consistent with the library. The screen stays
   /// open; the row rebuilds in its Add state.
+  ///
+  /// D-29.3: the removal is asked for first — it takes the food out of
+  /// the library (and today's log), which the row's one tap cannot undo.
   Future<void> _onRemove(BuildContext context) async {
     if (_busy) return;
     final libraryId = widget.foodLibraryState.libraryIdFor(widget.food.id);
     if (libraryId == null) {
-      // Defensive: the row is in the Remove state but no matching
+      // Defensive: the row is in the in-list state but no matching
       // library row exists (e.g. the cache is mid-update). Bail out
       // silently — the ListenableBuilder will re-render shortly.
       return;
     }
-    setState(() => _busy = true);
+    // Captured before the confirmation await so the error path below uses
+    // no `BuildContext` across an async gap.
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+    final confirmed = await ConfirmationDialog.showTwoChoice(
+      context: context,
+      title: 'Remove ${widget.food.name} from Foods I Eat?',
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Remove',
+      dismissKey: const Key('food-remove-cancel'),
+      confirmKey: const Key('food-remove-confirm'),
+      isDestructive: true,
+    );
+    if (!confirmed) return;
+    if (!mounted) return;
+    setState(() => _busy = true);
     try {
       if (widget.nutritionState.isFoodLoggedToday(libraryId)) {
         await widget.nutritionState.unlogFoodToday(libraryId);
       }
       await widget.foodLibraryState.removeFood(libraryId);
     } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not remove ${widget.food.name}')),
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Could not remove ${widget.food.name}',
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1275,14 +1584,14 @@ class _CatalogRowState extends State<_CatalogRow> {
   }
 }
 
-// ─── Tab 2: + New Item ───────────────────────────────────────────────────
+// ─── New Food form ───────────────────────────────────────────────────
 
 /// Form for a new food in the **global managed library** (the
 /// catalog). Per the iteration-3 re-scope, every new food the
 /// user creates goes into the catalog — the user can then add it
 /// to their personal library via the **Add** button on the row in
 /// the **Library** tab. Delegates to the shared [FoodForm] widget
-// ─── Tab 3: Groups ───────────────────────────────────────────────
+// ─── Tab 2: Categories ───────────────────────────────────────────────
 
 /// Manage the food categories that organize the library.
 ///
@@ -1292,7 +1601,8 @@ class _CatalogRowState extends State<_CatalogRow> {
 /// category opens a confirmation dialog with a destination dropdown
 /// (Uncategorized + every other active category, Uncategorized default); on
 /// confirm the category's foods are reassigned and the category is
-/// archived. Deleting an empty category is silent (no confirmation).
+/// archived. Deleting an empty category also asks first, without a
+/// destination dropdown (there is nothing to reassign).
 ///
 /// A "+ New Category" button at the bottom of the list creates a new
 /// category with a default name and focuses the new row's `TextField`.
@@ -1405,7 +1715,7 @@ class _GroupsTabState extends State<_GroupsTab> {
         // Personal-library COPIES of a catalog food are excluded:
         // adding a bundled food to "Foods I Eat" does not add a
         // second food to the category. The `catalogIdFor` check
-        // is the same identity rule the My Foods tab uses, so the
+        // is the same identity rule the Library tab uses, so the
         // two lists stay in lockstep.
         //
         // Getting this right matters beyond the label: the count
@@ -1454,8 +1764,8 @@ class _GroupsTabState extends State<_GroupsTab> {
     );
   }
 
-  /// Confirm a non-empty group delete, then reassign + archive.
-  /// Empty groups archive silently.
+  /// Confirm a group delete, then reassign any foods + archive. An
+  /// empty group asks too, without a destination dropdown.
   Future<void> _confirmAndDeleteGroup(
     BuildContext context,
     FoodGroup group,
@@ -1463,11 +1773,24 @@ class _GroupsTabState extends State<_GroupsTab> {
     List<FoodGroup> allGroups,
   ) async {
     if (foodCount == 0) {
-      // Silent no-confirm delete; foodCount is already 0 so the
-      // reassignment is a no-op too. The bundled-food guard can
-      // still fire here (a category can have zero *library* foods
-      // but still be referenced by bundled catalog foods), so we
-      // run the typed catch the same way as the non-empty path.
+      // D-29.4: an empty category is still a destructive, one-tap-away
+      // action, so it asks before archiving. There is no destination
+      // dropdown — `foodCount` is already 0, so the reassignment is a
+      // no-op. The bundled-food guard can still fire here (a category
+      // can have zero *library* foods but still be referenced by
+      // bundled catalog foods), so we run the typed catch the same way
+      // as the non-empty path.
+      final confirmed = await ConfirmationDialog.showTwoChoice(
+        context: context,
+        title: 'Delete category ${group.name}?',
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Delete',
+        dismissKey: const Key('category-delete-cancel'),
+        confirmKey: const Key('category-delete-confirm'),
+        isDestructive: true,
+      );
+      if (!confirmed) return;
+      if (!context.mounted) return;
       try {
         await widget.foodLibraryState.deleteFoodGroupReassigningFoods(
           group.id,
@@ -1475,19 +1798,21 @@ class _GroupsTabState extends State<_GroupsTab> {
         );
       } on FoodGroupHasBundledFoodsError catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(_bundledSnackbar(e));
+        OmniMessage.error(context, _bundledMessage(e));
       } catch (_) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not delete ${group.name}')),
-        );
+        OmniMessage.error(context, 'Could not delete ${group.name}');
       }
       return;
     }
     final messenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
     // The dialog returns the sentinel for cancel; null means
-    // "Ungrouped"; a non-null id means "move to that group".
-    final picked = await showDialog<String?>(
+    // "Ungrouped"; a non-null id means "move to that group". The
+    // route's value type is `Object?` so the sentinel (a plain
+    // `Object`) can be popped without a type error; the cast below
+    // narrows the confirmed value back to `String?`.
+    final picked = await showDialog<Object?>(
       context: context,
       builder: (ctx) => _DeleteGroupDialog(
         groupName: group.name,
@@ -1499,8 +1824,9 @@ class _GroupsTabState extends State<_GroupsTab> {
       ),
     );
     if (identical(picked, _cancelledSentinel)) return; // user cancelled
-    // `picked` is null for "Ungrouped" (legitimate), or a group id.
-    final destination = picked;
+    // The sentinel was handled above, so the remaining value is
+    // either null (Uncategorized) or a destination group id.
+    final destination = picked as String?;
     try {
       await widget.foodLibraryState.deleteFoodGroupReassigningFoods(
         group.id,
@@ -1511,28 +1837,26 @@ class _GroupsTabState extends State<_GroupsTab> {
       // foods still point at the group. The catalog refresh
       // restores bundled categories on every launch, so rewriting
       // them would silently revert — we surface the block instead.
-      messenger.showSnackBar(_bundledSnackbar(e));
+      OmniMessage.errorOn(messenger, theme, _bundledMessage(e));
     } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not delete ${group.name}')),
+      OmniMessage.errorOn(
+        messenger,
+        theme,
+        'Could not delete ${group.name}',
       );
     }
   }
 
-  /// Snackbar copy for a refused deletion. Surfaces the category
+  /// Message copy for a refused deletion. Surfaces the category
   /// name and the count of bundled catalog foods that would be
   /// stranded, so the user understands why the action was blocked
   /// and can pick a different category to delete first.
-  SnackBar _bundledSnackbar(FoodGroupHasBundledFoodsError e) {
+  String _bundledMessage(FoodGroupHasBundledFoodsError e) {
     final count = e.bundledFoodIds.length;
     final noun = count == 1 ? 'food' : 'foods';
-    return SnackBar(
-      content: Text(
-        'Cannot delete "${e.groupName}" — $count bundled catalog '
+    return 'Cannot delete "${e.groupName}" — $count bundled catalog '
         '$noun still reference it. Move those $noun to another '
-        'category first, or delete the foods you don\'t need.',
-      ),
-    );
+        'category first, or delete the foods you don\'t need.';
   }
 
   /// Sorts groups alphabetically, but keeps the newly created group
@@ -1662,10 +1986,10 @@ class _UngroupedRow extends StatelessWidget {
 
 /// Confirmation dialog for deleting a non-empty category.
 ///
-/// The destination dropdown defaults to "Uncategorized" (null). Returns
-/// the picked destination category id, or `null` for Uncategorized. The
-/// `null` return value from the dialog itself means the user
-/// cancelled.
+/// The destination dropdown defaults to "Uncategorized" (null). The
+/// route's value type is `Object?`: it returns [_cancelledSentinel]
+/// when the user cancels, the picked destination category id, or
+/// `null` for Uncategorized.
 class _DeleteGroupDialog extends StatefulWidget {
   final String groupName;
   final int foodCount;
@@ -1730,6 +2054,15 @@ class _DeleteGroupDialogState extends State<_DeleteGroupDialog> {
       ),
       actions: [
         TextButton(
+          style: ButtonStyle(
+            shape: WidgetStateProperty.all(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  OmniTheme.buttonUtilityRadius,
+                ),
+              ),
+            ),
+          ),
           onPressed: () => Navigator.of(context).pop(_cancelledSentinel),
           child: const Text('Cancel'),
         ),

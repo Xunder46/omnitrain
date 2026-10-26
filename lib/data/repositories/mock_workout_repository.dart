@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
+import '../models/muscle_taxonomy.dart';
 import '../../mock/seed_data.dart';
 import '../../mock/food_catalog_seed.dart';
 import '../../core/constants/data_version.dart';
@@ -20,8 +21,8 @@ const _mockUuid = Uuid();
 /// of the early real migration steps in one shot, so those run as
 /// no-ops and exist only so the [DataMigrationService] can advance the
 /// device's `data_version` through the sequence in the same order as
-/// the Hive-backed runtime. A step that repairs already-stored rows
-/// (step 15) carries the same repair body the runtime runs, so the two
+/// the Hive-backed runtime. A step that rewrites already-stored rows
+/// (steps 15 and 16) carries the same bodies the runtime runs, so the two
 /// stores converge to the same value.
 class _MockMigrationStep extends DataMigrationStep {
   _MockMigrationStep(this.targetVersion, this.name, [this._body]);
@@ -66,8 +67,8 @@ class MockWorkoutRepository implements WorkoutRepository {
   final Map<String, TemplateTarget> _templateTargets = {};
 
   // Relationship maps
-  final Map<String, List<String>> _exerciseMuscleGroups =
-      {}; // exerciseId -> List<muscleGroupId>
+  final Map<String, List<ExerciseMuscleLink>> _exerciseMuscleLinks =
+      {}; // exerciseId -> List<ExerciseMuscleLink> in stored order
   final Map<String, List<String>> _exerciseEquipment =
       {}; // exerciseId -> List<equipmentId>
   final Map<String, List<String>> _exerciseTags =
@@ -199,8 +200,8 @@ class MockWorkoutRepository implements WorkoutRepository {
     }
 
     // Load relationships
-    for (final entry in SeedData.exerciseMuscleGroupRelationships.entries) {
-      _exerciseMuscleGroups[entry.key] = List.from(entry.value);
+    for (final entry in SeedData.exerciseMuscleLinks.entries) {
+      _exerciseMuscleLinks[entry.key] = List.from(entry.value);
     }
 
     for (final entry in SeedData.exerciseEquipmentRelationships.entries) {
@@ -270,7 +271,7 @@ class MockWorkoutRepository implements WorkoutRepository {
   /// `data_version` sequence used by the Hive runtime. Each step's
   /// `targetVersion` matches the corresponding real migration step; the
   /// early ones are no-ops (the bulk load above already applied them)
-  /// and step 15 runs the same repair body the Hive runtime does.
+  /// and steps 15 and 16 run the same bodies the Hive runtime does.
   List<DataMigrationStep> _dataMigrationSteps() {
     final repo = this;
     return [
@@ -291,6 +292,11 @@ class MockWorkoutRepository implements WorkoutRepository {
         15,
         'clampInvertedSessionWindows',
         () => repo._clampInvertedSessionWindows(),
+      ),
+      _MockMigrationStep(
+        16,
+        'muscleLinkRoles',
+        () => repo._migrateMuscleLinkRoles(),
       ),
     ];
   }
@@ -329,6 +335,25 @@ class MockWorkoutRepository implements WorkoutRepository {
         createdAtMs: session.createdAtMs,
         updatedAtMs: session.updatedAtMs,
       );
+    }
+  }
+
+  /// Rewrites every stored link row into the role-aware shape — the same
+  /// body the Hive runtime runs in step 16 (D-9). Iterates the link store's
+  /// keys, not the exercise list, so an archived exercise's links are cleaned
+  /// too. A row whose links fail [MuscleTaxonomy.normalize] is left exactly
+  /// as it is: throwing would stop the step, which is retried on every launch.
+  Future<void> _migrateMuscleLinkRoles() async {
+    for (final exerciseId in _exerciseMuscleLinks.keys.toList()) {
+      final links = List<ExerciseMuscleLink>.from(
+        _exerciseMuscleLinks[exerciseId]!,
+      );
+      try {
+        MuscleTaxonomy.normalize(links);
+      } on ArgumentError {
+        continue;
+      }
+      await setExerciseMuscleLinks(exerciseId, links);
     }
   }
 
@@ -382,8 +407,10 @@ class MockWorkoutRepository implements WorkoutRepository {
     // Filter by muscle groups (exercise must have at least one of the specified muscle groups)
     if (muscleGroupIds != null && muscleGroupIds.isNotEmpty) {
       results = results.where((e) {
-        final exerciseMuscles = _exerciseMuscleGroups[e.id] ?? [];
-        return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
+        final exerciseMuscles = _exerciseMuscleLinks[e.id] ?? const [];
+        return muscleGroupIds.any(
+          (id) => MuscleTaxonomy.matches(id, exerciseMuscles),
+        );
       });
     }
 
@@ -960,20 +987,31 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
-    final muscleGroupIds = _exerciseMuscleGroups[exerciseId] ?? [];
-    return muscleGroupIds
-        .map((id) => _muscleGroups[id])
-        .whereType<MuscleGroup>()
-        .toList();
+  Future<List<ExerciseMuscleLink>> getExerciseMuscleLinks(
+    String exerciseId,
+  ) async {
+    return List.from(_exerciseMuscleLinks[exerciseId] ?? const []);
   }
 
   @override
-  Future<void> setExerciseMuscleGroups(
+  Future<void> setExerciseMuscleLinks(
     String exerciseId,
-    List<String> muscleGroupIds,
+    List<ExerciseMuscleLink> links,
   ) async {
-    _exerciseMuscleGroups[exerciseId] = List.from(muscleGroupIds);
+    _exerciseMuscleLinks[exerciseId] = MuscleTaxonomy.normalize(links);
+  }
+
+  /// Stores [links] for [exerciseId] exactly as given, without normalising.
+  ///
+  /// [setExerciseMuscleLinks] normalises on write, so a test that needs to
+  /// stage a pre-migration row (a legacy all-primary list, or a poisoned
+  /// secondary-only row) uses this instead. Tests only.
+  @visibleForTesting
+  Future<void> putRawExerciseMuscleLinksForTest(
+    String exerciseId,
+    List<ExerciseMuscleLink> links,
+  ) async {
+    _exerciseMuscleLinks[exerciseId] = List<ExerciseMuscleLink>.from(links);
   }
 
   // ===== EQUIPMENT =====
@@ -1072,8 +1110,10 @@ class MockWorkoutRepository implements WorkoutRepository {
     // Filter by muscle groups (exercise must have at least one of the specified muscle groups)
     if (muscleGroupIds != null && muscleGroupIds.isNotEmpty) {
       results = results.where((e) {
-        final exerciseMuscles = _exerciseMuscleGroups[e.id] ?? [];
-        return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
+        final exerciseMuscles = _exerciseMuscleLinks[e.id] ?? const [];
+        return muscleGroupIds.any(
+          (id) => MuscleTaxonomy.matches(id, exerciseMuscles),
+        );
       });
     }
 
@@ -1630,7 +1670,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     _templateSegments.clear();
     _templateEfforts.clear();
     _templateTargets.clear();
-    _exerciseMuscleGroups.clear();
+    _exerciseMuscleLinks.clear();
     _exerciseEquipment.clear();
     _exerciseTags.clear();
     _metricEffortKinds.clear();
@@ -1813,6 +1853,9 @@ class MockWorkoutRepository implements WorkoutRepository {
   Future<int> getDataVersion({int defaultValue = 1}) async {
     return _dataVersion;
   }
+
+  @override
+  int? get referenceRevision => null;
 
   @override
   Future<void> setDataVersion(int version) async {

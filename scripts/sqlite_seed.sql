@@ -363,16 +363,31 @@ INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(random
 INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Stretching', (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Full Body', (strftime('%s','now') * 1000));
 
--- Muscle Groups
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Chest', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Back', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Shoulders', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Biceps', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Triceps', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Quadriceps', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Hamstrings', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Glutes', (strftime('%s','now') * 1000));
-INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Core', (strftime('%s','now') * 1000));
+-- Muscle Groups: regions and standalone entries first (no parent), then each
+-- muscle with its region as parent.
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Arms', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Legs', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Back', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Shoulders', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Core', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Chest', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Neck', NULL, (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Biceps', (SELECT id FROM app_muscle_group WHERE name = 'Arms'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Triceps', (SELECT id FROM app_muscle_group WHERE name = 'Arms'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Forearms', (SELECT id FROM app_muscle_group WHERE name = 'Arms'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Quadriceps', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Hamstrings', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Glutes', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Calves', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Adductors', (SELECT id FROM app_muscle_group WHERE name = 'Legs'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Lats', (SELECT id FROM app_muscle_group WHERE name = 'Back'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Traps', (SELECT id FROM app_muscle_group WHERE name = 'Back'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Lower back', (SELECT id FROM app_muscle_group WHERE name = 'Back'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Front delts', (SELECT id FROM app_muscle_group WHERE name = 'Shoulders'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Side delts', (SELECT id FROM app_muscle_group WHERE name = 'Shoulders'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Rear delts', (SELECT id FROM app_muscle_group WHERE name = 'Shoulders'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Abs', (SELECT id FROM app_muscle_group WHERE name = 'Core'), (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, parent_id, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Obliques', (SELECT id FROM app_muscle_group WHERE name = 'Core'), (strftime('%s','now') * 1000));
 
 -- Default shared exercises (owner_user_id IS NULL)
 INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)

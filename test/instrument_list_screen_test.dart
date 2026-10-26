@@ -5,6 +5,10 @@
 //
 // Plan: `docs/plans/2026-10-01-04b2-stats-pr4b2-instruments-list-plan/`.
 //
+// Plan 24 (`docs/plans/2026-10-12-24-stats-clarity-plan/`) adds S-4010, S-4012
+// and S-4017…S-4020 to this file: the caption that explains the line and the
+// change, and the label each row's own figure carries.
+//
 // Every scenario runs on both repository implementations. The harness is
 // opened and seeded in `setUp` and never inside a `testWidgets` body: a widget
 // test body runs under `FakeAsync`, where Hive's real file I/O never settles
@@ -15,6 +19,7 @@
 // hand-copied into the test.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/models/exercise_metric.dart';
 import 'package:omnitrain/core/models/instrument_list.dart';
 import 'package:omnitrain/core/models/stats_progress.dart';
@@ -102,10 +107,38 @@ List<InstrumentRow> _rowsOf(
 String _dayLabel(int daysAgo) =>
     OmniDateUtils.formatShort(DateTime.now().subtract(Duration(days: daysAgo)));
 
-/// The secondary line a row shows for [value], as the row composes it.
-String _secondaryLine(NativeValue value, SettingsState settings) =>
-    '${nativeSecondaryLabel(value.secondaryMetric)} '
-    '${formatNativeSecondary(value, settings)}';
+/// The secondary line a row shows for [value], as the row composes it: the
+/// primary metric's own label first (D-4008), then the labelled `Total hold
+/// 3:02`-style figure when the value carries one. A metric that labels to null
+/// contributes nothing, so the isometric and sports lines are unmoved.
+String _secondaryLine(NativeValue value, SettingsState settings) {
+  final parts = <String>[
+    if (nativePrimaryLabel(value.metric) != null) nativePrimaryLabel(value.metric)!,
+  ];
+  final label = nativeSecondaryLabel(value.secondaryMetric);
+  final secondary = formatNativeSecondary(value, settings);
+  if (label != null && secondary != null) parts.add('$label $secondary');
+  return parts.join(' · ');
+}
+
+/// The caption's own text (D-4006).
+String _caption(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(const Key('instrument_caption'))).data!;
+
+/// The style colour the `Text` keyed [key] carries (S-4020).
+Color? _textColorOf(WidgetTester tester, Key key) =>
+    tester.widget<Text>(find.byKey(key)).style?.color;
+
+/// The calendar-day length of a range `previousRangeFor` returned — the length
+/// `dayCount` must equal, measured the way the caption's number is measured.
+int _rangeDayCount(({int fromMs, int toMs}) range) {
+  final first = DateTime.fromMillisecondsSinceEpoch(range.fromMs);
+  final last = DateTime.fromMillisecondsSinceEpoch(range.toMs);
+  return DateTime.utc(last.year, last.month, last.day)
+          .difference(DateTime.utc(first.year, first.month, first.day))
+          .inDays +
+      1;
+}
 
 // ─── fixtures ───────────────────────────────────────────────────────────────
 
@@ -293,6 +326,164 @@ Future<void> _seedFlagship(WorkoutRepository repo) async {
   }
 }
 
+/// A training period covering today and [calendarDays] - 1 days before it, so
+/// the resolved window's own span is exactly [calendarDays] local days (S-4010).
+///
+/// The period is the only way to pin the window's length: the recent-days
+/// fallback always ends at the end of today, so its span is one day longer than
+/// the number of training days it holds.
+Future<void> _seedPeriodWindow(
+  WorkoutRepository repo, {
+  required int calendarDays,
+}) async {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  await repo.createPeriod(
+    TrainingPeriod(
+      id: 'p-span-$calendarDays',
+      name: 'Span Block',
+      startDateMs: DateTime(
+        today.year,
+        today.month,
+        today.day - (calendarDays - 1),
+      ).millisecondsSinceEpoch,
+      endDateMs: today.add(const Duration(days: 1)).millisecondsSinceEpoch - 1,
+      focusModalities: const [],
+      createdAtMs: 1000,
+      updatedAtMs: 1000,
+    ),
+  );
+  await seedExercise(
+    repo,
+    id: 'ex-span',
+    name: 'Back Squat',
+    capabilities: const ['load', 'reps'],
+  );
+  await _seedSetSession(
+    repo,
+    sessionId: 's-span',
+    daysAgo: 0,
+    exerciseId: 'ex-span',
+    weightKg: 100,
+    reps: 5,
+  );
+}
+
+/// One row for each primary metric D-4008 labels, plus the two it leaves alone
+/// (S-4012), all inside a 14-day window.
+Future<void> _seedLabelShapes(WorkoutRepository repo) async {
+  await seedExercise(
+    repo,
+    id: 'ex-reps',
+    name: 'Push-up',
+    capabilities: const ['reps'],
+  );
+  await seedExercise(
+    repo,
+    id: 'ex-e1rm',
+    name: 'Weighted Pull',
+    capabilities: const ['load', 'reps'],
+  );
+  await seedExercise(
+    repo,
+    id: 'ex-dur',
+    name: 'Row Machine',
+    capabilities: const ['time'],
+  );
+  await seedExercise(
+    repo,
+    id: 'ex-plank',
+    name: 'Plank',
+    capabilities: const ['hold'],
+  );
+  await seedExercise(
+    repo,
+    id: 'ex-bjj',
+    name: 'BJJ',
+    capabilities: const ['rounds'],
+  );
+
+  // (a) A bodyweight set — reps and no load — puts the exercise on the reps
+  // axis, so its figure is a rep count.
+  await seedSession(repo, sessionId: 's-reps', daysAgo: 1);
+  await seedSetEffort(
+    repo,
+    segmentId: 'seg-s-reps',
+    effortId: 'eff-s-reps',
+    exerciseId: 'ex-reps',
+    entryCount: 1,
+    hasExtraWeight: false,
+    weightFactor: 0.0,
+    repsBase: 5,
+  );
+
+  // (b) A loaded set reads an estimated one-rep max.
+  await _seedSetSession(
+    repo,
+    sessionId: 's-e1rm',
+    daysAgo: 1,
+    exerciseId: 'ex-e1rm',
+    weightKg: 100,
+    reps: 5,
+  );
+
+  // (c) A finished timed effort with no distance reads total time, not pace.
+  await seedSession(
+    repo,
+    sessionId: 's-dur',
+    daysAgo: 1,
+    modality: 'cardio_endurance',
+  );
+  await seedHoldEffort(
+    repo,
+    segmentId: 'seg-s-dur',
+    effortId: 'eff-s-dur',
+    exerciseId: 'ex-dur',
+    entryCount: 1,
+    secondsPerEntry: 300,
+    effortKind: 'timed',
+  );
+
+  // (d) The estimated run reads pace, and its instance carries a heart rate, so
+  // the row composes two parts.
+  await _seedEstimatedRun(repo);
+  await seedSensorSummary(
+    repo,
+    sensorSummary(
+      sessionId: 's-card',
+      scope: SensorSummary.scopeTimedInstance,
+      targetId: 'ti-eff-s-card-0',
+      windowStartMs: fixtureStart,
+      windowEndMs: fixtureStart + 1000,
+      avgHeartRateBpm: 148,
+    ),
+  );
+
+  // (e) The two rows D-4008 leaves alone: a hold with its total, and rounds
+  // with their total minutes.
+  await seedSession(repo, sessionId: 's-iso', daysAgo: 2);
+  await seedHoldEffort(
+    repo,
+    segmentId: 'seg-s-iso',
+    effortId: 'eff-s-iso',
+    exerciseId: 'ex-plank',
+    entryCount: 1,
+    secondsPerEntry: 90,
+  );
+
+  await seedSession(repo, sessionId: 's-sport', daysAgo: 3, modality: 'sports');
+  await seedRoundEffort(
+    repo,
+    segmentId: 'seg-s-sport',
+    effortId: 'eff-s-sport',
+    exerciseId: 'ex-bjj',
+    rounds: [
+      roundInstance('eff-s-sport', 0),
+      roundInstance('eff-s-sport', 1),
+    ],
+  );
+}
+
 void main() {
   for (final factory in harnessFactories) {
     final harness = factory();
@@ -443,8 +634,18 @@ void main() {
             'parts in order', (tester) async {
           await pumpStats(tester);
 
-          // Resistance has no secondary line at all: name, figure, change.
-          expect(_rowTexts('ex-squat'), hasLength(3));
+          // Resistance now labels its own figure: name, the label, the figure,
+          // the change. The label is the row's, read from the same table.
+          expect(
+            _rowTexts('ex-squat'),
+            hasLength(4),
+          );
+          expect(
+            _rowTexts('ex-squat')[1],
+            nativePrimaryLabel(
+              _rowOf(sections, 'ex-squat').summary.best.metric,
+            ),
+          );
 
           final plank = _rowOf(sections, 'ex-plank');
           expect(plank.summary.best.secondaryMetric, NativeMetric.duration);
@@ -882,6 +1083,268 @@ void main() {
                 settingsState,
               ),
             ),
+          );
+        });
+      });
+
+      // ─── Plan 24, P3: the caption and the per-row labels ─────────────────
+      //
+      // The Instruments list used to print a figure and a change with nothing
+      // saying what either measures. D-4006 adds one caption under the first
+      // header; D-4008 names each row's own figure. No value moves.
+
+      group('S-4010 the caption states the window\'s real span', () {
+        for (final span in const [14, 20, 1]) {
+          group('a $span-day window', () {
+            setUp(() async {
+              await _seedPeriodWindow(repo, calendarDays: span);
+              await readModel();
+            });
+
+            testWidgets(
+              span == 1
+                  ? 'the caption names the day before it'
+                  : 'the change compares against $span days',
+              (tester) async {
+              await pumpStats(tester);
+
+              // The period window is the fixture's own span, not the recency
+              // fallback's.
+              expect(window.isPeriodScoped, isTrue);
+              expect(window.dayCount, span);
+              expect(
+                window.dayCount,
+                _rangeDayCount(StatsProgressService.previousRangeFor(window)),
+              );
+
+              expect(
+                _caption(tester),
+                span == 1
+                    ? 'Line: each training day in the window · '
+                          'Change: vs the day before it'
+                    : 'Line: each training day in the window · '
+                          'Change: vs the $span days before it',
+              );
+              expect(
+                find.byKey(const Key('instrument_caption')),
+                findsOneWidget,
+              );
+              expect(tester.takeException(), isNull);
+            });
+          });
+        }
+      });
+
+      group('S-4012 every row says what its number is', () {
+        setUp(() async {
+          await _seedLabelShapes(repo);
+          await readModel();
+        });
+
+        testWidgets('the labelled metrics name their figure, and the '
+            'unlabelled rows keep one line', (tester) async {
+          await pumpStats(tester);
+
+          // (a) A rep count is the best set of the window.
+          final reps = _rowOf(sections, 'ex-reps');
+          expect(reps.summary.best.metric, NativeMetric.reps);
+          expect(_rowTexts('ex-reps')[1], 'Best set');
+          expect(
+            _rowTexts('ex-reps'),
+            contains(_secondaryLine(reps.summary.best, settingsState)),
+          );
+
+          // (b) An estimated one-rep max.
+          final e1rm = _rowOf(sections, 'ex-e1rm');
+          expect(e1rm.summary.best.metric, NativeMetric.estimatedOneRepMax);
+          expect(_rowTexts('ex-e1rm')[1], 'Est. 1RM');
+          expect(
+            _rowTexts('ex-e1rm'),
+            contains(_secondaryLine(e1rm.summary.best, settingsState)),
+          );
+
+          // (c) A cardio effort with no distance is a total time.
+          final duration = _rowOf(sections, 'ex-dur');
+          expect(duration.summary.best.metric, NativeMetric.duration);
+          expect(_rowTexts('ex-dur')[1], 'Total time');
+          expect(
+            _rowTexts('ex-dur'),
+            contains(_secondaryLine(duration.summary.best, settingsState)),
+          );
+
+          // (d) A pace is the best pace, and the heart rate still joins it.
+          final pace = _rowOf(sections, 'ex-run');
+          expect(pace.summary.best.metric, NativeMetric.pace);
+          expect(pace.averageHeartRateBpm, 148);
+          expect(_rowTexts('ex-run')[1], 'Best pace · 148 bpm');
+
+          // (e) A hold and a round count are not labelled: their own line is
+          // the secondary figure's, with no label in front of it.
+          final plank = _rowOf(sections, 'ex-plank');
+          expect(plank.summary.best.metric, NativeMetric.hold);
+          expect(nativePrimaryLabel(NativeMetric.hold), isNull);
+          expect(_rowTexts('ex-plank')[1], startsWith('Total hold '));
+          expect(_rowTexts('ex-plank'), isNot(contains('Total time')));
+
+          final bjj = _rowOf(sections, 'ex-bjj');
+          expect(bjj.summary.best.metric, NativeMetric.rounds);
+          expect(nativePrimaryLabel(NativeMetric.rounds), isNull);
+          expect(_rowTexts('ex-bjj')[1], startsWith('Total time '));
+          expect(
+            _rowTexts('ex-bjj'),
+            contains(_secondaryLine(bjj.summary.best, settingsState)),
+          );
+
+          expect(tester.takeException(), isNull);
+        });
+      });
+
+      group('S-4017 the caption counts the comparison, not the chip\'s days', () {
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
+
+        testWidgets('the number is the window\'s span, one longer than the 14 '
+            'training days the chip names', (tester) async {
+          await pumpStats(tester);
+
+          expect(window.recentDays, 14);
+          expect(window.label, 'Last 14 training days');
+          expect(
+            window.dayCount,
+            _rangeDayCount(StatsProgressService.previousRangeFor(window)),
+          );
+          expect(window.dayCount, 15);
+          expect(window.dayCount, isNot(window.recentDays));
+
+          expect(
+            _caption(tester),
+            'Line: each training day in the window · '
+            'Change: vs the 15 days before it',
+          );
+          // The chip is unmoved: it still names the 14 training days.
+          expect(window.label, 'Last 14 training days');
+          expect(
+            _textsUnder(find.byKey(const Key('stats_window_chip'))),
+            everyElement('· ${window.label}'),
+          );
+        });
+      });
+
+      group('S-4018 one caption, under the first header', () {
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
+
+        testWidgets('the caption renders once, between the first header and '
+            'the first row', (tester) async {
+          await pumpStats(tester);
+
+          final caption = find.byKey(const Key('instrument_caption'));
+          expect(caption, findsOneWidget);
+          expect(find.textContaining('Line: each training day'), findsOneWidget);
+
+          final captionTop = tester.getTopLeft(caption).dy;
+          expect(
+            tester.getTopLeft(find.text('Resistance')).dy,
+            lessThan(captionTop),
+          );
+          expect(
+            captionTop,
+            lessThan(
+              tester
+                  .getTopLeft(find.byKey(const Key('instrument_row_ex-squat')))
+                  .dy,
+            ),
+          );
+          expect(
+            tester.getTopLeft(find.text('Cardio')).dy,
+            greaterThan(captionTop),
+          );
+
+          // One `Text`, never a repeated section title: every header still
+          // renders exactly once.
+          for (final section in ExerciseSection.values) {
+            expect(find.text(section.label), findsOneWidget);
+          }
+          // The headers themselves carry no caption.
+          expect(
+            _textsUnder(
+              find.byType(OmniCardHeader),
+            ).where((text) => text.startsWith('Line:')),
+            isEmpty,
+          );
+        });
+      });
+
+      group('S-4019 the figures are untouched', () {
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
+
+        testWidgets('the labelled rows keep the service\'s figure and change, '
+            'and the unlabelled rows their exact lists', (tester) async {
+          await pumpStats(tester);
+
+          final squat = _rowOf(sections, 'ex-squat');
+          expect(squat.summary.best.metric, NativeMetric.estimatedOneRepMax);
+          expect(_rowTexts('ex-squat'), [
+            'Back Squat',
+            'Est. 1RM',
+            formatNativeValue(squat.summary.best, settingsState),
+            formatNativeChange(
+              squat.summary.best.metric,
+              squat.summary.best.value - squat.previousValue!.value,
+              settingsState,
+            ),
+          ]);
+
+          // Isometric and sports: their primary metric labels to null, so the
+          // list is the one they rendered before the label existed.
+          final plank = _rowOf(sections, 'ex-plank');
+          expect(_rowTexts('ex-plank'), [
+            'Plank',
+            'Total hold ${formatNativeSecondary(plank.summary.best, settingsState)}',
+            formatNativeValue(plank.summary.best, settingsState),
+            _kNoChange,
+          ]);
+
+          final bjj = _rowOf(sections, 'ex-bjj');
+          expect(_rowTexts('ex-bjj'), [
+            'BJJ',
+            'Total time ${formatNativeSecondary(bjj.summary.best, settingsState)}',
+            formatNativeValue(bjj.summary.best, settingsState),
+            _kNoChange,
+          ]);
+        });
+      });
+
+      group('S-4020 the new line uses the existing tokens', () {
+        setUp(() async {
+          await _seedFlagship(repo);
+          await readModel();
+        });
+
+        testWidgets('the caption draws in the theme\'s muted text', (
+          tester,
+        ) async {
+          await pumpStats(tester);
+
+          expect(
+            _textColorOf(tester, const Key('instrument_caption')),
+            OmniTheme.colorsForTheme(settingsState.appTheme).textMuted,
+          );
+          expect(
+            tester
+                .widget<Text>(find.byKey(const Key('instrument_caption')))
+                .style
+                ?.fontSize,
+            Theme.of(
+              tester.element(find.byKey(const Key('instrument_caption'))),
+            ).textTheme.labelSmall?.fontSize,
           );
         });
       });

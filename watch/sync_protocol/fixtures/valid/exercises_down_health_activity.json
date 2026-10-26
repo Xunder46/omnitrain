@@ -1,0 +1,27 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-exdown-health-1",
+  "type": "exercises_down",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-07-13T17:00:00Z",
+    "catalogVersion": "v1-5-a1b2c3d4",
+    "batchIndex": 0,
+    "batchCount": 1,
+    "totalCount": 2,
+    "exercises": [
+      {
+        "exerciseId": "ex-ride",
+        "name": "Zone 2 Ride",
+        "capabilities": ["time", "distance"],
+        "healthActivity": "cycling"
+      },
+      {
+        "exerciseId": "ex-bench",
+        "name": "Barbell Bench Press",
+        "capabilities": ["reps", "sets", "load"]
+      }
+    ]
+  }
+}

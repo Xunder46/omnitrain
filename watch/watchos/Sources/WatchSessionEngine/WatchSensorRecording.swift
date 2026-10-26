@@ -43,9 +43,7 @@ public enum WatchSensorPermission {
 /// One location fix, reduced to the only thing a training session needs from it:
 /// how far the user has covered in total.
 ///
-/// Route geometry is out of scope on purpose. The watch is an instrument panel,
-/// not a map, and a polyline is the largest thing this app could store for the
-/// least information.
+/// The package stores no route geometry: this value carries distance only. A route for Apple Health is kept by `WatchRouteKeeper` (plan 68), a few points at a time, and leaves the watch only into HealthKit.
 public struct WatchLocationFix: Equatable {
     /// Metres covered since the session started, cumulative — the platform
     /// already tracks the running total, and the wrist only has to carry it.
@@ -113,6 +111,18 @@ public final class WatchSensorRecorder {
     /// distance, and false when the user refused permission.
     public private(set) var isMeasuringDistance = false
 
+    /// What the platform answered when this session asked for heart rate: nil
+    /// until it was asked (plan 59, D-1). A refusal is shown by the logging
+    /// header, not only skipped.
+    public private(set) var heartRateAccess: WatchSensorPermission?
+
+    /// The same for location, asked only for a session that can cover distance,
+    /// so a lift leaves it nil.
+    public private(set) var locationAccess: WatchSensorPermission?
+
+    /// True once the permission has been read and was not granted, for this session.
+    private var locationAnswered = false
+
     public init(
         engine: WatchSessionEngine,
         source: WatchSensorSource,
@@ -133,18 +143,36 @@ public final class WatchSensorRecorder {
         )
     }
 
-    /// Starts listening to whatever `session`'s modality calls for.
+    /// Starts listening to whatever `session` calls for.
     ///
     /// Heart rate is recorded for every session that has a sensor to record it
-    /// with, and so are steps. Location is recorded only where the modality can
-    /// cover distance, so a lift does not drain the battery warming up a radio
-    /// it will never use (S-001, S-002).
+    /// with, and so are steps. Location is recorded only where the modality, or
+    /// the exercise the user is on, can cover distance, so a lift does not drain
+    /// the battery warming up a radio it will never use (S-001, S-002, S-4800).
     public func start(_ session: WatchSessionRecord) async {
         await startHeartRate()
         await startSteps()
+        await startLocationIfNeeded(for: session)
+    }
 
-        guard WatchGpsPolicy.isRequired(session.modality) else { return }
-        guard await source.locationPermission() == .granted else { return }
+    /// Called when the session changes under the sensors (the user reached
+    /// another exercise).
+    ///
+    /// The subscription is a latch: once the distance is being measured, a later
+    /// exercise that cannot cover it changes nothing (S-4803).
+    public func sessionChanged(_ session: WatchSessionRecord) async {
+        await startLocationIfNeeded(for: session)
+    }
+
+    private func startLocationIfNeeded(for session: WatchSessionRecord) async {
+        guard !isMeasuringDistance, !locationAnswered else { return }
+        guard WatchGpsPolicy.isRequired(session) else { return }
+        let answer = await source.locationPermission()
+        locationAccess = answer
+        guard answer == .granted else {
+            locationAnswered = true
+            return
+        }
 
         isMeasuringDistance = true
         fixTask = consume(source.location()) { [weak self] fix in
@@ -165,6 +193,9 @@ public final class WatchSensorRecorder {
         beatTask = nil
         fixTask = nil
         stepsTask = nil
+        locationAnswered = false
+        heartRateAccess = nil
+        locationAccess = nil
 
         guard isMeasuringDistance else { return }
         isMeasuringDistance = false
@@ -180,7 +211,9 @@ public final class WatchSensorRecorder {
     }
 
     private func startHeartRate() async {
-        guard await source.heartRatePermission() == .granted else { return }
+        let answer = await source.heartRatePermission()
+        heartRateAccess = answer
+        guard answer == .granted else { return }
         beatTask = consume(source.heartRate()) { [weak self] beats in
             await self?.record(kind: WatchSensorKind.heartRate, value: beats)
         }

@@ -22,7 +22,8 @@ content column" rule.
 
 **Layers** (bottom to top):
 1. Vertical linear gradient (`backgroundGradientTop` → `backgroundGradientBottom`)
-2. Optional radial white highlight (10% opacity)
+2. Optional radial white highlight (subtle; the opacity is defined inline in
+   `lib/widgets/layout/omni_gradient_background.dart`, not as a token)
 3. Optional film-grain noise overlay (`NoiseOverlayPainter`) — controlled by `OmniTheme.enableBackgroundNoise`
 4. The `child`, wrapped automatically in a centered column on large screens (see below)
 
@@ -30,7 +31,7 @@ content column" rule.
 
 The `child` is wrapped in a `Center` + `ConstrainedBox(maxWidth:
 OmniTheme.kColumnMaxWidth)` when the surface is at least
-`OmniTheme.kColumnMinActivationWidth` dp wide. Below the threshold
+`OmniTheme.kColumnMinActivationWidth` wide. Below the threshold
 the child passes through unchanged. This is the **only** place the
 app's centered-column behavior is implemented, and every screen
 reaches it for free because every screen-level route wraps its page
@@ -38,12 +39,12 @@ in `OmniGradientBackground` (per the navigation contract), and the
 home / onboarding surfaces are wrapped in the gradient inside
 `MaterialApp.builder` in `app.dart`.
 
-- **Phone-class widths** (≤ 500 dp, includes every phone and a
-  foldable in folded state): cap is fully inert. `child` fills the
-  surface.
-- **Tablet-class widths** (> 500 dp, includes every tablet and a
-  large unfolded foldable): `child` sits in a centered column of
-  `OmniTheme.kColumnMaxWidth` (480) dp, with equal empty margins on
+- **Phone-class widths** (below `OmniTheme.kColumnMinActivationWidth`,
+  includes every phone and a foldable in folded state): cap is fully
+  inert. `child` fills the surface.
+- **Tablet-class widths** (at or above `OmniTheme.kColumnMinActivationWidth`,
+  includes every tablet and a large unfolded foldable): `child` sits in a
+  centered column of `OmniTheme.kColumnMaxWidth`, with equal empty margins on
   both sides. The column is a hard cap — it does not grow with the
   surface.
 - **Vertical sizes are unchanged at every width** — the gradient
@@ -53,6 +54,15 @@ home / onboarding surfaces are wrapped in the gradient inside
 
 Per-screen opt-outs are not supported. The cap is a single global
 behavior; the design system is intentionally phone-shaped.
+
+The activation threshold and the cap are pinned by
+`test/screen_widget_test.dart` (group 'Large-screen content column':
+'S-001: phone-class surface — column is inert, content fills the
+width', 'S-006: threshold is exactly kColumnMinActivationWidth'); the
+route wrapping that delivers every screen here is pinned by
+`test/omni_route_test.dart` ('OmniRoute wraps page in
+OmniGradientBackground', 'app-level OmniGradientBackground is still
+present after pushing a screen').
 
 ### `OmniBackHeader`
 
@@ -112,6 +122,106 @@ unaffected.
 
 ---
 
+## Feedback & Empty States
+
+### `OmniMessage`
+
+**File**: `lib/widgets/feedback/omni_message.dart`
+
+The one look for a small transient message at the bottom of a screen. Every
+"saved" / "could not save" message in the app routes through it, so all of them
+read the same: the theme's surface colour, the theme's text colour and the
+corner radius the dialog actions use. Placement is Flutter's default bottom
+bar, unchanged.
+
+| Static method | Purpose |
+|---|---|
+| `show(context, text, {action, duration})` | Informational message. `action` and `duration` pass straight to the `SnackBar`; leaving both unset keeps Flutter's own defaults. |
+| `error(context, text)` | Failed action: the same look with a leading `Icons.error_outline` in `colorScheme.error`. |
+| `showOn(messenger, theme, text, {action, duration})` | `show` on a `ScaffoldMessengerState` and `ThemeData` captured **before** an `await`, for tap handlers that persist first and must not touch the `context` again afterwards. |
+| `errorOn(messenger, theme, text)` | `error`'s counterpart to `showOn`. |
+
+The copy is the caller's — `Could not … Try again.` — never an exception's
+`toString()`, which the API cannot even receive.
+
+Verified by `test/omni_message_test.dart` (group `S-2701: OmniMessage on the
+${entry.key} theme`: `show paints the theme surface and text colour`, `show
+uses the dialog corner radius`, `show carries no error icon`, `error adds the
+error icon in the theme error colour`, `showOn paints the theme captured before
+the await`, `errorOn adds the error icon captured theme error colour`; and the
+top-level tests `showOn passes an action and a duration through`, `show passes
+an action and a duration through`). The scans that hold every other call site
+to this look are `test/ui_standards_contract_test.dart` (group `S-2702 one
+message look`: `no file outside the two that own a look builds a message bar`;
+group `S-2703 no exception text in a message`: `no message in lib/
+interpolates an exception`).
+
+**Exception**: `PRToast` keeps its own celebration `SnackBar` by design — see
+[Session, Picker & Presentation](session_widgets.md).
+
+### `OmniEmptyState`
+
+**File**: `lib/widgets/common/omni_empty_state.dart`
+
+The shared "nothing here yet" composition: a muted icon, a short title and one
+line saying what to do next. Every screen or list with nothing to show routes
+through this widget, so the same message reads the same everywhere. All
+colours come from `Theme.of(context).colorScheme.onSurface` at three alphas, so
+the composition follows the active theme without per-screen tokens.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `title` | `String` | required | The headline, kept verbatim per screen |
+| `hint` | `String?` | `null` | One line saying what to do next |
+| `icon` | `IconData` | `Icons.inbox_outlined` | The muted glyph above the title |
+| `action` | `Widget?` | `null` | Optional content below the hint — a CTA or a short explanation |
+| `compact` | `bool` | `false` | Shrinks the icon and drops the scroll wrapper, for use inside a card |
+
+The default variant centres itself in the space it is given and scrolls when
+that space is shorter than the content, so it never overflows on a small phone
+(320x568). `compact: true` is for a card that already supplies its own padding
+and sits in a scrolling body.
+
+Verified by `test/omni_empty_state_test.dart` (group `S-2801 OmniEmptyState`:
+`light: the icon, title and hint render on a 320x568 phone without an
+overflow`, `the icon, title and hint carry the muted onSurface alphas`, `the
+compact variant uses the smaller icon and keeps the title and hint`, `the
+action renders below the hint`, `a hint is optional and a long title still
+fits, rather than overflowing`). The scan that holds every empty screen to
+this one composition is `test/ui_standards_contract_test.dart` (group `S-2804
+one empty-state composition`: `only one empty-state class is declared in
+lib/`).
+
+### `LoadFailureView`
+
+**File**: `lib/features/stats/widgets/load_failure_view.dart`
+
+The centred "could not load" surface the Stats-area screens render when their
+one load read throws. It is deliberately **not** an empty state: the screen
+says the load failed and offers the retry, instead of reading as "no data".
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `message` | `String` | The plain-language failure line, e.g. `Could not load your stats.` Never an exception's text. |
+| `onRetry` | `VoidCallback` | Re-runs the host screen's own load method. |
+
+The retry is a full-width `FilledButton` (`Try again`, key
+`load_failure_retry`) at the primary button height and `buttonBorderRadius`,
+copying the startup failure screen's Retry look.
+
+It is feature-scoped rather than `lib/widgets/` material, but it is
+presentation-only and theme-reactive in the same sense as the catalogued
+widgets. Its hosts are the Stats screen, Records & Trends and Exercise
+Progress. Verified by `test/stats_load_failure_test.dart` (group `S-2704: a
+failed load is not an empty state`: `Stats: the failure text and Try again
+replace the empty state`, `Records & Trends: the failure text and Try again
+replace the empty state`, `Exercise Progress: the failure text and Try again
+replace the empty state`).
+
+---
+
+---
+
 ## Input Primitives
 
 ### `SelectAllOnFocus`
@@ -163,4 +273,4 @@ All other `TextField` properties (`onChanged`, `onEditingComplete`, `onSubmitted
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This page is one part of the [Widget Catalog](../widget_catalog.md); see that index for the full component list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+> **Doc freshness** — Last reconciled against source: 2026-10-13. This page is one part of the [Widget Catalog](../widget_catalog.md); see that index for the full component list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.

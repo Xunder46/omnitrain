@@ -1,0 +1,2617 @@
+// The phone's work timers travel to the wrist (plan 43b3 P2).
+//
+// Plan: `docs/plans/2026-10-20-43b3-shared-timer-phone-sends-plan/`
+// (D-2, D-2b, D-3, D-3b, D-4).
+// Scenario mapping:
+//   S-6211 a started interval travels as one timer_state frame carrying the
+//          slot, state and startedAt, and a second pass sends nothing
+//                                                          → `S-6211 ...`
+//   S-6212 a pause and a resume travel with their bookkeeping → `S-6212 ...`
+//   S-6213 finishing the interval clears it on the wrist  → `S-6213 ...`
+//   S-6214 the wrist's earlier start is not overwritten, and a timer it already
+//          holds equal is not echoed                    → `S-6214 ...` (×2)
+//   S-6215 an undelivered frame is re-offered             → `S-6215 ...`
+//   S-6216 the negatives: no active session, a set effort, no bound state
+//                                                          → `S-6216 ...` (×3)
+//   S-6217 a new interval replacing a delivered one clears first, then names it
+//                                                          → `S-6217 ...`
+// Plan 43c D-3 (the phone clears the clock the watch started):
+//   S-6321 finishing an adopted interval clears the wrist clock
+//                                                          → `S-6321 ...`
+//   S-6322 the wrist logged first, so nothing is cleared   → `S-6322 ...`
+//   S-6323 the mirror holds a different start for the slot → `S-6323 ...`
+//   S-6324 the mirror holds the same start for another slot → `S-6324 ...`
+//   S-6325 an undelivered clear is re-offered              → `S-6325 ...`
+//   S-6326 the cleared mirror copy does not block the next interval
+//                                                          → `S-6326 ...`
+//   S-6327 the clear and the next interval in one pass     → `S-6327 ...`
+//   S-6328 a second pass while the adopted interval runs sends nothing; the
+//          phone's pause still travels                  → `S-6328 ...`
+//   S-6329 after a clear, the wrist's next interval still wins → `S-6329 ...`
+//   S-6330 a stopped wrist timer does not block the phone's own later start
+//                                                          → `S-6330 ...`
+//   S-6341 the wrist logs after the phone logged: one interval, no duplicate
+//                                                          → `S-6341 ...`
+// Plan 50a (the phone's rest reaches the wrist):
+//   S-7301 an open rest travels as one timer_state frame with no slot and no
+//          planned length; the newest open rest is the one composed
+//                                                          → `S-7301 ...` (×2)
+//   S-7302 a pause and a resume travel with their bookkeeping → `S-7302 ...`
+//   S-7303 closing the rest clears it on the wrist          → `S-7303 ...`
+//   S-7304 the wrist's own rest a moment later is the same rest, so nothing is
+//          sent; the phone closing it sends the clear    → `S-7304 ...`
+//   S-7305 the wrist stopped its own rest first, so the close clears nothing
+//                                                          → `S-7305 ...`
+//   S-7306 the mirror's rest is a different rest: ours is sent
+//                                                          → `S-7306 ...`
+//   S-7307 an undelivered rest frame is re-offered           → `S-7307 ...`
+//   S-7308 the real engine rests from the phone's instant and stops on the
+//          clear                                            → `S-7308 ...`
+//   S-7309 an elapsed timer and a rest travel in one frame   → `S-7309 ...`
+//   S-7310 a snapshot the phone composes carries the delivered rest
+//                                                          → `S-7310 ...`
+// Review fixes (50a):
+//   S-7311 two consecutive rests whose sets are logged less than a second
+//          apart stay two rests; the tolerance boundary is 500 ms
+//                                                          → `S-7311 ...` (×3)
+//   S-7312 a rest copy this push has cleared does not block the next rest
+//                                                          → `S-7312 ...`
+// Plan 54 D-1 (the end of the effort reaches the wrist at the next
+// conversation the wrist starts, not only at the next phone state change):
+//   S-8406 an inbound frame from the wrist re-offers an undelivered timer clear
+//                                                          → `S-8406 ...`
+//   S-8407 a reset-answered inbound frame flushes no timers → `S-8407 ...`
+//   S-8408 an ordinary flush joining a clears-only drain still sends the
+//          phone's start                                 → `S-8408 ...`
+//
+// The phone side is the graph `createWatchSync` builds — the shipping wiring,
+// including the timer push it returns — over a fake radio; the wrist side is
+// the real engine over an in-memory store, so a phone frame is applied the way
+// the watch app applies one. Every window is closed by `flush()` rather than by
+// waiting, and the tests are plain `test()`: no `testWidgets`, no FakeAsync.
+//
+// The phone's own timer manager stamps an interval with `DateTime.now()` (its
+// clock is not injectable from `WorkoutState`), so the assertions compare a
+// frame with the stored instance it came from rather than with the pinned
+// graph clock.
+
+import 'dart:async';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/platform/watch_delivery.dart';
+import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/data/repositories/workout_repository.dart';
+import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
+import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
+import 'package:omnitrain/state/workout/timer_manager.dart';
+import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/watch/logging/watch_logging_state.dart';
+import 'package:omnitrain/watch/session/in_memory_watch_session_store.dart';
+import 'package:omnitrain/watch/session/watch_records.dart';
+import 'package:omnitrain/watch/session/watch_session_engine.dart';
+
+import 'helpers/fake_preferences_service.dart';
+import 'helpers/sync_protocol_harness.dart' show loadProtocolValidator;
+// `seedExercise` writes capabilities through `setExerciseCapabilities`, which is
+// the only way they reach a repository: the projection refuses a slot whose
+// exercise carries none, so this is load-bearing.
+import 'helpers/watch_capture_import_harness.dart' show seedExercise;
+
+final DateTime _now = DateTime.utc(2026, 10, 19, 9);
+
+/// The session both devices know.
+const String _sessionId = 's-w-timers';
+
+/// The one slot the fixture puts in the ladder, and its effort id on the phone
+/// (D-3: the wrist's slot id IS the phone's effort id).
+const String _slotId = 'sx-run';
+
+/// A rest start unlike any default: the instant the phone logged the set.
+final DateTime _restStart = DateTime.utc(2026, 3, 4, 5, 6, 7);
+
+/// A pause total unlike any default (50a).
+const int _restPauseMs = 12345;
+
+Map<String, Object?> _asObject(Object? value) =>
+    (value as Map).cast<String, Object?>();
+
+Map<String, Object?> _payload(Map<String, Object?> envelope) =>
+    _asObject(envelope['payload']);
+
+/// Lets the radio's dispatch settle before the next frame is handed over.
+Future<void> _settle() => pumpEventQueue();
+
+/// Polls [condition] to a deadline (never a wall-clock threshold on the work).
+Future<void> _waitFor(bool Function() condition, String what) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 5));
+  while (!condition()) {
+    if (DateTime.now().isAfter(deadline)) fail('timed out waiting for $what');
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+}
+
+/// A catalog the phone can adopt a timed slot for.
+Future<void> _seedCatalog(WorkoutRepository repository) async {
+  await seedExercise(
+    repository,
+    id: 'ex-run',
+    name: 'Run',
+    capabilities: ['time', 'distance'],
+  );
+}
+
+/// One ladder slot as the protocol spells it: a timed exercise.
+Map<String, Object?> _slot() => <String, Object?>{
+  'sessionExerciseId': _slotId,
+  'exerciseId': 'ex-run',
+  'name': 'Run',
+  'effortKind': 'timed',
+  'capabilities': ['time', 'distance'],
+};
+
+var _wristMessageCount = 0;
+
+/// One `timer_state` frame as the wrist sends it.
+Map<String, Object?> _wristTimerFrame(Map<String, Object?> timers) => {
+  'protocolVersion': 1,
+  'messageId': 'msg-wrist-timers-${_wristMessageCount++}',
+  'sessionId': _sessionId,
+  'type': 'timer_state',
+  'origin': 'watch',
+  'sentAt': utcIso(_now),
+  'payload': {'timers': timers},
+};
+
+/// The phone's radio: records what the phone sent, hands the phone one frame
+/// from the wrist the way the platform channel does, and reports what it cannot
+/// carry the way the platform channel does — never by throwing (D-83).
+class _PhoneRadio implements WatchTransport {
+  _PhoneRadio(this.onFailure);
+
+  final void Function(Object error) onFailure;
+
+  final List<Map<String, Object?>> sent = [];
+
+  /// Every frame handed to `send`, including the ones it then failed: the
+  /// frame S-6215's first pass offered is only visible here.
+  final List<Map<String, Object?>> attempted = [];
+
+  /// True while the wrist is out of range: `send` carries nothing and answers
+  /// `undelivered` without a failure.
+  bool unreachable = false;
+
+  /// How many sends this radio has held open (S-8408).
+  int heldSends = 0;
+
+  /// While set, `send` records the frame and then waits for [releaseSend]: the
+  /// radio a scenario holds in flight.
+  Completer<void>? _gate;
+
+  /// Holds the next `send` open until [releaseSend] is called.
+  void holdSend() => _gate = Completer<void>();
+
+  /// Completes the held `send`, the way the platform channel answers late.
+  void releaseSend() {
+    final gate = _gate;
+    _gate = null;
+    gate?.complete();
+  }
+
+  WatchInboundHandler? _handler;
+
+  @override
+  bool get isPhoneReachable => true;
+
+  @override
+  void onIncoming(WatchInboundHandler handler) => _handler = handler;
+
+  @override
+  Future<void> refreshReachability() async {}
+
+  @override
+  Future<void> requestRoutines({DateTime? since}) async =>
+      send(WatchTransportRequest.routinesFrame(since: since));
+
+  @override
+  Future<void> requestSnapshot() async =>
+      send(WatchTransportRequest.snapshotFrame());
+
+  @override
+  Future<WatchDelivery> send(Map<String, Object?> envelope) async {
+    attempted.add(envelope);
+    final gate = _gate;
+    if (gate != null) {
+      heldSends++;
+      await gate.future;
+    }
+    if (unreachable) return WatchDelivery.undelivered;
+    sent.add(envelope);
+    return WatchDelivery.delivered;
+  }
+
+  /// One frame from the wrist, the way the radio delivers one.
+  Future<void> fromWrist(Map<String, Object?> frame) async {
+    final handler = _handler;
+    if (handler == null) {
+      throw StateError('the phone graph never bound its inbound handler');
+    }
+    await handler(frame);
+  }
+
+  /// Everything the phone sent of one type, in order.
+  List<Map<String, Object?>> ofType(String type) => [
+    for (final envelope in sent)
+      if (envelope['type'] == type) envelope,
+  ];
+}
+
+void main() {
+  late MockWorkoutRepository repository;
+  late WorkoutState phoneState;
+  late SettingsState phoneSettings;
+  late _PhoneRadio radio;
+  late WatchSyncGraph graph;
+  late WatchSessionEngine engine;
+  late InMemoryWatchSessionStore wristStore;
+  late List<Map<String, Object?>> wristFrames;
+  late List<Object> failures;
+
+  /// The phone graph a fresh app start builds, over [radio]. The app binds its
+  /// own `WorkoutState` to the adoption and to the timer push in
+  /// `lib/main.dart`; the scenarios bind the push themselves, once their
+  /// fixture has settled.
+  Future<WatchSyncGraph> startGraph() async {
+    final created = (await createWatchSync(
+      repository: repository,
+      nutritionState: NutritionState(repository),
+      foodLibraryState: FoodLibraryState(repository),
+      settingsState: phoneSettings,
+      transport: radio,
+      clock: () => _now,
+      onFailure: (error, stack) => failures.add(error),
+    ))!;
+    created.adoption.bindWorkoutState(phoneState);
+    return created;
+  }
+
+  /// The wrist starts [_sessionId] with one timed slot, and the phone adopts
+  /// it: the fixture every scenario starts from.
+  Future<void> wristStartsTimedSession() async {
+    await engine.createSession(modality: null, exercises: [_slot()]);
+    await radio.fromWrist(engine.sessionSnapshot()!);
+    await _settle();
+
+    expect(
+      phoneState.currentSession?.id,
+      _sessionId,
+      reason: "the fixture: the phone's own session is the wrist's",
+    );
+    expect(graph.mirror.sessionId, _sessionId);
+    final effort = phoneState
+        .getEffortsForSegment(phoneState.segments.single.id)
+        .single;
+    expect(effort.id, _slotId, reason: 'D-3: the slot id is the effort id');
+    expect(
+      effort.effortKind,
+      'timed',
+      reason: 'the fixture: the slot logs as a timed effort',
+    );
+  }
+
+  /// The phone starts one interval of the slot's effort and returns the stored
+  /// instance the push must compose from.
+  Future<InProgressWorkTimer> startInterval() async {
+    await phoneState.startTimedEntry(_slotId, 0);
+    final timers = phoneState.inProgressWorkTimers();
+    expect(
+      timers,
+      hasLength(1),
+      reason: 'the fixture: one in-progress work timer',
+    );
+    return timers.single;
+  }
+
+  /// Every timer frame the phone sent, in order.
+  List<Map<String, Object?>> timerFrames() => radio.ofType('timer_state');
+
+  /// The `timers` object of [envelope].
+  Map<String, Object?> timersOf(Map<String, Object?> envelope) =>
+      _asObject(_payload(envelope)['timers']);
+
+  /// Applies the phone's timer frames to the wrist engine, in the order they
+  /// were sent, the way the watch app applies each frame it receives.
+  Future<void> applyPhoneTimers() async {
+    for (final frame in timerFrames()) {
+      await engine.applyMessage(frame);
+    }
+  }
+
+  /// The mirror's copy of the [kind] timer, as the wrist last reported it.
+  Map<String, Object?> mirrorTimer(String kind) =>
+      _asObject(_asObject(graph.mirror.state['timers'])[kind]);
+
+  /// The phone's interval [index] of the slot.
+  TimedInstance interval(int index) =>
+      phoneState.getTimedInstancesForEffort(_slotId)[index];
+
+  /// The phone opens a rest on [effortId]'s entry [entryIndex] the way the
+  /// session screen does, then pins its stamps to [_restStart] (and the pause
+  /// fields to the fixture's values) so no scenario reads the wall clock.
+  Future<EntryRest> openPhoneRest({
+    String? effortId,
+    int entryIndex = 0,
+    DateTime? startedAt,
+    bool paused = false,
+    DateTime? pausedAt,
+    int accumulatedPauseMs = 0,
+  }) async {
+    final effort = effortId ?? _slotId;
+    final start = startedAt ?? _restStart;
+    await phoneState.recordRestStart(effort, entryIndex);
+
+    final stored = (await repository.getEntryRests(effort)).firstWhere(
+      (rest) => rest.entryIndex == entryIndex,
+    );
+    final pinned = stored.copyWith(
+      restStartMs: start.millisecondsSinceEpoch,
+      restIsPaused: paused,
+      restPausedAtMs: paused
+          ? (pausedAt ?? start).millisecondsSinceEpoch
+          : null,
+      restPausedDurationMs: accumulatedPauseMs,
+      createdAtMs: start.millisecondsSinceEpoch,
+      updatedAtMs: start.millisecondsSinceEpoch,
+    );
+    await repository.updateEntryRest(pinned);
+    await phoneState.refreshEfforts([effort]);
+    return pinned;
+  }
+
+  /// Hands the mirror a rest the wrist reports, the way the radio does.
+  Future<void> mirrorRest({
+    required DateTime startedAt,
+    String state = 'running',
+    DateTime? pausedAt,
+    int accumulatedPauseMs = 0,
+  }) async {
+    await radio.fromWrist(
+      _wristTimerFrame({
+        'rest': {
+          'kind': 'rest',
+          'state': state,
+          'startedAt': utcIso(startedAt),
+          'accumulatedPauseMs': accumulatedPauseMs,
+          if (pausedAt != null) 'pausedAt': utcIso(pausedAt),
+        },
+      }),
+    );
+    await _settle();
+  }
+
+  /// The `rest` timer of [envelope].
+  Map<String, Object?> restOf(Map<String, Object?> envelope) =>
+      _asObject(timersOf(envelope)['rest']);
+
+  /// The "adopted interval" fixture (plan 43c D-3): the wrist started an
+  /// `elapsed` timer for the slot, the phone had an interval waiting, and the
+  /// phone runs that timer as its own — nothing was echoed to the wrist.
+  Future<WatchTimerRecord> adoptedInterval() async {
+    await wristStartsTimedSession();
+    // The app binds all three to the same state (`lib/main.dart`); the timer
+    // adoption is what makes the wrist's timer the phone's interval.
+    graph.timerAdoption.bindWorkoutState(phoneState);
+    graph.timerPush.bindWorkoutState(phoneState);
+
+    final started = await engine.startTimer(
+      WatchTimerKind.elapsed,
+      sessionExerciseId: _slotId,
+    );
+    await radio.fromWrist(wristFrames.last);
+    await _settle();
+
+    final adopted = interval(0);
+    expect(
+      adopted.state,
+      TimedState.active,
+      reason: 'the fixture: the phone adopted the wrist timer (43b2)',
+    );
+    expect(
+      adopted.startedAtMs,
+      started.startedAt.millisecondsSinceEpoch,
+      reason: "the fixture: the phone runs the wrist's own start",
+    );
+
+    await graph.timerPush.flush();
+    expect(
+      timerFrames(),
+      isEmpty,
+      reason: 'the fixture: the adopted timer is not echoed to the wrist',
+    );
+    return started;
+  }
+
+  setUp(() async {
+    failures = [];
+    repository = MockWorkoutRepository();
+    await repository.initialize();
+    await _seedCatalog(repository);
+
+    phoneState = WorkoutState(repository);
+    phoneSettings = SettingsState(repository, fakePreferencesService());
+    await phoneSettings.initialize();
+
+    radio = _PhoneRadio(failures.add);
+    graph = await startGraph();
+
+    wristFrames = [];
+    wristStore = InMemoryWatchSessionStore();
+    engine = WatchSessionEngine(
+      wristStore,
+      clock: () => _now,
+      sessionIdFactory: () => _sessionId,
+      onEmit: wristFrames.add,
+    );
+  });
+
+  group('S-6211 a started interval travels as one timer_state frame', () {
+    test(
+      'S-6211 the interval is sent once, with its slot, running state and '
+      'startedAt, it validates, and the wrist starts its timer from it',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        final instance = await startInterval();
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(1),
+          reason: 'S-6211 exactly one timer frame is sent',
+        );
+        final timers = timersOf(frames.single);
+        expect(timers.keys, [
+          'elapsed',
+        ], reason: 'S-6211 a timed effort is the wire elapsed timer');
+        final timer = _asObject(timers['elapsed']);
+        expect(timer['kind'], 'elapsed');
+        expect(timer['state'], 'running');
+        expect(
+          timer['sessionExerciseId'],
+          _slotId,
+          reason: "S-6211 the timer names the slot the work is in",
+        );
+        expect(timer['accumulatedPauseMs'], 0);
+        expect(
+          parseUtcIso(timer['startedAt']),
+          DateTime.fromMillisecondsSinceEpoch(
+            instance.startedAtMs,
+            isUtc: true,
+          ),
+          reason: 'S-6211 the frame carries the instance it came from',
+        );
+        expect(
+          loadProtocolValidator().validateEnvelope(frames.single),
+          isEmpty,
+          reason: 'S-6211 the envelope passes the Dart validator',
+        );
+
+        expect(
+          await engine.applyMessage(frames.single),
+          isTrue,
+          reason: 'S-6211 the wrist applies the frame the way the app does',
+        );
+        final wristTimer = engine.timerFor(WatchTimerKind.elapsed)!;
+        expect(wristTimer.sessionExerciseId, _slotId);
+        expect(wristTimer.state, WatchTimerState.running);
+        expect(
+          wristTimer.startedAt.millisecondsSinceEpoch,
+          instance.startedAtMs,
+          reason: 'S-6211 the wrist starts from the phone instant',
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(1),
+          reason: 'S-6211 a second pass with no change sends no frame',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-6211 a hold and a round carry their kind and length',
+      () async {
+        await seedExercise(
+          repository,
+          id: 'ex-plank',
+          name: 'Plank',
+          capabilities: ['hold', 'time'],
+        );
+        await seedExercise(
+          repository,
+          id: 'ex-bag',
+          name: 'Punch bag',
+          capabilities: ['time', 'rounds'],
+        );
+
+        await phoneState.createNewSession(modality: 'sports');
+        final holdSlot = await phoneState.addExerciseToSession(
+          (await repository.getExerciseById('ex-plank'))!,
+          effortKindOverride: 'drill',
+        );
+        await phoneState.startTimedEntry(holdSlot, 0);
+
+        graph.timerPush.bindWorkoutState(phoneState);
+        await graph.timerPush.flush();
+
+        final holdFrame = timerFrames().single;
+        final hold = _asObject(timersOf(holdFrame)['hold']);
+        expect(hold['kind'], 'hold');
+        expect(
+          hold['sessionExerciseId'],
+          holdSlot,
+          reason: 'S-6211 a hold names the drill slot it came from',
+        );
+        expect(hold['state'], 'running');
+        expect(
+          loadProtocolValidator().validateEnvelope(holdFrame),
+          isEmpty,
+          reason: 'S-6211 the hold frame passes the Dart validator',
+        );
+
+        final roundSlot = await phoneState.addExerciseToSession(
+          (await repository.getExerciseById('ex-bag'))!,
+        );
+        // 75 s is unlike every default, so a hard-coded plan fails.
+        await phoneState.updateRoundPlannedDuration(roundSlot, 0, 75);
+        await phoneState.startRound(roundSlot, 0);
+        await graph.timerPush.flush();
+
+        expect(timerFrames(), hasLength(2));
+        final roundFrame = timerFrames().last;
+        final round = _asObject(timersOf(roundFrame)['round']);
+        expect(round['kind'], 'round');
+        expect(
+          round['sessionExerciseId'],
+          roundSlot,
+          reason: 'S-6211 a round names the round slot it came from',
+        );
+        expect(
+          round['plannedDurationMs'],
+          75000,
+          reason: 'S-6211 the round carries its planned length',
+        );
+        expect(
+          loadProtocolValidator().validateEnvelope(roundFrame),
+          isEmpty,
+          reason: 'S-6211 the round frame passes the Dart validator',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+  group('S-6212 a pause and a resume travel with their bookkeeping', () {
+    test('S-6212 pausing sends the paused stamp and resuming sends the pause '
+        'accumulated so far, which the wrist reads back', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await startInterval();
+      await graph.timerPush.flush();
+      expect(timerFrames(), hasLength(1), reason: 'the fixture: one frame');
+      await applyPhoneTimers();
+
+      await phoneState.pauseTimedEntry(_slotId, 0);
+      final paused = phoneState.getTimedInstancesForEffort(_slotId).single;
+      await graph.timerPush.flush();
+      expect(timerFrames(), hasLength(2));
+      final pausedTimer = _asObject(timersOf(timerFrames().last)['elapsed']);
+      expect(pausedTimer['state'], 'paused');
+      expect(
+        parseUtcIso(pausedTimer['pausedAt']),
+        DateTime.fromMillisecondsSinceEpoch(paused.pausedAtMs!, isUtc: true),
+        reason: 'S-6212 the frame carries the instance it came from',
+      );
+      await applyPhoneTimers();
+      expect(
+        engine.timerFor(WatchTimerKind.elapsed)!.state,
+        WatchTimerState.paused,
+        reason: 'S-6212 the wrist holds the paused timer',
+      );
+
+      // The pause must have a length to accumulate; the phone's timer clock
+      // is real time, so the smallest measurable pause is a few milliseconds.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+
+      await phoneState.resumeTimedEntry(_slotId, 0);
+      final resumed = phoneState.getTimedInstancesForEffort(_slotId).single;
+      expect(
+        resumed.totalPausedDurationMs,
+        greaterThan(0),
+        reason: 'the fixture: the instance measured a pause',
+      );
+      await graph.timerPush.flush();
+      expect(timerFrames(), hasLength(3));
+      final resumedTimer = _asObject(timersOf(timerFrames().last)['elapsed']);
+      expect(resumedTimer['state'], 'running');
+      expect(
+        resumedTimer['accumulatedPauseMs'],
+        resumed.totalPausedDurationMs,
+        reason: 'S-6212 the resume carries the pause the phone accumulated',
+      );
+      expect(
+        resumedTimer.containsKey('pausedAt'),
+        isFalse,
+        reason: 'S-6212 a running timer carries no paused stamp',
+      );
+
+      await applyPhoneTimers();
+      final wristTimer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(wristTimer.state, WatchTimerState.running);
+      expect(
+        wristTimer.accumulatedPauseMs,
+        resumed.totalPausedDurationMs,
+        reason: 'S-6212 the wrist excludes the pause it was told about',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6213 finishing the interval clears it on the wrist', () {
+    test('S-6213 the finished interval is sent as a cleared elapsed timer, and '
+        'the wrist stops the timer it had', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await startInterval();
+      await graph.timerPush.flush();
+      expect(timerFrames(), hasLength(1), reason: 'the fixture: one frame');
+      await applyPhoneTimers();
+      expect(
+        engine.timerFor(WatchTimerKind.elapsed)!.state,
+        WatchTimerState.running,
+        reason: 'the fixture: the wrist is counting',
+      );
+
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+
+      expect(
+        timerFrames(),
+        hasLength(2),
+        reason: 'S-6213 exactly one frame is sent for the finish',
+      );
+      final cleared = timersOf(timerFrames().last);
+      expect(
+        cleared.containsKey('elapsed'),
+        isTrue,
+        reason: 'S-6213 the frame names the timer it clears',
+      );
+      expect(
+        cleared['elapsed'],
+        isNull,
+        reason: 'S-6213 a key present with null clears that timer',
+      );
+
+      await applyPhoneTimers();
+      expect(
+        engine.timerFor(WatchTimerKind.elapsed)!.state,
+        WatchTimerState.stopped,
+        reason: 'S-6213 the wrist stops the timer the phone finished',
+      );
+
+      // A later notification offers the pass the same empty wanted set again:
+      // the delivered clear is spent, so it is not sent a second time.
+      phoneState.notifyListeners();
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(2),
+        reason: 'S-6213 a delivered clear is not sent twice',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group("S-6214 the wrist's earlier timer is not overwritten or echoed", () {
+    test(
+      'S-6214 a phone start later than the timer the wrist holds for the same '
+      'slot sends nothing',
+      () async {
+        await wristStartsTimedSession();
+
+        // The wrist started this interval itself, at the pinned instant.
+        await engine.startTimer(
+          WatchTimerKind.elapsed,
+          sessionExerciseId: _slotId,
+        );
+        expect(wristFrames, isNotEmpty);
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        final held = _asObject(
+          _asObject(graph.mirror.state['timers'])['elapsed'],
+        );
+        expect(
+          held['sessionExerciseId'],
+          _slotId,
+          reason: "the fixture: the mirror holds the wrist's timer",
+        );
+
+        graph.timerPush.bindWorkoutState(phoneState);
+        await startInterval();
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason:
+              "S-6214 the wrist's earlier start wins, so the phone does not "
+              'overwrite it',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-6214 a timer the mirror already holds equal to the phone\'s own sends '
+      'nothing',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await startInterval();
+        await graph.timerPush.flush();
+        final delivered = timerFrames().single;
+        await applyPhoneTimers();
+
+        // The wrist echoes the timer it stored, exactly as the phone sent it.
+        await radio.fromWrist(
+          _wristTimerFrame({
+            'elapsed': _asObject(timersOf(delivered)['elapsed']),
+          }),
+        );
+        await _settle();
+        expect(
+          _asObject(graph.mirror.state['timers'])['elapsed'],
+          isNotNull,
+          reason: 'the fixture: the mirror holds the echoed timer',
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(1),
+          reason: 'S-6214 a timer the wrist already holds is not echoed back',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-6214 a timer the wrist already holds exactly as the phone has it is '
+      'not sent',
+      () async {
+        await wristStartsTimedSession();
+
+        // The wrist started this interval itself, at the pinned instant.
+        await engine.startTimer(
+          WatchTimerKind.elapsed,
+          sessionExerciseId: _slotId,
+        );
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        final wristStartMs = engine
+            .timerFor(WatchTimerKind.elapsed)!
+            .startedAt
+            .millisecondsSinceEpoch;
+
+        graph.timerPush.bindWorkoutState(phoneState);
+        await startInterval();
+
+        // Give the phone's instance the wrist's own start instant: the two
+        // devices then hold the same timer field for field.
+        final started = phoneState.getTimedInstancesForEffort(_slotId).single;
+        await repository.updateTimedInstance(
+          started.copyWith(startedAtMs: wristStartMs),
+        );
+        await phoneState.refreshEfforts([_slotId]);
+        expect(
+          phoneState.getTimedInstancesForEffort(_slotId).single.startedAtMs,
+          wristStartMs,
+          reason: 'the fixture: the phone counts from the wrist instant',
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'S-6214 a timer both sides hold identically is not sent',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-6214 the same instant with the phone paused is sent',
+      () async {
+        await wristStartsTimedSession();
+
+        await engine.startTimer(
+          WatchTimerKind.elapsed,
+          sessionExerciseId: _slotId,
+        );
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        final wristStart = engine.timerFor(WatchTimerKind.elapsed)!.startedAt;
+
+        graph.timerPush.bindWorkoutState(phoneState);
+        await startInterval();
+        await phoneState.pauseTimedEntry(_slotId, 0);
+
+        final paused = phoneState.getTimedInstancesForEffort(_slotId).single;
+        expect(paused.pausedAtMs, isNotNull, reason: 'the fixture: paused');
+        await repository.updateTimedInstance(
+          paused.copyWith(startedAtMs: wristStart.millisecondsSinceEpoch),
+        );
+        await phoneState.refreshEfforts([_slotId]);
+
+        await graph.timerPush.flush();
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(1),
+          reason:
+              'S-6214 the same start instant with a paused phone is a '
+              'different timer, so it is sent',
+        );
+        final timer = _asObject(timersOf(frames.single)['elapsed']);
+        expect(timer['state'], 'paused');
+        expect(timer['sessionExerciseId'], _slotId);
+        expect(
+          parseUtcIso(timer['startedAt']),
+          wristStart,
+          reason: 'S-6214 the frame still carries the shared start instant',
+        );
+        expect(
+          timer.containsKey('pausedAt'),
+          isTrue,
+          reason: 'S-6214 the pause is what makes the encodings differ',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      "S-6214 an earlier wrist timer for ANOTHER exercise does not stop the "
+      "phone's start from being sent",
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        final instance = await startInterval();
+
+        // The wrist holds an earlier timer of the same kind, for a different
+        // slot: its start is earlier, but it is not the phone's timer.
+        await radio.fromWrist(
+          _wristTimerFrame({
+            'elapsed': {
+              'kind': 'elapsed',
+              'state': 'running',
+              'startedAt': utcIso(
+                DateTime.fromMillisecondsSinceEpoch(
+                  instance.startedAtMs - 60000,
+                  isUtc: true,
+                ),
+              ),
+              'accumulatedPauseMs': 0,
+              'sessionExerciseId': 'sx-other',
+            },
+          }),
+        );
+        await _settle();
+        final held = _asObject(
+          _asObject(graph.mirror.state['timers'])['elapsed'],
+        );
+        expect(
+          held['sessionExerciseId'],
+          'sx-other',
+          reason: "the fixture: the mirror holds another slot's earlier timer",
+        );
+
+        await graph.timerPush.flush();
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(1),
+          reason:
+              'S-6214 an earlier timer for another slot does not hold the '
+              "phone's timer",
+        );
+        final timer = _asObject(timersOf(frames.single)['elapsed']);
+        expect(
+          timer['sessionExerciseId'],
+          _slotId,
+          reason: "S-6214 the frame names the phone's own slot",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-6215 an undelivered frame is re-offered', () {
+    test('S-6215 the first send answers not-delivered, the next pass offers it '
+        'again, and once delivered it stops', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await startInterval();
+
+      radio.unreachable = true;
+      await graph.timerPush.flush();
+      expect(
+        [
+          for (final envelope in radio.attempted)
+            if (envelope['type'] == 'timer_state') envelope,
+        ],
+        hasLength(1),
+        reason: 'S-6215 the first attempt was made and carried nothing',
+      );
+      expect(timerFrames(), isEmpty);
+
+      radio.unreachable = false;
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'S-6215 the next pass offers the owed timer again',
+      );
+
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'S-6215 once delivered, it stops',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6216 the negative guards', () {
+    test(
+      'S-6216 an inactive session sends nothing and clears the ledger',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await startInterval();
+        await graph.timerPush.flush();
+        expect(timerFrames(), hasLength(1), reason: 'the fixture: one frame');
+
+        await phoneState.endSession();
+        expect(phoneState.hasActiveSession, isFalse);
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          hasLength(1),
+          reason: 'S-6216 a session that is not active has no timers to send',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test('S-6216 a set effort contributes no timer frame', () async {
+      await phoneState.createNewSession();
+      final exercise = (await repository.getExerciseById('ex-run'))!;
+      await phoneState.addExerciseToSession(exercise);
+      graph.timerPush.bindWorkoutState(phoneState);
+
+      final effort = phoneState
+          .getEffortsForSegment(phoneState.segments.single.id)
+          .single;
+      expect(
+        effort.effortKind,
+        'set',
+        reason: 'the fixture: a session with no modality logs sets',
+      );
+      await phoneState.addEntry(effort.id);
+      expect(phoneState.hasActiveSession, isTrue);
+      await graph.timerPush.flush();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'S-6216 a set effort has no work timer to send',
+      );
+      expect(failures, isEmpty);
+    });
+
+    test('S-6216 an unbound push sends nothing', () async {
+      await wristStartsTimedSession();
+      await startInterval();
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'S-6216 no bound session state, nothing to compose timers from',
+      );
+
+      graph.timerPush.bindWorkoutState(phoneState);
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'S-6216 once bound, the running timer is sent',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6217 a new interval replacing a delivered one', () {
+    test('S-6217 the replaced interval is cleared in its own frame before the '
+        'new one, and the wrist ends on the new timer', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+      await startInterval();
+      await graph.timerPush.flush();
+      expect(timerFrames(), hasLength(1), reason: 'the fixture: one frame');
+      final oldStartedAt = parseUtcIso(
+        _asObject(timersOf(timerFrames().single)['elapsed'])['startedAt'],
+      );
+      await applyPhoneTimers();
+      expect(timerFrames(), hasLength(1), reason: 'the fixture: applied');
+
+      // Finish the first interval and start a second, with no window closing
+      // between the two notifications.
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await phoneState.addEntry(_slotId);
+      // The second start must land on a later millisecond than the first, or
+      // the two instants tie; the mock repository resolves in microtasks, so
+      // without this the whole fixture can run inside one millisecond.
+      while (DateTime.now().millisecondsSinceEpoch <=
+          oldStartedAt.millisecondsSinceEpoch) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      await phoneState.startTimedEntry(_slotId, 1);
+      final current = phoneState.inProgressWorkTimers().single;
+      expect(
+        current.startedAtMs,
+        greaterThan(oldStartedAt.millisecondsSinceEpoch),
+      );
+      await graph.timerPush.flush();
+
+      final frames = timerFrames();
+      expect(
+        frames,
+        hasLength(3),
+        reason: 'S-6217 the clear and the new timer are two frames',
+      );
+      final cleared = timersOf(frames[1]);
+      expect(
+        cleared['elapsed'],
+        isNull,
+        reason: 'S-6217 the first frame clears the replaced interval',
+      );
+      final next = _asObject(timersOf(frames[2])['elapsed']);
+      expect(next['state'], 'running');
+      expect(
+        parseUtcIso(next['startedAt']),
+        DateTime.fromMillisecondsSinceEpoch(current.startedAtMs, isUtc: true),
+        reason: 'S-6217 the second frame names the new interval',
+      );
+
+      await applyPhoneTimers();
+      final wristTimer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(
+        wristTimer.state,
+        WatchTimerState.running,
+        reason: 'S-6217 the wrist ends on the new interval',
+      );
+      expect(
+        wristTimer.startedAt.millisecondsSinceEpoch,
+        current.startedAtMs,
+        reason: 'S-6217 the wrist counts the new interval, not the old one',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6321 finishing an adopted interval clears the wrist clock', () {
+    test('S-6321 the phone finishing the interval the wrist started sends one '
+        'cleared elapsed timer, and the wrist stops counting', () async {
+      await adoptedInterval();
+
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+
+      final frames = timerFrames();
+      expect(
+        frames,
+        hasLength(1),
+        reason: 'S-6321 exactly one frame is sent for the finish',
+      );
+      final timers = timersOf(frames.single);
+      expect(
+        timers.containsKey('elapsed'),
+        isTrue,
+        reason: 'S-6321 the frame names the timer it clears',
+      );
+      expect(
+        timers['elapsed'],
+        isNull,
+        reason: 'S-6321 a key present with null clears that timer',
+      );
+
+      expect(
+        await engine.applyMessage(frames.single),
+        isTrue,
+        reason: 'S-6321 the wrist applies the frame the way the app does',
+      );
+      expect(
+        engine.timerFor(WatchTimerKind.elapsed)!.state,
+        WatchTimerState.stopped,
+        reason: "S-6321 the wrist stops the timer the phone logged",
+      );
+
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'S-6321 the delivered clear is not sent twice',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6322 the wrist stopped first', () {
+    test('S-6322 when the wrist has already logged the interval the phone '
+        'finishes, nothing is sent', () async {
+      await adoptedInterval();
+
+      await engine.stopTimer(kind: WatchTimerKind.elapsed);
+      final stoppedFrame = wristFrames.last;
+      expect(
+        stoppedFrame['type'],
+        'timer_state',
+        reason: 'the fixture: the wrist reports its own stop',
+      );
+      final stopped = _asObject(
+        _asObject(_payload(stoppedFrame)['timers'])['elapsed'],
+      );
+      expect(
+        stopped['state'],
+        'stopped',
+        reason: 'the fixture: the wrist holds a stopped row',
+      );
+      await radio.fromWrist(stoppedFrame);
+      await _settle();
+
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'S-6322 the wrist logged first, so there is no clock to clear',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6323 the mirror holds a different start', () {
+    test("S-6323 when the wrist has begun the slot's next interval, the "
+        'phone finishing the old one does not stop the new clock', () async {
+      await adoptedInterval();
+      final first = mirrorTimer('elapsed');
+      final nextStart = DateTime.fromMillisecondsSinceEpoch(
+        parseUtcIso(first['startedAt']).millisecondsSinceEpoch + 60000,
+        isUtc: true,
+      );
+
+      await radio.fromWrist(
+        _wristTimerFrame({
+          'elapsed': {
+            'kind': 'elapsed',
+            'state': 'running',
+            'startedAt': utcIso(nextStart),
+            'accumulatedPauseMs': 0,
+            'sessionExerciseId': _slotId,
+          },
+        }),
+      );
+      await _settle();
+      expect(
+        parseUtcIso(mirrorTimer('elapsed')['startedAt']),
+        nextStart,
+        reason: "the fixture: the mirror holds the wrist's next interval",
+      );
+
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason:
+            "S-6323 a clear would stop the wrist's newer interval, so none is "
+            'sent',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6324 the mirror holds the same start for another slot', () {
+    test(
+      'S-6324 when the mirror holds another slot at the same instant, the '
+      "phone finishing its interval does not clear the wrist's clock",
+      () async {
+        await adoptedInterval();
+        final first = mirrorTimer('elapsed');
+
+        await radio.fromWrist(
+          _wristTimerFrame({
+            'elapsed': {
+              'kind': 'elapsed',
+              'state': 'running',
+              'startedAt': first['startedAt'],
+              'accumulatedPauseMs': 0,
+              'sessionExerciseId': 'sx-other',
+            },
+          }),
+        );
+        await _settle();
+        expect(
+          mirrorTimer('elapsed')['sessionExerciseId'],
+          'sx-other',
+          reason: "the fixture: the mirror holds another slot's timer",
+        );
+
+        await phoneState.finishTimedEntry(_slotId, 0);
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason:
+              'S-6324 the same start for another slot is not the interval '
+              'the phone finished',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-6325 an undelivered clear is re-offered', () {
+    test('S-6325 the clear the radio could not carry is offered again at the '
+        'next pass and then stops', () async {
+      await adoptedInterval();
+
+      radio.unreachable = true;
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+
+      expect(
+        timerFrames(),
+        isEmpty,
+        reason: 'S-6325 the radio carried nothing',
+      );
+      final attempted = [
+        for (final envelope in radio.attempted)
+          if (envelope['type'] == 'timer_state') envelope,
+      ];
+      expect(
+        attempted,
+        hasLength(1),
+        reason: 'S-6325 the clear was offered once',
+      );
+      final offered = timersOf(attempted.single);
+      expect(offered.containsKey('elapsed'), isTrue);
+      expect(
+        offered['elapsed'],
+        isNull,
+        reason: 'S-6325 the owed frame is the clear',
+      );
+
+      radio.unreachable = false;
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'S-6325 the next pass offers the owed clear again',
+      );
+      expect(
+        timersOf(timerFrames().single)['elapsed'],
+        isNull,
+        reason: 'S-6325 the offered timer is still the clear',
+      );
+
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'S-6325 once delivered, the clear stops',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6326 the cleared mirror copy does not block the next interval', () {
+    test('S-6326 after the clear the mirror still holds the old timer, and the '
+        "phone's next interval is sent and run on the wrist", () async {
+      await adoptedInterval();
+
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'the fixture: the clear is delivered',
+      );
+      final oldStartMs = parseUtcIso(
+        mirrorTimer('elapsed')['startedAt'],
+      ).millisecondsSinceEpoch;
+
+      await phoneState.addEntry(_slotId);
+      while (DateTime.now().millisecondsSinceEpoch <= oldStartMs) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      await phoneState.startTimedEntry(_slotId, 1);
+      final current = phoneState.inProgressWorkTimers().single;
+      expect(
+        current.startedAtMs,
+        greaterThan(oldStartMs),
+        reason: 'the fixture: the new interval starts after the old one',
+      );
+      await graph.timerPush.flush();
+
+      final frames = timerFrames();
+      expect(
+        frames,
+        hasLength(2),
+        reason:
+            'S-6326 a stale mirror copy does not block the newer phone timer',
+      );
+      final timer = _asObject(timersOf(frames.last)['elapsed']);
+      expect(
+        timer['sessionExerciseId'],
+        _slotId,
+        reason: "S-6326 the frame names the phone's own slot",
+      );
+      expect(
+        parseUtcIso(timer['startedAt']),
+        DateTime.fromMillisecondsSinceEpoch(current.startedAtMs, isUtc: true),
+        reason: 'S-6326 the frame carries the new interval',
+      );
+
+      await applyPhoneTimers();
+      final wristTimer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(
+        wristTimer.state,
+        WatchTimerState.running,
+        reason: 'S-6326 the wrist ends up counting',
+      );
+      expect(
+        wristTimer.startedAt.millisecondsSinceEpoch,
+        current.startedAtMs,
+        reason: 'S-6326 the wrist runs the new interval, not the old one',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6327 a replacement in one window', () {
+    test('S-6327 finishing the adopted interval and starting another before a '
+        'pass sends the clear first and then the new timer', () async {
+      final started = await adoptedInterval();
+
+      await phoneState.finishTimedEntry(_slotId, 0);
+      await phoneState.addEntry(_slotId);
+      while (DateTime.now().millisecondsSinceEpoch <=
+          started.startedAt.millisecondsSinceEpoch) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      await phoneState.startTimedEntry(_slotId, 1);
+      final current = phoneState.inProgressWorkTimers().single;
+      await graph.timerPush.flush();
+
+      final frames = timerFrames();
+      expect(
+        frames,
+        hasLength(2),
+        reason: 'S-6327 the clear and the new timer are two frames',
+      );
+      expect(
+        timersOf(frames.first)['elapsed'],
+        isNull,
+        reason: 'S-6327 the first frame clears the finished interval',
+      );
+      final next = _asObject(timersOf(frames.last)['elapsed']);
+      expect(
+        parseUtcIso(next['startedAt']),
+        DateTime.fromMillisecondsSinceEpoch(current.startedAtMs, isUtc: true),
+        reason: 'S-6327 the second frame names the new interval',
+      );
+
+      await applyPhoneTimers();
+      final wristTimer = engine.timerFor(WatchTimerKind.elapsed)!;
+      expect(
+        wristTimer.state,
+        WatchTimerState.running,
+        reason: 'S-6327 the wrist ends on the new interval',
+      );
+      expect(
+        wristTimer.startedAt.millisecondsSinceEpoch,
+        current.startedAtMs,
+        reason: 'S-6327 the wrist counts the new interval, not the old one',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-6328 a second pass while the adopted interval still runs', () {
+    test(
+      'S-6328 further passes send nothing until the phone pauses the interval, '
+      "and the pause travels with the wrist's own start",
+      () async {
+        final started = await adoptedInterval();
+
+        await graph.timerPush.flush();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'S-6328 a pass with nothing new sends nothing, and no clear',
+        );
+
+        await phoneState.pauseTimedEntry(_slotId, 0);
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(1),
+          reason: 'S-6328 a pause is news, so it still travels',
+        );
+        final paused = _asObject(timersOf(frames.single)['elapsed']);
+        expect(paused['state'], 'paused');
+        expect(
+          parseUtcIso(paused['startedAt']),
+          started.startedAt,
+          reason: "S-6328 the pause carries the wrist's own start",
+        );
+        expect(
+          timersOf(frames.single)['elapsed'],
+          isNotNull,
+          reason: 'S-6328 nothing clears the clock the wrist started',
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(1),
+          reason: 'S-6328 a delivered pause is not sent twice',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group("S-6329 after a clear, the wrist's next interval still wins", () {
+    test(
+      'S-6329 the wrist\'s next start is not mistaken for the copy this push '
+      "cleared, so the phone's later interval is not sent",
+      () async {
+        final first = await adoptedInterval();
+
+        await phoneState.finishTimedEntry(_slotId, 0);
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(1),
+          reason: 'the fixture: the clear is delivered',
+        );
+        expect(timersOf(timerFrames().single)['elapsed'], isNull);
+
+        // The wrist's next interval starts after the one it just cleared. The
+        // engine's clock is pinned, so its report is handed over directly, the
+        // way the radio would.
+        final nextStart = first.startedAt.add(const Duration(milliseconds: 2));
+        await radio.fromWrist(
+          _wristTimerFrame({
+            'elapsed': {
+              'kind': 'elapsed',
+              'state': 'running',
+              'startedAt': utcIso(nextStart),
+              'accumulatedPauseMs': 0,
+              'sessionExerciseId': _slotId,
+            },
+          }),
+        );
+        await _settle();
+        expect(
+          parseUtcIso(mirrorTimer('elapsed')['startedAt']),
+          nextStart,
+          reason: "the fixture: the mirror holds the wrist's next interval",
+        );
+
+        await phoneState.addEntry(_slotId);
+        while (DateTime.now().millisecondsSinceEpoch <=
+            nextStart.millisecondsSinceEpoch) {
+          await Future<void>.delayed(const Duration(milliseconds: 1));
+        }
+        await phoneState.startTimedEntry(_slotId, 1);
+        expect(
+          phoneState.inProgressWorkTimers().single.startedAtMs,
+          greaterThan(nextStart.millisecondsSinceEpoch),
+          reason: "the fixture: the phone's own start is later",
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(1),
+          reason:
+              "S-6329 the wrist's newer timer starts earlier than the phone's "
+              'and wins; it is not the copy this push cleared',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-6330 a stopped wrist timer does not block the phone', () {
+    test(
+      "S-6330 the wrist stopped its own timer, so the phone's later start is "
+      'sent',
+      () async {
+        await wristStartsTimedSession();
+
+        await engine.startTimer(
+          WatchTimerKind.elapsed,
+          sessionExerciseId: _slotId,
+        );
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        await engine.stopTimer(kind: WatchTimerKind.elapsed);
+        await radio.fromWrist(wristFrames.last);
+        await _settle();
+        expect(
+          mirrorTimer('elapsed')['state'],
+          'stopped',
+          reason: "the fixture: the mirror holds the wrist's stopped timer",
+        );
+
+        graph.timerPush.bindWorkoutState(phoneState);
+        final instance = await startInterval();
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(1),
+          reason: 'S-6330 a stopped timer holds nothing, so the start travels',
+        );
+        final timer = _asObject(timersOf(frames.single)['elapsed']);
+        expect(timer['state'], 'running');
+        expect(
+          parseUtcIso(timer['startedAt']),
+          DateTime.fromMillisecondsSinceEpoch(
+            instance.startedAtMs,
+            isUtc: true,
+          ),
+          reason: "S-6330 the frame carries the phone's own start",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-8406 the end of the effort reaches the wrist at the next '
+      'conversation', () {
+    test(
+      'S-8406 an inbound frame from the wrist re-offers an undelivered timer '
+      'clear',
+      () async {
+        final started = await adoptedInterval();
+
+        // The phone ends the interval while the wrist is out of reach, so the
+        // clear it owes is offered once and carried nowhere (S-6325's first
+        // pass). Every later pass recomposes it, so it is still owed when the
+        // wrist next talks to the phone.
+        radio.unreachable = true;
+        await phoneState.finishTimedEntry(_slotId, 0);
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the radio carried nothing',
+        );
+        final offered = [
+          for (final envelope in radio.attempted)
+            if (envelope['type'] == 'timer_state') envelope,
+        ];
+        expect(offered, hasLength(1), reason: 'the fixture: one clear is owed');
+        expect(
+          timersOf(offered.single)['elapsed'],
+          isNull,
+          reason: 'the fixture: the owed frame is the clear',
+        );
+
+        // The wrist reports the clock it still runs — the frame proving the
+        // radio works — and the radio is back in range.
+        radio.unreachable = false;
+        await radio.fromWrist(
+          _wristTimerFrame({
+            'elapsed': {
+              'kind': 'elapsed',
+              'state': 'running',
+              'startedAt': utcIso(started.startedAt),
+              'accumulatedPauseMs': 0,
+              'sessionExerciseId': _slotId,
+            },
+          }),
+        );
+        await _settle();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(1),
+          reason:
+              'S-8406 the frame the wrist sent proves the radio works, so the '
+              'owed clear goes out now, not at the next phone state change',
+        );
+        expect(
+          timersOf(frames.single)['elapsed'],
+          isNull,
+          reason: 'S-8406 the timer offered again is the clear',
+        );
+        expect(
+          await engine.applyMessage(frames.single),
+          isTrue,
+          reason: 'S-8406 the wrist applies the clear the way the app does',
+        );
+        expect(
+          engine.timerFor(WatchTimerKind.elapsed)!.state,
+          WatchTimerState.stopped,
+          reason: 'S-8406 the wrist stops the clock the phone ended',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-8407 a reset-answered frame flushes no timers', () {
+    test('S-8407 a reset-answered inbound frame withholds the clear it owes, '
+        'and the debt survives for the next call', () async {
+      await wristStartsTimedSession();
+      graph.timerPush.bindWorkoutState(phoneState);
+      int attempted() => [
+        for (final envelope in radio.attempted)
+          if (envelope['type'] == 'timer_state') envelope,
+      ].length;
+
+      // The rest the phone opens reaches the wrist, so closing it is what the
+      // push owes next — and a closing set starts no timer of its own.
+      await openPhoneRest();
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'the fixture: the rest is carried',
+      );
+      expect(attempted(), 1, reason: 'the fixture: one frame, one attempt');
+
+      // The phone closes the rest out of range: the clear is owed, offered
+      // once, and carried nowhere.
+      radio.unreachable = true;
+      await phoneState.recordRestEnd(_slotId, 0);
+      await graph.timerPush.flush();
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'the fixture: the radio carried nothing new',
+      );
+      expect(
+        attempted(),
+        2,
+        reason: 'the fixture: the owed clear is attempted once',
+      );
+
+      // A snapshot naming a session this phone is not in is the one inbound
+      // frame the router answers with D-176's reset (D-182 row two). Its own
+      // frames have just gone out, so the pass it triggers must not add the
+      // owed clear to them.
+      radio.unreachable = false;
+      final foreign = Map<String, Object?>.of(engine.sessionSnapshot()!);
+      foreign['sessionId'] = 's-other';
+      foreign['messageId'] = 'msg-wrist-other-session';
+      foreign['payload'] = {
+        ..._asObject(foreign['payload']),
+        'sessionId': 's-other',
+      };
+      await radio.fromWrist(foreign);
+      await _settle();
+
+      expect(
+        graph.mirror.sessionId,
+        's-other',
+        reason: 'the fixture: the wrist announced its own next session',
+      );
+      expect(
+        radio.ofType('session_lifecycle'),
+        isNotEmpty,
+        reason:
+            "the fixture: the router answered the snapshot with D-182's reset",
+      );
+      expect(
+        timerFrames(),
+        hasLength(1),
+        reason: 'S-8407 the reset answer flushes no timers',
+      );
+      expect(
+        attempted(),
+        2,
+        reason:
+            'S-8407 the timer push was not flushed at all, so the owed clear is '
+            'offered once and not again',
+      );
+
+      // D-202: withholding it costs nothing, because the debt is untouched and
+      // the next call offers it.
+      await graph.timerPush.flush();
+      expect(
+        attempted(),
+        3,
+        reason: 'S-8407 the clear the reset withheld is still owed afterwards',
+      );
+      expect(failures, isEmpty);
+    });
+  });
+
+  group('S-8408 an ordinary flush is not starved by a clears-only drain', () {
+    test(
+      'S-8408 a start the phone begins while a clears-only pass is in flight '
+      'travels in the pass the joining ordinary flush asks for',
+      () async {
+        await adoptedInterval();
+
+        // The phone ends the interval, so the wrist is owed a clear — and the
+        // wrist's next inbound frame is what flushes it, clears only.
+        await phoneState.finishTimedEntry(_slotId, 0);
+        radio.holdSend();
+        final clearsOnly = graph.timerPush.flushClears();
+        await _waitFor(
+          () => radio.heldSends == 1,
+          'the clears-only pass to reach the radio',
+        );
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the clear is held inside the radio',
+        );
+
+        // The phone starts its next round while that pass is in flight. Its
+        // state change schedules an ordinary flush, which joins the running
+        // drain instead of running beside it.
+        await phoneState.addEntry(_slotId);
+        await phoneState.startTimedEntry(_slotId, 1);
+        final current = phoneState.inProgressWorkTimers().single;
+        final ordinary = graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the ordinary flush joined the held drain',
+        );
+
+        radio.releaseSend();
+        await clearsOnly;
+        await ordinary;
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(2),
+          reason:
+              'S-8408 the clear and then the start the phone owes are two '
+              'frames',
+        );
+        expect(
+          timersOf(frames.first)['elapsed'],
+          isNull,
+          reason: 'S-8408 the clear still travels first',
+        );
+        final delivered = _asObject(timersOf(frames.last)['elapsed']);
+        expect(
+          parseUtcIso(delivered['startedAt']),
+          DateTime.fromMillisecondsSinceEpoch(current.startedAtMs, isUtc: true),
+          reason:
+              'S-8408 a start the phone owes is never withheld because a '
+              'clears-only flush happened to be running',
+        );
+
+        await applyPhoneTimers();
+        expect(
+          engine
+              .timerFor(WatchTimerKind.elapsed)!
+              .startedAt
+              .millisecondsSinceEpoch,
+          current.startedAtMs,
+          reason: "S-8408 the wrist counts the round the phone just started",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-6341 the wrist logs after the phone logged', () {
+    test(
+      'S-6341 one interval, no duplicate: the wrist entry lands on the '
+      'interval the phone already finished',
+      () async {
+        final started = await adoptedInterval();
+
+        // The phone logs the interval while the radio cannot carry the clear.
+        radio.unreachable = true;
+        await phoneState.finishTimedEntry(_slotId, 0);
+        await graph.timerPush.flush();
+        final logged = interval(0);
+        expect(
+          logged.state,
+          TimedState.finished,
+          reason: 'the fixture: the phone logged the interval',
+        );
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the radio carried nothing',
+        );
+
+        // The wrist logs the interval it timed — the same one the phone logged.
+        radio.unreachable = false;
+        final entryId = 'sx-run-logged';
+        final endedAt = started.startedAt.add(const Duration(minutes: 5));
+        await engine.appendObservation(<String, Object?>{
+          'entryId': entryId,
+          'eventId': entryId,
+          'kind': 'timed',
+          'loggedAt': utcIso(endedAt),
+          'sessionExerciseId': _slotId,
+          'exerciseId': 'ex-run',
+          'startedAt': utcIso(started.startedAt),
+          'endedAt': utcIso(endedAt),
+          'distanceMeters': 1200.0,
+        });
+        final observed = wristFrames.last;
+        expect(
+          observed['type'],
+          'observations_up',
+          reason: 'the fixture: the wrist emits the entry it logged',
+        );
+        await radio.fromWrist(observed);
+        await _settle();
+
+        final held = phoneState.getTimedInstancesForEffort(_slotId);
+        expect(
+          held,
+          hasLength(1),
+          reason: 'S-6341 the wrist entry does not become a second interval',
+        );
+        expect(held.single.state, TimedState.finished);
+        expect(
+          held.single.finishedAtMs,
+          logged.finishedAtMs,
+          reason: 'S-6341 the phone logged it, and its stamps stand',
+        );
+        expect(
+          await repository.getTimedInstances(_slotId),
+          hasLength(1),
+          reason: 'S-6341 nothing was written beside the phone\'s interval',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Plan 50a: the phone's rest reaches the wrist
+  // ---------------------------------------------------------------------------
+
+  group("S-7301 the phone's open rest reaches the wrist", () {
+    test(
+      'S-7301 an open rest travels as one timer_state frame with no slot and no '
+      'planned length, and the wrist counts up from it',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        final rest = await openPhoneRest();
+        expect(
+          phoneState.inProgressRest()?.startedAtMs,
+          rest.restStartMs,
+          reason: 'the fixture: the phone holds the rest it opened',
+        );
+
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7301 one frame is sent');
+        expect(
+          timersOf(frames.single).keys,
+          ['rest'],
+          reason: 'S-7301 the frame names the rest',
+        );
+        final timer = restOf(frames.single);
+        expect(timer['kind'], 'rest');
+        expect(timer['state'], 'running');
+        expect(
+          parseUtcIso(timer['startedAt']),
+          _restStart,
+          reason: 'S-7301 the frame carries the instant the phone logged',
+        );
+        expect(
+          timer['accumulatedPauseMs'],
+          0,
+          reason: 'S-7301 a running rest has accumulated no pause',
+        );
+        expect(
+          timer.containsKey('sessionExerciseId'),
+          isFalse,
+          reason: 'S-7301 a rest belongs to no slot',
+        );
+        expect(
+          timer.containsKey('plannedDurationMs'),
+          isFalse,
+          reason: 'S-7301 a rest counts up, so it carries no planned length',
+        );
+        expect(
+          loadProtocolValidator().validateEnvelope(frames.single),
+          isEmpty,
+          reason: 'S-7301 the envelope passes the Dart validator',
+        );
+
+        await applyPhoneTimers();
+        final wristRest = engine.timerFor(WatchTimerKind.rest)!;
+        expect(wristRest.state, WatchTimerState.running);
+        expect(
+          wristRest.startedAt,
+          _restStart,
+          reason: 'S-7301 the wrist counts up from the phone instant',
+        );
+        expect(
+          WatchLoggingState(engine: engine).isResting,
+          isTrue,
+          reason: 'S-7301 the wrist shows its rest surface',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      "S-7301 the newest open rest across the phone's efforts is the one "
+      'composed, and a closed one never competes',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        final second = await phoneState.addExerciseToSession(
+          (await repository.getExerciseById('ex-run'))!,
+        );
+        await openPhoneRest();
+        final newer = _restStart.add(const Duration(seconds: 5));
+        await openPhoneRest(effortId: second, startedAt: newer);
+
+        // A closed rest that starts later still is not an open one.
+        final later = _restStart.add(const Duration(seconds: 9));
+        await repository.createEntryRest(
+          EntryRest(
+            id: 'rest-$_slotId-1',
+            effortId: _slotId,
+            entryIndex: 1,
+            restStartMs: later.millisecondsSinceEpoch,
+            restEndMs: later.millisecondsSinceEpoch + 1000,
+            createdAtMs: later.millisecondsSinceEpoch,
+            updatedAtMs: later.millisecondsSinceEpoch,
+          ),
+        );
+        await phoneState.refreshEfforts([_slotId, second]);
+
+        expect(
+          phoneState.inProgressRest()?.startedAtMs,
+          newer.millisecondsSinceEpoch,
+          reason: 'S-7301 the newest open rest is the one composed',
+        );
+
+        await graph.timerPush.flush();
+        expect(
+          parseUtcIso(restOf(timerFrames().single)['startedAt']),
+          newer,
+          reason: 'S-7301 the frame carries the newest open rest',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7302 a pause and a resume travel with their bookkeeping', () {
+    test(
+      "S-7302 pausing sends the rest's paused stamp and resuming sends the "
+      'pause accumulated so far, which the wrist reads back',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(timerFrames(), hasLength(1), reason: 'the fixture: one frame');
+
+        await phoneState.pauseRest(_slotId, 0);
+        final paused = (await repository.getEntryRests(_slotId)).single;
+        expect(paused.restIsPaused, isTrue, reason: 'the fixture: paused');
+        await graph.timerPush.flush();
+
+        expect(timerFrames(), hasLength(2));
+        final pausedTimer = restOf(timerFrames().last);
+        expect(pausedTimer['state'], 'paused');
+        expect(
+          parseUtcIso(pausedTimer['pausedAt']),
+          DateTime.fromMillisecondsSinceEpoch(
+            paused.restPausedAtMs!,
+            isUtc: true,
+          ),
+          reason: 'S-7302 the frame carries the pause the phone stored',
+        );
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.paused,
+          reason: 'S-7302 the wrist holds the paused rest',
+        );
+
+        // Give the resume a pause to accumulate, at a value no default would
+        // produce, and freeze its stamp so the measured pause is not the wall
+        // clock's.
+        await repository.updateEntryRest(
+          paused.copyWith(
+            restPausedAtMs: paused.restPausedAtMs! - 1000,
+            restPausedDurationMs: _restPauseMs,
+          ),
+        );
+        await phoneState.refreshEfforts([_slotId]);
+        await phoneState.resumeRest(_slotId, 0);
+        final resumed = (await repository.getEntryRests(_slotId)).single;
+        expect(resumed.restEndMs, isNull, reason: 'the fixture: still resting');
+        expect(
+          resumed.restPausedDurationMs,
+          greaterThan(_restPauseMs),
+          reason: 'the fixture: the resume measured a pause',
+        );
+
+        await graph.timerPush.flush();
+        expect(timerFrames(), hasLength(3));
+        final resumedTimer = restOf(timerFrames().last);
+        expect(resumedTimer['state'], 'running');
+        expect(
+          resumedTimer['accumulatedPauseMs'],
+          resumed.restPausedDurationMs,
+          reason: 'S-7302 the resume carries the pause accumulated so far',
+        );
+        expect(
+          resumedTimer.containsKey('pausedAt'),
+          isFalse,
+          reason: 'S-7302 a running rest carries no paused stamp',
+        );
+
+        await applyPhoneTimers();
+        final wristRest = engine.timerFor(WatchTimerKind.rest)!;
+        expect(wristRest.state, WatchTimerState.running);
+        expect(
+          wristRest.accumulatedPauseMs,
+          resumed.restPausedDurationMs,
+          reason: 'S-7302 the wrist excludes the pause it was told about',
+        );
+        expect(
+          wristRest.startedAt,
+          _restStart,
+          reason: 'S-7302 a pause and a resume never move the start',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7303 closing the rest clears it on the wrist', () {
+    test(
+      "S-7303 the next set closes the rest and one frame with a null rest stops "
+      "the wrist's",
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.running,
+          reason: 'the fixture: the wrist is resting',
+        );
+
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          hasLength(2),
+          reason: 'S-7303 exactly one frame is sent for the close',
+        );
+        final cleared = timersOf(timerFrames().last);
+        expect(
+          cleared.containsKey('rest'),
+          isTrue,
+          reason: 'S-7303 the frame names the rest it clears',
+        );
+        expect(
+          cleared['rest'],
+          isNull,
+          reason: 'S-7303 a key present with null clears that rest',
+        );
+
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.stopped,
+          reason: 'S-7303 the wrist stops the rest the phone closed',
+        );
+        expect(
+          WatchLoggingState(engine: engine).isResting,
+          isFalse,
+          reason: 'S-7303 the wrist leaves its rest surface',
+        );
+
+        phoneState.notifyListeners();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(2),
+          reason: 'S-7303 a delivered clear is not sent twice',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group("S-7304 the wrist's own rest a moment later is the same rest", () {
+    test(
+      "S-7304 a running rest the wrist started 300 ms after ours is identical, "
+      'so nothing is sent',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 300)),
+        );
+        expect(
+          mirrorTimer('rest')['state'],
+          'running',
+          reason: 'the fixture: the mirror holds the wrist rest',
+        );
+
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'S-7304 the wrist already rests from within half a second of '
+              'ours',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-7304 closing the rest the wrist is holding sends the clear',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 300)),
+        );
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(timerFrames(), isEmpty, reason: 'the fixture: nothing to send');
+
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7304 the close is sent');
+        final cleared = timersOf(frames.single);
+        expect(
+          cleared['rest'],
+          isNull,
+          reason: "S-7304 the frame clears the wrist's rest",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7305 the wrist ended its own rest first', () {
+    test(
+      "S-7305 a mirror rest that is already stopped is not cleared when the "
+      "phone's rest closes",
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(startedAt: _restStart);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the wrist rest is the same rest',
+        );
+
+        // The wrist ends its rest itself, before the phone closes its own.
+        await mirrorRest(startedAt: _restStart, state: 'stopped');
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'S-7305 the wrist ended the rest, so there is nothing to clear',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7306 a rest started outside the tolerance is a different rest', () {
+    test(
+      "S-7306 the mirror's rest started 5 s earlier does not stop ours being "
+      'sent',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.subtract(const Duration(seconds: 5)),
+        );
+
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7306 our rest is sent');
+        expect(
+          parseUtcIso(restOf(frames.single)['startedAt']),
+          _restStart,
+          reason: "S-7306 the phone's rest is a different one",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7307 a rest frame the radio did not carry is owed', () {
+    test(
+      'S-7307 an undelivered rest frame leaves the ledger as it was and is '
+      'offered again',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        radio.unreachable = true;
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the radio took nothing',
+        );
+
+        radio.unreachable = false;
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7307 the rest is offered again');
+        expect(
+          parseUtcIso(restOf(frames.single)['startedAt']),
+          _restStart,
+          reason: 'S-7307 the frame is the one that was owed',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7308 the real wrist engine rests from the phone instant', () {
+    test(
+      'S-7308 after the frame the engine is resting and counts up from T; '
+      'after the clear it is not resting',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        await applyPhoneTimers();
+
+        final resting = engine.timerFor(WatchTimerKind.rest)!;
+        expect(resting.state, WatchTimerState.running);
+        expect(
+          resting.startedAt,
+          _restStart,
+          reason: 'S-7308 the wrist counts up from the phone instant',
+        );
+        expect(
+          resting.plannedDurationMs,
+          isNull,
+          reason: 'S-7308 a rest is not a countdown',
+        );
+        expect(WatchLoggingState(engine: engine).isResting, isTrue);
+
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+        await applyPhoneTimers();
+
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.stopped,
+          reason: 'S-7308 the clear stops the rest',
+        );
+        expect(
+          WatchLoggingState(engine: engine).isResting,
+          isFalse,
+          reason: 'S-7308 the wrist is not resting after the clear',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7309 work timers are unaffected', () {
+    test(
+      'S-7309 an elapsed timer and a rest in one pass travel as one frame with '
+      'both kinds',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        final instance = await startInterval();
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(1),
+          reason: 'S-7309 both kinds travel as one frame',
+        );
+        final timers = timersOf(frames.single);
+        expect(timers.keys.toSet(), {'elapsed', 'rest'});
+        final elapsed = _asObject(timers['elapsed']);
+        expect(
+          elapsed['sessionExerciseId'],
+          _slotId,
+          reason: 'S-7309 the work timer keeps its slot',
+        );
+        expect(
+          parseUtcIso(elapsed['startedAt']),
+          DateTime.fromMillisecondsSinceEpoch(
+            instance.startedAtMs,
+            isUtc: true,
+          ),
+          reason: 'S-7309 the work timer keeps the instance it came from',
+        );
+        expect(
+          parseUtcIso(restOf(frames.single)['startedAt']),
+          _restStart,
+          reason: 'S-7309 the rest keeps its own instant',
+        );
+        expect(
+          loadProtocolValidator().validateEnvelope(frames.single),
+          isEmpty,
+          reason: 'S-7309 the envelope passes the Dart validator',
+        );
+
+        await applyPhoneTimers();
+        expect(
+          engine.timerFor(WatchTimerKind.elapsed)!.state,
+          WatchTimerState.running,
+          reason: 'S-7309 the wrist still holds the elapsed timer',
+        );
+        expect(
+          engine.timerFor(WatchTimerKind.rest)!.state,
+          WatchTimerState.running,
+          reason: 'S-7309 and holds the rest beside it',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7310 a snapshot the phone composes carries the delivered rest', () {
+    test(
+      'S-7310 the rest the phone delivered rides the next projected snapshot',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          hasLength(1),
+          reason: 'the fixture: the rest was delivered',
+        );
+
+        final projected = await graph.mirror.projectedSession();
+        expect(
+          projected,
+          isNotNull,
+          reason: 'the fixture: the phone holds a session to speak from',
+        );
+        final timers = _asObject(projected!['timers']);
+        expect(
+          timers.containsKey('rest'),
+          isTrue,
+          reason: 'S-7310 a snapshot without the rest would stop the wrist rest',
+        );
+        final rest = _asObject(timers['rest']);
+        expect(
+          parseUtcIso(rest['startedAt']),
+          _restStart,
+          reason: 'S-7310 the snapshot carries the rest the phone delivered',
+        );
+        expect(
+          rest.containsKey('sessionExerciseId'),
+          isFalse,
+          reason: 'S-7310 the rest still belongs to no slot',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7311 two consecutive rests less than a second apart stay two rests', () {
+    test(
+      'S-7311 set 2 logged 1500 ms after set 1 closes rest 1 and opens rest 2: '
+      'the clear and the new rest travel as two frames, in that order',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        // The wrist starts its own copy of rest 1 tens of milliseconds after
+        // the phone logged set 1.
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 80)),
+        );
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: rest 1 is the same rest on both devices',
+        );
+
+        await openPhoneRest(
+          entryIndex: 1,
+          startedAt: _restStart.add(const Duration(milliseconds: 1500)),
+        );
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(2),
+          reason: 'S-7311 the clear and the new rest, as two frames',
+        );
+        expect(
+          timersOf(frames[0])['rest'],
+          isNull,
+          reason: 'S-7311 rest 1 is cleared first',
+        );
+        expect(
+          parseUtcIso(restOf(frames[1])['startedAt']),
+          _restStart.add(const Duration(milliseconds: 1500)),
+          reason: 'S-7311 rest 2 travels with its own start',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-7311 a mirror rest started exactly 500 ms after ours is the same '
+      'rest, so nothing is sent',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 500)),
+        );
+
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'S-7311 500 ms is the boundary and still the same rest',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+
+    test(
+      'S-7311 a mirror rest started 501 ms after ours is a different rest, '
+      'so ours is sent',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 501)),
+        );
+
+        await openPhoneRest();
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(frames, hasLength(1), reason: 'S-7311 501 ms is a new rest');
+        expect(
+          parseUtcIso(restOf(frames.single)['startedAt']),
+          _restStart,
+          reason: "S-7311 the phone's rest is the one sent",
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+
+  group('S-7312 a rest copy this push has cleared does not block the next rest', () {
+    test(
+      'S-7312 after the phone ends an adopted rest, a new rest 700 ms after '
+      'the phone start is sent, not read as the stale copy',
+      () async {
+        await wristStartsTimedSession();
+        graph.timerPush.bindWorkoutState(phoneState);
+        await mirrorRest(
+          startedAt: _restStart.add(const Duration(milliseconds: 80)),
+        );
+        await openPhoneRest();
+        await graph.timerPush.flush();
+        expect(
+          timerFrames(),
+          isEmpty,
+          reason: 'the fixture: the rest was adopted from the wrist',
+        );
+
+        await phoneState.recordRestEnd(_slotId, 0);
+        await graph.timerPush.flush();
+        final clear = timerFrames();
+        expect(clear, hasLength(1), reason: 'the fixture: the clear is sent');
+        expect(
+          timersOf(clear.single)['rest'],
+          isNull,
+          reason: 'the fixture: the frame clears the rest',
+        );
+
+        // The mirror still shows the copy this push has cleared: the watch
+        // sends nothing back for a clear.
+        expect(mirrorTimer('rest')['state'], 'running');
+
+        await openPhoneRest(
+          entryIndex: 1,
+          startedAt: _restStart.add(const Duration(milliseconds: 700)),
+        );
+        await graph.timerPush.flush();
+
+        final frames = timerFrames();
+        expect(
+          frames,
+          hasLength(2),
+          reason: 'S-7312 the new rest is sent after the fixture clear',
+        );
+        expect(
+          parseUtcIso(restOf(frames.last)['startedAt']),
+          _restStart.add(const Duration(milliseconds: 700)),
+          reason: 'S-7312 the new rest is not read as the stale copy',
+        );
+        expect(failures, isEmpty);
+      },
+    );
+  });
+}

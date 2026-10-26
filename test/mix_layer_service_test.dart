@@ -163,6 +163,7 @@ List<String> _layerShape(MixLayerData data) => [
   'baseline=${_barShape(data.baselineSegments)}',
   'unrated=${data.unratedSessionCount}',
   'ratedBaselineWeeks=${data.ratedBaselineWeeks}',
+  'lastSessionDay=${data.lastSessionDay?.toIso8601String()}',
   for (final week in data.weeks)
     'week=${week.weekStart.toIso8601String()}|${week.measure}'
         '|${week.inProgress}|${_barShape(week.segments)}',
@@ -952,6 +953,65 @@ void main() {
         );
         expect(index, sunday.weeks.length - 1);
         expect(sunday.weeks[index].measure, 60.0);
+      });
+
+      test('S-4009 lastSessionDay is the latest completed session in all '
+          'history', () async {
+        // Day A is inside the window, day B is *after* it, and day C — later
+        // still — is unfinished: only completed sessions count, and the walk
+        // is all history rather than the window.
+        await _seedHourSession(
+          repo,
+          id: 's4009-a',
+          day: DateTime(2026, 4, 5),
+          rating: 4,
+        );
+        await _seedHourSession(
+          repo,
+          id: 's4009-b',
+          day: DateTime(2026, 4, 20),
+          rating: 4,
+        );
+        final unfinishedStart = DateTime(2026, 4, 25, 9);
+        await repo.createSession(
+          TrainingSession(
+            id: 's4009-c',
+            ownerUserId: 'user-1',
+            startedAtMs: unfinishedStart.millisecondsSinceEpoch,
+            endedAtMs: null,
+            createdAtMs: unfinishedStart.millisecondsSinceEpoch,
+            updatedAtMs: unfinishedStart.millisecondsSinceEpoch,
+          ),
+        );
+
+        final window = _window(
+          DateTime(2026, 4, 1),
+          DateTime(2026, 4, 10, 23, 59),
+        );
+        final data = (await _mix(repo, window: window, now: now))!;
+
+        expect(data.lastSessionDay, localMidnightDay(DateTime(2026, 4, 20)));
+        expect(
+          data.lastSessionDay,
+          isNot(localMidnightDay(DateTime(2026, 4, 5))),
+        );
+        expect(
+          data.lastSessionDay,
+          isNot(localMidnightDay(unfinishedStart)),
+        );
+
+        // The period payload carries the same field even though its strip is
+        // empty by construction (D-1204).
+        final periodData =
+            (await StatsProgressService(repo).computeMixPeriod(
+              fromMs: window.fromMs,
+              toMs: window.toMs,
+            ))!;
+        expect(periodData.weeks, isEmpty);
+        expect(
+          periodData.lastSessionDay,
+          localMidnightDay(DateTime(2026, 4, 20)),
+        );
       });
     });
   }

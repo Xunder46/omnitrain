@@ -5,7 +5,8 @@
 // Scenarios S-1109 (the Calories / Macros toggle swaps the plotted datasets),
 // S-1110(a) (the extracted screen plots the repository's full food history)
 // and S-1110(b) (the zero-session empty state wins over the Fuel row), plus
-// the empty-chart path.
+// the empty path (S-2803: no logged day is the shared `OmniEmptyState`, not a
+// flat line at zero).
 //
 // Plan: `docs/plans/2026-10-01-04b3-stats-pr4b3-fuel-row-plan/`.
 //
@@ -22,6 +23,8 @@ import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/features/nutrition/nutrition_trend_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/widgets/chart/scrollable_trend_chart.dart';
+import 'package:omnitrain/widgets/common/omni_empty_state.dart';
+import 'package:omnitrain/widgets/layout/omni_surface.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
@@ -241,7 +244,31 @@ void main() {
           final data = _chartData(tester, 'kcal');
           expect(data.lineBarsData, hasLength(2));
           expect(data.lineBarsData.last.spots, isNotEmpty);
-          expect(find.text('Target (kcal)'), findsOneWidget);
+          // The legend names the target's number (the seeded 2200), so the
+          // dashed line is never an unlabelled mark.
+          expect(find.text('Target 2200 kcal'), findsOneWidget);
+        });
+
+        testWidgets('the legend stays inside the card in both views on a '
+            'narrow screen', (tester) async {
+          await pumpTrend(tester, surface: const Size(320, 568));
+
+          final cardRight = tester
+              .getRect(find.byType(OmniSurface).first)
+              .right;
+
+          expect(
+            tester.getRect(find.text('Target 2200 kcal')).right,
+            lessThanOrEqualTo(cardRight),
+          );
+
+          await tester.tap(find.text('Macros'));
+          await tester.pumpAndSettle();
+
+          expect(
+            tester.getRect(find.text('Target')).right,
+            lessThanOrEqualTo(cardRight),
+          );
         });
       });
 
@@ -358,21 +385,20 @@ void main() {
         });
       });
 
-      // ─── the empty-chart path ─────────────────────────────────────────────
+      // ─── the empty path (S-2803) ──────────────────────────────────────────
 
       group('no food logged', () {
         setUp(() => _clearConsumedFoods(repo));
 
-        testWidgets('renders the empty chart, not an error', (tester) async {
+        testWidgets('shows the empty state, never an all-zero chart', (
+          tester,
+        ) async {
           await pumpTrend(tester);
 
-          final data = _chartData(tester, '');
-          expect(data.lineBarsData, hasLength(1));
-          expect(data.lineBarsData.single.spots, hasLength(7));
-          expect(
-            data.lineBarsData.single.spots.every((spot) => spot.y == 0),
-            isTrue,
-          );
+          expect(find.byType(OmniEmptyState), findsOneWidget);
+          expect(find.text('No data yet'), findsOneWidget);
+          expect(find.text('Log food to see your trend.'), findsOneWidget);
+          expect(find.byType(LineChart), findsNothing);
           expect(tester.takeException(), isNull);
         });
       });

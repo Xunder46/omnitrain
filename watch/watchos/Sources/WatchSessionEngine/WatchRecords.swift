@@ -425,6 +425,7 @@ public struct WatchTimerRecord {
     public let stoppedAt: Date?
     public let accumulatedPauseMs: Int
     public let plannedDurationMs: Int?
+    public let sessionExerciseId: String?
 
     public init(
         recordId: String,
@@ -436,6 +437,7 @@ public struct WatchTimerRecord {
         stoppedAt: Date? = nil,
         accumulatedPauseMs: Int = 0,
         plannedDurationMs: Int? = nil,
+        sessionExerciseId: String? = nil,
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -448,6 +450,7 @@ public struct WatchTimerRecord {
         self.stoppedAt = stoppedAt
         self.accumulatedPauseMs = accumulatedPauseMs
         self.plannedDurationMs = plannedDurationMs
+        self.sessionExerciseId = sessionExerciseId
     }
 
     /// Derived from which timestamps are present.
@@ -468,6 +471,7 @@ public struct WatchTimerRecord {
             stoppedAt: stoppedAt,
             accumulatedPauseMs: accumulatedPauseMs,
             plannedDurationMs: plannedDurationMs,
+            sessionExerciseId: sessionExerciseId,
             sequence: sequence
         )
     }
@@ -488,6 +492,11 @@ public struct WatchTimerRecord {
         if kind != "rest", let plannedDurationMs {
             json["plannedDurationMs"] = plannedDurationMs
         }
+        // A rest belongs to no slot, and the wire's timer allows the field on
+        // every kind but carries it only where it means something.
+        if kind != "rest", let sessionExerciseId {
+            json["sessionExerciseId"] = sessionExerciseId
+        }
         return json
     }
 
@@ -504,6 +513,7 @@ public struct WatchTimerRecord {
             "stoppedAt": stoppedAt.map(utcIso) ?? NSNull(),
             "accumulatedPauseMs": accumulatedPauseMs,
             "plannedDurationMs": plannedDurationMs ?? NSNull(),
+            "sessionExerciseId": sessionExerciseId ?? NSNull(),
         ]
     }
 
@@ -518,6 +528,7 @@ public struct WatchTimerRecord {
             stoppedAt: try parseOptionalUtcIso(json["stoppedAt"]),
             accumulatedPauseMs: (json["accumulatedPauseMs"] as? NSNumber)?.intValue ?? 0,
             plannedDurationMs: (json["plannedDurationMs"] as? NSNumber)?.intValue,
+            sessionExerciseId: json["sessionExerciseId"] as? String,
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }
@@ -682,6 +693,7 @@ public enum StoredWatchRecord {
     public static let foodCatalogType = "food_catalog"
     public static let preferencesType = "preferences"
     public static let ratingPromptType = "rating_prompt"
+    public static let exerciseBatchType = "exercise_batch"
 
     case session(WatchSessionRecord)
     case observation(WatchObservationRecord)
@@ -692,6 +704,7 @@ public enum StoredWatchRecord {
     case foodCatalog(WatchFoodCatalogRecord)
     case preferences(WatchPreferencesRecord)
     case ratingPrompt(WatchRatingPromptRecord)
+    case exerciseBatch(WatchExerciseBatchRecord)
 
     public var recordType: String {
         switch self {
@@ -704,6 +717,7 @@ public enum StoredWatchRecord {
         case .foodCatalog: return Self.foodCatalogType
         case .preferences: return Self.preferencesType
         case .ratingPrompt: return Self.ratingPromptType
+        case .exerciseBatch: return Self.exerciseBatchType
         }
     }
 
@@ -718,6 +732,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.recordId
         case .preferences(let row): return row.recordId
         case .ratingPrompt(let row): return row.recordId
+        case .exerciseBatch(let row): return row.recordId
         }
     }
 
@@ -732,6 +747,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.sessionId
         case .preferences(let row): return row.sessionId
         case .ratingPrompt(let row): return row.sessionId
+        case .exerciseBatch(let row): return row.sessionId
         }
     }
 
@@ -746,6 +762,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.recordedAt
         case .preferences(let row): return row.recordedAt
         case .ratingPrompt(let row): return row.recordedAt
+        case .exerciseBatch(let row): return row.recordedAt
         }
     }
 
@@ -760,6 +777,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.sequence
         case .preferences(let row): return row.sequence
         case .ratingPrompt(let row): return row.sequence
+        case .exerciseBatch(let row): return row.sequence
         }
     }
 
@@ -774,6 +792,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return .foodCatalog(row.withSequence(sequence))
         case .preferences(let row): return .preferences(row.withSequence(sequence))
         case .ratingPrompt(let row): return .ratingPrompt(row.withSequence(sequence))
+        case .exerciseBatch(let row): return .exerciseBatch(row.withSequence(sequence))
         }
     }
 
@@ -788,6 +807,7 @@ public enum StoredWatchRecord {
         case .foodCatalog(let row): return row.toJson()
         case .preferences(let row): return row.toJson()
         case .ratingPrompt(let row): return row.toJson()
+        case .exerciseBatch(let row): return row.toJson()
         }
     }
 
@@ -805,6 +825,7 @@ public enum StoredWatchRecord {
         case foodCatalogType: return .foodCatalog(try WatchFoodCatalogRecord.fromJson(json))
         case preferencesType: return .preferences(try WatchPreferencesRecord.fromJson(json))
         case ratingPromptType: return .ratingPrompt(try WatchRatingPromptRecord.fromJson(json))
+        case exerciseBatchType: return .exerciseBatch(try WatchExerciseBatchRecord.fromJson(json))
         default: throw WatchRecordError.unknownRecordType(type)
         }
     }

@@ -218,6 +218,9 @@ conventions doc — reference, do not copy>
 <touched surface → what already reads it (with the grep that found it) → effect
 of the change → guarded by <S-id> or <open — Qn>. An entry may not read
 "unaffected" without the grep that proves it.>
+## UI Standards Impact
+<which shared pieces (docs/design_system.md, "Shared pieces and rules per job") this change uses; any new
+exception, with the owner-approved reason; "none" for a change with no UI.>
 ## Scenarios
 ## Iteration N
 ### Phase X: <name> (@agent)

@@ -273,6 +273,7 @@ class _MonthHeader extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.chevron_left),
             color: OmniTheme.colors.textDominant,
+            tooltip: 'Previous month',
             onPressed: onPrevious,
           ),
           Expanded(
@@ -285,6 +286,7 @@ class _MonthHeader extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.chevron_right),
             color: OmniTheme.colors.textDominant,
+            tooltip: 'Next month',
             onPressed: onNext,
           ),
         ],
@@ -467,7 +469,7 @@ class _DayCell extends StatelessWidget {
         .where((p) => p.startDateMs <= dayMs && p.endDateMs >= dayMs)
         .firstOrNull;
     if (period == null) {
-      return Colors.grey.withOpacity(0.08);
+      return Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
     }
 
     if (period.colorHex == null || period.colorHex!.length != 7) {

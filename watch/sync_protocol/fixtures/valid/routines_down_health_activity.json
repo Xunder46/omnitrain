@@ -1,0 +1,42 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-routines-health-1",
+  "type": "routines_down",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-07-13T17:00:00Z",
+    "routines": [
+      {
+        "routineId": "routine-ride-a",
+        "name": "Ride A",
+        "updatedAt": "2026-07-12T09:00:00Z",
+        "segments": [
+          {
+            "segmentId": "seg-ride",
+            "name": "Ride",
+            "efforts": [
+              {
+                "effortId": "ef-ride",
+                "exerciseId": "ex-ride",
+                "exerciseName": "Zone 2 Ride",
+                "effortKind": "timed",
+                "capabilities": ["time", "distance"],
+                "healthActivity": "cycling",
+                "targets": { "durationMs": 600000 }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "fallbackExercises": [
+      {
+        "exerciseId": "ex-ride",
+        "name": "Zone 2 Ride",
+        "capabilities": ["time", "distance"],
+        "healthActivity": "cycling"
+      }
+    ]
+  }
+}

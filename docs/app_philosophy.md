@@ -216,7 +216,9 @@ See [Navigation & Screens](navigation_and_screens.md) for the screen graph and
 [Session Summary](session_summary.md) for what happens after a workout ends.
 
 ### Maintenance Sheet
-A draggable bottom sheet provides access to system features. The sheet snaps directly between collapsed (7%) and expanded (92%); the previous mid snap point was removed so opening the sheet is a single-step gesture.
+A draggable bottom sheet provides access to system features. The sheet rests fully hidden (its minimum extent is 0.0) and only the logo opens it, so opening the sheet is a single-step gesture; the expanded extent is a computed fraction clamped by `hubSheetMaxExtent` in `lib/features/home/home_screen.dart`.
+
+Verified by `test/home_logo_hub_open_test.dart` (`HomeScreen Hub Sheet Opening` · `tapping the logo opens the Hub sheet`).
 
 Source: `_buildMaintenanceGrid` in `lib/features/home/home_screen.dart`.
 Nutrition is **not** in the sheet — it is reached from the
@@ -266,9 +268,9 @@ A Template is:
 
 ## 11. New User Onboarding
 
-Onboarding collects only what changes the app's defaults — training type, goal, and available
-equipment — and uses it to seed the default SportProfile, initial Templates, and home category
-ordering.
+Onboarding is a three-page read-only intro (welcome, how you train, how you plan). It collects nothing and sets nothing: completion only writes the `onboarding_complete` preference flag.
+
+Source: `lib/features/onboarding/onboarding_screen.dart` (`_buildWelcomePage`, `_buildHowYouTrainPage`, `_buildHowYouPlanPage`, `_complete`).
 
 No mandatory tutorials or explanations.
 

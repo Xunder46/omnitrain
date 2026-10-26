@@ -151,6 +151,35 @@ final class WatchNutritionQuickLogTests: XCTestCase {
         }
     }
 
+    /// A store whose `readAll` serves the snapshot its first read took: the view a
+    /// launch restore can still be holding while a `foods_down` lands and is
+    /// applied. Everything written after the snapshot is stored, but never read.
+    private final class StaleReadStore: WatchSessionStore {
+        private let backing = InMemoryWatchSessionStore()
+        private var snapshot: WatchStoreContents?
+
+        func append(_ record: StoredWatchRecord) async -> StoredWatchRecord {
+            await backing.append(record)
+        }
+
+        func readAll() async -> WatchStoreContents {
+            if let snapshot { return snapshot }
+            let contents = await backing.readAll()
+            snapshot = contents
+            return contents
+        }
+
+        func pruneConfirmed() async -> [String] { await backing.pruneConfirmed() }
+
+        func pruneSensorSamples(_ sessionIds: [String]) async -> [String] {
+            await backing.pruneSensorSamples(sessionIds)
+        }
+
+        func pruneExerciseBatches(keepingVersion: String) async -> [String] {
+            await backing.pruneExerciseBatches(keepingVersion: keepingVersion)
+        }
+    }
+
     // MARK: - S-001 quick-logging a food with the phone out of reach
 
     func testQuickLoggingPersistsTheObservationAndEmitsIt() async throws {
@@ -359,6 +388,52 @@ final class WatchNutritionQuickLogTests: XCTestCase {
         )
         XCTAssertNil(watch.nutrition.food("food-toast"))
         XCTAssertNotNil(watch.nutrition.food("food-oatmeal"))
+    }
+
+    // MARK: - S-7206 a restore cannot put the stored list over a newer one
+
+    func testS7206ARestoreCannotPutTheStoredListOverANewerOne() async throws {
+        let store = StaleReadStore()
+        let watch = NutritionHarness(store: store)
+        try await watch.syncFoods()
+
+        // A fresh state's restore still reads the stored list.
+        await watch.nutrition.restore()
+        XCTAssertEqual(
+            ids(watch.nutrition.foods),
+            strings(try nutritionContract()["phoneOrder"])
+        )
+
+        // The phone sends a newer list while a launch restore is still
+        // reading storage, and the state applies it.
+        var newer = try NutritionHarness.envelope()
+        newer["messageId"] = "msg-foods-2"
+        newer["sentAt"] = "2026-07-13T18:00:00Z"
+        var body = try payload(newer)
+        body["generatedAt"] = "2026-07-13T18:00:00Z"
+        body["foods"] = [
+            [
+                "foodId": "food-toast",
+                "name": "Toast",
+                "categoryId": NSNull(),
+                "referenceAmount": 1,
+                "referenceLabel": "slice",
+                "caloriesPerServing": 80,
+                "defaultServings": 1,
+            ]
+        ]
+        newer["payload"] = body
+
+        let result = await watch.nutrition.applyFoodsDown(newer)
+        XCTAssertTrue(result.applied)
+        XCTAssertNotNil(watch.nutrition.food("food-toast"))
+
+        // The restore's read comes back with only the older stored row: the
+        // newer list the state already holds is not replaced by it.
+        await watch.nutrition.restore()
+
+        XCTAssertNotNil(watch.nutrition.food("food-toast"))
+        XCTAssertNil(watch.nutrition.food("food-oatmeal"))
     }
 
     func testAMessageTheWristCannotReadIsRefusedWhole() async throws {

@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
+import '../constants/modality_display.dart';
 import '../models/session_summary.dart';
 import '../utils/observation_grouper.dart';
 import 'stats_progress_service.dart';
@@ -61,9 +62,30 @@ class SessionSummaryService {
     return totalMs;
   }
 
-  Future<Map<String, SessionGroupMetrics>> buildGroupMetrics(
-    SessionSummary summary,
+  /// The heart rate the watch recorded for the whole session, rounded to
+  /// whole bpm; null when no session-scope summary carries one. Avg and max
+  /// are both present together by the model's invariant (D-131), so the
+  /// record never carries one without the other.
+  Future<({int avgBpm, int maxBpm})?> getSessionHeartRate(
+    String sessionId,
   ) async {
+    final summaries = await _repository.getSensorSummariesForSession(sessionId);
+    for (final summary in summaries) {
+      if (summary.scope != SensorSummary.scopeSession) continue;
+      final avg = summary.avgHeartRateBpm;
+      final max = summary.maxHeartRateBpm;
+      if (avg == null || max == null) continue;
+      return (avgBpm: avg.round(), maxBpm: max.round());
+    }
+    return null;
+  }
+
+  /// [modality] is the session's modality; it names the round group ("Periods"
+  /// in sports, "Rounds" otherwise).
+  Future<Map<String, SessionGroupMetrics>> buildGroupMetrics(
+    SessionSummary summary, {
+    String? modality,
+  }) async {
     final cardioRounds = summary.exercises
         .where((e) => e.effortKind == 'timed')
         .fold<int>(0, (sum, e) => sum + e.setsCompleted);
@@ -94,7 +116,7 @@ class SessionSummaryService {
     if (summary.totalRounds > 0 || summary.totalRoundDurationMs > 0) {
       groups['rounds'] = SessionGroupMetrics(
         groupKey: 'rounds',
-        primaryLabel: 'Rounds',
+        primaryLabel: '${ModalityDisplay.roundNoun(modality)}s',
         primaryCount: summary.totalRounds,
         effortDurationMs: summary.totalRoundDurationMs,
       );

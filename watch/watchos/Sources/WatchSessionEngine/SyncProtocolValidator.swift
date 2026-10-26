@@ -49,6 +49,7 @@ public final class SyncProtocolValidator {
 
     public static let messageTypes = [
         "routines_down",
+        "exercises_down",
         "foods_down",
         "preferences_down",
         "exercise_push",
@@ -84,6 +85,7 @@ public final class SyncProtocolValidator {
         ("rating", ["effort_rating"]),
         ("status", ["session_end"]),
         ("modality", ["session_end"]),
+        ("followed", ["session_end"]),
     ]
 
     /// Root of every message path, as a constant so `$` never needs escaping.
@@ -190,6 +192,8 @@ public final class SyncProtocolValidator {
             return duplicateAcknowledgementRejections(payload)
         case "routines_down":
             return fallbackCoverageRejections(payload)
+        case "exercises_down":
+            return exerciseBatchRejections(payload)
         default:
             return []
         }
@@ -551,6 +555,75 @@ public final class SyncProtocolValidator {
         ]
     }
 
+    /// A batch of the exercise list. The list is assembled from batches, so a
+    /// batch's own numbers must agree with each other and with what it carries:
+    /// (a) the batch is one of `batchCount` slices, (b) the whole list's size
+    /// fits both the exercises this batch carries and the exercises the batches
+    /// can hold, and (c) one exercise appears once in the list. The rules are
+    /// reported in that order, and the Dart twin reports the same three, in the
+    /// same order, with the same words (D-3811).
+    private func exerciseBatchRejections(_ payload: [String: Any]) -> [SyncProtocolRejection] {
+        let exercises = payload["exercises"] as? [Any] ?? []
+        let batchIndex = (payload["batchIndex"] as? NSNumber)?.intValue
+        let batchCount = (payload["batchCount"] as? NSNumber)?.intValue
+        let totalCount = (payload["totalCount"] as? NSNumber)?.intValue
+
+        var rejections: [SyncProtocolRejection] = []
+
+        if let batchIndex, let batchCount, batchIndex >= batchCount {
+            rejections.append(
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    "\(Self.root).payload.batchIndex",
+                    "batchIndex \(batchIndex) must be less than batchCount \(batchCount)"
+                )
+            )
+        }
+
+        if let totalCount {
+            if exercises.count > totalCount {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        "\(Self.root).payload.totalCount",
+                        "totalCount \(totalCount) is less than the \(exercises.count) "
+                            + "exercises this batch carries"
+                    )
+                )
+            }
+            if let batchCount, totalCount > batchCount * 100 {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        "\(Self.root).payload.totalCount",
+                        "totalCount \(totalCount) exceeds the \(batchCount * 100) "
+                            + "exercises \(batchCount) batches can carry"
+                    )
+                )
+            }
+        }
+
+        var seen = Set<String>()
+        var duplicates: [String] = []
+        for exercise in exercises {
+            guard let exerciseId = (exercise as? [String: Any])?["exerciseId"] as? String
+            else { continue }
+            if !seen.insert(exerciseId).inserted { duplicates.append(exerciseId) }
+        }
+        if !duplicates.isEmpty {
+            rejections.append(
+                rejection(
+                    SyncRejectionCode.semanticViolation,
+                    "\(Self.root).payload.exercises",
+                    "the same exerciseId appears twice: "
+                        + "\(duplicates.joined(separator: ", "))"
+                )
+            )
+        }
+
+        return rejections
+    }
+
     // MARK: - Schema layer
 
     private func validate(
@@ -704,6 +777,13 @@ public final class SyncProtocolValidator {
             )
         }
 
+        if let maxItems = (schema["maxItems"] as? NSNumber)?.intValue,
+           array.count > maxItems {
+            rejections.append(
+                constraint(path, "expected at most \(maxItems) items, found \(array.count)")
+            )
+        }
+
         if let items = schema["items"] as? [String: Any] {
             for (index, value) in array.enumerated() {
                 rejections += validate(
@@ -731,6 +811,16 @@ public final class SyncProtocolValidator {
                 constraint(
                     path,
                     "expected at least \(minLength) characters, found \(value.count)"
+                )
+            )
+        }
+
+        if let maxLength = (schema["maxLength"] as? NSNumber)?.intValue,
+           value.count > maxLength {
+            rejections.append(
+                constraint(
+                    path,
+                    "expected at most \(maxLength) characters, found \(value.count)"
                 )
             )
         }

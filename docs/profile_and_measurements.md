@@ -87,6 +87,15 @@ directly on the gradient with no card chrome, so it collapses to roughly the ava
 leaves the space below for the measurement cards. Name and height are each their own tap target,
 opening their respective editors.
 
+### Load Failure
+
+When `loadProfile()` fails, the screen shows the plain line
+`Could not load your profile. Try again.` with a `Try again` button that
+re-runs the load; the exception is logged and never rendered. Verified by
+`test/profile_screen_test.dart`, group `D-27.2: a failed profile load says so
+in plain words` · "the screen shows the plain line and the exception text is
+nowhere on it".
+
 ### Measurement Sections
 
 - Rows for a measurement type can arrive from two sources: the in-app log sheet, and the platform
@@ -184,7 +193,8 @@ via `OmniNavigator.push(..., fullscreenDialog: true)`); the
 sheet's confirm writes the cropped region via
 `ImageStorageService.persistImageBytes` and then
 `ProfileState.updateAvatarPath(basename)`. On web the existing
-`kIsWeb` early-return shows the existing snackbar; the crop step
+`kIsWeb` early-return shows a message through the shared
+`OmniMessage`; the crop step
 is not reached (web persistence is intentionally out of scope).
 
 The `OmniNavigator.push` route is mandatory — see the navigation
@@ -289,8 +299,9 @@ When the avatar or food photo is replaced or removed:
 ### Web Behavior
 
 On web, the `kIsWeb` early-return in the picker handlers shows a
-snackbar: "Photo selection works on web, but avatar/food photo
-persistence is not supported there yet." The service is not called.
+message through the shared `OmniMessage` (each picker names its own
+surface — the avatar picker and the food-photo picker have separate
+copies) instead of calling the service. The service is not called.
 
 ### Implementation Files
 

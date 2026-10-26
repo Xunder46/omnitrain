@@ -10,10 +10,13 @@ import '../../core/utils/fuzzy_search.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
+import '../../widgets/common/omni_empty_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../nutrition/nutrition_trend_screen.dart';
 import 'exercise_progress_screen.dart';
+import 'widgets/load_failure_view.dart';
 import 'widgets/native_value_format.dart';
 import 'widgets/recent_pr_list.dart';
 import 'widgets/stats_pill.dart';
@@ -40,11 +43,13 @@ class RecordsAndTrendsScreen extends StatefulWidget {
 
 class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
   bool _isLoading = true;
+  bool _loadFailed = false;
   int _totalSessions = 0;
   int _totalDurationMs = 0;
   int _streakDays = 0;
   List<StatsPR> _recentPRs = const [];
   List<ExerciseMetricSummary> _summaries = const [];
+  bool _hasNutritionHistory = false;
 
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
@@ -62,6 +67,11 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() {
+      _loadFailed = false;
+      _isLoading = true;
+    });
     try {
       // Reuse CalendarState streak logic — the calendar keeps owning that
       // rule; this screen only displays it.
@@ -76,6 +86,9 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
       final totals = await service.computeTotals();
       final progressData = await service.computeProgressData();
       final summaries = await service.computeExerciseMetrics();
+      // Whole food history, not a recent window: this is the way back to
+      // nutrition once the Stats screen's Fuel row has aged out of view.
+      final nutritionTrend = await service.computeNutritionTrend(days: null);
 
       if (!mounted) return;
 
@@ -85,11 +98,15 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
         _streakDays = streak;
         _recentPRs = progressData.recentPRs;
         _summaries = summaries;
+        _hasNutritionHistory = nutritionTrend.isNotEmpty;
         _isLoading = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
     }
   }
 
@@ -110,10 +127,18 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
           body: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loadFailed
+                ? LoadFailureView(
+                    message: 'Could not load your records.',
+                    onRetry: _loadData,
+                  )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     children: _summaries.isEmpty
-                        ? [_buildEmptyState(context, themeColors)]
+                        ? [
+                            _buildEmptyState(context, themeColors),
+                            ..._nutritionEntry(context, themeColors),
+                          ]
                         : _buildContent(context, themeColors),
                   ),
           ),
@@ -131,6 +156,7 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
     final children = <Widget>[
       const OmniCardHeader(title: 'ALL TIME'),
       _buildAggregateCard(context, themeColors),
+      ..._nutritionEntry(context, themeColors),
     ];
 
     if (_recentPRs.isNotEmpty) {
@@ -153,6 +179,7 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
           suffixIcon: _query.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear),
+                  tooltip: 'Clear search',
                   onPressed: () {
                     _searchController.clear();
                     setState(() => _query = '');
@@ -337,36 +364,69 @@ class _RecordsAndTrendsScreenState extends State<RecordsAndTrendsScreen> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, OmniThemeColors themeColors) {
+  /// The nutrition section, or nothing when no food was ever logged.
+  List<Widget> _nutritionEntry(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) => _hasNutritionHistory
+      ? [const SizedBox(height: 24), _buildNutritionEntry(context, themeColors)]
+      : const [];
+
+  /// The entry to the full-history nutrition trend, shown whenever any food
+  /// has ever been logged — however long ago.
+  Widget _buildNutritionEntry(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
     final theme = Theme.of(context);
 
+    return Column(
+      key: const Key('records_nutrition_section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const OmniCardHeader(title: 'NUTRITION'),
+        OmniSurface(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Semantics(
+            label: 'Nutrition trend',
+            button: true,
+            child: InkWell(
+              key: const Key('records_nutrition_entry'),
+              onTap: () => OmniNavigator.push(
+                context,
+                (_) => NutritionTrendScreen(
+                  workoutState: widget.workoutState,
+                  settingsState: widget.settingsState,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Full history',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: OmniTheme.colors.textDominant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: themeColors.textMuted),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context, OmniThemeColors themeColors) {
     return OmniSurface(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 16),
-          Icon(
-            Icons.show_chart,
-            size: 48,
-            color: themeColors.textMuted.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No sessions yet',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: OmniTheme.colors.textDominant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Complete your first session to see stats here.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: themeColors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
+      child: OmniEmptyState(
+        compact: true,
+        icon: Icons.show_chart,
+        title: 'No sessions yet',
+        hint: 'Complete your first session to see stats here.',
       ),
     );
   }

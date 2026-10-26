@@ -12,9 +12,10 @@
 //  (`WatchEffortRatingView.swift`) only bind to it, and they compile only into
 //  a watch target, so this is the part `swift test` proves.
 //
-//  Once owed, the prompt has one way out: an answer. Nothing here puts it off
-//  or sets it aside, and the suite fails if a name or a button suggesting
-//  otherwise appears in this file or the view's (`WatchEffortRatingTests`).
+//  Once owed, the prompt has two ways out: an answer, or Skip, which records
+//  nothing (plan 66a). Nothing here puts it off or sets it aside in any other
+//  way, and the suite fails if a name or a button suggesting otherwise appears
+//  in this file or the view's (`WatchEffortRatingTests`).
 //
 
 import Combine
@@ -30,6 +31,10 @@ public enum WatchEffortRatingCopy {
     public static let highest = 5
     public static let lowestLabel = "Very easy"
     public static let highestLabel = "Max effort"
+
+    /// Wrist-only copy for closing the question without an answer (plan 66a).
+    /// Not in the contract file: the phone's sheet does not offer it.
+    public static let skipLabel = "Skip"
 
     /// A wrist that has never received the phone's preferences does not ask
     /// (D-114).
@@ -103,6 +108,11 @@ public final class WatchEffortRatingState: ObservableObject {
     /// The prompts the wrist's End has owed, oldest first.
     private var prompts: [WatchRatingPromptRecord] = []
 
+    /// The owed prompts the user closed without an answer (plan 66a). Nothing
+    /// is recorded for them; remembered only while the app runs. Not named for
+    /// Skip: the guard test allows that word only on skipPrompt/skipLabel.
+    private var declinedSessionIds: Set<String> = []
+
     /// The number the user has picked, or nil while nothing is: nothing is
     /// preselected (D-118).
     @Published public private(set) var selected: Int?
@@ -110,6 +120,10 @@ public final class WatchEffortRatingState: ObservableObject {
     /// Where the crown last was, and the travel not yet worth a whole detent.
     private var crownPosition: Double = 0
     private var crownCarry: Double = 0
+
+    /// The engine's changes, so a phone snapshot that closes the question
+    /// redraws an open prompt (S-4310).
+    private var engineCancellable: AnyCancellable?
 
     public init(
         engine: WatchSessionEngine,
@@ -121,6 +135,11 @@ public final class WatchEffortRatingState: ObservableObject {
         self.store = store
         self.preferences = preferences
         self.clock = clock
+        engineCancellable = engine.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
     }
 
     /// Reads the owed prompts back out of storage. Call on launch, after the
@@ -186,6 +205,7 @@ public final class WatchEffortRatingState: ObservableObject {
     public var owedSessionIds: [String] {
         prompts
             .filter { !engine.hasEffortRating($0.sessionId) }
+            .filter { !declinedSessionIds.contains($0.sessionId) }
             .sorted { $0.sequence > $1.sequence }
             .map(\.sessionId)
     }
@@ -257,6 +277,18 @@ public final class WatchEffortRatingState: ObservableObject {
     public func select(_ value: Int) {
         guard scale.contains(value) else { return }
         selected = value
+    }
+
+    /// Closes the owed question without an answer (plan 66a D-3). Nothing is
+    /// recorded: the session stays unrated, so the phone's own question and the
+    /// first real answer are untouched. Remembered only while the app runs.
+    public func skipPrompt() {
+        guard let sessionId = promptSessionId else { return }
+        declinedSessionIds.insert(sessionId)
+        selected = nil
+        crownPosition = 0
+        crownCarry = 0
+        objectWillChange.send()
     }
 
     /// Records the picked number as the owed session's effort rating, through

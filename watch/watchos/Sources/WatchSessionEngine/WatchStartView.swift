@@ -23,32 +23,25 @@
 
 import SwiftUI
 
-/// "The full catalog is a phone away" — shown only while the phone can actually
-/// be reached, because it is a promise about a radio.
-public struct WatchSearchOnPhoneHint: View {
-    public static let label = "Search on phone"
+/// What the wrist has observed about the phone: connected, or not reachable.
+/// Said only once the radio has answered (D-8), so a cold start says nothing
+/// rather than something it has not learned.
+public struct WatchPhoneStatusHint: View {
+    private let status: WatchPhoneStatus
 
-    public init() {}
-
-    public var body: some View {
-        Label(Self.label, systemImage: "iphone")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+    public init(status: WatchPhoneStatus) {
+        self.status = status
     }
-}
-
-/// "The phone is not there" — said only once the radio has observed it
-/// unreachable (D-8), so a cold start says nothing rather than something it has
-/// not learned.
-public struct WatchPhoneUnreachableHint: View {
-    public static let label = WatchStartSurfaceCopy.unreachableLabel
-
-    public init() {}
 
     public var body: some View {
-        Label(Self.label, systemImage: "iphone.slash")
+        if let sentence = status.sentence {
+            Label(
+                sentence,
+                systemImage: status.reachability == .reachable ? "iphone" : "iphone.slash"
+            )
             .font(.footnote)
             .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -68,6 +61,9 @@ public struct WatchStartView: View {
     /// the app owns the transport, not this view.
     private let onRequestSync: (() -> Void)?
 
+    /// Told after an empty free workout was cancelled, so the host re-reads the engine (plan 57, D-3).
+    private let onFreeWorkoutCancelled: () -> Void
+
     /// What the radio last said about the phone. Unknown until the host has
     /// observed something, which is what keeps a cold start from claiming the
     /// phone is unreachable before anyone asked (D-8).
@@ -77,6 +73,19 @@ public struct WatchStartView: View {
     /// publishes nothing, so this is the value whose change re-runs the picker's
     /// body and makes it re-read the session it is showing.
     private let revision: Int
+
+    /// The wrist's "N entries waiting for your phone" line, or nil (plan 51d).
+    private let syncNotice: String?
+
+    /// Whether the phone still owes the wrist an answer (plan 55, D-3). While it
+    /// does, the Sync button is a spinner rather than a second request.
+    private let isSyncing: Bool
+
+    /// Whether Health access is off, asked when this surface first shows (plan 59, D-7).
+    private let healthAccess: WatchHealthAccess
+
+    /// A phone-link problem the user can act on, or nil (plan 60, D-3).
+    private let phoneProblem: String?
 
     /// Wrist-scale inset. The phone's spacing tokens are sized for a full-width
     /// screen; this surface carries its own value rather than scaling one down.
@@ -92,20 +101,33 @@ public struct WatchStartView: View {
 
     @State private var pickingExercise = false
 
+    /// Said when a tapped routine is no longer on the watch (plan 60, D-3).
+    @State private var routineNotice: String?
+
     public init(
         paths: WatchSessionStartPaths,
         onSessionStarted: @escaping (WatchSessionRecord) -> Void,
+        onFreeWorkoutCancelled: @escaping () -> Void = {},
         onOpenNutrition: (() -> Void)? = nil,
         onRequestSync: (() -> Void)? = nil,
         phoneReachability: WatchPhoneReachability = .unknown,
-        revision: Int = 0
+        revision: Int = 0,
+        syncNotice: String? = nil,
+        isSyncing: Bool = false,
+        healthAccess: WatchHealthAccess = .unknown,
+        phoneProblem: String? = nil
     ) {
         self.paths = paths
         self.onSessionStarted = onSessionStarted
+        self.onFreeWorkoutCancelled = onFreeWorkoutCancelled
         self.onOpenNutrition = onOpenNutrition
         self.onRequestSync = onRequestSync
         self.phoneReachability = phoneReachability
         self.revision = revision
+        self.syncNotice = syncNotice
+        self.isSyncing = isSyncing
+        self.healthAccess = healthAccess
+        self.phoneProblem = phoneProblem
     }
 
     /// What this surface says about the phone, from the one rule that decides it
@@ -126,8 +148,15 @@ public struct WatchStartView: View {
                         Button(routine.name) {
                             Task { await start(routine) }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .watchProminent()
                     }
+                }
+
+                if let routineNotice {
+                    Text(routineNotice)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
 
                 Button("Free workout") {
@@ -135,24 +164,56 @@ public struct WatchStartView: View {
                 }
                 .buttonStyle(.bordered)
 
-                if let onRequestSync, phoneStatus.offersSync {
-                    Button(Self.syncLabel, action: onRequestSync)
-                        .buttonStyle(.bordered)
-                }
-
-                // D-8: said only once the radio has observed it.
-                if phoneStatus.sentence != nil { WatchPhoneUnreachableHint() }
-
                 if let onOpenNutrition {
                     Button(Self.logFoodLabel, action: onOpenNutrition)
                         .buttonStyle(.bordered)
                 }
 
-                if paths.phoneReachable { WatchSearchOnPhoneHint() }
+                if let onRequestSync, phoneStatus.offersSync {
+                    if isSyncing {
+                        // D-3: a row, not a button — the wrist has already asked,
+                        // and a second tap would start nothing new.
+                        HStack(spacing: Self.surfaceInset) {
+                            ProgressView()
+                            Text(WatchStartSurfaceCopy.syncingLabel)
+                        }
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityElement(children: .combine)
+                    } else {
+                        Button(Self.syncLabel, action: onRequestSync)
+                            .buttonStyle(.bordered)
+                    }
+                }
+
+                // D-8: said only once the radio has observed it.
+                WatchPhoneStatusHint(status: phoneStatus)
+
+                if let phoneProblem {
+                    Text(phoneProblem)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                if let syncNotice {
+                    Text(syncNotice)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                if healthAccess == .off {
+                    Text(WatchHealthAccessCopy.offLine)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
             .padding(Self.surfaceInset)
         }
-        .sheet(isPresented: $pickingExercise) {
+        .onChange(of: revision) { _ in routineNotice = nil }
+        .sheet(isPresented: $pickingExercise, onDismiss: cancelIfNothingPicked) {
             WatchExercisePickerView(paths: paths, revision: revision) { session in
                 pickingExercise = false
                 onSessionStarted(session)
@@ -163,8 +224,15 @@ public struct WatchStartView: View {
     /// Path 1: the routine's template becomes the session, and the first
     /// exercise is what the logging surface shows.
     private func start(_ routine: WatchRoutine) async {
-        guard let session = try? await paths.startFromRoutine(routine.routineId) else { return }
-        onSessionStarted(session)
+        routineNotice = nil
+        do {
+            let session = try await paths.startFromRoutine(routine.routineId)
+            onSessionStarted(session)
+        } catch {
+            // The routine went from the watch between the screen drawing and the
+            // tap (plan 60): the one throw is `unknownRoutine`.
+            routineNotice = WatchStartSurfaceCopy.routineMissingLabel
+        }
     }
 
     /// Path 2: an empty session, then the picker — the fallback list, or
@@ -172,6 +240,15 @@ public struct WatchStartView: View {
     private func startFreeWorkout() async {
         _ = await paths.startFreeWorkout()
         pickingExercise = true
+    }
+
+    /// Closing the picker without choosing leaves an empty workout running that
+    /// nothing on the wrist can end, so it is cancelled (plan 57). After a pick
+    /// the session holds the exercise and the paths leave it alone.
+    private func cancelIfNothingPicked() {
+        Task {
+            if await paths.cancelEmptyFreeWorkout() { onFreeWorkoutCancelled() }
+        }
     }
 }
 
@@ -195,6 +272,10 @@ public struct WatchExercisePickerView: View {
 
     private let onExerciseAdded: (WatchSessionRecord) -> Void
 
+    /// What the picker says when it has nothing to offer at all — the same
+    /// words as before the list was shared with the menu.
+    static let emptyText = "No exercises yet. Search on the phone and send one over."
+
     public init(
         paths: WatchSessionStartPaths,
         revision: Int = 0,
@@ -206,33 +287,27 @@ public struct WatchExercisePickerView: View {
     }
 
     public var body: some View {
-        let rows = paths.pickerRows
-
-        return ScrollView {
-            VStack(spacing: 4) {
-                if rows.isEmpty {
-                    Text("No exercises yet. Search on the phone and send one over.")
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
-                } else {
-                    ForEach(rows, id: \.id) { row in
-                        if row.isInSession {
-                            Button(row.name) {
-                                Task { await select(row) }
-                            }
-                            .buttonStyle(.borderedProminent)
-                        } else {
-                            Button(row.name) {
-                                Task { await select(row) }
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
-
-                if paths.phoneReachable { WatchSearchOnPhoneHint() }
+        WatchExerciseLetterList(
+            leading: inSessionRows,
+            sections: deriveExerciseSections(paths.availablePickerExercises),
+            letters: deriveExerciseListLetters(paths.availablePickerExercises),
+            emptyText: Self.emptyText,
+            onPickLeading: { slotId, exercise in
+                Task { await select(.inSession(slotId: slotId, exercise: exercise)) }
+            },
+            onPick: { exercise in
+                Task { await select(.available(exercise)) }
             }
-            .padding(4)
+        )
+    }
+
+    /// The rows the session itself holds, in the ladder's order: the list's own
+    /// rows, drawn first and prominent, so picking one moves the user to it
+    /// instead of adding a second copy.
+    private var inSessionRows: [(slotId: String, exercise: WatchCatalogExercise)] {
+        paths.pickerRows.compactMap { row in
+            guard case .inSession(let slotId, let exercise) = row else { return nil }
+            return (slotId: slotId, exercise: exercise)
         }
     }
 

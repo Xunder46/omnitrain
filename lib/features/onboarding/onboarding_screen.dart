@@ -219,7 +219,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _ModalityData(
         name: 'Sports',
         description:
-            'Round and time based training for martial arts and sports',
+            'Period and time based training for martial arts and sports',
         color: ModalityColors.sports,
       ),
       _ModalityData(
@@ -324,7 +324,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 style: ButtonStyle(
                   backgroundColor: WidgetStateProperty.all(themeColors.primary),
                   foregroundColor: WidgetStateProperty.all(
-                    const Color(0xFF060B14),
+                    Theme.of(context).colorScheme.onPrimary,
                   ),
                   shape: WidgetStateProperty.all(
                     RoundedRectangleBorder(

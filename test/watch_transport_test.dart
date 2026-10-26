@@ -8,10 +8,23 @@
 //   S-003 the phone answers a routine request → `S-003 ...`
 //   S-006 the transport is chosen by platform → `S-006 ...`
 //   S-102 the request frames match the contract → `S-102 ...`
+//   S-3856 the routines request names the exercise list the wrist holds
+//         → `S-3856 ...` (plan 23e2, D-3833)
+//   S-9208 the since a frame names is read back → `S-9208 ...` (plan 62, D-2)
 //   Phase 2 item 6: phone fixtures carry no null → `Phase 2 item 6: ...`
 //   S-253 every sync is answered with preferences → `S-253 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
 //         D-113, D-115)
+//   S-6810..S-6815 the transport over a link that queues
+//         → `S-6810 ...` (plan 47a, D-5)
+//   S-6817 when the transport attaches its listeners
+//         → `S-6817 ...` (plan 47a)
+//   S-6818 a change that lands after close
+//         → `S-6818 ...` (plan 47a review)
+//   S-6906 the graph when the link's stored stamp cannot be read
+//         → `S-6906 ...` (plan 47c review)
+//   S-9710..S-9715, S-9716..S-9719, S-9724 the transport queues the workout
+//         messages (plan 67a)
 //
 // The loopback below is a channel, not a transport: it carries frames in memory
 // in the order they were sent, which is the one property a fake can hold a real
@@ -26,6 +39,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/no_watch_transport.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
+import 'package:omnitrain/core/platform/watch_queue_control.dart';
+import 'package:omnitrain/core/platform/watch_link_info.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
 import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/platform_watch_transport_factory.dart';
@@ -36,6 +51,7 @@ import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
+import 'package:omnitrain/state/watch/watch_link_state.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 import 'package:omnitrain/watch/logging/watch_logging_state.dart';
 import 'package:omnitrain/watch/logging/watch_metric_stepping.dart';
@@ -120,22 +136,133 @@ List<String> _nullPaths(Object? value, [String path = '']) {
   return const [];
 }
 
+WatchQueuedTransfer _transferOf(Map<String, Object?> frame) {
+  final payload = frame['payload'];
+  final changeId = payload is Map ? payload['changeId'] : null;
+  return WatchQueuedTransfer(
+    messageId: frame['messageId'] is String ? frame['messageId'] as String : '',
+    type: frame['type'] is String ? frame['type'] as String : '',
+    sessionId: frame['sessionId'] is String ? frame['sessionId'] as String : null,
+    changeId: changeId is String ? changeId : null,
+  );
+}
+
+Map<String, Object?> _snap(String session, String id) => {
+  'type': 'session_snapshot',
+  'messageId': id,
+  'sessionId': session,
+  'payload': <String, Object?>{},
+};
+
+Map<String, Object?> _sc(String session, String change, String id) => {
+  'type': 'structure_change',
+  'messageId': id,
+  'sessionId': session,
+  'payload': <String, Object?>{'changeId': change},
+};
+
+Map<String, Object?> _lc(String session, String state, String id) => {
+  'type': 'session_lifecycle',
+  'messageId': id,
+  'sessionId': session,
+  'payload': <String, Object?>{'state': state},
+};
+
+Map<String, Object?> _push(String session, String id) => {
+  'type': 'exercise_push',
+  'messageId': id,
+  'sessionId': session,
+  'payload': <String, Object?>{},
+};
+
+WatchQueuedTransfer _held(String type, String id, {String? session, String? change}) =>
+    WatchQueuedTransfer(messageId: id, type: type, sessionId: session, changeId: change);
+
+/// The message ids the OS holds on [endpoint], in queue order.
+List<String> _heldIds(_Endpoint endpoint) =>
+    [for (final held in endpoint.outstanding) held.messageId];
+
 /// One end of a two-ended in-memory link. What this end sends appears on the
 /// other end's stream, once, in order.
-class _Endpoint implements WatchMessageChannel {
+class _Endpoint implements WatchMessageChannel, WatchQueueControl {
   _Endpoint({required this.outbound, required this.inbound});
 
   final StreamController<Map<String, Object?>> outbound;
-  final Stream<Map<String, Object?>> inbound;
+
+  /// The frames arriving at this end. A controller rather than its stream, so a
+  /// test can ask whether anything is listening yet.
+  final StreamController<Map<String, Object?>> inbound;
 
   /// Everything this end handed to the radio, in order.
   final List<Map<String, Object?>> sent = [];
+
+  /// Everything this end handed to the OS queue, in order.
+  final List<Map<String, Object?>> queued = [];
 
   bool reachable = true;
 
   /// A send the radio refuses, so the refusal path can be exercised.
   /// Null means every send is taken.
   Object? sendFailure;
+
+  /// A queue the OS refuses, so the queueing failure path can be exercised.
+  /// Null means every queue call is taken.
+  Object? queueFailure;
+
+  /// The transfers the OS still holds, as the native link would list them.
+  final List<WatchQueuedTransfer> outstanding = [];
+
+  /// The ids of every cancel call, in order.
+  final List<List<String>> cancels = [];
+
+  /// A list read the OS refuses; null means every read is answered.
+  Object? outstandingFailure;
+
+  /// A cancel the OS refuses; null means every cancel is taken.
+  Object? cancelFailure;
+
+  @override
+  Future<void> queue(Map<String, Object?> frame) async {
+    final failure = queueFailure;
+    if (failure != null) throw failure;
+    queued.add(frame);
+    final id = frame['messageId'];
+    // The native link dedups a transfer by messageId (plugin `already_queued`).
+    if (id is String && outstanding.any((held) => held.messageId == id)) return;
+    outstanding.add(_transferOf(frame));
+  }
+
+  @override
+  Future<List<WatchQueuedTransfer>> outstandingTransfers() async {
+    final failure = outstandingFailure;
+    if (failure != null) throw failure;
+    return List<WatchQueuedTransfer>.of(outstanding);
+  }
+
+  @override
+  Future<int> cancelTransfers(List<String> messageIds) async {
+    final failure = cancelFailure;
+    if (failure != null) throw failure;
+    cancels.add(List<String>.of(messageIds));
+    final before = outstanding.length;
+    outstanding.removeWhere((held) => messageIds.contains(held.messageId));
+    return before - outstanding.length;
+  }
+
+  /// What the peer says about the pairing, answered by [info].
+  WatchLinkInfo infoValue = const WatchLinkInfo(
+    paired: true,
+    appInstalled: true,
+    reachable: true,
+  );
+
+  /// When set, [info] answers only once the test completes it, so a case can
+  /// close the transport while the read is still in flight.
+  Completer<WatchLinkInfo>? infoGate;
+
+  /// Every reachability change the platform reports.
+  final StreamController<bool> reachabilityController =
+      StreamController<bool>.broadcast();
 
   @override
   Future<bool> get isPaired async => true;
@@ -144,7 +271,17 @@ class _Endpoint implements WatchMessageChannel {
   Future<bool> get isReachable async => reachable;
 
   @override
-  Stream<Map<String, Object?>> get messages => inbound;
+  Stream<Map<String, Object?>> get messages => inbound.stream;
+
+  @override
+  Stream<bool> get reachability => reachabilityController.stream;
+
+  @override
+  Future<WatchLinkInfo> get info async {
+    final gate = infoGate;
+    if (gate != null) return gate.future;
+    return infoValue;
+  }
 
   @override
   Future<void> send(Map<String, Object?> frame) async {
@@ -158,8 +295,8 @@ class _Endpoint implements WatchMessageChannel {
 /// Two channels wired to each other: the phone's and the wrist's.
 class _Link {
   _Link() {
-    phone = _Endpoint(outbound: _toWatch, inbound: _toPhone.stream);
-    watch = _Endpoint(outbound: _toPhone, inbound: _toWatch.stream);
+    phone = _Endpoint(outbound: _toWatch, inbound: _toPhone);
+    watch = _Endpoint(outbound: _toPhone, inbound: _toWatch);
   }
 
   final StreamController<Map<String, Object?>> _toPhone =
@@ -178,6 +315,22 @@ class _Link {
 
 /// Lets the link's broadcast streams deliver everything already queued.
 Future<void> _settle() => pumpEventQueue();
+
+/// A repository whose stored watch stamp cannot be read, as a storage failure
+/// would leave the phone's preferences: only the link's own key fails, so the
+/// rest of the graph still builds.
+class _LinkPreferenceUnreadableRepository extends MockWorkoutRepository {
+  @override
+  Future<String?> getPreferenceString(
+    String key, {
+    String? defaultValue,
+  }) async {
+    if (key == WatchLinkState.lastHeardKey) {
+      throw StateError('the stored watch stamp is unreadable');
+    }
+    return super.getPreferenceString(key, defaultValue: defaultValue);
+  }
+}
 
 /// A routine with one segment and one exercise, as a phone would hold one.
 Future<void> _seedRoutine(
@@ -485,30 +638,64 @@ void main() {
       await _settle();
 
       expect(
-        [for (final frame in link.phone.sent) frame['type']],
-        ['preferences_down', 'routines_down'],
+        link.phone.sent.first['type'],
+        'preferences_down',
         reason: 'S-253 every sync is answered with preferences first',
       );
-      final message = link.phone.sent.last;
+      final message = link.phone.sent.firstWhere(
+        (frame) => frame['type'] == 'routines_down',
+      );
       expect(message['type'], 'routines_down');
       final payload = _asObject(message['payload']);
       expect(_objects(payload['routines']).single['name'], 'Push A');
       expect(
-        _objects(payload['fallbackExercises']).single['exerciseId'],
-        'exercise-goblet-squat',
+        [
+          for (final exercise in _objects(payload['fallbackExercises']))
+            exercise['exerciseId'],
+        ],
+        contains('exercise-goblet-squat'),
+        reason: 'D-3830 the fallback list carries exactly the exercises the '
+            'routines use, and this routine uses this one',
       );
     });
 
-    test('S-003 a phone with no routines answers with its preferences only',
-        () async {
+    test(
+        'S-003 a phone with no routines answers with its preferences, an empty '
+        'routine list and the whole exercise list', () async {
       await watchTransport.requestRoutines();
       await _settle();
 
+      final types = [for (final frame in link.phone.sent) frame['type']];
       expect(
-        [for (final frame in link.phone.sent) frame['type']],
-        ['preferences_down'],
-        reason: 'S-253 no routines_down without routines, but the setting '
-            'always travels',
+        types.take(3),
+        ['preferences_down', 'foods_down', 'routines_down'],
+        reason: 'S-253 the setting always travels, and a phone holding no '
+            'routine still says so rather than letting the wrist keep stale '
+            'ones (D-3830); the foods follow the preferences and the routines '
+            'close the bundle (49a, D-2; plan 62 D-4)',
+      );
+      expect(
+        types.skip(3),
+        everyElement('exercises_down'),
+        reason: 'D-3834 the whole exercise list travels, after the routines '
+            'and the foods',
+      );
+      expect(
+        types.skip(2),
+        isNotEmpty,
+        reason: 'S-003 the wrist still needs an exercise list even when the '
+            'phone holds no routine',
+      );
+      final payload = _asObject(
+        link.phone.sent
+                .firstWhere((frame) => frame['type'] == 'routines_down')['payload'],
+      );
+      expect(payload['routines'], isEmpty);
+      expect(
+        payload['fallbackExercises'],
+        isEmpty,
+        reason: 'D-3830 the routines message carries the exercises the '
+            'routines use, and this phone has no routine',
       );
       expect(reportedFailure, isNull);
     });
@@ -561,13 +748,30 @@ void main() {
       await _settle();
 
       expect(
-        [for (final frame in link.phone.sent) frame['type']],
-        ['preferences_down'],
-        reason: 'S-253 a phone with no routines still sends its preferences',
+        link.phone.sent.first['type'],
+        'preferences_down',
+        reason: 'S-253 the setting always travels first, and the routines '
+            'follow it even with no routines to send (the exercise batches '
+            'follow both)',
       );
       expect(
-        _asObject(link.phone.sent.single['payload']),
-        {'generatedAt': utcIso(_now), 'effortRatingPrompt': false, 'restPingSeconds': 0},
+        [for (final frame in link.phone.sent) frame['type']],
+        contains('routines_down'),
+        reason: 'S-253 the routines travel with the preferences even with no '
+            'routines to send',
+      );
+      expect(
+        _asObject(link.phone.sent.first['payload']),
+        {
+          'generatedAt': utcIso(_now),
+          'effortRatingPrompt': false,
+          'restPingSeconds': 0,
+          // The default theme's accent (abyssalNeon), carried since plan 23d.
+          'accentColorHex': '#2DE2E6',
+          // The phone's Units setting (kg, km by default), carried since S-3903.
+          'weightUnit': 'kg',
+          'distanceUnit': 'km',
+        },
         reason: 'S-253 the setting as SettingsState holds it, stamped with '
             'the phone clock at send',
       );
@@ -587,13 +791,25 @@ void main() {
       await _settle();
 
       expect(
-        [for (final frame in link.phone.sent) frame['type']],
-        ['preferences_down', 'routines_down'],
+        link.phone.sent.first['type'],
+        'preferences_down',
         reason: 'S-253 preferences first, then the routines',
       );
       expect(
+        [for (final frame in link.phone.sent) frame['type']],
+        contains('routines_down'),
+        reason: 'S-253 the routines travel with the preferences',
+      );
+      expect(
         _asObject(link.phone.sent.first['payload']),
-        {'generatedAt': utcIso(phoneNow), 'effortRatingPrompt': true, 'restPingSeconds': 0},
+        {
+          'generatedAt': utcIso(phoneNow),
+          'effortRatingPrompt': true,
+          'restPingSeconds': 0,
+          'accentColorHex': '#2DE2E6',
+          'weightUnit': 'kg',
+          'distanceUnit': 'km',
+        },
         reason: 'S-253 the setting turned on reaches the wrist at its next '
             'sync',
       );
@@ -730,6 +946,34 @@ void main() {
     });
   });
 
+  group('S-6906 the graph when the link cannot read its stored stamp', () {
+    test('S-6906 a failing preference read leaves the graph built, without a '
+        'link, and reports once', () async {
+      final repository = _LinkPreferenceUnreadableRepository();
+      await repository.initialize();
+      final settings = SettingsState(repository, fakePreferencesService());
+      await settings.initialize();
+
+      final graph = await createWatchSync(
+        repository: repository,
+        nutritionState: NutritionState(repository),
+        foodLibraryState: FoodLibraryState(repository),
+        settingsState: settings,
+        transport: phoneTransport,
+        onFailure: reportFailure,
+      );
+
+      expect(
+        graph,
+        isNotNull,
+        reason: 'a read-only status must not cost the phone its watch graph',
+      );
+      expect(graph!.link, isNull);
+      expect(reportedFailure, isA<StateError>());
+      expect(reportedFailureCount, 1);
+    });
+  });
+
   // D-190, D-196, D-201: a send answers whether the frame was handed over.
   group('S-206 a send answers whether the frame was handed over', () {
     test('S-206 a reachable counterpart means delivered, and the radio carried '
@@ -812,6 +1056,533 @@ void main() {
     });
   });
 
+  // Plan 47a (D-5): only a frame the sender owes for good — a receipt — is
+  // queued for the OS. Everything else is live state, re-offered at its next
+  // trigger rather than parked in a queue.
+  group('S-6810-6815 the transport over a link that queues', () {
+    const Map<String, Object?> receipt = {
+      'type': 'receipt',
+      'messageId': 'm-6810',
+      'payload': {
+        'entryIds': ['e-6810'],
+      },
+    };
+
+    test('S-6810 an unreachable receipt is queued, not sent', () async {
+      link.phone.reachable = false;
+
+      final result = await phoneTransport.send(receipt);
+
+      expect(result, WatchDelivery.queued);
+      expect(link.phone.queued, [receipt]);
+      expect(link.phone.sent, isEmpty);
+      expect(
+        reportedFailureCount,
+        0,
+        reason: 'a counterpart that is simply apart is quiet (D-201)',
+      );
+    });
+
+    test('S-9710 a snapshot while apart is queued', () async {
+      link.phone.reachable = false;
+
+      final result = await phoneTransport.send(_snap('s-1', 'm1'));
+
+      expect(result, WatchDelivery.queued);
+      expect(link.phone.sent, isEmpty);
+      expect(_heldIds(link.phone), ['m1']);
+      expect(link.phone.cancels, isEmpty);
+      expect(
+        reportedFailureCount,
+        0,
+        reason: 'a counterpart that is simply apart is quiet (D-201)',
+      );
+    });
+
+    test('S-9711 only the newest snapshot of a workout waits', () async {
+      link.phone.reachable = false;
+      link.phone.outstanding.addAll([
+        _held('session_snapshot', 'm1', session: 's-1'),
+        _held('session_snapshot', 'm9', session: 's-2'),
+        _held('receipt', 'r1'),
+        _held('structure_change', 'mX', session: 's-1', change: 'c1'),
+      ]);
+
+      final result = await phoneTransport.send(_snap('s-1', 'm2'));
+
+      expect(result, WatchDelivery.queued);
+      expect(link.phone.cancels, [['m1']]);
+      expect(_heldIds(link.phone), ['m9', 'r1', 'mX', 'm2']);
+    });
+
+    test('S-9712 100 sets while apart (overflow)', () async {
+      link.phone.reachable = false;
+
+      for (var index = 1; index <= 100; index++) {
+        final result = await phoneTransport.send(_snap('s-1', 'm$index'));
+
+        expect(result, WatchDelivery.queued);
+        final snapshots = [
+          for (final held in link.phone.outstanding)
+            if (held.type == 'session_snapshot' && held.sessionId == 's-1')
+              held,
+        ];
+        expect(snapshots, hasLength(1), reason: 'after send m$index');
+      }
+
+      final cancelled = [for (final call in link.phone.cancels) ...call];
+      expect(cancelled, hasLength(99));
+      expect(_heldIds(link.phone), ['m100']);
+    });
+
+    test('S-9713 a refused live snapshot is queued', () async {
+      link.phone.sendFailure = StateError('refused');
+
+      final result = await phoneTransport.send(_snap('s-1', 'm1'));
+
+      expect(result, WatchDelivery.queued);
+      expect(reportedFailureCount, 1);
+      expect(_heldIds(link.phone), ['m1']);
+    });
+
+    test('S-9714 a live delivery clears older copies', () async {
+      link.phone.outstanding.addAll([
+        _held('session_snapshot', 'm1', session: 's-1'),
+        _held('session_lifecycle', 'mL', session: 's-1'),
+        _held('session_snapshot', 'm9', session: 's-2'),
+      ]);
+
+      final result = await phoneTransport.send(_snap('s-1', 'm2'));
+
+      expect(result, WatchDelivery.delivered);
+      expect(link.phone.cancels, [['m1']]);
+      expect(_heldIds(link.phone), ['mL', 'm9']);
+      expect(link.phone.sent, [_snap('s-1', 'm2')]);
+      expect(link.phone.queued, isEmpty);
+    });
+
+    test('S-9715 clocks, requests and static frames are never queued',
+        () async {
+      link.phone.reachable = false;
+      const timer = <String, Object?>{
+        'type': 'timer_state',
+        'messageId': 't1',
+        'sessionId': 's-1',
+        'payload': <String, Object?>{},
+      };
+      const routines = <String, Object?>{
+        'type': 'routines_down',
+        'messageId': 'rd1',
+        'payload': <String, Object?>{},
+      };
+      const exercises = <String, Object?>{
+        'type': 'exercises_down',
+        'messageId': 'ed1',
+        'payload': <String, Object?>{},
+      };
+
+      for (final frame in [
+        timer,
+        WatchTransportRequest.snapshotFrame(),
+        routines,
+        exercises,
+      ]) {
+        expect(
+          await phoneTransport.send(frame),
+          WatchDelivery.undelivered,
+          reason: '${frame['type']} is never queued (D-4)',
+        );
+      }
+
+      expect(link.phone.queued, isEmpty);
+      expect(link.phone.cancels, isEmpty);
+      expect(reportedFailureCount, 0);
+    });
+
+    test('S-9716 A a lifecycle while apart replaces the older lifecycle of '
+        'the same session', () async {
+      link.phone.reachable = false;
+      link.phone.outstanding.addAll([
+        _held('session_lifecycle', 'mA', session: 's-1'),
+        _held('session_lifecycle', 'mB', session: 's-2'),
+      ]);
+
+      final result = await phoneTransport.send(_lc('s-1', 'completed', 'mC'));
+
+      expect(result, WatchDelivery.queued);
+      expect(link.phone.cancels, [['mA']]);
+      expect(_heldIds(link.phone), ['mB', 'mC']);
+    });
+
+    test('S-9716 B a repeated lifecycle is queued once and never cancels '
+        'its own id', () async {
+      link.phone.reachable = false;
+      link.phone.outstanding.addAll([
+        _held('session_lifecycle', 'mA', session: 's-1'),
+        _held('session_lifecycle', 'mB', session: 's-2'),
+      ]);
+
+      final first = await phoneTransport.send(_lc('s-1', 'completed', 'mC'));
+      final second = await phoneTransport.send(_lc('s-1', 'completed', 'mC'));
+
+      expect(first, WatchDelivery.queued);
+      expect(second, WatchDelivery.queued);
+      expect(
+        link.phone.cancels.where((call) => call.contains('mC')),
+        isEmpty,
+        reason: 'a transfer with the frame\'s own messageId is never cancelled',
+      );
+      expect(
+        [for (final call in link.phone.cancels) ...call],
+        contains('mA'),
+        reason: 'the older copy of the same session is still withdrawn',
+      );
+      expect(
+        link.phone.cancels.where((call) => call.contains('mB')),
+        isEmpty,
+        reason: 'a lifecycle of another session is never cancelled',
+      );
+      expect(
+        _heldIds(link.phone).where((id) => id == 'mC'),
+        hasLength(1),
+        reason: 'the OS queue dedups by messageId',
+      );
+    });
+
+    test('S-9717 a structure change replaces only the copy with the same '
+        'changeId, and a snapshot after it does not touch it', () async {
+      link.phone.reachable = false;
+      link.phone.outstanding.addAll([
+        _held('structure_change', 'mX', session: 's-1', change: 'c1'),
+        _held('structure_change', 'mY', session: 's-1', change: 'c2'),
+      ]);
+
+      final change = await phoneTransport.send(_sc('s-1', 'c1', 'mZ'));
+      final snapshot = await phoneTransport.send(_snap('s-1', 'mS'));
+
+      expect(change, WatchDelivery.queued);
+      expect(snapshot, WatchDelivery.queued);
+      expect(link.phone.cancels, [['mX']]);
+      expect(_heldIds(link.phone), ['mY', 'mZ', 'mS']);
+    });
+
+    test('S-9718 a receipt and an exercise push are never withdrawn', () async {
+      link.phone.reachable = false;
+      link.phone.outstanding.addAll([
+        _held('receipt', 'r1'),
+        _held('exercise_push', 'mP1', session: 's-1'),
+      ]);
+
+      expect(
+        await phoneTransport.send(_push('s-1', 'mP2')),
+        WatchDelivery.queued,
+      );
+      expect(
+        await phoneTransport.send(_snap('s-1', 'm1')),
+        WatchDelivery.queued,
+      );
+      expect(
+        await phoneTransport.send(_lc('s-1', 'completed', 'mL')),
+        WatchDelivery.queued,
+      );
+
+      final held = _heldIds(link.phone);
+      expect(held, containsAll(['r1', 'mP1', 'mP2']));
+      final cancelled = [for (final call in link.phone.cancels) ...call];
+      expect(
+        cancelled.where((id) => ['r1', 'mP1', 'mP2'].contains(id)),
+        isEmpty,
+      );
+    });
+
+    test('S-9719 A a refused outstanding list still queues the frame and '
+        'reports once', () async {
+      link.phone.reachable = false;
+      link.phone.outstanding.add(_held('session_snapshot', 'm1', session: 's-1'));
+      link.phone.outstandingFailure = StateError('list refused');
+
+      final result = await phoneTransport.send(_snap('s-1', 'm2'));
+
+      expect(result, WatchDelivery.queued);
+      expect(reportedFailureCount, 1);
+      expect(_heldIds(link.phone), contains('m2'));
+    });
+
+    test('S-9719 B a refused cancel still queues the frame and reports once',
+        () async {
+      link.phone.reachable = false;
+      link.phone.outstanding.add(_held('session_snapshot', 'm1', session: 's-1'));
+      link.phone.cancelFailure = StateError('cancel refused');
+
+      final result = await phoneTransport.send(_snap('s-1', 'm2'));
+
+      expect(result, WatchDelivery.queued);
+      expect(reportedFailureCount, 1);
+      expect(_heldIds(link.phone), ['m1', 'm2'],
+          reason: 'the cancel was refused, so the older copy is still held');
+    });
+
+    test('S-9719 C a refused queue call is undelivered and reported once, '
+        'after the withdraw ran', () async {
+      link.phone.reachable = false;
+      link.phone.outstanding.add(_held('session_snapshot', 'm1', session: 's-1'));
+      link.phone.queueFailure = StateError('queue refused');
+
+      final result = await phoneTransport.send(_snap('s-1', 'm2'));
+
+      expect(result, WatchDelivery.undelivered);
+      expect(reportedFailureCount, 1);
+      expect(link.phone.cancels, [['m1']],
+          reason: 'the withdraw ran before the queue call was refused');
+    });
+
+    test('S-9724 two sends at once queue both and withdraw in order',
+        () async {
+      link.phone.reachable = false;
+
+      final a = phoneTransport.send(_snap('s-1', 'p1'));
+      final b = phoneTransport.send(_snap('s-1', 'p2'));
+      final results = await Future.wait([a, b]);
+
+      expect(results, [WatchDelivery.queued, WatchDelivery.queued]);
+      expect(_heldIds(link.phone), ['p2']);
+      expect(
+        [for (final call in link.phone.cancels) ...call],
+        ['p1'],
+      );
+    });
+
+    test('S-6811 unreachable timer_state is undelivered and not queued',
+        () async {
+      link.phone.reachable = false;
+      const frame = <String, Object?>{
+        'type': 'timer_state',
+        'payload': <String, Object?>{},
+      };
+
+      final result = await phoneTransport.send(frame);
+
+      expect(result, WatchDelivery.undelivered);
+      expect(link.phone.queued, isEmpty);
+      expect(link.phone.sent, isEmpty);
+      expect(reportedFailureCount, 0);
+    });
+
+    test('S-6811 an unreachable request is undelivered and not queued',
+        () async {
+      link.phone.reachable = false;
+      final frame = WatchTransportRequest.snapshotFrame();
+
+      final result = await phoneTransport.send(frame);
+
+      expect(result, WatchDelivery.undelivered);
+      expect(link.phone.queued, isEmpty);
+      expect(link.phone.sent, isEmpty);
+      expect(reportedFailureCount, 0);
+    });
+
+    test('S-6812 a reachable receipt whose send throws is queued and '
+        'reported once', () async {
+      link.phone.sendFailure = StateError('the radio refused the frame');
+
+      final result = await phoneTransport.send(receipt);
+
+      expect(result, WatchDelivery.queued);
+      expect(link.phone.queued, [receipt]);
+      expect(link.phone.sent, isEmpty);
+      expect(reportedFailure, isA<StateError>());
+      expect(reportedFailureCount, 1);
+    });
+
+    test('S-6813 reachability events move the flag both ways and linkChanges '
+        'emits the info', () async {
+      final transport = WatchConnectivityTransport(channel: link.watch);
+      addTearDown(transport.close);
+      // Reachability is followed from the moment the transport receives, so a
+      // case that wants the events attaches first (S-6817).
+      transport.onIncoming((frame) async {});
+      link.watch.infoValue = const WatchLinkInfo(
+        paired: true,
+        appInstalled: true,
+        reachable: true,
+      );
+      final changes = <WatchLinkInfo>[];
+      final subscription = transport.linkChanges.listen(changes.add);
+      addTearDown(subscription.cancel);
+
+      expect(transport.isPhoneReachable, isFalse);
+
+      link.watch.reachabilityController.add(true);
+      await _settle();
+
+      expect(transport.isPhoneReachable, isTrue);
+      expect(changes, hasLength(1));
+      expect(changes.single.paired, isTrue);
+      expect(changes.single.appInstalled, isTrue);
+      expect(changes.single.reachable, isTrue);
+
+      link.watch.infoValue = const WatchLinkInfo(
+        paired: true,
+        appInstalled: true,
+        reachable: false,
+      );
+      link.watch.reachabilityController.add(false);
+      await _settle();
+
+      expect(transport.isPhoneReachable, isFalse);
+      expect(changes, hasLength(2));
+      expect(changes.last, link.watch.infoValue);
+    });
+
+    test('S-6814 a failed send lowers isPhoneReachable', () async {
+      expect(
+        await phoneTransport.send(WatchTransportRequest.snapshotFrame()),
+        WatchDelivery.delivered,
+      );
+      expect(phoneTransport.isPhoneReachable, isTrue);
+
+      link.phone.sendFailure = StateError('the radio refused the frame');
+
+      expect(
+        await phoneTransport.send(WatchTransportRequest.snapshotFrame()),
+        WatchDelivery.undelivered,
+      );
+      expect(phoneTransport.isPhoneReachable, isFalse);
+    });
+
+    test('S-6815 heard emits once per frame the handler took, with the '
+        'injected clock, and never for a dropped frame', () async {
+      final stamps = [
+        DateTime.utc(2026, 10, 21, 9),
+        DateTime.utc(2026, 10, 21, 10),
+      ];
+      var next = 0;
+      final transport = WatchConnectivityTransport(
+        channel: link.phone,
+        clock: () => stamps[next++],
+      );
+      addTearDown(transport.close);
+      final heard = <DateTime>[];
+      final subscription = transport.heard.listen(heard.add);
+      addTearDown(subscription.cancel);
+
+      await link.watch.send(const {'type': 'timer_state'});
+      await _settle();
+
+      expect(
+        heard,
+        isEmpty,
+        reason: 'no handler is bound yet, so the frame is dropped',
+      );
+      expect(next, 0, reason: 'a dropped frame never reads the clock');
+
+      var handled = 0;
+      transport.onIncoming((frame) async => handled++);
+      await link.watch.send(const {'type': 'session_snapshot'});
+      await _settle();
+
+      expect(handled, 1);
+      expect(heard, [stamps.first]);
+
+      await link.watch.send(const {'type': 'timer_state'});
+      await _settle();
+
+      expect(handled, 2);
+      expect(heard, stamps);
+    });
+  });
+
+  // The platform holds its one event stream until the first listener attaches
+  // and then flushes what it buffered, frames from the wrist included. A frame
+  // that arrived before the app finished starting must reach the message
+  // handler, so the message listener has to be the one attached, and it has to
+  // be attached with the reachability listener rather than after it.
+  group('S-6817 the transport attaches its listeners when it starts receiving',
+      () {
+    test('S-6817 constructing attaches no listener, and onIncoming attaches '
+        'both in the same turn', () {
+      final inbound = StreamController<Map<String, Object?>>.broadcast();
+      final outbound = StreamController<Map<String, Object?>>.broadcast();
+      addTearDown(() async {
+        await inbound.close();
+        await outbound.close();
+      });
+      final endpoint = _Endpoint(outbound: outbound, inbound: inbound);
+
+      final transport = WatchConnectivityTransport(channel: endpoint);
+      addTearDown(transport.close);
+
+      expect(
+        endpoint.reachabilityController.hasListener,
+        isFalse,
+        reason: 'a listener here would flush the buffered stream to reachability '
+            'alone, before the message listener could be attached',
+      );
+      expect(
+        endpoint.inbound.hasListener,
+        isFalse,
+        reason: 'the transport listens only once it is told who receives',
+      );
+
+      transport.onIncoming((frame) async {});
+
+      expect(
+        endpoint.inbound.hasListener,
+        isTrue,
+        reason: 'the message listener is attached first',
+      );
+      expect(
+        endpoint.reachabilityController.hasListener,
+        isTrue,
+        reason: 'and reachability in the same turn, never a turn later',
+      );
+    });
+  });
+
+  // 47a review: a reachability change that arrives during close must not turn
+  // into a reported transport failure.
+  group('S-6818 a change that lands after close', () {
+    test('S-6818 an info read that finishes after close reports no failure',
+        () async {
+      final inbound = StreamController<Map<String, Object?>>.broadcast();
+      final outbound = StreamController<Map<String, Object?>>.broadcast();
+      addTearDown(() async {
+        await inbound.close();
+        await outbound.close();
+      });
+      final endpoint = _Endpoint(outbound: outbound, inbound: inbound);
+      final gate = Completer<WatchLinkInfo>();
+      endpoint.infoGate = gate;
+
+      final transport = WatchConnectivityTransport(
+        channel: endpoint,
+        onFailure: reportFailure,
+      );
+      transport.onIncoming((frame) async {});
+
+      endpoint.reachabilityController.add(true);
+      await _settle();
+      expect(
+        transport.isPhoneReachable,
+        isTrue,
+        reason: 'the flag follows the event before the info is read',
+      );
+
+      await transport.close();
+      gate.complete(
+        const WatchLinkInfo(paired: true, appInstalled: true, reachable: true),
+      );
+      await _settle();
+
+      expect(
+        reportedFailureCount,
+        0,
+        reason: 'the controller is closed on purpose, not broken',
+      );
+      expect(reportedFailure, isNull);
+    });
+  });
+
   group('S-102 the request frames match the contract', () {
     test('S-102 the three frames equal the contract transportRequests', () {
       final requests = _asObject(_contract()['transportRequests']);
@@ -833,9 +1604,15 @@ void main() {
     });
 
     test('S-102 a request frame carries no type key', () {
+      final requests = _asObject(_contract()['transportRequests']);
       final frames = [
         WatchTransportRequest.routinesFrame(),
         WatchTransportRequest.routinesFrame(since: _syncedAt),
+        WatchTransportRequest.routinesFrame(
+          exercisesVersion:
+              _asObject(requests['routinesExercises'])['exercisesVersion']!
+                  as String,
+        ),
         WatchTransportRequest.snapshotFrame(),
       ];
 
@@ -853,6 +1630,137 @@ void main() {
         WatchTransportRequest.routinesFrame().containsKey('since'),
         isFalse,
         reason: 'a null would make the phone\'s send fail',
+      );
+    });
+
+    test('S-3856 a wrist that holds a list names its version the way the '
+        'contract does', () {
+      final requests = _asObject(_contract()['transportRequests']);
+      final versioned = _asObject(requests['routinesExercises']);
+      // Read from the contract, never retyped here: the version the wrist names
+      // is the one the phone's own exercise list derives to.
+      final version = versioned['exercisesVersion']! as String;
+
+      expect(
+        WatchTransportRequest.routinesFrame(exercisesVersion: version),
+        versioned,
+        reason: 'S-3856 a wrist holding no instant sends exactly the frame the '
+            'contract pins, on a first sync too',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(
+          since: _syncedAt,
+          exercisesVersion: version,
+        ),
+        {...versioned, 'since': utcIso(_syncedAt)},
+        reason: 'S-3856 a later sync says what it has and which list it holds',
+      );
+    });
+
+    test('S-3856 a request with no version holds no version key', () {
+      expect(
+        WatchTransportRequest.routinesFrame(exercisesVersion: null),
+        isNot(contains('exercisesVersion')),
+        reason: 'S-3856 a wrist holding no list names no version, so the phone '
+            'sends the whole list',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(exercisesVersion: ''),
+        isNot(contains('exercisesVersion')),
+        reason: 'S-3856 an empty version is no version at all; the key is '
+            'omitted rather than sent empty',
+      );
+    });
+
+    test('S-3856 the version a frame names is read back, and only a non-empty '
+        'string is one', () {
+      const version = 'v1-2-004dbda823a1b308';
+
+      expect(
+        WatchTransportRequest.exercisesVersionOf(
+          WatchTransportRequest.routinesFrame(exercisesVersion: version),
+        ),
+        version,
+        reason: 'S-3856 the wiring reads the version back off the frame',
+      );
+      expect(
+        WatchTransportRequest.exercisesVersionOf(
+          WatchTransportRequest.routinesFrame(),
+        ),
+        isNull,
+        reason: 'S-3856 a request naming no version names null',
+      );
+      expect(
+        WatchTransportRequest.exercisesVersionOf(
+          const {'request': 'routines', 'exercisesVersion': ''},
+        ),
+        isNull,
+        reason: 'S-3856 an empty string is not a version',
+      );
+      expect(
+        WatchTransportRequest.exercisesVersionOf(
+          const {'request': 'routines', 'exercisesVersion': 5},
+        ),
+        isNull,
+        reason: 'S-3856 a wrist that names a non-string is treated as holding '
+            'nothing, so it is sent the whole list rather than skipped',
+      );
+    });
+
+    test('S-9208 the since a frame names is read back, and only a parseable '
+        'non-empty string is one', () {
+      expect(
+        WatchTransportRequest.sinceOf(
+          WatchTransportRequest.routinesFrame(
+            since: DateTime.utc(2026, 10, 23, 12, 0, 0, 123),
+          ),
+        ),
+        DateTime.utc(2026, 10, 23, 12, 0, 0, 123),
+        reason: 'S-9208 a stamp with milliseconds parses back to the instant',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(
+          const {'request': 'routines', 'since': '2026-10-23T12:00:00.123456Z'},
+        ),
+        DateTime.utc(2026, 10, 23, 12, 0, 0, 123, 456),
+        reason: 'S-9208 a stamp with microseconds parses back whole',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(WatchTransportRequest.routinesFrame()),
+        isNull,
+        reason:
+            'S-9208 a first sync names no since, so the phone sends '
+            'everything',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(const {'request': 'routines', 'since': ''}),
+        isNull,
+        reason: 'S-9208 an empty string is no stamp',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(const {
+          'request': 'routines',
+          'since': 42,
+        }),
+        isNull,
+        reason: 'S-9208 a non-string is no stamp',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(const {
+          'request': 'routines',
+          'since': null,
+        }),
+        isNull,
+        reason: 'S-9208 an explicit null is no stamp',
+      );
+      expect(
+        WatchTransportRequest.sinceOf(
+          const {'request': 'routines', 'since': 'not a date'},
+        ),
+        isNull,
+        reason:
+            'S-9208 an unparseable string is no stamp, so the phone sends '
+            'everything',
       );
     });
   });

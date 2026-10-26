@@ -396,6 +396,8 @@ Future<Widget> runStartup({
   // The phone's own session reaches the wrist by itself (D-75): the graph's one
   // push listens to the same state.
   watchSync?.autoPush.bindWorkoutState(workoutState);
+  watchSync?.timerPush.bindWorkoutState(workoutState);
+  watchSync?.timerAdoption.bindWorkoutState(workoutState);
   final exerciseLibraryState = ExerciseLibraryState(
     service: exerciseLibraryService,
     workoutState: workoutState,
@@ -436,5 +438,7 @@ Future<Widget> runStartup({
     // D-96: the phone asks the wrist for its session once per resume. Null
     // without a watch graph, so no observer is mounted at all.
     onWatchResume: watchSync?.sync,
+    // 47c D-3: the Settings row's status, null without a watch graph.
+    watchLinkState: watchSync?.link,
   );
 }

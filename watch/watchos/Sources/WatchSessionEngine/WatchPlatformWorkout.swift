@@ -8,6 +8,10 @@
 //  Plan: `docs/plans/2026-07-13-11-d-watch-sensor-recording-plan.md`,
 //  scenarios S-001, S-002, S-005, S-007 and S-008.
 //
+//  `docs/plans/2026-10-10-19f-watch-gps-feed-plan/2026-10-10-19f-watch-gps-feed-plan.md`
+//  adds the outdoor answer to the store seam: D-2301 and D-2309, scenarios
+//  S-3300 and S-3301.
+//
 //  Registering the session with the platform's health service is what unlocks
 //  the rest: live heart rate, correct calorie and activity attribution in the
 //  store, and — most importantly — the runtime priority that keeps a workout app
@@ -93,6 +97,91 @@ public enum WatchActivityTypes {
         guard let modality else { return generic }
         return byModality[modality] ?? generic
     }
+
+    private static let running = WatchActivityType(
+        watchOs: "running",
+        wear: "exercise_type_running"
+    )
+    private static let cycling = WatchActivityType(
+        watchOs: "cycling",
+        wear: "exercise_type_biking"
+    )
+    private static let rowing = WatchActivityType(
+        watchOs: "rowing",
+        wear: "exercise_type_rowing"
+    )
+    private static let walking = WatchActivityType(
+        watchOs: "walking",
+        wear: "exercise_type_walking"
+    )
+    private static let hiking = WatchActivityType(
+        watchOs: "hiking",
+        wear: "exercise_type_hiking"
+    )
+    private static let strength = WatchActivityType(
+        watchOs: "traditionalStrengthTraining",
+        wear: "exercise_type_strength_training"
+    )
+    private static let flexibility = WatchActivityType(
+        watchOs: "flexibility",
+        wear: "exercise_type_flexibility"
+    )
+
+    /// The type a distance exercise registers as, from the Health kind the phone
+    /// named for it: a known kind gets its own type, and anything else — nil,
+    /// "running", a kind this table does not carry — stays running (D-2).
+    private static func distanceType(_ activity: String?) -> WatchActivityType {
+        switch activity {
+        case "cycling": return cycling
+        case "rowing": return rowing
+        case "walking": return walking
+        case "hiking": return hiking
+        default: return running
+        }
+    }
+
+    /// The type one exercise registers as, from what it can measure: a hold is
+    /// tested first (a plank has `hold` and `sets`), then distance — refined by
+    /// the Health kind the phone named, when it named one — then reps/sets/load;
+    /// anything else is the generic type.
+    public static func forExercise(
+        capabilities: [String],
+        healthActivity: String? = nil
+    ) -> WatchActivityType {
+        if capabilities.contains("hold") { return flexibility }
+        if capabilities.contains(WatchGpsPolicy.distanceCapability) {
+            return distanceType(healthActivity)
+        }
+        if capabilities.contains(where: { ["reps", "sets", "load"].contains($0) }) {
+            return strength
+        }
+        return generic
+    }
+
+    /// The majority type of `exercises`; a tie goes to the type of the earliest
+    /// exercise that reaches the highest count. nil for an empty list: the type
+    /// is not known yet.
+    public static func forExercises(_ exercises: [[String: Any]]) -> WatchActivityType? {
+        guard !exercises.isEmpty else { return nil }
+        let types = exercises.map {
+            forExercise(
+                capabilities: ($0["capabilities"] as? [String]) ?? [],
+                healthActivity: $0["healthActivity"] as? String
+            )
+        }
+        var counts: [String: Int] = [:]
+        for type in types { counts[type.watchOs, default: 0] += 1 }
+        let best = counts.values.max() ?? 0
+        return types.first { counts[$0.watchOs] == best }
+    }
+
+    /// What `session` registers as: its modality's own type when it has one
+    /// (unchanged), otherwise the majority of its exercises. nil while neither
+    /// is known.
+    public static func forSession(_ session: WatchSessionRecord) -> WatchActivityType? {
+        if let modality = session.modality { return forModality(modality) }
+        return forExercises(session.exercises)
+    }
 }
 
 /// Whether a session's modality calls for GPS.
@@ -127,32 +216,65 @@ public enum WatchGpsPolicy {
     ]
 
     /// True when `modality` can cover distance — as a capability it carries, not
-    /// as one it rules out. Free training has no profile, so it never records
-    /// GPS: the user picks the exercise after the session starts, too late to
-    /// decide, and the distance row stays theirs to fill.
+    /// as one it rules out. A modality alone never decides for free training: the
+    /// user picks the exercise after the session starts, so the exercise decides
+    /// instead, through `isRequired(_ session:)` (D-4800).
     public static func isRequired(_ modality: String?) -> Bool {
         guard let modality, let capabilities = capabilitiesByModality[modality] else {
             return false
         }
         return capabilities.contains(distanceCapability)
     }
+
+    /// True when an exercise's capabilities include distance — the exercise, not
+    /// the name.
+    public static func coversDistance(_ capabilities: [String]) -> Bool {
+        capabilities.contains(distanceCapability)
+    }
+
+    /// True when the session's modality covers distance, or the exercise the user
+    /// is on does.
+    public static func isRequired(_ session: WatchSessionRecord) -> Bool {
+        if isRequired(session.modality) { return true }
+        return coversDistance((session.currentExercise?["capabilities"] as? [String]) ?? [])
+    }
 }
 
 /// The health service's own view of workouts: the OS-level surface, which is the
 /// part that cannot be tested off-device.
 ///
-/// Deliberately three calls and no state. The watch holds one workout at a time —
+/// Deliberately four calls and no state. The watch holds one workout at a time —
 /// that is what the platform grants — so `end` needs no identifier, and
 /// `inProgressActivityTypes` exists for exactly one purpose: finding out what a
 /// previous process left running.
 public protocol WatchPlatformWorkoutStore {
     func begin(_ activityType: String) async
 
+    /// The same registration, carrying the one thing the platform cannot infer
+    /// from the activity name: whether the user is outdoors, where the workout
+    /// may follow a route, or indoors, where it must not.
+    func begin(_ activityType: String, outdoors: Bool) async
+
     func end() async
 
     /// The activity types the health store still reports as in progress, oldest
     /// first. Anything here belongs to a process that is gone.
     func inProgressActivityTypes() async -> [String]
+}
+
+/// Each `begin` shape has a default, so a store implements whichever one its
+/// platform speaks and conforms either way: each statement forwards to the
+/// other's half, and a store that implements one of them is always the one that
+/// answers (the call inside an extension still dispatches to the conformer's own
+/// witness, so there is no recursion).
+extension WatchPlatformWorkoutStore {
+    public func begin(_ activityType: String, outdoors: Bool) async {
+        await begin(activityType)
+    }
+
+    public func begin(_ activityType: String) async {
+        await begin(activityType, outdoors: false)
+    }
 }
 
 /// The watch's platform workout, over whatever store the platform provides.
@@ -166,8 +288,9 @@ public final class WatchPlatformWorkout {
         self.store = store
     }
 
-    /// Registers `session`'s modality as a platform workout and returns what it
-    /// was registered as.
+    /// Registers `session` as a platform workout — its modality's type when it
+    /// has one, otherwise the majority of its exercises, else the generic type —
+    /// and returns what it was registered as.
     ///
     /// Starting a session while one is already open ends the old workout first:
     /// the platform grants one at a time, and a dangling one is exactly the
@@ -176,8 +299,11 @@ public final class WatchPlatformWorkout {
     public func start(_ session: WatchSessionRecord) async -> WatchActivityType {
         if running != nil { await end() }
 
-        let activityType = WatchActivityTypes.forModality(session.modality)
-        await store.begin(activityType.watchOs)
+        let activityType = WatchActivityTypes.forSession(session) ?? WatchActivityTypes.generic
+        await store.begin(
+            activityType.watchOs,
+            outdoors: WatchGpsPolicy.isRequired(session)
+        )
         running = activityType
         return activityType
     }
@@ -226,14 +352,20 @@ public enum WatchWorkoutAction: Equatable {
 /// the watch should do is assertable off-device, and the coordinator that does it
 /// is a thin thing that cannot disagree with itself. A session that is not active
 /// (completed, abandoned, or gone entirely) closes the workout it owns: a
-/// dangling registration is the stuck state recovery exists to clear.
+/// dangling registration is the stuck state recovery exists to clear. A session
+/// whose type is not yet known — a Free workout before its first exercise —
+/// waits.
 public enum WatchWorkoutLifecycle {
     public static func action(
         session: WatchSessionRecord?,
         running: WatchActivityType?
     ) -> WatchWorkoutAction {
         if session?.status == WatchSessionStatus.active {
-            return running == nil ? .start : .none
+            guard running == nil else { return .none }
+            if let session, WatchActivityTypes.forSession(session) != nil {
+                return .start
+            }
+            return .none
         }
         return running == nil ? .none : .end
     }
