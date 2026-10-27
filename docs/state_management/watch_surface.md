@@ -80,7 +80,15 @@ a set edited on the phone is updated on the wrist at the next push or Sync,
 re-stated from the answer while the wrist's stored row is left unrewritten
 (D-35).
 Its slots are that session's efforts, a slot id is the effort's
-own row id, and its revision rises only when the ladder changes, so the wrist's
+own row id — a phone-started session's slot ids stay the effort's row id,
+while a wrist-started session's slot ids carry the wrist's per-session token
+(`sx-<effortId>~<token>`; the token keeps two wrist sessions of the same
+exercise from sharing one effort row on the phone —
+`test/watch_second_session_same_exercise_repro_test.dart`,
+`S-15001 two wrist workouts of one exercise keep their efforts apart`,
+and `test/watch_session_start_test.dart`, group
+`S-15005 slot ids carry a per-session token`) — and its revision rises only
+when the ladder changes, so the wrist's
 replace-structure rule accepts a real edit and stays silent on a replay of a
 snapshot it already holds. This mirror's own copy answers only when the phone has
 no session of its own to speak from: nothing bound, no session running, or a
@@ -534,9 +542,12 @@ frame, and which persists that instant under the repository key
 
 Answers the frames that are requests rather than protocol messages: `routines`
 is answered with the three reference frames — `preferences_down`, then
-`foods_down` (only when the phone holds foods; the schema requires at least
-one, so a phone with none sends no foods frame and the wrist keeps the list it
-has), then `routines_down` — but only when the wrist's `since` (the stamp of
+`foods_down` (an empty `foods` list is a valid frame: a phone whose last read
+of the groups and foods succeeded and found none sends the empty frame and the
+wrist empties its list, a foods read that threw sends no foods frame at all —
+the phone must not say "no foods" from an unreadable cache — and a non-empty
+cache is sent even when the group read failed), then `routines_down` — but
+only when the wrist's `since` (the stamp of
 the routines copy it holds) is older than the phone's bundle stamp. The three
 frames share one stamp that changes only when their content changes, so an
 unchanged phone answers a wrist that holds the current bundle with none of the
@@ -575,10 +586,19 @@ Verified by `test/watch_transport_test.dart` (the `S-003` and `S-253` groups;
 string is one`)
 and `test/watch_sync_request_handler_test.dart` (S-3850..S-3854; the foods and
 the new order, group `S-7101…S-7105 the phone sends the food list with the
-routines`). The changed-only rule is
+routines`, its `S-7104` now the empty frame
+`S-7104 (S-15204) a phone with no foods sends an empty foods frame and still
+sends the rest`, and the failed reads `S-8310 a throwing food read still
+answers with the rest`, `S-8316 a throwing group read still sends the foods,
+uncategorised`). The changed-only rule is
 `test/watch_sync_changed_only_test.dart` (S-9201..S-9212: the first request,
 the skip, the stamp boundary, one changed input, the equal signature, a
-refused frame, unreadable `since`, the exercises' independence, no foods, an
+refused frame, unreadable `since`, the exercises' independence, no foods then
+a first food (S-9210), an emptied list
+(`S-15203 a phone that had foods and has none now sends the empty foods frame
+in the middle slot`) gated by since like its siblings
+(`S-15207 the empty frame is gated by since like its siblings, and a null
+since re-sends it once`), an
 interleaving, a relaunch), the wiring hands the frame's `since` to the handler
 (`test/watch_session_projection_test.dart`, group `S-9213 the wrist's since
 reaches the handler`), and the wrist's Sync button is pinned by

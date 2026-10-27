@@ -260,6 +260,12 @@ public protocol WatchPlatformWorkoutStore {
     /// The activity types the health store still reports as in progress, oldest
     /// first. Anything here belongs to a process that is gone.
     func inProgressActivityTypes() async -> [String]
+
+    /// Whether the last `begin` ended in a failure the store could not answer
+    /// (plan 82 D-1). Declared here so a read through the existential dispatches
+    /// to the conformer; the extension below gives every store that cannot fail
+    /// a `false` default.
+    var lastBeginFailed: Bool { get }
 }
 
 /// Each `begin` shape has a default, so a store implements whichever one its
@@ -268,6 +274,13 @@ public protocol WatchPlatformWorkoutStore {
 /// answers (the call inside an extension still dispatches to the conformer's own
 /// witness, so there is no recursion).
 extension WatchPlatformWorkoutStore {
+    /// Whether the last `begin` ended in a failure the store could not answer
+    /// (plan 82 D-1). A default of `false` keeps every existing store
+    /// conforming: only a store that can actually fail overrides it, and a
+    /// `guard` that returns early because Health is unavailable or access is
+    /// off is not a failure.
+    public var lastBeginFailed: Bool { false }
+
     public func begin(_ activityType: String, outdoors: Bool) async {
         await begin(activityType)
     }
@@ -284,6 +297,15 @@ public final class WatchPlatformWorkout {
     /// The workout currently registered, or nil when the watch has none open.
     public private(set) var running: WatchActivityType?
 
+    /// Whether the last `start`'s registration failed at the store (plan 82
+    /// D-2). Left set by `end`, so the summary still reads it after the session
+    /// ends; the next `start` resets it first.
+    public private(set) var openFailed = false
+
+    /// Drops the previous session's failure when another session goes live
+    /// (plan 82 review): the flag then reads only the live session's outcome.
+    func acknowledgeOpenFailure() { openFailed = false }
+
     public init(store: WatchPlatformWorkoutStore) {
         self.store = store
     }
@@ -297,6 +319,7 @@ public final class WatchPlatformWorkout {
     /// stuck state recovery exists to clear.
     @discardableResult
     public func start(_ session: WatchSessionRecord) async -> WatchActivityType {
+        openFailed = false
         if running != nil { await end() }
 
         let activityType = WatchActivityTypes.forSession(session) ?? WatchActivityTypes.generic
@@ -304,6 +327,7 @@ public final class WatchPlatformWorkout {
             activityType.watchOs,
             outdoors: WatchGpsPolicy.isRequired(session)
         )
+        openFailed = store.lastBeginFailed
         running = activityType
         return activityType
     }
@@ -393,6 +417,11 @@ public final class WatchWorkoutCoordinator {
     /// replaced by the phone's reset (S-1504).
     private(set) var openedForSessionId: String?
 
+    /// Whether the platform's last registration failed (plan 82 D-3). Read
+    /// under no lock: the value changes only inside the serial `enqueue` chain,
+    /// and the host reads it on the main actor after `await workout.refresh`.
+    public var openFailed: Bool { platform.openFailed }
+
     public init(platform: WatchPlatformWorkout) {
         self.platform = platform
     }
@@ -412,6 +441,10 @@ public final class WatchWorkoutCoordinator {
         if let opened = openedForSessionId, opened != session?.sessionId {
             await platform.end()
             openedForSessionId = nil
+            // A different session is now live: the last one's failure is not
+            // its failure, even before its own workout is asked for. A session
+            // that merely ended (`nil`) keeps it, for the summary.
+            if session != nil { platform.acknowledgeOpenFailure() }
         }
 
         switch WatchWorkoutLifecycle.action(session: session, running: platform.running) {

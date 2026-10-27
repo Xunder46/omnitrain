@@ -176,6 +176,11 @@ public final class WatchLoggingState {
     /// none behaves exactly as before: every value is the user's to dial.
     public let sensors: WatchSensorRecorder?
 
+    /// Whether the Health workout failed to start (plan 82, D-5), read by the
+    /// host so the notice line follows the coordinator without the state
+    /// holding it.
+    private let workoutNotice: () -> Bool
+
     private let clock: () -> Date
     private let newId: () -> String
 
@@ -229,13 +234,15 @@ public final class WatchLoggingState {
         units: WatchUnitPreferences = WatchUnitPreferences(),
         sensors: WatchSensorRecorder? = nil,
         roundPresetMs: Int? = nil,
-        unitsSource: (() -> WatchUnitPreferences)? = nil
+        unitsSource: (() -> WatchUnitPreferences)? = nil,
+        workoutNotice: @escaping () -> Bool = { false }
     ) {
         self.engine = engine
         self.clock = clock
         self.newId = idFactory
         self.unitsSource = unitsSource ?? { units }
         self.sensors = sensors
+        self.workoutNotice = workoutNotice
         self.presetRoundMs = roundPresetMs
             ?? WatchLoggingDefaults.roundDurationSeconds * 1000
     }
@@ -311,14 +318,19 @@ public final class WatchLoggingState {
         )
     }
 
-    /// The lines that say why a sensor is silent (plan 59, D-2; plan 70, D-1):
-    /// distance only while the exercise the user is on can cover it. Heart-rate
-    /// refusal is said on the Start screen and the workout summary, not on an
-    /// exercise page. A permission the platform never asked about, or one the
-    /// hardware cannot give, says nothing.
+    /// The lines that say why a sensor is silent (plan 59, D-2; plan 70, D-1;
+    /// plan 82, D-5): the workout-start failure first, so it shows even while
+    /// no sensor recorder is attached, then distance only while the exercise
+    /// the user is on can cover it. Heart-rate refusal is said on the Start
+    /// screen and the workout summary, not on an exercise page. A permission
+    /// the platform never asked about, or one the hardware cannot give, says
+    /// nothing.
     public var sensorNotices: [String] {
-        guard let sensors else { return [] }
         var notices: [String] = []
+        if workoutNotice() {
+            notices.append(WatchSensorNoticeCopy.noWorkout)
+        }
+        guard let sensors else { return notices }
         if sensors.locationAccess == .denied,
            WatchGpsPolicy.coversDistance(capabilities) {
             notices.append(WatchSensorNoticeCopy.noDistance)

@@ -759,9 +759,11 @@ final class WatchMenuTests: XCTestCase {
         )
         let snapshot = try XCTUnwrap(harness.emitted("session_snapshot").last)
         let payload = try XCTUnwrap(snapshot["payload"] as? [String: Any])
+        // Plan 81: a slot the wrist mints ends with the session's token.
+        let announcedSlot = (payload["exercises"] as? [[String: Any]])?.last?["sessionExerciseId"] as? String
         XCTAssertEqual(
-            (payload["exercises"] as? [[String: Any]])?.last?["sessionExerciseId"] as? String,
-            "sx-ex-dip",
+            announcedSlot,
+            "sx-ex-dip~\(sessionToken(from: started.sessionId))",
             "S-3614 the announced snapshot carries the new slot"
         )
         XCTAssertEqual(

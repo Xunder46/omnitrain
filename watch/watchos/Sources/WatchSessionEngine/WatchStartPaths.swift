@@ -572,12 +572,18 @@ public final class WatchSessionStartPaths {
             held.exercises.isEmpty
         {
             var filled = held
-            for slot in routine.slots {
+            for slot in routine.slots(token: sessionToken(from: held.sessionId)) {
                 filled = await engine.insertExercise(slot, moveTo: false)
             }
             return filled
         }
-        return await engine.createSession(modality: nil, exercises: routine.slots)
+        // The session id is minted inside `createSession`, so the slots built
+        // here carry the token of the id the start paths mint for the start
+        // (plan 81 D-9).
+        return await engine.createSession(
+            modality: nil,
+            exercises: routine.slots(token: sessionToken(from: newId()))
+        )
     }
 
     // MARK: - Path 2 — free workout
@@ -700,14 +706,29 @@ public final class WatchSessionStartPaths {
     /// A slot id the session is not using yet. The same exercise may
     /// legitimately fill two slots — that is what a superset is — so a second
     /// pick gets its own id rather than being swallowed as a duplicate.
+    ///
+    /// The de-duplication runs on the plain bases — the session's own ids with
+    /// their token removed — and the token goes back on last, so a second pick
+    /// of one exercise is `sx-<id>-2~<token>` (plan 81 D-1, S-15002).
     private func availableSlotId(for exercise: WatchCatalogExercise) -> String {
-        let taken = Set((engine.session?.exercises ?? []).compactMap { $0["sessionExerciseId"] as? String })
+        let taken = Set(
+            (engine.session?.exercises ?? [])
+                .compactMap { $0["sessionExerciseId"] as? String }
+                .map { id in
+                    guard let range = id.range(of: "~", options: .backwards) else { return id }
+                    return String(id[..<range.lowerBound])
+                }
+        )
 
         let base = exercise.slotId
-        if !taken.contains(base) { return base }
-        var suffix = 2
-        while taken.contains("\(base)-\(suffix)") { suffix += 1 }
-        return "\(base)-\(suffix)"
+        var free = base
+        if taken.contains(base) {
+            var suffix = 2
+            while taken.contains("\(base)-\(suffix)") { suffix += 1 }
+            free = "\(base)-\(suffix)"
+        }
+        let token = sessionToken(from: engine.session?.sessionId ?? newId())
+        return "\(free)~\(token)"
     }
 
     /// The exercises the wrist used most recently, newest session first.

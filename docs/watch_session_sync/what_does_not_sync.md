@@ -298,8 +298,10 @@ remains out is listed below.
   and the wrist dials each set from them (above). A timed or hold slot carries
   no planned value at all, and a round slot's only one is the round length
   `roundDurationSecs`. A routine started on the wrist opens on the phone as
-  that routine: the wrist's slot ids are the phone's own template effort ids
-  (`sx-<effortId>`), so a ladder whose every slot names an effort of one
+  that routine: the wrist's slot ids are the phone's own template effort ids,
+  each ending in the per-session token `~<token>` (`sx-<effortId>~<token>`;
+  the recogniser cuts the id at the last `~` before the lookup), so a ladder
+  whose every slot names an effort of one
   template the phone holds adopts with the template's name, `intent =
   'routine'` and `routineTemplateId`, and each of its `set` efforts starts
   with the template's planned rows read from the phone's current template —
@@ -309,7 +311,10 @@ remains out is listed below.
   `S-3641 the adopted effort holds the template's planned sets`,
   `S-3644a no template covers the ladder: a free session as today`,
   `S-3644c a mixed ladder: a free session as today`,
-  `S-3648 a routine deleted before the snapshot: a free session`).
+  `S-3648 a routine deleted before the snapshot: a free session`;
+  the tokened ids, `S-15006 a tokened ladder adopts as the routine the wrist
+  started`, `S-15007 a wrist set lands in a tokened slot's effort`,
+  `S-15009 two tildes: the cut is at the last one`).
 - **A wrist-started routine's timed, hold and round efforts get no planned
   rows, and a routine added to an already-open empty wrist session is not
   planned.** The efforts are linked to the routine but start empty, as a wrist

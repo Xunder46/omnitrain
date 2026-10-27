@@ -172,13 +172,20 @@ the prune above is the only way batch rows leave.
 ## Where the two ends stand
 
 The phone answers a `routines` request with the three reference frames —
-`preferences_down`, then `foods_down` when it holds foods, then
+`preferences_down`, then `foods_down` — an empty `foods` list is a valid
+frame, so a phone with no foods sends the empty frame and the wrist empties
+its list, while a foods read that threw sends no foods frame at all — then
 `routines_down`, all stamped with one bundle stamp — but only when the wrist's
 `since` is older than that stamp: an unchanged phone answers a wrist that
 holds the current bundle with none of the three, and `routines_down` is
 withheld when the preferences or the foods frame came back undelivered
 (`test/watch_sync_changed_only_test.dart`, groups `S-9201`…`S-9212`; the
-wiring hands the frame's `since` to the handler,
+empty frame, `test/watch_sync_request_handler_test.dart`,
+`S-7104 (S-15204) a phone with no foods sends an empty foods frame and still
+sends the rest`; the emptied list,
+`test/watch_sync_changed_only_test.dart`,
+`S-15203 a phone that had foods and has none now sends the empty foods frame
+in the middle slot`; the wiring hands the frame's `since` to the handler,
 `test/watch_session_projection_test.dart`, group `S-9213 the wrist's since
 reaches the handler`). The `routines_down` frame's `fallbackExercises` is the
 exercises its routines use and nothing more

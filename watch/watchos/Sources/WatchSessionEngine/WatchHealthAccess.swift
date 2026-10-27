@@ -30,4 +30,6 @@ public enum WatchHealthAccessCopy {
 public enum WatchSensorNoticeCopy {
     public static let noHeartRate = "No heart rate, Health access is off"
     public static let noDistance = "No distance, Location access is off"
+    public static let noWorkout = "Health workout didn't start"
+    public static let noHeartRateNoWorkout = "No heart rate, the Health workout did not start"
 }

@@ -292,6 +292,58 @@ final class WatchNutritionFreshnessTests: XCTestCase {
         XCTAssertEqual(changes.count, 3, "a log is a new starting amount")
     }
 
+    // MARK: - S-15208 an empty foods_down empties the catalog
+
+    func testS15208AnEmptyNewerListEmptiesTheCatalogAndAnOlderOneIsDropped() async throws {
+        let watch = await NutritionHarness().launch()
+        let list = try foodsDown(
+            generatedAt: Self.catalogBeforeTheLog,
+            messageId: "msg-foods-15208-a",
+            foods: [
+                food("food-a", "Apple", defaultServings: 1),
+                food("food-b", "Bread", defaultServings: 2),
+            ]
+        )
+        await expectApplied(list, to: watch)
+
+        let changes = ChangeCounter()
+        watch.nutrition.onFoodsChanged = { changes.record() }
+        XCTAssertEqual(changes.count, 0)
+
+        // Generated before the two-food catalog: understood and dropped, the
+        // catalog stands and the surface is told nothing.
+        let olderEmpty = try foodsDown(
+            generatedAt: "2026-07-13T04:00:00Z",
+            messageId: "msg-foods-15208-b",
+            foods: []
+        )
+        let olderResult = await watch.nutrition.applyFoodsDown(olderEmpty)
+        XCTAssertFalse(olderResult.applied)
+        XCTAssertTrue(olderResult.rejections.isEmpty)
+        XCTAssertEqual(watch.nutrition.foods.count, 2)
+        XCTAssertNotNil(watch.nutrition.food("food-a"))
+        XCTAssertNotNil(watch.nutrition.food("food-b"))
+        XCTAssertEqual(changes.count, 0)
+
+        // Generated after it: applied, the list the wrist holds empties, the
+        // stored catalog row empties with it, and the surface is told once.
+        let newerEmpty = try foodsDown(
+            generatedAt: Self.catalogAfterTheLog,
+            messageId: "msg-foods-15208-c",
+            foods: []
+        )
+        await expectApplied(newerEmpty, to: watch)
+        XCTAssertTrue(watch.nutrition.foods.isEmpty)
+        let contents = await watch.store.readAll()
+        let stored = try XCTUnwrap(
+            contents.foodCatalogs.max { $0.sequence < $1.sequence }
+        )
+        XCTAssertEqual(stored.generatedAt, try parseUtcIso(Self.catalogAfterTheLog))
+        XCTAssertTrue(stored.foods.isEmpty)
+        XCTAssertTrue(stored.categories.isEmpty)
+        XCTAssertEqual(changes.count, 1, "the applied empty list announces once")
+    }
+
     // MARK: - S-8306 the catalog wins when it is newer than the log
 
     func testS8306ALogOlderThanTheCatalogKeepsTheCatalogsAmount() async throws {

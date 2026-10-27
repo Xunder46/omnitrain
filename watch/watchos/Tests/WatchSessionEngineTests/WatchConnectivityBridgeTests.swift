@@ -431,7 +431,16 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         XCTAssertEqual(harness.paths.routines.map(\.routineId), [routineId])
 
         let session = try await harness.paths.startFromRoutine(routineId)
-        XCTAssertEqual(session.exercises as NSArray, expectedSlots as NSArray)
+        // The wrist tokens the slot ids it mints: the routines_down sync took
+        // "cat-1", the start mints "cat-2" (plan 81 D-9).
+        let tokenedSlots = expectedSlots.map { slot -> [String: Any] in
+            var slot = slot
+            if let id = slot["sessionExerciseId"] as? String {
+                slot["sessionExerciseId"] = tokened(id, token: "cat-2")
+            }
+            return slot
+        }
+        XCTAssertEqual(session.exercises as NSArray, tokenedSlots as NSArray)
     }
 
     // MARK: - S-1410 the wrist's snapshot carries the number back
@@ -897,7 +906,10 @@ final class WatchConnectivityBridgeTests: XCTestCase {
         // the way a `+1` advance does.
         let picked = await harness.paths.selectExercise(rows[0])
         XCTAssertEqual(picked?.currentExerciseIndex, 0)
-        XCTAssertEqual(harness.engine.currentExercise?["sessionExerciseId"] as? String, bench.slotId)
+        XCTAssertEqual(
+            harness.engine.currentExercise?["sessionExerciseId"] as? String,
+            bench.slotId(token: sessionToken(from: harness.sessionId))
+        )
 
         let payload = try bridgeObject(harness.emitted("session_lifecycle").last?["payload"])
         XCTAssertEqual(payload["state"] as? String, "exercise_advanced")

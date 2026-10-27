@@ -876,7 +876,13 @@ class WatchSessionAdoptionBridge {
     for (final slot in slots) {
       final slotId = slot['sessionExerciseId'];
       if (slotId is! String || !slotId.startsWith(_slotIdPrefix)) return null;
-      final effortId = slotId.substring(_slotIdPrefix.length);
+      final rest = slotId.substring(_slotIdPrefix.length);
+      // Plan 81 D-4: the wrist suffixes its slot ids with a per-session token
+      // (`sx-<effortId>~<token>`), so the effort id is the text before the
+      // LAST `~`; an id without `~` decodes as before.
+      final effortId = rest.contains('~')
+          ? rest.substring(0, rest.lastIndexOf('~'))
+          : rest;
       if (effortId.isEmpty) return null;
       effortIdBySlot[slotId] = effortId;
     }

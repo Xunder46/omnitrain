@@ -71,6 +71,7 @@ public struct WatchEffortRatingView: View {
         )
         .navigationBarBackButtonHidden(true)
         .interactiveDismissDisabled(true)
+        .accessibilityValue(state.selected.map { WatchSpokenText.rating($0, of: WatchEffortRatingCopy.highest) } ?? "No rating")
     }
 
     /// One number of the scale. `.watchProminent()` and `.bordered` are
@@ -79,9 +80,14 @@ public struct WatchEffortRatingView: View {
     private func scaleButton(_ value: Int) -> some View {
         let button = Button("\(value)") { state.select(value) }
         if value == state.selected {
-            button.watchProminent()
+            button
+                .watchProminent()
+                .accessibilityLabel(WatchSpokenText.rating(value, of: WatchEffortRatingCopy.highest))
+                .accessibilityAddTraits(.isSelected)
         } else {
-            button.buttonStyle(.bordered)
+            button
+                .buttonStyle(.bordered)
+                .accessibilityLabel(WatchSpokenText.rating(value, of: WatchEffortRatingCopy.highest))
         }
     }
 
@@ -93,6 +99,7 @@ public struct WatchEffortRatingView: View {
         }
         .watchProminent()
         .disabled(!state.canConfirm)
+        .accessibilityHint("Saves your rating")
     }
 
     /// Skip closes the question without an answer and records nothing

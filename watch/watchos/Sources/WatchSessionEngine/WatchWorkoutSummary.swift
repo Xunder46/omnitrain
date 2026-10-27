@@ -88,10 +88,13 @@ public struct WatchWorkoutSummary: Equatable {
         return rows
     }
 
-    /// The one line that says why there is no heart rate, only while Health
-    /// access is off and none was recorded (plan 70, D-4).
-    public func heartRateNote(healthOff: Bool) -> String? {
-        averageBpm == nil && healthOff ? WatchSensorNoticeCopy.noHeartRate : nil
+    /// The one line that says why there is no heart rate: while Health access
+    /// is off and none was recorded (plan 70, D-4), or when the workout never
+    /// started and none could be (plan 82, D-6). Access-off wins.
+    public func heartRateNote(healthOff: Bool, workoutFailed: Bool = false) -> String? {
+        if healthOff { return averageBpm == nil ? WatchSensorNoticeCopy.noHeartRate : nil }
+        if workoutFailed { return averageBpm == nil ? WatchSensorNoticeCopy.noHeartRateNoWorkout : nil }
+        return nil
     }
 
     /// `m:ss` under an hour, `h:mm:ss` from an hour; a negative length reads 0:00.

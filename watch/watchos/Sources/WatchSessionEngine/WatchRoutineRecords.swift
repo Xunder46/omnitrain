@@ -15,6 +15,14 @@
 
 import Foundation
 
+/// The per-session suffix the wrist appends to every slot id it mints (plan 81
+/// D-1): the first 8 characters of the source id, or the whole id when it is
+/// shorter. Production session ids are UUIDs, so the token never contains `~`
+/// and a slot id's last `~` segment is always the token.
+public func sessionToken(from id: String) -> String {
+    String(id.prefix(8))
+}
+
 /// A catalog exercise: what it is, not where it sits in a session.
 public struct WatchCatalogExercise: Equatable {
     /// The protocol key the phone's period length travels under, shared by the
@@ -104,6 +112,11 @@ public struct WatchCatalogExercise: Equatable {
     /// Distinct from the ids the phone chooses, which is what lets a pushed
     /// exercise and a picked one of the same kind sit side by side.
     public var slotId: String { "sx-\(exerciseId)" }
+
+    /// The id the wrist mints for a live session: the base id with the
+    /// session's token appended, so two sessions never share a slot id
+    /// (plan 81 D-1). The menu and the picker keep reading the plain base.
+    public func slotId(token: String) -> String { "\(slotId)~\(token)" }
 
     /// This exercise as a protocol `sessionExercise` slot.
     ///
@@ -206,9 +219,9 @@ public struct WatchRoutineEffort {
     /// `targets.durationMs`, which is how the phone sends a round's length
     /// (D-1402) — and an effort with no such target carries none: the wrist's
     /// preset stays the only other source (D-1405).
-    public var slot: [String: Any] {
+    public func slot(token: String) -> [String: Any] {
         catalogExercise.toSlot(
-            sessionExerciseId: "sx-\(effortId)",
+            sessionExerciseId: "sx-\(effortId)~\(token)",
             effortKind: effortKind,
             roundDurationSecs: effortKind == WatchEffortKind.round
                 ? WatchCatalogExercise.roundSeconds(fromMillis: targets["durationMs"])
@@ -295,8 +308,11 @@ public struct WatchRoutine {
     /// Every effort in the routine, in the order the session will run them.
     public var efforts: [WatchRoutineEffort] { segments.flatMap(\.efforts) }
 
-    /// The session slots starting this routine creates, in order.
-    public var slots: [[String: Any]] { efforts.map(\.slot) }
+    /// The session slots starting this routine creates, in order, each carrying
+    /// the session's token (plan 81 D-1).
+    public func slots(token: String) -> [[String: Any]] {
+        efforts.map { $0.slot(token: token) }
+    }
 
     /// The catalog exercises this routine cannot run without, in routine order,
     /// deduplicated. Every one of them must be in the fallback list, or the

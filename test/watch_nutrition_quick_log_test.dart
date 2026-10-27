@@ -864,6 +864,45 @@ void main() {
       },
     );
 
+    test(
+      'S-15209 an empty foods_down empties the list, and an older one does not',
+      () async {
+        final harness = _Harness();
+        final engine = await harness.runningEngine();
+        final state = await harness.syncedNutritionState(engine);
+
+        final current = _foodsDown();
+        Map<String, Object?> emptyAt(String generatedAt, String messageId) => {
+          ...current,
+          'messageId': messageId,
+          'sentAt': generatedAt,
+          'payload': {
+            ..._payloadOf(current),
+            'generatedAt': generatedAt,
+            'categories': <Object?>[],
+            'foods': <Object?>[],
+          },
+        };
+
+        // Generated before the synced list: understood and dropped, the
+        // five-food catalog stands.
+        final older = emptyAt('2026-07-13T16:00:00Z', 'msg-foods-empty-older');
+        final olderResult = await state.applyFoodsDown(older);
+        expect(olderResult.applied, isFalse);
+        expect(olderResult.decision.accepted, isTrue);
+        expect(state.food('food-oatmeal'), isNotNull);
+        expect(state.foods, isNotEmpty);
+
+        // Generated after it: applied, the list the wrist holds empties.
+        final newer = emptyAt('2026-07-13T18:00:00Z', 'msg-foods-empty-newer');
+        final newerResult = await state.applyFoodsDown(newer);
+        expect(newerResult.applied, isTrue);
+        expect(state.foods, isEmpty);
+        expect(state.food('food-oatmeal'), isNull);
+        expect(state.syncedAt, DateTime.utc(2026, 7, 13, 18));
+      },
+    );
+
     test('a message the wrist cannot read is refused whole', () async {
       final harness = _Harness();
       final engine = await harness.runningEngine();

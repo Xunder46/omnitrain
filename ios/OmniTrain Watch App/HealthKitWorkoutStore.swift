@@ -64,6 +64,11 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// True while the workout held is one recovered from a previous process (D-9).
     private var recoveredSession = false
 
+    /// Whether the last `begin` failed at the platform (plan 82 D-1). A guard
+    /// that returns early because Health is unavailable or access is off is not
+    /// a failure, so it is set only in the `catch`.
+    var lastBeginFailed = false
+
     /// The one authorization request this process is allowed, from the moment it
     /// starts until the process ends. The prompt is asked for on the first
     /// session that is about to open a workout and never at launch, so a user
@@ -103,6 +108,7 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
     /// outdoor one: a modality that measures distance registers as `.outdoor`,
     /// every other one as before (D-2304).
     func begin(_ activityType: String, outdoors: Bool) async {
+        lastBeginFailed = false
         guard HKHealthStore.isHealthDataAvailable() else { return }
         guard await resolveAuthorization() else { return }
 
@@ -147,6 +153,7 @@ final class HealthKitWorkoutStore: WatchPlatformWorkoutStore {
         } catch {
             // Nothing is left registered: a session that started but whose
             // collection did not is a workout the user cannot see.
+            lastBeginFailed = true
             session?.end()
             session = nil
             builder = nil

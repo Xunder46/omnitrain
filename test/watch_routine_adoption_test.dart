@@ -75,6 +75,12 @@ const String _benchEffortId = 'eff-bench';
 const String _plankEffortId = 'eff-plank';
 const String _benchSlot = 'sx-eff-bench';
 const String _plankSlot = 'sx-eff-plank';
+
+/// The per-session token the wrist appends to its slot ids (plan 81 D-1): the
+/// first 8 characters of the session id.
+const String _token = 'ab12cd34';
+const String _benchTokenedSlot = '$_benchSlot~$_token';
+const String _plankTokenedSlot = '$_plankSlot~$_token';
 const String _sessionId = 's-w1';
 const int _seededAt = 1788000000000;
 
@@ -109,6 +115,17 @@ Map<String, Object?> _bench() =>
 
 Map<String, Object?> _plank() => _slot(
   _plankSlot,
+  'ex-plank',
+  declaredKind: BlockTypes.timed,
+  capabilities: const [ExerciseCapability.hold, ExerciseCapability.time],
+);
+
+/// The same two slots under the tokened ids the wrist sends since plan 81.
+Map<String, Object?> _benchTokened() =>
+    _slot(_benchTokenedSlot, 'ex-bench', declaredKind: BlockTypes.set);
+
+Map<String, Object?> _plankTokened() => _slot(
+  _plankTokenedSlot,
   'ex-plank',
   declaredKind: BlockTypes.timed,
   capabilities: const [ExerciseCapability.hold, ExerciseCapability.time],
@@ -739,6 +756,182 @@ void _adoptionTests({
           'I-3 one slot outside the template means no match at all: not even '
           'the slot the template does hold gets rows',
     );
+  });
+
+  // ── Plan 81: the wrist's slot ids carry a per-session token ──────────────
+
+  test(
+    'S-15006 a tokened ladder adopts as the routine the wrist started',
+    () async {
+      final repository = await open();
+      final phone = await _phone(repository);
+
+      await phone.router.receive(
+        _snapshot(exercises: [_benchTokened(), _plankTokened()]),
+      );
+
+      final session = await repository.getSession(_sessionId);
+      expect(
+        session!.routineTemplateId,
+        _templateId,
+        reason: 'D-4 the token is stripped before the effort id is looked up',
+      );
+      expect(
+        [for (final effort in await _efforts(repository)) effort.id],
+        [_benchTokenedSlot, _plankTokenedSlot],
+        reason:
+            'the ladder is adopted under its own full tokened ids — the keys '
+            'the planned rows are written against',
+      );
+      expect(
+        await _sets(repository, _benchTokenedSlot),
+        [(0, 8, 40.0), (1, 8, 40.0), (2, 6, 42.5)],
+        reason: 'the same planned rows the plain-id case (S-3641) asserts',
+      );
+      expect(
+        [
+          for (final row
+              in await repository.getEffortObservations(_benchTokenedSlot))
+            row.id,
+        ]..sort(),
+        [
+          'obs-$_benchTokenedSlot-0-reps',
+          'obs-$_benchTokenedSlot-0-weight',
+          'obs-$_benchTokenedSlot-1-reps',
+          'obs-$_benchTokenedSlot-1-weight',
+          'obs-$_benchTokenedSlot-2-reps',
+          'obs-$_benchTokenedSlot-2-weight',
+        ],
+        reason:
+            'I-6 the rows are the ones the phone\'s own add writes, under the '
+            'tokened id',
+      );
+      expect(
+        await repository.getEntryRests(_benchTokenedSlot),
+        isEmpty,
+        reason: 'A2 the planned rows are not logged sets: no rest follows one',
+      );
+      expect(
+        await _repsRows(repository, _plankTokenedSlot),
+        isEmpty,
+        reason: 'A4 a timed effort of the same routine gets no planned sets',
+      );
+      expect(phone.failures, isEmpty);
+    },
+  );
+
+  test('S-15006 `sx-` alone is not recognised', () async {
+    final repository = await open();
+    final phone = await _phone(repository);
+
+    await phone.router.receive(
+      _snapshot(
+        exercises: [_slot('sx-', 'ex-bench', declaredKind: BlockTypes.set)],
+      ),
+    );
+
+    await _expectFreeAdoption(repository, slots: const ['sx-']);
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-15006 `sx-~tok` is not recognised', () async {
+    final repository = await open();
+    final phone = await _phone(repository);
+
+    await phone.router.receive(
+      _snapshot(
+        exercises: [
+          _slot('sx-~$_token', 'ex-bench', declaredKind: BlockTypes.set),
+        ],
+      ),
+    );
+
+    await _expectFreeAdoption(repository, slots: ['sx-~$_token']);
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-15006 `~tok` alone is not recognised', () async {
+    final repository = await open();
+    final phone = await _phone(repository);
+
+    await phone.router.receive(
+      _snapshot(
+        exercises: [_slot('~$_token', 'ex-bench', declaredKind: BlockTypes.set)],
+      ),
+    );
+
+    await _expectFreeAdoption(repository, slots: ['~$_token']);
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-15006 an id without the prefix is not recognised', () async {
+    final repository = await open();
+    final phone = await _phone(repository);
+
+    await phone.router.receive(
+      _snapshot(
+        exercises: [
+          _slot(_benchEffortId, 'ex-bench', declaredKind: BlockTypes.set),
+        ],
+      ),
+    );
+
+    await _expectFreeAdoption(repository, slots: [_benchEffortId]);
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-15009 two tildes: the cut is at the last one', () async {
+    final repository = await open();
+    final phone = await _phone(repository);
+
+    await phone.router.receive(
+      _snapshot(
+        exercises: [
+          _slot(
+            '$_benchSlot~x~$_token',
+            'ex-bench',
+            declaredKind: BlockTypes.set,
+          ),
+        ],
+      ),
+    );
+
+    // The cut is at the LAST `~`, so the decoded id is `eff-bench~x`, which no
+    // template holds: a free session. A naive first-`~` split would decode
+    // `eff-bench` and wrongly recognise the ladder as the routine's run.
+    await _expectFreeAdoption(repository, slots: ['$_benchSlot~x~$_token']);
+    expect(phone.failures, isEmpty);
+  });
+
+  test('S-15007 a wrist set lands in a tokened slot\'s effort', () async {
+    final repository = await open();
+    final phone = await _phone(repository);
+
+    await phone.router.receive(
+      _snapshot(exercises: [_benchTokened(), _plankTokened()]),
+    );
+
+    await phone.router.receive(
+      observationsUp(_sessionId, [
+        _set(
+          'sx-set-1',
+          slot: _benchTokenedSlot,
+          exerciseId: 'ex-bench',
+          reps: 9,
+          loadKg: 41,
+          loggedAt: _fillStamp,
+        ),
+      ], messageId: 'msg-fill-1'),
+    );
+
+    expect(
+      await _sets(repository, _benchTokenedSlot),
+      [(0, 9, 41.0), (1, 8, 40.0), (2, 6, 42.5)],
+      reason:
+          'the wrist\'s set merges into the tokened effort and fills planned '
+          'row 0 — the same outcome S-3646 asserts for the plain ids',
+    );
+    expect(phone.failures, isEmpty);
   });
 
   test(

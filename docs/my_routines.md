@@ -134,7 +134,10 @@ The template hierarchy cascades on delete: removing a template removes its segme
 **Throws**: `Exception` if template not found or has no exercises
 
 **A routine started on the wrist opens as that routine too.** The wrist builds
-its slot ids from the phone's own template effort ids (`sx-<effortId>`), so
+its slot ids from the phone's own template effort ids, each ending in the
+per-session token `~<token>` — the first 8 characters of the session's id
+(`sx-<effortId>~<token>`; the phone's routine recogniser cuts the id at the
+last `~` before the lookup, and an id without one decodes as before) — so
 when the phone adopts a wrist session whose every slot names an effort of one
 of its templates, the session carries that template's name, `intent =
 'routine'` and `routineTemplateId`, and each `set` effort starts with the
@@ -146,7 +149,10 @@ template covers adopts as a free session exactly as before. Verified by
 `S-3641 the adopted effort holds the template's planned sets`,
 `S-3642 the phone's current routine is the source of truth`,
 `S-3644a no template covers the ladder: a free session as today`,
-`S-3648 a routine deleted before the snapshot: a free session`); the
+`S-3648 a routine deleted before the snapshot: a free session`;
+the tokened ids, `S-15006 a tokened ladder adopts as the routine the wrist
+started`, `S-15007 a wrist set lands in a tokened slot's effort`,
+`S-15009 two tildes: the cut is at the last one`); the
 adoption itself lives in
 `lib/state/watch/watch_session_adoption_bridge.dart` (`_routineFor`,
 `_createPlannedRows`).

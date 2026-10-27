@@ -188,8 +188,20 @@ private func slotIds(_ session: WatchSessionRecord) -> [String] {
     session.exercises.compactMap { $0["sessionExerciseId"] as? String }
 }
 
-private func routineSlots(_ routine: WatchRoutine) -> [String] {
-    routine.slots.compactMap { $0["sessionExerciseId"] as? String }
+private func routineSlots(_ routine: WatchRoutine, token: String) -> [String] {
+    routine.slots(token: token).compactMap { $0["sessionExerciseId"] as? String }
+}
+
+/// A plain slot id with a session token appended — what the wrist mints once
+/// plan 81's token rule is in force.
+func tokened(_ id: String, token: String) -> String {
+    "\(id)~\(token)"
+}
+
+/// Plain slot ids with a session token appended. `except` names an id that
+/// stays plain: a slot the phone pushed carries the phone's own id.
+func tokened(_ ids: [String], token: String, keepingPlain except: String? = nil) -> [String] {
+    ids.map { $0 == except ? $0 : tokened($0, token: token) }
 }
 
 /// A push at `index`, carrying the contract's own slot so the only thing that
@@ -487,7 +499,12 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(session.currentExerciseIndex, 0)
         XCTAssertEqual(session.exercises.count, expected.count)
         for (slot, expectedSlot) in zip(session.exercises, expected) {
-            XCTAssertEqual(slot["sessionExerciseId"] as? String, expectedSlot["sessionExerciseId"] as? String)
+            // The start mints the token from the id factory: the routines_down
+            // sync took "cat-1", the routine start "cat-2" (plan 81 D-9).
+            XCTAssertEqual(
+                slot["sessionExerciseId"] as? String,
+                (expectedSlot["sessionExerciseId"] as? String).map { tokened($0, token: "cat-2") }
+            )
             XCTAssertEqual(slot["exerciseId"] as? String, expectedSlot["exerciseId"] as? String)
             XCTAssertEqual(slot["name"] as? String, expectedSlot["name"] as? String)
             XCTAssertEqual(slot["capabilities"] as? [String], expectedSlot["capabilities"] as? [String])
@@ -666,7 +683,10 @@ final class WatchSessionStartPathsTests: XCTestCase {
         _ = await harness.paths.startFreeWorkout()
 
         let round = await harness.paths.addExerciseToSession(soccer)
-        XCTAssertEqual(round.exercises.first?["sessionExerciseId"] as? String, picker["slotId"] as? String)
+        XCTAssertEqual(
+            round.exercises.first?["sessionExerciseId"] as? String,
+            (picker["slotId"] as? String).map { tokened($0, token: sessionToken(from: harness.sessionId)) }
+        )
         XCTAssertEqual(
             round.exercises.first?[WatchCatalogExercise.roundDurationKey] as? Int,
             number,
@@ -710,7 +730,8 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(session.exercises.count, 1)
         XCTAssertEqual(
             session.exercises.first?["sessionExerciseId"] as? String,
-            fallback["expectedPickerSlotId"] as? String
+            (fallback["expectedPickerSlotId"] as? String)
+                .map { tokened($0, token: sessionToken(from: harness.sessionId)) }
         )
         XCTAssertEqual(session.exercises.first?["exerciseId"] as? String, bench.exerciseId)
         XCTAssertEqual(harness.surface.effortKind, WatchEffortKind.set)
@@ -862,7 +883,10 @@ final class WatchSessionStartPathsTests: XCTestCase {
         )
         XCTAssertEqual(
             returned.exercises.compactMap { $0["sessionExerciseId"] as? String },
-            expected.compactMap { $0["sessionExerciseId"] as? String },
+            tokened(
+                expected.compactMap { $0["sessionExerciseId"] as? String },
+                token: sessionToken(from: empty.sessionId)
+            ),
             "the ladder is the routine, in template order (S-178)"
         )
         for (slot, expectedSlot) in zip(returned.exercises, expected) {
@@ -1028,10 +1052,20 @@ final class WatchSessionStartPathsTests: XCTestCase {
         let applied = try await harness.receive(try object(push["envelope"]))
         XCTAssertTrue(applied)
 
-        XCTAssertEqual(slotIds(harness.engine.session!), try strings(push["expectedSlotIds"]))
+        // The routine's slots carry the token the start minted from the id
+        // factory ("cat-2": the routines_down sync took "cat-1"); the pushed
+        // slot keeps the phone's own plain id.
+        XCTAssertEqual(
+            slotIds(harness.engine.session!),
+            tokened(
+                try strings(push["expectedSlotIds"]),
+                token: "cat-2",
+                keepingPlain: push["pushedSlotId"] as? String
+            )
+        )
         XCTAssertEqual(
             harness.engine.currentExercise?["sessionExerciseId"] as? String,
-            push["expectedCurrentSlotId"] as? String,
+            (push["expectedCurrentSlotId"] as? String).map { tokened($0, token: "cat-2") },
             "the push is not a request to move the user elsewhere"
         )
         XCTAssertEqual(
@@ -1086,18 +1120,25 @@ final class WatchSessionStartPathsTests: XCTestCase {
 
         _ = await harness.engine.advanceExercise()
         _ = await harness.engine.advanceExercise()
-        XCTAssertEqual(harness.engine.currentExercise?["sessionExerciseId"] as? String, "sx-eff-pullup")
+        XCTAssertEqual(
+            harness.engine.currentExercise?["sessionExerciseId"] as? String,
+            tokened("sx-eff-pullup", token: "cat-2")
+        )
         XCTAssertEqual(harness.engine.session?.currentExerciseIndex, 2)
 
         _ = try await harness.receive(push(at: 0))
 
         XCTAssertEqual(
             slotIds(harness.engine.session!),
-            ["sx-push-front-squat", "sx-eff-bench", "sx-eff-plank", "sx-eff-pullup"]
+            tokened(
+                ["sx-push-front-squat", "sx-eff-bench", "sx-eff-plank", "sx-eff-pullup"],
+                token: "cat-2",
+                keepingPlain: "sx-push-front-squat"
+            )
         )
         XCTAssertEqual(
             harness.engine.currentExercise?["sessionExerciseId"] as? String,
-            "sx-eff-pullup",
+            tokened("sx-eff-pullup", token: "cat-2"),
             "inserting earlier in the ladder must not move the user"
         )
         XCTAssertEqual(
@@ -1154,8 +1195,8 @@ final class WatchSessionStartPathsTests: XCTestCase {
         XCTAssertEqual(harness.paths.routines.count, 1)
         XCTAssertEqual(harness.paths.routines.first?.name, edit["expectedRoutineName"] as? String)
         XCTAssertEqual(
-            harness.paths.routines.first.map(routineSlots),
-            try strings(edit["expectedSlotIds"])
+            harness.paths.routines.first.map { routineSlots($0, token: "testtoken") },
+            tokened(try strings(edit["expectedSlotIds"]), token: "testtoken")
         )
         let payload = try object(try object(edit["routinesDown"])["payload"])
         XCTAssertEqual(

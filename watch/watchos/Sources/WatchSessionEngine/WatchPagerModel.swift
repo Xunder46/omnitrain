@@ -24,6 +24,7 @@ import Foundation
 public enum WatchPagerCopy {
     public static let lockedNotice = "An effort is running"
     public static let noticeSeconds: TimeInterval = 1.5
+    public static let slideSeconds: TimeInterval = 0.2
 }
 
 @MainActor

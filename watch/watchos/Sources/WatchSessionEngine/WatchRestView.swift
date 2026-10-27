@@ -75,6 +75,9 @@ public struct WatchRestView: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                    .accessibilityLabel("Rest time")
+                    .accessibilityValue(WatchSpokenText.duration(seconds: state.restElapsedSeconds() ?? 0))
+                    .accessibilityAddTraits(.updatesFrequently)
                 Spacer(minLength: 0)
                 Text(labels.next)
                     .font(.caption2)
@@ -111,6 +114,7 @@ public struct WatchRestView: View {
             Text("Next").frame(maxWidth: .infinity)
         }
         .watchProminent()
+        .accessibilityHint(state.restLabels.next)
     }
 }
 

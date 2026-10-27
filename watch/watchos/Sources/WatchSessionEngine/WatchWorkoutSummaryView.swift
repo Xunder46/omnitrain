@@ -20,11 +20,18 @@ import SwiftUI
 public struct WatchWorkoutSummaryView: View {
     public let summary: WatchWorkoutSummary
     public let healthOff: Bool
+    public let workoutFailed: Bool
     public let onDone: () -> Void
 
-    public init(summary: WatchWorkoutSummary, healthOff: Bool, onDone: @escaping () -> Void) {
+    public init(
+        summary: WatchWorkoutSummary,
+        healthOff: Bool,
+        workoutFailed: Bool = false,
+        onDone: @escaping () -> Void
+    ) {
         self.summary = summary
         self.healthOff = healthOff
+        self.workoutFailed = workoutFailed
         self.onDone = onDone
     }
 
@@ -34,6 +41,7 @@ public struct WatchWorkoutSummaryView: View {
                 Text(WatchWorkoutSummaryCopy.title)
                     .font(.headline)
                     .multilineTextAlignment(.center)
+                    .accessibilityAddTraits(.isHeader)
                 ForEach(summary.rows, id: \.label) { row in
                     HStack {
                         Text(row.label)
@@ -42,9 +50,10 @@ public struct WatchWorkoutSummaryView: View {
                         Text(row.value)
                             .monospacedDigit()
                     }
+                    .accessibilityElement(children: .combine)
                     .font(.footnote)
                 }
-                if let note = summary.heartRateNote(healthOff: healthOff) {
+                if let note = summary.heartRateNote(healthOff: healthOff, workoutFailed: workoutFailed) {
                     Text(note)
                         .font(.caption2)
                         .foregroundStyle(.secondary)

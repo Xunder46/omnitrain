@@ -160,8 +160,8 @@ final class WatchPagerSourceTests: XCTestCase {
             "plan 52 D-5: the focus names the page the user reached before the engine has moved"
         )
         XCTAssertTrue(
-            source.contains("selection = target"),
-            "the selection moves to the page the user reached"
+            source.contains("withAnimation(Self.slideAnimation) { selection = target }"),
+            "plan 85 D-3: the selection moves to the page the user reached, animated"
         )
         XCTAssertTrue(
             source.contains(".onChange(of: selection)"),

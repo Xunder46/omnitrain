@@ -294,11 +294,15 @@ void main() {
       );
 
       // The yoga routine's slots are what the wrist will log against, and they
-      // carry the routine's declared kind as well as the capabilities.
+      // carry the routine's declared kind as well as the capabilities. The id
+      // shown is the plain base; the session's token is appended at start
+      // (plan 81 D-1).
       final yoga = synced.routines.last;
-      expect(yoga.slots.single['sessionExerciseId'], 'sx-eff-plank');
-      expect(yoga.slots.single['capabilities'], ['hold', 'time', 'sets']);
-      expect(yoga.slots.single['effortKind'], 'timed');
+      expect(yoga.slotsFor('testtoken').single['sessionExerciseId'],
+          'sx-eff-plank~testtoken');
+      expect(yoga.slotsFor('testtoken').single['capabilities'],
+          ['hold', 'time', 'sets']);
+      expect(yoga.slotsFor('testtoken').single['effortKind'], 'timed');
     });
 
     test('S-003 a phone with no routines still answers, with both lists empty',

@@ -14,6 +14,8 @@
 //   S-9207 a `since` the phone cannot read is no `since` → `S-9207 ...`
 //   S-9209 the exercise list stays independent of the bundle → `S-9209 ...`
 //   S-9210 a phone with no foods, then its first food → `S-9210 ...`
+//   S-15203 an emptied food list reaches the wrist → `S-15203 ...`
+//   S-15207 the empty frame is gated by since → `S-15207 ...`
 //   S-9211 two requests interleaved share one stamp → `S-9211 ...`
 //   S-9212 a phone that relaunched re-sends once → `S-9212 ...`
 // (S-9208, the `sinceOf` table, lives in `test/watch_transport_test.dart`.)
@@ -785,20 +787,21 @@ void main() {
   });
 
   group('S-9210 a phone with no foods, then its first food', () {
-    test('S-9210 the bundle is two frames, and the first food changes the '
-        'signature', () async {
+    test('S-9210 the empty phone\'s bundle is three frames with an empty '
+        'middle, and the first food changes the signature', () async {
       await handler.handle(WatchTransportRequest.routines);
 
       expect(
-        transport.types.take(2),
-        ['preferences_down', 'routines_down'],
-        reason: 'S-9210 no foods is no foods frame; the bundle is two frames',
+        transport.types.take(3),
+        _referenceFrames,
+        reason:
+            'S-9210 the empty foods frame travels in the bundle\'s middle '
+            'slot (S-15204)',
       );
-      expect(
-        transport.ofType('foods_down'),
-        isEmpty,
-        reason: 'S-9210 a phone with no foods sends no foods frame',
+      final emptyPayload = asObject(
+        transport.ofType('foods_down').single['payload'],
       );
+      expect(emptyPayload['foods'], isEmpty);
       final oldStamp = sentStamp();
 
       await repository.createFood(
@@ -822,6 +825,104 @@ void main() {
         sentStamp().isAfter(oldStamp),
         isTrue,
         reason: 'S-9210 the bundle with the food is stamped anew',
+      );
+    });
+  });
+
+  group('S-15203, S-15207 an emptied food list reaches the wrist', () {
+    test('S-15203 a phone that had foods and has none now sends the empty '
+        'foods frame in the middle slot', () async {
+      final answer = handlerFor(await libraryWithFoods());
+      await answer.handle(WatchTransportRequest.routines);
+      final oldStamp = sentStamp();
+
+      for (final id in [
+        'food-protein-lamb',
+        'food-veg-broccoli',
+        'food-protein-beef',
+        'food-veg-asparagus',
+      ]) {
+        await repository.removeFood(id);
+      }
+      clock.advance(const Duration(seconds: 7));
+      transport.sent.clear();
+
+      expect(
+        await answer.handle(WatchTransportRequest.routines, since: oldStamp),
+        isTrue,
+      );
+
+      expect(
+        transport.types.take(3),
+        _referenceFrames,
+        reason:
+            'S-15203 the emptied list is a change the wrist must hear about, '
+            'so all three travel',
+      );
+      final payload = asObject(
+        transport.ofType('foods_down').single['payload'],
+      );
+      expect(
+        payload['foods'],
+        isEmpty,
+        reason: 'S-15203 the wrist is told the list is empty, not left with '
+            'the foods the phone removed',
+      );
+      expect(
+        sentStamp().isAfter(oldStamp),
+        isTrue,
+        reason: 'S-15203 the emptied bundle is stamped anew',
+      );
+    });
+
+    test('S-15207 the empty frame is gated by since like its siblings, and a '
+        'null since re-sends it once', () async {
+      final answer = handlerFor(await libraryWithFoods());
+      await answer.handle(WatchTransportRequest.routines);
+      final oldStamp = sentStamp();
+
+      for (final id in [
+        'food-protein-lamb',
+        'food-veg-broccoli',
+        'food-protein-beef',
+        'food-veg-asparagus',
+      ]) {
+        await repository.removeFood(id);
+      }
+      clock.advance(const Duration(seconds: 7));
+      transport.sent.clear();
+      await answer.handle(WatchTransportRequest.routines, since: oldStamp);
+      final stamp = sentStamp();
+
+      transport.sent.clear();
+      clock.advance(const Duration(seconds: 7));
+      expect(
+        await answer.handle(WatchTransportRequest.routines, since: stamp),
+        isTrue,
+      );
+      for (final type in _referenceFrames) {
+        expect(
+          transport.ofType(type),
+          isEmpty,
+          reason: 'S-15207 the wrist holds the current bundle, so $type — '
+              'the empty one included — stays put',
+        );
+      }
+
+      transport.sent.clear();
+      clock.advance(const Duration(seconds: 7));
+      expect(await answer.handle(WatchTransportRequest.routines), isTrue);
+      final foods = transport.ofType('foods_down');
+      expect(
+        foods,
+        hasLength(1),
+        reason: 'S-15207 a wrist that names no since is answered with the '
+            'bundle, the empty frame included',
+      );
+      expect(
+        asObject(foods.single['payload'])['foods'],
+        isEmpty,
+        reason: 'S-15207 the re-sent frame is still the empty one',
       );
     });
   });

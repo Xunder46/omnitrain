@@ -80,6 +80,11 @@ final class WatchAppHost: ObservableObject {
     /// Whether Health access is on, asked when the start screen first shows (plan 59, D-6).
     @Published private(set) var healthAccess = WatchHealthAccess.unknown
 
+    /// Whether the platform workout's last registration failed (plan 82 D-5).
+    /// Set after every `workout.refresh`, so the logging header and the summary
+    /// can say why there is no Health workout.
+    @Published private(set) var workoutOpenFailed = false
+
     /// Whether the last manual Sync ended with no answer from the phone (plan 60, D-4).
     @Published private(set) var syncNoAnswer = false
 
@@ -172,18 +177,26 @@ final class WatchAppHost: ObservableObject {
             location: WatchTrackedLocation(source: CoreLocationRawSource())
         )
         let recorder = WatchSensorRecorder(engine: engine, source: healthStore.sensorSource)
+        // The workout coordinator is built before the logging state (plan 82
+        // D-5): the state's `workoutNotice` closure reads the coordinator, so
+        // the local must exist first.
+        let workout = WatchWorkoutCoordinator(
+            platform: WatchPlatformWorkout(store: healthStore)
+        )
         // The units are read from the phone's preferences at every use, so a
         // sync that changes them reaches the logging screens without a relaunch.
-        let logging = WatchLoggingState(engine: engine, sensors: recorder, unitsSource: { preferences.units })
+        let logging = WatchLoggingState(
+            engine: engine,
+            sensors: recorder,
+            unitsSource: { preferences.units },
+            workoutNotice: { workout.openFailed }
+        )
         let rating = WatchEffortRatingState(
             engine: engine,
             store: store,
             preferences: preferences
         )
         let summary = WatchWorkoutSummaryState(engine: engine)
-        let workout = WatchWorkoutCoordinator(
-            platform: WatchPlatformWorkout(store: healthStore)
-        )
         let sensors = WatchSensorCoordinator(recorder: recorder)
         let restPings = WatchRestPingScheduler(state: logging, interval: { preferences.restPingSeconds }, haptics: WristHaptics())
 
@@ -272,6 +285,7 @@ final class WatchAppHost: ObservableObject {
                     // Plan 61: every rest start, end or interval change passes here; arm re-reads the persisted rest row.
                     self.restPings.arm()
                     await self.workout.refresh(self.engine.session)
+                    self.workoutOpenFailed = workout.openFailed
                     await self.sensors.refresh(self.engine.session)
                 }
             }
@@ -417,7 +431,7 @@ struct ContentView: View {
             if host.rating.isPromptOwed {
                 owedRating
             } else if let pending = host.summary.pending {
-                WatchWorkoutSummaryView(summary: pending, healthOff: host.healthAccess == .off, onDone: { host.summary.dismissPending() })
+                WatchWorkoutSummaryView(summary: pending, healthOff: host.healthAccess == .off, workoutFailed: host.workoutOpenFailed, onDone: { host.summary.dismissPending() })
             } else if host.logging.isResting {
                 // D-161: while a rest runs, the rest surface replaces logging —
                 // an owed rating still wins above, and the rest is ended by

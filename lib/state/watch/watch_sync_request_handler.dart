@@ -58,6 +58,10 @@ class WatchSyncRequestHandler {
   final FoodLibraryState _foodLibrary;
   final DateTime Function() _clock;
 
+  /// Whether the last [_reloadFoods] read both the groups and the foods from
+  /// storage. Only a read that succeeded may say "no foods" (D-4).
+  bool _foodsReadOk = false;
+
   /// The reference bundle the phone last saw, as the text of its preferences
   /// and of its routines and foods, the stamp the three frames carry, and the
   /// repository revision the routines and foods were read at (null when the
@@ -95,9 +99,10 @@ class WatchSyncRequestHandler {
   }
 
   /// The answer to the wrist's "sync routines": the three reference frames —
-  /// the preferences, then the foods (when the phone has any), then the
-  /// routines — sent together, stamped alike, and only when the wrist's
-  /// `since` is older than the bundle's stamp. The routines frame is the
+  /// the preferences, then the foods (an empty `foods_down` when the phone
+  /// holds none and could read them), then the routines — sent together,
+  /// stamped alike, and only when the wrist's `since` is older than the
+  /// bundle's stamp. The routines frame is the
   /// bundle's commit marker: it goes last, and only after the preferences and
   /// the foods were carried, so a wrist that names a stamp holds everything
   /// up to it (plan 62, D-4).
@@ -219,20 +224,25 @@ class WatchSyncRequestHandler {
   }
 
   /// Reloads the food groups and foods from storage; false when a read threw
-  /// (the cache as it stands is what the wrist then gets, as before).
+  /// (the cache as it stands is what the wrist then gets, as before). The
+  /// outcome is remembered: an empty cache is only "no foods" when this read
+  /// succeeded (D-4).
   Future<bool> _reloadFoods() async {
     try {
       await _foodLibrary.loadFoodGroups(includeArchived: true);
       await _foodLibrary.loadFoods();
+      _foodsReadOk = true;
       return true;
     } catch (_) {
       // Deliberately swallowed — a failed read is no reason to withhold the rest.
+      _foodsReadOk = false;
       return false;
     }
   }
 
-  /// The three reference frames, stamped [at]; the foods frame is null for a
-  /// phone with no foods.
+  /// The three reference frames, stamped [at]; the foods frame is an empty
+  /// `foods_down` when the last read succeeded and found no foods, and null
+  /// when the phone could not read its foods (D-4).
   Future<
     ({Map<String, Object?> preferences, Map<String, Object?> routines, Map<String, Object?>? foods})
   >
@@ -259,13 +269,25 @@ class WatchSyncRequestHandler {
         generatedAt: at,
       );
 
-  Map<String, Object?>? _foodsFrame(DateTime at) => _foodLibrary.foods.isEmpty
-      ? null
-      : WatchReferenceSync.buildFoodsDown(
-          foods: _foodLibrary.foods,
-          groups: _foodLibrary.foodGroups,
-          generatedAt: at,
-        );
+  Map<String, Object?>? _foodsFrame(DateTime at) {
+    // The non-empty cache is answered first: a failed GROUP read must still
+    // send the foods it holds (S-8316).
+    if (_foodLibrary.foods.isNotEmpty) {
+      return WatchReferenceSync.buildFoodsDown(
+        foods: _foodLibrary.foods,
+        groups: _foodLibrary.foodGroups,
+        generatedAt: at,
+      );
+    }
+    // Never say "no foods" from a cache the phone could not read: a foods-read
+    // throw empties the cache before rethrowing (D-4).
+    if (!_foodsReadOk) return null;
+    return WatchReferenceSync.buildFoodsDown(
+      foods: const [],
+      groups: const [],
+      generatedAt: at,
+    );
+  }
 
   /// The answer to the wrist's "give me your session".
   ///

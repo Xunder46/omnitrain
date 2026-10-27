@@ -721,6 +721,56 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     `WatchRatingSkipTests.swift` S-9610..S-9613 hold the summary, the skip and
     the relaunch off-device; the root view order is pinned by
     `WatchWorkoutSummaryWiringSourceTests`, S-9620).
+29. **Swiping between exercises slides the next one in — (owner).** Open a
+    session with three exercises on the wrist and swipe left, right, left,
+    right: the next exercise's logger slides in from the side you swiped from
+    in about 0.2 s, no name-only card shows at any moment, and the first and
+    last exercise do not move past their ends. Log a set right after a swipe:
+    it lands on the exercise now shown. With Reduce Motion on the slide
+    becomes a fade
+    (`WatchPagerSlideSourceTests.swift` S-15401..S-15403, S-15408; the
+    one-logger shape and the drag are pinned by
+    `WatchPagerSourceTests.testS9111ThePagerIsOneLoggerWithASwipe` and
+    `WatchPagerFocusTests.testS7913ThePagerViewWiresTheFocusThroughTheSwipe`).
+30. **Countdown ends feel different, and Finish taps once — (owner).** With a
+    round, a hold and a timed effort in one session, let each countdown end:
+    the round end, the hold end and the timed-target end each feel different
+    (round keeps the old alert, hold plays the stop pattern, the timed target
+    plays the retry pattern). Then End Session: confirming **Finish** plays
+    one success tap, **Cancel** plays none
+    (`WatchTimerCueTests.swift` S-15105..S-15107). The "Health workout didn't
+    start" header line and the summary's "No heart rate, the Health workout
+    did not start" line cannot be triggered on purpose — the platform refusing
+    to open the workout is not reproducible by hand — they are test-covered
+    (`WatchOpenFailureTests.swift` S-15101, S-15102;
+    `WatchSensorAccessNoticeTests.swift` S-15103, S-15104;
+    `WatchWorkoutSummaryWiringSourceTests.swift` S-15108).
+31. **Two wrist workouts of the same exercise keep their sets apart —
+    (owner).** Start a Free workout with Brisk Walk on the wrist, log one set,
+    End. Start it again, log one set. The phone shows 1 set in the second
+    workout, and the first workout keeps its own set
+    (`test/watch_second_session_same_exercise_repro_test.dart`,
+    `S-15001 two wrist workouts of one exercise keep their efforts apart`;
+    the per-session token in the slot ids is pinned by
+    `WatchSlotTokenTests.swift` S-15002, S-15003). A workout started before
+    this fix keeps its old shape: history is not repaired.
+32. **An emptied Foods I Eat reaches the wrist — (owner).** On the phone,
+    remove every food from Foods I Eat, then raise the wrist and open its
+    food list: it is empty, with the line "No foods yet. On your phone, open
+    Nutrition and tap Choose foods."
+    (`test/watch_nutrition_quick_log_test.dart`,
+    `S-15209 an empty foods_down empties the list, and an older one does not`;
+    the phone side, `test/watch_sync_request_handler_test.dart`,
+    `S-7104 (S-15204) a phone with no foods sends an empty foods frame and
+    still sends the rest`, and
+    `WatchNutritionFreshnessTests.swift` S-15208).
+33. **VoiceOver on the wrist (optional) — (owner).** With VoiceOver on, the
+    rest clock reads "Rest time" with the spoken value and the Next button
+    carries the "Next: …" line as its hint; menu rows and summary rows read
+    as one element each, the rating buttons read "Rating 3 of 5" and Confirm
+    says "Saves your rating"
+    (`WatchAccessibilitySourceTests.swift` S-15303..S-15307;
+    `WatchSpokenTextTests.swift` S-15301, S-15302, S-15309).
 
 ### The wrist's own logging (PR 2b)
 

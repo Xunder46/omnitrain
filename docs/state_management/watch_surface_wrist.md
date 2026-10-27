@@ -479,6 +479,17 @@ wait for the phone
 (`WatchSensorCoordinatorTests.testS3108TheLiveLabelShowsTheNewestBeat`,
 `WatchSensorRecordingTests.testS3109ATheLabelFollowsEveryBeat`).
 
+**A Health workout that did not open is said, once.** When Health access is on
+but the platform refuses to open the workout, the logging header's notice
+lines lead with "Health workout didn't start" (no retry), and the summary says
+"No heart rate, the Health workout did not start" when that is why there is no
+average — the access-off wording wins and is unchanged. The flag is
+`WatchPlatformWorkout.openFailed` (copied from the store's `lastBeginFailed`;
+reset by the next `start`, left set by `end`). Verified by
+`WatchOpenFailureTests.swift` (S-15101, S-15102),
+`WatchSensorAccessNoticeTests.swift` (S-15103, S-15104),
+`WatchWorkoutSummaryWiringSourceTests.swift` (S-15108).
+
 Before Start, a period (sports) shows a length row with minus and plus, opening
 at the phone's number or 3:00 with none; the length cannot change once the period
 runs, and the chosen length carries to the next period of the same exercise
@@ -560,7 +571,24 @@ on a timed effort (starting is not logging), play nothing. Verified by
 `…testS7803LogPlaysTheTap`, `…testS7804ARefusedLogPlaysNothing` and the source
 guard `…testS7805TheSurfacesPlayTheTapsAndNameTheListButton`, which also holds
 that both toolbar list buttons (logging and rest screens) carry
-`.accessibilityLabel("Exercises")`.
+`.accessibilityLabel("Exercises")`. Since plan 82 a countdown's end is felt by
+its kind: a round end keeps `.notification`, a hold end plays `.stop`, a
+timed-target end plays `.retry` (`WatchTimerHaptics.cue(for:)` maps the kind
+to a `WatchHapticCue`, `WristHaptics.play` switches on it), and confirming
+Finish in the menu plays one `.success` tap before `finish()`, Cancel none
+(`WatchTimerCueTests.swift` S-15105, S-15106, S-15107). The Wear OS twin keeps
+one tap.
+
+**The wrist's surfaces speak to VoiceOver.** The rest clock reads "Rest time"
+with a spoken value ("2 minutes 5 seconds", via `WatchSpokenText.duration`)
+and is marked as updating frequently; the rest Next button carries the
+"Next: …" line as its hint; menu rows read name and count as one element,
+summary rows label and value as one element with the title a header; the
+rating buttons read "Rating 3 of 5" (the selected one marked selected), the
+Crown view reads the current choice or "No rating", Confirm carries the hint
+"Saves your rating". Dynamic Type is untouched. Verified by
+`WatchAccessibilitySourceTests.swift` (S-15303..S-15307) and
+`WatchSpokenTextTests.swift` (S-15301, S-15302, S-15309).
 
 Both wrist clients tap at each multiple of the interval the phone sent in
 `preferences_down` (`restPingSeconds`) — one Rest Ping setting, silent, and no
@@ -714,76 +742,4 @@ the stored first value shows again until the next Sync re-states it (D-50,
 
 ## The logging screen pages the session's exercises
 
-**Files**: `watch/watchos/Sources/WatchSessionEngine/WatchPagerModel.swift`,
-`.../WatchLoggingPagerView.swift`; the shell mount is
-`ios/OmniTrain Watch App/ContentView.swift` (`loggingSurface`).
-
-**The pager is a rule over the menu, not a second way to move the session.**
-`WatchPagerModel` is a `@MainActor` model over one `WatchMenuState`, with one
-construction site (`menuState`) read by both the pager and the menu sheet. Every
-access constructs a plain wrapper over the same engine, paths and rating, so the
-instances are equivalent; a settled swipe is the menu's own select path,
-`jump(to:)`, and nothing else writes the session. The rows, the position and the
-counter are read from the menu on every access, never cached, so a frame that
-lands while the pager is open is already the page the user sees. Verified by
-`WatchPagerModelTests.swift` (`testS6601TheModelReadsTheLadderAndThePositionOnEveryAccess`,
-`…testS6607APhoneSideAdvanceIsVisibleOnTheNextRead`).
-
-**The session moves only when the swipe has settled.** `WatchPagerModel.land(on:)`
-makes one select per settled page — one `exercise_advanced` lifecycle frame, the
-existing emission — and a page that is already current settles true without
-selecting anything. A page outside the rows, including one the phone removed
-between the swipe and the settle, changes nothing and is not a locked swipe.
-Verified by `…testS6602ASettledPageMovesTheSessionOnceAndEmitsOneFrame`,
-`…testS6602TheSameIndexArmSelectsNothing`,
-`…testS6604APageOutsideTheRowsChangesNothing` and
-`…testS6608SettlingOnAPageThePhoneRemovedChangesNothing`. (The method is
-`land`, not `settle`: the module's S-004 source guard bans new names that start
-with `set`.)
-
-**While an effort clock runs there is no pager.** `showsPager` is false, the
-view renders one page with no swipe paging, and a mostly-horizontal swipe over
-the drag minimum plays the failure haptic and raises the one-line notice
-`WatchPagerCopy.lockedNotice` — the menu's own lock words — for
-`WatchPagerCopy.noticeSeconds`; a running rest is not a lock and the pager
-stays free. Verified by `…testS6603ASwipeDuringAWorkClockIsRefusedAndRaisesTheNotice`,
-`…testS6605ARunningRestLeavesThePagerFree` and
-`…testS6606ThePagerShowsOnlyForSeveralExercisesAndAnUnlockedMenu`, which also
-holds that a session with one exercise shows no pager and no counter at all
-(`pageLabel` nil).
-
-**The view is the shape around that model, and the desktop toolchain holds only
-its outline.** `WatchLoggingPagerView` (watchOS-only) mounts ONE
-`WatchLoggingView` for the shown exercise — its n/m counter sits beside the
-exercise name (`WatchLoggingView(pageLabel:)`) — rebuilt per exercise through
-`.id(<shown slot id>)`, so no tile or Crown state of one exercise leaks into
-the next. There is no page-turn and no name-only card at any moment: a
-mostly-horizontal drag longer than 24 points on the shown logger asks
-`WatchPagerModel.neighbourIndex(of:towardsNext:)` for the neighbouring page
-(a finger moving left goes to the NEXT exercise, right to the previous; no
-wrap; nil when the pager is not shown), plays `.click`, sets
-`state.focusSlotId = pager.focusSlotId(for: target)` and then moves the
-selection; `.onChange(of: selection)` calls `land(on:)` unchanged, so the
-logging surface shows the exercise the user swiped to before the engine has
-moved. `land(on:)` clears the
-focus whether it moved or was refused (also on its early return, and
-`followEngine()` clears a focus left over when no landing is in flight), and the
-next settled swipe names its own focus again. While the focus is ahead of the
-engine, `startWork()` is refused, so a clock is never started against an
-exercise the engine has not reached and a refused landing cannot strand one
-(`WatchPagerFocusTests` S-7915, S-7916). The shell's `loggingSurface` mounts the pager and not the bare
-logging view, and the pager binds no Crown and takes no
-`.focusable` focus — the Crown stays on `WatchLoggingView`, stepping the
-outlined value, and never changes exercise. Verified by
-`WatchPagerSourceTests.swift`
-(`testS6610TheLoggingSurfaceMountsThePagerAndNotTheBareView`,
-`…testS6611ThePagerIsNoTabViewAndStillAnswersADragWhenLocked`,
-`…testS9111ThePagerIsOneLoggerWithASwipe`,
-`…testS6612ThePagerTakesNoCrownAndNoFocus`) and `WatchPagerFocusTests.swift`
-(`testS7913ThePagerViewWiresTheFocusThroughTheSwipe`, S-7911, S-7912, S-7914:
-the focus shows the focused exercise and logs against it, the
-pager names a focus only for another live page and none for a locked session,
-and a slot with no id of its own reached
-through the id its exercise derives). The rest screen replaces the
-logging screen as before, so there is no paging in rest; the phone screen does
-not follow a wrist swipe (owner decision O-5).
+The swipe between exercises (one logger, the slide-in from the swiped side, no name card, the lock while an effort clock runs) is described on its own page: [The Watch Surface — the Wrist's Exercise Pager](watch_surface_wrist_pager.md).

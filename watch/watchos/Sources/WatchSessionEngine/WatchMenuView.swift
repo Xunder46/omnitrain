@@ -40,6 +40,11 @@ public struct WatchMenuView: View {
     /// The wrist's "N entries waiting for your phone" line, or nil (plan 51d).
     private let syncNotice: String?
 
+    /// The wrist's haptics, handed over or defaulted to the device: the Finish
+    /// tap confirms the choice before the rating prompt takes the screen
+    /// (plan 82 D-8).
+    private let haptics: WatchHaptics
+
     /// The screen's title, and the fixed copy of its one action row (D-1114).
     public static let title = "Exercises"
     public static let finishLabel = WatchMenuCopy.finishLabel
@@ -66,6 +71,7 @@ public struct WatchMenuView: View {
         revision: Int = 0,
         nutritionModel: WatchNutritionModel? = nil,
         syncNotice: String? = nil,
+        haptics: WatchHaptics = WristHaptics(),
         onClose: @escaping () -> Void,
         onFinish: @escaping () -> Void
     ) {
@@ -73,6 +79,7 @@ public struct WatchMenuView: View {
         self.revision = revision
         self.nutritionModel = nutritionModel
         self.syncNotice = syncNotice
+        self.haptics = haptics
         self.onClose = onClose
         self.onFinish = onFinish
     }
@@ -161,6 +168,8 @@ public struct WatchMenuView: View {
         // the title's own edge.
         .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // VoiceOver reads the row as one element: "name, count" (plan 84, D-3).
+        .accessibilityElement(children: .combine)
     }
 
     /// The Add Exercise row: it opens the wrist's own list, and it sits below
@@ -209,6 +218,7 @@ public struct WatchMenuView: View {
             Button(WatchMenuCopy.confirmCancel, role: .cancel) {}
             Button(WatchMenuCopy.confirmFinish) {
                 Task {
+                    haptics.playFinished()
                     await state.finish()
                     onFinish()
                 }

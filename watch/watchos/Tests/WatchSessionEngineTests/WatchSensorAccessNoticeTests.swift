@@ -16,6 +16,8 @@
 //    S-8905 the distance notice follows the current exercise → `testS8905...`
 //    S-8906 no sensors, or an unavailable permission, says nothing → `testS8906...`
 //    S-8907 WatchHealthAccess.answer and the Start line's copy → `testS8907...`
+//    S-15103 the workout-start failure notice (plan 82, D-5) → `testS15103...`
+//    S-15104 the summary's line when the workout did not start (plan 82, D-6) → `testS15104...`
 //
 
 import XCTest
@@ -280,6 +282,107 @@ final class WatchSensorAccessNoticeTests: XCTestCase {
         XCTAssertEqual(
             WatchHealthAccessCopy.offLine,
             "Health access is off. Turn it on in Health on your iPhone."
+        )
+    }
+
+    // MARK: - S-15103 the workout-start failure is a notice line of its own
+
+    func testS15103AWorkoutFailureWithNoSensorsStillReadsTheNoticeLine() {
+        let surface = WatchLoggingState(
+            engine: harness.newEngine(),
+            clock: harness.clock.call,
+            workoutNotice: { true }
+        )
+
+        XCTAssertEqual(
+            surface.sensorNotices,
+            [WatchSensorNoticeCopy.noWorkout],
+            "S-15103 the workout-start failure is said even while no recorder is attached"
+        )
+    }
+
+    func testS15103NoWorkoutFailureReadsNothing() {
+        let surface = WatchLoggingState(
+            engine: harness.newEngine(),
+            clock: harness.clock.call,
+            workoutNotice: { false }
+        )
+
+        XCTAssertEqual(surface.sensorNotices, [], "S-15103 no failure adds no line")
+    }
+
+    func testS15103TheWorkoutNoticeTextIsExact() {
+        XCTAssertEqual(WatchSensorNoticeCopy.noWorkout, "Health workout didn't start")
+    }
+
+    func testS15103TheWorkoutFailureLeadsTheLocationLine() async throws {
+        let engine = await harness.runningEngine()
+        let live = await session(engine, modality: "cardio_endurance", exercises: [runSlot("sx-1")])
+        let recorder = makeRecorder(for: engine)
+
+        source.locationGrant = .denied
+        await recorder.start(live)
+        let surface = WatchLoggingState(
+            engine: engine,
+            clock: harness.clock.call,
+            sensors: recorder,
+            workoutNotice: { true }
+        )
+
+        XCTAssertEqual(
+            surface.sensorNotices,
+            [WatchSensorNoticeCopy.noWorkout, WatchSensorNoticeCopy.noDistance],
+            "S-15103 the workout line comes first, the distance line after it"
+        )
+    }
+
+    // MARK: - S-15104 the summary's line when the workout did not start
+
+    private func summary(averageBpm: Int?) -> WatchWorkoutSummary {
+        WatchWorkoutSummary(
+            sessionId: "s-1",
+            startedAt: harness.clock.call(),
+            endedAt: harness.clock.call().addingTimeInterval(600),
+            effortCount: 3,
+            allSets: true,
+            averageBpm: averageBpm
+        )
+    }
+
+    func testS15104HealthOffWinsOverTheWorkoutFailure() {
+        XCTAssertEqual(
+            summary(averageBpm: nil).heartRateNote(healthOff: true, workoutFailed: true),
+            WatchSensorNoticeCopy.noHeartRate,
+            "S-15104 with access off the line is the access line, whatever the workout did"
+        )
+    }
+
+    func testS15104NoAverageAndAFailedWorkoutReadsTheWorkoutLine() {
+        XCTAssertEqual(
+            summary(averageBpm: nil).heartRateNote(healthOff: false, workoutFailed: true),
+            WatchSensorNoticeCopy.noHeartRateNoWorkout,
+            "S-15104 the wearer stops learning why no heart rate is on the summary"
+        )
+    }
+
+    func testS15104AnAverageAndAFailedWorkoutReadNothing() {
+        XCTAssertNil(
+            summary(averageBpm: 137).heartRateNote(healthOff: false, workoutFailed: true),
+            "S-15104 the wearer with a recorded average is told there was none"
+        )
+    }
+
+    func testS15104NoAverageAndNoFailureReadsNothing() {
+        XCTAssertNil(
+            summary(averageBpm: nil).heartRateNote(healthOff: false, workoutFailed: false),
+            "S-15104 access allowed and the workout started: no line explains anything"
+        )
+    }
+
+    func testS15104TheWorkoutSummaryLineTextIsExact() {
+        XCTAssertEqual(
+            WatchSensorNoticeCopy.noHeartRateNoWorkout,
+            "No heart rate, the Health workout did not start"
         )
     }
 }

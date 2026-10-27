@@ -253,4 +253,14 @@ public protocol WatchHaptics {
 
     /// Next on the rest screen, back to logging: one light directional tap.
     func playNext()
+
+    /// The session's Finish tap: one tap confirming the choice before the
+    /// rating prompt takes the screen (plan 82 D-8).
+    func playFinished()
+}
+
+extension WatchHaptics {
+    /// A conformer with no device to tap on does nothing, so a fake in the
+    /// tests compiles without a witness (plan 82 S-15109).
+    public func playFinished() {}
 }

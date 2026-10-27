@@ -17,7 +17,8 @@
 //   S-7101 preferences, foods, routines, then the batches → `S-7101 ...`
 //   S-7102 the food list's order and values, and it validates → `S-7102 ...`
 //   S-7103 the version early return does not skip the foods → `S-7103 ...`
-//   S-7104 a phone with no foods sends no foods frame → `S-7104 ...`
+//   S-7104 a phone with no foods sends an empty foods frame (S-15204)
+//          → `S-7104 ...`
 //   S-7105 an undelivered foods frame does not stop the batches → `S-7105 ...`
 //
 // Plan: `docs/plans/2026-10-22-53-watch-food-screen-and-fresh-foods-plan/`
@@ -274,16 +275,17 @@ void main() {
 
         expect(
           transport.types,
-          ['preferences_down', 'routines_down'],
+          ['preferences_down', 'foods_down', 'routines_down'],
           reason:
-              'S-3850 the wrist holds the list, so the preferences and the '
-              'routines travel and no exercise batch does',
+              'S-3850 the wrist holds the list, so the preferences, the '
+              'foods and the routines travel and no exercise batch does '
+              '(S-15204: the foods frame is the empty one)',
         );
       },
     );
 
-    test('S-3857 a phone with no capable exercise sends preferences and '
-        'routines and no batch', () async {
+    test('S-3857 a phone with no capable exercise sends preferences, foods '
+        'and routines and no batch', () async {
       repository.clear();
       await repository.createExercise(
         Exercise(
@@ -299,10 +301,11 @@ void main() {
 
       expect(
         transport.types,
-        ['preferences_down', 'routines_down'],
+        ['preferences_down', 'foods_down', 'routines_down'],
         reason:
             'S-3857 no exercise the wrist could log is no list to send, so '
-            'the wrist keeps the list it holds (D-3831)',
+            'the wrist keeps the list it holds (D-3831); the empty foods '
+            'frame still travels (S-15204)',
       );
     });
 
@@ -311,9 +314,11 @@ void main() {
       expect(await handler.handle(WatchTransportRequest.routines), isTrue);
 
       expect(
-        transport.types.take(2),
-        ['preferences_down', 'routines_down'],
-        reason: 'S-253 the preferences lead, and the routines follow them',
+        transport.types.take(3),
+        ['preferences_down', 'foods_down', 'routines_down'],
+        reason:
+            'S-253 the preferences lead, the foods follow them (empty on a '
+            'phone with none, S-15204), and the routines close the bundle',
       );
       expect(
         transport.batchIndices,
@@ -323,7 +328,7 @@ void main() {
             'sent one at a time in index order',
       );
       expect(
-        transport.types.skip(2),
+        transport.types.skip(3),
         everyElement('exercises_down'),
         reason: 'S-3851 nothing but the exercise list follows the routines',
       );
@@ -565,19 +570,30 @@ void main() {
       );
     });
 
-    test('S-7104 a phone with no foods sends no foods frame and still sends '
-        'the rest', () async {
+    test('S-7104 (S-15204) a phone with no foods sends an empty foods frame '
+        'and still sends the rest', () async {
       expect(await handler.handle(WatchTransportRequest.routines), isTrue);
 
+      final foods = transport.ofType('foods_down');
       expect(
-        transport.ofType('foods_down'),
+        foods,
+        hasLength(1),
+        reason:
+            'S-15204 a readable, empty library is a message: the wrist is '
+            'told the list is empty (D-4)',
+      );
+      final payload = asObject(foods.single['payload']);
+      expect(payload['foods'], isEmpty);
+      expect(payload['categories'], isEmpty);
+      expect(
+        loadProtocolValidator().validateEnvelope(foods.single),
         isEmpty,
-        reason: 'S-7104 an empty food list is not a message to send (D-2)',
+        reason: 'S-15204 the empty frame is one the protocol schema admits',
       );
       expect(
-        transport.types.take(2),
-        ['preferences_down', 'routines_down'],
-        reason: 'S-7104 the rest of the answer still travels',
+        transport.types.take(3),
+        ['preferences_down', 'foods_down', 'routines_down'],
+        reason: 'S-15204 the empty frame travels in the bundle\'s middle slot',
       );
       expect(
         transport.batchIndices,

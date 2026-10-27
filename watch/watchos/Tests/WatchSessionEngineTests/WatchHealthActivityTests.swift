@@ -282,7 +282,7 @@ final class WatchHealthActivityTests: XCTestCase {
         ]
         let effort = try WatchRoutineEffort(json: json)
         XCTAssertEqual(effort.healthActivity, "cycling")
-        XCTAssertEqual(effort.slot["healthActivity"] as? String, "cycling")
+        XCTAssertEqual(effort.slot(token: "testtoken")["healthActivity"] as? String, "cycling")
         XCTAssertEqual(
             try WatchRoutineEffort(json: effort.toJson()).healthActivity,
             "cycling",
@@ -301,7 +301,7 @@ final class WatchHealthActivityTests: XCTestCase {
         let effort = try WatchRoutineEffort(json: json)
         XCTAssertNil(effort.healthActivity)
         XCTAssertFalse(
-            effort.slot.keys.contains(WatchCatalogExercise.healthActivityKey),
+            effort.slot(token: "testtoken").keys.contains(WatchCatalogExercise.healthActivityKey),
             "an absent key stays absent in the slot"
         )
         XCTAssertFalse(
@@ -330,7 +330,7 @@ final class WatchHealthActivityTests: XCTestCase {
             ]
         )
         XCTAssertEqual(
-            WatchActivityTypes.forExercises([rideEffort.slot, benchEffort.slot])?.watchOs,
+            WatchActivityTypes.forExercises([rideEffort.slot(token: "testtoken"), benchEffort.slot(token: "testtoken")])?.watchOs,
             "cycling"
         )
     }
@@ -356,7 +356,7 @@ final class WatchHealthActivityTests: XCTestCase {
             ]
         )
         XCTAssertEqual(
-            WatchActivityTypes.forExercises([benchEffort.slot, rideEffort.slot])?.watchOs,
+            WatchActivityTypes.forExercises([benchEffort.slot(token: "testtoken"), rideEffort.slot(token: "testtoken")])?.watchOs,
             "traditionalStrengthTraining"
         )
     }

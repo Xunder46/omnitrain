@@ -340,8 +340,8 @@ final class WatchPagerFocusTests: XCTestCase {
             "S-9112 the swipe names the focus synchronously"
         )
         let selection = try XCTUnwrap(
-            source.range(of: "selection = target"),
-            "S-9112 the selection moves to the page the user reached"
+            source.range(of: "withAnimation(Self.slideAnimation) { selection = target }"),
+            "S-9112 the selection moves to the page the user reached, animated (plan 85 D-3)"
         )
         XCTAssertLessThan(
             focus.lowerBound, selection.lowerBound,

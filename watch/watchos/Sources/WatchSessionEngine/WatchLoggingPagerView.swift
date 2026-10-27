@@ -36,6 +36,18 @@ public struct WatchLoggingPagerView: View {
     @State private var selection = 0
     @State private var landing = false
 
+    /// The side the next logger enters from, written in the swipe's `onEnded`
+    /// before the animated change (plan 85 D-2): a finger moving left takes the
+    /// next exercise, which slides in from the trailing edge.
+    @State private var slideFromTrailing = true
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The swipe's slide. The number lives in `WatchPagerCopy` so the desktop
+    /// tests can hold it; `Animation` needs SwiftUI, so the animation itself is
+    /// built here (plan 85 D-3, D-7).
+    private static let slideAnimation = Animation.easeOut(duration: WatchPagerCopy.slideSeconds)
+
     public init(
         menu: WatchMenuState,
         state: WatchLoggingState,
@@ -65,16 +77,27 @@ public struct WatchLoggingPagerView: View {
     }
 
     /// The shown exercise's logger, rebuilt per exercise. A horizontal swipe
-    /// moves to the neighbouring exercise at once: the focus names the page the
-    /// user reached before the engine has moved (plan 52 D-5), and `land(on:)`
-    /// moves the engine behind it. No page-turn, so no name card in between.
+    /// moves to the neighbouring exercise: the focus names the page the user
+    /// reached before the engine has moved (plan 52 D-5), and `land(on:)` moves
+    /// the engine behind it. No page-turn, so no name card in between; the
+    /// logger the swipe reaches slides in from the swiped side (plan 85 D-1,
+    /// D-2), and only the user's own swipe is animated (D-3).
     private var paged: some View {
-        WatchLoggingView(
-            state: state,
-            onLogged: onSurfaceChange,
-            pageLabel: "\(selection + 1)/\(pager.pageCount)"
-        )
-        .id(pager.rows.indices.contains(selection) ? pager.rows[selection].slotId : "")
+        ZStack {
+            WatchLoggingView(
+                state: state,
+                onLogged: onSurfaceChange,
+                pageLabel: "\(selection + 1)/\(pager.pageCount)"
+            )
+            .id(pager.rows.indices.contains(selection) ? pager.rows[selection].slotId : "")
+            .transition(.asymmetric(insertion:
+                reduceMotion
+                    ? .opacity
+                    : .move(edge: slideFromTrailing ? .trailing : .leading)
+                        .combined(with: .opacity),
+                removal: .identity))
+        }
+        .clipped()
         .simultaneousGesture(
             DragGesture(minimumDistance: 24).onEnded { value in
                 let across = value.translation.width
@@ -83,7 +106,8 @@ public struct WatchLoggingPagerView: View {
                 else { return }
                 WKInterfaceDevice.current().play(.click)
                 state.focusSlotId = pager.focusSlotId(for: target)
-                selection = target
+                slideFromTrailing = across < 0
+                withAnimation(Self.slideAnimation) { selection = target }
             }
         )
         .onChange(of: selection) { newValue in land(on: newValue) }

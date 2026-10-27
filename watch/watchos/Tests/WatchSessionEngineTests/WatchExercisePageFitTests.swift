@@ -296,7 +296,15 @@ final class WatchExercisePageFitTests: XCTestCase {
             "S-10006 the init no longer stores the access state, so the view always reads a default"
         )
         XCTAssertTrue(
-            view.contains("summary.heartRateNote(healthOff: healthOff)"),
+            view.contains("public let workoutFailed: Bool"),
+            "S-10006 the summary view is never told whether the workout failed to start, so the line cannot be conditional"
+        )
+        XCTAssertTrue(
+            view.contains("self.workoutFailed = workoutFailed"),
+            "S-10006 the init no longer stores the workout failure, so the view always reads a default"
+        )
+        XCTAssertTrue(
+            view.contains("summary.heartRateNote(healthOff: healthOff, workoutFailed: workoutFailed)"),
             "S-10006 the view never asks the summary for the line, so it never shows"
         )
         XCTAssertTrue(

@@ -55,7 +55,7 @@ final class WatchWorkoutSummaryWiringSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             content.contains(
-                "WatchWorkoutSummaryView(summary: pending, healthOff: host.healthAccess == .off, onDone: { host.summary.dismissPending() })"
+                "WatchWorkoutSummaryView(summary: pending, healthOff: host.healthAccess == .off, workoutFailed: host.workoutOpenFailed, onDone: { host.summary.dismissPending() })"
             ),
             "S-9620 the wearer stops seeing Done take the summary away and return to the start screen"
         )
@@ -129,6 +129,51 @@ final class WatchWorkoutSummaryWiringSourceTests: XCTestCase {
         XCTAssertTrue(
             view.contains("Button(WatchWorkoutSummaryCopy.done, action: onDone)"),
             "S-9620 the wearer stops seeing the Done button that leaves the summary"
+        )
+    }
+
+    // MARK: - S-15108: the shell wires the workout-start failure through
+
+    func testS15108TheShellWiresTheWorkoutStartFailureThrough() throws {
+        let content = try appSource("ContentView.swift")
+
+        let refresh = try XCTUnwrap(
+            content.range(of: "await self.workout.refresh(self.engine.session)"),
+            "S-15108 the shell never refreshes the workout, so a failed begin is never seen"
+        )
+        let failed = try XCTUnwrap(
+            content.range(of: "self.workoutOpenFailed = workout.openFailed"),
+            "S-15108 the shell never reads the failure, so no surface can say it"
+        )
+        XCTAssertGreaterThan(
+            failed.lowerBound, refresh.lowerBound,
+            "S-15108 the failure must be read after the refresh that learns it"
+        )
+        let summaryCall = try XCTUnwrap(
+            content.range(of: "WatchWorkoutSummaryView(summary: pending"),
+            "S-15108 the shell never shows the summary at all"
+        )
+        let summaryEnd = try XCTUnwrap(
+            content.range(of: "onDone: { host.summary.dismissPending() }"),
+            "S-15108 the summary call has no end to slice at"
+        )
+        let summarySlice = String(content[summaryCall.lowerBound..<summaryEnd.lowerBound])
+        XCTAssertTrue(
+            summarySlice.contains("workoutFailed: host.workoutOpenFailed"),
+            "S-15108 the summary is never told the workout failed to start, so its line cannot be conditional"
+        )
+        let loggingCall = try XCTUnwrap(
+            content.range(of: "WatchLoggingState("),
+            "S-15108 the shell never builds the logging state at all"
+        )
+        let loggingEnd = try XCTUnwrap(
+            content.range(of: "let rating = WatchEffortRatingState("),
+            "S-15108 the logging-state call has no end to slice at"
+        )
+        let loggingSlice = String(content[loggingCall.lowerBound..<loggingEnd.lowerBound])
+        XCTAssertTrue(
+            loggingSlice.contains("workoutNotice:"),
+            "S-15108 the logging state is never told the workout failed to start, so its notice line cannot show"
         )
     }
 }

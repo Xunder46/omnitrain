@@ -277,7 +277,8 @@ final class WatchSensorSourceSourceTests: XCTestCase {
         let view = try viewSource()
 
         XCTAssertTrue(
-            view.contains("WatchLoggingState(engine: engine, sensors:"),
+            // Plan 82 split the call over lines to add `workoutNotice:`.
+            view.contains("WatchLoggingState(\n            engine: engine,\n            sensors: recorder,"),
             "the logging surface reads the live sensors, so the host hands it the "
                 + "recorder it built (D-2106)"
         )

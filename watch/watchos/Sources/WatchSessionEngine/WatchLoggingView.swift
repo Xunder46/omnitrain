@@ -33,7 +33,16 @@ public struct WristHaptics: WatchHaptics {
     public init() {}
 
     public func play(_ milestone: WatchTimerMilestone) {
-        WKInterfaceDevice.current().play(.notification)
+        switch WatchTimerHaptics.cue(for: milestone.kind) {
+        case .roundEnd:
+            WKInterfaceDevice.current().play(.notification)
+        case .holdEnd:
+            WKInterfaceDevice.current().play(.stop)
+        case .targetReached:
+            WKInterfaceDevice.current().play(.retry)
+        case nil:
+            WKInterfaceDevice.current().play(.notification)
+        }
     }
 
     /// A rest ping is not a countdown ending: it is a shorter nudge, so it does
@@ -51,6 +60,12 @@ public struct WristHaptics: WatchHaptics {
     /// ping's click.
     public func playNext() {
         WKInterfaceDevice.current().play(.directionUp)
+    }
+
+    /// The session's Finish tap: the log's own success tap, played before the
+    /// rating prompt takes the screen (plan 82 D-8).
+    public func playFinished() {
+        WKInterfaceDevice.current().play(.success)
     }
 }
 

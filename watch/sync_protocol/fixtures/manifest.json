@@ -4,6 +4,12 @@
   "valid": [
     { "path": "valid/routines_down.json", "type": "routines_down" },
     { "path": "valid/foods_down.json", "type": "foods_down" },
+    {
+      "path": "valid/foods_down_empty.json",
+      "type": "foods_down",
+      "scenario": "S-15201",
+      "note": "An empty Foods I Eat list is a frame like any other: `foods` and `categories` are both empty, and the wrist applies it, emptying the list it holds."
+    },
     { "path": "valid/exercise_push.json", "type": "exercise_push" },
     { "path": "valid/structure_change.json", "type": "structure_change" },
     { "path": "valid/observations_up.json", "type": "observations_up" },
