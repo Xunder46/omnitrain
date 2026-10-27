@@ -330,7 +330,22 @@ the moment it was logged; Next on the watch, or the next set on either device, e
 pausing the phone's rest chip freezes the watch's rest; and both devices ping per the one Rest Ping
 setting (the ping rule and its settings key: `test/watch_rest_ping_test.dart`, S-241..S-245 and
 S-221..S-224; the wrist's side: `watch/watchos/Tests/WatchSessionEngineTests/WatchRestPingTests.swift`,
-`testS241AnIntervalTapsAtItsMultiplesAndNowhereElse` and `testS242WithTheIntervalOffNothingTaps`). A rest the watch ends cancels the
+`testS241AnIntervalTapsAtItsMultiplesAndNowhereElse` and `testS242WithTheIntervalOffNothingTaps`) —
+but while the watch is connected and its live mirror reports the phone's current session, the
+phone's background rest notification stays quiet and only the wrist taps. The rule is
+`wristOwnsRestPings` (`lib/core/utils/wrist_rest_ping_rule.dart`; `test/wrist_rest_ping_rule_test.dart`,
+group `wristOwnsRestPings`, `true only when the link is connected and the mirror holds the phone
+session` and its five false cases), the service's settable gate is `RestNotificationService.wristOwnsPings`
+with `reevaluate()` and one queue for all three entry points (`test/rest_ping_gate_test.dart`,
+S-15602..S-15606 and the `rest ping queue` group), and `bindRestPingGate`
+(`lib/state/watch/watch_rest_ping_wiring.dart`, called from `main.dart` after the workout state is
+bound) sets the gate from the link and the mirror (`test/rest_ping_gate_wiring_test.dart`,
+S-15609..S-15611). If the watch drops out of reach mid-rest, the phone takes over and schedules the
+remaining boundaries from the rest's own start; when the watch returns, the phone's remaining
+notifications are withdrawn (S-15610); when the wrist ends the session, the phone cancels and
+forgets, so no phantom ping follows (S-15611). The gate covers only the background notifications:
+the phone's in-app ping while the workout screen is open and the wrist's own ping are untouched by
+it. A rest the watch ends cancels the
 phone's scheduled pings, and a rest the watch replaces reschedules them from
 its own start (`test/rest_pings_watch_end_test.dart`, S-7521..S-7524).
 

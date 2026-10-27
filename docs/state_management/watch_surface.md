@@ -618,7 +618,11 @@ see [Watch Session Capture](../watch_session_capture.md). It returns a
 `WatchSyncGraph` — the mirror, the inbox behind `WatchSessionRatings` and
 `WatchLateEntryRecovery`, and the adoption bridge — or null when the platform has
 no watch, which is what keeps the environment contract intact: a platform without
-a wrist builds none of it.
+a wrist builds none of it. Since plan 86, `bindRestPingGate`
+(`lib/state/watch/watch_rest_ping_wiring.dart`, called from `main.dart` after the
+workout state is bound) sets `RestNotificationService.wristOwnsPings` from the
+link and the mirror, so the phone's background rest notifications stay quiet
+while the wrist owns them (`test/rest_ping_gate_wiring_test.dart`).
 
 The graph carries a second handle, `WatchLateEntryRecovery`, which is the same
 inbox behind a narrower capability: recovering the entries that arrived while an

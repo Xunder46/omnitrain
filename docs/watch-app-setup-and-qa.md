@@ -771,6 +771,15 @@ Steps 21–22 are the keep-alive checks plan 19c added and need a real watch.
     says "Saves your rating"
     (`WatchAccessibilitySourceTests.swift` S-15303..S-15307;
     `WatchSpokenTextTests.swift` S-15301, S-15302, S-15309).
+34. **The wrist owns the rest pings while it runs the session — (owner).**
+    With the watch app running the workout and Rest Ping at 30 s, lock the
+    phone and log a set: the watch taps at 30 s and the phone posts no
+    notification. Then put the watch in Airplane Mode (or close its app)
+    mid-rest: the phone's notification arrives at the next boundary. Bring
+    the watch back: no further phone notifications for that rest
+    (`test/rest_ping_gate_wiring_test.dart`, S-15609..S-15611; the rule,
+    `test/wrist_rest_ping_rule_test.dart`; the service gate and queue,
+    `test/rest_ping_gate_test.dart` S-15602..S-15606).
 
 ### The wrist's own logging (PR 2b)
 

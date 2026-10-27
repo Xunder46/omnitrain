@@ -35,6 +35,7 @@ import 'state/nutrition/nutrition_primer_state.dart';
 import 'state/stats/stats_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
 import 'state/watch/watch_sync_wiring.dart';
+import 'state/watch/watch_rest_ping_wiring.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/services/crash_reporting_service.dart';
 import 'core/utils/rest_notification_service.dart';
@@ -398,6 +399,15 @@ Future<Widget> runStartup({
   watchSync?.autoPush.bindWorkoutState(workoutState);
   watchSync?.timerPush.bindWorkoutState(workoutState);
   watchSync?.timerAdoption.bindWorkoutState(workoutState);
+  // Plan 86 D-3/D-8: while the wrist is connected and mirroring this phone's
+  // session it owns the rest pings; the wiring listens for the flips. With no
+  // watch graph both states are null and the gate stays null.
+  bindRestPingGate(
+    service: restNotificationService,
+    link: watchSync?.link,
+    mirror: watchSync?.mirror,
+    workoutState: workoutState,
+  );
   final exerciseLibraryState = ExerciseLibraryState(
     service: exerciseLibraryService,
     workoutState: workoutState,
