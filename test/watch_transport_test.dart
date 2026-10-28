@@ -1635,6 +1635,23 @@ void main() {
       );
     });
 
+    test('S-87c-16 a wrist that holds the bests says so', () {
+      final requests = _asObject(_contract()['transportRequests']);
+
+      expect(
+        WatchTransportRequest.routinesFrame(holdsBests: true),
+        _asObject(requests['routinesBests']),
+        reason: 'the wrist holding a bests frame names the contract row, so '
+            'the phone can skip the frame it already has',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(),
+        _asObject(requests['routines']),
+        reason: 'a wrist holding no frame sends exactly the frame S-102 pins — '
+            'the key is omitted, never false and never null',
+      );
+    });
+
     test('S-3856 a wrist that holds a list names its version the way the '
         'contract does', () {
       final requests = _asObject(_contract()['transportRequests']);

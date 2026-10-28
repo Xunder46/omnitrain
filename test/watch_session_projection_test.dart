@@ -811,6 +811,48 @@ void main() {
     });
   });
 
+  group('S-87c-18 the wrist\'s holdsBests reaches the handler', () {
+    test('S-87c-18 a holding wrist is sent no bests until its frame is stale',
+        () async {
+      // The wiring half of S-87c-9 and S-87c-1: the frame's `holdsBests` must
+      // reach the handler unchanged, because the handler is what decides to
+      // skip. The Mock's history revision is null, so only the entries text can
+      // stop the second send (A-87c-1).
+      await radio.fromWrist(
+        WatchTransportRequest.routinesFrame(holdsBests: true),
+      );
+      await _settle();
+
+      expect(
+        radio.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-18 the first request is answered with the bests',
+      );
+
+      await radio.fromWrist(
+        WatchTransportRequest.routinesFrame(holdsBests: true),
+      );
+      await _settle();
+
+      expect(
+        radio.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-18 the wrist holds the frame and nothing changed, so '
+            'the wiring hands the flag over and the phone sends nothing',
+      );
+
+      await radio.fromWrist(WatchTransportRequest.routinesFrame());
+      await _settle();
+
+      expect(
+        radio.ofType('bests_down'),
+        hasLength(2),
+        reason: 'S-87c-18 a request without the flag always sends, even with '
+            'remembered state',
+      );
+    });
+  });
+
   group('S-9213 the wrist\'s since reaches the handler', () {
     test('S-9213 a first request sends the reference frames', () async {
       await radio.fromWrist(WatchTransportRequest.routinesFrame());

@@ -29,8 +29,9 @@ public enum WatchSyncProgressCopy {
     /// The message types that are a sync's replies. Anything else says nothing
     /// about the sync being finished.
     ///
-    /// `bests_down` belongs here because the phone sends it last on every
-    /// request (plan 87b D-8): stopping the spinner before it landed would say
+    /// `bests_down` belongs here because the phone sends it last in an answer
+    /// whenever the bests changed or the wrist does not hold them (plan 87b
+    /// D-8, plan 87c): stopping the spinner before it landed would say
     /// the wrist is up to date while its bests are still on their way.
     public static let replyTypes: Set<String> = [
         "preferences_down",

@@ -162,4 +162,119 @@ The new tests cannot compile at HEAD (the `holdsBests` parameter and `historyRev
 - S-10411's source scan needed its needle widened to the method's prefix (A-87c-7): the search was for the whole signature line, which D-5 changes by construction. No assertion was loosened.
 - The two doc corrections (25 changed lines across the two files) are both inside sentences about the bests' delivery rule, and each now names a test that exists; the plan put the doc sweep in a later phase, so this is logged as A-87c-9 and the remaining watch docs are left to that phase.
 
+## Phase 2 (developer, 2026-10-27) — observed output
+
+### Changes landed
+- `watch/watchos/Sources/WatchSessionEngine/WatchConnectivityBridge.swift` (:97-112): `routinesFrame(since:exercisesVersion:holdsBests:)` adds `holdsBests: true` only when the wrist holds one — the key is omitted, never `false` (D-2); `requestRoutines` (:163) forwards the flag into the builder.
+- `watch/watchos/Sources/WatchSessionEngine/WatchSyncOrchestrator.swift` (:39): `func requestRoutines(since: Date?, exercisesVersion: String?, holdsBests: Bool) async`; `sync()` passes `bests?.hasFrame ?? false`.
+- `watch/contract/watch_start_paths_contract.json`: one new `routinesBests` row (`{"request": "routines", "holdsBests": true}`, no `since`/`exercisesVersion`); the `routines`, `routinesSince` and `routinesExercises` rows are byte-identical.
+- `watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`: two tests between S-103 and S-3820 — `testS87c16TheRoutinesRequestCarriesHoldsBestsOnlyWhenTheWristHoldsOne` (contract pin, NSDictionary exact equality, plus the harness sync frame omitting the key) and `testS87c16TheSyncPassesWhetherTheWristHoldsABestsFrame`; `WireLog`, `GatedTransport` and `GatedRequestTransport` now record `requestedHoldsBests`.
+- `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionStartPathsTests.swift`: `RecordingTransport` records `requestedHoldsBests` beside `requestedVersions`.
+- `test/watch_transport_test.dart` (:1638): `S-87c-16 a wrist that holds the bests says so`, inside the existing `S-102 the request frames match the contract` group, reusing `_contract()`.
+- `test/watch_session_projection_test.dart` (:813): new group `S-87c-18 the wrist's holdsBests reaches the handler` with one test (the wiring seam deferred from 1B, A-87c-8).
+
+### prove-red
+```
+$ .github/copilot/scripts/macos/gateway.sh prove-red HEAD swift-test --filter WatchConnectivityBridgeTests -- watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift
+```
+The Swift tests cannot compile at HEAD (neither `holdsBests` nor `requestedHoldsBests` exists there, and the contract has no `routinesBests` row), and the Dart pair cannot run there either (`holdsBests` is not a parameter of `handle`/`requestRoutines`), so every guard below is proven with a mutation instead of prove-red. `grep -rn MUTANT watch/watchos/Sources lib test` was clean between every row.
+
+### Mutations (each: original → mutant → red → exact restore → green)
+
+| # | Original line | Mutant | Red tests (observed assertion) |
+|---|---|---|---|
+| M1 | `if holdsBests { frame["holdsBests"] = true }` (`routinesFrame`) | `frame["holdsBests"] = true` unconditionally | `swift-test --filter WatchConnectivityBridgeTests` → 31 tests, 5 failures: S-102 and S-103 and S-3820 (the key appears in frames pinned key-less), plus both arms of S-87c-16's contract pin (the harness sync frame must omit the key) |
+| M2 | same line | `if !holdsBests { frame["holdsBests"] = false }` (a `false` for a wrist that holds nothing) | same 31/5: S-102, S-103, S-3820 and both S-87c-16 contract arms — the pinned-row equality fails on the extra `holdsBests: 0` |
+| M3 | `bests?.hasFrame ?? false` (`sync()`) | `false` | `swift-test --filter testS87c16TheSyncPassesWhetherTheWristHoldsABestsFrame` → 1 test, 2 failures: the arm after `receive` applies `fixtures/valid/bests_down.json` and the relaunch arm, both expected `true` |
+| M4 | `holdsBests: WatchTransportRequest.holdsBestsOf(frame)` (`watch_sync_wiring.dart`) | argument dropped | `test test/watch_session_projection_test.dart --plain-name "S-87c-18"` → red on `Expected: length 1 / Actual: length 2` (the repeat request sent a second `bests_down`) |
+
+### Suites
+- `swift-test --filter WatchConnectivityBridgeTests` → 31 tests, 0 failures (pre-existing S-102/S-103/S-3820 etc. + 2 new).
+- `swift-test` (full, at the final state) → `1124 tests, 0 failures` (1122 at the start of this run + 2 new; `.work/gateway/swift-test-20261027-235705-57032.log`).
+- `test test/watch_transport_test.dart` → `+62: All tests passed!`.
+- `test test/watch_transport_test.dart test/watch_session_projection_test.dart` → `+121: All tests passed!` (`.work/gateway/test-20261027-235537-53342.log`).
+- Full suite: `.github/copilot/scripts/macos/gateway.sh test` → `06:00 +5781 ~2: All tests passed!` (1B ended at 5779; +2 new Dart tests; `.work/gateway/test-20261027-235705-57033.log`).
+- `lint`: `180 issues found.` — the plan's baseline count, every one `info`, none in the seven changed files (`.work/gateway/lint-20261027-235944-60700.log`).
+- Invariant: `import .*hive_workout_repository` over `lib/state lib/features lib/widgets lib/core` → no matches.
+
+### Red → green (this phase)
+| Scenario | Test (group + test name) | Before the change |
+|---|---|---|
+| S-87c-16 | `WatchConnectivityBridgeTests` / `testS87c16TheRoutinesRequestCarriesHoldsBestsOnlyWhenTheWristHoldsOne` | no `routinesBests` row and no `holdsBests` parameter at HEAD (does not compile); M1 and M2 red |
+| S-87c-16 | `WatchConnectivityBridgeTests` / `testS87c16TheSyncPassesWhetherTheWristHoldsABestsFrame` | same compile barrier; M3 red |
+| S-87c-16 | `S-102 the request frames match the contract` / `S-87c-16 a wrist that holds the bests says so` | same compile barrier (`Dart routinesFrame` has no `holdsBests`); M1 and M2 red on the same line |
+| S-87c-18 | `S-87c-18 the wrist's holdsBests reaches the handler` / `S-87c-18 a request that says the wrist holds the bests sends one frame and a repeat sends none` | same compile barrier; M4 red |
+
+### Notes
+- `NSDictionary` equality bridges JSON `true`/`false` as `NSNumber`, so a failing comparison prints `1`/`0`; the pinned-row comparisons are still exact (no coercion), which is what makes M2 red rather than neutral.
+- The relaunch arm builds a second `WatchPersonalBests` over the same `InMemoryWatchSessionStore` and `restore()`s it (A-87c-10), the shape `WatchPersonalBestsTests`' S-87b-11 uses.
+- The Mock's `historyRevision` is always null, so in S-87c-18 only the remembered entries text can suppress the second frame — which is exactly the seam being pinned there.
+- The watch app target's own `WatchSyncTransport` conformers are compiled only by `xcodebuild` against a watchOS simulator, which the governor runs; `swift-test` covers the package targets only.
+
+## Phase 3 (developer, 2026-10-28) — docs, QA step, statuses
+
+Docs-only phase: no `lib/`, `test/` or Swift source was written by this phase.
+
+### Changes landed
+| File | Change | Size before (governor `/brief`) | Size after |
+|---|---|---|---|
+| `docs/state_management/watch_reference_data.md` | request frame gains `holdsBests` (a `true` only, omitted otherwise, read only as the boolean `true`, contract row `routinesBests`); "The bests close every answer that needs them" states D-5 and names `historyRevision` | 17903 B | within ceiling (asserted by the docs contract test, below) |
+| `docs/db_integration.md` | one `historyRevision` row beside `referenceRevision`: equality only, null = cannot tell, the four listened boxes, the Mock's null, the S-87c-15 tests | 39361 B | +1 line |
+| `docs/state_management/watch_surface.md` | the phone-side skip rule beside the plan-74 `referenceRevision` text; "Last, always, …" → "Last, … unless the wrist says it holds that frame" | 50147 B | +16/−7 lines |
+| `docs/state_management/watch_surface_wrist.md` | F3: the bests are sent "whenever they changed or the wrist does not hold them", not on every answer; surrounding words shortened so the file does not grow | 52200 B | ≤ 52429 B — the 80 % warning-band assertion passes |
+| `docs/watch-app-qa-wrist-logging.md` | step 36: two syncs with no workout between, then beat a best | 25556 B | +15 lines |
+| `watch/sync_protocol/PROTOCOL.md` | the request rules name `holdsBests` with D-2's exactness rule; the bests bullet no longer says "every routines request"; a version-history row dated 2026-10-28 | outside `docs/` (no ceiling) | +23/−1 lines |
+| `docs/plans/2026-10-26-87-wrist-new-pr-banner-index.md` | F1: 87b row `done (403d96d9)`, 87c row `built, awaiting review 2026-10-28 (phone half 2c64ffa5, wrist half on the tree)`, header line, and the 87a data-path bullet "until the wrist holds one (… 87c D-5)" | — | 8 lines |
+| this plan (`…-plan.md`) | `> Status:` → BUILT 2026-10-28; Phase 3 items `- [x]`; Progress Phase 3 → Complete | — | 39 lines |
+
+`watch_surface_wrist.md` started at 52200 B against the 52429 B warning-band threshold
+(`_maxDocBytes = 65536`, `_warnFraction = 0.80`, `round(52428.8) = 52429`), so this phase had to
+rewrite the F3 sentence without growing the file: it shortens "The watch's orchestrator awaits" →
+"The orchestrator awaits", "The window therefore lives" → "The window lives", "a `routines_down`" →
+"`routines_down`" and "a sync that only ever received foods" → "a sync that received only foods".
+
+### Every behaviour sentence names a test that exists
+| Doc claim | Test it names |
+|---|---|
+| the request says `holdsBests`, read only as the boolean `true`, omitted otherwise | `test/watch_transport_test.dart` / `S-102 the request frames match the contract` / `S-87c-16 a wrist that holds the bests says so`; `WatchConnectivityBridgeTests.testS87c16TheRoutinesRequestCarriesHoldsBestsOnlyWhenTheWristHoldsOne` |
+| a holding wrist is sent no bests until something moved | `S-87c-1…S-87c-14 the bests are sent only when they moved` / `S-87c-1 a wrist holding the bests, raising again at the same revision, is sent none and reads no history`; `S-87c-3 a write that leaves the bests identical costs one walk and no frame` |
+| a wrist that says nothing is sent them every time | `S-87c-4 a request that does not say the wrist holds the bests sends the frame every time` |
+| a frame the radio did not carry is sent again | `S-87c-5 a frame the radio did not carry is sent again, and after a delivered one the next request skips it` |
+| a completed workout reaches the next request, then goes quiet | `S-87c-2 a completed workout reaches the next request, then goes quiet` |
+| the wrist's `holdsBests` reaches the handler | `S-87c-18 the wrist's holdsBests reaches the handler` / `S-87c-18 a holding wrist is sent no bests until its frame is stale` (`test/watch_session_projection_test.dart`) |
+| `historyRevision` moves on history writes only | `S-87c-15 Hive: the four history boxes move the number` / `S-87c-15 session, segment, effort and observation writes move it`; `… / S-87c-15 timed instances, foods and exercises leave it alone` |
+
+### Suites (observed)
+- `gateway.sh test test/docs_indexing_contract_test.dart test/ui_standards_contract_test.dart` → exit 0, **42 passed, 0 failed** (`All tests passed!`). This is what proves the 64 KiB ceiling and the 80 % warning band both hold for the six edited docs. Re-run after the plan/evidence/status edits (which are themselves under `docs/`): `gateway.sh test test/docs_indexing_contract_test.dart` → exit 0, **13 passed, 0 failed**, including `no documentation file is within the warning band of the ceiling`. The UI scans were untouched by those later edits, so the 42-test run stands for them.
+- `gateway.sh test` (full) → exit 0, **5781 passed, 2 skipped** (`05:44 +5781 ~2: All tests passed!`), the same counts as the pre-phase baseline: no previously passing test went red.
+- `gateway.sh lint` → **180 issues**, all pre-existing `info` notices under `test/`; no `lib/` or `docs/` file this phase touched produces an issue. Same count as the plan's baseline, so no new issues.
+- Invariant (no concrete repository import in state/ui): grep `import .*hive_workout_repository` over `lib/` returns only `lib/main.dart` (the composition root) — nothing under `lib/state/`, `lib/features/`, `lib/widgets/`, `lib/core/`.
+- Swift untouched by this phase — no `swift-test` run; the Phase 2 run stands.
+
+### Residue sweep (`holdsBests`, `historyRevision`, "always" wording)
+| Location | State |
+|---|---|
+| `lib/state/watch/watch_sync_request_handler.dart` | reader present (Phase 1B) |
+| `lib/data/repositories/workout_repository.dart`, `hive_workout_repository.dart`, `mock_workout_repository.dart` | `historyRevision` declared and both implementations answer it (Phase 1A) |
+| `lib/watch/start/watch_sync_orchestrator.dart` | no `holdsBests` — the Dart twin is the divergence D-7/q-c records, unchanged on purpose |
+| `watch/watchos/Sources/WatchSessionEngine/WatchConnectivityBridge.swift` | request carries `holdsBests` only when the store holds a frame (Phase 2) |
+| `docs/state_management/watch_reference_data.md` | corrected (this phase) |
+| `docs/state_management/watch_surface.md` | "Last, always" corrected (this phase) |
+| `docs/state_management/watch_surface_wrist.md` | F3 corrected (this phase) |
+| `watch/sync_protocol/PROTOCOL.md` | "The phone sends one with every routines request" corrected; `holdsBests` added; version row added (this phase) |
+| `docs/plans/2026-10-26-87-wrist-new-pr-banner-index.md` | 87a data-path bullet now reads "… until the wrist holds one (… 87c D-5)" (this phase) |
+| `docs/plans/2026-10-26-87a-…evidence.md`/`.review.md`, 87b/87c plan history | historical records of what was true then — left as written |
+| `watch/watchos/Tests/WatchSessionEngineTests/WatchSyncProgressTests.swift` — doc comment `/// The phone sends the bests last on every request (plan 87b D-8)` | F6 corrected (this phase): now "When the phone sends the bests it sends them last (plan 87b D-8)" — comment only, no assertion or code |
+| `watch/watchos/Sources/WatchSessionEngine/WatchSyncProgress.swift` — doc comment "`bests_down` belongs here because the phone sends it last on every request" | F5 corrected (this phase): now "… last in an answer whenever the bests changed or the wrist does not hold them (plan 87b D-8, plan 87c)" — comment only |
+
+## Review fix 3 (developer, 2026-10-28) — observed output
+
+- [x] F4 — `watch/sync_protocol/PROTOCOL.md`: the MAY-omit condition in the request rules (:145-148) and in the 2026-10-28 version-history row (:788) now reads "the key is the boolean `true`, the last `bests_down` it sent was delivered, and either no workout-history row has been written since or the bests it computes now are identical to that frame's"; the MUST-send arms are unchanged, and the version row names `S-87c-3` beside its existing pointers. Wording only; no other sentence.
+- [x] F5 — `WatchSyncProgress.swift`: the `replyTypes` doc comment now says "sends it last in an answer whenever the bests changed or the wrist does not hold them (plan 87b D-8, plan 87c)"; the rest of the sentence is unchanged.
+- [x] F6 — `WatchSyncProgressTests.swift`: the S-87b-12 comment now says "When the phone sends the bests it sends them last (plan 87b D-8)"; no assertion, no code.
+- [x] Residue sweep: the two Swift comment rows above replace the "not fixed" row.
+- Suites: `gateway.sh test test/docs_indexing_contract_test.dart` → exit 0, **13 passed, 0 failed**. `gateway.sh test` (full) → exit 0, **5781 passed, 2 skipped** (`05:20 +5781 ~2: All tests passed!`). `gateway.sh swift-test` → exit 0, **1124 tests, 0 failures** (source and test comments only; no assertion changed). `gateway.sh lint` → **180 issues**, the plan's baseline (all pre-existing `info` notices under `test/`).
+
+
+
 

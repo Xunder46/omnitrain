@@ -1,6 +1,6 @@
 # Feature: 87c — the phone sends the watch its bests only when they changed
 
-> Status: SEEDED 2026-10-27 (governor seed; planner expands phases, adds impact rows and edge scenarios). Series: `docs/plans/2026-10-26-87-wrist-new-pr-banner-index.md`. Follows 87a (`bests_down`, d0189d6d) and 87b (the wrist's banner, 403d96d9). Nothing in this PR is visible on screen: it makes the "New PR" feature cheaper.
+> Status: BUILT 2026-10-28, awaiting review (phone half committed 2c64ffa5). Series: `docs/plans/2026-10-26-87-wrist-new-pr-banner-index.md`. Follows 87a (`bests_down`, d0189d6d) and 87b (the wrist's banner, 403d96d9). Nothing in this PR is visible on screen: it makes the "New PR" feature cheaper.
 
 ## Goal and acceptance
 
@@ -154,27 +154,27 @@ Mutation-check mapping (the seeded list, each with its killing test): skip the `
 **Predicted Files**: `lib/state/watch/watch_sync_request_handler.dart`, `lib/state/watch/watch_sync_wiring.dart`, `test/watch_sync_request_handler_test.dart`, `test/watch_sync_idle_reads_test.dart`, optionally `test/helpers/` (extracted repository double).
 
 ### Phase 2: wrist + contract (@developer)
-1. [ ] Add `holdsBests: Bool` to `WatchTransportRequest.routinesFrame` (key added only when true, D-2) — `watch/watchos/Sources/WatchSessionEngine/WatchConnectivityBridge.swift` · `WatchTransportRequest.routinesFrame` (:97)
-2. [ ] Extend the protocol method to `requestRoutines(since:exercisesVersion:holdsBests:)` — `watch/watchos/Sources/WatchSessionEngine/WatchSyncOrchestrator.swift` · `WatchSyncTransport.requestRoutines` (:36)
-3. [ ] Pass `holdsBests: bests?.hasFrame ?? false` at the call — same file · `WatchSyncOrchestrator.sync` (:94-103)
-4. [ ] Forward the flag into the frame builder — `watch/watchos/Sources/WatchSessionEngine/WatchConnectivityBridge.swift` · `WatchConnectivityBridge.requestRoutines` (:163)
-5. [ ] Update the four test doubles to the new signature, recording the flag — `WireLog` (watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift:201), `GatedTransport` (:1311), `GatedRequestTransport` (:1365), `RecordingTransport` (watch/watchos/Tests/WatchSessionEngineTests/WatchSessionStartPathsTests.swift:50)
-6. [ ] Add the contract row `routinesBests` to `transportRequests` (:346-356): a routines request frame with `holdsBests: true` and no `since`/`exercisesVersion`; the existing `routines`/`routinesSince`/`routinesExercises` rows stay byte-identical — `watch/contract/watch_start_paths_contract.json`
-7. [ ] Swift test S-87c-16 + the contract pin: the bridge's frame for a holds-request equals the `routinesBests` row and for a not-holding request equals the `routines` row (NSDictionary exact equality, S-102 style), and `sync()` passes the flag per the bests state — `watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift` · new `test('S-87c-16 ...')`/contract test beside S-102/S-103
-8. [ ] Dart contract test: the Dart-built `routinesFrame(holdsBests: true)` equals the new `routinesBests` row (the same `_contract()` reader, :116) — `test/watch_transport_test.dart` · new test beside S-102/S-3856
+1. [x] Add `holdsBests: Bool` to `WatchTransportRequest.routinesFrame` (key added only when true, D-2) — `watch/watchos/Sources/WatchSessionEngine/WatchConnectivityBridge.swift` · `WatchTransportRequest.routinesFrame` (:97) — done.
+2. [x] Extend the protocol method to `requestRoutines(since:exercisesVersion:holdsBests:)` — `watch/watchos/Sources/WatchSessionEngine/WatchSyncOrchestrator.swift` · `WatchSyncTransport.requestRoutines` (:36) — done.
+3. [x] Pass `holdsBests: bests?.hasFrame ?? false` at the call — same file · `WatchSyncOrchestrator.sync` (:94-103) — done.
+4. [x] Forward the flag into the frame builder — `watch/watchos/Sources/WatchSessionEngine/WatchConnectivityBridge.swift` · `WatchConnectivityBridge.requestRoutines` (:163) — done.
+5. [x] Update the four test doubles to the new signature, recording the flag — `WireLog` (watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift:201), `GatedTransport` (:1311), `GatedRequestTransport` (:1365), `RecordingTransport` (watch/watchos/Tests/WatchSessionEngineTests/WatchSessionStartPathsTests.swift:50) — done, each with `requestedHoldsBests`.
+6. [x] Add the contract row `routinesBests` to `transportRequests` (:346-356): a routines request frame with `holdsBests: true` and no `since`/`exercisesVersion`; the existing `routines`/`routinesSince`/`routinesExercises` rows stay byte-identical — `watch/contract/watch_start_paths_contract.json` — done, one added line; the three existing rows are byte-identical.
+7. [x] Swift test S-87c-16 + the contract pin: the bridge's frame for a holds-request equals the `routinesBests` row and for a not-holding request equals the `routines` row (NSDictionary exact equality, S-102 style), and `sync()` passes the flag per the bests state — `watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift` · new `test('S-87c-16 ...')`/contract test beside S-102/S-103 — done, 2 tests (`testS87c16TheRoutinesRequestCarriesHoldsBestsOnlyWhenTheWristHoldsOne`, `testS87c16TheSyncPassesWhetherTheWristHoldsABestsFrame`); mutations M1–M3 red.
+8. [x] Dart contract test: the Dart-built `routinesFrame(holdsBests: true)` equals the new `routinesBests` row (the same `_contract()` reader, :116) — `test/watch_transport_test.dart` · new test beside S-102/S-3856 — done (`S-87c-16 a wrist that holds the bests says so`), plus the wiring test S-87c-18 in `test/watch_session_projection_test.dart` (A-87c-8); mutation M4 red.
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh swift-test` (900 s), `.github/copilot/scripts/macos/gateway.sh lint`, `.github/copilot/scripts/macos/gateway.sh test`.
 **Predicted Files**: `watch/watchos/Sources/WatchSessionEngine/WatchConnectivityBridge.swift`, `watch/watchos/Sources/WatchSessionEngine/WatchSyncOrchestrator.swift`, `watch/watchos/Tests/WatchSessionEngineTests/WatchConnectivityBridgeTests.swift`, `watch/watchos/Tests/WatchSessionEngineTests/WatchSessionStartPathsTests.swift`, `watch/contract/watch_start_paths_contract.json`, `test/watch_transport_test.dart`.
 
 ### Phase 3: docs + QA + statuses (@developer)
-1. [ ] `docs/state_management/watch_reference_data.md`: the request-frame section (:146-160) names `holdsBests` (omitted when not held, read only as the boolean `true`) and the contract row; the "The bests close every answer" section (:222+) gains the D-5 rule and `historyRevision` (measure the file against the 52 KB band before and after)
-2. [ ] `docs/db_integration.md`: a `historyRevision` row beside `referenceRevision` (:201) — same contract wording (differs whenever a row was written, equality-only, null = cannot tell), naming the four listened boxes
-3. [ ] `docs/state_management/watch_surface.md`: the phone-side rule beside the plan-74 revision text (:560,570) — the bests are skipped only when the wrist holds AND the revision matches AND the entries text is unchanged
-4. [ ] `docs/watch-app-qa-wrist-logging.md`: step 36 after 87b's step 35 (:327) — sync twice with no workout in between (the second sync sends no bests frame), then beat a best and sync again (the frame returns and the banner still fires)
-5. [ ] `watch/sync_protocol/PROTOCOL.md`: the request rules (:133-139) name `holdsBests` with D-2's exactness rule; a version-history row dated 2026-10-27 in the style of the 2026-10-23/24/26 rows (:759-765)
-6. [ ] `docs/plans/2026-10-26-87-wrist-new-pr-banner-index.md`: move the 87c row to BUILT with the PR's commit once merged (status line only)
-7. [ ] Residue sweep: grep `holdsBests` and `historyRevision` over `lib/`, `test/`, `watch/`, `docs/` — every planned reader exists, no stale comment or doc still claims the bests are sent on every request (check the handler header, `watch_reference_data.md`, `watch_surface.md`); zero readers of the old "always send" wording remain
-8. [ ] Update this plan's Progress and Assumption Log adjudication, and append the final suite outputs to the evidence file
+1. [x] `docs/state_management/watch_reference_data.md`: the request-frame section names `holdsBests` (a `true` only, omitted otherwise, read only as the boolean `true`, the `routinesBests` contract row); "The bests close every answer that needs them" states D-5 in owner terms with `historyRevision` and names S-87c-1, 3, 4, 5 and 18 — done
+2. [x] `docs/db_integration.md`: a `historyRevision` row beside `referenceRevision` — same contract wording (equality only, null = cannot tell), the four listened boxes, the Mock's null, the S-87c-15 tests — done
+3. [x] `docs/state_management/watch_surface.md`: the phone-side skip rule beside the plan-74 revision text, and the "Last, always" sentence corrected to "Last, … unless the wrist says it holds that frame" — done
+4. [x] `docs/watch-app-qa-wrist-logging.md`: step 36 after 87b's step 35 — two syncs with no workout between, then beat a best and sync again — done
+5. [x] `watch/sync_protocol/PROTOCOL.md`: the request rules name `holdsBests` with D-2's exactness rule, the bests bullet no longer says "every routines request", and a version-history row dated 2026-10-28 — done
+6. [x] `docs/plans/2026-10-26-87-wrist-new-pr-banner-index.md`: the 87b and 87c rows and the header moved to their real state — done
+7. [x] Residue sweep: `holdsBests`/`historyRevision` readers all present; the "always travels" wording corrected in `watch_surface_wrist.md` (F3), `watch_surface.md` and PROTOCOL.md — done
+8. [x] Progress, Assumption Log and the evidence file updated — done
 
 **Done Criteria** (run until green): `.github/copilot/scripts/macos/gateway.sh lint`, `.github/copilot/scripts/macos/gateway.sh test`, `.github/copilot/scripts/macos/gateway.sh swift-test`; the four edited `docs/` files stay under the 52 KB band (the implementer measures byte sizes; the planner cannot — see Open questions q-h); `test/docs_indexing_contract_test.dart` green.
 **Predicted Files**: the five docs/protocol files above, `docs/plans/2026-10-26-87-wrist-new-pr-banner-index.md`, this plan file, the evidence file.
@@ -200,8 +200,9 @@ Read-only dependents (must stay green, no edit): `test/watch_sync_changed_only_t
 
 - [x] Phase 1A (phone data layer) — @dba — Complete 2026-10-27 (evidence: `.evidence.md`)
 - [x] Phase 1B (handler + wiring + tests) — @developer — Complete 2026-10-27 (34 handler tests, 9 idle tests, full suite 5779 passed / 2 skipped; evidence: `.evidence.md`)
-- [ ] Phase 2 (wrist + contract) — @developer
-- [ ] Phase 3 (docs + QA + statuses) — @developer
+- [x] Phase 2 (wrist + contract) — @developer — Complete 2026-10-27 (2 Swift tests, 2 Dart tests; swift 1124 passed / 0 failures; full suite 5781 passed / 2 skipped; lint 180; evidence: `.evidence.md`)
+- [x] Phase 3 (docs + QA + statuses) — @developer — Complete 2026-10-28 (docs and PROTOCOL rows; evidence: `.evidence.md`)
+- [x] Review fix 3 (F4 PROTOCOL wording, F5/F6 Swift comments) — @developer — Complete 2026-10-28 (docs test 13 passed; swift 1124 passed / 0 failures; evidence: `.evidence.md` "Review fix 3")
 - [ ] Review (evidence table, per-S conformance, impact re-grep) — @code-reviewer
 
 ## Assumption Log
@@ -216,6 +217,10 @@ Read-only dependents (must stay green, no edit): `test/watch_sync_changed_only_t
 - A-87c-7 S-10411 (plan 74's source scan) searched the exact `_sendRoutines` signature text, which D-5's `required bool holdsBests` parameter necessarily breaks; the needle is now `'Future<bool> _sendRoutines({'` and every assertion (five positions) is unchanged. Options: stop and report / widen to the method's prefix. Chose the widen: the guard's subject (the revision read precedes any read) is untouched and S-87c-12 covers the new block. Ratify/revert by the reviewer.
 - A-87c-8 The wiring's `holdsBestsOf(frame)` pass has no scenario of its own in 1B: the `radio.fromWrist` harness lives in `test/watch_session_projection_test.dart`, outside 1B's Predicted Files, and S-87c-17 covers the seam at handler level. Options: add a wiring-level test now / defer. Deferred to Phase 2, whose Predicted Files are still open. Ratify/revert by the reviewer.
 - A-87c-9 Two watch docs said the bests are sent whatever happened to the bundle, which D-5 makes false; corrected in place (25 changed lines across `watch_reference_data.md` and `watch_surface.md`) rather than left standing for the doc phase. Options: leave them / fix now. Chose fix now because a doc sentence the change falsifies is the kind that outlives the plan. The rest of the watch doc sweep stays with the phase that owns it. Ratify/revert by the reviewer.
+- A-87c-10 S-87c-16's relaunch arm builds a SECOND `WatchPersonalBests` over the same store, `restore()`s it and gives it a fresh orchestrator, rather than reusing the first holder: the relaunch is the claim (the held copy survives), and `WatchPersonalBestsTests`' S-87b-11 relaunch tests use the same shape. The Swift contract pin sits in the S-102 group beside the other exact-equality pins; the flag arm sits beside it in `WatchConnectivityBridgeTests`.
+- A-87c-11 PROTOCOL.md's version-history row is dated 2026-10-28, not the 2026-10-27 the Phase 3 item predicted: the protocol change landed with Phase 2 (which ran past midnight) and the row states the day it was written, like every other row in that table. Options: backdate 2026-10-27 (inconsistent with when the row was authored) or today (chosen).
+- A-87c-12 `watch_surface_wrist.md` sat 229 B under the 80 % warning band (52200 B vs `round(65536 × 0.8) = 52429`), so F3's reword is paid for by shortening four phrases in the same paragraph rather than by growing the file: the sentence keeps its claim and the assertion in `test/docs_indexing_contract_test.dart` stays green. Options: split the page (a structure change outside a docs-wording phase) or trim prose in the edited paragraph (chosen).
+- A-87c-13 The stale Swift doc comment "The phone sends the bests last on every request" (`WatchSessionEngineTests/WatchSyncProgressTests.swift`) is left for a Swift-touching phase: this phase is docs-only, and a test-file comment is neither `docs/` nor a file its brief names. Recorded in the Residue sweep so it cannot be lost. Fixed with its `WatchSyncProgress.swift` twin in Review fix 3 (F5/F6): comments only.
 
 ## Open questions
 

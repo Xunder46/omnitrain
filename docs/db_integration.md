@@ -199,6 +199,7 @@ Repository methods used by the service:
 | `getLastDataVersionTransition()` | Diagnostic: most recent `(from, to)` transition, or `null`. |
 | `setLastDataVersionTransition(int from, int to)` | Diagnostic: records a transition. |
 | `referenceRevision` | Null on the Mock; a counter on Hive that changes when any food, routine or exercise row is written. The watch sync reads it to skip re-reading storage. |
+| `historyRevision` | Null on the Mock; a counter on Hive that changes when any session, segment, effort or observation row is written. The watch sync reads it to skip re-reading history for the bests: the same contract as `referenceRevision` — a number that differs whenever a row was written, compared for equality only, `null` meaning the repository cannot tell, so the caller must read. Pinned by `test/repository_reference_revision_test.dart` (group `S-87c-15 Hive: the four history boxes move the number`, tests `S-87c-15 session, segment, effort and observation writes move it` and `S-87c-15 timed instances, foods and exercises leave it alone`). |
 
 Storage shape (Hive runtime; SQL parity noted for the future importer):
 

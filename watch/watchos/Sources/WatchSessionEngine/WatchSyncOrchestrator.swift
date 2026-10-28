@@ -31,9 +31,11 @@ public protocol WatchSyncTransport: AnyObject {
     /// Asks the phone for `routines_down`, optionally for everything newer than
     /// `since`, and tells it which exercise-list version the wrist already
     /// holds (`exercisesVersion`, nil when it holds none) so the phone can send
-    /// only what changed. The reply arrives through
-    /// `WatchSyncOrchestrator.receive` — this call carries no payload of its own.
-    func requestRoutines(since: Date?, exercisesVersion: String?) async
+    /// only what changed. `holdsBests` says whether the wrist holds a bests
+    /// frame, so the phone can skip a frame that has not changed (87c, D-7).
+    /// The reply arrives through `WatchSyncOrchestrator.receive` — this call
+    /// carries no payload of its own.
+    func requestRoutines(since: Date?, exercisesVersion: String?, holdsBests: Bool) async
 
     /// Asks the phone for a `session_snapshot`. The reply arrives through
     /// `WatchSyncOrchestrator.receive`, exactly as a `routines_down` reply does.
@@ -102,7 +104,10 @@ public final class WatchSyncOrchestrator {
         paths.phoneReachable = transport.isPhoneReachable
         await transport.requestRoutines(
             since: reconnect ? paths.syncedAt : nil,
-            exercisesVersion: paths.exercisesVersion
+            exercisesVersion: paths.exercisesVersion,
+            // The wrist's own copy is the truth about "holds" (87c, D-7): a
+            // wrist with no frame asks for one, and one that holds says so.
+            holdsBests: bests?.hasFrame ?? false
         )
 
         for message in engine.pendingObservations() {

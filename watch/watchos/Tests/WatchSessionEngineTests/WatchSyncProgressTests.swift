@@ -211,7 +211,7 @@ final class WatchSyncProgressTests: XCTestCase {
 
     // MARK: - S-87b-12 `bests_down` is a reply, so the spinner waits for it
 
-    /// The phone sends the bests last on every request (plan 87b D-8): the sync
+    /// When the phone sends the bests it sends them last (plan 87b D-8): the sync
     /// is not over until two quiet seconds after that frame, not two after the
     /// routines.
     func testS87b12TheBestsReplyKeepsTheSyncRunningUntilItsOwnQuietWindow() {

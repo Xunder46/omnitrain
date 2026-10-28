@@ -350,6 +350,7 @@
       "since": "2026-07-13T17:00:00.000Z"
     },
     "routinesExercises": { "request": "routines", "exercisesVersion": "v1-2-004dbda823a1b308" },
+    "routinesBests": { "request": "routines", "holdsBests": true },
     "snapshot": { "request": "snapshot" }
   },
   "sessionStarted": {

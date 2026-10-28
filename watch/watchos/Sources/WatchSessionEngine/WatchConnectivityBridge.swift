@@ -94,10 +94,20 @@ public enum WatchTransportRequest {
     /// version the wrist holds, and is likewise omitted, never nulled, when it
     /// holds none — so the frames the contract pins while the wrist holds no
     /// list are unchanged (D-3818, S-3820).
-    public static func routinesFrame(since: Date?, exercisesVersion: String? = nil) -> [String: Any] {
+    ///
+    /// `holdsBests` says the wrist holds a bests frame, and adds
+    /// `holdsBests: true` only when it is true: a wrist holding nothing omits
+    /// the key rather than sending `false`, which is how the phone tells a
+    /// wrist that cannot skip apart from one that can (87c, D-2, S-87c-10).
+    public static func routinesFrame(
+        since: Date?,
+        exercisesVersion: String? = nil,
+        holdsBests: Bool = false
+    ) -> [String: Any] {
         var frame: [String: Any] = ["request": routines]
         if let since { frame["since"] = utcIso(since) }
         if let exercisesVersion { frame["exercisesVersion"] = exercisesVersion }
+        if holdsBests { frame["holdsBests"] = true }
         return frame
     }
 
@@ -160,9 +170,17 @@ public final class WatchConnectivityBridge: WatchSyncTransport {
         reachabilityHandler = handler
     }
 
-    public func requestRoutines(since: Date?, exercisesVersion: String?) async {
+    public func requestRoutines(
+        since: Date?,
+        exercisesVersion: String?,
+        holdsBests: Bool
+    ) async {
         await send(
-            WatchTransportRequest.routinesFrame(since: since, exercisesVersion: exercisesVersion)
+            WatchTransportRequest.routinesFrame(
+                since: since,
+                exercisesVersion: exercisesVersion,
+                holdsBests: holdsBests
+            )
         )
     }
 

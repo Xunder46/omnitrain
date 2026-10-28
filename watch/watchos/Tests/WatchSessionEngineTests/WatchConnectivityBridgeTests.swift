@@ -196,9 +196,17 @@ private final class WireLog: WatchSyncTransport {
     var isPhoneReachable = false
     private(set) var frames: [[String: Any]] = []
     private(set) var requested: [Date?] = []
+
+    /// Whether each routines request said the wrist holds a bests frame,
+    /// parallel to `requested` (S-87c-16).
+    private(set) var requestedHoldsBests: [Bool] = []
+
     private(set) var snapshotRequests = 0
 
-    func requestRoutines(since: Date?, exercisesVersion: String?) async { requested.append(since) }
+    func requestRoutines(since: Date?, exercisesVersion: String?, holdsBests: Bool) async {
+        requested.append(since)
+        requestedHoldsBests.append(holdsBests)
+    }
 
     func requestSnapshot() async { snapshotRequests += 1 }
 
@@ -298,6 +306,108 @@ final class WatchConnectivityBridgeTests: XCTestCase {
             utcIso(syncedAt)
         )
         XCTAssertEqual(harness.session.sent.count, 2)
+    }
+
+    // MARK: - S-87c-16 the wrist says whether it holds a bests frame
+
+    func testS87c16TheRoutinesRequestCarriesHoldsBestsOnlyWhenTheWristHoldsOne() async throws {
+        // The wrist tells the phone it holds a bests frame with `holdsBests: true`;
+        // a wrist holding nothing sends exactly the frame it always did, which is
+        // why S-102's pinned rows stay true (87c, D-2).
+        let expected = try bridgeObject(try bridgeContract()["transportRequests"])
+        let routinesBests = try bridgeObject(expected["routinesBests"])
+        let routines = try bridgeObject(expected["routines"])
+
+        XCTAssertEqual(
+            WatchTransportRequest.routinesFrame(since: nil, holdsBests: true) as NSDictionary,
+            routinesBests as NSDictionary
+        )
+        XCTAssertEqual(
+            WatchTransportRequest.routinesFrame(since: nil, holdsBests: false) as NSDictionary,
+            routines as NSDictionary,
+            "a wrist holding no bests omits the key rather than sending false"
+        )
+
+        let harness = WatchBridgeHarness()
+        await harness.launch()
+        await harness.orchestrator.sync()
+        XCTAssertNil(
+            harness.session.sent.first?["holdsBests"],
+            "the wrist holds no frame yet, so the request names none"
+        )
+    }
+
+    func testS87c16TheSyncPassesWhetherTheWristHoldsABestsFrame() async throws {
+        let store = InMemoryWatchSessionStore()
+        let clock = TestClock(testInstant())
+        let holder = WatchPersonalBests(
+            store: store,
+            validator: Harness.validator(),
+            clock: clock.call
+        )
+        let engine = WatchSessionEngine(
+            store: store,
+            onEmit: { _ in },
+            validator: Harness.validator(),
+            clock: clock.call,
+            idFactory: { UUID().uuidString },
+            sessionIdFactory: { "w9" }
+        )
+        let paths = WatchSessionStartPaths(
+            engine: engine,
+            store: store,
+            validator: Harness.validator(),
+            clock: clock.call,
+            idFactory: { UUID().uuidString }
+        )
+        let transport = RecordingTransport()
+        let orchestrator = WatchSyncOrchestrator(
+            transport: transport,
+            paths: paths,
+            engine: engine,
+            bests: holder
+        )
+
+        await orchestrator.sync()
+        XCTAssertEqual(
+            transport.requestedHoldsBests,
+            [false],
+            "a wrist holding no frame asks for one rather than claiming to hold it"
+        )
+
+        _ = try await orchestrator.receive(try Fixtures.json("fixtures/valid/bests_down.json"))
+        XCTAssertTrue(holder.hasFrame)
+
+        await orchestrator.sync()
+        XCTAssertEqual(
+            transport.requestedHoldsBests,
+            [false, true],
+            "the frame the wrist holds is what the next request announces"
+        )
+
+        // A relaunch rebuilds the holder over the same store, exactly as a
+        // launch does, and the restored copy still says "holds".
+        let relaunchedHolder = WatchPersonalBests(
+            store: store,
+            validator: Harness.validator(),
+            clock: clock.call
+        )
+        await relaunchedHolder.restore()
+        XCTAssertTrue(relaunchedHolder.hasFrame)
+
+        let relaunchedTransport = RecordingTransport()
+        let relaunched = WatchSyncOrchestrator(
+            transport: relaunchedTransport,
+            paths: paths,
+            engine: engine,
+            bests: relaunchedHolder
+        )
+        await relaunched.sync()
+        XCTAssertEqual(
+            relaunchedTransport.requestedHoldsBests,
+            [true],
+            "a restored frame is held, so the relaunched wrist says so too"
+        )
     }
 
     // MARK: - S-3820 a sync names the exercise-list version the wrist holds
@@ -1294,6 +1404,11 @@ final class WatchConnectivityBridgeTests: XCTestCase {
 final class GatedTransport: WatchSyncTransport {
     var isPhoneReachable: Bool
     private(set) var requested: [Date?] = []
+
+    /// Whether each routines request said the wrist holds a bests frame,
+    /// parallel to `requested` (S-87c-16).
+    private(set) var requestedHoldsBests: [Bool] = []
+
     private(set) var sent: [[String: Any]] = []
     private(set) var snapshotRequests = 0
 
@@ -1308,7 +1423,10 @@ final class GatedTransport: WatchSyncTransport {
         self.isPhoneReachable = isPhoneReachable
     }
 
-    func requestRoutines(since: Date?, exercisesVersion: String?) async { requested.append(since) }
+    func requestRoutines(since: Date?, exercisesVersion: String?, holdsBests: Bool) async {
+        requested.append(since)
+        requestedHoldsBests.append(holdsBests)
+    }
 
     func requestSnapshot() async { snapshotRequests += 1 }
 
@@ -1348,6 +1466,11 @@ final class GatedTransport: WatchSyncTransport {
 final class GatedRequestTransport: WatchSyncTransport {
     var isPhoneReachable: Bool
     private(set) var requested: [Date?] = []
+
+    /// Whether each routines request said the wrist holds a bests frame,
+    /// parallel to `requested` (S-87c-16).
+    private(set) var requestedHoldsBests: [Bool] = []
+
     private(set) var sent: [[String: Any]] = []
     private(set) var snapshotRequests = 0
 
@@ -1362,7 +1485,7 @@ final class GatedRequestTransport: WatchSyncTransport {
         self.isPhoneReachable = isPhoneReachable
     }
 
-    func requestRoutines(since: Date?, exercisesVersion: String?) async {
+    func requestRoutines(since: Date?, exercisesVersion: String?, holdsBests: Bool) async {
         let shouldGate = lock.withLock { () -> Bool in
             let gate = !gateUsed
             gateUsed = true
@@ -1378,6 +1501,7 @@ final class GatedRequestTransport: WatchSyncTransport {
             }
         }
         requested.append(since)
+        requestedHoldsBests.append(holdsBests)
     }
 
     func requestSnapshot() async { snapshotRequests += 1 }

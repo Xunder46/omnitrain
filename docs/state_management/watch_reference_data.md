@@ -141,8 +141,8 @@ The sync orchestrator routes `exercises_down` to the start paths and reports
 `stored` as the arrival's result; every other message keeps its own route
 (`testS3818TheOrchestratorRoutesBatchesToThePaths`).
 
-`WatchSyncTransport.requestRoutines(since:exercisesVersion:)` carries the
-version of the list the wrist already holds, so the phone can send only what
+`WatchSyncTransport.requestRoutines(since:exercisesVersion:holdsBests:)` carries
+the version of the list the wrist already holds, so the phone can send only what
 changed. The key is added to the frame **only when there is a version**: a wrist
 that holds no list sends exactly the frame it always did, so the contract's
 `routinesSince` and `snapshot` rows (and the S-102/S-103 pins in
@@ -150,6 +150,16 @@ that holds no list sends exactly the frame it always did, so the contract's
 own `routinesExercises` row
 (`WatchConnectivityBridgeTests.testS3820TheRoutinesRequestCarriesTheExerciseListVersionOnlyWhenThereIsOne`,
 `WatchSessionStartPathsTests.testS3819SyncNamesTheExerciseListVersionTheWristHolds`).
+The same request carries `holdsBests` — the boolean `true` only when the wrist
+holds a bests frame, omitted otherwise, never `false` and never null — so the
+phone can leave out bests the wrist already has. The phone reads it as held only
+when the value is the boolean `true`: a string, a number, `false` or a missing
+key all mean "not held", and that wrist is sent the frame. The holding frame has
+its own contract row, `routinesBests`, beside `routines`, `routinesSince` and
+`routinesExercises`; a wrist that holds nothing sends the `routines` row byte
+for byte (`test/watch_transport_test.dart`, `S-87c-16 a wrist that holds the
+bests says so`;
+`WatchConnectivityBridgeTests.testS87c16TheRoutinesRequestCarriesHoldsBestsOnlyWhenTheWristHoldsOne`).
 The frame's contract is `watch/contract/watch_start_paths_contract.json`, read
 by both the Swift and the Dart suites.
 
@@ -224,21 +234,35 @@ untouched until a version completes). The Dart watch client (`lib/watch/`)
 never reports a version (D-3805), so it is sent the full list on every Sync — a
 documented divergence from the Swift wrist.
 
-### The bests close every answer
+### The bests close every answer that needs them
 
 `bests_down` — every trained exercise's best estimated 1RM and best bodyweight
-reps — is the last frame of every answer, after the batches, and it is sent
-whatever the wrist's `since` says: a best changes after every completed workout,
-so the bundle's stamp cannot stand for a best, and "nothing changed" is never
-said on the bundle's word. A wrist that names the bests frame as one it holds
-is the exception — it is sent none while the history and the entries stand
-still, and none is a definite answer rather than a failure (87c, D-5;
+reps — is the last frame of an answer that needs it, after the batches. The
+bundle's stamp cannot stand for a best, so it is sent whatever the wrist's
+`since` says; what decides it is the wrist's own word plus the phone's memory of
+what it last delivered. The phone skips the frame only when all three hold: the
+request says the wrist holds one, the last frame the phone sent was delivered,
+and either nothing was written since it was sent (the repository's
+`historyRevision` stands where it stood then) or the bests come out identical
+when the phone does look. A wrist that says nothing — an older wrist, a
+reinstalled one, one that lost its copy — is sent the frame every time, exactly
+as before, and a phone that relaunched has forgotten what it delivered, so it
+sends once. None sent is a definite answer rather than a failure (87c, D-5;
 `test/watch_sync_request_handler_test.dart`, group
 `S-87c-1…S-87c-14 the bests are sent only when they moved`, test `S-87c-1 a
 wrist holding the bests, raising again at the same revision, is sent none and
 reads no history`; a write that leaves the entries as they were costs one walk
 and no frame, `S-87c-3 a write that leaves the bests identical costs one walk
-and no frame`). The frame is still closed over the answer whenever it is sent
+and no frame`; a wrist that says nothing is sent them every time, `S-87c-4 a
+request that does not say the wrist holds the bests sends the frame every
+time`; a frame the radio did not carry is sent again, `S-87c-5 a frame the
+radio did not carry is sent again, and after a delivered one the next request
+skips it`; the wiring hands the flag to the handler,
+`test/watch_session_projection_test.dart`, group `S-87c-18 the wrist's
+holdsBests reaches the handler`, test `S-87c-18 a holding wrist is sent no
+bests until its frame is stale`). The bests are the only history the sync
+reads, so a skip is also the whole of an idle raise's cost: no
+`StatsProgressService` is created and no box is read. The frame is still closed over the answer whenever it is sent
 (`test/watch_sync_request_handler_test.dart`, group
 `S-87a-6…S-87a-13 the bests close every answer`, test `S-87a-6 a since-current
 request is answered with none of the three bundle frames and exactly one

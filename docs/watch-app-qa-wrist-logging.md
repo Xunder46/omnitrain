@@ -344,6 +344,21 @@ hardware yet.
     `WatchPersonalBestsWiringSourceTests.testS87b14TheBannerCarriesTheLabelAndOneGuardedAnnouncement`
     (plan 87b).
 
+36. **Syncing twice does not take the bests away — (owner).** (a) Tap Sync and
+    wait for the spinner to stop, then tap Sync again straight away with no
+    workout logged in between: nothing looks different, Sync still completes and
+    its spinner still stops. (b) Log a set that beats your best on the watch: the
+    trophy "New PR" banner still shows — the watch kept its bests, which is the
+    check that the second sync did not take them away. (c) Finish a workout on
+    the phone, tap Sync on the watch, then log a set that beats the phone's new
+    best: the banner fires for the new number, and logging the old best again
+    fires nothing. Held off-device by `test/watch_sync_request_handler_test.dart`
+    (`S-87c-1 a wrist holding the bests, raising again at the same revision, is
+    sent none and reads no history`; `S-87c-2 a completed workout reaches the
+    next request, then goes quiet`) and `test/watch_session_projection_test.dart`
+    (`S-87c-18 a holding wrist is sent no bests until its frame is stale`, plan
+    87c).
+
 Two known gaps this walkthrough must not be read as failing on: each device owns
 only the timer it started, so a Sync stops a countdown the phone wrote and
 leaves a wrist-started one running (`test/watch_logging_timers_test.dart`,

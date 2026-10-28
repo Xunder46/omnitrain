@@ -243,21 +243,22 @@ Sync button itself is unchanged. Verified by
 `WatchPhoneProblemWiringSourceTests.testS9004TheStartSurfaceSaysWhenARoutineVanished`
 (the wiring: the catch, the two clears, the unchanged Sync button).
 
-**A sync is finished by its replies, not by the request.** The watch's
-orchestrator awaits only the sends, so the phone's answer arrives afterwards
-through `receive` and "still syncing" cannot be read from the request. The
-window therefore lives in the pure `WatchSyncProgress`
+**A sync is finished by its replies, not by the request.** The orchestrator
+awaits only the sends, so the phone's answer arrives afterwards through
+`receive` and "still syncing" cannot be read from the request. The window lives
+in the pure `WatchSyncProgress`
 (`watch/watchos/Sources/WatchSessionEngine/WatchSyncProgress.swift`), a struct
 with an injected clock: a sync begins with a request — or with a catch-up that
-will actually run — and ends once a `routines_down` has arrived *and* the newest
+will actually run — and ends once `routines_down` has arrived *and* the newest
 reply has been quiet for `WatchSyncProgressCopy.quietSeconds`, or at
-`WatchSyncProgressCopy.capSeconds`, whichever comes first. A reply of another
-type neither ends nor extends it, and the routines gate means a sync that only
-ever received foods stays open to the cap. The types that do count are
+`WatchSyncProgressCopy.capSeconds`, whichever is first. A reply of another type
+neither ends nor extends it, and the routines gate keeps a sync that received
+only foods open to the cap. The types that count are
 `WatchSyncProgressCopy.replyTypes` — the three reference frames, the exercise
 batches, the snapshot and, since plan 87b, `bests_down`: the phone sends the
-bests last on every answer, so the spinner must not stop before they have
-landed, and a sync whose last frame is the bests ends `quietSeconds` after it
+bests last in an answer whenever they changed or the wrist does not hold them,
+so the spinner waits for them as before, and a bests-last sync ends
+`quietSeconds` after the newest reply
 (`WatchSyncProgressTests.testS87b12TheBestsReplyKeepsTheSyncRunningUntilItsOwnQuietWindow`,
 `…testS87b12AStragglingBestsReplyDoesNotReviveTheSync`). The start surface takes `isSyncing`
 and renders a non-tappable syncing row instead of the Sync button while the

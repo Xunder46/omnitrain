@@ -556,19 +556,25 @@ stamp lives only in memory), gets all three. `routines_down` goes last and is
 withheld when the preferences or the foods frame came back undelivered, so a
 wrist that names a stamp holds the whole bundle. Then the exercise list as
 `exercises_down` batches — unless the request names the version of the list
-the phone would send, in which case the batches are omitted. Last, always, the
+the phone would send, in which case the batches are omitted. Last, the
 `bests_down` frame: every trained exercise's best estimated 1RM and best
 bodyweight reps, sent whatever the `since` says and whatever the bundle and the
 batches did, because a best changes after every completed workout (plan 87a,
-D-4). Its bests come from a `StatsProgressService` created per request, so a
-workout completed since the last sync reaches the wrist, and the frame carries
-the request's own clock, not the bundle's stamp. The version check
+D-4) — unless the wrist says it holds that frame and nothing moved since the
+phone last delivered it (plan 87c). Its bests come from a
+`StatsProgressService` created per request, so a workout completed since the
+last sync reaches the wrist, and the frame carries the request's own clock, not
+the bundle's stamp. The version check
 is independent of the bundle: a skipped bundle still checks the version, and a
 wrist that already holds the exercise list still receives the bundle. A
 refused foods frame withholds the routines frame too (the next sync re-sends
 all three). The foods, routines and exercises are read from storage only when
 the repository's `referenceRevision` stands still no longer (plan 74): an
-unchanged phone reads none of them again. The handler takes the library as a
+unchanged phone reads none of them again. The bests are the one frame a wrist
+can spare the phone the work of: a request from a wrist that says it holds one,
+once the phone's last send was delivered, reads no history and sends nothing
+while the repository's `historyRevision` stands where it stood, so no
+`StatsProgressService` is even created (plan 87c, D-5). The handler takes the library as a
 required `foodLibrary` (`FoodLibraryState`). All of it is built
 through `WatchReferenceSync`; `snapshot` re-asserts the phone's session. It is
 separate from `WatchIncomingRouter`

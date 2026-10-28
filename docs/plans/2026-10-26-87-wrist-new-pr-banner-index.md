@@ -1,6 +1,6 @@
 # Series 87: New PR banner on the watch
 
-> Status: 87a CLOSED 2026-10-27 (reviewed APPROVE, committed `d0189d6d`); 87b BUILT 2026-10-27, awaiting review; 87c proposed, not planned. 87b was planned on its turn against the code as it was then (`.github/copilot/pr-scope-budget.md`, "Over budget at planning time"), and 87b's own plan carries the decisions, scenarios and evidence.
+> Status: 87a CLOSED 2026-10-27 (reviewed APPROVE, committed `d0189d6d`); 87b done (`403d96d9`); 87c BUILT 2026-10-28, awaiting review (phone half committed `2c64ffa5`, wrist half on the tree). 87b was planned on its turn against the code as it was then (`.github/copilot/pr-scope-budget.md`, "Over budget at planning time"), and 87b's own plan carries the decisions, scenarios and evidence.
 
 ## What the owner asked for, and decided (2026-10-26)
 
@@ -15,7 +15,7 @@ Owner decisions (answers in chat, 2026-10-26):
 ## Shared decisions
 
 - PR definition is the phone's, unchanged: Epley estimated one-rep-max for sets with load, rep count for bodyweight sets, strict "greater than", `set` efforts only, completed sessions only (`StatsProgressService.epley1RM`, `getAllTimeBestE1RM`, `getAllTimeBestReps`).
-- Data path: new `bests_down` message, phone → watch, kilograms on the wire, sent with every routines request (87a D-2, D-4).
+- Data path: new `bests_down` message, phone → watch, kilograms on the wire, sent with every routines request until the wrist holds one (87a D-2, D-4; 87c D-5).
 - Nothing about PRs is persisted as events; bests are reference data on the wrist like the food list.
 
 ## The PRs
@@ -23,8 +23,8 @@ Owner decisions (answers in chat, 2026-10-26):
 | PR | Order | Scope | Depends on | Track | Status |
 |---|---|---|---|---|---|
 | 87a | 1 | `bests_down` contract (schema, fixtures, PROTOCOL.md, both validators) and the phone builder and sender. Not visible to the owner. Safe to land alone: a wrist that does not know the type ignores it. | none | contract + phone | done (`d0189d6d`) |
-| 87b | 2 | Wrist: store the newest frame, detect a PR when a set is logged on the wrist (running best per session so equal and repeated sets do not re-fire), banner, distinct tap, VoiceOver announcement, Sync-spinner handling, QA step, docs. Landed as one PR: the decision/lock/fold core was small enough that splitting it would have added a review round for no reduction in risk. | 87a | watch (Swift) | built, awaiting review |
-| 87c | 3 | The phone sends the bests only when they changed, and reads no history for an idle sync: the wrist's routines request says `holdsBests`, the phone remembers what it last delivered and a new `historyRevision` on the repository tells it nothing was written. Saves the whole-history read and the 20-30 KB frame on every idle sync. Plan: `docs/plans/2026-10-27-87c-bests-only-when-changed-plan/`. | 87b | phone + wrist (small) | seeded 2026-10-27, being planned |
+| 87b | 2 | Wrist: store the newest frame, detect a PR when a set is logged on the wrist (running best per session so equal and repeated sets do not re-fire), banner, distinct tap, VoiceOver announcement, Sync-spinner handling, QA step, docs. Landed as one PR: the decision/lock/fold core was small enough that splitting it would have added a review round for no reduction in risk. | 87a | watch (Swift) | done (`403d96d9`) |
+| 87c | 3 | The phone sends the bests only when they changed, and reads no history for an idle sync: the wrist's routines request says `holdsBests`, the phone remembers what it last delivered and a new `historyRevision` on the repository tells it nothing was written. Saves the whole-history read and the 20-30 KB frame on every idle sync. Plan: `docs/plans/2026-10-27-87c-bests-only-when-changed-plan/`. | 87b | phone + wrist (small) | built, awaiting review 2026-10-28 (phone half `2c64ffa5`, wrist half on the tree) |
 | 87d | 4 | Close the two limits 87b stated rather than fixed: fold the phone's mirrored sets in during a live workout (no relaunch), and give the wrist's own-best memory a persistence or prune-order guarantee so a repeat cannot be lost before the phone's next frame. Extend the QA walkthrough with a phone-logged-set case. | 87b | watch (Swift) | proposed, not planned |
 
 ## The owner's questions, answered
