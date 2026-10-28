@@ -2256,6 +2256,58 @@ class StatsProgressService {
     return best;
   }
 
+  /// Every exercise's standing best, in one pass over the history.
+  ///
+  /// Fuses [getAllTimeBestE1RM] and [getAllTimeBestReps]: `e1rm` is the Epley
+  /// estimate the former returns and `reps` the bodyweight max the latter
+  /// returns, for every exercise at once. Callers that need all of them — the
+  /// wrist's `bests_down` frame (`WatchReferenceSync.buildBestsDown`) — would
+  /// otherwise re-walk the whole history once per exercise (D-5 of
+  /// `docs/plans/2026-10-26-87a-...`).
+  ///
+  /// An exercise appears only when one of its axes is above zero, and an
+  /// in-progress session contributes nothing, exactly as in the two
+  /// per-exercise walks. S-87a-5
+  /// (`test/stats_bests_builder_test.dart`) is the structural guard that the
+  /// fused walk equals them for every exercise of the same history.
+  Future<Map<String, ({double e1rm, int reps})>> getAllTimeBests() async {
+    final history = await _loadHistory();
+    final bests = <String, ({double e1rm, int reps})>{};
+
+    for (final session in history.sessions) {
+      if (session.endedAtMs == null) continue;
+      for (final segment in history.segmentsOf(session.id)) {
+        for (final effort in history.effortsOf(segment.id)) {
+          if (effort.effortKind != 'set') continue;
+          final exerciseId = effort.exerciseId;
+          if (exerciseId == null) continue;
+
+          final entries = ObservationGrouper.groupByEffortKind(
+            'set',
+            history.observationsOf(effort.id),
+          );
+          for (final entry in entries) {
+            final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
+            final reps = entry['reps'] as int? ?? 0;
+
+            final current = bests[exerciseId] ?? (e1rm: 0.0, reps: 0);
+            var e1rm = current.e1rm;
+            var repsBest = current.reps;
+            final estimate = epley1RM(weight, reps);
+            if (estimate != null && estimate > e1rm) e1rm = estimate;
+            // Bodyweight sets only, matching [getAllTimeBestReps].
+            if (weight == 0.0 && reps > repsBest) repsBest = reps;
+
+            if (e1rm > 0 || repsBest > 0) {
+              bests[exerciseId] = (e1rm: e1rm, reps: repsBest);
+            }
+          }
+        }
+      }
+    }
+    return bests;
+  }
+
   // ── Window resolution (current-state window for exercise selection) ───────
 
   /// Resolves the [StatsWindow] used to select which exercises

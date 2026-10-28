@@ -107,6 +107,7 @@ class SyncProtocolValidator {
     'routines_down',
     'exercises_down',
     'foods_down',
+    'bests_down',
     'preferences_down',
     'exercise_push',
     'structure_change',
@@ -300,6 +301,8 @@ class SyncProtocolValidator {
         return _fallbackCoverageRejections(payload);
       case 'exercises_down':
         return _exerciseBatchRejections(payload);
+      case 'bests_down':
+        return _bestsRejections(payload);
       default:
         return const [];
     }
@@ -751,6 +754,66 @@ class SyncProtocolValidator {
           message: 'the same exerciseId appears twice: ${duplicates.join(', ')}',
         ),
       );
+    }
+
+    return rejections;
+  }
+
+  /// Each exercise's standing best. The dialect cannot state these rules as
+  /// constraints (no `anyOf`, and `oneOf` is exactly-one, so "at least one
+  /// axis" would refuse an entry that carries both), and `minimum: 0` admits a
+  /// zero estimate: an entry names at least one axis, both numbers are
+  /// positive, and an exercise appears once. The Swift twin reports the same
+  /// rules in the same order with the same words (D-14).
+  List<SyncProtocolRejection> _bestsRejections(Map<String, Object?> payload) {
+    final entries = payload['bests']! as List;
+    final rejections = <SyncProtocolRejection>[];
+    final seen = <String>{};
+
+    for (var i = 0; i < entries.length; i++) {
+      final entry = _asObject(entries[i]);
+      final path = '$_root.payload.bests[$i]';
+      final exerciseId = entry['exerciseId'];
+      final e1rmKg = entry['e1rmKg'];
+      final repsBest = entry['repsBest'];
+
+      if (e1rmKg == null && repsBest == null) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: path,
+            message: 'entry carries neither e1rmKg nor repsBest',
+          ),
+        );
+      }
+      if (e1rmKg is num && e1rmKg <= 0) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: path,
+            message: 'e1rmKg must be greater than 0',
+          ),
+        );
+      }
+      if (repsBest is num && repsBest <= 0) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: path,
+            message: 'repsBest must be at least 1',
+          ),
+        );
+      }
+      if (exerciseId is String && !seen.add(exerciseId)) {
+        rejections.add(
+          SyncProtocolRejection(
+            code: _semanticViolation,
+            path: path,
+            message:
+                'the same exerciseId appears twice: $exerciseId',
+          ),
+        );
+      }
     }
 
     return rejections;

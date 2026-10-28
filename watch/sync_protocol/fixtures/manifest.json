@@ -10,6 +10,24 @@
       "scenario": "S-15201",
       "note": "An empty Foods I Eat list is a frame like any other: `foods` and `categories` are both empty, and the wrist applies it, emptying the list it holds."
     },
+    {
+      "path": "valid/bests_down.json",
+      "type": "bests_down",
+      "scenario": "S-87a-4",
+      "note": "The family's shape: `ex-bench` carries only the weight axis — a full-precision Epley estimate, never rounded (D-10) — and `ex-push-up` only the reps axis, the bodyweight set's rep best."
+    },
+    {
+      "path": "valid/bests_down_empty.json",
+      "type": "bests_down",
+      "scenario": "S-87a-3",
+      "note": "An empty frame is a frame: `bests: []` tells the wrist the phone knows of no history, so every first set is a PR."
+    },
+    {
+      "path": "valid/bests_down_both_axes.json",
+      "type": "bests_down",
+      "scenario": "S-87a-10",
+      "note": "One entry may carry both axes: `ex-bench` holds a weighted best and a bodyweight rep best, so \"at least one axis\" is a floor, not an exclusive-or."
+    },
     { "path": "valid/exercise_push.json", "type": "exercise_push" },
     { "path": "valid/structure_change.json", "type": "structure_change" },
     { "path": "valid/observations_up.json", "type": "observations_up" },
@@ -608,6 +626,62 @@
       "expectedCode": "invalid_enum_value",
       "expectedReasonContains": "swimming",
       "note": "`healthActivity` is a closed enum: `\"swimming\"` is not one of the five kinds the phone can name, so the batch is refused."
+    },
+    {
+      "path": "invalid/bests_down_entry_without_axis.json",
+      "type": "bests_down",
+      "scenario": "S-87a-4",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "entry carries neither e1rmKg nor repsBest",
+      "note": "An entry that states neither number says nothing about the exercise, so the frame is refused. The dialect has no `anyOf`, so the floor is a semantic rule (D-14)."
+    },
+    {
+      "path": "invalid/bests_down_zero_e1rm.json",
+      "type": "bests_down",
+      "scenario": "S-87a-4",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "e1rmKg must be greater than 0",
+      "note": "A zero estimate is not a best: the schema's `minimum` admits 0 (the dialect has no `exclusiveMinimum`), so the bound above it is a semantic rule (D-14)."
+    },
+    {
+      "path": "invalid/bests_down_fractional_reps.json",
+      "type": "bests_down",
+      "scenario": "S-87a-4",
+      "expectedCode": "invalid_type",
+      "expectedReasonContains": "expected integer, found 12.5",
+      "note": "A rep count is whole: `repsBest` declares `type: integer`, so 12.5 is refused rather than rounded."
+    },
+    {
+      "path": "invalid/bests_down_duplicate_exercise.json",
+      "type": "bests_down",
+      "scenario": "S-87a-4",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "the same exerciseId appears twice: ex-bench",
+      "note": "One frame states an exercise's best once: two entries for one `exerciseId` would leave the wrist deciding which is current (D-14)."
+    },
+    {
+      "path": "invalid/bests_down_unknown_field.json",
+      "type": "bests_down",
+      "scenario": "S-87a-4",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "field \"unit\" is not defined by the schema",
+      "note": "The payload is closed: `unit` is a field the schema does not define, and the frame is refused rather than read for the parts it does have."
+    },
+    {
+      "path": "invalid/bests_down_watch_origin.json",
+      "type": "bests_down",
+      "scenario": "S-87a-4",
+      "expectedCode": "invalid_const_value",
+      "expectedReasonContains": "expected \"phone\", found \"watch\"",
+      "note": "`bests_down` is reference data the phone owns, so its origin is `phone` and a wrist-originated copy is refused (D-2)."
+    },
+    {
+      "path": "invalid/bests_down_over_300.json",
+      "type": "bests_down",
+      "scenario": "S-87a-9",
+      "expectedCode": "constraint_violation",
+      "expectedReasonContains": "expected at most 300 items, found 301",
+      "note": "The frame is ONE message capped at 300 entries (D-9): 301 is refused by `maxItems`, and the phone's own builder neither batches nor exceeds the cap."
     }
   ],
   "scenarios": [

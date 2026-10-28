@@ -261,7 +261,7 @@ void main() {
 
   group('S-10405 the idle raise reads nothing', () {
     test('S-10405 a second request naming the stamp and version reads nothing '
-        'and sends nothing', () async {
+        'and sends only the bests', () async {
       await seedPhone();
       expect(await handler.handle(WatchTransportRequest.routines), isTrue);
       final stamp = sentStamp();
@@ -279,7 +279,12 @@ void main() {
         isTrue,
       );
 
-      expect(transport.sent, isEmpty);
+      expect(
+        transport.types,
+        ['bests_down'],
+        reason: 'S-10405 an idle raise sends no reference frame, but the bests '
+            'travel on every request (87a, D-4)',
+      );
       expect(repository.foodReads, 0);
       expect(repository.groupReads, 0);
       expect(repository.templateReads, 0);

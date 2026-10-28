@@ -570,6 +570,61 @@ abstract final class WatchReferenceSync {
     );
   }
 
+  /// Upper bound on the entries one `bests_down` frame carries (D-9).
+  ///
+  /// One frame, never batched: the wrist reads absence from the newest frame as
+  /// "no history", so a second batch would make it drop the first. Beyond the
+  /// cap the wrist treats the rest as it treats a wrist that has never synced.
+  static const int bestsFrameCap = 300;
+
+  /// Each exercise's standing best, as the `bests_down` message the wrist reads
+  /// so it can tell a set is a record without holding any history.
+  ///
+  /// [bests] is [StatsProgressService.getAllTimeBests]'s one-pass result — the
+  /// same e1RM and bodyweight-rep numbers the phone's own "New PR" verdict
+  /// holds a set against, so the wrist and the phone cannot disagree about what
+  /// a record is (D-1, D-5). An exercise whose axes are both zero appears
+  /// nowhere: the wrist's rule for "no history" is absence, and the phone has
+  /// no history for it.
+  ///
+  /// Entries are ordered by `exerciseId` ascending and the frame stops at
+  /// [bestsFrameCap] (D-9, D-12), which makes two frames built from the same
+  /// history identical. `e1rmKg` travels at the precision
+  /// [StatsProgressService.epley1RM] computes — never rounded, so the wrist's
+  /// strict comparison lands on the same side the phone's does (D-10).
+  ///
+  /// [generatedAt] is the request's own clock reading: bests change with every
+  /// completed workout, so the frame is rebuilt (and re-stamped) per request
+  /// rather than cached ahead of one (D-4, D-13).
+  static Map<String, Object?> buildBestsDown({
+    required Map<String, ({double e1rm, int reps})> bests,
+    required DateTime generatedAt,
+  }) {
+    final ids = bests.keys.toList()
+      ..sort((left, right) => left.compareTo(right));
+
+    final entries = <Map<String, Object?>>[];
+    for (final id in ids) {
+      if (entries.length >= bestsFrameCap) break;
+      final best = bests[id]!;
+      final entry = <String, Object?>{
+        'exerciseId': id,
+        if (best.e1rm > 0) 'e1rmKg': best.e1rm,
+        if (best.reps > 0) 'repsBest': best.reps,
+      };
+      // Neither axis is not an entry the schema admits; it is no history.
+      if (entry.length == 1) continue;
+      entries.add(entry);
+    }
+
+    return phoneEnvelope(
+      type: 'bests_down',
+      messageId: 'msg-bests-${generatedAt.toUtc().millisecondsSinceEpoch}',
+      sentAt: generatedAt,
+      payload: {'generatedAt': utcIso(generatedAt), 'bests': entries},
+    );
+  }
+
   /// One food, in the shape the schema pins. A food whose group the phone no
   /// longer holds has no category to name, which is a valid answer rather than
   /// a reason to drop the food.

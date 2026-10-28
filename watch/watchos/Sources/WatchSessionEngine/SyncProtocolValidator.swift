@@ -51,6 +51,7 @@ public final class SyncProtocolValidator {
         "routines_down",
         "exercises_down",
         "foods_down",
+        "bests_down",
         "preferences_down",
         "exercise_push",
         "structure_change",
@@ -194,6 +195,8 @@ public final class SyncProtocolValidator {
             return fallbackCoverageRejections(payload)
         case "exercises_down":
             return exerciseBatchRejections(payload)
+        case "bests_down":
+            return bestsRejections(payload)
         default:
             return []
         }
@@ -619,6 +622,65 @@ public final class SyncProtocolValidator {
                         + "\(duplicates.joined(separator: ", "))"
                 )
             )
+        }
+
+        return rejections
+    }
+
+    /// Each exercise's standing best. The dialect cannot state these rules as
+    /// constraints (no `anyOf`, and `oneOf` is exactly-one, so "at least one
+    /// axis" would refuse an entry that carries both), and `minimum: 0` admits a
+    /// zero estimate: an entry names at least one axis, both numbers are
+    /// positive, and an exercise appears once. The Dart twin reports the same
+    /// rules in the same order with the same words (D-14).
+    private func bestsRejections(_ payload: [String: Any]) -> [SyncProtocolRejection] {
+        let entries = payload["bests"] as? [Any] ?? []
+        var rejections: [SyncProtocolRejection] = []
+        var seen = Set<String>()
+
+        for (index, entry) in entries.enumerated() {
+            guard let entry = entry as? [String: Any] else { continue }
+            let path = "\(Self.root).payload.bests[\(index)]"
+            let e1rmKg = entry["e1rmKg"] as? NSNumber
+            let repsBest = entry["repsBest"] as? NSNumber
+
+            if e1rmKg == nil && repsBest == nil {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        path,
+                        "entry carries neither e1rmKg nor repsBest"
+                    )
+                )
+            }
+            if let e1rmKg, e1rmKg.doubleValue <= 0 {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        path,
+                        "e1rmKg must be greater than 0"
+                    )
+                )
+            }
+            if let repsBest, repsBest.doubleValue <= 0 {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        path,
+                        "repsBest must be at least 1"
+                    )
+                )
+            }
+            if let exerciseId = entry["exerciseId"] as? String,
+               !seen.insert(exerciseId).inserted {
+                rejections.append(
+                    rejection(
+                        SyncRejectionCode.semanticViolation,
+                        path,
+                        "the same exerciseId appears twice: \(exerciseId)"
+                    )
+                )
+            }
         }
 
         return rejections

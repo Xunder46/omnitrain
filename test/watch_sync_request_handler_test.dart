@@ -31,13 +31,32 @@
 //   S-8316 a throwing group read still sends the foods, uncategorised
 //          → `S-8316 ...`
 //
+// Plan: `docs/plans/2026-10-26-87a-wrist-bests-contract-and-phone-sender-plan/`
+// (D-4, D-11). Scenario mapping:
+//   S-87a-6 a since-current request is answered with the bests alone
+//          → `S-87a-6 ...`
+//   S-87a-7 a bests frame the radio refuses changes neither the batches nor
+//          the answer → `S-87a-7 ...`
+//   S-87a-8 a workout completed between two requests changes the next frame
+//          → `S-87a-8 ...`
+//   S-87a-11 the sent frame validates, with and without history
+//          → `S-87a-11 ...`
+//   S-87a-12 each frame is stamped with its request's own clock
+//          → `S-87a-12 ...`
+//   S-87a-13 no completed sessions reaches the wrist as an empty array
+//          → `S-87a-13 ...`
+//
 // The transport here is a recorder, not the graph: this file is about what the
 // handler sends, and in what order. That the graph's inbound handler hands the
 // frame's version on is S-3855 in `test/watch_session_projection_test.dart`.
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/platform/watch_delivery.dart';
 import 'package:omnitrain/core/platform/watch_transport.dart';
+import 'package:omnitrain/core/services/stats_progress_service.dart';
+import 'package:omnitrain/core/sync_protocol/wire_timestamps.dart';
 import 'package:omnitrain/core/utils/watch_reference_sync.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -63,10 +82,16 @@ class _RecordingTransport implements WatchMirrorTransport {
   /// Whether the radio refuses the `foods_down` frame (S-7105).
   bool undeliveredFoods = false;
 
+  /// Whether the radio refuses the `bests_down` frame (S-87a-7).
+  bool undeliveredBests = false;
+
   @override
   Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
     if (envelope['type'] == 'foods_down' && undeliveredFoods) {
+      return WatchDelivery.undelivered;
+    }
+    if (envelope['type'] == 'bests_down' && undeliveredBests) {
       return WatchDelivery.undelivered;
     }
     if (envelope['type'] == 'exercises_down' && undeliveredBatchIndex != null) {
@@ -173,11 +198,85 @@ class _ThrowingOnceRepository extends MockWorkoutRepository {
   }
 }
 
+/// A completed session holding one set effort (reps × weight), the way the
+/// phone stores a workout — the fixture `StatsProgressService` reads its bests
+/// from (S-87a-8, S-87a-11). The exercise need not exist in the catalog: the
+/// history walk reads efforts, not exercise rows (87a, A-11).
+Future<void> _seedCompletedSetSession(
+  MockWorkoutRepository repo, {
+  required String sessionId,
+  required String exerciseId,
+  required int reps,
+  required double weight,
+}) async {
+  final startedAtMs = _now.millisecondsSinceEpoch;
+  final endedAtMs = startedAtMs + 1000;
+  await repo.createSession(
+    TrainingSession(
+      id: sessionId,
+      ownerUserId: 'u-1',
+      startedAtMs: startedAtMs,
+      endedAtMs: endedAtMs,
+      createdAtMs: startedAtMs,
+      updatedAtMs: endedAtMs,
+    ),
+  );
+
+  final segmentId = 'seg-$sessionId';
+  await repo.createSegment(
+    SessionSegment(
+      id: segmentId,
+      sessionId: sessionId,
+      orderIndex: 0,
+      segmentType: 'main',
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+
+  final effortId = 'eff-$sessionId';
+  await repo.createEffort(
+    SegmentEffort(
+      id: effortId,
+      segmentId: segmentId,
+      orderIndex: 0,
+      effortKind: 'set',
+      exerciseId: exerciseId,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+  await repo.createObservation(
+    EffortObservation(
+      id: 'obs-$effortId-0-reps',
+      effortId: effortId,
+      metricId: 'metric-reps',
+      valueInt: reps,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+  await repo.createObservation(
+    EffortObservation(
+      id: 'obs-$effortId-0-weight',
+      effortId: effortId,
+      metricId: 'metric-weight',
+      valueReal: weight,
+      createdAtMs: startedAtMs + 1,
+      updatedAtMs: startedAtMs + 1,
+    ),
+  );
+}
+
 void main() {
   late MockWorkoutRepository repository;
   late SettingsState settings;
   late _RecordingTransport transport;
   late WatchSyncRequestHandler handler;
+
+  /// The clock the handler reads; a test that needs two different request
+  /// instants moves it (S-87a-12).
+  late DateTime current;
 
   WatchSyncRequestHandler handlerFor(FoodLibraryState library) =>
       WatchSyncRequestHandler(
@@ -189,7 +288,7 @@ void main() {
         repository: repository,
         settings: settings,
         foodLibrary: library,
-        clock: () => _now,
+        clock: () => current,
       );
 
   setUp(() async {
@@ -197,6 +296,7 @@ void main() {
     await repository.initialize();
     settings = SettingsState(repository, fakePreferencesService());
     transport = _RecordingTransport();
+    current = _now;
     handler = handlerFor(FoodLibraryState(repository));
   });
 
@@ -275,11 +375,12 @@ void main() {
 
         expect(
           transport.types,
-          ['preferences_down', 'foods_down', 'routines_down'],
+          ['preferences_down', 'foods_down', 'routines_down', 'bests_down'],
           reason:
               'S-3850 the wrist holds the list, so the preferences, the '
               'foods and the routines travel and no exercise batch does '
-              '(S-15204: the foods frame is the empty one)',
+              '(S-15204: the foods frame is the empty one); the bests close '
+              'every answer (87a, D-4)',
         );
       },
     );
@@ -301,11 +402,12 @@ void main() {
 
       expect(
         transport.types,
-        ['preferences_down', 'foods_down', 'routines_down'],
+        ['preferences_down', 'foods_down', 'routines_down', 'bests_down'],
         reason:
             'S-3857 no exercise the wrist could log is no list to send, so '
             'the wrist keeps the list it holds (D-3831); the empty foods '
-            'frame still travels (S-15204)',
+            'frame still travels (S-15204), and the bests still close the '
+            'answer (87a, D-4)',
       );
     });
 
@@ -329,8 +431,10 @@ void main() {
       );
       expect(
         transport.types.skip(3),
-        everyElement('exercises_down'),
-        reason: 'S-3851 nothing but the exercise list follows the routines',
+        ['exercises_down', 'exercises_down', 'exercises_down', 'bests_down'],
+        reason:
+            'S-3851 the exercise batches follow the routines, then exactly '
+            'one bests frame closes the answer (87a, D-4)',
       );
     });
 
@@ -471,8 +575,10 @@ void main() {
       );
       expect(
         transport.types.skip(3),
-        everyElement('exercises_down'),
-        reason: 'S-7101 only the exercise batches follow the food list',
+        ['exercises_down', 'exercises_down', 'exercises_down', 'bests_down'],
+        reason:
+            'S-7101 only the exercise batches follow the food list, and the '
+            'bests close the answer (87a, D-4)',
       );
       expect(
         transport.batchIndices,
@@ -563,10 +669,11 @@ void main() {
 
       expect(
         transport.types,
-        ['preferences_down', 'foods_down', 'routines_down'],
+        ['preferences_down', 'foods_down', 'routines_down', 'bests_down'],
         reason:
             'S-7103 the version early return sits after the foods and the '
-            'routines, so the foods still travel and no exercise batch does',
+            'routines, so the foods still travel and no exercise batch does; '
+            'the bests are sent whatever the wrist holds (87a, D-4)',
       );
     });
 
@@ -807,6 +914,235 @@ void main() {
         loadProtocolValidator().validateEnvelope(frame),
         isEmpty,
         reason: 'S-8316 the frame validates',
+      );
+    });
+  });
+
+  group('S-87a-6…S-87a-13 the bests close every answer', () {
+    /// The `generatedAt` of the one `routines_down` frame sent so far — the
+    /// stamp the wrist names back as its `since`.
+    DateTime sentStamp() => parseUtcIso(
+      asObject(
+        transport.ofType('routines_down').single['payload'],
+      )['generatedAt'],
+    );
+
+    /// The entries of the one `bests_down` frame sent so far.
+    List<Map<String, Object?>> sentBests() => objectsOf(
+      asObject(transport.ofType('bests_down').single['payload'])['bests'],
+    );
+
+    test('S-87a-6 a since-current request is answered with none of the three '
+        'bundle frames and exactly one bests_down', () async {
+      await handler.handle(WatchTransportRequest.routines);
+      final stamp = sentStamp();
+
+      transport.sent.clear();
+
+      expect(
+        await handler.handle(
+          WatchTransportRequest.routines,
+          since: stamp,
+          exercisesVersion: await currentVersion(),
+        ),
+        isTrue,
+        reason: 'S-87a-6 the wrist asked, so the phone answered',
+      );
+
+      for (final type in [
+        'preferences_down',
+        'foods_down',
+        'routines_down',
+      ]) {
+        expect(
+          transport.ofType(type),
+          isEmpty,
+          reason: 'S-87a-6 the wrist holds the current bundle, so $type stays '
+              'put',
+        );
+      }
+      expect(
+        transport.ofType('exercises_down'),
+        isEmpty,
+        reason: 'S-87a-6 the wrist holds the current list, so no batch '
+            'travels',
+      );
+      expect(
+        transport.types,
+        ['bests_down'],
+        reason:
+            'S-87a-6 bests change after every completed workout, so they '
+            'travel on every request whatever `since` says (D-4)',
+      );
+    });
+
+    test('S-87a-7 a bests frame the radio refuses leaves the batches and the '
+        'answer as they were', () async {
+      transport.undeliveredBests = true;
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+
+      expect(
+        transport.types.take(3),
+        ['preferences_down', 'foods_down', 'routines_down'],
+        reason: 'S-87a-7 the bundle is untouched by the refused frame',
+      );
+      expect(
+        transport.batchIndices,
+        [0, 1, 2],
+        reason: 'S-87a-7 a refused bests frame is not a reason to hold back '
+            'the exercise list',
+      );
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87a-7 the bests were attempted once, after everything else',
+      );
+      expect(
+        transport.types.last,
+        'bests_down',
+        reason: 'S-87a-7 the bests are the last frame of every answer (D-11)',
+      );
+    });
+
+    test('S-87a-8 a workout completed between two requests changes the next '
+        'frame', () async {
+      const exerciseId = 'exercise-bench-press';
+      await _seedCompletedSetSession(
+        repository,
+        sessionId: 'session-first',
+        exerciseId: exerciseId,
+        reps: 5,
+        weight: 100,
+      );
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+      final first = sentBests().single;
+      expect(
+        first['e1rmKg'],
+        StatsProgressService.epley1RM(100.0, 5),
+        reason: 'S-87a-8 the first frame holds the history as it stands',
+      );
+
+      await _seedCompletedSetSession(
+        repository,
+        sessionId: 'session-better',
+        exerciseId: exerciseId,
+        reps: 5,
+        weight: 120,
+      );
+      current = _now.add(const Duration(minutes: 5));
+      transport.sent.clear();
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+      final second = sentBests().single;
+      expect(
+        second['e1rmKg'],
+        StatsProgressService.epley1RM(120.0, 5),
+        reason:
+            'S-87a-8 the frame is built from storage read at request time, so '
+            'a workout completed between two requests reaches the wrist',
+      );
+      expect(
+        second['e1rmKg'],
+        isNot(first['e1rmKg']),
+        reason: 'S-87a-8 a held StatsProgressService would have served the '
+            'bests of the first request',
+      );
+    });
+
+    test('S-87a-11 the sent frame validates, with and without history',
+        () async {
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+
+      final emptyHistory = transport.ofType('bests_down').single;
+      expect(
+        loadProtocolValidator().validateEnvelope(
+          (jsonDecode(jsonEncode(emptyHistory)) as Map)
+              .cast<String, Object?>(),
+        ),
+        isEmpty,
+        reason: 'S-87a-11 an empty-history frame is one the protocol admits',
+      );
+
+      await _seedCompletedSetSession(
+        repository,
+        sessionId: 'session-valid',
+        exerciseId: 'exercise-bench-press',
+        reps: 5,
+        weight: 100,
+      );
+      transport.sent.clear();
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+      final frame = transport.ofType('bests_down').single;
+      expect(
+        objectsOf(asObject(frame['payload'])['bests']),
+        isNotEmpty,
+        reason: 'S-87a-11 the second frame carries the new history',
+      );
+      expect(
+        loadProtocolValidator().validateEnvelope(
+          (jsonDecode(jsonEncode(frame)) as Map).cast<String, Object?>(),
+        ),
+        isEmpty,
+        reason: 'S-87a-11 the sender and the contract cannot drift',
+      );
+    });
+
+    test('S-87a-12 each frame is stamped with that request\'s own clock',
+        () async {
+      final start = _now;
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+      expect(
+        asObject(
+          transport.ofType('bests_down').single['payload'],
+        )['generatedAt'],
+        utcIso(start),
+        reason: 'S-87a-12 the first frame is stamped with the phone\'s clock',
+      );
+
+      current = start.add(const Duration(minutes: 3));
+      transport.sent.clear();
+
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+      expect(
+        asObject(
+          transport.ofType('bests_down').single['payload'],
+        )['generatedAt'],
+        utcIso(current),
+        reason:
+            'S-87a-12 not a stored bundle stamp: the second request carries '
+            'its own clock reading',
+      );
+      expect(
+        asObject(
+          transport.ofType('routines_down').single['payload'],
+        )['generatedAt'],
+        utcIso(start),
+        reason:
+            'S-87a-12 the bundle keeps its stamp while its content stands '
+            'still, so bests are not part of the bundle',
+      );
+    });
+
+    test('S-87a-13 no completed sessions reaches the wrist as an empty array',
+        () async {
+      expect(await handler.handle(WatchTransportRequest.routines), isTrue);
+
+      final frames = transport.ofType('bests_down');
+      expect(
+        frames,
+        hasLength(1),
+        reason: 'S-87a-13 the frame travels even when the phone has no history',
+      );
+      expect(
+        asObject(frames.single['payload'])['bests'],
+        isEmpty,
+        reason:
+            'S-87a-13 an empty array is "no history"; a missing frame would '
+            'leave the wrist unable to tell',
       );
     });
   });

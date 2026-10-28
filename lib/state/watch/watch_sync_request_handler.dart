@@ -27,6 +27,7 @@ import 'dart:convert';
 import '../../core/constants/omni_theme.dart';
 import '../../core/platform/watch_delivery.dart';
 import '../../core/platform/watch_transport.dart';
+import '../../core/services/stats_progress_service.dart';
 import '../../core/utils/watch_reference_sync.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../food_library_state.dart';
@@ -133,6 +134,14 @@ class WatchSyncRequestHandler {
   /// it has, so a half-arrived list is worse than none and the next sync sends
   /// the whole list again (PROTOCOL.md, "Idempotency and reconciliation").
   ///
+  /// The bests (`bests_down`) are the last frame of every answer: sent
+  /// whatever `since` says, whatever the bundle's stamp is, and whether or not
+  /// the exercise list travelled (plan 87a, D-4). Bests change after every
+  /// completed workout while the bundle's stamp changes only when its content
+  /// does, so bundling them would re-send the foods and the routines after
+  /// every set. The frame is built from storage read at request time, so a
+  /// workout completed since the last request is what the wrist gets.
+  ///
   /// The settings are `SettingsState`'s own — the one owner of them (D-115) —
   /// so nothing here reads or parses a stored preference; the accent is read
   /// the same way, from the theme that state holds rather than from a copy.
@@ -196,31 +205,56 @@ class WatchSyncRequestHandler {
       if (carried) await _transport.send(bundle.routines);
     }
 
+    await _sendExerciseList(
+      exercisesVersion: exercisesVersion,
+      revision: revision,
+    );
+
+    // Built from a fresh service per request: it caches one history snapshot
+    // for its lifetime, so a held instance would send bests from before the
+    // last workout (D-11).
+    final bests = await StatsProgressService(_repository).getAllTimeBests();
+    await _transport.send(
+      WatchReferenceSync.buildBestsDown(bests: bests, generatedAt: _clock()),
+    );
+    return true;
+  }
+
+  /// The phone's exercise list, as [WatchReferenceSync.buildExercisesDown]
+  /// batches, unless the wrist already holds the version it named (D-3834).
+  ///
+  /// Independent of the bundle: a skipped bundle still checks the version, and
+  /// a sent bundle still skips the batches the wrist holds. Nothing is read
+  /// while the repository's revision stands still and the version matches
+  /// (plan 74, D-6).
+  Future<void> _sendExerciseList({
+    required String? exercisesVersion,
+    required int? revision,
+  }) async {
     final heldExercises = _exercisesHeld;
     if (exercisesVersion != null &&
         revision != null &&
         heldExercises != null &&
         heldExercises.revision == revision &&
         heldExercises.version == exercisesVersion) {
-      return true;
+      return;
     }
 
     final batches = await WatchReferenceSync.buildExercisesDown(
       repository: _repository,
       generatedAt: _clock(),
     );
-    if (batches.isEmpty) return true;
+    if (batches.isEmpty) return;
 
     final version = (batches.first['payload']! as Map)['catalogVersion'];
     _exercisesHeld = revision != null && version is String
         ? (version: version, revision: revision)
         : null;
-    if (exercisesVersion == version) return true;
+    if (exercisesVersion == version) return;
 
     for (final batch in batches) {
       if (await _transport.send(batch) == WatchDelivery.undelivered) break;
     }
-    return true;
   }
 
   /// Reloads the food groups and foods from storage; false when a read threw

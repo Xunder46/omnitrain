@@ -4,7 +4,8 @@
 // Scenario mapping:
 //   S-9201 the first request sends the three, stamped alike
 //          → `S-9201 ...`
-//   S-9202 a wrist holding the current bundle is sent nothing → `S-9202 ...`
+//   S-9202 a wrist holding the current bundle is sent only the bests
+//          → `S-9202 ...`
 //   S-9203 the stamp boundary, one test per arm → `S-9203 ...`
 //   S-9204 one changed input re-sends the three, stamped anew, one test per
 //          arm → `S-9204 ...`
@@ -291,9 +292,9 @@ void main() {
     });
   });
 
-  group('S-9202 a wrist holding the current bundle is sent nothing', () {
+  group('S-9202 a wrist holding the current bundle is sent only the bests', () {
     test('S-9202 a second request naming the stamp, with nothing changed, '
-        'sends zero frames', () async {
+        'sends exactly one frame, the bests', () async {
       final answer = handlerFor(await libraryWithFoods());
       await answer.handle(WatchTransportRequest.routines);
       final stamp = sentStamp();
@@ -311,11 +312,12 @@ void main() {
       );
 
       expect(
-        transport.sent,
-        isEmpty,
+        transport.types,
+        ['bests_down'],
         reason:
             'S-9202 the wrist\'s since is the bundle\'s stamp, so none of the '
-            'three frames and no exercise batch travels',
+            'three frames and no exercise batch travels — but the bests '
+            'travel on every request (87a, D-4)',
       );
     });
   });

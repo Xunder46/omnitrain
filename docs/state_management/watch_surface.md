@@ -556,7 +556,13 @@ stamp lives only in memory), gets all three. `routines_down` goes last and is
 withheld when the preferences or the foods frame came back undelivered, so a
 wrist that names a stamp holds the whole bundle. Then the exercise list as
 `exercises_down` batches — unless the request names the version of the list
-the phone would send, in which case the batches are omitted. The version check
+the phone would send, in which case the batches are omitted. Last, always, the
+`bests_down` frame: every trained exercise's best estimated 1RM and best
+bodyweight reps, sent whatever the `since` says and whatever the bundle and the
+batches did, because a best changes after every completed workout (plan 87a,
+D-4). Its bests come from a `StatsProgressService` created per request, so a
+workout completed since the last sync reaches the wrist, and the frame carries
+the request's own clock, not the bundle's stamp. The version check
 is independent of the bundle: a skipped bundle still checks the version, and a
 wrist that already holds the exercise list still receives the bundle. A
 refused foods frame withholds the routines frame too (the next sync re-sends
@@ -590,7 +596,8 @@ routines`, its `S-7104` now the empty frame
 `S-7104 (S-15204) a phone with no foods sends an empty foods frame and still
 sends the rest`, and the failed reads `S-8310 a throwing food read still
 answers with the rest`, `S-8316 a throwing group read still sends the foods,
-uncategorised`). The changed-only rule is
+uncategorised`; the bests that close every answer, group
+`S-87a-6…S-87a-13 the bests close every answer`). The changed-only rule is
 `test/watch_sync_changed_only_test.dart` (S-9201..S-9212: the first request,
 the skip, the stamp boundary, one changed input, the equal signature, a
 refused frame, unreadable `since`, the exercises' independence, no foods then

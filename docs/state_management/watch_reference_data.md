@@ -171,7 +171,7 @@ the prune above is the only way batch rows leave.
 
 ## Where the two ends stand
 
-The phone answers a `routines` request with the three reference frames —
+The phone answers a `routines` request with the reference frames —
 `preferences_down`, then `foods_down` — an empty `foods` list is a valid
 frame, so a phone with no foods sends the empty frame and the wrist empties
 its list, while a foods read that threw sends no foods frame at all — then
@@ -223,6 +223,30 @@ when it does not
 untouched until a version completes). The Dart watch client (`lib/watch/`)
 never reports a version (D-3805), so it is sent the full list on every Sync — a
 documented divergence from the Swift wrist.
+
+### The bests close every answer
+
+`bests_down` — every trained exercise's best estimated 1RM and best bodyweight
+reps — is the last frame of every answer, after the batches, and it is sent
+whatever the wrist's `since` says and whatever happened to the bundle: a best
+changes after every completed workout, so the wrist cannot be told "nothing
+changed" (`test/watch_sync_request_handler_test.dart`, group
+`S-87a-6…S-87a-13 the bests close every answer`, test `S-87a-6 a since-current
+request is answered with none of the three bundle frames and exactly one
+bests_down`; a refused bests frame changes neither the batches nor the answer,
+`S-87a-7 a bests frame the radio refuses leaves the batches and the answer as
+they were`; `test/watch_sync_changed_only_test.dart`, group `S-9202 a wrist
+holding the current bundle is sent only the bests`). A phone with no completed
+session still sends the frame, with an empty `bests` array, so "no history" and
+"the frame never arrived" stay distinguishable
+(`S-87a-13 no completed sessions reaches the wrist as an empty array`). The
+frame is built from a `StatsProgressService` created per request, never a held
+one, so a workout completed between two requests reaches the wrist
+(`S-87a-8 a workout completed between two requests changes the next frame`),
+and each frame is stamped with its own request's clock rather than the bundle's
+(`S-87a-12 each frame is stamped with that request's own clock`). The frame it
+sends validates against the contract (`S-87a-11 the sent frame validates, with
+and without history`).
 
 ### The phone's sender since 23e2
 

@@ -1,0 +1,15 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-bests-duplicate-1",
+  "type": "bests_down",
+  "origin": "phone",
+  "sentAt": "2026-10-26T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-10-26T17:00:00Z",
+    "bests": [
+      { "exerciseId": "ex-bench", "e1rmKg": 116.66666666666667 },
+      { "exerciseId": "ex-squat", "e1rmKg": 163.33333333333331 },
+      { "exerciseId": "ex-bench", "repsBest": 15 }
+    ]
+  }
+}
