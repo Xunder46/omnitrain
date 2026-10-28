@@ -316,11 +316,14 @@ Future<WatchSyncGraph?> createWatchSync({
     var answeredReset = false;
     if (request != null) {
       // The version the wrist holds rides the request frame; a wrist that
-      // named none is sent the whole exercise list (D-3834).
+      // named none is sent the whole exercise list (D-3834). So does whether
+      // it holds the bests: one that does is answered only when they moved
+      // (87c, D-5).
       await requests.handle(
         request,
         exercisesVersion: WatchTransportRequest.exercisesVersionOf(frame),
         since: WatchTransportRequest.sinceOf(frame),
+        holdsBests: WatchTransportRequest.holdsBestsOf(frame),
       );
     } else {
       answeredReset = (await router.receive(frame)).answeredReset;

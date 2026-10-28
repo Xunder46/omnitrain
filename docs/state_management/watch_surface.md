@@ -596,8 +596,10 @@ routines`, its `S-7104` now the empty frame
 `S-7104 (S-15204) a phone with no foods sends an empty foods frame and still
 sends the rest`, and the failed reads `S-8310 a throwing food read still
 answers with the rest`, `S-8316 a throwing group read still sends the foods,
-uncategorised`; the bests that close every answer, group
-`S-87a-6…S-87a-13 the bests close every answer`). The changed-only rule is
+uncategorised`; the bests that close every answer they must carry, group
+`S-87a-6…S-87a-13 the bests close every answer`, and their changed-only rule,
+group `S-87c-1…S-87c-14 the bests are sent only when they moved`). The
+changed-only rule is
 `test/watch_sync_changed_only_test.dart` (S-9201..S-9212: the first request,
 the skip, the stamp boundary, one changed input, the equal signature, a
 refused frame, unreadable `since`, the exercises' independence, no foods then

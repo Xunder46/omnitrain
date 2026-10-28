@@ -714,6 +714,11 @@ abstract class WorkoutRepository {
   /// cannot tell, so a caller must re-read.
   int? get referenceRevision;
 
+  /// A number that differs whenever any session, segment, effort or
+  /// observation row was written since it was last read; `null` means the
+  /// repository cannot tell, so a caller must re-read.
+  int? get historyRevision;
+
   /// Persist the device's data-migration version. Called by
   /// `DataMigrationService` after each step completes so subsequent
   /// launches skip the work.

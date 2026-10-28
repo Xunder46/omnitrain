@@ -7,6 +7,9 @@
 //   S-10402 Hive: writes that are not reference data leave it alone
 //   S-10403 Hive: no write, no move; a second initialize does not stack
 //   S-10404 Mock: the Mock answers null, before and after writes
+//   S-87c-8 Mock: the history revision is unknowable → `S-87c-8 ...`
+//   S-87c-15 Hive: the history listeners count every event kind on the four
+//         history boxes → `S-87c-15 ...` (plan 87c)
 //
 // Plain `test()` only: a Hive write inside a widget test's FakeAsync never
 // completes.
@@ -45,6 +48,10 @@ WorkoutTemplate _template({String id = 'rev-template-1'}) => WorkoutTemplate(
   updatedAtMs: 1000,
 );
 
+/// Lets every listener the box write queued run: a zero-duration timer starts
+/// after the microtasks that deliver the events (plain `test()`, no FakeAsync).
+Future<void> _settle() => Future<void>.delayed(Duration.zero);
+
 void main() {
   group('S-10404 Mock: the revision is unknowable', () {
     late MockRepositoryHarness harness;
@@ -65,6 +72,16 @@ void main() {
 
       await repo.createTemplate(_template());
       expect(repo.referenceRevision, isNull);
+    });
+
+    test('S-87c-8 the history revision is null too', () async {
+      expect(repo.historyRevision, isNull);
+
+      await seedSession(repo, sessionId: 'rev-history-session');
+      expect(repo.historyRevision, isNull);
+
+      await repo.createFood(_food(id: 'rev-history-food'));
+      expect(repo.historyRevision, isNull);
     });
   });
 
@@ -239,6 +256,204 @@ void main() {
         after! - before!,
         1,
         reason: 'listeners stacked on a second initialize',
+      );
+    });
+  });
+
+  group('S-87c-15 Hive: the four history boxes move the number', () {
+    late HiveRepositoryHarness harness;
+    late WorkoutRepository repo;
+
+    setUp(() async {
+      harness = HiveRepositoryHarness();
+      repo = await harness.open();
+
+      final at = fixtureStart;
+      for (var n = 0; n < 2; n++) {
+        await repo.createSession(
+          TrainingSession(
+            id: 'hist-session-$n',
+            ownerUserId: 'user-1',
+            startedAtMs: at + n,
+            endedAtMs: at + n + 3600000,
+            createdAtMs: at,
+            updatedAtMs: at,
+          ),
+        );
+        await repo.createSegment(
+          SessionSegment(
+            id: 'hist-seg-$n',
+            sessionId: 'hist-session-$n',
+            orderIndex: 0,
+            segmentType: 'workout',
+            name: 'Main Workout',
+            createdAtMs: at,
+            updatedAtMs: at,
+          ),
+        );
+        await repo.createEffort(
+          SegmentEffort(
+            id: 'hist-effort-$n',
+            segmentId: 'hist-seg-$n',
+            orderIndex: 0,
+            effortKind: 'set',
+            exerciseId: 'hist-ex-$n',
+            createdAtMs: at,
+            updatedAtMs: at,
+          ),
+        );
+      }
+      // The two observation rows both hang on effort 0, so one deleteAll path
+      // can prove the per-key count.
+      await repo.createObservation(repsRow('hist-effort-0', 0, 5, atMs: at));
+      await repo.createObservation(repsRow('hist-effort-0', 1, 5, atMs: at));
+      await repo.createTimedInstance(
+        timedInstance('hist-effort-1', 0, durationSecs: 60, entryIndex: 0),
+      );
+      await _settle();
+    });
+
+    tearDown(() => harness.close());
+
+    /// [write] moves the history counter by exactly [by] and the reference
+    /// counter not at all.
+    Future<void> expectHistoryMoved(
+      String what,
+      int by,
+      Future<void> Function() write,
+    ) async {
+      final historyBefore = repo.historyRevision!;
+      final referenceBefore = repo.referenceRevision;
+      await write();
+      await _settle();
+      expect(
+        repo.historyRevision! - historyBefore,
+        by,
+        reason:
+            '$what moved the history revision by '
+            '${repo.historyRevision! - historyBefore}',
+      );
+      expect(
+        repo.referenceRevision,
+        referenceBefore,
+        reason: '$what moved the reference revision',
+      );
+    }
+
+    test('S-87c-15 session, segment, effort and observation writes move it', () async {
+      expect(repo.historyRevision, isNotNull);
+
+      await expectHistoryMoved(
+        'one session row',
+        1,
+        () => repo.createSession(
+          TrainingSession(
+            id: 'hist-session-new',
+            ownerUserId: 'user-1',
+            startedAtMs: fixtureStart,
+            endedAtMs: fixtureStart + 3600000,
+            createdAtMs: fixtureStart,
+            updatedAtMs: fixtureStart,
+          ),
+        ),
+      );
+
+      // Written outside a measured step: this one is deleted later and must
+      // carry no rows, so the delete counts one event.
+      await repo.createEffort(
+        SegmentEffort(
+          id: 'hist-effort-empty',
+          segmentId: 'hist-seg-0',
+          orderIndex: 1,
+          effortKind: 'set',
+          exerciseId: 'hist-ex-0',
+          createdAtMs: fixtureStart,
+          updatedAtMs: fixtureStart,
+        ),
+      );
+      await _settle();
+
+      await expectHistoryMoved('two segment rows', 2, () async {
+        for (var n = 0; n < 2; n++) {
+          await repo.createSegment(
+            SessionSegment(
+              id: 'hist-seg-new-$n',
+              sessionId: 'hist-session-new',
+              orderIndex: n,
+              segmentType: 'workout',
+              name: 'Main Workout',
+              createdAtMs: fixtureStart,
+              updatedAtMs: fixtureStart,
+            ),
+          );
+        }
+      });
+
+      await expectHistoryMoved(
+        'one deleted effort',
+        1,
+        () => repo.deleteEffort('hist-effort-empty'),
+      );
+
+      await expectHistoryMoved(
+        'two observation rows deleted in one call',
+        2,
+        () => repo.deleteObservationsForEffort('hist-effort-0'),
+      );
+    });
+
+    test('S-87c-15 timed instances, foods and exercises leave it alone', () async {
+      final historyBefore = repo.historyRevision;
+      final referenceBefore = repo.referenceRevision;
+
+      await repo.createTimedInstance(
+        timedInstance('hist-effort-1', 1, durationSecs: 60, entryIndex: 1),
+      );
+      await _settle();
+      expect(
+        repo.historyRevision,
+        historyBefore,
+        reason: 'a timed instance is not history the bests read',
+      );
+      expect(
+        repo.referenceRevision,
+        referenceBefore,
+        reason: 'a timed instance is not reference data either',
+      );
+
+      await repo.createFood(_food(id: 'hist-food'));
+      await _settle();
+      expect(
+        repo.historyRevision,
+        historyBefore,
+        reason: 'a food write moved the history revision',
+      );
+      expect(
+        repo.referenceRevision,
+        isNot(referenceBefore),
+        reason: 'a food write must move the reference revision',
+      );
+
+      final referenceAfterFood = repo.referenceRevision;
+      await repo.createExercise(
+        Exercise(
+          id: 'hist-ex-new',
+          name: 'History Row',
+          capabilities: const ['reps'],
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await _settle();
+      expect(
+        repo.historyRevision,
+        historyBefore,
+        reason: 'an exercise write moved the history revision',
+      );
+      expect(
+        repo.referenceRevision,
+        isNot(referenceAfterFood),
+        reason: 'an exercise write must move the reference revision',
       );
     });
   });

@@ -99,15 +99,25 @@ abstract final class WatchTransportRequest {
   /// is added only when it says one — a wrist holding nothing omits the key
   /// rather than naming an empty version, the same way a first sync omits
   /// `since` (D-3833).
+  ///
+  /// [holdsBests] says the wrist holds a bests frame, and adds `holdsBests:
+  /// true` only when it is true — a wrist holding nothing omits the key rather
+  /// than sending `false` (87c, D-2).
   static Map<String, Object?> routinesFrame({
     DateTime? since,
     String? exercisesVersion,
+    bool holdsBests = false,
   }) {
     final stamp = since == null ? null : utcIso(since);
     final version = exercisesVersion == null || exercisesVersion.isEmpty
         ? null
         : exercisesVersion;
-    return {'request': routines, 'since': ?stamp, 'exercisesVersion': ?version};
+    return {
+      'request': routines,
+      'since': ?stamp,
+      'exercisesVersion': ?version,
+      if (holdsBests) 'holdsBests': true,
+    };
   }
 
   /// The exercise-list version [frame] names, or null when it names none.
@@ -130,6 +140,14 @@ abstract final class WatchTransportRequest {
     if (since is! String || since.isEmpty) return null;
     return DateTime.tryParse(since)?.toUtc();
   }
+
+  /// Whether [frame] says the wrist holds a bests frame.
+  ///
+  /// Only the boolean `true` counts as held: a string, a number, `false` and an
+  /// absent key are all "not held", so the phone sends the frame as it always
+  /// has (87c, D-2).
+  static bool holdsBestsOf(Map<String, Object?> frame) =>
+      frame['holdsBests'] == true;
 
   static Map<String, Object?> snapshotFrame() => const {'request': snapshot};
 }

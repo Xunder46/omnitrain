@@ -228,17 +228,26 @@ documented divergence from the Swift wrist.
 
 `bests_down` — every trained exercise's best estimated 1RM and best bodyweight
 reps — is the last frame of every answer, after the batches, and it is sent
-whatever the wrist's `since` says and whatever happened to the bundle: a best
-changes after every completed workout, so the wrist cannot be told "nothing
-changed" (`test/watch_sync_request_handler_test.dart`, group
+whatever the wrist's `since` says: a best changes after every completed workout,
+so the bundle's stamp cannot stand for a best, and "nothing changed" is never
+said on the bundle's word. A wrist that names the bests frame as one it holds
+is the exception — it is sent none while the history and the entries stand
+still, and none is a definite answer rather than a failure (87c, D-5;
+`test/watch_sync_request_handler_test.dart`, group
+`S-87c-1…S-87c-14 the bests are sent only when they moved`, test `S-87c-1 a
+wrist holding the bests, raising again at the same revision, is sent none and
+reads no history`; a write that leaves the entries as they were costs one walk
+and no frame, `S-87c-3 a write that leaves the bests identical costs one walk
+and no frame`). The frame is still closed over the answer whenever it is sent
+(`test/watch_sync_request_handler_test.dart`, group
 `S-87a-6…S-87a-13 the bests close every answer`, test `S-87a-6 a since-current
 request is answered with none of the three bundle frames and exactly one
 bests_down`; a refused bests frame changes neither the batches nor the answer,
 `S-87a-7 a bests frame the radio refuses leaves the batches and the answer as
 they were`; `test/watch_sync_changed_only_test.dart`, group `S-9202 a wrist
 holding the current bundle is sent only the bests`). A phone with no completed
-session still sends the frame, with an empty `bests` array, so "no history" and
-"the frame never arrived" stay distinguishable
+session that is asked sends the frame, with an empty `bests` array, so "no
+history" and "the frame never arrived" stay distinguishable
 (`S-87a-13 no completed sessions reaches the wrist as an empty array`). The
 frame is built from a `StatsProgressService` created per request, never a held
 one, so a workout completed between two requests reaches the wrist

@@ -13,7 +13,9 @@
 ///
 /// The routines, the food list and the exercise list are built here, on
 /// demand, and nowhere else: nothing on the phone answers a request the wrist
-/// has not made (D-7).
+/// has not made (D-7). The bests ride the same answer, and are left out when
+/// the wrist says it holds them and nothing moved since the frame it holds
+/// (87c, D-5).
 ///
 /// The same request is how the phone's settings reach the wrist: the three
 /// reference frames — the preferences, the foods, the routines — travel
@@ -76,11 +78,23 @@ class WatchSyncRequestHandler {
   /// revision stands still is sent nothing and nothing is read (plan 74, D-6).
   ({String version, int revision})? _exercisesHeld;
 
+  /// The revision the last delivered `bests_down` frame was built at, and the
+  /// text of its entries (without the stamp every walk moves): a wrist that
+  /// says it holds the bests while both stand still is sent nothing, and no
+  /// history is read for it (87c, D-4). A phone that relaunched holds none,
+  /// and a frame the radio did not carry leaves none (D-5).
+  ({int? revision, String entriesText})? _bestsHeld;
+
   /// Answers [request], and reports whether it had an answer to give.
   ///
   /// [exercisesVersion] is the version of the exercise list the wrist holds,
   /// as it named it in the request frame; a wrist holding nothing — or naming
   /// nothing readable — is sent the whole list (D-3834).
+  ///
+  /// [holdsBests] is whether the wrist says it holds a bests frame: a wrist
+  /// saying so is sent no `bests_down` while the history and the entries stand
+  /// still, and a wrist saying nothing is sent the frame as it always was
+  /// (87c, D-2, D-5).
   ///
   /// False is not a failure: a phone holding no session has nothing to send
   /// and says nothing — the wrist's own copy is what it keeps. A request for
@@ -88,10 +102,19 @@ class WatchSyncRequestHandler {
   /// `since` is older than the bundle's stamp, and with none of them when it
   /// is not; the exercise list (unless the wrist already holds it) travels
   /// with every answer.
-  Future<bool> handle(String request, {String? exercisesVersion, DateTime? since}) {
+  Future<bool> handle(
+    String request, {
+    String? exercisesVersion,
+    DateTime? since,
+    bool holdsBests = false,
+  }) {
     switch (request) {
       case WatchTransportRequest.routines:
-        return _sendRoutines(exercisesVersion: exercisesVersion, since: since);
+        return _sendRoutines(
+          exercisesVersion: exercisesVersion,
+          since: since,
+          holdsBests: holdsBests,
+        );
       case WatchTransportRequest.snapshot:
         return _sendSnapshot();
       default:
@@ -134,18 +157,24 @@ class WatchSyncRequestHandler {
   /// it has, so a half-arrived list is worse than none and the next sync sends
   /// the whole list again (PROTOCOL.md, "Idempotency and reconciliation").
   ///
-  /// The bests (`bests_down`) are the last frame of every answer: sent
-  /// whatever `since` says, whatever the bundle's stamp is, and whether or not
-  /// the exercise list travelled (plan 87a, D-4). Bests change after every
-  /// completed workout while the bundle's stamp changes only when its content
-  /// does, so bundling them would re-send the foods and the routines after
-  /// every set. The frame is built from storage read at request time, so a
-  /// workout completed since the last request is what the wrist gets.
+  /// The bests (`bests_down`) are the last frame of an answer that needs one:
+  /// sent whatever `since` says, whatever the bundle's stamp is, and whether
+  /// or not the exercise list travelled (plan 87a, D-4) — but not when the
+  /// wrist says it holds them and neither the history nor the entries moved
+  /// since the frame it holds (87c, D-5). Bests change after every completed
+  /// workout while the bundle's stamp changes only when its content does, so
+  /// bundling them would re-send the foods and the routines after every set.
+  /// The frame is built from storage read at request time, so a workout
+  /// completed since the last request is what the wrist gets.
   ///
   /// The settings are `SettingsState`'s own — the one owner of them (D-115) —
   /// so nothing here reads or parses a stored preference; the accent is read
   /// the same way, from the theme that state holds rather than from a copy.
-  Future<bool> _sendRoutines({String? exercisesVersion, DateTime? since}) async {
+  Future<bool> _sendRoutines({
+    String? exercisesVersion,
+    DateTime? since,
+    required bool holdsBests,
+  }) async {
     // Read once, before anything else: a write that lands while this request
     // runs leaves the stored number older than the data, so the next request
     // reads again (plan 74, D-4).
@@ -210,14 +239,49 @@ class WatchSyncRequestHandler {
       revision: revision,
     );
 
+    await _sendBests(holdsBests: holdsBests);
+    return true;
+  }
+
+  /// The bests, the last frame of an answer that needs one.
+  ///
+  /// A wrist that says it holds the bests is sent nothing — and no history is
+  /// read for it — while the repository's `historyRevision` and the entries
+  /// both stand still since the frame it holds (87c, D-5). A frame the radio
+  /// did not carry is not remembered, so the next request sends it again.
+  Future<void> _sendBests({required bool holdsBests}) async {
+    // Read once, before any history read: a write that lands while this
+    // request runs leaves the remembered number older than the data, so the
+    // next request reads again (D-3, plan 74 D-4).
+    final historyRevision = _repository.historyRevision;
+    final held = _bestsHeld;
+
+    if (holdsBests &&
+        held != null &&
+        historyRevision != null &&
+        held.revision == historyRevision) {
+      return;
+    }
+
     // Built from a fresh service per request: it caches one history snapshot
     // for its lifetime, so a held instance would send bests from before the
     // last workout (D-11).
     final bests = await StatsProgressService(_repository).getAllTimeBests();
-    await _transport.send(
-      WatchReferenceSync.buildBestsDown(bests: bests, generatedAt: _clock()),
+    final frame = WatchReferenceSync.buildBestsDown(
+      bests: bests,
+      generatedAt: _clock(),
     );
-    return true;
+    final entriesText = jsonEncode((frame['payload']! as Map)['bests']);
+
+    if (holdsBests && held != null && held.entriesText == entriesText) {
+      _bestsHeld = (revision: historyRevision, entriesText: entriesText);
+      return;
+    }
+
+    final delivered = await _transport.send(frame) == WatchDelivery.delivered;
+    _bestsHeld = delivered
+        ? (revision: historyRevision, entriesText: entriesText)
+        : null;
   }
 
   /// The phone's exercise list, as [WatchReferenceSync.buildExercisesDown]

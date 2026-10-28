@@ -21,6 +21,7 @@ import 'package:omnitrain/state/watch/watch_sync_request_handler.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 
 import 'helpers/fake_preferences_service.dart';
+import 'helpers/revisioned_repository.dart';
 import 'helpers/sync_protocol_harness.dart';
 
 /// The three reference frames, in the order the phone sends them.
@@ -127,81 +128,14 @@ Future<void> _seedRoutine(MockWorkoutRepository repository) async {
 /// The test's clock.
 final TestClock clock = TestClock(DateTime.utc(2026, 10, 23, 12, 0, 0, 123, 456));
 
-/// A repository that answers a settable `referenceRevision` and counts the
-/// reference reads (plan 74, S-10405).
-class _RevisionedRepo extends MockWorkoutRepository {
-  int? revision = 1;
-  int foodReads = 0;
-  int groupReads = 0;
-  int templateReads = 0;
-  int segmentReads = 0;
-  int exerciseReads = 0;
-  int capabilityReads = 0;
-
-  /// When set, the next food read throws once and the flag clears itself.
-  bool throwOnceOnFoods = false;
-
-  void resetCounts() {
-    foodReads = 0;
-    groupReads = 0;
-    templateReads = 0;
-    segmentReads = 0;
-    exerciseReads = 0;
-    capabilityReads = 0;
-  }
-
-  @override
-  int? get referenceRevision => revision;
-
-  @override
-  Future<List<Food>> getFoods({bool includeArchived = false}) async {
-    foodReads++;
-    if (throwOnceOnFoods) {
-      throwOnceOnFoods = false;
-      throw Exception('food read failed once');
-    }
-    return super.getFoods(includeArchived: includeArchived);
-  }
-
-  @override
-  Future<List<FoodGroup>> getFoodGroups({bool includeArchived = false}) async {
-    groupReads++;
-    return super.getFoodGroups(includeArchived: includeArchived);
-  }
-
-  @override
-  Future<List<WorkoutTemplate>> getTemplates() async {
-    templateReads++;
-    return super.getTemplates();
-  }
-
-  @override
-  Future<List<TemplateSegment>> getTemplateSegments(String templateId) async {
-    segmentReads++;
-    return super.getTemplateSegments(templateId);
-  }
-
-  @override
-  Future<List<Exercise>> getExercises() async {
-    exerciseReads++;
-    return super.getExercises();
-  }
-
-  @override
-  Future<List<String>> getExerciseCapabilities(String exerciseId) async {
-    capabilityReads++;
-    return super.getExerciseCapabilities(exerciseId);
-  }
-}
-
 void main() {
-  late _RevisionedRepo repository;
+  late RevisionedRepository repository;
   late SettingsState settings;
   late _RecordingTransport transport;
   late WatchSyncRequestHandler handler;
 
   setUp(() async {
-    repository = _RevisionedRepo();
+    repository = RevisionedRepository();
     await repository.initialize();
     settings = SettingsState(repository, fakePreferencesService());
     transport = _RecordingTransport();
@@ -291,6 +225,64 @@ void main() {
       expect(repository.segmentReads, 0);
       expect(repository.exerciseReads, 0);
       expect(repository.capabilityReads, 0);
+    });
+  });
+
+  group('S-87c-17 a wrist holding the bests is sent none while they stand '
+      'still', () {
+    test('S-87c-17 a second idle raise sends no bests_down and reads no '
+        'history', () async {
+      await seedPhone();
+      repository.history = 5;
+      expect(
+        await handler.handle(
+          WatchTransportRequest.routines,
+          holdsBests: true,
+        ),
+        isTrue,
+      );
+      final stamp = sentStamp();
+      final version = await currentVersion();
+      expect(
+        transport.singleOfType('bests_down'),
+        isNotNull,
+        reason: 'S-87c-17 a wrist that holds nothing is sent the bests',
+      );
+      expect(
+        repository.sessionReads,
+        greaterThan(0),
+        reason: 'S-87c-17 the first answer walks the history once',
+      );
+
+      transport.sent.clear();
+      repository.resetCounts();
+      clock.advance(const Duration(seconds: 10));
+
+      expect(
+        await handler.handle(
+          WatchTransportRequest.routines,
+          since: stamp,
+          exercisesVersion: version,
+          holdsBests: true,
+        ),
+        isTrue,
+      );
+
+      expect(
+        transport.types,
+        isEmpty,
+        reason:
+            'S-87c-17 the wrist holds the bests and the revision stands '
+            'still, so no bests_down travels; the bundle and the list are '
+            'held too, so nothing travels at all',
+      );
+      expect(
+        repository.sessionReads,
+        0,
+        reason:
+            'S-87c-17 the skip reads no history: no StatsProgressService is '
+            'even created',
+      );
     });
   });
 
@@ -503,7 +495,7 @@ void main() {
         'final revision = _repository.referenceRevision;',
       );
       final methodIndex = source.indexOf(
-        'Future<bool> _sendRoutines({String? exercisesVersion, DateTime? since}) async {',
+        'Future<bool> _sendRoutines({',
       );
       final reloadIndex = source.indexOf(
         'readFailed = !await _reloadFoods();',

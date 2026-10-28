@@ -46,6 +46,28 @@
 //   S-87a-13 no completed sessions reaches the wrist as an empty array
 //          → `S-87a-13 ...`
 //
+// Plan: `docs/plans/2026-10-27-87c-bests-only-when-changed-plan/`
+// (D-4, D-5). Scenario mapping:
+//   S-87c-1 an idle raise at the same revision is sent no frame and reads no
+//          history → `S-87c-1 ...`
+//   S-87c-2 a completed workout reaches the next request, then goes quiet
+//          → `S-87c-2 ...`
+//   S-87c-3 a write that leaves the bests identical costs one walk and no
+//          frame → `S-87c-3 ...`
+//   S-87c-4 a wrist that does not say it holds the bests is sent them every
+//          time → `S-87c-4 ...`
+//   S-87c-5 a frame the radio did not carry is sent again, a delivered one is
+//          skipped → `S-87c-5 ...`
+//   S-87c-6 a phone that relaunched sends once → `S-87c-6 ...`
+//   S-87c-7 a repository that cannot tell the revision sends only when the
+//          entries moved → `S-87c-7 ...`
+//   S-87c-12 a write that lands during the walk is not hidden
+//          → `S-87c-12 ...`
+//   S-87c-13 an undelivered frame is re-sent, then goes quiet
+//          → `S-87c-13 ...`
+//   S-87c-14 a request without the flag always sends, even with remembered
+//          state → `S-87c-14 ...`
+//
 // The transport here is a recorder, not the graph: this file is about what the
 // handler sends, and in what order. That the graph's inbound handler hands the
 // frame's version on is S-3855 in `test/watch_session_projection_test.dart`.
@@ -67,6 +89,7 @@ import 'package:omnitrain/state/watch/watch_sync_request_handler.dart';
 import 'package:omnitrain/state/watch/watch_sync_wiring.dart';
 
 import 'helpers/fake_preferences_service.dart';
+import 'helpers/revisioned_repository.dart';
 import 'helpers/sync_protocol_harness.dart';
 
 final DateTime _now = DateTime.utc(2026, 10, 11, 12);
@@ -85,9 +108,16 @@ class _RecordingTransport implements WatchMirrorTransport {
   /// Whether the radio refuses the `bests_down` frame (S-87a-7).
   bool undeliveredBests = false;
 
+  /// What the radio answers for the `bests_down` frame, when set — the
+  /// `queued` answer the real transport never gives it (S-87c-5).
+  WatchDelivery? bestsDelivery;
+
   @override
   Future<WatchDelivery> send(Map<String, Object?> envelope) async {
     sent.add(envelope);
+    if (envelope['type'] == 'bests_down' && bestsDelivery != null) {
+      return bestsDelivery!;
+    }
     if (envelope['type'] == 'foods_down' && undeliveredFoods) {
       return WatchDelivery.undelivered;
     }
@@ -259,6 +289,140 @@ Future<void> _seedCompletedSetSession(
   await repo.createObservation(
     EffortObservation(
       id: 'obs-$effortId-0-weight',
+      effortId: effortId,
+      metricId: 'metric-weight',
+      valueReal: weight,
+      createdAtMs: startedAtMs + 1,
+      updatedAtMs: startedAtMs + 1,
+    ),
+  );
+}
+
+/// The 87a history H (S-87c-1..S-87c-14): bench-press 100 × 5 and 100 × 3 in
+/// session 1, bench-press 90 × 8, squat 140 × 5 and push-up 0 × 12 in session
+/// 2, and session 3 still in progress with a 200 kg bench set of its own — a
+/// set the bests must not count.
+Future<void> _seedHistory(MockWorkoutRepository repo) async {
+  await _seedSession(repo, 'session-1');
+  await _seedSet(
+    repo,
+    sessionId: 'session-1',
+    orderIndex: 0,
+    exerciseId: 'exercise-bench-press',
+    reps: 5,
+    weight: 100,
+  );
+  await _seedSet(
+    repo,
+    sessionId: 'session-1',
+    orderIndex: 1,
+    exerciseId: 'exercise-bench-press',
+    reps: 3,
+    weight: 100,
+  );
+  await _seedSession(repo, 'session-2');
+  await _seedSet(
+    repo,
+    sessionId: 'session-2',
+    orderIndex: 0,
+    exerciseId: 'exercise-bench-press',
+    reps: 8,
+    weight: 90,
+  );
+  await _seedSet(
+    repo,
+    sessionId: 'session-2',
+    orderIndex: 1,
+    exerciseId: 'exercise-squat',
+    reps: 5,
+    weight: 140,
+  );
+  await _seedSet(
+    repo,
+    sessionId: 'session-2',
+    orderIndex: 2,
+    exerciseId: 'exercise-push-up',
+    reps: 12,
+    weight: 0,
+  );
+  await _seedSession(repo, 'session-3', open: true);
+  await _seedSet(
+    repo,
+    sessionId: 'session-3',
+    orderIndex: 0,
+    exerciseId: 'exercise-bench-press',
+    reps: 5,
+    weight: 200,
+  );
+}
+
+/// A session header with no sets; [open] leaves it in progress.
+Future<void> _seedSession(
+  MockWorkoutRepository repo,
+  String id, {
+  bool open = false,
+}) async {
+  final startedAtMs = _now.millisecondsSinceEpoch;
+  await repo.createSession(
+    TrainingSession(
+      id: id,
+      ownerUserId: 'u-1',
+      startedAtMs: startedAtMs,
+      endedAtMs: open ? null : startedAtMs + 1000,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+}
+
+/// One set effort in [sessionId], in a segment of its own, the way the history
+/// walk reads one (S-87a-11).
+Future<void> _seedSet(
+  MockWorkoutRepository repo, {
+  required String sessionId,
+  required int orderIndex,
+  required String exerciseId,
+  required int reps,
+  required double weight,
+}) async {
+  final startedAtMs = _now.millisecondsSinceEpoch;
+  final segmentId = 'seg-$sessionId-$orderIndex';
+  await repo.createSegment(
+    SessionSegment(
+      id: segmentId,
+      sessionId: sessionId,
+      orderIndex: orderIndex,
+      segmentType: 'main',
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+
+  final effortId = 'eff-$sessionId-$orderIndex';
+  await repo.createEffort(
+    SegmentEffort(
+      id: effortId,
+      segmentId: segmentId,
+      orderIndex: orderIndex,
+      effortKind: 'set',
+      exerciseId: exerciseId,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+  await repo.createObservation(
+    EffortObservation(
+      id: 'obs-$effortId-reps',
+      effortId: effortId,
+      metricId: 'metric-reps',
+      valueInt: reps,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+  await repo.createObservation(
+    EffortObservation(
+      id: 'obs-$effortId-weight',
       effortId: effortId,
       metricId: 'metric-weight',
       valueReal: weight,
@@ -1144,6 +1308,462 @@ void main() {
             'S-87a-13 an empty array is "no history"; a missing frame would '
             'leave the wrist unable to tell',
       );
+    });
+  });
+
+  group('S-87c-1…S-87c-14 the bests are sent only when they moved', () {
+    late RevisionedRepository repo;
+
+    /// The wrist's raise, as the wiring hands it on: the flag is the wrist's
+    /// own claim that it holds a bests frame (D-2).
+    Future<bool> raise({required bool holdsBests}) => handler.handle(
+      WatchTransportRequest.routines,
+      holdsBests: holdsBests,
+    );
+
+    /// The entry of [exerciseId] in the one `bests_down` frame sent so far.
+    Map<String, Object?> bestEntry(String exerciseId) => objectsOf(
+      asObject(transport.ofType('bests_down').single['payload'])['bests'],
+    ).singleWhere((entry) => entry['exerciseId'] == exerciseId);
+
+    setUp(() async {
+      repo = RevisionedRepository();
+      await repo.initialize();
+      repository = repo;
+      handler = handlerFor(FoodLibraryState(repository));
+    });
+
+    test('S-87c-1 a wrist holding the bests, raising again at the same '
+        'revision, is sent none and reads no history', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-1 a wrist that holds nothing is sent the frame',
+      );
+      expect(
+        bestEntry('exercise-bench-press')['e1rmKg'],
+        StatsProgressService.epley1RM(100.0, 5),
+        reason: 'S-87c-1 100 × 5 is the standing best of the two 100 kg sets',
+      );
+      expect(
+        repo.sessionReads,
+        greaterThan(0),
+        reason: 'S-87c-1 the first answer walks the history',
+      );
+
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+
+      expect(
+        transport.ofType('bests_down'),
+        isEmpty,
+        reason: 'S-87c-1 the wrist holds the bests and the revision stands '
+            'still, so no frame travels',
+      );
+      expect(
+        repo.sessionReads,
+        0,
+        reason: 'S-87c-1 the skip reads no history: no StatsProgressService '
+            'is even created',
+      );
+    });
+
+    test('S-87c-2 a completed workout reaches the next request, then goes '
+        'quiet', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        bestEntry('exercise-bench-press')['e1rmKg'],
+        StatsProgressService.epley1RM(100.0, 5),
+      );
+
+      await _seedCompletedSetSession(
+        repo,
+        sessionId: 'session-4',
+        exerciseId: 'exercise-bench-press',
+        reps: 5,
+        weight: 120,
+      );
+      repo.history = 6;
+      current = _now.add(const Duration(minutes: 5));
+      transport.sent.clear();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-2 a completed workout moves the revision, so the next '
+            'request walks and sends',
+      );
+      expect(
+        bestEntry('exercise-bench-press')['e1rmKg'],
+        StatsProgressService.epley1RM(120.0, 5),
+        reason: 'S-87c-2 the frame holds the new best',
+      );
+
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        isEmpty,
+        reason: 'S-87c-2 request 3 at the delivered revision sends nothing',
+      );
+      expect(
+        repo.sessionReads,
+        0,
+        reason: 'S-87c-2 and reads nothing',
+      );
+    });
+
+    test('S-87c-3 a write that leaves the bests identical costs one walk and '
+        'no frame', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+
+      expect(await raise(holdsBests: true), isTrue);
+
+      // An in-progress set: a write, but the bests cannot move.
+      await _seedSet(
+        repo,
+        sessionId: 'session-3',
+        orderIndex: 1,
+        exerciseId: 'exercise-bench-press',
+        reps: 3,
+        weight: 200,
+      );
+      repo.history = 6;
+      current = _now.add(const Duration(minutes: 1));
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+
+      expect(
+        repo.sessionReads,
+        greaterThan(0),
+        reason: 'S-87c-3 a moved revision walks once',
+      );
+      expect(
+        transport.ofType('bests_down'),
+        isEmpty,
+        reason: 'S-87c-3 the walk found the same entries, so no frame travels',
+      );
+
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        isEmpty,
+        reason: 'S-87c-3 the entries still stand still',
+      );
+      expect(
+        repo.sessionReads,
+        0,
+        reason: 'S-87c-3 the walk\'s revision was remembered, so the third '
+            'request reads nothing (A-87c-2)',
+      );
+    });
+
+    test('S-87c-4 a request that does not say the wrist holds the bests sends '
+        'the frame every time', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+
+      // The key's spellings — absent, `false`, `"true"`, `1`, null — all
+      // reach the handler as false: D-2's parse is what `holdsBestsOf` does,
+      // and S-87c-9 pins it in `test/watch_transport_test.dart`.
+      for (var request = 1; request <= 2; request++) {
+        transport.sent.clear();
+        repo.resetCounts();
+
+        expect(await raise(holdsBests: false), isTrue);
+        expect(
+          transport.ofType('bests_down'),
+          hasLength(1),
+          reason: 'S-87c-4 request $request: an older wrist, or one that lost '
+              'its copy, is sent the frame as today (D-5(a)), even at an '
+              'unchanged revision',
+        );
+        expect(
+          repo.sessionReads,
+          greaterThan(0),
+          reason: 'S-87c-4 request $request walks the history',
+        );
+      }
+    });
+
+    test('S-87c-5 a frame the radio did not carry is sent again, and after a '
+        'delivered one the next request skips it', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+      transport.bestsDelivery = WatchDelivery.undelivered;
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-5 the frame was built and attempted',
+      );
+
+      transport.sent.clear();
+      transport.bestsDelivery = null;
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-5 nothing was remembered for an undelivered frame, so '
+            'it is built and sent again',
+      );
+      expect(repo.sessionReads, greaterThan(0), reason: 'S-87c-5 and walked');
+
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        isEmpty,
+        reason: 'S-87c-5 the second answer was delivered, so the third '
+            'request skips',
+      );
+      expect(repo.sessionReads, 0, reason: 'S-87c-5 and reads nothing');
+    });
+
+    test('S-87c-5 a queued frame is not delivered, so the next request sends '
+        'it again', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+      transport.bestsDelivery = WatchDelivery.queued;
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(transport.ofType('bests_down'), hasLength(1));
+
+      transport.sent.clear();
+      transport.bestsDelivery = null;
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-5 `queued` is not delivered (D-5(d), q-g), so nothing '
+            'is remembered and the frame travels again',
+      );
+      expect(repo.sessionReads, greaterThan(0), reason: 'S-87c-5 and walked');
+    });
+
+    test('S-87c-6 a phone that relaunched sends the frame once', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+
+      expect(await raise(holdsBests: true), isTrue);
+      transport.sent.clear();
+
+      // A relaunch: a new handler over the same storage, at the same revision.
+      handler = handlerFor(FoodLibraryState(repository));
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-6 a handler holding nothing cannot know the wrist '
+            'holds the current bests, so it sends them once',
+      );
+
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(transport.ofType('bests_down'), isEmpty);
+      expect(repo.sessionReads, 0);
+    });
+
+    test('S-87c-7 a repository that cannot tell the revision walks every '
+        'request and sends only when the entries moved', () async {
+      await _seedHistory(repo);
+      repo.history = null;
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(transport.ofType('bests_down'), hasLength(1));
+
+      transport.sent.clear();
+      repo.resetCounts();
+      // The stamp moves; the entries do not (87c, A-87c-1): `generatedAt` must
+      // stay out of the compared text.
+      current = _now.add(const Duration(minutes: 1));
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        repo.sessionReads,
+        greaterThan(0),
+        reason: 'S-87c-7 with no revision the phone cannot skip the walk',
+      );
+      expect(
+        transport.ofType('bests_down'),
+        isEmpty,
+        reason: 'S-87c-7 the entries text is unchanged, so no frame travels — '
+            'the only guard a null revision leaves',
+      );
+
+      await _seedCompletedSetSession(
+        repo,
+        sessionId: 'session-5',
+        exerciseId: 'exercise-bench-press',
+        reps: 5,
+        weight: 130,
+      );
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-7 a new best changes the entries text, so the frame '
+            'travels',
+      );
+      expect(
+        bestEntry('exercise-bench-press')['e1rmKg'],
+        StatsProgressService.epley1RM(130.0, 5),
+      );
+    });
+
+    test('S-87c-12 a write that lands during the walk is not hidden', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+      // `getAllSessions` bumps the revision, so every walk is also a write —
+      // the case the read-before-walk rule protects against.
+      repo.bumpHistoryOnRead = true;
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-12 request 1 walks and sends',
+      );
+
+      await _seedCompletedSetSession(
+        repo,
+        sessionId: 'session-6',
+        exerciseId: 'exercise-bench-press',
+        reps: 5,
+        weight: 110,
+      );
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(1),
+        reason: 'S-87c-12 the revision read at the start is older than the '
+            'history, so request 2 walks and sends the new best',
+      );
+      expect(
+        bestEntry('exercise-bench-press')['e1rmKg'],
+        StatsProgressService.epley1RM(110.0, 5),
+      );
+
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        repo.sessionReads,
+        greaterThan(0),
+        reason: 'S-87c-12 request 3 walks again: the remembered revision is '
+            'the one read before request 2\'s walk, and the history has '
+            'moved since',
+      );
+      expect(
+        transport.ofType('bests_down'),
+        isEmpty,
+        reason: 'S-87c-12 the entries stand still, so the walk sends nothing',
+      );
+    });
+
+    test('S-87c-13 an undelivered frame is re-sent, then the wrist goes '
+        'quiet', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+      transport.bestsDelivery = WatchDelivery.undelivered;
+
+      expect(await raise(holdsBests: true), isTrue);
+      transport.bestsDelivery = null;
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        hasLength(2),
+        reason: 'S-87c-13 the undelivered frame was not remembered, so the '
+            'next request built and sent it again',
+      );
+
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        isEmpty,
+        reason: 'S-87c-13 the delivered frame is remembered, so request 3 '
+            'sends nothing',
+      );
+      expect(
+        repo.sessionReads,
+        0,
+        reason: 'S-87c-13 and reads nothing',
+      );
+    });
+
+    test('S-87c-14 a request without the flag always sends, even with '
+        'remembered state', () async {
+      await _seedHistory(repo);
+      repo.history = 5;
+
+      expect(await raise(holdsBests: true), isTrue);
+
+      // The key absent, `false`, and `"true"` (a string) all arrive as false:
+      // D-2's parse is `holdsBestsOf`, pinned by S-87c-9.
+      for (final variant in ['absent', 'false', 'a string']) {
+        transport.sent.clear();
+        repo.resetCounts();
+
+        expect(await raise(holdsBests: false), isTrue);
+        expect(
+          transport.ofType('bests_down'),
+          hasLength(1),
+          reason: 'S-87c-14 the $variant request walks and sends even though '
+              'the handler remembers a delivered frame (D-5(a))',
+        );
+        expect(repo.sessionReads, greaterThan(0), reason: 'S-87c-14 and walked');
+      }
+
+      transport.sent.clear();
+      repo.resetCounts();
+
+      expect(await raise(holdsBests: true), isTrue);
+      expect(
+        transport.ofType('bests_down'),
+        isEmpty,
+        reason: 'S-87c-14 each delivery refreshed the remembered pair, so a '
+            'holds request still skips',
+      );
+      expect(repo.sessionReads, 0);
     });
   });
 }

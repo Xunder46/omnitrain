@@ -179,6 +179,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
   int _referenceRevision = 0;
   final List<StreamSubscription<BoxEvent>> _revisionListeners = [];
 
+  /// Bumped by one Hive box listener per history box (87c, D-3). Only ever
+  /// compared for equality; never interpreted.
+  int _historyRevision = 0;
+  final List<StreamSubscription<BoxEvent>> _historyListeners = [];
+
   @override
   Future<void> initialize() async {
     if (_initialized) return;
@@ -250,6 +255,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     // launch under the new system, so existing installs do not re-run
     // already-applied steps.
     _listenForReferenceWrites();
+    _listenForHistoryWrites();
     await _runDataMigrations();
 
     _initialized = true;
@@ -278,6 +284,28 @@ class HiveWorkoutRepository implements WorkoutRepository {
     ];
     for (final box in boxes) {
       _revisionListeners.add(box.watch().listen((_) => _referenceRevision++));
+    }
+  }
+
+  /// Point one listener at each history box, so [historyRevision] moves on
+  /// any write to a session, segment, effort or observation row — the boxes
+  /// the all-time bests are read from (87c, D-3). Listeners left by an
+  /// earlier [initialize] are cancelled first, so a second call over the same
+  /// storage does not stack them.
+  void _listenForHistoryWrites() {
+    for (final listener in _historyListeners) {
+      listener.cancel();
+    }
+    _historyListeners.clear();
+
+    final boxes = <Box<dynamic>>[
+      _sessionsBox,
+      _segmentsBox,
+      _effortsBox,
+      _observationsBox,
+    ];
+    for (final box in boxes) {
+      _historyListeners.add(box.watch().listen((_) => _historyRevision++));
     }
   }
 
@@ -2545,6 +2573,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   @override
   int? get referenceRevision => _referenceRevision;
+
+  @override
+  int? get historyRevision => _historyRevision;
 
   @override
   Future<void> setDataVersion(int version) async {

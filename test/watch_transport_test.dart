@@ -11,6 +11,8 @@
 //   S-3856 the routines request names the exercise list the wrist holds
 //         → `S-3856 ...` (plan 23e2, D-3833)
 //   S-9208 the since a frame names is read back → `S-9208 ...` (plan 62, D-2)
+//   S-87c-9 the request says whether the wrist holds the bests
+//         → `S-87c-9 ...` (plan 87c, D-2)
 //   Phase 2 item 6: phone fixtures carry no null → `Phase 2 item 6: ...`
 //   S-253 every sync is answered with preferences → `S-253 ...`
 //         (Stats PR 2, `docs/plans/2026-09-25-02-stats-pr2-watch-capture-plan.md`,
@@ -1762,6 +1764,78 @@ void main() {
             'S-9208 an unparseable string is no stamp, so the phone sends '
             'everything',
       );
+    });
+  });
+
+  group('S-87c-9 the request says whether the wrist holds the bests', () {
+    test('S-87c-9 a request without the flag is the frame the contract pins', () {
+      final requests = _asObject(_contract()['transportRequests']);
+      final plain = WatchTransportRequest.routinesFrame();
+
+      expect(
+        plain,
+        _asObject(requests['routines']),
+        reason: 'S-87c-9 a wrist that holds no bests sends today\'s frame',
+      );
+      expect(
+        plain.containsKey('holdsBests'),
+        isFalse,
+        reason: 'S-87c-9 the key is omitted, never false',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(holdsBests: false),
+        plain,
+        reason: 'S-87c-9 an explicit false is byte-identical to omitting it',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(since: _syncedAt),
+        _asObject(requests['routinesSince']),
+        reason: 'S-87c-9 the since frame is unchanged too',
+      );
+    });
+
+    test('S-87c-9 holdsBests: true adds the key and nothing else', () {
+      expect(
+        WatchTransportRequest.routinesFrame(holdsBests: true),
+        {...WatchTransportRequest.routinesFrame(), 'holdsBests': true},
+        reason: 'S-87c-9 a wrist that holds the bests says so',
+      );
+      expect(
+        WatchTransportRequest.routinesFrame(
+          since: _syncedAt,
+          holdsBests: true,
+        ),
+        {
+          ...WatchTransportRequest.routinesFrame(since: _syncedAt),
+          'holdsBests': true,
+        },
+        reason: 'S-87c-9 the flag rides beside since, it does not replace it',
+      );
+    });
+
+    test('S-87c-9 only the boolean true means held', () {
+      expect(
+        WatchTransportRequest.holdsBestsOf(
+          WatchTransportRequest.routinesFrame(holdsBests: true),
+        ),
+        isTrue,
+        reason: 'S-87c-9 the key the builder writes reads back as held',
+      );
+
+      final notHeld = <Map<String, Object?>>[
+        WatchTransportRequest.routinesFrame(holdsBests: false),
+        const {'request': 'routines', 'holdsBests': 'true'},
+        const {'request': 'routines', 'holdsBests': 1},
+        const {'request': 'routines', 'holdsBests': null},
+        const {'request': 'routines'},
+      ];
+      for (final frame in notHeld) {
+        expect(
+          WatchTransportRequest.holdsBestsOf(frame),
+          isFalse,
+          reason: 'S-87c-9 $frame leaves the phone sending the frame',
+        );
+      }
     });
   });
 
